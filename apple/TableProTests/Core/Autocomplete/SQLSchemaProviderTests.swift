@@ -356,6 +356,24 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         return concurrentRefreshAvailabilityToReturn
     }
 
+    var approximateRowCountToReturn: Int?
+    var approximateRowCountGate: AsyncGate?
+    private(set) var fetchApproximateRowCountCallCount = 0
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        fetchApproximateRowCountCallCount += 1
+        await approximateRowCountGate?.wait()
+        return approximateRowCountToReturn
+    }
+
+    var viewRowEditingToReturn: PluginViewRowEditing?
+    private(set) var fetchViewRowEditingCalls: [String] = []
+
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
+        fetchViewRowEditingCalls.append(view)
+        return viewRowEditingToReturn
+    }
+
     var tableDDLToReturn: [String: String] = [:]
     private(set) var fetchTableDDLCallCount = 0
 

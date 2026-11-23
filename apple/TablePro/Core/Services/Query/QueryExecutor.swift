@@ -35,10 +35,10 @@ struct QueryFetchResult {
     }
 }
 
+// Columns, view answer and keys only: the row estimate is the count's read, so keys never wait for it.
 struct FetchedTableSchema {
     let columns: [ColumnInfo]
     let foreignKeys: [ForeignKeyInfo]?
-    let approximateRowCount: Int?
     var viewRowEditing: PluginViewRowEditing?
 }
 
@@ -53,7 +53,6 @@ struct ParsedSchemaMetadata {
     /// engine rejects both an explicit INSERT value and an UPDATE of one.
     let generatedColumns: Set<String>
     let columnIdentity: [String: IdentityKind]
-    let approximateRowCount: Int?
     let columnEnumValues: [String: [String]]
     let columnComments: [String: String]
     /// Whether this came from the table's own schema, rather than from what the result set happened
@@ -79,7 +78,6 @@ struct ParsedSchemaMetadata {
             primaryKeyColumns: primaryKeyColumns,
             generatedColumns: rows.generatedColumns,
             columnIdentity: rows.columnIdentity,
-            approximateRowCount: nil,
             columnEnumValues: rows.columnEnumValues,
             columnComments: rows.columnComments,
             isAuthoritative: rows.hasAuthoritativeSchema,
@@ -290,26 +288,31 @@ final class QueryExecutor {
     static func schemaFetch(
         tableName: String?,
         isView: Bool,
+        isCataloged: Bool = false,
         scope: DatabaseScope,
         knownColumns: [ColumnInfo]? = nil
     ) -> Task<FetchedTableSchema, Error>? {
         guard let tableName else { return nil }
         return Task {
-            try await fetchTableSchema(scope: scope, tableName: tableName, isView: isView, knownColumns: knownColumns)
+            try await fetchTableSchema(
+                scope: scope, tableName: tableName, isView: isView, isCataloged: isCataloged, knownColumns: knownColumns
+            )
         }
     }
 
     // A cancel lands between reads, never on the wire: a late server cancel can reach the next statement on that connection.
+    // `isCataloged`: the live catalog lists the name as a table, so a missing key does not make it a view to ask about.
     static func fetchTableSchema(
         scope: DatabaseScope,
         tableName: String,
         isView: Bool,
+        isCataloged: Bool = false,
         knownColumns: [ColumnInfo]? = nil
     ) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
             "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .private(mask: .hash)) schema=\(scope.schema ?? "default", privacy: .private(mask: .hash))"
         )
-        let (columns, approximateRowCount, viewRowEditing) = try await DatabaseManager.shared.withMetadataDriver(
+        let (columns, viewRowEditing) = try await DatabaseManager.shared.withMetadataDriver(
             scope: scope
         ) { driver in
             let columns: [ColumnInfo]
@@ -319,26 +322,19 @@ final class QueryExecutor {
                 columns = try await driver.fetchColumns(table: tableName, schema: scope.schema)
             }
             try Task.checkCancellation()
-            let approximateRowCount = try? await driver.fetchApproximateRowCount(table: tableName, schema: scope.schema)
-            try Task.checkCancellation()
-            // A view has no key of its own; a tab that does not know its kind asks whenever none shows.
-            let asksView = isView || !columns.contains { $0.isPrimaryKey }
+            // A view has no key of its own; a relation not known as a table asks whenever none shows.
+            let asksView = isView || (!isCataloged && !columns.contains { $0.isPrimaryKey })
             let viewRowEditing = asksView
                 ? await fetchViewRowEditing(viewName: tableName, isKnownView: isView, scope: scope, on: driver)
                 : nil
-            return (columns, approximateRowCount, viewRowEditing)
+            return (columns, viewRowEditing)
         }
         try Task.checkCancellation()
         let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
         queryExecutorLog.info(
             "[fk] schema fetch done table=\(tableName, privacy: .private(mask: .hash)) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
         )
-        return FetchedTableSchema(
-            columns: columns,
-            foreignKeys: foreignKeys,
-            approximateRowCount: approximateRowCount,
-            viewRowEditing: viewRowEditing
-        )
+        return FetchedTableSchema(columns: columns, foreignKeys: foreignKeys, viewRowEditing: viewRowEditing)
     }
 
     // A failed check keeps a known view read-only; a relation not known as one stays what it was.
@@ -421,7 +417,6 @@ final class QueryExecutor {
                     .map(\.name)
             ).union(viewTarget?.readOnlyColumns ?? []),
             columnIdentity: identity,
-            approximateRowCount: schema.approximateRowCount,
             columnEnumValues: enumValues,
             columnComments: comments,
             isAuthoritative: true,
@@ -481,7 +476,6 @@ final class QueryExecutor {
             primaryKeyColumns: primaryKeys,
             generatedColumns: [],
             columnIdentity: identity,
-            approximateRowCount: nil,
             columnEnumValues: [:],
             columnComments: [:],
             isAuthoritative: false

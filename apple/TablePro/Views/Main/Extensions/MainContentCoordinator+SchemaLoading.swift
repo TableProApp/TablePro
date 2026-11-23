@@ -178,8 +178,13 @@ extension MainContentCoordinator {
         knownColumns: [ColumnInfo]? = nil
     ) -> Task<FetchedTableSchema, Error>? {
         if let tableName, !tableName.isEmpty { prefetchForeignKeys(scope: scope) }
+        guard uncached, let tableName else { return nil }
         return QueryExecutor.schemaFetch(
-            tableName: uncached ? tableName : nil, isView: isView, scope: scope, knownColumns: knownColumns
+            tableName: tableName,
+            isView: isView,
+            isCataloged: catalogListsAsTable(tableName, in: scope),
+            scope: scope,
+            knownColumns: knownColumns
         )
     }
 
@@ -195,11 +200,26 @@ extension MainContentCoordinator {
             return startSchemaFetch(tableName, uncached: uncached, isView: isView, scope: scope)
         }
         prefetchForeignKeys(scope: scope)
+        let isCataloged = catalogListsAsTable(tableName, in: scope)
         return Task {
             let known = await confirmation.value?.columns
             return try await QueryExecutor.fetchTableSchema(
-                scope: scope, tableName: tableName, isView: isView, knownColumns: known
+                scope: scope, tableName: tableName, isView: isView, isCataloged: isCataloged, knownColumns: known
             )
+        }
+    }
+
+    // The live catalog only: a restored tab's kind is last session's, and the relation may have become a view since.
+    func catalogListsAsTable(_ tableName: String, in scope: DatabaseScope) -> Bool {
+        let schemaService = services.schemaService
+        guard !scope.isSessionBound,
+              let loaded = schemaService.loadedScope(for: connectionId),
+              loaded.database == scope.database, loaded.schema == scope.schema,
+              schemaService.isCatalogCurrent(for: connectionId)
+        else { return false }
+        return schemaService.tables(for: connectionId).contains { table in
+            table.name == tableName && table.type != .view && table.type != .materializedView
+                && (table.schema == nil || scope.schema == nil || table.schema == scope.schema)
         }
     }
 
