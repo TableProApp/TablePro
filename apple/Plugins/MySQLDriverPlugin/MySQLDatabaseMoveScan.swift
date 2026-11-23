@@ -22,9 +22,10 @@ nonisolated internal enum MySQLDatabaseMoveScan {
     }
 
     // None of these can leave the database: routines refuse `USE`, and a stored function or trigger refuses dynamic SQL.
+    // A `RELEASE` on COMMIT or ROLLBACK ends the session, and the next one starts without a proof.
     private static let provenHeads: Set<String> = [
         "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE", "SHOW", "DESC", "DESCRIBE", "EXPLAIN", "WITH", "VALUES",
-        "TABLE", "DO",
+        "TABLE", "DO", "COMMIT", "ROLLBACK",
     ]
 
     // MariaDB runs these blocks outside a routine, and a block can hold `EXECUTE IMMEDIATE`.
@@ -210,8 +211,10 @@ nonisolated internal enum MySQLDatabaseMoveScan {
 nonisolated internal struct MySQLSessionDatabaseProof: Equatable, Sendable {
     private(set) var database: String?
 
-    mutating func observe(_ sql: String) {
-        guard database != nil, !MySQLDatabaseMoveScan.move(of: sql).staysOnDatabase else { return }
+    // The driver's own begin carries a version comment the scan cannot prove, and it cannot leave the database.
+    mutating func observe(_ sql: String, flavor: MySQLServerFlavor) {
+        guard database != nil, !flavor.isOwnTransactionStart(sql),
+              !MySQLDatabaseMoveScan.move(of: sql).staysOnDatabase else { return }
         database = nil
     }
 

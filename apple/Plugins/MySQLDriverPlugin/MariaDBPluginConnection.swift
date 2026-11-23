@@ -1344,7 +1344,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let spelling = MySQLLiteralSpelling(noBackslashEscapes: noBackslashEscapes)
         let statements = ownStatements.map(spelling.respelled)
         for statement in statements.dropFirst() {
-            databaseProof.observe(statement)
+            databaseProof.observe(statement, flavor: flavor)
         }
 
         beginFlight(generation)
