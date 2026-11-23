@@ -52,6 +52,44 @@ extension MainContentCoordinator {
 
 @MainActor
 extension AppServices {
+    // Live services reading the given catalog, so a test decides what the window's schema service holds.
+    func reading(catalogFrom schemaService: SchemaService) -> AppServices {
+        AppServices(
+            appEvents: appEvents,
+            appSettings: appSettings,
+            appSettingsStorage: appSettingsStorage,
+            connectionStorage: connectionStorage,
+            databaseManager: databaseManager,
+            pluginManager: pluginManager,
+            schemaService: schemaService,
+            schemaRefreshService: schemaRefreshService,
+            schemaProviderRegistry: schemaProviderRegistry,
+            catalogChangeService: catalogChangeService,
+            sqlFavoriteManager: sqlFavoriteManager,
+            favoriteTablesStorage: favoriteTablesStorage,
+            favoriteDatabasesStorage: favoriteDatabasesStorage,
+            tableFolderStorage: tableFolderStorage,
+            aiChatStorage: aiChatStorage,
+            aiKeyStorage: aiKeyStorage,
+            aiAccessApprovals: aiAccessApprovals,
+            groupStorage: groupStorage,
+            tagStorage: tagStorage,
+            sshProfileStorage: sshProfileStorage,
+            credentialProfileStorage: credentialProfileStorage,
+            featureAccess: featureAccess,
+            syncMetadataStorage: syncMetadataStorage,
+            favoritesExpansionState: favoritesExpansionState,
+            linkedFolderWatcher: linkedFolderWatcher,
+            queryHistoryManager: queryHistoryManager,
+            dateFormattingService: dateFormattingService,
+            copilotService: copilotService,
+            mcpServerManager: mcpServerManager,
+            syncTracker: syncTracker,
+            welcomeRouter: welcomeRouter,
+            telemetry: telemetry
+        )
+    }
+
     // Live services that write query history into the given manager, so a test can read what a run filed.
     func recordingHistory(in queryHistoryManager: QueryHistoryManager) -> AppServices {
         AppServices(

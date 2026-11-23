@@ -250,6 +250,7 @@ extension PluginMetadataRegistry {
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
                     binaryLengthFunction: "OCTET_LENGTH",
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -322,6 +323,7 @@ extension PluginMetadataRegistry {
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
                     binaryLengthFunction: "OCTET_LENGTH",
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -400,6 +402,7 @@ extension PluginMetadataRegistry {
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .preferred,
                     verifiesServerWithSystemTrust: true,
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -612,6 +615,7 @@ extension PluginMetadataRegistry {
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .disabled,
                     supportsConnectionPooling: false,
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -681,6 +685,7 @@ extension PluginMetadataRegistry {
                     newDatabaseFileExtensions: Self.sqliteFileExtensions,
                     supportsRemoteDatabaseFile: true,
                     supportsRemoteDatabaseSession: true,
+                    readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .engineEnforced
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

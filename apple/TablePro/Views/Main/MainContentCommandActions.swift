@@ -265,8 +265,10 @@ final class MainContentCommandActions: ObservableObject {
 
     var isReadOnly: Bool { safeModeLevel.blocksAllWrites }
 
+    // A query tab has no pages: a page reload rebuilds the table query over the user's SQL.
     var canNavigatePages: Bool {
-        PluginManager.shared.paginationCapability(for: connection.type).allowsSeeking
+        coordinator?.tabManager.selectedTab?.tabType == .table
+            && PluginManager.shared.paginationCapability(for: connection.type).allowsSeeking
     }
 
     var editorLanguage: EditorLanguage {

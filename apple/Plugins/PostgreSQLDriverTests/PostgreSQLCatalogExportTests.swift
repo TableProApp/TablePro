@@ -170,6 +170,26 @@ struct PostgreSQLCatalogExportTests {
         #expect(grouped["lines"]?.first?.onUpdate == "NO ACTION")
     }
 
+    @Test("A composite key reads the same from the table's own read and the schema's")
+    func compositeKeyReadsAlike() async throws {
+        let recorder = CatalogReadRecorder { _ in
+            [
+                ["lines", "lines_order_fkey", "order_id", "orders", "id", "app", "CASCADE", nil].cells,
+                ["lines", "lines_order_fkey", "order_version", "orders", "version", "app", "CASCADE", nil].cells
+            ]
+        }
+        let catalog = Self.catalog(recorder)
+        let fields: (PluginForeignKeyInfo) -> [String] = {
+            [$0.name, $0.column, $0.referencedTable, $0.referencedColumn, $0.referencedSchema ?? "", $0.onDelete, $0.onUpdate]
+        }
+
+        let single = try await catalog.fetchForeignKeys(table: "lines", schema: nil)
+        let bulk = try await catalog.fetchAllForeignKeys(schema: nil)["lines"] ?? []
+
+        #expect(single.map { $0.column } == ["order_id", "order_version"])
+        #expect(single.map(fields) == bulk.map(fields))
+    }
+
     // Measured on 17.11: per column, `(a mood, b mood)` read `{happy,happy,sad,sad}` and the CREATE TYPE failed the restore.
     @Test("A table's enum types are aggregated once per type, however many columns use one")
     func dependentEnumTypesAggregateEachTypeOnce() {

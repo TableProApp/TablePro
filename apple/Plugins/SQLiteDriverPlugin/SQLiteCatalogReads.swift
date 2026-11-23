@@ -20,9 +20,9 @@ nonisolated enum SQLiteCatalogReads {
         // table_info omits generated columns, which every write path reading this list has to see.
         let query = "SELECT * FROM pragma_table_xinfo('\(safeTable)'\(SQLiteMasterQueries.pragmaSchemaArgument(schema)))"
         let result = try await run(query)
-        let generationExpressions = SQLiteCheckConstraintParser.generationExpressions(
-            inCreateStatement: try await createTableStatement(table: table, schema: schema, run: run) ?? ""
-        )
+        let createStatement = try await createTableStatement(table: table, schema: schema, run: run) ?? ""
+        let generationExpressions = SQLiteCheckConstraintParser.generationExpressions(inCreateStatement: createStatement)
+        let valueLists = SQLiteCheckConstraintParser.valueLists(inCreateStatement: createStatement)
 
         return result.rows.compactMap { row in
             guard row.count >= 7,
@@ -49,6 +49,7 @@ nonisolated enum SQLiteCatalogReads {
                 isPrimaryKey: isPrimaryKey,
                 defaultValue: defaultValue,
                 isGenerated: generationKind != nil,
+                allowedValues: valueLists[SQLiteCheckConstraintParser.foldedName(name)],
                 generationExpression: generationKind == nil ? nil : generationExpressions[name],
                 generationKind: generationKind
             )
@@ -89,6 +90,7 @@ nonisolated enum SQLiteCatalogReads {
 
         var allColumns: [String: [PluginColumnInfo]] = [:]
         var expressionsByTable: [String: [String: String]] = [:]
+        var valueListsByTable: [String: [String: [String]]] = [:]
 
         for row in result.rows {
             guard row.count >= 9,
@@ -114,6 +116,12 @@ nonisolated enum SQLiteCatalogReads {
                     inCreateStatement: row[8].asText ?? ""
                 )
             }
+            if valueListsByTable[tableName] == nil {
+                let statement = row[8].asText ?? ""
+                valueListsByTable[tableName] = statement.range(of: "CHECK", options: .caseInsensitive) == nil
+                    ? [:]
+                    : SQLiteCheckConstraintParser.valueLists(inCreateStatement: statement)
+            }
 
             let column = PluginColumnInfo(
                 name: columnName,
@@ -122,6 +130,7 @@ nonisolated enum SQLiteCatalogReads {
                 isPrimaryKey: isPrimaryKey,
                 defaultValue: defaultValue,
                 isGenerated: generationKind != nil,
+                allowedValues: valueListsByTable[tableName]?[SQLiteCheckConstraintParser.foldedName(columnName)],
                 generationExpression: generationKind == nil ? nil : expressionsByTable[tableName]?[columnName],
                 generationKind: generationKind
             )
