@@ -8,11 +8,11 @@ import Testing
 @MainActor
 struct FindPanelHiddenSearchTests {
     private final class SearchCounter {
-        var count = 0
+        var searches = 0
         private var observation: AnyCancellable?
 
         init(_ model: FindPanelViewModel) {
-            observation = model.$findMatches.dropFirst().sink { [weak self] _ in self?.count += 1 }
+            observation = model.$findMatches.dropFirst().sink { [weak self] _ in self?.searches += 1 }
         }
     }
 
@@ -43,17 +43,17 @@ struct FindPanelHiddenSearchTests {
     @Test
     func editsWithThePanelHiddenRunNoSearch() throws {
         let (controller, model) = try editor("a a a", find: "a")
-        let searches = SearchCounter(model)
+        let counter = SearchCounter(model)
 
         for _ in 0..<100 {
             append(" a", to: controller)
         }
 
-        #expect(searches.count == 0)
+        #expect(counter.searches == 0)
 
         model.moveToNextMatch()
 
-        #expect(searches.count == 1)
+        #expect(counter.searches == 1)
         #expect(model.matchCount == 103)
     }
 
@@ -61,12 +61,12 @@ struct FindPanelHiddenSearchTests {
     func undoWithThePanelHiddenRunsNoSearch() throws {
         let (controller, model) = try editor("a a a", find: "a")
         append(" a", to: controller)
-        let searches = SearchCounter(model)
+        let counter = SearchCounter(model)
 
         controller.textView.undoManager?.undo()
 
         #expect(controller.textView.string == "a a a")
-        #expect(searches.count == 0)
+        #expect(counter.searches == 0)
     }
 
     // The search a hidden edit skipped picks its current match from the caret that edit left, as it did when it ran
@@ -101,12 +101,12 @@ struct FindPanelHiddenSearchTests {
     @Test
     func replacingTheDocumentWithThePanelHiddenRunsNoSearch() async throws {
         let (controller, model) = try editor("a a a", find: "a")
-        let searches = SearchCounter(model)
+        let counter = SearchCounter(model)
 
         controller.setText("a b a b")
         await drainMainQueue()
 
-        #expect(searches.count == 0)
+        #expect(counter.searches == 0)
 
         controller.findViewController?.showFindPanel(animated: false)
 
@@ -117,11 +117,11 @@ struct FindPanelHiddenSearchTests {
     func editsWithThePanelShownStillSearch() throws {
         let (controller, model) = try editor("a a a", find: "a")
         controller.findViewController?.showFindPanel(animated: false)
-        let searches = SearchCounter(model)
+        let counter = SearchCounter(model)
 
         append(" a", to: controller)
 
-        #expect(searches.count == 1)
+        #expect(counter.searches == 1)
         #expect(model.matchCount == 4)
     }
 }

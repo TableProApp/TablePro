@@ -219,7 +219,7 @@ struct SQLCompletionWindowTests {
         )
     ]
 
-    @Test("A cut from the located statement equals a cut from the whole text", arguments: locatedCutCases)
+    @Test("A cut from the located statement equals a cut from the whole text", arguments: SQLCompletionWindowTests.locatedCutCases)
     func cutFromALocatedStatementEqualsTheWholeTextCut(_ example: LocatedCutCase) {
         let text = example.text as NSString
         let grammar = SQLLexicalGrammar.engine(example.engine)
