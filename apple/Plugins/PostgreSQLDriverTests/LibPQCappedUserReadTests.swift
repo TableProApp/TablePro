@@ -129,6 +129,23 @@ struct LibPQCappedUserReadTests {
         #expect(server.cancelRequests == 0)
     }
 
+    // A cancel would roll back whatever the function wrote while the kept rows read as done.
+    @Test("A capped read that calls a function the user wrote runs to its end, keeps the cap and sends no cancel")
+    func userFunctionRunsToItsEnd() async throws {
+        let query = "SELECT audit_event(id) FROM events WHERE id > $1"
+        let server = try Self.server(answering: [query: .init(columns: Self.columns, rows: Self.rows(50))])
+        defer { server.close() }
+        server.start()
+        let driver = try await Self.connectedDriver(to: server)
+        defer { driver.disconnect() }
+
+        let result = try await driver.executeUserQuery(query: query, rowCap: 3, parameters: [.text("0")])
+
+        #expect(result.rows.count == 3)
+        #expect(result.isTruncated)
+        #expect(server.cancelRequests == 0)
+    }
+
     @Test("Without a server cancel a capped read with parameters is drained and keeps the cap")
     func suppressedCancelDrains() async throws {
         let server = try Self.server(answering: [Self.events: .init(columns: Self.columns, rows: Self.rows(50))])
