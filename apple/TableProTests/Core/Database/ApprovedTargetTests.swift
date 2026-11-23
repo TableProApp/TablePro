@@ -44,6 +44,17 @@ private final class CachedTargetDriver: PluginDriverStub, @unchecked Sendable {
     }
 }
 
+// The person approving is still deciding when the connection moves to another database.
+private struct SwitchingWhileAskedGate: ExecutionGate {
+    let connectionId: UUID
+    let database: String
+
+    func authorize(_ request: OperationRequest) async -> OperationDecision {
+        try? await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: false)
+        return await AlwaysAllowGate().authorize(request)
+    }
+}
+
 // An approved statement runs in the database and schema its approval named, whatever the session's caches say.
 @MainActor
 struct ApprovedTargetTests {
@@ -286,5 +297,68 @@ struct ApprovedTargetTests {
         manager.removeSession(for: connection.id)
         FakeMSSQLPlugin.clearConfigurations(for: connection.id)
         await SchemaService.shared.invalidate(connectionId: connection.id)
+    }
+
+    private func approvedWithNoDatabase(_ sql: String, on id: UUID, bridge: DatabaseAccessBridge) async throws -> ApprovedOperation {
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: sql, maxRows: 10)
+        return try await ExternalStatementGate.approve(
+            PendingOperation(
+                scope: scope,
+                driverGeneration: await bridge.driverGeneration(of: id),
+                databaseType: .mysql,
+                statements: [statement],
+                kind: .writeQuery,
+                caller: .mcpClient(label: "tests"),
+                capabilities: [.mayWrite],
+                operationDescription: "test"
+            ),
+            gate: SwitchingWhileAskedGate(connectionId: id, database: "production")
+        )
+    }
+
+    @Test("A DELETE approved with no database selected never runs in the database the connection switched to meanwhile")
+    func switchWhileTheApprovalWaitsRefuses() async throws {
+        let (id, driver) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let operation = try await approvedWithNoDatabase("DELETE FROM orders WHERE id = 1", on: id, bridge: bridge)
+
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+        #expect(operation.scope.isServerScoped)
+        #expect(DatabaseManager.shared.session(for: id)?.resolvedBrowseDatabase == "production")
+        #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
+    }
+
+    @Test("Rows approved for insert with no database selected never land in the database switched to meanwhile")
+    func switchWhileAnInsertWaitsRefuses() async throws {
+        let (id, _) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let operation = try await approvedWithNoDatabase("INSERT INTO orders (id) VALUES (1)", on: id, bridge: bridge)
+
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runInserts(operation)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+    }
+
+    @Test("A DELETE approved with no database selected runs while the connection still has none")
+    func noDatabaseApprovalRunsWhileNoneIsSelected() async throws {
+        let (id, driver) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DELETE FROM orders WHERE id = 1", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mysql)
+
+        _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+
+        #expect(driver.events.contains("DELETE FROM orders WHERE id = 1"))
     }
 }

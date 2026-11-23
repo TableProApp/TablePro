@@ -205,7 +205,32 @@ struct SQLiteAttachedDatabaseTests {
         #expect(SQLiteMaintenance.statements(operation: "VACUUM", table: nil, schema: "auth") == ["VACUUM `auth`"])
         #expect(SQLiteMaintenance.statements(operation: "Integrity Check", table: nil, schema: "auth")
             == ["PRAGMA `auth`.integrity_check"])
-        #expect(SQLiteMaintenance.statements(operation: "REINDEX", table: nil, schema: "auth") == ["REINDEX"])
+        #expect(SQLiteMaintenance.statements(operation: "ANALYZE", table: nil, schema: "auth") == ["ANALYZE `auth`"])
+    }
+
+    // Probed on 3.54.0: `REINDEX main` fails "unable to identify the object to be reindexed", and a bare `REINDEX`
+    // rebuilds every attached database.
+    @Test("REINDEX with a schema and no table is refused, since SQLite has no form for one schema")
+    func schemaWideReindexIsRefused() {
+        #expect(SQLiteMaintenance.statements(operation: "REINDEX", table: nil, schema: "auth") == nil)
+        #expect(SQLiteMaintenance.statements(operation: "REINDEX", table: nil, schema: "main") == nil)
+        #expect(SQLiteMaintenance.statements(operation: "REINDEX", table: "orders", schema: "auth")
+            == ["REINDEX `auth`.`orders`"])
+        #expect(SQLiteMaintenance.statements(operation: "REINDEX", table: nil, schema: nil) == ["REINDEX"])
+    }
+
+    // Probed on 3.54.0: unqualified, ANALYZE wrote statistics into every attached database and integrity_check checked
+    // each one, and a bare table name resolves in temp first.
+    @Test("A named main is written into the forms that otherwise reach every attached database")
+    func namedMainIsQualified() {
+        #expect(SQLiteMaintenance.statements(operation: "ANALYZE", table: nil, schema: "main") == ["ANALYZE `main`"])
+        #expect(SQLiteMaintenance.statements(operation: "ANALYZE", table: "orders", schema: "main")
+            == ["ANALYZE `main`.`orders`"])
+        #expect(SQLiteMaintenance.statements(operation: "REINDEX", table: "orders", schema: "main")
+            == ["REINDEX `main`.`orders`"])
+        #expect(SQLiteMaintenance.statements(operation: "Integrity Check", table: nil, schema: "main")
+            == ["PRAGMA `main`.integrity_check"])
+        #expect(SQLiteMaintenance.statements(operation: "VACUUM", table: nil, schema: "main") == ["VACUUM"])
     }
 
     @Test("A trigger in an attached database is created and dropped by its qualified name")

@@ -7,10 +7,34 @@
 //
 
 import Foundation
+import os
 @testable import TablePro
 import TableProMCP
 import TableProPluginKit
 import Testing
+
+// Writes maintenance the way SQLite's builder does: no form reaches one schema without a table.
+private final class SchemaWideMaintenanceDriver: PluginDriverStub, @unchecked Sendable {
+    private let log = OSAllocatedUnfairLock<[String]>(initialState: [])
+
+    var received: [String] { log.withLock { $0 } }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState { .idle }
+
+    func maintenanceOperations() -> [PluginMaintenanceOperation]? {
+        [PluginMaintenanceOperation(name: "REINDEX", appliesTo: [.table], scope: .objectOrDatabase)]
+    }
+
+    func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? {
+        if let table { return ["REINDEX \(schema.map { "\($0)." } ?? "")\(table)"] }
+        return schema == nil ? ["REINDEX"] : nil
+    }
+
+    func execute(query: String) async throws -> PluginQueryResult {
+        log.withLock { $0.append(query) }
+        return .empty
+    }
+}
 
 extension GlobalStateSuites {
     @MainActor
@@ -234,6 +258,54 @@ extension GlobalStateSuites {
             #expect(rig.connection.database == "matrix")
             #expect(result.payload["isError"]?.boolValue != true, "\(Self.errorText(result))")
             #expect(rig.driver.received.contains { $0.contains("KILL SESSION '12,34'") })
+        }
+
+        // MARK: - run_maintenance
+
+        private func maintenanceRig(_ driver: SchemaWideMaintenanceDriver, gate: any ExecutionGate) -> WritePolicyRig {
+            let connection = WritePolicyRig.connection(
+                type: .postgresql, externalAccess: .readWrite, aiPolicy: .alwaysAllow, safeMode: .silent
+            )
+            return WritePolicyRig(
+                connection: connection,
+                prompts: WritePolicyPrompts(.approveAll),
+                live: true,
+                executionGate: gate,
+                sessionDriver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
+            )
+        }
+
+        @Test("run_maintenance refuses a named schema its engine has no whole-schema form for, before anyone is asked")
+        func schemaWideMaintenanceIsRefusedBeforeApproval() async throws {
+            let gate = RequestRecordingGate(allows: true)
+            let driver = SchemaWideMaintenanceDriver()
+            let rig = maintenanceRig(driver, gate: gate)
+            defer { rig.tearDown() }
+
+            let result = try await handle(
+                RunMaintenanceTool.name, ["operation": .string("REINDEX"), "schema": .string("auth")], on: rig
+            )
+
+            #expect(result.payload["isError"]?.boolValue == true)
+            #expect(Self.errorText(result).contains("Pass 'table'"))
+            #expect(await gate.requests.isEmpty)
+            #expect(driver.received.isEmpty)
+        }
+
+        @Test("run_maintenance with no table runs on the whole database when the schema was only the one browsed")
+        func browsedSchemaIsLeftOutOfADatabaseWideForm() async throws {
+            let gate = RequestRecordingGate(allows: true)
+            let driver = SchemaWideMaintenanceDriver()
+            let rig = maintenanceRig(driver, gate: gate)
+            defer { rig.tearDown() }
+            DatabaseManager.shared.updateSession(rig.connection.id) { $0.browseSchema = "auth" }
+
+            let result = try await handle(RunMaintenanceTool.name, ["operation": .string("REINDEX")], on: rig)
+
+            #expect(result.payload["isError"]?.boolValue != true, "\(Self.errorText(result))")
+            let request = try #require(await gate.requests.first)
+            #expect(request.scope?.schema == nil)
+            #expect(driver.received == ["REINDEX"])
         }
 
         // MARK: - insert_rows

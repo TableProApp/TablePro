@@ -28,6 +28,8 @@ struct SessionTransactionTrackerTests {
             driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
         )
         session.browseDatabase = database
+        // What a connect captures from a driver that reports its database, as SQLite's does.
+        session.openedDatabase = database
         session.status = .connected
         DatabaseManager.shared.injectSession(session, for: connection.id)
         return (connection, driver)

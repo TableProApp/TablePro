@@ -159,15 +159,17 @@ public struct RunMaintenanceTool: MCPToolImplementation {
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
         /// Resolved before the statements, because the schema it carries is what qualifies the target
         /// and its kind is what says whether the operation applies at all.
-        let scope = try await MCPScopeArguments.resolveForAppStatements(
+        let resolved = try await MCPScopeArguments.resolveForAppStatements(
             arguments,
             connectionId: connectionId,
             services: services
         )
         let statements: [String]
+        let scope: DatabaseScope
         do {
-            statements = try await services.connectionBridge.maintenanceStatements(
-                scope: scope,
+            (statements, scope) = try await services.connectionBridge.maintenanceStatements(
+                scope: resolved,
+                schemaWasNamed: try MCPScopeArguments.namedSchema(arguments) != nil,
                 operation: operation,
                 table: table,
                 options: options

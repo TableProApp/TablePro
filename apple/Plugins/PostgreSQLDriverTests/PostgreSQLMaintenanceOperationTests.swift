@@ -135,7 +135,7 @@ struct PostgreSQLMaintenanceOperationTests {
             ) == ["REINDEX TABLE \"app\".\"orders\""]
         )
         #expect(
-            postgresStatements("REINDEX", table: nil, schema: "app", options: ["verbose": "true"], serverVersion: 90_400)
+            postgresStatements("REINDEX", table: nil, schema: nil, options: ["verbose": "true"], serverVersion: 90_400)
                 == ["REINDEX DATABASE \"app\""]
         )
     }
@@ -143,29 +143,37 @@ struct PostgreSQLMaintenanceOperationTests {
     @Test("REINDEX of the whole database keeps the VERBOSE it offers")
     func reindexDatabaseVerbose() {
         #expect(
-            postgresStatements("REINDEX", table: nil, schema: "app", options: ["verbose": "true"])
+            postgresStatements("REINDEX", table: nil, schema: nil, options: ["verbose": "true"])
                 == ["REINDEX (VERBOSE) DATABASE CONCURRENTLY"]
         )
         #expect(
-            postgresStatements("REINDEX", table: nil, schema: "app", options: ["verbose": "true"], serverVersion: 90_500)
+            postgresStatements("REINDEX", table: nil, schema: nil, options: ["verbose": "true"], serverVersion: 90_500)
                 == ["REINDEX (VERBOSE) DATABASE \"app\""]
         )
     }
 
-    @Test("A PostgreSQL operation with no table falls back to the database-wide form")
+    @Test("A PostgreSQL operation with no table and no schema takes the database-wide form")
     func databaseWideForms() {
-        #expect(postgresStatements("VACUUM", table: nil, schema: "app") == ["VACUUM"])
+        #expect(postgresStatements("VACUUM", table: nil, schema: nil) == ["VACUUM"])
         #expect(
-            postgresStatements("VACUUM", table: nil, schema: "app", options: ["analyze": "true"])
+            postgresStatements("VACUUM", table: nil, schema: nil, options: ["analyze": "true"])
                 == ["VACUUM (ANALYZE)"]
         )
-        #expect(postgresStatements("ANALYZE", table: nil, schema: "app") == ["ANALYZE"])
+        #expect(postgresStatements("ANALYZE", table: nil, schema: nil) == ["ANALYZE"])
         /// From PostgreSQL 16 the database name is optional and the statement reindexes the one it is
         /// connected to, which is what `PostgreSQLVersionedStatements.reindexDatabase` emits and what
         /// 17.11 accepted when this was measured. The named form is the 12 to 15 arm, pinned by
         /// `PostgreSQLVersionedStatementsTests`.
-        #expect(postgresStatements("REINDEX", table: nil, schema: "app") == ["REINDEX DATABASE CONCURRENTLY"])
-        #expect(postgresStatements("CLUSTER", table: nil, schema: "app") == nil)
+        #expect(postgresStatements("REINDEX", table: nil, schema: nil) == ["REINDEX DATABASE CONCURRENTLY"])
+        #expect(postgresStatements("CLUSTER", table: nil, schema: nil) == nil)
+    }
+
+    @Test("A schema with no table is refused: each form would cover the whole database instead")
+    func schemaWithNoTableIsRefused() {
+        for operation in ["VACUUM", "ANALYZE", "REINDEX", "CLUSTER"] {
+            #expect(postgresStatements(operation, table: nil, schema: "sales") == nil, "\(operation)")
+        }
+        #expect(postgresStatements("VACUUM", table: "orders", schema: "sales") == ["VACUUM \"sales\".\"orders\""])
     }
 
     @Test("An operation PostgreSQL does not have produces nothing")

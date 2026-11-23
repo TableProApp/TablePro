@@ -7096,6 +7096,9 @@
         }
       }
     },
+    "%1$@ cannot act on schema %2$@ alone on this connection. Pass 'table'." : {
+
+    },
     "%1$@ cannot be copied to %2$@. Choose a target that speaks SQL." : {
       "localizations" : {
         "fr" : {
