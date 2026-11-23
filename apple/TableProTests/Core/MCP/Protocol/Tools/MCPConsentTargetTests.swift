@@ -223,5 +223,33 @@ extension GlobalStateSuites {
             #expect(outcomes.filter { $0 }.count == 1)
             #expect(rig.driver.received.filter { $0.contains("DROP TABLE orders") }.count == 1)
         }
+
+        @Test("BigQuery whose driver reported no project is approved by connection, naming no database")
+        func bigQueryWithNoReportNamesNoDatabase() async throws {
+            let rig = rig(type: .bigQuery)
+            defer { rig.tearDown() }
+
+            let asked = try #require(try await elicitation(ConfirmDestructiveOperationTool.name, dropOrders(rig), on: rig))
+            let message = asked.inputRequests.first?.message ?? ""
+
+            #expect(!message.contains("staging"))
+            #expect(!message.contains("database"))
+        }
+
+        @Test("BigQuery is approved in the project its driver reported, not its saved database")
+        func bigQueryNamesTheReportedProject() async throws {
+            let rig = rig(type: .bigQuery)
+            defer { rig.tearDown() }
+            // As the connect stores the driver's report; `updateSession` leaves a field no view draws unwritten.
+            var reported = try #require(DatabaseManager.shared.session(for: rig.connection.id))
+            reported.openedDatabase = "production"
+            DatabaseManager.shared.injectSession(reported, for: rig.connection.id)
+
+            let asked = try #require(try await elicitation(ConfirmDestructiveOperationTool.name, dropOrders(rig), on: rig))
+            let message = asked.inputRequests.first?.message ?? ""
+
+            #expect(message.contains("'production'"))
+            #expect(!message.contains("staging"))
+        }
     }
 }

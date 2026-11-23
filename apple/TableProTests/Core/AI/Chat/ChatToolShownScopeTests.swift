@@ -117,4 +117,56 @@ struct ChatToolShownScopeTests {
         #expect(resolved.explicitlyApproved == ["call_1"])
         #expect(resolved.shownScopes["call_1"]?.database == "staging")
     }
+
+    // Saved as staging, signed in to production; `reported` is what the connect captured from the driver.
+    private func bigQuerySession(reported: String?) -> UUID {
+        var connection = TestFixtures.makeConnection(database: "staging", type: .bigQuery)
+        connection.aiPolicy = .alwaysAllow
+        connection.additionalFields["bqProjectId"] = "production"
+        var session = ConnectionSession(connection: connection)
+        session.driver = ScriptAnsweringDriver(connection: connection) { _ in .empty }
+        session.openedDatabase = reported
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        return connection.id
+    }
+
+    private func drawnScope(on id: UUID) async throws -> DatabaseScope? {
+        let registry = ChatToolRegistry()
+        registry.registerBuiltIn(ConfirmDestructiveOperationChatTool())
+        let viewModel = AIChatViewModel()
+        viewModel.connection = DatabaseManager.shared.session(for: id)?.connection
+        let assistant = ChatTurn(role: .assistant, blocks: [], modelId: "test-model", providerId: nil)
+        viewModel.messages.append(assistant)
+        let call = ToolUseBlock(id: "call_1", name: ConfirmDestructiveOperationChatTool().name, input: Self.dropOrders)
+        let sessionId = viewModel.sessionId
+
+        let approvals = Task {
+            await viewModel.resolveAndAwaitApprovals(assembledBlocks: [call], assistantID: assistant.id, registry: registry)
+        }
+        try await waitUntil { ToolApprovalCenter.shared.isAwaiting(sessionId: sessionId, toolUseId: "call_1") }
+        let drawn = ToolApprovalCenter.shared.shownScope(sessionId: sessionId, toolUseId: "call_1")
+        ToolApprovalCenter.shared.resolve(sessionId: sessionId, toolUseId: "call_1", decision: .cancel)
+        _ = await approvals.value
+        return drawn
+    }
+
+    @Test("The card for BigQuery whose driver reported no project names no database")
+    func bigQueryCardWithNoReportNamesNoDatabase() async throws {
+        let id = bigQuerySession(reported: nil)
+        defer { DatabaseManager.shared.removeSession(for: id) }
+
+        let drawn = try await drawnScope(on: id)
+
+        #expect(drawn != nil && drawn?.database == "")
+    }
+
+    @Test("The card for BigQuery names the project its driver reported, not the saved database")
+    func bigQueryCardNamesTheReportedProject() async throws {
+        let id = bigQuerySession(reported: "production")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+
+        let drawn = try await drawnScope(on: id)
+
+        #expect(drawn?.database == "production")
+    }
 }

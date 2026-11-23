@@ -16,19 +16,21 @@ private actor DiscardingHistory: QueryHistoryRecording {
 // rather than dropped at the pin, where the statement would run in the session's own database.
 @MainActor
 struct ResolveScopeReachabilityTests {
-    private func session(_ type: DatabaseType, database: String) -> ScriptAnsweringDriver {
+    // `reported` is what the connect captures from the driver as the database it opened; SQLite reports its file.
+    private func session(_ type: DatabaseType, database: String, reported: String? = nil) -> ScriptAnsweringDriver {
         var connection = TestFixtures.makeConnection(database: database, type: type)
         connection.aiPolicy = .alwaysAllow
         let driver = ScriptAnsweringDriver(connection: connection)
         var session = ConnectionSession(connection: connection)
         session.driver = driver
+        session.openedDatabase = reported
         DatabaseManager.shared.injectSession(session, for: connection.id)
         return driver
     }
 
     @Test("A fixed-database connection refuses another database and keeps its own")
     func fixedDatabaseRefusesAnother() async throws {
-        let driver = session(.sqlite, database: "prod.sqlite")
+        let driver = session(.sqlite, database: "prod.sqlite", reported: "prod.sqlite")
         defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
         let bridge = DatabaseAccessBridge()
         let id = driver.connection.id

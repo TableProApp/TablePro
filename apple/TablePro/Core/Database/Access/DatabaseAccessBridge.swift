@@ -265,12 +265,18 @@ internal actor DatabaseAccessBridge {
                 String(localized: "No database to run against. Pass a database name.")
             )
         }
-        if let refusal = databaseRefusal(for: scope, manager: manager) {
+        if let refusal = databaseRefusal(named: database, for: scope, manager: manager) {
             throw DatabaseAccessError.invalidArgument(refusal)
         }
-        guard runsStatements, let session = manager.session(for: connectionId),
-              !manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: session.connection.type)
-        else { return scope }
+        guard runsStatements, let session = manager.session(for: connectionId) else { return scope }
+        let databaseType = session.connection.type
+        // A fixed engine reaches only the database its driver reported, so with no report the call names none.
+        let runsIn = manager.pluginManager.supportsDatabaseSwitching(for: databaseType)
+            ? scope.database
+            : session.openedDatabase ?? ""
+        guard !manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: databaseType) else {
+            return DatabaseScope(connectionId: scope.connectionId, database: runsIn, schema: scope.schema)
+        }
         // A schema switch here leaves unqualified names where they were, whatever the session's label says, so the
         // statement runs unqualified and no schema is named for it.
         if let named = schema, !named.isEmpty {
@@ -281,26 +287,26 @@ internal actor DatabaseAccessBridge {
                 named
             ))
         }
-        return DatabaseScope(connectionId: scope.connectionId, database: scope.database, schema: nil)
+        return DatabaseScope(connectionId: scope.connectionId, database: runsIn, schema: nil)
     }
 
     // A fixed-database engine can neither run SQL in another database nor read its catalog, so the call would answer
     // for the session's own database while the caller, and an approval, name another. A schema goes to a catalog read
     // as named; only SQL the caller wrote is held to what a schema switch scopes.
     @MainActor
-    private static func databaseRefusal(for scope: DatabaseScope, manager: DatabaseManager) -> String? {
-        guard let session = manager.session(for: scope.connectionId) else { return nil }
-        // What the connection reaches. With no database configured, as BigQuery names its project elsewhere, the browse
-        // cursor stands in: on such an engine an outside switch can no longer move it.
-        let configured = session.connection.database
-        let current = session.openedDatabase ?? (configured.isEmpty ? session.resolvedBrowseDatabase : configured)
-        guard !scope.isServerScoped, scope.database != current,
+    private static func databaseRefusal(named database: String?, for scope: DatabaseScope, manager: DatabaseManager) -> String? {
+        guard let database, !database.isEmpty, let session = manager.session(for: scope.connectionId),
               !manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)
         else { return nil }
+        // Only the driver's report says where it connected: BigQuery's saved database is not the project it signs in to.
+        guard let opened = session.openedDatabase else {
+            return String(localized: "This connection cannot confirm which database it reached. Leave database out.")
+        }
+        guard database != opened else { return nil }
         return String(
             format: String(localized: "This connection cannot run against database %1$@, only its own: %2$@. Leave database out or pass %2$@."),
-            scope.database,
-            current
+            database,
+            opened
         )
     }
 

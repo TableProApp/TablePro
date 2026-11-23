@@ -203797,6 +203797,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection cannot confirm which database it reached. Leave database out." : {
+
+    },
     "This connection cannot load the rows of COPY FROM STDIN." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
