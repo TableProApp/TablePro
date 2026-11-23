@@ -538,7 +538,9 @@ struct AgentSessionRegistryTests {
         engine.persistCurrentConversation()
         await engine.lastConversationWrite?.value
 
+        // Summaries also list conversations stored with no connection, which other cases leave in the shared store.
         let stored = await AIChatStorage.shared.loadSummaries(connectionId: connection.id)
+            .filter { $0.connectionId == connection.id }
         #expect(stored.isEmpty)
     }
 }
