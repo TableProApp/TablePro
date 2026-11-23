@@ -106,7 +106,11 @@ struct DefinitionReadEstimateTests {
         let connection = TestFixtures.makeConnection(database: "db", type: .duckdb)
         let scope = DatabaseScope(connectionId: connection.id, database: "db", schema: nil)
         let schemaService = await loadedCatalog(
-            tables: [TestFixtures.makeTableInfo(name: "users"), TestFixtures.makeTableInfo(name: "users_view", type: .view)],
+            tables: [
+                TestFixtures.makeTableInfo(name: "users"),
+                TestFixtures.makeTableInfo(name: "users_view", type: .view),
+                TestFixtures.makeTableInfo(name: "caf\u{E9}"),
+            ],
             scope: scope,
             connection: connection
         )
@@ -121,6 +125,9 @@ struct DefinitionReadEstimateTests {
         #expect(!coordinator.catalogListsAsTable("typed_in_sql", in: scope))
         #expect(!coordinator.catalogListsAsTable("users", in: DatabaseScope(connectionId: connection.id, database: "other", schema: nil)))
         #expect(!coordinator.catalogListsAsTable("users", in: scope.sessionBound))
+        // Equal as Swift strings, two names to the server.
+        #expect(coordinator.catalogListsAsTable("caf\u{E9}", in: scope))
+        #expect(!coordinator.catalogListsAsTable("cafe\u{301}", in: scope))
     }
 
     @Test("Before the catalog loads, or while a kept one waits for its refresh, nothing counts as cataloged")

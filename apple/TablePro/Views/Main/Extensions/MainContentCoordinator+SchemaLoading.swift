@@ -232,16 +232,22 @@ extension MainContentCoordinator {
     }
 
     // The live catalog only: a restored tab's kind is last session's, and the relation may have become a view since.
+    // A catalog being refreshed or changed still shows the old list. Names compare by bytes, as the server keeps them.
     func catalogListsAsTable(_ tableName: String, in scope: DatabaseScope) -> Bool {
         let schemaService = services.schemaService
         guard !scope.isSessionBound,
               let loaded = schemaService.loadedScope(for: connectionId),
-              loaded.database == scope.database, loaded.schema == scope.schema,
-              schemaService.isCatalogCurrent(for: connectionId)
+              CatalogName(loaded.database) == CatalogName(scope.database),
+              loaded.schema.map({ CatalogName($0) }) == scope.schema.map({ CatalogName($0) }),
+              schemaService.isCatalogCurrent(for: connectionId),
+              !schemaService.isRefreshing(connectionId: connectionId),
+              !services.catalogChangeService.isApplyingChange(for: connectionId)
         else { return false }
+        let name = CatalogName(tableName)
+        let schema = scope.schema.map { CatalogName($0) }
         return schemaService.tables(for: connectionId).contains { table in
-            table.name == tableName && table.type != .view && table.type != .materializedView
-                && (table.schema == nil || scope.schema == nil || table.schema == scope.schema)
+            CatalogName(table.name) == name && table.type != .view && table.type != .materializedView
+                && (table.schema == nil || schema == nil || table.schema.map { CatalogName($0) } == schema)
         }
     }
 
