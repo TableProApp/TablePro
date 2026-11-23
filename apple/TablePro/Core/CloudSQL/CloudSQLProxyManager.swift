@@ -250,12 +250,14 @@ actor CloudSQLProxyManager: TunnelManaging {
     private func performStaleSweep() async {
         Self.removeCredentialsFiles(in: credentialsDirectory)
         let defaults = AppStorageEnvironment.shared.defaults
-        // Older builds wrote keys straight into the temp folder, so one listing per install removes any a crash left.
-        if !defaults.bool(forKey: Self.credentialsFolderAdoptedKey),
+        let staleRecords = defaults.data(forKey: Self.stalePidsDefaultsKey)
+        // Older builds wrote keys straight into the temp folder: listed once per install, and again after a run that
+        // left a proxy record, which an older build run since may have written.
+        if !defaults.bool(forKey: Self.credentialsFolderAdoptedKey) || staleRecords != nil,
            Self.removeCredentialsFiles(in: temporaryDirectory) {
             defaults.set(true, forKey: Self.credentialsFolderAdoptedKey)
         }
-        guard let data = defaults.data(forKey: Self.stalePidsDefaultsKey),
+        guard let data = staleRecords,
               let records = try? JSONDecoder().decode([CloudSQLProxyPidRecord].self, from: data) else {
             defaults.removeObject(forKey: Self.stalePidsDefaultsKey)
             return
@@ -417,6 +419,7 @@ actor CloudSQLProxyManager: TunnelManaging {
         try? FileManager.default.removeItem(atPath: path)
     }
 
+    // False when the folder could not be listed or a key stayed, so the one-time listing runs again.
     @discardableResult
     private static func removeCredentialsFiles(in directory: URL) -> Bool {
         guard let entries = try? FileManager.default.contentsOfDirectory(
@@ -424,11 +427,16 @@ actor CloudSQLProxyManager: TunnelManaging {
         ) else {
             return false
         }
+        var removedAll = true
         for url in entries
         where url.lastPathComponent.hasPrefix(credentialsFilePrefix) && url.pathExtension == "json" {
-            try? FileManager.default.removeItem(at: url)
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
+                removedAll = false
+            }
         }
-        return true
+        return removedAll
     }
 
     // MARK: - Private: stale PID persistence

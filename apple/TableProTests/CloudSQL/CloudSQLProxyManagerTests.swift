@@ -412,6 +412,7 @@ struct CloudSQLProxyManagerTests {
         let base = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: base) }
         AppStorageEnvironment.shared.defaults.set(true, forKey: Self.credentialsFolderAdoptedKey)
+        AppStorageEnvironment.shared.defaults.removeObject(forKey: "cloudSQLProxyStalePids")
         let leftInFolder = try plantKeyFile(in: base.appendingPathComponent(Self.credentialsFolderName, isDirectory: true))
         let outsideFolder = try plantKeyFile(in: base)
 
@@ -428,6 +429,7 @@ struct CloudSQLProxyManagerTests {
         defer { try? FileManager.default.removeItem(at: base) }
         let defaults = AppStorageEnvironment.shared.defaults
         defaults.removeObject(forKey: Self.credentialsFolderAdoptedKey)
+        defaults.removeObject(forKey: "cloudSQLProxyStalePids")
         let leftByOlderBuild = try plantKeyFile(in: base)
         let unrelated = base.appendingPathComponent("unrelated.json")
         try Data("{}".utf8).write(to: unrelated)
@@ -444,6 +446,46 @@ struct CloudSQLProxyManagerTests {
             .sweepStalePidsIfNeeded()
 
         #expect(FileManager.default.fileExists(atPath: plantedAfterAdoption.path), "a later sweep listed the temp folder")
+    }
+
+    // An older build run since adoption leaves its record behind when it dies with a tunnel open.
+    @Test("A run that left a proxy record sends the next sweep through the temp folder again")
+    func staleRecordListsTheTempFolderAgain() async throws {
+        let base = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let defaults = AppStorageEnvironment.shared.defaults
+        defaults.set(true, forKey: Self.credentialsFolderAdoptedKey)
+        defaults.set(
+            try JSONEncoder().encode([CloudSQLProxyPidRecord(pid: -1, binaryPath: "/nonexistent")]),
+            forKey: "cloudSQLProxyStalePids"
+        )
+        let leftByOlderBuild = try plantKeyFile(in: base)
+
+        await CloudSQLProxyManager(testRunner: { FakeCloudSQLProxyRunner(behavior: .ready) }, temporaryDirectory: base)
+            .sweepStalePidsIfNeeded()
+
+        #expect(!FileManager.default.fileExists(atPath: leftByOlderBuild.path))
+    }
+
+    @Test("A key the sweep could not remove keeps the one-time listing for the next launch")
+    func failedRemovalKeepsTheListing() async throws {
+        let base = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: base.path)
+            try? FileManager.default.removeItem(at: base)
+        }
+        let defaults = AppStorageEnvironment.shared.defaults
+        defaults.removeObject(forKey: Self.credentialsFolderAdoptedKey)
+        defaults.removeObject(forKey: "cloudSQLProxyStalePids")
+        let stuck = try plantKeyFile(in: base)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: base.path)
+
+        await CloudSQLProxyManager(testRunner: { FakeCloudSQLProxyRunner(behavior: .ready) }, temporaryDirectory: base)
+            .sweepStalePidsIfNeeded()
+
+        #expect(FileManager.default.fileExists(atPath: stuck.path))
+        #expect(!defaults.bool(forKey: Self.credentialsFolderAdoptedKey))
+        defaults.set(true, forKey: Self.credentialsFolderAdoptedKey)
     }
 
     @Test("Quit removes key files from the folder and does not list the temp folder")
