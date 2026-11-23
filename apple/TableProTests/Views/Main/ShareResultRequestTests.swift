@@ -362,26 +362,26 @@ extension GlobalStateSuites {
             #expect(shared.rows.first?.last == .text("••••"))
         }
 
-        @Test("A result cut short sends its exact count")
-        func exactCountIsTheTotal() async throws {
-            let tab = try load(QueryTab(title: "Q", query: "SELECT * FROM users", tabType: .query))
-            setPagination(tab.id) {
-                $0.hasMoreRows = true
-                $0.totalRowCount = 500
-                $0.isApproximateRowCount = false
-            }
-            #expect(try await source().totalRowCount == 500)
-        }
-
-        @Test("An estimate above the rows held stands in for the total")
-        func estimateAboveTheRowsIsTheTotal() async throws {
-            let tab = try load(QueryTab(title: "Q", query: "SELECT * FROM users", tabType: .query))
+        @Test("A query result cut short shares no total, though the tab holds a count of the table", arguments: [false, true])
+        func queryTabCountIsNotTheTotal(isApproximate: Bool) async throws {
+            let tab = try load(QueryTab(title: "Q", query: "SELECT * FROM users WHERE id < 4", tabType: .query))
             setPagination(tab.id) {
                 $0.hasMoreRows = true
                 $0.totalRowCount = 10_000
-                $0.isApproximateRowCount = true
+                $0.isApproximateRowCount = isApproximate
             }
-            #expect(try await source().totalRowCount == 10_000)
+            #expect(try await source().totalRowCount == nil)
+        }
+
+        @Test("A whole query result is its own total, though the tab holds a count of the table")
+        func wholeQueryResultIgnoresTheTableCount() async throws {
+            let tab = try load(QueryTab(title: "Q", query: "SELECT * FROM users WHERE id < 4", tabType: .query))
+            setPagination(tab.id) {
+                $0.hasMoreRows = false
+                $0.totalRowCount = 1_000
+                $0.isApproximateRowCount = false
+            }
+            #expect(try await source().totalRowCount == 3)
         }
 
         @Test("More rows than max_rows with no count read only max_rows positions and leave the total unknown")

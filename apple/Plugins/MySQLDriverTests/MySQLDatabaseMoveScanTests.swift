@@ -111,6 +111,12 @@ struct MySQLDatabaseMoveScanTests {
         "VALUES ROW(1)",
         "TABLE t",
         "DO 0",
+        "COMMIT",
+        "commit work",
+        "ROLLBACK",
+        "ROLLBACK TO SAVEPOINT s",
+        "COMMIT AND CHAIN",
+        "ROLLBACK RELEASE",
     ])
     func provenStatementsStay(sql: String) {
         #expect(MySQLDatabaseMoveScan.move(of: sql).staysOnDatabase)
@@ -123,7 +129,9 @@ struct MySQLDatabaseMoveScanTests {
         "SET @x = 1",
         "SET STATEMENT max_statement_time=0 FOR USE other",
         "START TRANSACTION",
-        "COMMIT",
+        "XA COMMIT 'x'",
+        "/*!40101 COMMIT */",
+        "COMMIT; USE other",
         "DROP DATABASE main",
         "DROP SCHEMA main",
         "CREATE TABLE t (a INT)",
@@ -187,9 +195,48 @@ struct MySQLDatabaseMoveScanTests {
     func provenStatementKeepsTheProof() {
         var proof = MySQLSessionDatabaseProof()
         proof.noteEntered("main")
-        proof.observe("SELECT * FROM t")
-        proof.observe("UPDATE t SET a = 1")
+        proof.observe("SELECT * FROM t", flavor: .mysql)
+        proof.observe("UPDATE t SET a = 1", flavor: .mysql)
         #expect(proof.proves("main"))
+    }
+
+    @Test("A save's own begin, its row write and its COMMIT or ROLLBACK keep the proof", arguments: [
+        MySQLServerFlavor.mysql, .mariadb, .tidb(version: nil), .oceanbase(version: nil), .databend, .starrocks,
+    ])
+    func saveKeepsTheProof(flavor: MySQLServerFlavor) {
+        for mode in [PluginTransactionAccessMode.readWrite, .serverDefault] {
+            for end in ["COMMIT", "ROLLBACK"] {
+                var proof = MySQLSessionDatabaseProof()
+                proof.noteEntered("main")
+                proof.observe(flavor.beginTransactionStatement(mode: mode), flavor: flavor)
+                proof.observe("UPDATE `t` SET `a` = 1 WHERE `id` = 7", flavor: flavor)
+                proof.observe(end, flavor: flavor)
+                #expect(proof.proves("main"))
+            }
+        }
+    }
+
+    @Test("A begin the user wrote, a block, a marker or a routine call ends the proof as before", arguments: [
+        "start transaction",
+        "START TRANSACTION WITH CONSISTENT SNAPSHOT",
+        "START TRANSACTION /*!50605 READ ONLY */",
+        "BEGIN",
+        "BEGIN NOT ATOMIC SELECT 1; END",
+        "/*!40101 COMMIT */",
+        "CALL refresh()",
+    ])
+    func userTransactionFormsEndTheProof(sql: String) {
+        var proof = MySQLSessionDatabaseProof()
+        proof.noteEntered("main")
+        proof.observe(sql, flavor: .mysql)
+        #expect(!proof.proves("main"))
+    }
+
+    @Test("Another flavor's begin is not the driver's own")
+    func anotherFlavorsBeginIsNotOwn() {
+        #expect(!MySQLServerFlavor.mysql.isOwnTransactionStart("BEGIN"))
+        #expect(!MySQLServerFlavor.databend.isOwnTransactionStart("START TRANSACTION"))
+        #expect(!MySQLServerFlavor.tidb(version: nil).isOwnTransactionStart("START TRANSACTION /*!50605 READ WRITE */"))
     }
 
     @Test("A statement the scan cannot prove ends the proof", arguments: [
@@ -203,7 +250,7 @@ struct MySQLDatabaseMoveScanTests {
     func unprovenStatementEndsTheProof(sql: String) {
         var proof = MySQLSessionDatabaseProof()
         proof.noteEntered("main")
-        proof.observe(sql)
+        proof.observe(sql, flavor: .mysql)
         #expect(!proof.proves("main"))
     }
 }

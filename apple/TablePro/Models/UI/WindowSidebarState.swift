@@ -170,7 +170,15 @@ internal final class WindowSidebarState: ObservableObject {
     }
 
     private var storageKey: String? {
-        connectionId.map { "com.TablePro.sidebar.treeExpansion.\($0.uuidString)" }
+        connectionId.map(Self.expansionKey(connectionId:))
+    }
+
+    private static func expansionKey(connectionId: UUID) -> String {
+        "com.TablePro.sidebar.treeExpansion.\(connectionId.uuidString)"
+    }
+
+    internal static func removeExpansion(connectionId: UUID, defaults: UserDefaults) {
+        defaults.removeObject(forKey: expansionKey(connectionId: connectionId))
     }
 
     private func loadExpansion() {

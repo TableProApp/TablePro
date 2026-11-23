@@ -25,6 +25,8 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 2. Phase 1, then Windows: the Windows items of Phase 0 and every CORE item of Phase 2, then the first public Windows release (D-04).
 3. Phases 3 to 8, by tier and demand.
 
+Phase 7 runs now as its own lane, ahead of this order (D-06).
+
 ## Progress
 
 | Section | Boxes | Done |
@@ -36,9 +38,9 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 | Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
-| Phase 7: Sync and teams | 15 | 0 |
+| Phase 7: Sync and teams | 22 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 366 | 61 |
+| Total | 373 | 61 |
 
 ## Where each app stands
 
@@ -556,7 +558,9 @@ Linux already holds each bar; these bring Windows to it, plus one shared item.
 
 ## Phase 7: Sync and teams
 
-A TablePro sync service on every platform (D-01). macOS keeps iCloud beside it, and the user picks one. It syncs connections and groups, secrets encrypted end to end, saved queries and settings, and Team Library and Team Catalog; iCloud Sync, Team Library and Team Catalog are 3 of the 10 paid features.
+A TablePro sync service on every platform (D-01), run by us or on a customer's servers, as [core ADR 0044](core/docs/decisions/0044-sync-through-one-service-run-by-us-or-on-premises.md) designs it. macOS and iOS keep iCloud beside it, and each device picks one. It syncs connections and groups, secrets encrypted end to end, saved queries, query history and settings, and Team Library; Team Catalog stays a shared folder. iCloud Sync, Team Library and Team Catalog are 3 of the 10 paid features.
+
+Phase 7 runs now as its own lane, ahead of [Order](#order) (D-06). macOS ships first: a new account slice of [core ADR 0010](core/docs/decisions/0010-macos-on-the-core.md) moves the Mac's account onto `tablepro-account` through TableProFFI before the macOS preview, and the macOS release comes after the preview. iOS, Linux and Windows follow as each is ready.
 
 - **T-01** Design ADR: the data model, conflict rules (field by field, as core ADR 0010 merges CloudKit records), end-to-end encryption of secrets and key recovery, whether query history syncs, and iCloud beside the service on macOS
   - [ ] core
@@ -567,20 +571,28 @@ A TablePro sync service on every platform (D-01). macOS keeps iCloud beside it, 
 - **T-04** Connections, groups, tags, colours and SSH profiles, without their secrets
   - [ ] Linux
   - [ ] Windows
-- **T-05** Secrets encrypted on the device before they leave it, never readable on the server
+  - [ ] iOS
+- **T-05** Secrets encrypted on the device before they leave it, never readable on the server; part of the first self-hosted release
   - [ ] core
   - [ ] Linux
   - [ ] Windows
-- **T-06** Saved queries, snippets, favourites and settings
+  - [ ] iOS
+- **T-06** Saved queries with their keywords, query history, favourites and settings
   - [ ] Linux
   - [ ] Windows
+  - [ ] iOS
 - **T-07** Team Library and Team Catalog: shared connections and queries with roles, as on macOS
   - [ ] core
   - [ ] server
   - [ ] Linux
   - [ ] Windows
-- **T-08** macOS on the service: everything T-04 to T-07 sync, beside iCloud, a setting to pick one, and a move from iCloud to the service
+  - [ ] iOS
+- **T-08** macOS and iOS on the service: everything T-04 to T-07 sync, beside iCloud, a setting to pick one, and a move from iCloud to the service
   - [ ] macOS
+  - [ ] iOS
+- **T-09** iOS account: sign-in through `tablepro-account` via TableProFFI, the `tablepro-ios` OAuth client and the `ios` device platform
+  - [ ] server
+  - [ ] iOS
 
 ## Phase 8: Beyond the market
 
@@ -641,7 +653,7 @@ Survey features no client covers on every platform, and the macOS app lacks them
 
 ## Decisions
 
-Answered by the maintainer on 2026-11-13, D-08 on 2026-11-14.
+Answered by the maintainer on 2026-11-13, D-08 on 2026-11-14, and D-06 amended on 2026-11-24.
 
 | ID | Question | Decision |
 |---|---|---|
@@ -650,7 +662,7 @@ Answered by the maintainer on 2026-11-13, D-08 on 2026-11-14.
 | D-03 | Engines added after install on Windows | No. Linux and Windows link drivers at compile time for good ([core ADR 0025](core/docs/decisions/0025-linux-and-windows-link-their-drivers.md)) |
 | D-04 | The bar for the first public Windows release | Phase 0 plus every CORE item in Phase 2, with no public build before |
 | D-05 | Which survey gaps to take | All but G-06 and G-12 ([Phase 8](#phase-8-beyond-the-market)) |
-| D-06 | Which comes first | Linux 0.1.0, then Phase 1 and Windows ([Order](#order)) |
+| D-06 | Which comes first | Linux 0.1.0, then Phase 1 and Windows ([Order](#order)). Amended 2026-11-24: Phase 7 runs now as its own lane, ahead of this order ([Phase 7](#phase-7-sync-and-teams)) |
 | D-07 | An Android app | Not now |
 | D-08 | Masking on Linux and Windows | In share links only: no rules per connection, and no masking in the grid, exports, MCP or the assistant ([core ADR 0028](core/docs/decisions/0028-data-masking.md)) |
 

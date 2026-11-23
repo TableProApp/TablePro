@@ -14,7 +14,7 @@ import Testing
 @MainActor
 struct SchemaMetadataGeneratedColumnTests {
     private func makeSchema(_ columns: [ColumnInfo]) -> FetchedTableSchema {
-        FetchedTableSchema(columns: columns, foreignKeys: nil, approximateRowCount: nil)
+        FetchedTableSchema(columns: columns, foreignKeys: nil)
     }
 
     @Test("A generated column is carried into the parsed metadata")
@@ -155,8 +155,7 @@ struct SchemaMetadataAuthoritativenessTests {
     func parsedSchemaIsAuthoritative() {
         let schema = FetchedTableSchema(
             columns: [ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true)],
-            foreignKeys: nil,
-            approximateRowCount: nil
+            foreignKeys: nil
         )
 
         #expect(QueryExecutor.parseSchemaMetadata(schema).isAuthoritative)

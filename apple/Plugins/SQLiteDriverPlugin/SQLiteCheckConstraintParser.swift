@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-// SQLite keeps constraints only in `sqlite_master.sql`. Only named table-level checks are read: DROP CONSTRAINT needs a name.
+// SQLite keeps constraints only in `sqlite_master.sql`. Only named table-level checks are listed: DROP CONSTRAINT needs a name.
 nonisolated enum SQLiteCheckConstraintParser {
     struct ParsedConstraint: Equatable {
         let name: String
@@ -27,6 +27,108 @@ nonisolated enum SQLiteCheckConstraintParser {
             expressions[name] = expression
         }
         return expressions
+    }
+
+    // `col IN ('a', 'b')` as a whole CHECK, column or table level. Keyed by the name with ASCII case folded, as SQLite compares names.
+    static func valueLists(inCreateStatement statement: String) -> [String: [String]] {
+        guard let parsed = SQLiteTableDDL.parse(createTableSQL: statement) else { return [:] }
+        var lists: [String: [String]] = [:]
+        var listedTwice: Set<String> = []
+        for entry in parsed.entries {
+            for expression in checkExpressions(in: entry.text) {
+                guard let (column, values) = valueList(in: expression) else { continue }
+                let key = foldedName(column)
+                if lists[key] != nil { listedTwice.insert(key) }
+                lists[key] = values
+            }
+        }
+        // Two lists on one column meet under the column's collation and NULL rules, which a plain intersection misses.
+        return lists.filter { !$0.value.isEmpty && !listedTwice.contains($0.key) }
+    }
+
+    static func foldedName(_ name: String) -> String {
+        String(String.UnicodeScalarView(name.unicodeScalars.map(asciiLowercased)))
+    }
+
+    private static func checkExpressions(in entry: String) -> [String] {
+        let scalars = entry.unicodeScalars
+        var expressions: [String] = []
+        var depth = 0
+        var previous: Unicode.Scalar?
+        var index = scalars.startIndex
+        while index < scalars.endIndex {
+            if let end = endOfNonCode(in: scalars, at: index) {
+                previous = nil
+                index = end
+                continue
+            }
+            let scalar = scalars[index]
+            if depth == 0, !(previous.map(isIdentifierScalar) ?? false),
+               let afterCheck = keyword("CHECK", in: scalars, at: index),
+               let expression = parenthesized(in: scalars, at: codeStart(in: scalars, from: afterCheck)) {
+                expressions.append(expression)
+            }
+            if scalar == "(" { depth += 1 }
+            if scalar == ")" { depth -= 1 }
+            previous = scalar
+            index = scalars.index(after: index)
+        }
+        return expressions
+    }
+
+    private static func valueList(in expression: String) -> (column: String, values: [String])? {
+        let scalars = expression.unicodeScalars
+        let start = codeStart(in: scalars, from: scalars.startIndex)
+        guard start < scalars.endIndex else { return nil }
+        if let (inner, end) = parenthesizedSpan(in: scalars, at: start), codeStart(in: scalars, from: end) == scalars.endIndex {
+            return valueList(in: inner)
+        }
+        // A single-quoted operand is a string, not a column.
+        guard scalars[start] != "'",
+              let (column, afterColumn) = identifier(in: scalars, at: start),
+              let afterIn = keyword("IN", in: scalars, at: codeStart(in: scalars, from: afterColumn)),
+              let (list, afterList) = parenthesizedSpan(in: scalars, at: codeStart(in: scalars, from: afterIn)),
+              codeStart(in: scalars, from: afterList) == scalars.endIndex,
+              let values = literalValues(in: list) else { return nil }
+        return (column, values)
+    }
+
+    // String literals and bare NULLs only; a NULL allows no value to pick.
+    private static func literalValues(in list: String) -> [String]? {
+        let scalars = list.unicodeScalars
+        var values: [String] = []
+        var index = codeStart(in: scalars, from: scalars.startIndex)
+        while true {
+            if let afterNull = keyword("NULL", in: scalars, at: index) {
+                index = afterNull
+            } else if let (value, afterValue) = stringLiteral(in: scalars, at: index) {
+                values.append(value)
+                index = afterValue
+            } else {
+                return nil
+            }
+            index = codeStart(in: scalars, from: index)
+            if index == scalars.endIndex { return values }
+            guard scalars[index] == "," else { return nil }
+            index = codeStart(in: scalars, from: scalars.index(after: index))
+        }
+    }
+
+    // SQLite has no backslash escape: only a doubled quote stands for one.
+    private static func stringLiteral(in scalars: String.UnicodeScalarView, at start: String.Index) -> (String, String.Index)? {
+        guard start < scalars.endIndex, scalars[start] == "'" else { return nil }
+        var value = String.UnicodeScalarView()
+        var index = scalars.index(after: start)
+        while index < scalars.endIndex {
+            let scalar = scalars[index]
+            index = scalars.index(after: index)
+            if scalar == "'" {
+                guard index < scalars.endIndex, scalars[index] == "'" else { return (String(value), index) }
+                index = scalars.index(after: index)
+            }
+            value.append(scalar)
+        }
+        return nil
     }
 
     private static func constraint(in entry: String) -> ParsedConstraint? {
@@ -96,6 +198,13 @@ nonisolated enum SQLiteCheckConstraintParser {
     }
 
     private static func parenthesized(in scalars: String.UnicodeScalarView, at start: String.Index) -> String? {
+        parenthesizedSpan(in: scalars, at: start)?.content
+    }
+
+    private static func parenthesizedSpan(
+        in scalars: String.UnicodeScalarView,
+        at start: String.Index
+    ) -> (content: String, end: String.Index)? {
         guard start < scalars.endIndex, scalars[start] == "(" else { return nil }
         var depth = 0
         var index = start
@@ -109,7 +218,7 @@ nonisolated enum SQLiteCheckConstraintParser {
                 depth -= 1
                 if depth == 0 {
                     let content = String(scalars[scalars.index(after: start)..<index])
-                    return content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return (content.trimmingCharacters(in: .whitespacesAndNewlines), scalars.index(after: index))
                 }
             }
             index = scalars.index(after: index)
@@ -179,5 +288,9 @@ nonisolated enum SQLiteCheckConstraintParser {
 
     private static func asciiUppercased(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
         ("a"..."z").contains(scalar) ? Unicode.Scalar(UInt8(scalar.value) - 32) : scalar
+    }
+
+    private static func asciiLowercased(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
+        ("A"..."Z").contains(scalar) ? Unicode.Scalar(UInt8(scalar.value) + 32) : scalar
     }
 }

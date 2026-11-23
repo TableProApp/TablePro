@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 internal enum SplitViewAutosaveName {
     /// Never version this: `NSSplitView` clamps a restored frame to the current minimums, and a new key discards every saved width.
@@ -23,6 +24,20 @@ internal enum SplitViewAutosaveName {
 
     internal static func querySplit(connectionId: UUID) -> String {
         "\(querySplitPrefix)\(connectionId.uuidString)"
+    }
+
+    /// AppKit's records for a connection's history drawer and query split, which it never removes
+    /// itself. None exist in the unit test host or the storage sandbox, where `current` gives no name.
+    @MainActor
+    internal static func removeRecords(connectionId: UUID) {
+        guard current(base) != nil else { return }
+        removeRecords(connectionId: connectionId, defaults: .standard)
+    }
+
+    internal static func removeRecords(connectionId: UUID, defaults: UserDefaults) {
+        for name in [historyDrawer(connectionId: connectionId), querySplit(connectionId: connectionId)] {
+            defaults.removeObject(forKey: SplitViewAutosaveKey.key(forAutosaveName: name))
+        }
     }
 
     /// Nil in the unit test host and the storage sandbox, because AppKit files the record in the real standard domain.

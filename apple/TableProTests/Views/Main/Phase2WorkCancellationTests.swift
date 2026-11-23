@@ -14,7 +14,7 @@ struct Phase2WorkCancellationTests {
     private static func heldSchemaRead() -> Task<FetchedTableSchema, Error> {
         Task {
             try await Task.sleep(for: .seconds(3_600))
-            return FetchedTableSchema(columns: [], foreignKeys: nil, approximateRowCount: nil)
+            return FetchedTableSchema(columns: [], foreignKeys: nil)
         }
     }
 
@@ -151,7 +151,7 @@ struct Phase2WorkCancellationTests {
         let fixture = fixtures.make()
         let tabId = makeTab(in: fixture)
         let done = Task<FetchedTableSchema, Error> {
-            FetchedTableSchema(columns: [], foreignKeys: nil, approximateRowCount: nil)
+            FetchedTableSchema(columns: [], foreignKeys: nil)
         }
         let work = try launch(done, on: tabId, in: fixture)
 
