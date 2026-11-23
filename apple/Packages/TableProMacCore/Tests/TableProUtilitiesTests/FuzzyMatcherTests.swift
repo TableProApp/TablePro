@@ -1,3 +1,4 @@
+import Foundation
 @testable import TableProUtilities
 import Testing
 
@@ -149,5 +150,54 @@ struct FuzzyMatcherTests {
         let match = FuzzyMatcher.match(query: query, candidate: candidate)
         #expect(match != nil)
         #expect(match?.matchedIndices.count == 80)
+    }
+}
+
+struct FuzzyMatcherScoreTests {
+    private static let longCandidate = String(repeating: "ab_", count: 341) + "cd"
+    private static let longQuery = String(repeating: "a", count: 65)
+
+    private static let queries: [String] = [
+        "u", "us", "USR", "ut", "uT", "a_b", "user", "users", "o", "ord", "ab", "cd", "b.c", "a b", "-", "$", "/",
+        "é", "e\u{301}", "caf", "café", "🙂", "\r\n", "\r", "\n", "K", "\u{212A}", "i", "İ", "ß", "SS",
+        longQuery, "xyz", " ",
+    ]
+
+    private static let candidates: [String] = [
+        "users", "user_table", "UserTable", "all_users", "butter", "u_s_e_r", "orders", "order_items",
+        "a b-c.d/e$f_g", "camelCaseName", "ABC", "aBc", "x", "",
+        "caf\u{E9}", "cafe\u{301}", "emoji🙂name", "line\r\nbreak", "line\nbreak", "cr\ronly",
+        "Kelvin", "\u{212A}elvin", "İstanbul", "straße", "STRASSE",
+        longCandidate, String(repeating: "a", count: 70), String(repeating: "a", count: 1_024),
+    ]
+
+    @Test("score equals match's score over a corpus of ASCII and Unicode text")
+    func scoreEqualsMatchScore() {
+        var scratch = FuzzyScratch()
+        for query in Self.queries {
+            let folded = FuzzyQuery(query)
+            for candidate in Self.candidates {
+                let expected = FuzzyMatcher.match(query: query, candidate: candidate)?.score
+                let actual = FuzzyMatcher.score(folded, candidate, scratch: &scratch)
+                #expect(actual == expected, "query \(query.debugDescription) candidate \(candidate.debugDescription)")
+            }
+        }
+    }
+
+    @Test("A bridged string scores the same as a native one")
+    func bridgedCandidateScoresTheSame() {
+        var scratch = FuzzyScratch()
+        let bridged = NSString(string: "order_items") as String
+        let query = FuzzyQuery("oi")
+        #expect(FuzzyMatcher.score(query, bridged, scratch: &scratch) == FuzzyMatcher.match(query: "oi", candidate: "order_items")?.score)
+    }
+
+    @Test("A long candidate scored after a short one does not read the short one's rows")
+    func scratchGrowsAndShrinksSafely() {
+        var scratch = FuzzyScratch()
+        let query = FuzzyQuery("ab")
+        for candidate in ["ab", String(repeating: "xab", count: 200), "b_a_b", "ab"] {
+            #expect(FuzzyMatcher.score(query, candidate, scratch: &scratch) == FuzzyMatcher.match(query: "ab", candidate: candidate)?.score)
+        }
     }
 }

@@ -14,7 +14,6 @@ final class SidebarViewModel: ObservableObject {
     private var searchTextObservation: AnyCancellable?
     private static let logger = Logger(subsystem: "com.TablePro", category: "SidebarViewModel")
     private static var registry: [UUID: SidebarViewModel] = [:]
-    private static let searchDebounce: Duration = .milliseconds(150)
 
     static func shared(
         connectionId: UUID,
@@ -140,6 +139,25 @@ final class SidebarViewModel: ObservableObject {
     private var listingDemandObservations: [AnyCancellable] = []
 
     private var filterDebounceTask: Task<Void, Never>?
+    private var filterPacer = SidebarFilterPacer()
+    private var refreshTiming: RefreshTiming?
+    private var refreshTimingGeneration = 0
+
+    /// One applied query, timed from its write to the end of the run loop turn that rebuilt the
+    /// outline for it. Every window of the connection rebuilds in that same turn, so one timing
+    /// covers them all.
+    private struct RefreshTiming {
+        enum Phase {
+            case awaitingRebuild(inWriteTurn: Bool)
+            case rebuiltInWriteTurn
+            case rebuiltLater
+        }
+
+        let generation: Int
+        let query: String
+        var start: Duration
+        var phase: Phase
+    }
 
     @Published var expanded: ExpansionState {
         didSet { persistExpansion(oldValue: oldValue) }
@@ -189,6 +207,8 @@ final class SidebarViewModel: ObservableObject {
     private let connectionId: UUID
     private let defaults: UserDefaults
     private let clock: any Clock<Duration>
+    private let elapsed: @MainActor () -> Duration
+    private let onTurnEnd: @MainActor (@escaping @MainActor () -> Void) -> Void
 
     /// The single connection-scoped state holder. Search text and the Redis key
     /// tree live here so this view model and the sidebar views share one source.
@@ -225,7 +245,8 @@ final class SidebarViewModel: ObservableObject {
         databaseType: DatabaseType,
         connectionId: UUID,
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        clock: any Clock<Duration> = ContinuousClock()
+        clock: any Clock<Duration> = ContinuousClock(),
+        onTurnEnd: @escaping @MainActor (@escaping @MainActor () -> Void) -> Void = RunLoopTurn.onEnd
     ) {
         self.pendingTruncatesBinding = pendingTruncates
         self.pendingDeletesBinding = pendingDeletes
@@ -234,6 +255,8 @@ final class SidebarViewModel: ObservableObject {
         self.connectionId = connectionId
         self.defaults = defaults
         self.clock = clock
+        self.elapsed = Self.timeline(on: clock)
+        self.onTurnEnd = onTurnEnd
         self.sharedState = SharedSidebarState.forConnection(connectionId)
         self.expanded = Self.loadInitialExpansion(connectionId: connectionId, defaults: defaults)
         self.isRedisKeysExpanded = Self.loadExpansion(
@@ -262,6 +285,11 @@ final class SidebarViewModel: ObservableObject {
         self.filterQuery = self.sharedState.searchText
         observeSearchText()
         observeListingDemand()
+    }
+
+    private static func timeline<C: Clock>(on clock: C) -> @MainActor () -> Duration where C.Duration == Duration {
+        let origin = clock.now
+        return { origin.duration(to: clock.now) }
     }
 
     private func observeListingDemand() {
@@ -655,24 +683,92 @@ final class SidebarViewModel: ObservableObject {
     }
 
     /// Clearing the field, or typing the first character into an empty one, changes what the list
-    /// shows wholesale, so it applies at once. Editing an existing query only narrows it, which is
-    /// worth waiting a moment for.
+    /// shows wholesale, so it applies at once. Any other key applies at once too unless the last
+    /// refresh's own cost has not passed since it ended; then it waits that long and applies the
+    /// text the field holds by then. A write to the shared state while a key waits, a recent table
+    /// or the field's focus, leaves the wait as it is.
     private func scheduleFilterQueryUpdate(oldValue: String) {
-        guard filterQuery != searchText else { return }
-        if searchText.isEmpty || oldValue.isEmpty {
+        guard filterQuery != searchText else {
+            // Typed back to what the list shows, so nothing is left to apply.
             filterDebounceTask?.cancel()
             filterDebounceTask = nil
-            filterQuery = searchText
             return
         }
-        filterDebounceTask?.cancel()
+        if searchText.isEmpty || oldValue.isEmpty {
+            applyFilterQuery()
+            return
+        }
+        guard filterDebounceTask == nil else { return }
+        let delay = filterPacer.delay(at: elapsed())
+        guard delay > .zero else {
+            applyFilterQuery()
+            return
+        }
         let clock = clock
         filterDebounceTask = Task { @MainActor [weak self] in
-            try? await clock.sleep(for: Self.searchDebounce)
-            guard !Task.isCancelled else { return }
-            guard let self else { return }
-            self.filterQuery = self.searchText
+            try? await clock.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.filterDebounceTask = nil
+            guard self.filterQuery != self.searchText else { return }
+            self.applyFilterQuery()
         }
+    }
+
+    private func applyFilterQuery() {
+        filterDebounceTask?.cancel()
+        filterDebounceTask = nil
+        let query = searchText
+        refreshTimingGeneration += 1
+        let generation = refreshTimingGeneration
+        refreshTiming = RefreshTiming(
+            generation: generation,
+            query: query,
+            start: elapsed(),
+            phase: .awaitingRebuild(inWriteTurn: true)
+        )
+        onTurnEnd { [weak self] in self?.endWriteTurn(generation: generation) }
+        filterQuery = query
+    }
+
+    /// Called by each outline as it starts the rebuild a new `filterQuery` asked for. The first
+    /// call for a query times it; the other windows of the connection rebuild in the same turn.
+    func noteSearchRebuild(for query: String) {
+        guard var timing = refreshTiming, timing.query == query else { return }
+        switch timing.phase {
+        case .awaitingRebuild(inWriteTurn: true):
+            timing.phase = .rebuiltInWriteTurn
+        case .awaitingRebuild(inWriteTurn: false):
+            // Idle time between the write's turn and this one is not the refresh's cost.
+            timing.start = elapsed()
+            timing.phase = .rebuiltLater
+            let generation = timing.generation
+            onTurnEnd { [weak self] in self?.endRebuildTurn(generation: generation) }
+        case .rebuiltInWriteTurn, .rebuiltLater:
+            return
+        }
+        refreshTiming = timing
+    }
+
+    private func endWriteTurn(generation: Int) {
+        guard var timing = refreshTiming, timing.generation == generation else { return }
+        filterPacer.recordRefresh(start: timing.start, end: elapsed())
+        switch timing.phase {
+        case .rebuiltInWriteTurn:
+            refreshTiming = nil
+        case .awaitingRebuild:
+            // No outline rebuilt in this turn, as when "No Results" replaces it. The turn's cost
+            // stands until an outline that rebuilds later reports.
+            timing.phase = .awaitingRebuild(inWriteTurn: false)
+            refreshTiming = timing
+        case .rebuiltLater:
+            return
+        }
+    }
+
+    private func endRebuildTurn(generation: Int) {
+        guard let timing = refreshTiming, timing.generation == generation else { return }
+        filterPacer.recordRefresh(start: timing.start, end: elapsed())
+        refreshTiming = nil
     }
 
     deinit {
