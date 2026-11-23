@@ -65,6 +65,8 @@ struct HiddenInspectorEditStateTests {
         makeView().updateSidebarEditState()
 
         #expect(handlersAreCleared())
+        // A value window opened on the table tab keeps writing there.
+        #expect(paneState.inspector.editState.detachedStager === fixture.coordinator.rowEditingCoordinator)
     }
 
     @Test("With the inspector hidden, a result that cannot be edited clears every handler")
@@ -84,34 +86,32 @@ struct HiddenInspectorEditStateTests {
 
         makeView().updateSidebarEditState()
 
-        #expect(paneState.inspector.editState.onDetachedFieldChanged != nil)
+        #expect(paneState.inspector.editState.detachedStager === fixture.coordinator.rowEditingCoordinator)
         #expect(paneState.inspector.editState.onFieldChanged != nil)
     }
 
     @Test("After the rows go, a value window still stages to its own rows, a typed function as SQL")
-    func detachedCommitSurvivesReleasedRows() {
-        let state = MultiRowEditState()
-        state.configure(
-            rowIDs: [.existing(0)],
-            allRows: [["1", "0b1e7c9a-58f4-4b8e-9c55-1f1c86f0a001", "2024-01-01 00:00:00+00", "a"]],
-            columns: Self.columns,
-            columnTypes: Self.columnTypes,
-            databaseType: .postgresql,
-            cellWriter: fixture.coordinator.changeManager.cellWriterSupport
-        )
-        var detached: [(column: Int, value: PluginCellValue, rows: [RowID], isExpression: Bool)] = []
-        state.onDetachedFieldChanged = { detached.append(($0, $1, $2, $3)) }
+    func detachedCommitSurvivesReleasedRows() throws {
+        let tabId = makeTable()
+        try selectFirstRow(of: tabId)
+        let view = makeView()
+        paneState.inspector.setOnScreen(true)
+        view.updateSidebarEditState()
+        let state = paneState.inspector.editState
+        let name = try #require(state.holdDetachedField(columnIndex: 3))
+        let createdAt = try #require(state.holdDetachedField(columnIndex: 2))
 
-        state.releaseRows()
-        state.updateDetachedField(columnIndex: 3, rowIDs: [.existing(0)], value: "b")
-        state.updateDetachedField(columnIndex: 2, rowIDs: [.existing(0)], value: "NOW()")
+        paneState.inspector.setOnScreen(false)
+        view.updateSidebarEditState()
+        #expect(state.commitDetachedField("b", to: name))
+        #expect(state.commitDetachedField("NOW()", to: createdAt))
 
         #expect(state.fields.isEmpty && state.allRows.isEmpty)
-        #expect(detached.count == 2)
-        #expect(detached.first?.value == .text("b"))
-        #expect(detached.first?.rows == [.existing(0)])
-        #expect(detached.last?.isExpression == true)
-        #expect(detached.last?.value == .text("now()"))
+        let changes = fixture.coordinator.changeManager(forTab: tabId)
+        let cells = changes.rowChanges.first { $0.rowID == .existing(0) && $0.type == .update }?.cellChanges ?? []
+        #expect(cells.first { $0.columnIndex == 3 }?.newValue == .text("b"))
+        #expect(cells.first { $0.columnIndex == 2 }?.newValue == .text("now()"))
+        #expect(changes.isExpression(rowID: .existing(0), columnIndex: 2))
     }
 
     @Test("Released rows report no inspector edits, so a save goes through the staged changes")
@@ -192,7 +192,6 @@ struct HiddenInspectorEditStateTests {
         state.onFieldValuesChanged = { _, _ in }
         state.onFieldReverted = { _, _, _, _ in }
         state.onFieldRemoved = { _, _ in }
-        state.onDetachedFieldChanged = { _, _, _, _ in }
     }
 
     private func handlersAreCleared() -> Bool {
@@ -202,6 +201,5 @@ struct HiddenInspectorEditStateTests {
             && state.onFieldValuesChanged == nil
             && state.onFieldReverted == nil
             && state.onFieldRemoved == nil
-            && state.onDetachedFieldChanged == nil
     }
 }

@@ -138,24 +138,19 @@ internal struct RowInspectorView: View {
 
     private func popOut(field: FieldEditState, text: String, kind: FieldEditorKind) {
         let isEditable = context.isEditable && !context.isRowDeleted && !field.isServerOwned
-        // Captured, not looked up per keystroke: the window outlives the selection it opened on.
-        let columnIndex = field.columnIndex
-        let rowIDs = state.editState.rowIDs
-        let commit: ((String) -> Void)? = isEditable
-            ? { [editState = state.editState] newValue in
-                editState.updateDetachedField(columnIndex: columnIndex, rowIDs: rowIDs, value: newValue)
-            }
-            : nil
+        // Held when it opens, not looked up per keystroke: the window outlives the selection and the tab it opened on.
+        let session = isEditable ? InspectorPopOutSession(editState: state.editState, columnIndex: field.columnIndex) : nil
+        let commit: ((String) -> Void)? = session.map { session in { session.commit($0) } }
 
         switch InspectorPopOutWindow.resolve(for: kind) {
         case .json:
             let window = JSONViewerWindowController.open(
                 text: text,
                 columnName: field.columnName,
-                isEditable: isEditable,
+                isEditable: commit != nil,
                 onCommit: commit
             )
-            if commit != nil { InspectorPopOutRegistry.record(window, openedFrom: paneState) }
+            session?.attach(window, openedFrom: paneState)
         case .php:
             PhpViewerWindowController.open(text: text, columnName: field.columnName)
         case .binary(let format):
@@ -169,10 +164,10 @@ internal struct RowInspectorView: View {
             let window = TextViewerWindowController.open(
                 text: text,
                 columnName: field.columnName,
-                isEditable: isEditable,
+                isEditable: commit != nil,
                 onCommit: commit
             )
-            if commit != nil { InspectorPopOutRegistry.record(window, openedFrom: paneState) }
+            session?.attach(window, openedFrom: paneState)
         }
     }
 }

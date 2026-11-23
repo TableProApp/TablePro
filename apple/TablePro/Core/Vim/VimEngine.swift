@@ -28,14 +28,53 @@ struct VimLastFindChar {
     let till: Bool
 }
 
-enum VimDotKind {
-    case deleteCharForward(count: Int)
-    case deleteCharBackward(count: Int)
-    case operatorWithMotion(op: VimOperator, motion: Character, shift: Bool, count: Int)
-    case operatorDoubled(op: VimOperator, count: Int)
-    case toggleCase(count: Int)
-    case joinLines(withSpace: Bool, count: Int)
-    case replaceChar(char: Character, count: Int)
+struct VimChangeKey {
+    let character: Character
+    let shift: Bool
+    let isCount: Bool
+}
+
+enum VimInsertStep {
+    // What the text view did: characters deleted before the caret, then the text typed.
+    case typed(deleting: Int, text: String)
+    // A key the engine applies in Insert or Replace mode, such as Ctrl-W or an overwrite, which Vim replays as the key.
+    case key(Character)
+}
+
+// `:help visual-repeat`: the same number of characters within one line, the same number of lines with the same
+// column in the last for several, the same number of lines for a linewise selection.
+struct VimVisualExtent {
+    let linewise: Bool
+    let lines: Int
+    let characters: Int
+    let lastColumn: Int
+}
+
+struct VimVisualChange {
+    let extent: VimVisualExtent
+    let operatorKeys: [VimChangeKey]
+}
+
+// `:help .`: the keys of the last command that changed the text, and what it did in Insert or Replace mode if it went on
+// there. A Visual mode change keeps the selection's extent and the keys of its operator instead of its motions.
+struct VimChange {
+    var keys: [VimChangeKey]
+    var insertSteps: [VimInsertStep]?
+    var visual: VimVisualChange?
+}
+
+struct VimChangeDraft {
+    var keys: [VimChangeKey] = []
+    var changesText = false
+    var insertSteps: [VimInsertStep] = []
+    // Where the text typed since Insert or Replace mode began, or since the last engine key, sits, kept in step with
+    // every edit.
+    var insertedRange: NSRange?
+    var deletedBeforeInsert = 0
+    // The selection as the last Visual mode command found it, where that command's keys start and the register it got.
+    var visualExtent: VimVisualExtent?
+    var visualCommandStart = 0
+    var visualRegister: Character?
 }
 
 // `:help exclusive`, `:help inclusive`, `:help linewise`.
@@ -85,7 +124,9 @@ final class VimEngine {
     var pendingBracket: VimBracketPending?
     var selectedRegister: Character?
     var lastFindChar: VimLastFindChar?
-    var lastDotKind: VimDotKind?
+    var lastChange: VimChange?
+    var changeDraft: VimChangeDraft?
+    var isRepeatingChange = false
     var marks: [Character: Int] = [:]
     var namedRegisters: [Character: VimRegister] = [:]
     var numberedRegisters: [VimRegister] = Array(repeating: VimRegister(), count: 10)
@@ -122,6 +163,7 @@ final class VimEngine {
 
     func process(_ char: Character, shift: Bool) -> Bool {
         let recordingTarget = macroRecording
+        changeKeyWillProcess(char, shift: shift)
         let consumed: Bool
         switch mode {
         case .normal:
@@ -140,6 +182,7 @@ final class VimEngine {
         if let target = recordingTarget, macroRecording == target {
             macroBuffers[target, default: []].append((char, shift))
         }
+        changeKeyDidProcess()
         if !mode.isVisual, let buffer {
             cursorOffset = buffer.selectedRange().location
         }
@@ -157,10 +200,12 @@ final class VimEngine {
         replaceModeEdits.removeAll()
         editsOnCurrentLine = 0
         lastEditedLine = nil
+        changeDraft = nil
     }
 
     func reset() {
         cancelPendingCommand()
+        changeDraft = nil
         mode = .normal
     }
 

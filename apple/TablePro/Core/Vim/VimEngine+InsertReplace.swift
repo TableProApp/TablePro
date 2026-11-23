@@ -69,7 +69,7 @@ extension VimEngine {
         let overwritten = pos < contentEnd ? buffer.characterRange(at: pos) : NSRange(location: pos, length: 0)
         let original = overwritten.length > 0 ? buffer.string(in: overwritten) : nil
         replaceModeEdits.append(VimReplaceModeEdit(offset: pos, original: original, insertedLength: insertedLength))
-        buffer.replaceCharacters(in: overwritten, with: typed)
+        replace(overwritten, with: typed, in: buffer)
         return true
     }
 
@@ -79,7 +79,7 @@ extension VimEngine {
         if let last = replaceModeEdits.last, last.offset + last.insertedLength == pos {
             replaceModeEdits.removeLast()
             let inserted = NSRange(location: last.offset, length: last.insertedLength)
-            buffer.replaceCharacters(in: inserted, with: last.original ?? "")
+            replace(inserted, with: last.original ?? "", in: buffer)
             buffer.setSelectedRange(NSRange(location: last.offset, length: 0))
         } else {
             replaceModeEdits.removeAll()
@@ -159,7 +159,7 @@ extension VimEngine {
     func deleteBackwardInInsert(to target: Int, in buffer: VimTextBuffer) {
         let pos = buffer.selectedRange().location
         guard pos > target else { return }
-        buffer.replaceCharacters(in: NSRange(location: target, length: pos - target), with: "")
+        replace(NSRange(location: target, length: pos - target), with: "", in: buffer)
         buffer.setSelectedRange(NSRange(location: target, length: 0))
     }
 
@@ -175,10 +175,10 @@ extension VimEngine {
                 stripCount += 1
             }
             guard stripCount > 0 else { return }
-            buffer.replaceCharacters(in: NSRange(location: lineRange.location, length: stripCount), with: "")
+            replace(NSRange(location: lineRange.location, length: stripCount), with: "", in: buffer)
             buffer.setSelectedRange(NSRange(location: max(lineRange.location, pos - stripCount), length: 0))
         } else {
-            buffer.replaceCharacters(in: NSRange(location: lineRange.location, length: 0), with: indent)
+            replace(NSRange(location: lineRange.location, length: 0), with: indent, in: buffer)
             buffer.setSelectedRange(NSRange(location: pos + indent.count, length: 0))
         }
     }

@@ -738,7 +738,20 @@ extension AIChatViewModel {
         explicitlyApproved: Set<String> = [],
         registry: ChatToolRegistry? = nil
     ) async -> [ToolResultBlock] {
-        await withTaskGroup(of: (Int, ToolResultBlock).self) { group in
+        let onlyReads = await MainActor.run {
+            let activeRegistry = registry ?? ChatToolRegistry.shared
+            return blocks.allSatisfy { activeRegistry.onlyReads(toolName: $0.name) }
+        }
+        // Writes run in the order proposed and approved: an INSERT must not reach the driver before its CREATE TABLE.
+        guard onlyReads else {
+            var results: [ToolResultBlock] = []
+            for block in blocks {
+                let blockContext = context.carrying(approvalWasExplicit: explicitlyApproved.contains(block.id))
+                results.append(await runToolUse(block, scope: scope, context: blockContext, registry: registry))
+            }
+            return results
+        }
+        return await withTaskGroup(of: (Int, ToolResultBlock).self) { group in
             for (index, block) in blocks.enumerated() {
                 let blockContext = context.carrying(
                     approvalWasExplicit: explicitlyApproved.contains(block.id)

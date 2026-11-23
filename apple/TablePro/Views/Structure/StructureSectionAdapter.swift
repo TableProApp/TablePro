@@ -481,6 +481,17 @@ extension StructureSectionAdapter: DataGridActions {
         sortDidChange(sort)
     }
 
+    // The store persists the hidden set per section, for every table.
+    func gridHideColumn(_ column: DataGridColumn) {
+        // With no column left, no header remains to choose Show All Columns from.
+        guard model.columns.count > 1 else { return }
+        model.updateColumnLayout { $0.hiddenColumns.insert(column.name) }
+    }
+
+    func gridShowAllColumns() {
+        model.updateColumnLayout { $0.hiddenColumns.removeAll() }
+    }
+
     // A value filter rearranges the list, which withdraws the column move.
     func gridConfirmDisplayOrderChange(then apply: @escaping @MainActor () -> Void) {
         apply()

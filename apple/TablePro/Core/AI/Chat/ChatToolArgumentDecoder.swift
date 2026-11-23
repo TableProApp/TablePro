@@ -6,10 +6,19 @@
 import Foundation
 import TableProMCP
 
-/// Typed decoders for `JsonValue` input arguments coming from the AI.
-/// Mirrors `MCPArgumentDecoder` for the MCP protocol but operates on the
-/// chat-side `JsonValue` enum.
 enum ChatToolArgumentDecoder {
+    // Refused, not ignored: the approval card reads the input, so an ignored key can name a target the call never uses.
+    static func rejectUnknownKeys(_ args: JsonValue, declaredBy schema: JsonValue) throws {
+        guard case .object(let dict) = args else { return }
+        // Undeclared, and `ChatToolTarget` refuses any connection but the session's.
+        var allowed: Set<String> = ["connection_id"]
+        if case .object(let root) = schema, case .object(let properties)? = root["properties"] {
+            allowed.formUnion(properties.keys)
+        }
+        let unknown = dict.keys.filter { !allowed.contains($0) }.sorted()
+        guard unknown.isEmpty else { throw ChatToolArgumentError.unknownKeys(unknown) }
+    }
+
     static func requireString(_ args: JsonValue, key: String) throws -> String {
         guard case .object(let dict) = args, let value = dict[key], case .string(let str) = value else {
             throw ChatToolArgumentError.missingOrInvalid(key: key, expected: "string")
@@ -60,11 +69,14 @@ enum ChatToolArgumentDecoder {
 
 enum ChatToolArgumentError: Error, LocalizedError {
     case missingOrInvalid(key: String, expected: String)
+    case unknownKeys([String])
 
     var errorDescription: String? {
         switch self {
         case .missingOrInvalid(let key, let expected):
             return "Argument '\(key)' is missing or not a \(expected)"
+        case .unknownKeys(let keys):
+            return "Unknown argument(s): \(keys.joined(separator: ", ")). Pass only the arguments this tool declares."
         }
     }
 }

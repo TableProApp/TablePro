@@ -375,12 +375,7 @@ struct MainEditorContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
                         guard coordinator.erDiagramModels[tab.id] == nil else { return }
-                        let vm = ERDiagramViewModel(
-                            connectionId: connection.id,
-                            databaseName: tab.tableContext.databaseName,
-                            schemaKey: tab.display.erDiagramSchemaKey ?? tab.tableContext.databaseName,
-                            connection: connection
-                        )
+                        let vm = ERDiagramViewModel(tab: tab, connection: connection)
                         vm.coordinator = coordinator
                         vm.tabId = tab.id
                         coordinator.erDiagramModels[tab.id] = vm
@@ -394,7 +389,11 @@ struct MainEditorContentView: View {
         guard coordinator.canBuildJoinQuery else { return nil }
         let coordinator = coordinator
         return { tables in
-            coordinator.openJoinBuilder(database: diagram.databaseName, schema: diagram.schemaName, tables: tables)
+            coordinator.openJoinBuilder(
+                database: diagram.scope?.database ?? diagram.databaseName,
+                schema: diagram.scope?.schema ?? diagram.schemaName,
+                tables: tables
+            )
         }
     }
 
@@ -482,10 +481,14 @@ struct MainEditorContentView: View {
         )
     }
 
-    private func parameterBinding(for tab: QueryTab) -> Binding<[QueryParameter]> {
+    // Reads the live tab: from the render-time copy, each write in a row started from the array as first drawn.
+    static func parameterBinding(for tab: QueryTab, in tabManager: QueryTabManager) -> Binding<[QueryParameter]> {
         let tabId = tab.id
+        let fallbackParameters = tab.content.queryParameters
         return Binding(
-            get: { tab.content.queryParameters },
+            get: {
+                tabManager.tabs.first(where: { $0.id == tabId })?.content.queryParameters ?? fallbackParameters
+            },
             set: { newValue in
                 tabManager.mutate(tabId: tabId) { $0.content.queryParameters = newValue }
             }
@@ -1120,7 +1123,7 @@ extension MainEditorContentView {
         let commands = commandAvailability(for: tab)
         let isExecuting = coordinator.tabExecution.isExecuting(tab.id)
         let showsHistoryTip = showsHistoryTip
-        let parameters = parameterBinding(for: tab)
+        let parameters = Self.parameterBinding(for: tab, in: tabManager)
         let isParameterPanelVisible = parameterVisibilityBinding(for: tab)
         let header: (VimMode?) -> AnyView = { vimMode in
             AnyView(VStack(alignment: .leading, spacing: 0) {

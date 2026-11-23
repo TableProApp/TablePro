@@ -189,8 +189,14 @@ internal extension CompareRunner {
         try Task.checkCancellation()
 
         let options = session.structureOptions
+        let sourceSchema = StructureCompareOptions.listedSchema(
+            endpoint: context.source.schema, tableSchemas: sourceReads.map(\.table.schema)
+        )
+        let targetSchema = StructureCompareOptions.listedSchema(
+            endpoint: context.target.schema, tableSchemas: targetReads.map(\.table.schema)
+        )
         let targetByKey = Dictionary(
-            targetReads.map { (options.matchKey(name: $0.table.name, schema: $0.table.schema), $0) },
+            targetReads.map { (options.matchKey(name: $0.table.name, schema: $0.table.schema, listedIn: targetSchema), $0) },
             uniquingKeysWith: { first, _ in first }
         )
         let previous = Dictionary(
@@ -204,7 +210,7 @@ internal extension CompareRunner {
         var plans: [DataComparePlan] = []
         for read in sourceReads {
             guard read.failure == nil else { continue }
-            let pairKey = options.matchKey(name: read.table.name, schema: read.table.schema)
+            let pairKey = options.matchKey(name: read.table.name, schema: read.table.schema, listedIn: sourceSchema)
             guard let counterpart = targetByKey[pairKey], counterpart.failure == nil else { continue }
             let plan = makePlan(
                 read: read,
