@@ -15,6 +15,7 @@ import TableProCoreTypes
 import TableProKerberos
 import TableProPluginKit
 import TableProPostgreSQLCore
+import TableProSQLGrammar
 import TableProTLSClientIdentity
 
 private final class LibPQCancelRequest: @unchecked Sendable {
@@ -779,7 +780,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Query Execution
 
-    func executeQuery(_ query: String) async throws -> LibPQPluginQueryResult {
+    func executeQuery(_ query: String, probesBeforeBlock: Bool = false) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
@@ -787,17 +788,21 @@ final class LibPQPluginConnection: @unchecked Sendable {
             if let deadline = activeConnectDeadline {
                 return try executeConnectQuerySync(queryToRun, deadline: deadline)
             }
-            return try executeQuerySync(queryToRun)
+            return try executeQuerySync(queryToRun, probesBeforeBlock: probesBeforeBlock)
         }
     }
 
     // The extended query protocol refuses a text holding a second statement, so one the host's split missed fails.
-    func executeSingleStatement(_ query: String) async throws -> LibPQPluginQueryResult {
+    func executeSingleStatement(
+        _ query: String,
+        keeping: Int = PluginRowLimits.emergencyMax,
+        probesBeforeBlock: Bool = false
+    ) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
-            return try executeQuerySync(queryToRun, singleStatement: true)
+            return try singleRowReadSync(queryToRun, parameters: [], keeping: keeping, probesBeforeBlock: probesBeforeBlock)
         }
     }
 
@@ -1007,23 +1012,29 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    func boundedQuery(_ query: String, rowCap: Int) async throws -> LibPQPluginQueryResult {
+    // A parameter list, even an empty one, sends the statement on the extended protocol, which refuses a second one.
+    func boundedQuery(_ query: String, parameters: [PluginCellValue]? = nil, rowCap: Int) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
+        let params = parameters
         let cap = max(rowCap, 1)
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
-            return try boundedQuerySync(queryToRun, rowCap: cap)
+            return try boundedQuerySync(queryToRun, parameters: params, rowCap: cap)
         }
     }
 
-    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> LibPQPluginQueryResult {
+    func executeParameterizedQuery(
+        _ query: String,
+        parameters: [PluginCellValue],
+        keeping: Int = PluginRowLimits.emergencyMax
+    ) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
         let params = parameters
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
-            return try singleRowReadSync(queryToRun, parameters: params)
+            return try singleRowReadSync(queryToRun, parameters: params, keeping: keeping)
         }
     }
 
@@ -1124,8 +1135,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return decoded
     }
 
-    private func executeQuerySync(_ query: String, singleStatement: Bool = false) throws -> LibPQPluginQueryResult {
-        if singleStatement { return try singleRowReadSync(query, parameters: []) }
+    private func executeQuerySync(
+        _ query: String,
+        singleStatement: Bool = false,
+        probesBeforeBlock: Bool = false
+    ) throws -> LibPQPluginQueryResult {
+        if singleStatement { return try singleRowReadSync(query, parameters: [], probesBeforeBlock: probesBeforeBlock) }
         let conn = connectionHandle
 
         guard !isShuttingDown, let conn else {
@@ -1138,6 +1153,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let cancelsOutput = cancelsAbandonedOutput(conn)
         if let ended = sessionEndedBeforeSending(conn) { throw ended }
+        if probesBeforeBlock { try probeSavepointsBeforeBlock(opening: query, conn: conn, generation: generation) }
 
         let localQuery = String(query)
         let result: OpaquePointer? = localQuery.withCString { queryPtr in
@@ -1279,7 +1295,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // Reads at most `rowCap` rows, plus one to tell "exactly `rowCap`" from "more", then stops the server producing
     // the rest. The stop is not an optimization: libpq drains an abandoned result inside the next `PQexec`, and the
     // backend holds its snapshot until it has written the whole result to the client.
-    private func boundedQuerySync(_ query: String, rowCap: Int) throws -> LibPQPluginQueryResult {
+    private func boundedQuerySync(
+        _ query: String,
+        parameters: [PluginCellValue]?,
+        rowCap: Int
+    ) throws -> LibPQPluginQueryResult {
         let conn = connectionHandle
 
         guard !isShuttingDown, let conn else {
@@ -1295,25 +1315,34 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let sentAt = Date()
 
         // A cancel inside a transaction block aborts the block the user opened, so there the statement is read
-        // through a cursor, and where it cannot be the connection is drained instead.
+        // through a cursor, and where it cannot be the connection is drained instead. A cursor cannot carry
+        // parameters, so a statement with any is drained there, decoding no row past the cap.
         let cancelsOutput = cancelsAbandonedOutput(conn)
         let suppressCancel = !cancelsOutput
         finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
         if let ended = sessionEndedBeforeSending(conn) { throw ended }
 
-        // A Stop during one of the driver's own round trips is spent there, so each is followed by a check before
-        // the user's statement goes out.
-        probeSavepointsWhileIdle(conn)
-        if cancellationGate.isCancelled(generation) { throw CancellationError() }
-        if let plan = cappedCursorPlan(for: query, rowCap: rowCap, conn: conn),
+        // A Stop during the cursor's own round trip is spent there, so it is followed by a check before the user's
+        // statement goes out.
+        if parameters?.isEmpty ?? true,
+           let plan = cappedCursorPlan(for: query, rowCap: rowCap, conn: conn),
            let read = try cappedCursorRead(plan, rowCap: rowCap, conn: conn, generation: generation, sentAt: sentAt) {
             return read
         }
         if cancellationGate.isCancelled(generation) { throw CancellationError() }
 
         let localQuery = String(query)
-        let sendOk = localQuery.withCString { queryPtr in
-            PQsendQuery(conn, queryPtr)
+        let sendOk: Int32
+        if let parameters {
+            sendOk = try LibPQParameterBuffers.with(parameters) { values, lengths, formats in
+                localQuery.withCString { queryPtr in
+                    PQsendQueryParams(conn, queryPtr, Int32(parameters.count), nil, values, lengths, formats, 0)
+                }
+            }
+        } else {
+            sendOk = localQuery.withCString { queryPtr in
+                PQsendQuery(conn, queryPtr)
+            }
         }
         guard sendOk != 0 else {
             throw lostConnection(getError(from: conn), on: conn, sent: false)
@@ -1441,6 +1470,24 @@ final class LibPQPluginConnection: @unchecked Sendable {
         recordTransactionState(of: conn)
         guard PQstatus(conn) == CONNECTION_OK, !cancelled else { return }
         takesSavepoints = accepted
+    }
+
+    // The answer is used only inside a block, so the probe waits for the statement that opens one and runs in that
+    // statement's generation: a Stop during it sends none of the statement.
+    private func probeSavepointsBeforeBlock(opening query: String, conn: OpaquePointer, generation: Int) throws {
+        guard takesSavepoints == nil, Self.opensTransactionBlock(query) else { return }
+        probeSavepointsWhileIdle(conn)
+        if cancellationGate.isCancelled(generation) { throw CancellationError() }
+    }
+
+    // The head read as `LibPQPipelineAdmission.admits` reads it. The session's backslash setting changes only literals,
+    // never the blanks and comments before the first word.
+    static func opensTransactionBlock(_ query: String) -> Bool {
+        let grammar = SQLLexicalReadings.resolve(
+            databaseTypeId: PostgreSQLPlugin.databaseTypeId, declared: nil, session: nil
+        ).execution
+        let keyword = SQLStatementRowLimit.leadingKeyword(query, grammar: grammar)
+        return keyword == "BEGIN" || keyword == "START"
     }
 
     private func cappedCursorPlan(for query: String, rowCap: Int, conn: OpaquePointer) -> LibPQCappedCursorRead.Plan? {
@@ -2305,9 +2352,14 @@ extension LibPQPluginConnection {
         var firstRowTime: TimeInterval?
     }
 
-    // Every row counts toward the affected rows, and the ones past the emergency limit are read and dropped: a cancel
-    // would stop an `INSERT ... RETURNING` part way.
-    fileprivate func singleRowReadSync(_ query: String, parameters: [PluginCellValue]) throws -> LibPQPluginQueryResult {
+    // Every row counts toward the affected rows, and the ones past `keeping` are read and dropped without decoding: a
+    // cancel would stop an `INSERT ... RETURNING` part way.
+    fileprivate func singleRowReadSync(
+        _ query: String,
+        parameters: [PluginCellValue],
+        keeping: Int = PluginRowLimits.emergencyMax,
+        probesBeforeBlock: Bool = false
+    ) throws -> LibPQPluginQueryResult {
         guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
 
         let generation = cancellationGate.beginQuery()
@@ -2317,6 +2369,7 @@ extension LibPQPluginConnection {
         let sentAt = Date()
         let cancelsOutput = cancelsAbandonedOutput(conn)
         finishAbandonedResults(conn, cancellingOutput: cancelsOutput)
+        if probesBeforeBlock { try probeSavepointsBeforeBlock(opening: query, conn: conn, generation: generation) }
         let sent: Int32 = try LibPQParameterBuffers.with(parameters) { values, lengths, formats in
             if let ended = sessionEndedBeforeSending(conn) { throw ended }
             return query.withCString { queryPtr in
@@ -2331,7 +2384,7 @@ extension LibPQPluginConnection {
         }
 
         var read = SingleRowRead()
-        let maxRows = PluginRowLimits.emergencyMax
+        let maxRows = max(keeping, 0)
         var failure: LibPQPluginError?
 
         while let result = PQgetResult(conn) {
@@ -2397,7 +2450,7 @@ extension LibPQPluginConnection {
                 firstRowTime: read.firstRowTime
             )
         }
-        if read.rowCount > maxRows {
+        if read.rowCount > maxRows, maxRows == PluginRowLimits.emergencyMax {
             Self.logger.warning("Result set truncated at \(maxRows) rows")
         }
         let metadata = resolvingUnknownTypes(rawMetadata, conn: conn)

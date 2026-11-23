@@ -292,10 +292,10 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     // MARK: - Query Execution
 
-    func execute(query: String) async throws -> PluginQueryResult {
+    func execute(query: String, probesBeforeBlock: Bool = false) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
-        let result = try await pqConn.executeQuery(query)
+        let result = try await pqConn.executeQuery(query, probesBeforeBlock: probesBeforeBlock)
         return PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
@@ -306,10 +306,10 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
-    func executeSingleStatement(query: String) async throws -> PluginQueryResult {
+    func executeSingleStatement(query: String, probesBeforeBlock: Bool = false) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
-        let result = try await pqConn.executeSingleStatement(query)
+        let result = try await pqConn.executeSingleStatement(query, probesBeforeBlock: probesBeforeBlock)
         return PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
@@ -476,7 +476,8 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     // The statement an external caller approved, sent as `executeReadOnly`, `executeBoundedReadOnly`,
     // `executeParameterized` or `executeSingleStatement` sends it, with the relation column each result column reads.
-    // Only a read-only read takes `bound`: stopping a write would cancel what the caller approved to run to its end.
+    // Only a read-only read stops at `bound`: stopping a write would cancel what the caller approved to run to its end.
+    // Any other keeps only the rows the bound needs.
     func executeExternalStatement(
         query: String,
         parameters: [PluginCellValue]?,
@@ -485,15 +486,16 @@ final class LibPQDriverCore: @unchecked Sendable {
     ) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
+        let keeping = bound.map { LibPQReadBound.keepLimit(rowCap: $0.rowCap) } ?? PluginRowLimits.emergencyMax
         let result: LibPQPluginQueryResult
         if let readOnly, let bound {
             result = try await pqConn.boundedReadOnlyStatement(query, parameters: parameters, bound: bound, scope: readOnly)
         } else if let readOnly {
             result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters, scope: readOnly)
         } else if let parameters {
-            result = try await pqConn.executeParameterizedQuery(query, parameters: parameters)
+            result = try await pqConn.executeParameterizedQuery(query, parameters: parameters, keeping: keeping)
         } else {
-            result = try await pqConn.executeSingleStatement(query)
+            result = try await pqConn.executeSingleStatement(query, keeping: keeping)
         }
         var answer = Self.answer(result, since: startTime)
         answer.columnOrigins = await columnOrigins(for: result.columnSources)
@@ -547,6 +549,28 @@ final class LibPQDriverCore: @unchecked Sendable {
             ),
             isTruncated: result.isTruncated
         )
+    }
+
+    // Chosen by the text alone, before the statement reaches the connection's queue: whether the session is in a block
+    // is read there, where nothing queued ahead can still change it. A statement a cursor could hold stops at the cap;
+    // any other runs to its end, so an `INSERT ... RETURNING` writes every row, and keeps only the rows the cap needs.
+    func executeCappedUserQuery(
+        query: String,
+        rowCap: Int,
+        parameters: [PluginCellValue]?
+    ) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let keeping = LibPQReadBound.keepLimit(rowCap: rowCap)
+        let result: LibPQPluginQueryResult
+        if LibPQCappedCursorRead.cursorBody(of: query) != nil {
+            result = try await pqConn.boundedQuery(query, parameters: parameters ?? [], rowCap: rowCap)
+        } else if let parameters {
+            result = try await pqConn.executeParameterizedQuery(query, parameters: parameters, keeping: keeping)
+        } else {
+            result = try await pqConn.executeSingleStatement(query, keeping: keeping, probesBeforeBlock: true)
+        }
+        return Self.answer(result, since: startTime)
     }
 
     func streamRows(
@@ -735,7 +759,7 @@ extension LibPQBackedDriver {
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
-        try await core.execute(query: query)
+        try await core.execute(query: query, probesBeforeBlock: true)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -744,13 +768,14 @@ extension LibPQBackedDriver {
 
     // The host sends a user's statements one at a time, so each goes through the extended query protocol.
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
-        let raw: PluginQueryResult
-        if let parameters {
-            raw = try await executeParameterized(query: query, parameters: parameters)
-        } else {
-            raw = try await core.executeSingleStatement(query: query)
+        if let cap = rowCap, cap > 0 {
+            let read = try await core.executeCappedUserQuery(query: query, rowCap: cap, parameters: parameters)
+            return Self.capped(read, rowCap: cap)
         }
-        return Self.capped(raw, rowCap: rowCap)
+        if let parameters {
+            return try await executeParameterized(query: query, parameters: parameters)
+        }
+        return try await core.executeSingleStatement(query: query, probesBeforeBlock: true)
     }
 
     func executeUserQuery(
@@ -941,8 +966,9 @@ extension LibPQBackedDriver {
         try await beginTransaction(mode: .serverDefault)
     }
 
+    // Manual Commit and an agent's guard open the user's block here, and capped reads inside it need the probe's answer.
     func beginTransaction(mode: PluginTransactionAccessMode) async throws {
-        _ = try await execute(query: postgresBeginTransactionStatement(mode: mode))
+        _ = try await core.execute(query: postgresBeginTransactionStatement(mode: mode), probesBeforeBlock: true)
     }
 
     var serverVersion: String? { core.serverVersion }
