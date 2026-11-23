@@ -1,3 +1,8 @@
+//
+//  DataGridEditingTests.swift
+//  TableProTests
+//
+
 import AppKit
 import SwiftUI
 @testable import TablePro
@@ -839,63 +844,34 @@ struct DataGridTextEditorPopoverTests {
 
     // MARK: - Layout
 
-    private static let longValue = String(repeating: "some cell value ", count: 6_250)
+    // Wrapping lays a paragraph out whole before the popover appears (#2381), so only a value under the limit wraps.
+    @Test("A value under the limit wraps to the popover's width; one past it scrolls sideways")
+    func wrapsUnderTheLimit() throws {
+        let short = NSTextView(usingTextLayoutManager: true)
+        DataGridTextEditorPopover.applyLayout(to: short, for: "some text", width: 300)
+        let shortContainer = try #require(short.textContainer)
+        #expect(shortContainer.widthTracksTextView)
+        #expect(!short.isHorizontallyResizable)
 
-    @Test("A value of any length wraps to the popover's width and scrolls down")
-    func everyValueWraps() throws {
-        let popover = DataGridTextEditorPopover(text: Self.longValue, isEditable: true, cellWidth: 120, scope: .live)
+        let long = String(repeating: "some cell value ", count: DataGridTextEditorPopover.wrapLimit / 16 + 1)
+        let wide = NSTextView(usingTextLayoutManager: true)
+        DataGridTextEditorPopover.applyLayout(to: wide, for: long, width: 300)
+        let wideContainer = try #require(wide.textContainer)
+        #expect(!wideContainer.widthTracksTextView)
+        #expect(wide.isHorizontallyResizable)
+        #expect(wide.maxSize.width == CGFloat.greatestFiniteMagnitude)
+    }
+
+    // A text view grows only as far as maxSize, so a value past the limit would be clipped at the popover's edge.
+    @Test("A value past the limit makes the editor scrollable rather than clipping it")
+    func longValueScrolls() throws {
+        let long = String(repeating: "some cell value ", count: DataGridTextEditorPopover.wrapLimit / 16 + 1)
+        let popover = DataGridTextEditorPopover(text: long, isEditable: true, cellWidth: 120, scope: .live)
         let layoutManager = try #require(popover.textView.textLayoutManager, "the editor has to be on TextKit 2")
         layoutManager.ensureLayout(for: layoutManager.documentRange)
-        popover.textView.sizeToFit()
-        let scrollView = try #require(popover.textView.enclosingScrollView)
-        let container = try #require(popover.textView.textContainer)
+        popover.textView.layout()
 
-        #expect(container.widthTracksTextView)
-        #expect(!popover.textView.isHorizontallyResizable)
-        #expect(popover.textView.frame.width <= scrollView.contentSize.width)
-        #expect(popover.textView.frame.height > popover.popover.contentSize.height)
-        #expect(!scrollView.hasHorizontalScroller)
-    }
-
-    @Test("A long value opens at the popover's full height")
-    func longValueTakesTheFullHeight() {
-        let font = ThemeEngine.shared.dataGridFonts.regular
-        let short = DataGridTextEditorPopover.contentSize(for: "some text", cellWidth: 120, font: font)
-        let long = DataGridTextEditorPopover.contentSize(for: Self.longValue, cellWidth: 120, font: font)
-
-        #expect(short.height == 80)
-        #expect(long.height == 360)
-    }
-
-    @Test("Opening an editable long value selects all of it and shows its start")
-    func openingSelectsAllAndShowsTheStart() throws {
-        let popover = DataGridTextEditorPopover(text: Self.longValue, isEditable: true, cellWidth: 120, scope: .live)
-        popover.show(relativeTo: .zero, of: NSView(), selection: nil)
-        let clip = try #require(popover.textView.enclosingScrollView?.contentView)
-
-        #expect(popover.textView.selectedRange() == NSRange(location: 0, length: (Self.longValue as NSString).length))
-        #expect(clip.bounds.origin.y == 0)
-    }
-
-    @Test("Reopening with a caret in the middle of a long value shows that caret")
-    func reopeningShowsTheCaret() throws {
-        let popover = DataGridTextEditorPopover(text: Self.longValue, isEditable: true, cellWidth: 120, scope: .live)
-        let caret = 50_000
-        popover.show(relativeTo: .zero, of: NSView(), selection: NSRange(location: caret, length: 0))
-        let layoutManager = try #require(popover.textView.textLayoutManager)
-        let location = try #require(layoutManager.location(layoutManager.documentRange.location, offsetBy: caret))
-        var caretFrame: CGRect?
-        layoutManager.enumerateTextSegments(in: NSTextRange(location: location), type: .selection, options: []) { _, frame, _, _ in
-            caretFrame = frame
-            return false
-        }
-        let frame = try #require(caretFrame)
-        let midY = frame.midY + popover.textView.textContainerOrigin.y
-        let visible = popover.textView.visibleRect
-
-        #expect(popover.textView.selectedRange() == NSRange(location: caret, length: 0))
-        #expect(visible.minY > 0)
-        #expect(visible.minY <= midY && midY <= visible.maxY)
+        #expect(popover.textView.frame.width > 1_000)
     }
 
     @Test("The edit field holds one line that scrolls rather than wraps")

@@ -1,3 +1,8 @@
+//
+//  DataGridTextEditorPopover.swift
+//  TablePro
+//
+
 import AppKit
 import TableProTheme
 
@@ -8,6 +13,9 @@ final class DataGridTextEditorPopover: NSObject, NSPopoverDelegate, NSTextViewDe
         case commit(CellEditorMovement?)
         case cancel
     }
+
+    // Wrapping lays a paragraph out whole first: 206 ms at 256 KB and 816 ms at 1 MB, 7 ms unwrapped (#2381).
+    static let wrapLimit = 65_536
 
     private static let minimumWidth: CGFloat = 320
     private static let maximumWidth: CGFloat = 560
@@ -48,7 +56,8 @@ final class DataGridTextEditorPopover: NSObject, NSPopoverDelegate, NSTextViewDe
         textView.textColor = .textColor
         textView.backgroundColor = .textBackgroundColor
         textView.textContainerInset = NSSize(width: 4, height: 6)
-        Self.applyLayout(to: textView, width: scrollView.contentSize.width)
+        Self.applyLayout(to: textView, for: text, width: scrollView.contentSize.width)
+        scrollView.hasHorizontalScroller = !Self.wraps(text)
         self.textView = textView
         super.init()
 
@@ -72,15 +81,23 @@ final class DataGridTextEditorPopover: NSObject, NSPopoverDelegate, NSTextViewDe
         popover.delegate = self
     }
 
-    // Every value wraps: an unwrapped 1 MB line costs 2 s and 370 MB to lay out, wrapped 0.1 s and 51 MB.
-    static func applyLayout(to textView: NSTextView, width: CGFloat) {
+    static func wraps(_ text: String) -> Bool {
+        (text as NSString).length <= wrapLimit
+    }
+
+    // maxSize stays unbounded, or a long line is clipped at the popover's edge instead of scrolling.
+    static func applyLayout(to textView: NSTextView, for text: String, width: CGFloat) {
+        let unbounded = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.minSize = .zero
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.maxSize = unbounded
         textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        let wrapping = wraps(text)
+        textView.isHorizontallyResizable = !wrapping
+        textView.autoresizingMask = wrapping ? [.width] : []
+        textView.textContainer?.widthTracksTextView = wrapping
+        textView.textContainer?.containerSize = wrapping
+            ? NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+            : unbounded
     }
 
     static func contentSize(for text: String, cellWidth: CGFloat, font: NSFont) -> NSSize {
@@ -97,7 +114,7 @@ final class DataGridTextEditorPopover: NSObject, NSPopoverDelegate, NSTextViewDe
         }
         let characterWidth = max(1, ("0" as NSString).size(withAttributes: [.font: font]).width)
         let charactersPerLine = max(1, Int((width - 16) / characterWidth))
-        let wrappedLines = text.utf16.count / charactersPerLine
+        let wrappedLines = wraps(text) ? (text.utf16.count / charactersPerLine) : 0
         let height = CGFloat(lines + wrappedLines) * lineHeight + 16
         return NSSize(width: width, height: min(max(height, minimumHeight), maximumHeight))
     }
@@ -115,8 +132,7 @@ final class DataGridTextEditorPopover: NSObject, NSPopoverDelegate, NSTextViewDe
         } else if isEditable {
             textView.selectAll(nil)
         }
-        // The selection's start only: the rect of a long wrapped selection lays the whole value out (#2381).
-        textView.scrollRangeToVisible(NSRange(location: textView.selectedRange().location, length: 0))
+        textView.scrollRangeToVisible(textView.selectedRange())
     }
 
     var isShown: Bool { popover.isShown && !hasEnded }
