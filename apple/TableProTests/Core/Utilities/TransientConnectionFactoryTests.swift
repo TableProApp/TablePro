@@ -99,4 +99,23 @@ struct TransientConnectionFactoryTests {
 
         #expect(trino.additionalFields["trinoSchema"] == "sales")
     }
+
+    @Test("A SQLite link opens the file its path names, titled by its name parameter or else its file")
+    func sqliteLinkNamesTheWindow() throws {
+        let named = TransientConnectionFactory.build(from: try parse("sqlite:///path/to/shop.sqlite?name=Shop"))
+        let unnamed = TransientConnectionFactory.build(from: try parse("sqlite:///path/to/shop.sqlite"))
+
+        #expect(named.database == "/path/to/shop.sqlite")
+        #expect(named.name == "Shop")
+        #expect(unnamed.name == "shop")
+    }
+
+    @Test("A DuckDB link keeps its path in the field a Finder open of the same file looks in")
+    func duckDBLinkFillsItsFileField() throws {
+        let connection = TransientConnectionFactory.build(from: try parse("duckdb:///path/to/analytics.duckdb?name=Sales"))
+
+        #expect(connection.additionalFields["duckdbFilePath"] == "/path/to/analytics.duckdb")
+        #expect(connection.database == "/path/to/analytics.duckdb")
+        #expect(connection.name == "Sales")
+    }
 }

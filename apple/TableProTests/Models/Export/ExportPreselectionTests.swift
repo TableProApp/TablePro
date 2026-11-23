@@ -146,6 +146,30 @@ struct ExportPreselectionTests {
         #expect(ExportPreselection.containers([.database("sales")]).singleTableName == nil)
     }
 
+    @MainActor
+    @Test("A file database names the export file by its file name, a server database by its name")
+    func defaultFileNameOfTheDatabase() {
+        let none = ExportPreselection.tables(names: [], scope: nil)
+        let two = ExportPreselection.tables(names: ["users", "orders"], scope: nil)
+
+        #expect(none.defaultFileName(database: "/path/to/shop.sqlite", type: .sqlite) == "shop")
+        #expect(two.defaultFileName(database: "/path/to/shop.sqlite", type: .sqlite) == "shop")
+        #expect(none.defaultFileName(database: "/path/to/ledger.beancount", type: .beancount) == "ledger")
+        #expect(none.defaultFileName(database: "sales", type: .postgresql) == "sales")
+        #expect(none.defaultFileName(database: "app.v2", type: .mysql) == "app.v2")
+        #expect(none.defaultFileName(database: "", type: .sqlite) == nil)
+    }
+
+    @MainActor
+    @Test("One table or one container names the export file before the database does")
+    func defaultFileNameOfASelection() {
+        let table = ExportPreselection.tables(names: ["users"], scope: nil)
+        let container = ExportPreselection.containers([.database("sales")])
+
+        #expect(table.defaultFileName(database: "/path/to/shop.sqlite", type: .sqlite) == "users")
+        #expect(container.defaultFileName(database: "app", type: .postgresql) == "sales")
+    }
+
     /// The dialog opens its own connection to whichever database the containers name, so a
     /// container outside the active database is preselectable wherever that is possible.
     @Test("Containers in any reachable database can be preselected")
