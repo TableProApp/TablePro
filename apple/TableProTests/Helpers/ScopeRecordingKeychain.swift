@@ -10,6 +10,19 @@ final class ScopeRecordingKeychain: KeychainStoring, @unchecked Sendable {
     private var unreadableKeys: Set<String> = []
     private var failingKeys: Set<String> = []
     private var failingSyncedRemovals: Set<String> = []
+    private var readLog: [Read] = []
+
+    struct Read: Equatable, Sendable {
+        let key: String
+        let deviceOnly: Bool
+        let onMainThread: Bool
+    }
+
+    var reads: [Read] {
+        lock.lock()
+        defer { lock.unlock() }
+        return readLog
+    }
 
     func seedSynced(_ value: String, forKey key: String) {
         lock.lock()
@@ -98,6 +111,7 @@ final class ScopeRecordingKeychain: KeychainStoring, @unchecked Sendable {
     func readStringResult(forKey key: String, deviceOnly: Bool) -> KeychainStringResult {
         lock.lock()
         defer { lock.unlock() }
+        readLog.append(Read(key: key, deviceOnly: deviceOnly, onMainThread: pthread_main_np() != 0))
         guard !unreadableKeys.contains(key) else { return .locked }
         let value = deviceOnly ? local[key] ?? synced[key] : synced[key] ?? local[key]
         return value.map { .found($0) } ?? .notFound

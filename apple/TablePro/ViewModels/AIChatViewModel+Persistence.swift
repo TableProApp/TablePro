@@ -96,6 +96,16 @@ extension AIChatViewModel {
         }
     }
 
+    // A deleted session's cancelled tool round can still finish; with no turns left it has nothing to save.
+    func forgetTranscript() {
+        transcriptEpoch &+= 1
+        transcriptLoad?.cancel()
+        transcriptLoad = nil
+        messages = []
+        activeConversationID = nil
+        conversationToRestore = nil
+    }
+
     // Termination is the only caller.
     func persistCurrentConversationSynchronously() {
         guard let conversation = snapshotCurrentConversation() else { return }
