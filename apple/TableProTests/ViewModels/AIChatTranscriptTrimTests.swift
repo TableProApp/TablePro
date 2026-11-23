@@ -55,23 +55,50 @@ struct AIChatTranscriptTrimTests {
         return turns
     }
 
-    @Test("A trimmed tool transcript starts at a question, never at a result whose call was cut")
-    func trimStartsAtARound() {
+    private func text(of turn: ChatTurnWire?) -> String? {
+        turn?.blocks.first.flatMap { block -> String? in
+            guard case .text(let text) = block.kind else { return nil }
+            return text
+        }
+    }
+
+    @Test("A trimmed tool transcript loses its oldest call and result together and keeps the question")
+    func trimCutsWholePairs() {
         let viewModel = AIChatViewModel()
         viewModel.messages = toolTranscript().map { ChatTurn(wire: $0) }
 
         viewModel.trimMessagesIfNeeded()
 
         let wire = viewModel.messages.map { $0.wireSnapshot }
-        let opening = wire.first?.blocks.first.flatMap { block -> String? in
-            guard case .text(let text) = block.kind else { return nil }
-            return text
-        }
         #expect(wire.count <= AIChatViewModel.maxMessageCount)
-        #expect(wire.first?.role == .user)
-        #expect(opening == "question 1")
+        #expect(text(of: wire.first) == "question 0")
+        #expect(text(of: wire.dropFirst().first) == "answer 0")
         #expect(everyResultHasItsCall(wire))
         #expect(ChatToolCallRepair.answeringEveryToolCall(wire) == wire)
+    }
+
+    @Test("Continue after 150 tool rounds under one question still sends that question and no orphan result")
+    func continueAfterALongRunKeepsTheRound() {
+        var turns: [ChatTurnWire] = [ChatTurnWire(role: .user, blocks: [.text("audit every table")])]
+        for round in 0..<150 {
+            turns.append(ChatTurnWire(role: .assistant, blocks: [call("call_\(round)")]))
+            turns.append(ChatTurnWire(role: .user, blocks: [result("call_\(round)")]))
+        }
+        let viewModel = AIChatViewModel()
+        viewModel.messages = turns.map { ChatTurn(wire: $0) }
+        let placeholder = ChatTurn(role: .assistant, blocks: [], modelId: "test-model", providerId: nil)
+        viewModel.messages.append(placeholder)
+
+        viewModel.trimMessagesIfNeeded()
+
+        let request = viewModel.messages.dropLast().map { $0.wireSnapshot }
+        #expect(viewModel.messages.count <= AIChatViewModel.maxMessageCount)
+        #expect(viewModel.messages.last?.id == placeholder.id)
+        #expect(text(of: request.first) == "audit every table")
+        #expect(request.count > 1)
+        #expect(everyResultHasItsCall(request))
+        #expect(ChatToolCallRepair.answeringEveryToolCall(request) == request)
+        #expect(results(in: request.last ?? ChatTurnWire(role: .user, blocks: [])) == ["call_149"])
     }
 
     @Test("A transcript cut short on disk drops a leading result whose call is gone and keeps its text")

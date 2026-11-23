@@ -220,37 +220,87 @@ struct StatementSchemaScopeTests {
         #expect(resolved.explicitlyApproved.isEmpty)
     }
 
-    @Test("SQL Server list_tables still reads another schema, which it names to the driver")
-    func sqlServerListTablesTakesASchema() async throws {
-        var connection = TestFixtures.makeConnection(database: "warehouse", type: .mssql)
+    // The session and a pooled metadata connection both read through the one recording driver, whichever route serves.
+    private func recordingSession(
+        _ type: DatabaseType,
+        database: String,
+        schema: String
+    ) async throws -> (id: UUID, driver: SchemaRecordingDriver) {
+        var connection = TestFixtures.makeConnection(database: database, type: type)
         connection.aiPolicy = .alwaysAllow
-        let id = connection.id
         let recording = SchemaRecordingDriver()
         var session = ConnectionSession(
             connection: connection,
             driver: PluginDriverAdapter(connection: connection, pluginDriver: recording)
         )
-        session.browseSchema = "dbo"
         session.status = .connected
-        DatabaseManager.shared.injectSession(session, for: id)
+        DatabaseManager.shared.injectSession(session, for: connection.id)
         let pooled = PluginDriverAdapter(connection: connection, pluginDriver: recording)
         try await pooled.connect()
         MetadataConnectionPool.shared.injectEntry(
-            pooled, scope: DatabaseScope(connectionId: id, database: "warehouse", schema: "archive")
+            pooled, scope: DatabaseScope(connectionId: connection.id, database: database, schema: schema)
         )
-        defer {
-            MetadataConnectionPool.shared.closeAll(connectionId: id)
-            DatabaseManager.shared.removeSession(for: id)
-        }
+        return (connection.id, recording)
+    }
 
-        let result = try await ListTablesTool().perform(
-            arguments: .object(["connection_id": .string(id.uuidString), "schema": .string("archive")]),
+    private func removeRecordingSession(_ id: UUID) {
+        MetadataConnectionPool.shared.closeAll(connectionId: id)
+        DatabaseManager.shared.removeSession(for: id)
+    }
+
+    private func listTables(_ id: UUID, _ scope: [String: JsonValue]) async throws -> MCPToolCallResult {
+        try await ListTablesTool().perform(
+            arguments: .object(scope.merging(["connection_id": .string(id.uuidString)]) { first, _ in first }),
             context: MCPToolTestHarness.context(),
             services: services()
         )
+    }
+
+    @Test("SQL Server list_tables still reads another schema, which it names to the driver")
+    func sqlServerListTablesTakesASchema() async throws {
+        let (id, recording) = try await recordingSession(.mssql, database: "warehouse", schema: "archive")
+        defer { removeRecordingSession(id) }
+
+        let result = try await listTables(id, ["schema": .string("archive")])
 
         #expect(!result.isError)
         #expect(result.structuredContent?["schema"]?.stringValue == "archive")
         #expect(recording.requestedSchemas.contains("archive"))
+    }
+
+    @Test("SQLite list_tables reads an attached database named as the schema")
+    func sqliteListTablesReadsAnAttachedSchema() async throws {
+        let (id, recording) = try await recordingSession(.sqlite, database: "prod.sqlite", schema: "auth")
+        defer { removeRecordingSession(id) }
+
+        let result = try await listTables(id, ["schema": .string("auth")])
+
+        let tables = result.structuredContent?["tables"]?.arrayValue ?? []
+        #expect(!result.isError)
+        #expect(recording.requestedSchemas.contains("auth"))
+        #expect(tables.count == 1)
+    }
+
+    @Test("SQLite list_tables naming another database file is still refused, since the connection reads only its own")
+    func sqliteListTablesRefusesAnotherFile() async throws {
+        let (id, recording) = try await recordingSession(.sqlite, database: "prod.sqlite", schema: "auth")
+        defer { removeRecordingSession(id) }
+
+        await #expect(throws: (any Error).self) {
+            _ = try await listTables(id, ["database": .string("staging.sqlite")])
+        }
+        #expect(recording.requestedSchemas.isEmpty)
+    }
+
+    @Test("SQLite execute_query naming an attached schema is still refused, since SQL runs unqualified there")
+    func sqliteExecuteQueryRefusesASchema() async {
+        let driver = session(.sqlite)
+        defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
+
+        await #expect(throws: (any Error).self) {
+            _ = try await executeQuery(driver, schema: "auth")
+        }
+
+        #expect(driver.sentStatements.isEmpty && driver.sentBatches.isEmpty)
     }
 }

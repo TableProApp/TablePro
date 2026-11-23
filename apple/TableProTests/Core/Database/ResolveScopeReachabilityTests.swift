@@ -42,17 +42,19 @@ struct ResolveScopeReachabilityTests {
         #expect(unnamed.database == "prod.sqlite")
     }
 
-    @Test("An engine with no schemas refuses a schema, and one that switches databases still takes another database")
-    func schemaLessEngineRefusesASchema() async throws {
+    @Test("An engine with no schema switching refuses a schema for SQL, hands it to a catalog read, and takes another database")
+    func schemaLessEngineRefusesASchemaForSQL() async throws {
         let driver = session(.mysql, database: "shop")
         defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
         let bridge = DatabaseAccessBridge()
         let id = driver.connection.id
 
         await #expect(throws: DatabaseAccessError.self) {
-            _ = try await bridge.resolveScope(connectionId: id, database: nil, schema: "archive")
+            _ = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: "archive")
         }
+        let catalog = try await bridge.resolveScope(connectionId: id, database: nil, schema: "archive")
         let other = try await bridge.resolveScope(connectionId: id, database: "warehouse", schema: nil)
+        #expect(catalog.schema == "archive")
         #expect(other.database == "warehouse")
     }
 

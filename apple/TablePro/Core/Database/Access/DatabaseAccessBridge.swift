@@ -265,7 +265,7 @@ internal actor DatabaseAccessBridge {
                 String(localized: "No database to run against. Pass a database name.")
             )
         }
-        if let refusal = refusal(for: scope, manager: manager) {
+        if let refusal = databaseRefusal(for: scope, manager: manager) {
             throw DatabaseAccessError.invalidArgument(refusal)
         }
         guard runsStatements, let session = manager.session(for: connectionId),
@@ -284,27 +284,20 @@ internal actor DatabaseAccessBridge {
         return DatabaseScope(connectionId: scope.connectionId, database: scope.database, schema: nil)
     }
 
-    // Pinning skips a container the engine cannot switch to, so the call would run where the session already is while
-    // the caller, and an approval, name another.
+    // A fixed-database engine can neither run SQL in another database nor read its catalog, so the call would answer
+    // for the session's own database while the caller, and an approval, name another. A schema goes to a catalog read
+    // as named; only SQL the caller wrote is held to what a schema switch scopes.
     @MainActor
-    private static func refusal(for scope: DatabaseScope, manager: DatabaseManager) -> String? {
+    private static func databaseRefusal(for scope: DatabaseScope, manager: DatabaseManager) -> String? {
         guard let session = manager.session(for: scope.connectionId) else { return nil }
-        let databaseType = session.connection.type
         let current = session.resolvedBrowseDatabase
-        if !scope.isServerScoped, scope.database != current,
-           !manager.pluginManager.supportsDatabaseSwitching(for: databaseType) {
-            return String(
-                format: String(localized: "This connection cannot run against database %1$@, only its own: %2$@. Leave database out or pass %2$@."),
-                scope.database,
-                current
-            )
-        }
-        guard let schema = scope.schema, schema != session.browseSchema,
-              !manager.pluginManager.supportsSchemaSwitching(for: databaseType)
+        guard !scope.isServerScoped, scope.database != current,
+              !manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)
         else { return nil }
         return String(
-            format: String(localized: "This connection has no schema to switch to, so it cannot run against schema %@. Leave schema out."),
-            schema
+            format: String(localized: "This connection cannot run against database %1$@, only its own: %2$@. Leave database out or pass %2$@."),
+            scope.database,
+            current
         )
     }
 
