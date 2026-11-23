@@ -80,6 +80,9 @@ struct VimChangeDraft {
     // Where the last edit left the caret, so a move no edit made shows.
     var insertCaret = 0
     var editedSinceCaret = false
+    // Where a caret move left the caret. What is typed next starts a new insert there; until then the insert before
+    // the move is the change.
+    var movedCaret: Int?
     // The selection as the last Visual mode command found it, where that command's keys start and the register it got.
     var visualExtent: VimVisualExtent?
     var visualCommandStart = 0

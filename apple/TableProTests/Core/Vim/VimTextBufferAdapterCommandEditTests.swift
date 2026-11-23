@@ -90,6 +90,11 @@ struct VimTextBufferAdapterCommandEditTests {
         #expect(run("iab\u{F702}X\u{1B}l.", on: "", at: 0) == "aXXb")
     }
 
+    @Test("A move in Insert mode with nothing typed after it leaves the insert before it for .")
+    func moveWithNothingTypedAfterItKeepsTheInsert() {
+        #expect(run("iabc\u{F702}\u{1B}.", on: "", at: 0) == "aabcbc")
+    }
+
     @Test("A click in Insert mode starts a new insert, so . repeats only what was typed after it")
     func clickInInsertModeStartsANewInsert() {
         let editor = VimEditor("", caret: 0)

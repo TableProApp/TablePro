@@ -32,6 +32,7 @@ extension VimEngine {
         }
         guard !mode.isInsert else {
             if changeDraft?.insertedRange != nil, engineApplies(char) {
+                if let moved = changeDraft?.movedCaret { restartInsert(at: moved) }
                 let typed = takeTypedStep()
                 changeDraft?.insertSteps += [typed, .key(char)].compactMap { $0 }
             }
@@ -191,7 +192,9 @@ extension VimEngine {
 
     // Keeps the range of the text typed since Insert or Replace mode began in step with every edit, typed or not.
     func noteInsertedText(in range: NSRange, with replacement: String) {
-        guard mode.isInsert, let inserted = changeDraft?.insertedRange else { return }
+        guard mode.isInsert, changeDraft?.insertedRange != nil else { return }
+        if let moved = changeDraft?.movedCaret { restartInsert(at: moved) }
+        guard let inserted = changeDraft?.insertedRange else { return }
         changeDraft?.editedSinceCaret = true
         let replacementLength = (replacement as NSString).length
         let delta = replacementLength - range.length
@@ -220,8 +223,8 @@ extension VimEngine {
     }
 
     // A selection change right after an edit is where that edit left the caret, and one to the same place repeats it.
-    // Any other is a move: arrows, Home and End, a click. In Vim a move in Insert or Replace mode starts a new insert
-    // where it lands, and `.` repeats only what is typed after it.
+    // Any other is a move: arrows, Home and End, a click. In Vim, text typed after a move in Insert or Replace mode is a
+    // new insert, and `.` repeats only it; with nothing typed after the move, `.` repeats the insert before it.
     func selectionDidChange() {
         guard mode.isInsert, !isRepeatingChange, let draft = changeDraft, draft.insertedRange != nil,
               let caret = buffer?.selectedRange().location else { return }
@@ -229,7 +232,10 @@ extension VimEngine {
             changeDraft?.insertCaret = caret
             changeDraft?.editedSinceCaret = false
         } else if caret != draft.insertCaret {
-            restartInsert(at: caret)
+            changeDraft?.movedCaret = caret
+            changeDraft?.insertCaret = caret
+            insertRepeat = nil
+            closeInsertUndoStep()
         }
     }
 
@@ -242,6 +248,7 @@ extension VimEngine {
         changeDraft?.insertedRange = NSRange(location: caret, length: 0)
         changeDraft?.insertCaret = caret
         changeDraft?.editedSinceCaret = false
+        changeDraft?.movedCaret = nil
         insertRepeat = nil
         closeInsertUndoStep()
     }
