@@ -67,4 +67,7 @@ protocol VimTextBuffer: AnyObject {
     func undo()
 
     func redo()
+
+    // One undo takes back every edit `edits` makes.
+    func performAsOneUndoStep(_ edits: () -> Void)
 }

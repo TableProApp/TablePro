@@ -163,6 +163,17 @@ final class VimTextBufferAdapter: VimTextBuffer {
         textView.undoManager?.redo()
     }
 
+    // The undo manager ignores a nested begin but ends at the first end, so only the outermost call groups.
+    func performAsOneUndoStep(_ edits: () -> Void) {
+        guard let undoManager = textView?.editorUndoManager, !undoManager.isGrouping else {
+            edits()
+            return
+        }
+        undoManager.beginUndoGrouping()
+        defer { undoManager.endUndoGrouping() }
+        edits()
+    }
+
     func wordEndBackward(from offset: Int) -> Int {
         guard let text else { return 0 }
         return VimWordScanner.wordEndBackward(from: offset, in: text)

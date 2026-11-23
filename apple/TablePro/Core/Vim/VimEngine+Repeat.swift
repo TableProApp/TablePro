@@ -204,7 +204,7 @@ extension VimEngine {
     // A count given to `.` replaces the change's own, and the change keeps it, as in Vim.
     func repeatLastChange(count: Int?) {
         changeDraft = nil
-        guard !isRepeatingChange, var change = lastChange else { return }
+        guard !isRepeatingChange, var change = lastChange, let buffer else { return }
         if let count {
             change.keys = String(count).map { VimChangeKey(character: $0, shift: false, isCount: true) }
                 + change.keys.filter { !$0.isCount }
@@ -217,7 +217,12 @@ extension VimEngine {
             isRepeatingChange = false
             macroRecording = recording
         }
-        if let visual = change.visual, let buffer {
+        // One `.` is one undo step, as in Vim, though the operator's delete and the typed text are separate edits.
+        buffer.performAsOneUndoStep { replay(change, in: buffer) }
+    }
+
+    private func replay(_ change: VimChange, in buffer: VimTextBuffer) {
+        if let visual = change.visual {
             selectVisualExtent(visual.extent, in: buffer)
             for key in visual.operatorKeys {
                 _ = process(key.character, shift: key.shift)
@@ -227,7 +232,7 @@ extension VimEngine {
                 _ = process(key.character, shift: key.shift)
             }
         }
-        if let buffer, mode.isInsert {
+        if mode.isInsert {
             let pending = insertRepeat
             insertRepeat = nil
             let steps = change.insertSteps ?? []
