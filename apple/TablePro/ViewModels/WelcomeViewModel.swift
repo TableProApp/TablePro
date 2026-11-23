@@ -390,15 +390,28 @@ final class WelcomeViewModel: ObservableObject {
 
     private func scheduleRebuild(previous: String) {
         searchDebounceTask?.cancel()
+        searchDebounceTask = nil
         if searchText.isEmpty || previous.isEmpty {
             rebuildOutline()
             return
         }
         searchDebounceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: Self.searchDebounceNanoseconds)
-            guard !Task.isCancelled else { return }
-            self?.rebuildOutline()
+            guard !Task.isCancelled, let self else { return }
+            searchDebounceTask = nil
+            rebuildOutline()
         }
+    }
+
+    // Return can arrive inside the debounce; picking the first row then picked it from the list for
+    // fewer typed characters, and the late rebuild dropped that row and the selection with it.
+    func submitSearch() {
+        if let pending = searchDebounceTask {
+            pending.cancel()
+            searchDebounceTask = nil
+            rebuildOutline()
+        }
+        focusList(selectFirstRow: true)
     }
 
     func setSortMode(_ mode: LibrarySortMode) {

@@ -39,7 +39,12 @@ final class StatementRunController {
 
     var sizeLimit = StatementRunController.defaultSizeLimit
     var grammar: SQLLexicalGrammar = .ansi {
-        didSet { if grammar != oldValue { caretIndex = nil } }
+        didSet {
+            if grammar != oldValue {
+                caretIndex = nil
+                dropRememberedStatement()
+            }
+        }
     }
 
     /// How the document divides into statements. JavaScript engines do not end a statement at every
@@ -49,6 +54,7 @@ final class StatementRunController {
             if statementModel != oldValue {
                 caretIndex = nil
                 caretTable = nil
+                dropRememberedStatement()
             }
         }
     }
@@ -58,6 +64,14 @@ final class StatementRunController {
     private var caretTable: QueryStatementCaretTable?
     private weak var caretIndexStorage: NSTextStorage?
     private var caretIndexEdits: StorageEditObservation?
+    // Completion asks for the caret the band just resolved, so a long statement is not scanned twice per key.
+    private var rememberedStatement: (cursor: Int, statement: SQLStatementScanner.LocatedStatement)?
+    // An index warmed off the main thread comes back after the text may have moved on. `indexEpoch` moves when the
+    // index is dropped; the edits since the warm began trim it to the text as it is now.
+    private var indexEpoch = 0
+    private var editSerial = 0
+    private var recentEditLocations: [Int] = []
+    private static let recentEditLimit = 512
 
     var caretIndexUnitsScanned: Int {
         caretIndex?.unitsScanned ?? 0
@@ -190,16 +204,11 @@ final class StatementRunController {
         guard (text as NSString).length <= sizeLimit else { return nil }
         guard let selection = controller.cursorPositions.first, selection.range.length == 0 else { return nil }
 
-        let statement = QueryStatementScanner.locatedStatementAtCursor(
-            in: text,
-            cursorPosition: selection.range.location,
-            model: statementModel,
-            grammar: grammar
-        )
-        guard statement.hasContent, statement.contentRange.length > 0 else { return nil }
+        let located = statement(at: selection.range.location, in: text, storage: textView.textStorage)
+        guard located.hasContent, located.contentRange.length > 0 else { return nil }
         return (
-            (text as NSString).substring(with: statement.contentRange),
-            statement.contentRange.location
+            (text as NSString).substring(with: located.contentRange),
+            located.contentRange.location
         )
     }
 
@@ -210,6 +219,92 @@ final class StatementRunController {
         case .next:
             return QueryStatementScanner.statementStart(after: offset, in: text, model: statementModel, grammar: grammar)
         }
+    }
+
+    // `text` is the storage's text as it is now.
+    func statement(at cursor: Int, in text: String, storage: NSTextStorage?) -> SQLStatementScanner.LocatedStatement {
+        guard let storage else {
+            return QueryStatementScanner.locatedStatementAtCursor(
+                in: text, cursorPosition: cursor, model: statementModel, grammar: grammar
+            )
+        }
+        return indexedStatement(at: cursor, in: text, storage: storage)
+    }
+
+    // Only where the band keeps the index warm at the caret. `text` is the storage's text as it is now.
+    func maintainedStatement(
+        at cursor: Int,
+        in text: String,
+        storage: NSTextStorage
+    ) -> (statement: SQLStatementScanner.LocatedStatement, grammar: SQLLexicalGrammar)? {
+        guard statementModel == .sql, isHighlightEnabled, (text as NSString).length <= sizeLimit else { return nil }
+        return (indexedStatement(at: cursor, in: text, storage: storage), grammar)
+    }
+
+    // A document the band does not keep is scanned off the main thread on the caller's snapshot. The index the scan
+    // leaves is kept for the next request, trimmed to any edit made while it ran.
+    func warmedStatement(
+        at cursor: Int,
+        in text: String,
+        storage: NSTextStorage,
+        grammar requested: SQLLexicalGrammar
+    ) async -> SQLStatementScanner.LocatedStatement? {
+        guard statementModel == .sql, grammar == requested else { return nil }
+        if let maintained = maintainedStatement(at: cursor, in: text, storage: storage) {
+            return maintained.statement
+        }
+        let ticket = beginWarm(storage: storage)
+        if let remembered = rememberedStatement, remembered.cursor == cursor {
+            return remembered.statement
+        }
+        let (statement, warmed) = await Self.locate(cursor, in: text, using: ticket.index)
+        finishWarm(ticket, warmed: warmed, cursor: cursor, statement: statement)
+        return statement
+    }
+
+    struct WarmTicket {
+        let epoch: Int
+        let serial: Int
+        let index: SQLStatementCursorIndex
+    }
+
+    func beginWarm(storage: NSTextStorage) -> WarmTicket {
+        if caretIndexStorage !== storage {
+            observeEdits(on: storage)
+        }
+        if storage.editedMask.contains(.editedCharacters) {
+            textDidChange(at: storage.editedRange.location)
+        }
+        return WarmTicket(epoch: indexEpoch, serial: editSerial, index: caretIndex ?? SQLStatementCursorIndex(grammar: grammar))
+    }
+
+    // Dropped when the index was dropped meanwhile, or when more edits came in than are remembered.
+    func finishWarm(
+        _ ticket: WarmTicket,
+        warmed: SQLStatementCursorIndex,
+        cursor: Int,
+        statement: SQLStatementScanner.LocatedStatement
+    ) {
+        let missed = editSerial - ticket.serial
+        guard ticket.epoch == indexEpoch, missed <= recentEditLocations.count else { return }
+        var index = warmed
+        if let floor = recentEditLocations.suffix(missed).min() {
+            index.textDidChange(at: floor)
+        } else {
+            rememberedStatement = (cursor, statement)
+        }
+        caretIndex = index
+    }
+
+    @concurrent
+    nonisolated private static func locate(
+        _ cursor: Int,
+        in text: String,
+        using index: SQLStatementCursorIndex
+    ) async -> (SQLStatementScanner.LocatedStatement, SQLStatementCursorIndex) {
+        var index = index
+        let statement = index.statementAtCursor(cursor, in: text)
+        return (statement, index)
     }
 
     /// Moves the band to the statement the caret is in. Call after the selection changes.
@@ -223,6 +318,7 @@ final class StatementRunController {
         pendingRefresh = nil
         caretIndex = nil
         caretTable = nil
+        dropRememberedStatement()
         caretIndexStorage = nil
         caretIndexEdits = nil
         controller?.runnableStatements = []
@@ -248,12 +344,7 @@ final class StatementRunController {
             return
         }
 
-        let resolved = QueryStatementScanner.locatedStatementAtCursor(
-            in: text,
-            cursorPosition: statement.range.location,
-            model: statementModel,
-            grammar: grammar
-        )
+        let resolved = self.statement(at: statement.range.location, in: text, storage: textView.textStorage)
         guard resolved.hasContent, resolved.contentRange == statement.range else {
             refreshControls(in: controller)
             return
@@ -277,19 +368,9 @@ final class StatementRunController {
         let text = textView.string
         guard (text as NSString).length <= sizeLimit else { return nil }
 
-        let statement: SQLStatementScanner.LocatedStatement
-        if let storage = textView.textStorage {
-            statement = indexedStatement(at: selection.range.location, in: text, storage: storage)
-        } else {
-            statement = QueryStatementScanner.locatedStatementAtCursor(
-                in: text,
-                cursorPosition: selection.range.location,
-                model: statementModel,
-                grammar: grammar
-            )
-        }
-        guard statement.hasContent, statement.contentRange.length > 0 else { return nil }
-        return statement.contentRange
+        let located = statement(at: selection.range.location, in: text, storage: textView.textStorage)
+        guard located.hasContent, located.contentRange.length > 0 else { return nil }
+        return located.contentRange
     }
 
     private func indexedStatement(
@@ -304,6 +385,15 @@ final class StatementRunController {
         if storage.editedMask.contains(.editedCharacters) {
             textDidChange(at: storage.editedRange.location)
         }
+        if let remembered = rememberedStatement, remembered.cursor == cursor {
+            return remembered.statement
+        }
+        let statement = resolvedStatement(at: cursor, in: text)
+        rememberedStatement = (cursor, statement)
+        return statement
+    }
+
+    private func resolvedStatement(at cursor: Int, in text: String) -> SQLStatementScanner.LocatedStatement {
         guard statementModel == .sql else {
             if caretTable == nil {
                 caretTable = QueryStatementCaretTable(text: text, model: statementModel)
@@ -324,11 +414,24 @@ final class StatementRunController {
     private func textDidChange(at location: Int) {
         caretIndex?.textDidChange(at: location)
         caretTable = nil
+        rememberedStatement = nil
+        editSerial += 1
+        recentEditLocations.append(location)
+        if recentEditLocations.count > Self.recentEditLimit {
+            recentEditLocations.removeFirst(recentEditLocations.count - Self.recentEditLimit)
+        }
+    }
+
+    private func dropRememberedStatement() {
+        rememberedStatement = nil
+        indexEpoch &+= 1
+        recentEditLocations.removeAll()
     }
 
     private func observeEdits(on storage: NSTextStorage) {
         caretIndex = nil
         caretTable = nil
+        dropRememberedStatement()
         caretIndexStorage = storage
         // Every way the text changes passes through the storage, including the ones that skip the editor's delegate.
         let token = NotificationCenter.default.addObserver(

@@ -12,6 +12,7 @@ extension FindPanelViewModel {
         guard let target = target, let emphasisManager = target.textView.emphasisManager else {
             return
         }
+        refreshMatchesIfStale()
 
         // Clear existing emphases
         emphasisManager.removeEmphases(for: EmphasisGroup.find)
@@ -32,6 +33,7 @@ extension FindPanelViewModel {
     }
 
     func flashCurrentMatch() {
+        refreshMatchesIfStale()
         guard let target = target,
               let emphasisManager = target.textView.emphasisManager,
               let currentFindMatchIndex else {
