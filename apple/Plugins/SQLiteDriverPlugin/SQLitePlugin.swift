@@ -365,22 +365,19 @@ nonisolated final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sen
         return try await boundedQueryFromStream(query: query, rowCap: rowCap)
     }
 
-    /// A capped read from a caller that resolves its own cap, the MCP bridge among them, still
-    /// streams. Routing every uncapped statement through the stream is what made a DML statement
-    /// report no row count, because a stepped statement carries its `sqlite3_changes` nowhere.
+    // An uncapped statement never streams: a stepped one carries its `sqlite3_changes` nowhere, so a write would report
+    // no row count. A capped read with parameters stops in the step loop instead; SQLite makes every change of a
+    // RETURNING statement on its first step, so stopping there loses no write.
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
-        if parameters == nil, let cap = rowCap, cap > 0,
-           let bounded = try await executeBoundedQuery(query: query, rowCap: cap) {
-            return bounded
+        guard let parameters else {
+            if let cap = rowCap, cap > 0, let bounded = try await executeBoundedQuery(query: query, rowCap: cap) {
+                return bounded
+            }
+            return Self.capped(try await execute(query: query), to: rowCap)
         }
-
-        let raw: PluginQueryResult
-        if let parameters {
-            raw = try await executeParameterized(query: query, parameters: parameters)
-        } else {
-            raw = try await execute(query: query)
-        }
-        return Self.capped(raw, to: rowCap)
+        let bound = SQLiteReadBound.ifSet(rowCap: Self.returnsRows(query) ? rowCap : nil, byteLimit: nil)
+        let raw = try await backend.executeQuery(query, parameters: parameters, rules: .unrestricted, bound: bound)
+        return Self.capped(Self.queryResult(raw), to: rowCap)
     }
 
     // A capped statement that returns rows stops in the step loop one row past the cap, a read-only one also at the byte
