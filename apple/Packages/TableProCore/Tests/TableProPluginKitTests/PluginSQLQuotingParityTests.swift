@@ -38,4 +38,25 @@ struct PluginSQLQuotingParityTests {
             #expect(PluginSQLQuoting.lineCommentText(value) == SQLQuoting.lineCommentText(value))
         }
     }
+
+    // The generator above almost never makes a value with nothing to escape, which is the export's common case.
+    @Test("PluginKit quotes clean values and single triggers exactly as TableProSQLQuoting does")
+    func sameOutputForCleanValues() {
+        var values = ["", "plain", "Hà Nội", "🎉 party", "12345", String(repeating: "abc ", count: 300)]
+        for trigger in ["'", "\0", "\\", "\n", "\r", "\t", "\"", "`", "\u{7F}", "\u{01}"] {
+            values += [trigger, "a" + trigger, trigger + "b", "a" + trigger + "b", trigger + "1"]
+        }
+        for value in values {
+            #expect(PluginSQLQuoting.stringLiteral(value) == SQLQuoting.stringLiteral(value))
+            #expect(PluginSQLQuoting.stringLiteralBody(value) == SQLQuoting.stringLiteralBody(value))
+            #expect(
+                PluginSQLQuoting.stringLiteral(value, escapes: .backslash)
+                    == SQLQuoting.stringLiteral(value, escapes: .backslash)
+            )
+            #expect(
+                PluginSQLQuoting.stringLiteral(value, escapes: .googleSQL)
+                    == SQLQuoting.stringLiteral(value, escapes: .googleSQL)
+            )
+        }
+    }
 }

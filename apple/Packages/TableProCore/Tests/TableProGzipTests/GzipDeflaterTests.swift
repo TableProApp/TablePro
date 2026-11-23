@@ -2,6 +2,7 @@ import Foundation
 import TableProGzip
 import TableProWireIO
 import Testing
+import zlib
 
 private enum DeflaterFixture {
     static func directory() throws -> URL {
@@ -124,4 +125,39 @@ func cancellationAfterTheLastChunkThrows() throws {
         })
     }
     #expect(!FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)))
+}
+
+// zlib's raw inflate, the reader a ZIP entry of method 8 gets.
+private func rawInflate(_ packed: Data, expectedCount: Int) throws -> Data {
+    var stream = z_stream()
+    guard inflateInit2_(&stream, -MAX_WBITS, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
+        throw GzipError.compressionFailed
+    }
+    defer { inflateEnd(&stream) }
+    var output = Data(count: max(expectedCount, 1))
+    let status = packed.withUnsafeBytes { input in
+        output.withUnsafeMutableBytes { out in
+            stream.next_in = UnsafeMutablePointer(mutating: input.bindMemory(to: UInt8.self).baseAddress)
+            stream.avail_in = uInt(input.count)
+            stream.next_out = out.bindMemory(to: UInt8.self).baseAddress
+            stream.avail_out = uInt(out.count)
+            return inflate(&stream, Z_FINISH)
+        }
+    }
+    #expect(status == Z_STREAM_END)
+    return output.prefix(Int(stream.total_out))
+}
+
+@Test("A raw stream has no gzip header and inflates back as a bare deflate stream", arguments: [0, 1, 4_096, 3 << 20])
+func rawDeflateRoundTrips(count: Int) throws {
+    let input = Data(DeflaterFixture.dumpText(lines: count / 40 + 1).prefix(count))
+    for level in [GzipDeflater.Level.standard, .fastest] {
+        var packed = Data()
+        let deflater = try GzipDeflater(container: .raw, level: level)
+        let sink: (UnsafeRawBufferPointer) throws -> Void = { packed.append($0.assumingMemoryBound(to: UInt8.self)) }
+        try input.withUnsafeBytes { try deflater.deflate($0, into: sink) }
+        try deflater.finish(into: sink)
+        #expect(packed.prefix(2) != Data([0x1F, 0x8B]))
+        #expect(try rawInflate(packed, expectedCount: input.count) == input)
+    }
 }

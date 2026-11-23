@@ -97,7 +97,7 @@ done
     ln -s "$source" "$SOURCES/spill_$(basename "$source")"
 done
 for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginRedirectRefusingDelegate \
-    PluginNameSpellings PluginExportOutputBuffer PluginExportSpelling PluginHexText; do
+    PluginNameSpellings PluginRowBatcher PluginExportOutputBuffer PluginExportSpelling PluginHexText; do
     [[ -f "$PLUGINS/Shared/$shared.swift" ]] || continue
     ln -s "$PLUGINS/Shared/$shared.swift" "$SOURCES/shared_$shared.swift"
 done

@@ -17,7 +17,7 @@ for folder in PostgreSQLDriverPlugin KingbaseESDriverPlugin; do
         ln -s "$source" "$SOURCES/${folder}_$(basename "$source")"
     done
 done
-for shared in PluginConnectTimeout PluginQueryTimeout PluginNameSpellings; do
+for shared in PluginConnectTimeout PluginQueryTimeout PluginNameSpellings PluginRowBatcher; do
     [[ -f "$ROOT/Plugins/Shared/$shared.swift" ]] && ln -s "$ROOT/Plugins/Shared/$shared.swift" "$SOURCES/$shared.swift"
 done
 ln -s "$ROOT/scripts/probes/kingbasees-probe.swift" "$SOURCES/Probe.swift"

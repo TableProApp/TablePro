@@ -1840,9 +1840,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             estimatedRowCount: nil
         )), to: continuation, stops: stops)
 
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
+        var batch = PluginRowBatcher()
         while let rowPtr = mysql_fetch_row(resultPtr) {
             if abort.isAborted || cancellationGate.isCancelled(generation) {
                 /// Same shape as the capped buffered read: stop the server first, then
@@ -1854,14 +1852,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 throw CancellationError()
             }
 
-            batch.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns))
             // A reader that left or a Stop is handled at the top of the loop.
-            if batch.count >= batchSize,
-               PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops) {
-                batch.removeAll(keepingCapacity: true)
+            if batch.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns)),
+               PluginRowStream.deliverBlocking(.rows(batch.rows), to: continuation, stops: stops) {
+                batch.removeAll()
             }
         }
-        let delivered = batch.isEmpty || PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops)
+        let delivered = batch.isEmpty
+            || PluginRowStream.deliverBlocking(.rows(batch.rows), to: continuation, stops: stops)
 
         if mysql_errno(mysql) != 0 {
             let error = noting(getError(), generation: generation)

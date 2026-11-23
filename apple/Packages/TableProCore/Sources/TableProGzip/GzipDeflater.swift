@@ -1,20 +1,39 @@
 import Foundation
 import zlib
 
-// zlib's gzip mode (window bits + 16) writes the header and the CRC and length trailer that gzip -d checks.
+// zlib's gzip mode (window bits + 16) writes the header and the CRC and length trailer that gzip -d checks. The raw
+// mode (negative window bits) writes a bare deflate stream with neither, which is what a ZIP entry of method 8 holds.
 public final class GzipDeflater {
+    public enum Container: Sendable {
+        case gzip
+        case raw
+    }
+
+    public enum Level: Sendable {
+        case standard
+        case fastest
+
+        var zlibLevel: Int32 {
+            switch self {
+            case .standard: Z_DEFAULT_COMPRESSION
+            case .fastest: Z_BEST_SPEED
+            }
+        }
+    }
+
     private let stream: UnsafeMutablePointer<z_stream>
     private let chunk: UnsafeMutableBufferPointer<UInt8>
     private var finished = false
 
     private static let chunkSize = 256 * 1_024
 
-    public init() throws(GzipError) {
+    public init(container: Container = .gzip, level: Level = .standard) throws(GzipError) {
         stream = .allocate(capacity: 1)
         stream.initialize(to: z_stream())
         chunk = .allocate(capacity: Self.chunkSize)
+        let windowBits = container == .gzip ? 16 + MAX_WBITS : -MAX_WBITS
         let status = deflateInit2_(
-            stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 16 + MAX_WBITS, 8, Z_DEFAULT_STRATEGY,
+            stream, level.zlibLevel, Z_DEFLATED, windowBits, 8, Z_DEFAULT_STRATEGY,
             ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)
         )
         guard status == Z_OK else {
