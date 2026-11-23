@@ -44,13 +44,9 @@ struct QueryParameterPanelView: View {
 
             Spacer()
 
-            Button("Clear All") {
-                for index in parameters.indices {
-                    parameters[index].value = ""
-                }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            Button("Clear All", action: clearAllValues)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
 
             Button(String(localized: "Close parameter panel"), systemImage: "xmark", action: onDismiss)
                 .labelStyle(.iconOnly)
@@ -61,6 +57,15 @@ struct QueryParameterPanelView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .paneBarBackground(Color(nsColor: .controlBackgroundColor))
+    }
+
+    // One write: the binding reads the tab as it was at render, so a write per row starts each from the old values.
+    func clearAllValues() {
+        parameters = parameters.map { parameter in
+            var cleared = parameter
+            cleared.value = ""
+            return cleared
+        }
     }
 
     private var parameterRows: some View {

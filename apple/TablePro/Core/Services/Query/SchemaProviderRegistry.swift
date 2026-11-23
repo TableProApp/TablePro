@@ -227,7 +227,7 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
                     await provider.resetForDatabase(
                         scope.database,
                         tables: tables,
-                        driver: driver,
+                        facts: CatalogDriverFacts(driver),
                         connection: resolvedConnection
                     )
                     await provider.setNamespaces(schemas: schemas, databases: databases)

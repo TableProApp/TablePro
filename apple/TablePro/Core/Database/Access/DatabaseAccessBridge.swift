@@ -240,7 +240,25 @@ internal actor DatabaseAccessBridge {
                     String(localized: "No database to run against. Pass a database name.")
                 )
             }
+            try Self.refuseUnreachable(scope, manager: manager)
             return scope
+        }
+    }
+
+    // Pinning skips a container the engine cannot switch to, so the call would run where the session already is while
+    // the caller, and an approval card, name the other one.
+    @MainActor
+    private static func refuseUnreachable(_ scope: DatabaseScope, manager: DatabaseManager) throws {
+        guard let session = manager.session(for: scope.connectionId) else { return }
+        let databaseType = session.connection.type
+        let current = session.resolvedBrowseDatabase
+        if !scope.isServerScoped, scope.database != current,
+           !manager.pluginManager.supportsDatabaseSwitching(for: databaseType) {
+            throw DatabaseAccessError.invalidArgument(String(
+                format: String(localized: "This connection cannot run against database %1$@, only its own: %2$@. Leave database out or pass %2$@."),
+                scope.database,
+                current
+            ))
         }
     }
 
@@ -529,14 +547,24 @@ internal actor DatabaseAccessBridge {
 
         let manager = await databaseManager
         let route = await MainActor.run { manager.executionRoute(for: scope) }
+        let (commitMode, grammar) = await MainActor.run {
+            (manager.commitMode(for: connectionId), SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: connectionId))
+        }
+        // A plan that runs the statement is held by Manual Commit as the statement would be, as the in-app Explain is.
+        let agentGuard = AgentTransactionGuard(
+            commitMode: commitMode, databaseType: databaseType, grammar: grammar, connectionId: connectionId
+        )
+        let gated = ExplainRequest.gatedSQL(subject: statement, runsStatement: step.runsStatement, databaseType: databaseType)
         let startTime = CFAbsoluteTimeGetCurrent()
         let statementRan = CatalogEvent.statementsRan(
             connectionId: connectionId, statements: [statement], databaseType: databaseType
         )
         let variantId = step.variantId
-        let result: QueryResult
+        var result: QueryResult
+        let tableEdits: SucceededStatements?
+        let transactionNotice: String?
         do {
-            result = try await runRacingTimeout(
+            (result, tableEdits, transactionNotice) = try await runRacingTimeout(
                 scope: scope,
                 route: route,
                 policy: policy,
@@ -545,7 +573,15 @@ internal actor DatabaseAccessBridge {
                 onLateCompletion: { CatalogChangeService.post(statementRan) }
             ) { driver in
                 reach.mark()
-                return try await driver.explainPlan(statement: statement, variantId: variantId)
+                let ran = try await agentGuard.running([gated], writes: writes, on: driver) { _ in
+                    try await driver.explainPlan(statement: statement, variantId: variantId)
+                }
+                let edits = writes
+                    ? await SucceededStatements.single(
+                        statement, scope: scope, databaseType: databaseType, grammar: grammar, ranOn: driver
+                    )
+                    : nil
+                return (ran.value, edits, ran.notice)
             }
         } catch {
             if writes {
@@ -555,6 +591,12 @@ internal actor DatabaseAccessBridge {
         }
         if writes {
             CatalogChangeService.post(statementRan)
+        }
+        if let tableEdits {
+            CatalogChangeService.post(.statementsSucceeded(tableEdits))
+        }
+        if let transactionNotice {
+            result.statusMessage = [result.statusMessage, transactionNotice].compactMap { $0 }.joined(separator: " ")
         }
         return StatementOutcome(
             result: result, executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000, budget: nil

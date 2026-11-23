@@ -121,7 +121,7 @@ struct ProfileStorageSafetyTests {
         let profile = CredentialProfile(name: "Prod reader", username: "app_reader")
         #expect(storage.addProfile(profile))
 
-        #expect(!storage.unlinkConnections(from: profile))
+        #expect(!storage.unlinkConnections(from: profile, byUser: true))
         #expect(!storage.deleteProfile(profile))
         #expect(storage.profile(for: profile.id) != nil)
     }
@@ -133,7 +133,7 @@ struct ProfileStorageSafetyTests {
         let profile = makeSSHProfile()
         #expect(storage.addProfile(profile))
 
-        #expect(!storage.unlinkConnections(fromProfile: profile))
+        #expect(!storage.unlinkConnections(fromProfile: profile, byUser: true))
         #expect(!storage.deleteProfile(profile))
         #expect(storage.profile(for: profile.id) != nil)
     }

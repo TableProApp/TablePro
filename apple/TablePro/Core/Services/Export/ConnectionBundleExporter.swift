@@ -86,6 +86,11 @@ internal struct ConnectionBundleExporter {
         return settings
     }
 
+    // A teammate's copy drops both on read, so publishing them would only leave a token typed into one in the shared copy.
+    func teamShareableSettings(for connection: DatabaseConnection) -> ExportableConnection {
+        portableSettings(for: connection).withoutStartupCommands().withoutTunnelCommand()
+    }
+
     func groupPath(for connection: DatabaseConnection) -> [String] {
         let groupsById = Dictionary(groups.loadGroups().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var path: [String] = []
@@ -102,9 +107,10 @@ internal struct ConnectionBundleExporter {
         tags.tags(for: connection.tagIds).map(\.name)
     }
 
+    // The Team Catalog's file, so its settings follow what a team may see.
     func connectionsOnlyBundle(for connections: [DatabaseConnection]) throws -> ConnectionBundle {
         try BundleExportAssembler.assemble(
-            exportInput(for: connections, includesCredentials: false, library: nil),
+            exportInput(for: connections, includesCredentials: false, library: nil, settings: teamShareableSettings(for:)),
             options: .connectionsOnly,
             appVersion: appVersion
         )
@@ -210,13 +216,14 @@ internal struct ConnectionBundleExporter {
     private func exportInput(
         for exported: [DatabaseConnection],
         includesCredentials: Bool,
-        library: SavedQueryLibrary?
+        library: SavedQueryLibrary?,
+        settings: ((DatabaseConnection) -> ExportableConnection)? = nil
     ) -> BundleExportInput {
         BundleExportInput(
             connections: exported.map { connection in
                 BundleExportInput.Connection(
                     id: connection.id,
-                    settings: portableSettings(for: connection, keepingLocalCredentials: true),
+                    settings: settings?(connection) ?? portableSettings(for: connection, keepingLocalCredentials: true),
                     groupId: connection.groupId,
                     tagIds: connection.tagIds,
                     credentialProfileId: connection.credentialMode.profileId,

@@ -107,7 +107,7 @@ final class SQLEditorController {
         applyInput(newInput)
         pushEditor()
         if switchesTab {
-            restoreTabHistory(of: newInput)
+            restoreSelection(from: restoreTabHistory(of: newInput), orRestoredRange: newInput.restoredCursorRange)
         }
 
         if newInput.pendingStatementJump != old.pendingStatementJump, let jump = newInput.pendingStatementJump {
@@ -151,26 +151,48 @@ final class SQLEditorController {
         Task { @MainActor in binding.wrappedValue = text }
     }
 
-    // One editor serves every query tab, and handing it another tab's text clears its history and Vim marks.
+    // One editor serves every query tab, and handing it another tab's text clears its history and Vim marks and
+    // leaves the outgoing tab's selection and scroll on it.
     private func saveTabHistory(of input: SQLEditorInput) {
         guard let tabID = input.tabID, let histories = input.undoHistories else { return }
         let undo = textViewController.takeUndoHistory()
-        let vimMarks = coordinator.vimDocumentMarks
-        guard undo != nil || vimMarks != nil else {
-            histories.store(nil, for: tabID)
-            return
-        }
-        let text = undo?.text ?? textViewController.textView.string
-        histories.store(EditorTabHistory(text: text, undo: undo, vimMarks: vimMarks), for: tabID)
+        histories.store(EditorTabHistory(
+            text: undo?.text ?? textViewController.textView.string,
+            undo: undo,
+            vimMarks: coordinator.vimDocumentMarks,
+            selection: textViewController.cursorPositions.map(\.range),
+            scrollPosition: textViewController.scrollPosition
+        ), for: tabID)
     }
 
-    // A tab whose text changed while it was away gets neither back.
-    private func restoreTabHistory(of input: SQLEditorInput) {
-        guard let tabID = input.tabID, let saved = input.undoHistories?.take(for: tabID) else { return }
+    // A tab whose text changed while it was away gets none of it back.
+    @discardableResult
+    private func restoreTabHistory(of input: SQLEditorInput) -> EditorTabHistory? {
+        guard let tabID = input.tabID, let saved = input.undoHistories?.take(for: tabID) else { return nil }
         let matches = saved.undo.map { textViewController.restoreUndoHistory($0) }
             ?? (saved.text as NSString).isEqual(to: textViewController.textView.string)
-        guard matches, let vimMarks = saved.vimMarks else { return }
-        coordinator.restoreVimDocumentMarks(vimMarks)
+        guard matches else { return nil }
+        if let vimMarks = saved.vimMarks {
+            coordinator.restoreVimDocumentMarks(vimMarks)
+        }
+        return saved
+    }
+
+    // A tab shown here before gets back its own selection and scroll; any other starts at its saved caret or the top.
+    private func restoreSelection(from history: EditorTabHistory?, orRestoredRange restoredRange: NSRange?) {
+        let controller = textViewController
+        // The frame still has the outgoing document's height until the next layout pass, which would clamp the scroll.
+        controller.textView.updateFrameIfNeeded()
+        if let history {
+            let selection = history.selection.isEmpty ? [NSRange(location: 0, length: 0)] : history.selection
+            controller.setCursorPositions(selection.map { CursorPosition(range: $0) })
+            controller.scrollPosition = history.scrollPosition
+            return
+        }
+        controller.scrollPosition = .zero
+        let length = controller.textView.textStorage.length
+        let caret = (restoredRange ?? NSRange(location: 0, length: 0)).clampedToTextLength(length)
+        controller.setCursorPositions([CursorPosition(range: caret)], scrollToVisible: restoredRange != nil)
     }
 
     private func applyInput(_ input: SQLEditorInput) {

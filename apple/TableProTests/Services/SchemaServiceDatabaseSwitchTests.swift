@@ -333,11 +333,12 @@ struct SchemaServiceDatabaseSwitchTests {
         #expect(!service.allLoadedTables(for: connectionId).contains { $0.name == "ENTRIES" })
     }
 
-    @Test("A lazy load reads a kept catalog again until something has refreshed it")
+    @Test("A lazy load reads a kept catalog that can be stale again until something has refreshed it")
     func lazyLoadRefreshesAKeptCatalog() async {
         let service = SchemaService()
         let salesDriver = sales()
         await browse(service, database: "SALES", driver: salesDriver)
+        service.markAllStale(connectionId: connectionId)
         service.show(scope: scope("MARKETING"), type: connection.type)
         await browse(service, database: "MARKETING", driver: marketing())
         service.show(scope: scope("SALES"), type: connection.type)

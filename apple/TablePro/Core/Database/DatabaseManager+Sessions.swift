@@ -154,32 +154,33 @@ extension DatabaseManager {
             try Task.checkCancellation()
             try ensureAttemptIsCurrent(attempt, for: connection.id, driver: driver)
 
-            // Batch all session mutations into a single write to fire objectWillChange once.
-            if var session = activeSessions[connection.id] {
-                session.connection = successfulConnectionRecord(
-                    from: routedConnection,
-                    preservingSessionFieldsFrom: session.connection
-                )
-                dialedConnections[connection.id] = routedConnection
-                session.commitMode = session.connection.commitMode
-                session.driver = driver
-                session.status = driver.status
-                session.effectiveConnection = effectiveConnection
-                session.connectionWarning = openingWarning(driver: driver, startupFailures: startupFailures, for: connection.id)
-                // A connect answers whatever went wrong before it, including a reconnect that gave up on this entry.
-                session.liveness = .live
-                session.recovery = nil
-                disconnectReasons.removeValue(forKey: connection.id)
-                markSessionVerified(connection.id)
-                if let passwordOverride, !connection.usesIAMToken {
-                    session.cachedPassword = passwordOverride
-                    // Only once it authenticated: a mistyped answer shared with the profile locked every connection out.
-                    if promptsForPassword {
-                        promptedPasswords[promptCacheKey] = passwordOverride
-                    }
-                }
-                setSession(session, for: connection.id)
+            guard var session = activeSessions[connection.id] else {
+                throw abandonUnownedConnect(connection)
             }
+            // Batch all session mutations into a single write to fire objectWillChange once.
+            session.connection = successfulConnectionRecord(
+                from: routedConnection,
+                preservingSessionFieldsFrom: session.connection
+            )
+            dialedConnections[connection.id] = routedConnection
+            session.commitMode = session.connection.commitMode
+            session.driver = driver
+            session.status = driver.status
+            session.effectiveConnection = effectiveConnection
+            session.connectionWarning = openingWarning(driver: driver, startupFailures: startupFailures, for: connection.id)
+            // A connect answers whatever went wrong before it, including a reconnect that gave up on this entry.
+            session.liveness = .live
+            session.recovery = nil
+            disconnectReasons.removeValue(forKey: connection.id)
+            markSessionVerified(connection.id)
+            if let passwordOverride, !connection.usesIAMToken {
+                session.cachedPassword = passwordOverride
+                // Only once it authenticated: a mistyped answer shared with the profile locked every connection out.
+                if promptsForPassword {
+                    promptedPasswords[promptCacheKey] = passwordOverride
+                }
+            }
+            setSession(session, for: connection.id)
 
             // Before `finish`, so the clear is still the current attempt's to make.
             clearConnectionStage(for: connection.id)
@@ -332,6 +333,15 @@ extension DatabaseManager {
         if isAttemptCancelled(attempt, for: connection.id), activeSessions[connection.id] == nil {
             postDisconnectScripts.fire(for: connection.id)
         }
+    }
+
+    // An entry removed with no cancel reaching the attempt leaves nobody to close its tunnel or fire its script; the
+    // connect's catch disconnects the driver of a cancelled attempt.
+    private func abandonUnownedConnect(_ connection: DatabaseConnection) -> CancellationError {
+        invalidateConnectionAttempt(connection.id)
+        closeActiveTunnel(for: connection)
+        postDisconnectScripts.fire(for: connection.id)
+        return CancellationError()
     }
 
     private func isAttemptCancelled(_ attempt: Int, for connectionId: UUID) -> Bool {
@@ -806,6 +816,9 @@ extension DatabaseManager {
         }
         disconnectsInFlight.insert(sessionId)
         defer { disconnectsInFlight.remove(sessionId) }
+        // A connect still running would dial a tunnel and arm a post-disconnect script after the entry is gone.
+        invalidateConnectionAttempt(sessionId)
+        await ensureConnectedDedup.cancel(key: sessionId)
         // Before the tunnel closes, so a reconnect attempt cannot rebuild it behind the teardown.
         endRecoveryLoop(for: sessionId)
 

@@ -114,13 +114,14 @@ extension MainContentCoordinator {
             return
         }
         do {
-            try await services.databaseManager.withMetadataDriver(scope: scope) { [services, connectionId] driver in
-                await services.schemaService.load(
-                    connectionId: connectionId,
-                    driver: driver,
-                    connection: connection,
-                    scope: scope
-                )
+            // Completion takes the table list as soon as it lands, so the column seed does not wait for the rest.
+            try await services.schemaService.load(
+                connectionId: connectionId,
+                connection: connection,
+                scope: scope,
+                leasingFrom: services.databaseManager
+            ) { [services, connectionId] in
+                await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
             }
         } catch {
             switch SchemaLoadPolicy.disposition(for: error, hasLiveDriver: hasLiveDriver) {
@@ -139,7 +140,7 @@ extension MainContentCoordinator {
             }
             return
         }
-        await services.schemaRefreshService.syncAutocompleteProvider(connectionId: connectionId)
+        await services.schemaRefreshService.syncAutocompleteNamespaces(connectionId: connectionId)
         await DatabaseTreeMetadataService.shared.loadDatabases(
             connectionId: connectionId,
             databaseType: connection.type
