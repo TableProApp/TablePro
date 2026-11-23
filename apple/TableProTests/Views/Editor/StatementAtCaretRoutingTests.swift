@@ -22,6 +22,7 @@ struct StatementAtCaretRoutingTests {
         }
     }
 
+    @MainActor
     private struct Mounted {
         let editor: SQLEditorController
         let window: NSWindow
