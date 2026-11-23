@@ -158,6 +158,31 @@ struct ConnectionWindowCloseQuestionTests {
         #expect(first.fixture.window.isVisible && second.fixture.window.isVisible)
     }
 
+    @Test("A window another close took while an earlier question was up is skipped, not asked")
+    func reviewSkipsAWindowClosedMeanwhile() async throws {
+        let first = try ClosingWindow(name: "Review closed first")
+        let second = try ClosingWindow(name: "Review closed second")
+        defer {
+            first.tearDown()
+            second.tearDown()
+        }
+        first.coordinator.toolbarState.hasCreateTablePending = true
+        second.coordinator.toolbarState.hasCreateTablePending = true
+        first.actions.confirmSaveChanges = { [prompts = first.prompts] _, _ in
+            prompts.count += 1
+            second.fixture.window.close()
+            return .dontSave
+        }
+        let review = WindowCloseReview()
+        review.ask = { _, _, _ in .review }
+
+        await review.review([first.entry, second.entry])
+
+        #expect(first.prompts.count == 1)
+        #expect(second.prompts.count == 0)
+        #expect(!first.fixture.window.isVisible && !second.fixture.window.isVisible)
+    }
+
     @Test("One window with work gets its own question, not the Review Changes alert")
     func oneWindowGetsItsOwnQuestion() async throws {
         let only = try ClosingWindow(name: "Review only")

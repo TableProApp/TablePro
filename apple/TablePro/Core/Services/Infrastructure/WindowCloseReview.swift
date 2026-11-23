@@ -53,26 +53,31 @@ internal final class WindowCloseReview {
         let work = entries.flatMap { $0.actions.workInWindow }
         let windows = entries.compactMap { $0.window }
         let anchor = windows.first { $0.isKeyWindow } ?? windows.first
-        let answer = await ask(entries.count, work, anchor)
-        // A window that closed while the alert was up is left alone: its actions would close the key window instead.
-        let open = entries.filter { entry in
-            guard let window = entry.window else { return false }
-            return window.isVisible || window.isMiniaturized
-        }
-        switch answer {
+        switch await ask(entries.count, work, anchor) {
         case .review:
-            for entry in open {
-                entry.window?.makeKeyAndOrderFront(nil)
+            for entry in entries {
+                // Asked again per window: another close can take one while an earlier window's question is up.
+                guard let window = Self.openWindow(of: entry) else { continue }
+                window.makeKeyAndOrderFront(nil)
                 // Cancel on one window ends the review, as it does in a document-based app.
                 guard await entry.actions.closeWindowAwaiting(asBatchSurvivor: false) == .closed else { return }
             }
         case .discard:
-            for entry in open {
+            for entry in entries where Self.openWindow(of: entry) != nil {
                 entry.actions.discardWorkAndCloseWindow()
             }
         case .cancel:
             return
         }
+    }
+
+    // A window already closed is left alone: with its coordinator gone, its actions would close the key window instead.
+    private static func openWindow(of entry: Entry) -> NSWindow? {
+        guard let window = entry.window,
+              window.isVisible || window.isMiniaturized,
+              entry.actions.coordinator?.contentWindow === window
+        else { return nil }
+        return window
     }
 
     private static func askModally(windowCount: Int, work: [RunningWork], anchor: NSWindow?) async -> Answer {

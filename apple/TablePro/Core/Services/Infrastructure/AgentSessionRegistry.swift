@@ -216,16 +216,17 @@ internal final class AgentSessionRegistry: ObservableObject {
 
     // A session never opened has no engine, so its transcript is deleted from the store directly.
     private func discard(_ session: AgentSession) {
-        let conversationId = session.conversationId
         let engine = session.viewModelIfLoaded
+        // Read after the cancel: its save can give a new transcript its id.
         engine?.cancelStream()
+        let conversationId = session.conversationId
         detachRemoteTools(from: session.id)
         AIProviderFactory.resetCopilotConversation(sessionId: session.id)
         activityCancellables[session.id] = nil
-        guard let conversationId else { return }
         if let engine {
-            engine.deleteStoredConversations([conversationId])
-        } else {
+            if let conversationId { engine.deleteStoredConversations([conversationId]) }
+            engine.forgetTranscript()
+        } else if let conversationId {
             let storage = services.aiChatStorage
             Task { await storage.delete(conversationId) }
         }

@@ -524,6 +524,23 @@ struct AgentSessionRegistryTests {
         #expect(keptIds == [keptRecord.id])
         #expect(built == [opened.id])
     }
+
+    // A cancelled tool round finishing after the delete saves through the same engine.
+    @Test("A late save from a removed session's engine brings no transcript back")
+    func lateSaveAfterRemovalStaysDeleted() async throws {
+        let connection = TestFixtures.makeConnection(name: "Deleted connection")
+        let registry = makeRegistry(restoring: [], engines: CountingEngineFactory())
+        let engine = registry.startSession(for: connection.id).viewModel
+        engine.connection = connection
+        engine.messages = [ChatTurn(wire: ChatTurnWire(role: .user, blocks: [.text("Which orders shipped late?")]))]
+
+        registry.removeSessions(for: connection.id)
+        engine.persistCurrentConversation()
+        await engine.lastConversationWrite?.value
+
+        let stored = await AIChatStorage.shared.loadSummaries(connectionId: connection.id)
+        #expect(stored.isEmpty)
+    }
 }
 
 private struct EngineBuild: Equatable {
