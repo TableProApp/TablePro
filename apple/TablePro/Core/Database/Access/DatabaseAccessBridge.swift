@@ -290,8 +290,10 @@ internal actor DatabaseAccessBridge {
     @MainActor
     private static func databaseRefusal(for scope: DatabaseScope, manager: DatabaseManager) -> String? {
         guard let session = manager.session(for: scope.connectionId) else { return nil }
-        // What the connection reaches, not the browse cursor, which a driver's switch can relabel without moving it.
-        let current = session.openedDatabase ?? session.connection.database
+        // What the connection reaches. With no database configured, as BigQuery names its project elsewhere, the browse
+        // cursor stands in: on such an engine an outside switch can no longer move it.
+        let configured = session.connection.database
+        let current = session.openedDatabase ?? (configured.isEmpty ? session.resolvedBrowseDatabase : configured)
         guard !scope.isServerScoped, scope.database != current,
               !manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)
         else { return nil }
@@ -927,8 +929,10 @@ internal actor DatabaseAccessBridge {
             return scope.schema
         }
         // The pin trusts the driver's cached schema, which a SET search_path in the same session leaves stale.
+        // An aborted transaction refuses everything but a rollback, the SET included, and runs no name to misroute.
         let pinned: @Sendable (DatabaseDriver) async throws -> Output = { driver in
-            if let approvedSchema, let switchable = driver as? SchemaSwitchable {
+            if let approvedSchema, let switchable = driver as? SchemaSwitchable,
+               await driver.sessionTransactionState() != .abortedTransaction {
                 try await switchable.switchSchema(to: approvedSchema)
             }
             return try await body(driver)

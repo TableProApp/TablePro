@@ -16,7 +16,7 @@ enum MCPConsentOutcome: Sendable, Equatable {
 enum MCPToolConsent {
     static let method = "tools/call"
 
-    // Accepted states by the nonce sealed into each, so one runs once. A claim outlives its state's whole lifetime.
+    // Accepted states by the nonce sealed into each, so one runs once. A claim outlives its state's signed expiry.
     private static let spent = OSAllocatedUnfairLock<[String: Date]>(initialState: [:])
 
     // `target` is `target(of:)` for the operation the form shows. The arguments alone do not fix it: a name left out
@@ -54,7 +54,7 @@ enum MCPToolConsent {
 
         // An answer about another connection, database, schema or statement is not an answer about this one.
         guard sealed["consent"]?.stringValue == key, sealed["target"]?.stringValue == target,
-              let nonce = sealed["nonce"]?.stringValue
+              let nonce = sealed["nonce"]?.stringValue, let expires = sealed["expires"]?.intValue
         else {
             throw try inputRequired(ask, context: context, now: clock)
         }
@@ -68,7 +68,7 @@ enum MCPToolConsent {
                 String(localized: "The user did not approve this operation.")
             )
         }
-        guard claim(nonce, now: clock) else {
+        guard claim(nonce, until: Date(timeIntervalSince1970: Double(expires + 1)), now: clock) else {
             throw MCPProtocolError.invalidParams(
                 detail: "This approval was already used. Call again without requestState to ask for a new one."
             )
@@ -76,10 +76,10 @@ enum MCPToolConsent {
         return .preApproved
     }
 
-    private static func claim(_ nonce: String, now: Date) -> Bool {
+    private static func claim(_ nonce: String, until expiry: Date, now: Date) -> Bool {
         spent.withLock { claims in
-            claims = claims.filter { now.timeIntervalSince($0.value) < MCPRequestState.defaultLifetime }
-            return claims.updateValue(now, forKey: nonce) == nil
+            claims = claims.filter { $0.value > now }
+            return claims.updateValue(expiry, forKey: nonce) == nil
         }
     }
 
@@ -127,12 +127,19 @@ enum MCPToolConsent {
     }
 
     private static func inputRequired(_ ask: Question, context: MCPRequestContext, now: Date) throws -> MCPInputRequired {
+        let expiresAt = now.addingTimeInterval(MCPRequestState.defaultLifetime)
+        // The expiry the envelope signs, rounded the same way, so a claim lasts as long as the state can open.
         let state = try MCPRequestState.seal(
-            .object(["consent": .string(ask.key), "target": .string(ask.target), "nonce": .string(UUID().uuidString)]),
+            .object([
+                "consent": .string(ask.key),
+                "target": .string(ask.target),
+                "nonce": .string(UUID().uuidString),
+                "expires": .int(Int(expiresAt.timeIntervalSince1970.rounded()))
+            ]),
             principal: context.principal,
             method: method,
             paramsDigest: ask.digest,
-            expiresAt: now.addingTimeInterval(MCPRequestState.defaultLifetime)
+            expiresAt: expiresAt
         )
         return MCPInputRequired(
             inputRequests: [MCPElicitationRequest.approval(key: ask.key, message: ask.message, detail: ask.detail)],

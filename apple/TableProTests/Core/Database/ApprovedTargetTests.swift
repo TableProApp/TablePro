@@ -12,8 +12,16 @@ import Testing
 private final class CachedTargetDriver: PluginDriverStub, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [String] = []
+    private var state: PluginSessionTransactionState = .idle
 
     var events: [String] { lock.withLock { recorded } }
+
+    var transactionState: PluginSessionTransactionState {
+        get { lock.withLock { state } }
+        set { lock.withLock { state = newValue } }
+    }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState { transactionState }
 
     var supportsSchemas: Bool { true }
     var currentSchema: String? { "public" }
@@ -109,5 +117,43 @@ struct ApprovedTargetTests {
 
         #expect(driver.events.contains("SCHEMA ARCHIVE"))
         #expect(DatabaseManager.shared.session(for: id)?.browseSchema == "ARCHIVE")
+    }
+
+    @Test(
+        "A rollback on an aborted transaction reaches the driver with no schema set before it",
+        arguments: ["ROLLBACK", "ROLLBACK TO SAVEPOINT sp1"]
+    )
+    func rollbackOnAnAbortedSessionSkipsTheSchema(statement: String) async throws {
+        let (id, driver) = session(.postgresql, database: "app", browseDatabase: "app", browseSchema: "public")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        driver.transactionState = .abortedTransaction
+        let bridge = DatabaseAccessBridge()
+
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        _ = try await bridge.runStatement(scope: scope, query: statement, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+
+        #expect(driver.events.contains(statement))
+        #expect(!driver.events.contains { $0.hasPrefix("SCHEMA") })
+    }
+
+    @Test("A fixed engine configured with no database checks against the one it browses, as BigQuery's project")
+    func fixedEngineWithNoConfiguredDatabaseKeepsItsProject() async throws {
+        var connection = TestFixtures.makeConnection(database: "", type: .bigQuery)
+        connection.additionalFields["bqProjectId"] = "my-project"
+        var session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: CachedTargetDriver())
+        )
+        session.browseDatabase = "my-project"
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let bridge = DatabaseAccessBridge()
+
+        let own = try await bridge.resolveScope(connectionId: connection.id, database: "my-project", schema: nil)
+        #expect(own.database == "my-project")
+        await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.resolveScope(connectionId: connection.id, database: "other-project", schema: nil)
+        }
     }
 }

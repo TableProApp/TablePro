@@ -51,7 +51,8 @@ struct MCPToolConsentTests {
         params: JsonValue,
         capabilities: MCPClientCapabilities,
         principal: MCPPrincipal? = nil,
-        target: String = "primary.app"
+        target: String = "primary.app",
+        clock: Date = Self.now
     ) throws -> MCPConsentOutcome {
         try MCPToolConsent.resolve(
             key: Self.key,
@@ -59,8 +60,33 @@ struct MCPToolConsentTests {
             detail: "DROP TABLE users",
             target: target,
             context: context(params: params, capabilities: capabilities, principal: principal),
-            clock: Self.now
+            clock: clock
         )
+    }
+
+    @Test("A spent approval stays spent until its signed expiry, which rounds past the lifetime from acceptance")
+    func spentApprovalStaysSpentUntilItsSignedExpiry() throws {
+        let issued = Date(timeIntervalSince1970: 1_000.6)
+        var state = ""
+        do {
+            _ = try resolve(params: params(), capabilities: MCPToolTestHarness.elicitingClient(), clock: issued)
+        } catch let signal as MCPInputRequired {
+            state = try #require(signal.requestState)
+        }
+        let approved = params(
+            requestState: state,
+            response: .object(["action": .string("accept"), "content": .object(["approved": .bool(true)])])
+        )
+
+        let first = try resolve(
+            params: approved, capabilities: MCPToolTestHarness.elicitingClient(), clock: Date(timeIntervalSince1970: 1_000.7)
+        )
+        #expect(first == .preApproved)
+        #expect(throws: MCPProtocolError.self) {
+            _ = try resolve(
+                params: approved, capabilities: MCPToolTestHarness.elicitingClient(), clock: Date(timeIntervalSince1970: 1_300.8)
+            )
+        }
     }
 
     @Test("An answer given for one target asks again, rather than pre-clearing, once the target has changed")
