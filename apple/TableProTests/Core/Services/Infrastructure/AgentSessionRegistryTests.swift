@@ -3,8 +3,10 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -13,6 +15,24 @@ struct AgentSessionRegistryTests {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("AgentSessionRegistryTests-\(UUID().uuidString)", isDirectory: true)
         return AgentSessionStore(directory: directory)
+    }
+
+    private static func record(connectionId: UUID = UUID(), conversationId: UUID? = UUID()) -> AgentSessionRecord {
+        AgentSessionRecord(
+            id: UUID(),
+            connectionId: connectionId,
+            conversationId: conversationId,
+            status: .stopped,
+            title: "Earlier work",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            lastActiveAt: Date(timeIntervalSince1970: 2_000)
+        )
+    }
+
+    private func makeRegistry(restoring records: [AgentSessionRecord], engines: CountingEngineFactory) -> AgentSessionRegistry {
+        let store = makeStore()
+        store.save(records)
+        return AgentSessionRegistry(store: store, makeEngine: { engines.make(sessionId: $0, conversationId: $1) })
     }
 
     @Test("Reading a connection's sessions never creates one")
@@ -374,5 +394,150 @@ struct AgentSessionRegistryTests {
         let resolved = registry.resolveIdleSession(for: connectionId)
 
         #expect(registry.currentSession(for: connectionId) === resolved)
+    }
+
+    // MARK: - Stored sessions build their engine on first read
+
+    @Test("Restoring stored sessions builds no engine")
+    func restoreBuildsNoEngine() {
+        let records = (0..<5).map { _ in Self.record() }
+        let engines = CountingEngineFactory()
+
+        let registry = makeRegistry(restoring: records, engines: engines)
+
+        #expect(registry.sessions.count == 5)
+        #expect(engines.builds.isEmpty)
+        let restored = registry.sessions.map { $0.conversationId }
+        let stored = records.map { $0.conversationId }
+        #expect(restored == stored)
+    }
+
+    @Test("The first read of a stored session's engine builds it once, with the record's ids")
+    func firstReadBuildsTheEngine() throws {
+        let record = Self.record()
+        let engines = CountingEngineFactory()
+        let registry = makeRegistry(restoring: [record], engines: engines)
+        let session = try #require(registry.session(id: record.id))
+
+        let viewModel = session.viewModel
+
+        #expect(engines.builds == [EngineBuild(sessionId: record.id, conversationId: record.conversationId)])
+        #expect(viewModel.sessionId == record.id)
+        #expect(viewModel.conversationToRestore == record.conversationId)
+        #expect(session.viewModel === viewModel)
+        #expect(session.viewModelIfLoaded === viewModel)
+        #expect(engines.builds.count == 1)
+    }
+
+    // A closed window runs this through `ConnectionWorkspace.teardown()`.
+    @Test("Stopping and releasing a session never opened builds no engine")
+    func stoppingAnUnopenedSessionBuildsNothing() throws {
+        let connectionId = UUID()
+        let record = Self.record(connectionId: connectionId)
+        let engines = CountingEngineFactory()
+        let registry = makeRegistry(restoring: [record], engines: engines)
+        let session = try #require(registry.session(id: record.id))
+        session.resume()
+
+        registry.stopSessionsIfUnhosted(for: connectionId)
+        registry.stopSession(id: record.id)
+
+        #expect(session.status == .stopped)
+        #expect(session.conversationId == record.conversationId)
+        #expect(engines.builds.isEmpty)
+    }
+
+    @Test("Deleting a session never opened builds no engine and deletes its conversation")
+    func deletingAnUnopenedSessionBuildsNothing() async throws {
+        let connectionId = UUID()
+        let conversation = AIConversation(
+            messages: [ChatTurnWire(role: .user, blocks: [.text("Which orders shipped late?")])],
+            connectionId: connectionId
+        )
+        await AIChatStorage.shared.save(conversation)
+        let record = Self.record(connectionId: connectionId, conversationId: conversation.id)
+        let engines = CountingEngineFactory()
+        let registry = makeRegistry(restoring: [record], engines: engines)
+
+        registry.removeSession(id: record.id)
+
+        #expect(registry.session(id: record.id) == nil)
+        #expect(engines.builds.isEmpty)
+        try await waitUntil { await AIChatStorage.shared.load(id: conversation.id) == nil }
+    }
+
+    @Test("Quitting with a session never opened builds no engine and keeps its conversation")
+    func quittingWithAnUnopenedSessionBuildsNothing() {
+        let store = makeStore()
+        let record = Self.record()
+        store.save([record])
+        let engines = CountingEngineFactory()
+        let registry = AgentSessionRegistry(
+            store: store,
+            makeEngine: { engines.make(sessionId: $0, conversationId: $1) }
+        )
+
+        registry.persistSynchronouslyForTermination()
+
+        let written = store.load().map { $0.conversationId }
+        #expect(engines.builds.isEmpty)
+        #expect(written == [record.conversationId])
+    }
+
+    // Every engine listens for this event, and a nil payload is every connection's business.
+    @Test("A saved-query change for every connection reaches only the sessions that were opened")
+    func savedQueryChangeReachesOnlyOpenedSessions() async throws {
+        let records = (0..<3).map { _ in Self.record() }
+        let engines = CountingEngineFactory()
+        let registry = makeRegistry(restoring: records, engines: engines)
+        let opened = try #require(registry.session(id: records[0].id))
+        var reached = 0
+        let subscription = opened.viewModel.$savedQueries.dropFirst().sink { _ in reached += 1 }
+
+        AppEvents.shared.sqlFavoritesDidUpdate.send(nil)
+        try await waitUntil { reached > 0 }
+        subscription.cancel()
+
+        let built = engines.builds.map { $0.sessionId }
+        #expect(built == [opened.id])
+    }
+
+    @Test("Removing a connection's sessions leaves another connection's and builds no engine")
+    func removingAConnectionsSessionsBuildsNothing() throws {
+        let deleted = UUID()
+        let kept = UUID()
+        let keptRecord = Self.record(connectionId: kept)
+        let engines = CountingEngineFactory()
+        let registry = makeRegistry(
+            restoring: [Self.record(connectionId: deleted), Self.record(connectionId: deleted), keptRecord],
+            engines: engines
+        )
+        let opened = try #require(registry.resolveSession(for: deleted, startingIfNeeded: false))
+        _ = opened.viewModel
+
+        registry.removeSessions(for: deleted)
+
+        #expect(registry.sessions(for: deleted).isEmpty)
+        #expect(registry.currentSession(for: deleted) == nil)
+        let keptIds = registry.sessions(for: kept).map { $0.id }
+        let built = engines.builds.map { $0.sessionId }
+        #expect(keptIds == [keptRecord.id])
+        #expect(built == [opened.id])
+    }
+}
+
+private struct EngineBuild: Equatable {
+    let sessionId: UUID
+    let conversationId: UUID?
+}
+
+// Records what the registry builds, so a test can tell a stored session cost nothing until it was read.
+@MainActor
+private final class CountingEngineFactory {
+    private(set) var builds: [EngineBuild] = []
+
+    func make(sessionId: UUID, conversationId: UUID?) -> AIChatViewModel {
+        builds.append(EngineBuild(sessionId: sessionId, conversationId: conversationId))
+        return AIChatViewModel(sessionId: sessionId, restoringConversation: conversationId)
     }
 }

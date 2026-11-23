@@ -601,6 +601,18 @@ final class MultiRowEditState: ObservableObject {
         }
     }
 
+    // The inspector went off screen: a value window opened from it still commits through the columns, types and writer.
+    func releaseRows() {
+        guard !(fields.isEmpty && rowIDs.isEmpty && allRows.isEmpty && absentCells.isEmpty
+            && unloadedCells.isEmpty && expressionCells.isEmpty) else { return }
+        fields = []
+        rowIDs = []
+        allRows = []
+        absentCells = []
+        unloadedCells = []
+        expressionCells = []
+    }
+
     func releaseData() {
         fields = []
         onFieldChanged = nil

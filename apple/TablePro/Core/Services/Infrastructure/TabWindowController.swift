@@ -86,6 +86,9 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private let windowBackdrop: ThemeWindowBackdrop
     private let updateIndicator: UpdateIndicatorAccessory
 
+    // Set while a close question is open: its sheet attaches a moment after the click, and a second click would ask twice.
+    private(set) var pendingCloseAnswer: Task<Void, Never>?
+
     /// `adopting` carries a connection that is moving here from another window, whole. Everything
     /// the user has in it lives on that object, so the window takes it rather than building a
     /// second one around the same connection.
@@ -264,6 +267,27 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         Self.lifecycleLogger.debug("[switch] windowDidResignKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
+    // The close button reaches here without performClose:, and Option-click sends its action to every window.
+    // close() skips this, so the close the answer ends in does not ask again.
+    internal func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard pendingCloseAnswer == nil else { return false }
+        guard let host = sender.contentViewController as? MainSplitViewController,
+              let actions = host.closeQuestionActions,
+              actions.holdsWorkOnWindowClose()
+        else { return true }
+        let answer: Task<Void, Never>
+        if let event = NSApp.currentEvent, WindowCloseReview.closesEveryWindow(event) {
+            answer = WindowCloseReview.shared.enlist(actions, window: sender, for: event)
+        } else {
+            answer = Task { _ = await actions.closeWindowAwaiting(asBatchSurvivor: false) }
+        }
+        pendingCloseAnswer = Task { [weak self] in
+            await answer.value
+            self?.pendingCloseAnswer = nil
+        }
+        return false
+    }
+
     internal func windowWillClose(_ notification: Notification) {
         let seq = MainContentCoordinator.nextSwitchSeq()
         let t0 = Date()
@@ -282,21 +306,35 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
             splitVC.invalidateToolbar()
         }
 
-        /// Every connection the window hosts closes with it, so each one saves and tears down.
-        /// Resolving a single coordinator from the window persisted whichever one happened to
-        /// answer and lost the rest since their last periodic save.
+        // Every hosted connection saves and tears down, not only the one a window lookup answers.
         if let splitVC = window.contentViewController as? MainSplitViewController {
-            for workspace in splitVC.workspaces.workspaces {
+            let closing = splitVC.workspaces.workspaces
+            for workspace in closing {
                 workspace.sessionState?.coordinator.handleWindowWillClose()
                 if workspace.sessionState == nil {
                     MainContentCoordinator.endTabSessionIfUnhosted(for: workspace.connectionId, closing: workspace)
                 }
+            }
+            // Next turn, once close() has ordered the window out: emptying a pane on screen shows a blank frame.
+            Task { @MainActor in
+                Self.releaseWorkspaces(closing)
             }
         }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) handleWindowWillClose ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         activity?.invalidate()
         activity = nil
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+    }
+
+    // The panes retain the SwiftUI trees, which retain the window and the coordinator. A workspace
+    // another window hosts by now keeps its panes.
+    internal static func releaseWorkspaces(
+        _ closing: [ConnectionWorkspace],
+        hosted: (UUID) -> [ConnectionWorkspace] = { WindowManager.shared.workspaces(for: $0) }
+    ) {
+        for workspace in closing where !hosted(workspace.connectionId).contains(where: { $0 === workspace }) {
+            workspace.teardown()
+        }
     }
 
     /// Every connection the window hosts, not just the one it was opened for: a connect still

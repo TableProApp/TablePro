@@ -16,6 +16,12 @@ extension MainContentCommandActions {
         for item in work { item.cancel() }
     }
 
+    // A cell still in its field editor is not in the change manager yet, so it lands before the window is read.
+    func holdsWorkOnWindowClose() -> Bool {
+        coordinator?.commitActiveGridEdit()
+        return hasUnsavedWorkInWindow || !workInWindow.isEmpty
+    }
+
     var workInWindow: [RunningWork] {
         let coordinators: [MainContentCoordinator]
         if let host = window?.contentViewController as? MainSplitViewController {

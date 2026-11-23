@@ -20,6 +20,8 @@ actor CloudSQLProxyManager: TunnelManaging {
     private static let portRetryCount = 5
     private static let stalePidsDefaultsKey = "cloudSQLProxyStalePids"
     private static let credentialsFilePrefix = "com.TablePro.cloudsqlproxy."
+    private static let credentialsFolderName = "com.TablePro.cloudsqlproxy"
+    private static let credentialsFolderAdoptedKey = "com.TablePro.cloudSQLCredentialsFolderAdopted"
 
     private struct TunnelState {
         let runner: any SupervisedProcessRunner
@@ -36,6 +38,8 @@ actor CloudSQLProxyManager: TunnelManaging {
     private var staleSweep: Task<Void, Never>?
     private let reaperTimings: StaleProcessReaper.Timings
     private let ownsListener: @Sendable (Int32?, Int) -> Bool
+    private let temporaryDirectory: URL
+    nonisolated private let credentialsDirectory: URL
 
     private static let runnerRegistry = OSAllocatedUnfairLock(initialState: [UUID: any SupervisedProcessRunner]())
 
@@ -50,13 +54,16 @@ actor CloudSQLProxyManager: TunnelManaging {
         reaperTimings: StaleProcessReaper.Timings = .production,
         ownsListener: @escaping @Sendable (Int32?, Int) -> Bool = { pid, port in
             pid.map { LoopbackPort.isListening(pid: $0, port: port) } ?? false
-        }
+        },
+        temporaryDirectory: URL = FileManager.default.temporaryDirectory
     ) {
         self.runnerFactory = runnerFactory
         self.ownsListener = ownsListener
         self.managedBinary = managedBinary
         self.systemBinaryLookup = systemBinaryLookup
         self.reaperTimings = reaperTimings
+        self.temporaryDirectory = temporaryDirectory
+        self.credentialsDirectory = temporaryDirectory.appendingPathComponent(Self.credentialsFolderName, isDirectory: true)
     }
 
     func createTunnel(
@@ -217,7 +224,7 @@ actor CloudSQLProxyManager: TunnelManaging {
         for runner in runners {
             runner.stop()
         }
-        Self.purgeCredentialsFiles()
+        Self.removeCredentialsFiles(in: credentialsDirectory)
     }
 
     func hasTunnel(connectionId: UUID) -> Bool {
@@ -228,8 +235,8 @@ actor CloudSQLProxyManager: TunnelManaging {
         tunnels[connectionId]?.localPort
     }
 
-    /// Runs at most once per process. `createTunnel` awaits it, so it is both the launch-time
-    /// cleanup and the barrier a connection needs before it can trust the port is free.
+    // Runs at most once per process. `createTunnel` awaits it, so it is both the launch-time
+    // cleanup and the barrier a connection needs before it can trust the port is free.
     func sweepStalePidsIfNeeded() async {
         if let staleSweep {
             await staleSweep.value
@@ -241,8 +248,13 @@ actor CloudSQLProxyManager: TunnelManaging {
     }
 
     private func performStaleSweep() async {
-        Self.purgeCredentialsFiles()
+        Self.removeCredentialsFiles(in: credentialsDirectory)
         let defaults = AppStorageEnvironment.shared.defaults
+        // Older builds wrote keys straight into the temp folder, so one listing per install removes any a crash left.
+        if !defaults.bool(forKey: Self.credentialsFolderAdoptedKey),
+           Self.removeCredentialsFiles(in: temporaryDirectory) {
+            defaults.set(true, forKey: Self.credentialsFolderAdoptedKey)
+        }
         guard let data = defaults.data(forKey: Self.stalePidsDefaultsKey),
               let records = try? JSONDecoder().decode([CloudSQLProxyPidRecord].self, from: data) else {
             defaults.removeObject(forKey: Self.stalePidsDefaultsKey)
@@ -254,8 +266,8 @@ actor CloudSQLProxyManager: TunnelManaging {
             timings: reaperTimings
         )
 
-        /// A process that outlived even `SIGKILL` keeps its record, so the next launch tries again
-        /// rather than forgetting a port is still held.
+        // A process that outlived even `SIGKILL` keeps its record, so the next launch tries again
+        // rather than forgetting a port is still held.
         guard !survivors.isEmpty else {
             defaults.removeObject(forKey: Self.stalePidsDefaultsKey)
             return
@@ -383,10 +395,15 @@ actor CloudSQLProxyManager: TunnelManaging {
         guard let json = serviceAccountKeyJSON, !json.isEmpty, let data = json.data(using: .utf8) else {
             throw CloudSQLProxyError.credentialsWriteFailed
         }
-        let url = FileManager.default.temporaryDirectory
+        let url = credentialsDirectory
             // One file per creation: two creations for one connection would otherwise share and delete one path.
             .appendingPathComponent("\(Self.credentialsFilePrefix)\(connectionId.uuidString)-\(UUID().uuidString).json")
         do {
+            try FileManager.default.createDirectory(
+                at: credentialsDirectory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
             try data.write(to: url, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         } catch {
@@ -400,17 +417,18 @@ actor CloudSQLProxyManager: TunnelManaging {
         try? FileManager.default.removeItem(atPath: path)
     }
 
-    private static func purgeCredentialsFiles() {
-        let tempDir = FileManager.default.temporaryDirectory
+    @discardableResult
+    private static func removeCredentialsFiles(in directory: URL) -> Bool {
         guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: tempDir, includingPropertiesForKeys: nil
+            at: directory, includingPropertiesForKeys: nil
         ) else {
-            return
+            return false
         }
         for url in entries
         where url.lastPathComponent.hasPrefix(credentialsFilePrefix) && url.pathExtension == "json" {
             try? FileManager.default.removeItem(at: url)
         }
+        return true
     }
 
     // MARK: - Private: stale PID persistence

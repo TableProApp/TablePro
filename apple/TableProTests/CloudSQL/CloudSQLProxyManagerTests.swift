@@ -141,13 +141,33 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
 
 // The fake runner's listener stands in for the proxy's, so these managers take it as the proxy's own.
 private extension CloudSQLProxyManager {
-    init(testRunner: @escaping () -> any SupervisedProcessRunner) {
-        self.init(runnerFactory: testRunner, ownsListener: { _, _ in true })
+    init(
+        testRunner: @escaping () -> any SupervisedProcessRunner,
+        temporaryDirectory: URL = FileManager.default.temporaryDirectory
+    ) {
+        self.init(runnerFactory: testRunner, ownsListener: { _, _ in true }, temporaryDirectory: temporaryDirectory)
     }
 }
 
 @Suite("Cloud SQL Auth Proxy manager", .serialized)
 struct CloudSQLProxyManagerTests {
+    private static let credentialsFolderName = "com.TablePro.cloudsqlproxy"
+    private static let credentialsFolderAdoptedKey = "com.TablePro.cloudSQLCredentialsFolderAdopted"
+
+    private func makeTemporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cloudsqlproxy-tmp-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func plantKeyFile(in directory: URL) throws -> URL {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("com.TablePro.cloudsqlproxy.\(UUID().uuidString)-\(UUID().uuidString).json")
+        try Data("{\"type\":\"service_account\"}".utf8).write(to: file)
+        return file
+    }
+
     private func config(instance: String = "proj:region:inst", localPort: Int? = nil) -> CloudSQLProxyConfiguration {
         CloudSQLProxyConfiguration(instanceConnectionName: instance, localPort: localPort, binaryPath: "/bin/echo")
     }
@@ -352,10 +372,12 @@ struct CloudSQLProxyManagerTests {
         }
     }
 
-    @Test("service account key is written 0600 and removed on close")
+    @Test("service account key is written 0600 in a 0700 folder of its own and removed on close")
     func credentialsFileLifecycle() async throws {
+        let base = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
         let fake = FakeCloudSQLProxyRunner(behavior: .ready)
-        let manager = CloudSQLProxyManager(testRunner: { fake })
+        let manager = CloudSQLProxyManager(testRunner: { fake }, temporaryDirectory: base)
         let id = UUID()
         let keyConfig = CloudSQLProxyConfiguration(
             instanceConnectionName: "proj:region:inst",
@@ -372,13 +394,70 @@ struct CloudSQLProxyManagerTests {
         let arguments = fake.startedArguments
         let flag = try #require(arguments.firstIndex(of: "--credentials-file"))
         let path = URL(fileURLWithPath: arguments[flag + 1])
+        let folder = base.appendingPathComponent(Self.credentialsFolderName, isDirectory: true)
+        #expect(path.deletingLastPathComponent().path == folder.path)
         #expect(path.lastPathComponent.hasPrefix("com.TablePro.cloudsqlproxy.\(id.uuidString)-"))
         #expect(FileManager.default.fileExists(atPath: path.path))
         let perms = try FileManager.default.attributesOfItem(atPath: path.path)[.posixPermissions] as? Int
         #expect(perms == 0o600)
+        let folderPerms = try FileManager.default.attributesOfItem(atPath: folder.path)[.posixPermissions] as? Int
+        #expect(folderPerms == 0o700)
 
         try await manager.closeTunnel(connectionId: id)
         #expect(!FileManager.default.fileExists(atPath: path.path))
+    }
+
+    @Test("The sweep removes a key file left in its folder and, once adopted, leaves the temp folder unlisted")
+    func sweepRemovesKeysInItsFolderOnly() async throws {
+        let base = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        AppStorageEnvironment.shared.defaults.set(true, forKey: Self.credentialsFolderAdoptedKey)
+        let leftInFolder = try plantKeyFile(in: base.appendingPathComponent(Self.credentialsFolderName, isDirectory: true))
+        let outsideFolder = try plantKeyFile(in: base)
+
+        let manager = CloudSQLProxyManager(testRunner: { FakeCloudSQLProxyRunner(behavior: .ready) }, temporaryDirectory: base)
+        await manager.sweepStalePidsIfNeeded()
+
+        #expect(!FileManager.default.fileExists(atPath: leftInFolder.path))
+        #expect(FileManager.default.fileExists(atPath: outsideFolder.path))
+    }
+
+    @Test("A key an older build left in the temp folder goes on the first sweep, and later sweeps do not list the temp folder")
+    func olderBuildKeysGoOnTheFirstSweepOnly() async throws {
+        let base = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let defaults = AppStorageEnvironment.shared.defaults
+        defaults.removeObject(forKey: Self.credentialsFolderAdoptedKey)
+        let leftByOlderBuild = try plantKeyFile(in: base)
+        let unrelated = base.appendingPathComponent("unrelated.json")
+        try Data("{}".utf8).write(to: unrelated)
+
+        await CloudSQLProxyManager(testRunner: { FakeCloudSQLProxyRunner(behavior: .ready) }, temporaryDirectory: base)
+            .sweepStalePidsIfNeeded()
+
+        #expect(!FileManager.default.fileExists(atPath: leftByOlderBuild.path))
+        #expect(FileManager.default.fileExists(atPath: unrelated.path))
+        #expect(defaults.bool(forKey: Self.credentialsFolderAdoptedKey))
+
+        let plantedAfterAdoption = try plantKeyFile(in: base)
+        await CloudSQLProxyManager(testRunner: { FakeCloudSQLProxyRunner(behavior: .ready) }, temporaryDirectory: base)
+            .sweepStalePidsIfNeeded()
+
+        #expect(FileManager.default.fileExists(atPath: plantedAfterAdoption.path), "a later sweep listed the temp folder")
+    }
+
+    @Test("Quit removes key files from the folder and does not list the temp folder")
+    func quitRemovesKeysInTheFolderOnly() throws {
+        let base = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let leftInFolder = try plantKeyFile(in: base.appendingPathComponent(Self.credentialsFolderName, isDirectory: true))
+        let outsideFolder = try plantKeyFile(in: base)
+
+        CloudSQLProxyManager(testRunner: { FakeCloudSQLProxyRunner(behavior: .ready) }, temporaryDirectory: base)
+            .terminateAllProcessesSync()
+
+        #expect(!FileManager.default.fileExists(atPath: leftInFolder.path))
+        #expect(FileManager.default.fileExists(atPath: outsideFolder.path))
     }
 
     @Test("terminateAllProcessesSync stops the running proxy")

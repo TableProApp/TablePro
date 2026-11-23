@@ -94,7 +94,7 @@ internal final class AgentAttentionNotifier {
         case .waitingOnYou:
             return String(localized: "The agent is waiting for your answer.")
         case .failed:
-            let reason = session.viewModel.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let reason = session.viewModelIfLoaded?.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !reason.isEmpty else { return String(localized: "The agent's reply failed.") }
             return String(format: String(localized: "The agent's reply failed: %@"), reason)
         case .working, .queued, .ready, .stopped:
