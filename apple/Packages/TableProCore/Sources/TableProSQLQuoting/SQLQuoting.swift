@@ -83,17 +83,11 @@ public enum SQLQuoting {
     }
 
     public static func stringLiteral(_ value: String, escapes: SQLStringEscapes = .standard) -> String {
-        var quoted = String.UnicodeScalarView()
-        quoted.append("'")
-        appendLiteralBody(of: value, escapes: escapes, to: &quoted)
-        quoted.append("'")
-        return String(quoted)
+        SQLLiteralEscaper.literal(value, escapes: escapes, quoted: true)
     }
 
     public static func stringLiteralBody(_ value: String, escapes: SQLStringEscapes = .standard) -> String {
-        var body = String.UnicodeScalarView()
-        appendLiteralBody(of: value, escapes: escapes, to: &body)
-        return String(body)
+        SQLLiteralEscaper.literal(value, escapes: escapes, quoted: false)
     }
 
     // The value of `text` when the whole of it is one `'…'` literal written with `escapes`, else nil.
@@ -196,84 +190,6 @@ public enum SQLQuoting {
         case "t": "\t"
         case "Z": "\u{1A}"
         default: String(scalar)
-        }
-    }
-
-    private static func appendLiteralBody(
-        of value: String,
-        escapes: SQLStringEscapes,
-        to output: inout String.UnicodeScalarView
-    ) {
-        if escapes == .sqlServer {
-            // Microsoft KB 164291 doubles both the backslash and CRLF. The engine also consumes
-            // backslash-LF, but keeps a bare CR. Strip NUL before checking adjacent scalars.
-            let scalars = Array(stringLiteralBody(value, escapes: .standard).unicodeScalars)
-            for (index, scalar) in scalars.enumerated() {
-                output.append(scalar)
-                guard scalar == "\\", index + 1 < scalars.count else { continue }
-                if scalars[index + 1] == "\n" {
-                    output.append(contentsOf: "\\\n".unicodeScalars)
-                } else if scalars[index + 1] == "\r" {
-                    output.append("\\")
-                    if index + 2 < scalars.count, scalars[index + 2] == "\n" {
-                        output.append(contentsOf: "\r\n".unicodeScalars)
-                    }
-                }
-            }
-            return
-        }
-        let scalars = Array(value.unicodeScalars)
-        for (index, scalar) in scalars.enumerated() {
-            switch (scalar, escapes) {
-            case (_, .googleSQL):
-                appendGoogleSQLEscaped(scalar, to: &output)
-            case ("'", _):
-                output.append(contentsOf: "''".unicodeScalars)
-            case ("\0", .standard):
-                continue
-            case (_, .standard):
-                output.append(scalar)
-            case ("\\", _):
-                output.append(contentsOf: #"\\"#.unicodeScalars)
-            case ("\0", .backslash) where index + 1 < scalars.count && ("0"..."9").contains(scalars[index + 1]):
-                output.append(contentsOf: #"\x00"#.unicodeScalars)
-            case ("\0", _):
-                output.append(contentsOf: #"\0"#.unicodeScalars)
-            case ("\u{08}", .mysql):
-                output.append(contentsOf: #"\b"#.unicodeScalars)
-            case ("\n", .mysql):
-                output.append(contentsOf: #"\n"#.unicodeScalars)
-            case ("\r", .mysql):
-                output.append(contentsOf: #"\r"#.unicodeScalars)
-            case ("\t", .mysql):
-                output.append(contentsOf: #"\t"#.unicodeScalars)
-            case ("\u{1A}", .mysql):
-                output.append(contentsOf: #"\Z"#.unicodeScalars)
-            default:
-                output.append(scalar)
-            }
-        }
-    }
-
-    private static let hexDigits = Array("0123456789abcdef".unicodeScalars)
-
-    private static func appendGoogleSQLEscaped(_ scalar: Unicode.Scalar, to output: inout String.UnicodeScalarView) {
-        switch scalar {
-        case "\\", "'", "\"", "`":
-            output.append("\\")
-            output.append(scalar)
-        case "\n":
-            output.append(contentsOf: #"\n"#.unicodeScalars)
-        case "\r":
-            output.append(contentsOf: #"\r"#.unicodeScalars)
-        case "\t":
-            output.append(contentsOf: #"\t"#.unicodeScalars)
-        case _ where scalar.value < 0x20 || scalar.value == 0x7F:
-            output.append(contentsOf: #"\x"#.unicodeScalars)
-            output.append(hexDigits[Int(scalar.value >> 4)])
-            output.append(hexDigits[Int(scalar.value & 0xF)])
-        default:
-            output.append(scalar)
         }
     }
 }

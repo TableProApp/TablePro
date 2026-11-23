@@ -1765,9 +1765,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         var headerSent = false
         var columnOids: [UInt32] = []
         var lastCommandTag: String?
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
+        var batch = PluginRowBatcher()
         let stops = { self.cancellationGate.isCancelled(generation) }
 
         while let result = PQgetResult(conn) {
@@ -1795,11 +1793,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 }
 
                 PQclear(result)
-                batch.append(row)
                 // A reader that left or a Stop is handled just below.
-                if batch.count >= batchSize,
-                   PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops) {
-                    batch.removeAll(keepingCapacity: true)
+                if batch.append(row),
+                   PluginRowStream.deliverBlocking(.rows(batch.rows), to: continuation, stops: stops) {
+                    batch.removeAll()
                 }
 
                 if run.abort.isAborted || cancellationGate.isCancelled(generation) {
@@ -1831,7 +1828,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
         }
 
-        let delivered = batch.isEmpty || PluginRowStream.deliverBlocking(.rows(batch), to: continuation, stops: stops)
+        let delivered = batch.isEmpty
+            || PluginRowStream.deliverBlocking(.rows(batch.rows), to: continuation, stops: stops)
 
         let outcome = finishPendingResults(conn, cancellingOutput: cancelsOutput)
         recordTransactionState(of: conn)

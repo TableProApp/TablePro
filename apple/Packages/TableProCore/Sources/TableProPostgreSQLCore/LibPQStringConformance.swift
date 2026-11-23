@@ -26,7 +26,11 @@ public enum LibPQStringConformance {
     }
 
     // PostgreSQL text cannot hold NUL, and `\0` in an escape string is refused, so it is dropped as libpq does.
+    // Every cell of an export comes through here, so a value with no NUL is returned without a copy.
     public static func withoutNUL(_ value: String) -> String {
-        String(String.UnicodeScalarView(value.unicodeScalars.filter { $0 != "\0" }))
+        var text = value
+        let hasNUL = text.withUTF8 { $0.contains(0) }
+        guard hasNUL else { return text }
+        return String(String.UnicodeScalarView(text.unicodeScalars.filter { $0 != "\0" }))
     }
 }

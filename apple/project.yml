@@ -92,6 +92,7 @@ targetTemplates:
       - Plugins/Shared/PluginURLSessionTaskBox.swift
       - Plugins/Shared/PluginRedirectRefusingDelegate.swift
       - Plugins/Shared/PluginNameSpellings.swift
+      - Plugins/Shared/PluginRowBatcher.swift
     dependencies:
       - target: TableProPluginKit
         embed: false
@@ -270,10 +271,13 @@ targetTemplates:
           - -force_load
           - $(SRCROOT)/Libs/libsqlite3_vendored.a
 
+  # An export spills what its reader has not taken yet, as SQLite's does.
   ClickHouseLinkage:
+    sources:
+      - Plugins/SharedSpill
     dependencies:
       - package: TableProCore
-        products: [TableProNumberFormatting, TableProSQLGrammar, TableProTLSClientIdentity]
+        products: [TableProNumberFormatting, TableProSQLGrammar, TableProTLSClientIdentity, TableProWireIO]
 
   # The SAP HANA driver runs go-hdb in tablepro-hana-helper, which scripts/build-hana.sh builds.
   # The plugin looks it up in Contents/MacOS, and the copy there signs it with the plugin's identity.
@@ -769,6 +773,9 @@ targets:
     templateAttributes:
       folder: XLSXExportPlugin
       principalClass: XLSXExportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProGzip
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XLSXExportPlugin
@@ -866,6 +873,9 @@ targets:
     templates: [PluginTests, ClickHouseLinkage]
     templateAttributes:
       folder: ClickHouseDriverPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProTestSupport
 
   # The eleven bundled format plugins in one bundle: none links a C library, and no two declare the
   # same top-level name. SQLiteLinkage is for the round-trip tests, which need the SQLite the driver ships.

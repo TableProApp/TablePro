@@ -242297,6 +242297,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Values cut to Excel's limit of 32,767 characters: %lld. Export as CSV to keep them whole." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Values from %d loaded rows" : {
       "extractionState" : "stale",
       "localizations" : {

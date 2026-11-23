@@ -92,14 +92,13 @@ extension DataGridViewController {
     // Only an accessory that came or went can move a width, and a wider column can leave the frozen pane with an open editor.
     private func columnMetadataDidChange() {
         let changed = presenter.refreshColumnPresentations()
-        if changed.isEmpty {
-            refreshHeaders()
-        } else {
+        if !changed.isEmpty {
             suspendFieldEditing(unmounting: true)
             reconcileColumns(widening: changed)
             resumeFieldEditing()
             followRowChangesWithPopovers()
         }
+        refreshHeaders()
         redrawVisibleRows()
     }
 

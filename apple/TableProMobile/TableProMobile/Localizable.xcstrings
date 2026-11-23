@@ -30627,6 +30627,9 @@
     "Values a spreadsheet would read as formulas, written with a leading single quote: %lld. Turn off Sanitize formula-like values to export them unchanged." : {
 
     },
+    "Values cut to Excel's limit of 32,767 characters: %lld. Export as CSV to keep them whole." : {
+
+    },
     "Values of type %@ can't be written." : {
 
     },

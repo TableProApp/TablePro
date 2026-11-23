@@ -1,15 +1,10 @@
-//
-//  JSONViewerWindowCommitTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
 @testable import TablePro
 
-/// Closing an `NSWindow` in a test kills the host, so the window's Save is tested as the decision
-/// it makes: the saved text against the baseline the window was opened with.
+// Closing an `NSWindow` in a test kills the host, so the window's Save is tested as the decision
+// it makes: the saved text against the baseline the window was opened with.
 struct JSONViewerWindowCommitTests {
     private let stored = #"{"qty":1,"sku":"A-1"}"#
     private let edited = #"{"qty":25,"sku":"A-1"}"#
@@ -74,5 +69,14 @@ struct JSONViewerWindowCommitTests {
     func invalidTextIsComparedAsWritten() {
         #expect(commit(saving: "{oops", baseline: "{oops") == nil)
         #expect(commit(saving: "{oops", baseline: stored) == "{oops")
+    }
+
+    @Test("A whitespace-only Save of a document over half a million characters writes nothing")
+    func whitespaceSaveInTheBand() {
+        let blob = String(repeating: "a", count: 600_000)
+        let stored = "{\"blob\":\"\(blob)\",\"qty\":1}"
+
+        #expect(commit(saving: "{\n  \"blob\": \"\(blob)\",\n  \"qty\": 1\n}", baseline: stored) == nil)
+        #expect(commit(saving: "{\n  \"blob\": \"\(blob)\",\n  \"qty\": 2\n}", baseline: stored) == "{\"blob\":\"\(blob)\",\"qty\":2}")
     }
 }

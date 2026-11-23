@@ -108,6 +108,7 @@ targets:
           - SQLiteAgentBackend.swift
           - SQLiteAgentProtocol.swift
       - ../Plugins/SharedSpill/PluginRowSpill.swift
+      - ../Plugins/Shared/PluginRowBatcher.swift
       # The MongoDB plugin driver runs behind PluginBackedDriver too; the iOS CLibMongoc bridge stands in for the
       # plugin's own, and the principal class stays on the Mac.
       - path: ../Plugins/MongoDBDriverPlugin

@@ -957,10 +957,18 @@ extension MainSplitViewController: NSMenuItemValidation {
         guard !Self.manualCommitFootnotes.contains(where: { $0 == menuItem.identifier }) else { return }
         let state = transactionMenuState
         setState(state.isManualCommitOn ? .on : .off, on: menuItem)
-        let shown = Self.shownManualCommitFootnote(state, isConnected: isConnected)
-        for footnote in menuItem.menu?.items ?? [] {
-            guard let identifier = footnote.identifier, Self.manualCommitFootnotes.contains(identifier) else { continue }
+        Self.showManualCommitFootnote(
+            Self.shownManualCommitFootnote(state, isConnected: isConnected),
+            among: menuItem.menu?.items ?? []
+        )
+    }
+
+    // The menu builds its footnotes unwrapped, so the one about to show is laid out here, before AppKit sizes the menu.
+    static func showManualCommitFootnote(_ shown: NSUserInterfaceItemIdentifier?, among items: [NSMenuItem]) {
+        for footnote in items {
+            guard let identifier = footnote.identifier, manualCommitFootnotes.contains(identifier) else { continue }
             let hidden = identifier != shown
+            if !hidden { MenuFootnote.wrap(footnote) }
             if footnote.isHidden != hidden { footnote.isHidden = hidden }
         }
     }

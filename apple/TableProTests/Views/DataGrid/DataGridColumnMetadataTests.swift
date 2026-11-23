@@ -116,6 +116,25 @@ struct DataGridColumnMetadataTests {
         #expect(grid.model.display.cache.box(forID: .existing(0)) != nil)
     }
 
+    @Test("Metadata that gives a column an accessory still reaches the column's header")
+    func accessoryMetadataReachesTheHeader() throws {
+        var configuration = DataGridConfiguration()
+        configuration.isEditable = true
+        let grid = HostedDataGrid(rows: GridFixtureRows.people, configuration: configuration)
+        defer { grid.close() }
+        let column = try #require(grid.tableColumn(named: "name"))
+        let showsComments = AppSettingsManager.shared.general.showObjectComments
+
+        grid.model.apply(grid.owner.tableRows.updateDisplayMetadata(
+            columnEnumValues: ["name": ["ann", "bob"]],
+            columnComments: ["name": "Given name"]
+        ))
+
+        #expect(grid.controller.presenter.presentation(forDataIndex: 1).accessory != .none)
+        #expect(column.headerToolTip?.contains("Given name") == showsComments)
+        #expect(column.headerCell.accessibilityLabel()?.contains("Given name") == showsComments)
+    }
+
     @Test("A comment arriving after the rows reaches the column's header")
     func commentsReachTheHeader() throws {
         let grid = HostedDataGrid(rows: GridFixtureRows.people)

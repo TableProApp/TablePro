@@ -15,16 +15,20 @@ nonisolated struct MongoDBNumberKinds: Sendable {
     private static let numberKinds: Set<BsonValueKind> = [.int32, .int64, .double, .decimal128]
 
     // A document holding no number is kept as an empty entry, so merging it clears what an earlier read recorded.
+    // Documents of one shape share one dictionary, so a read of 100,000 of them keeps one copy of its kinds, not
+    // 100,000.
     static func recording(_ read: MongoReadDocuments, representation: MongoDBUuidRepresentation) -> MongoDBNumberKinds {
         var recorded = MongoDBNumberKinds()
-        for (document, text) in zip(read.dictionaries, read.texts) {
-            guard let locator = MongoDocumentIdentity.locator(inDocument: text) else { continue }
+        var shapes: Set<[String: BsonValueKind]> = []
+        let locators = read.locators ?? read.texts.map(MongoDocumentIdentity.locator(inDocument:))
+        for (document, locator) in zip(read.dictionaries, locators) {
+            guard let locator else { continue }
             var kinds: [String: BsonValueKind] = [:]
             for (field, value) in document where field != MongoDBCollectionDDL.idField {
                 let kind = BsonDocumentFlattener.valueKind(for: value, representation: representation)
                 if numberKinds.contains(kind) { kinds[field] = kind }
             }
-            recorded.kindsByLocator[locator] = kinds
+            recorded.kindsByLocator[locator] = shapes.insert(kinds).memberAfterInsert
             recorded.count += kinds.count
         }
         return recorded

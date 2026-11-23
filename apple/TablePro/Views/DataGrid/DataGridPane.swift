@@ -107,6 +107,7 @@ final class DataGridPane {
         let identifier = NSUserInterfaceItemIdentifier("DataGrid.column.\(id.stringValue)")
         let column = NSTableColumn(identifier: identifier)
         column.headerCell = ThemeTableHeaderCell()
+        column.dataCell = Self.undrawnDataCell()
         column.minWidth = DataGridMetrics.dataColumnMinWidth
         column.maxWidth = DataGridMetrics.dataColumnMaxWidth
         column.resizingMask = .userResizingMask
@@ -119,6 +120,7 @@ final class DataGridPane {
         if let rowNumberColumn { return rowNumberColumn }
         let column = NSTableColumn(identifier: Self.rowNumberIdentifier)
         column.headerCell = ThemeTableHeaderCell()
+        column.dataCell = Self.undrawnDataCell()
         column.title = "#"
         column.isEditable = false
         column.resizingMask = []
@@ -127,6 +129,12 @@ final class DataGridPane {
         headerCell.setAccessibilityLabel(String(localized: "Row number"))
         rowNumberColumn = column
         return column
+    }
+
+    // A view-based table never draws it, and the default text field cell tiles the table on every attach, which made
+    // attaching n columns O(n²) (measured on macOS 27). One per column, since a cell belongs to one control view.
+    private static func undrawnDataCell() -> NSCell {
+        NSCell()
     }
 
     func forgetColumns(except kept: Set<DataGridColumnID>) {

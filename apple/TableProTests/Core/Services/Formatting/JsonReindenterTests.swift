@@ -1,8 +1,3 @@
-//
-//  JsonReindenterTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
@@ -116,13 +111,103 @@ struct JsonReindenterTests {
         #expect(JsonReindenter.normalize(input) == "{\"z\":9007199254740993,\"a\":2}")
     }
 
-    @Test("Oversized input is returned unchanged")
+    @Test("Input past the editor's two million characters is returned unchanged")
     func sizeCap() {
-        let big = "{\"a\":\"" + String(repeating: "x", count: 500_001) + "\"}"
+        let big = "{\"a\":\"" + String(repeating: "x", count: 2_000_001) + "\"}"
         #expect(JsonReindenter.reindentIfValid(big) == nil)
         #expect(JsonReindenter.reindent(big) == big)
         #expect(JsonReindenter.normalize(big) == big)
     }
+
+    @Test("A value over half a million characters is indented and compacted")
+    func valueInTheBandIsLaidOut() throws {
+        let value = String(repeating: "x", count: 600_000)
+        let source = "{\"a\":\"\(value)\",\"b\":[1,2]}"
+        let pretty = try #require(JsonReindenter.reindentIfValid(source))
+
+        #expect(pretty == "{\n  \"a\": \"\(value)\",\n  \"b\": [\n    1,\n    2\n  ]\n}")
+        #expect(JsonReindenter.normalize(pretty) == source)
+    }
+
+    // `{"a":"…"}` indents to its content plus 13 characters.
+    @Test("The cap counts the indented text in UTF-16 units", arguments: [
+        ("x", 1_999_987, true), ("x", 1_999_988, false),
+        ("\u{E9}", 1_999_987, true), ("\u{E9}", 1_999_988, false),
+        ("\u{1F600}", 999_993, true), ("\u{1F600}", 999_994, false),
+    ])
+    func capCountsTheIndentedText(character: String, count: Int, fits: Bool) {
+        let source = "{\"a\":\"" + String(repeating: character, count: count) + "\"}"
+        let pretty = JsonReindenter.reindentIfValid(source)
+
+        #expect((pretty != nil) == fits)
+        if let pretty {
+            #expect((pretty as NSString).length <= 2_000_000)
+        }
+    }
+
+    @Test("A value whose indented text passes the cap stays on its line but still compacts")
+    func indentedTextPastTheCap() {
+        let elements = Array(repeating: "1", count: 600_000)
+        let source = "[" + elements.joined(separator: ", ") + "]"
+        #expect((source as NSString).length < 2_000_000)
+
+        #expect(JsonReindenter.reindentIfValid(source) == nil)
+        #expect(JsonReindenter.reindent(source) == source)
+        #expect(JsonReindenter.normalize(source) == "[" + elements.joined(separator: ",") + "]")
+    }
+
+    // The reference recurses with bigger frames than the writer, and 512 levels overflow a test thread's stack.
+    @Test("The writer lays out what the syntax parser's tree lays out, indented and compact")
+    func writerMatchesTheParsersTree() async {
+        let mismatches = await Self.onLargeStack {
+            Self.corpus.filter { source in
+                JsonReindenter.reindentIfValid(source) != ReferenceLayout.pretty(source)
+                    || JsonReindenter.normalize(source) != ReferenceLayout.compact(source)
+            }
+        }
+        #expect(mismatches.isEmpty, "\(mismatches.prefix(3).map { $0.debugDescription })")
+    }
+
+    private static func onLargeStack<Value: Sendable>(_ body: @escaping @Sendable () -> Value) async -> Value {
+        await withCheckedContinuation { continuation in
+            let thread = Thread { continuation.resume(returning: body()) }
+            thread.stackSize = 16 << 20
+            thread.start()
+        }
+    }
+
+    private static let truncated = #"{"a":[1,-2.5e-3,{"b":"x\"y\\"}],"c":true,"d":null,"é":"😀","e":{}}"#
+
+    private static let corpus: [String] = {
+        var corpus = [
+            #"{"z":1,"a":2,"m":3}"#, #"{"id":9007199254740993}"#, #"{"value":3.141592653589793238}"#,
+            #""hello""#, "42", "true", "false", "null", "  -3.5e10  ", "[1,2,3]", "{}", "[]", #"{"a":{},"b":[]}"#,
+            "not json {", #"{"a":1} extra"#, #"{"a":[1,{"b":2}],"c":"x"}"#, #"{"path":"a\/b","emoji":"\uD83D\uDE00"}"#,
+            #"{"text":"{not:structure}"}"#, "{\n  \"a\": 1,\n  \"b\": [ 2, 3 ]\n}", #"{ "z": 9007199254740993, "a": 2 }"#,
+            #""a\"b\\c\n""#, #"["\u0041", "\t", "\/"]"#, #""\uD800""#, #""\uDC00x""#, #"["\uD83D", "\uDE00"]"#,
+            #""\é""#, #""a\😀b""#, #""\é"#, #""\"#, #""\""#, #""\\""#,
+            "007", "-0", "1.", ".5", "-", "1e", "1e+", "1E-2", "01.10e+05", "--1", "+1", "1.2.3", "1e5e5", "-01",
+            "tru", "nul", "nulll", "[true,false,null]", "[truefalse]", #"{"a":nul}"#,
+            "\t{\r\n\"a\"\t:\n1}\n", "\u{00A0}1", "1\u{00A0}", "\u{FEFF}{}",
+            #"{"名前":"値","emoji":"👩‍💻","flag":"🇻🇳"}"#, "[\"e\u{301}\", \"\u{0600}1\"]",
+            "{,}", #"{"a":1,}"#, "[1,]", "[,1]", #"{"a"}"#, #"{"a":}"#, "{1:2}", "]", "}", "", " ", #""""#, "\"", #"""x"#,
+            "[[]]", "[{},[]]", #"{"a":[{"b":[{}]}]}"#, "[ [ ] , { } ]", #"{"a" : 1 , "b" : [ ] }"#,
+        ]
+        for depth in [511, 512, 513] {
+            corpus.append(String(repeating: "[", count: depth) + String(repeating: "]", count: depth))
+            corpus.append(String(repeating: #"{"a":"#, count: depth) + "1" + String(repeating: "}", count: depth))
+            corpus.append(String(repeating: "[1,", count: depth) + "2" + String(repeating: "]", count: depth))
+        }
+        let scalars = Array(truncated.unicodeScalars)
+        for length in 0...scalars.count {
+            var prefix = String.UnicodeScalarView()
+            prefix.append(contentsOf: scalars[0..<length])
+            corpus.append(String(prefix))
+        }
+        let loneSurrogates: [unichar] = [0x5B, 0x22, 0xD800, 0x22, 0x2C, 0x22, 0x61, 0xDC00, 0x22, 0x5D]
+        corpus.append(NSString(characters: loneSurrogates, length: loneSurrogates.count) as String)
+        return corpus
+    }()
 
     @Test("decodeStringLiteral decodes escapes and surrogate pairs")
     func decodeStringLiteral() {
@@ -139,5 +224,77 @@ struct JsonReindenterTests {
         #expect(JsonReindenter.reindentIfValid(deep) == nil)
         #expect(JsonReindenter.reindent(deep) == deep)
         #expect(JsonReindenter.normalize(deep) == deep)
+    }
+}
+
+// The layout over `JsonSyntaxParser`'s node tree that the byte writer replaced.
+private enum ReferenceLayout {
+    static func pretty(_ source: String) -> String? {
+        guard let node = JsonSyntaxParser.parse(source) else { return nil }
+        var output = ""
+        writePretty(node, into: &output, depth: 0)
+        return output
+    }
+
+    static func compact(_ source: String) -> String {
+        guard let node = JsonSyntaxParser.parse(source) else { return source }
+        var output = ""
+        writeCompact(node, into: &output)
+        return output
+    }
+
+    private static func writePretty(_ node: JsonSyntaxNode, into output: inout String, depth: Int) {
+        switch node {
+        case .string(let raw), .number(let raw), .literal(let raw):
+            output += raw
+        case .object(let pairs):
+            guard !pairs.isEmpty else {
+                output += "{}"
+                return
+            }
+            output += "{\n"
+            let childPad = String(repeating: "  ", count: depth + 1)
+            for (offset, pair) in pairs.enumerated() {
+                output += childPad + pair.key + ": "
+                writePretty(pair.value, into: &output, depth: depth + 1)
+                output += offset == pairs.count - 1 ? "\n" : ",\n"
+            }
+            output += String(repeating: "  ", count: depth) + "}"
+        case .array(let elements):
+            guard !elements.isEmpty else {
+                output += "[]"
+                return
+            }
+            output += "[\n"
+            let childPad = String(repeating: "  ", count: depth + 1)
+            for (offset, element) in elements.enumerated() {
+                output += childPad
+                writePretty(element, into: &output, depth: depth + 1)
+                output += offset == elements.count - 1 ? "\n" : ",\n"
+            }
+            output += String(repeating: "  ", count: depth) + "]"
+        }
+    }
+
+    private static func writeCompact(_ node: JsonSyntaxNode, into output: inout String) {
+        switch node {
+        case .string(let raw), .number(let raw), .literal(let raw):
+            output += raw
+        case .object(let pairs):
+            output += "{"
+            for (offset, pair) in pairs.enumerated() {
+                output += pair.key + ":"
+                writeCompact(pair.value, into: &output)
+                if offset != pairs.count - 1 { output += "," }
+            }
+            output += "}"
+        case .array(let elements):
+            output += "["
+            for (offset, element) in elements.enumerated() {
+                writeCompact(element, into: &output)
+                if offset != elements.count - 1 { output += "," }
+            }
+            output += "]"
+        }
     }
 }
