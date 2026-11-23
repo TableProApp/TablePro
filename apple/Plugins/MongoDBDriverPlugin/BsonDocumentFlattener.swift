@@ -41,6 +41,9 @@ nonisolated enum BsonValueKind: Hashable {
 nonisolated struct MongoReadDocuments {
     let dictionaries: [[String: Any]]
     let texts: [String]
+    // Each document's row locator, when the read already took them, so the number kinds reuse them instead of
+    // parsing every document's text again.
+    var locators: [String?]?
 }
 
 nonisolated struct BsonDocumentFlattener {

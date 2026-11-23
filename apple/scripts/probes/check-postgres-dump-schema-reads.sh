@@ -46,7 +46,7 @@ for source in "$ROOT"/Plugins/PostgreSQLDriverPlugin/*.swift; do
     ln -s "$source" "$WORK/Sources/ProbeDriver/$(basename "$source")"
 done
 for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox PluginRedirectRefusingDelegate \
-    PluginNameSpellings; do
+    PluginNameSpellings PluginRowBatcher; do
     [[ -f "$ROOT/Plugins/Shared/$shared.swift" ]] || continue
     ln -s "$ROOT/Plugins/Shared/$shared.swift" "$WORK/Sources/ProbeDriver/$shared.swift"
 done

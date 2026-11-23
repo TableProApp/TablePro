@@ -1,8 +1,3 @@
-//
-//  ResultsJsonView.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProPluginKit
 
@@ -50,9 +45,10 @@ internal struct ResultsJsonView: View {
         self.columnLayout = columnLayout
         self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
         self._resolvedRowCount = State(
-            initialValue: selectedRowIDs.isEmpty
-                ? (displayIDs?.count ?? tableRows.count)
-                : selectedRowIDs.count
+            initialValue: min(
+                selectedRowIDs.isEmpty ? (displayIDs?.count ?? tableRows.count) : selectedRowIDs.count,
+                JsonRowConverter.maxRows
+            )
         )
     }
 
@@ -210,16 +206,14 @@ internal struct ResultsJsonView: View {
         let defaulted = defaultedCells
         let layout = columnLayout
 
-        let result = await Task.detached(priority: .userInitiated) {
-            Self.computeJson(
-                tableRows: snapshot,
-                displayIDs: ids,
-                selectedIndices: selectedIndices,
-                deletedRowIDs: deletedIDs,
-                defaultedCells: defaulted,
-                columnLayout: layout
-            )
-        }.value
+        let result = await Self.render(
+            tableRows: snapshot,
+            displayIDs: ids,
+            selectedIndices: selectedIndices,
+            deletedRowIDs: deletedIDs,
+            defaultedCells: defaulted,
+            columnLayout: layout
+        )
 
         guard !Task.isCancelled else { return }
         cachedJson = result.json
@@ -244,16 +238,42 @@ internal struct ResultsJsonView: View {
         let resolvedCount: Int
         let skippedDeletedCount: Int
         let parseResult: Result<JSONTreeNode, JSONTreeParseError>
+
+        static var cancelled: RenderedJson {
+            RenderedJson(json: "", pretty: "", resolvedCount: 0, skippedDeletedCount: 0, parseResult: .failure(.invalidJSON))
+        }
     }
 
-    // Same serializer as Copy as JSON.
+    // Off the main actor and in the caller's task, so a newer render key cancels the render it replaces.
+    @concurrent
+    nonisolated static func render(
+        tableRows: TableRows,
+        displayIDs: [RowID]?,
+        selectedIndices: Set<Int>,
+        deletedRowIDs: Set<RowID>,
+        defaultedCells: [RowID: Set<Int>],
+        columnLayout: ColumnLayoutState
+    ) async -> RenderedJson {
+        computeJson(
+            tableRows: tableRows,
+            displayIDs: displayIDs,
+            selectedIndices: selectedIndices,
+            deletedRowIDs: deletedRowIDs,
+            defaultedCells: defaultedCells,
+            columnLayout: columnLayout,
+            isCancelled: { Task.isCancelled }
+        )
+    }
+
+    // Same serializer as Copy as JSON. A cancelled call returns early with an empty result the caller drops.
     nonisolated static func computeJson(
         tableRows: TableRows,
         displayIDs: [RowID]?,
         selectedIndices: Set<Int>,
         deletedRowIDs: Set<RowID> = [],
         defaultedCells: [RowID: Set<Int>] = [:],
-        columnLayout: ColumnLayoutState
+        columnLayout: ColumnLayoutState,
+        isCancelled: () -> Bool = { false }
     ) -> RenderedJson {
         let output = ResultJsonSerializer.serialize(
             tableRows: tableRows,
@@ -261,11 +281,15 @@ internal struct ResultsJsonView: View {
             selectedDisplayIndices: selectedIndices,
             deletedRowIDs: deletedRowIDs,
             defaultedCells: defaultedCells,
-            columns: .fromColumnLayout(columnLayout, columns: tableRows.columns)
+            columns: .fromColumnLayout(columnLayout, columns: tableRows.columns),
+            isCancelled: isCancelled
         )
+        guard !isCancelled() else { return .cancelled }
+        let pretty = output.isIndented ? output.json : (output.json.prettyPrintedAsJson() ?? output.json)
+        guard !isCancelled() else { return .cancelled }
         return RenderedJson(
             json: output.json,
-            pretty: output.json.prettyPrintedAsJson() ?? output.json,
+            pretty: pretty,
             resolvedCount: output.rowCount,
             skippedDeletedCount: output.skippedDeletedCount,
             parseResult: JSONTreeDocument.parse(output.json)

@@ -18,7 +18,8 @@ nonisolated internal func sqliteQuoteIdentifier(_ name: String) -> String {
 
 // SQLite reads statement text only up to a NUL, so a NUL in a value goes in as char(0) between two literals.
 nonisolated internal func sqliteStringLiteralBody(_ value: String) -> String {
-    value.split(separator: "\0", omittingEmptySubsequences: false)
+    guard value.utf8.contains(0) else { return SQLQuoting.stringLiteralBody(value) }
+    return value.split(separator: "\0", omittingEmptySubsequences: false)
         .map { SQLQuoting.stringLiteralBody(String($0)) }
         .joined(separator: "'||char(0)||'")
 }

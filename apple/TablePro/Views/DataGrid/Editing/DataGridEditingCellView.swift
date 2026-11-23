@@ -80,7 +80,7 @@ final class DataGridEditingCellView: NSTableCellView {
         layoutField()
     }
 
-    override var isFlipped: Bool { true }
+    override nonisolated var isFlipped: Bool { true }
 
     // A selected row's emphasized style would turn the text white on the field's own white background.
     override var backgroundStyle: NSView.BackgroundStyle {

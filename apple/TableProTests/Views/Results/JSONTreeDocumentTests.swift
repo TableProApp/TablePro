@@ -1,8 +1,3 @@
-//
-//  JSONTreeDocumentTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
@@ -111,5 +106,12 @@ struct JSONTreeDocumentTests {
     func brokenTextIsInvalid() {
         #expect(outcome(JSONTreeDocument(displayText: "{\"a\":")) == .invalidJSON)
         #expect(outcome(JSONTreeDocument(displayText: "not json")) == .invalidJSON)
+    }
+
+    @Test("A valid document over half a million characters reports too large rather than invalid")
+    func documentInTheBandIsTooLarge() {
+        let document = "{\"blob\": \"" + String(repeating: "a", count: 600_000) + "\"}"
+
+        #expect(outcome(JSONTreeDocument(displayText: document)) == .tooLarge)
     }
 }
