@@ -29,13 +29,23 @@ internal extension MySQLPluginDriver {
         holdsForServer(MySQLServerVersion.appendsInnoDBStatusToComment(banner:flavor:))
     }
 
-    // A server that will not answer keeps the plain comparison, for this call only.
     func schemaNamesAreCaseSensitive() async -> Bool {
-        if let known = cachedSchemaNamesAreCaseSensitive { return known }
         let run: MySQLExportCatalog.Run = { [self] in try await self.execute(ownStatement: $0) }
-        guard let sensitive = await MySQLExportCatalog.schemaNameCaseSensitivity(run: run) else { return false }
-        cachedSchemaNamesAreCaseSensitive = sensitive
-        return sensitive
+        return await schemaNamesAreCaseSensitive {
+            await MySQLExportCatalog.schemaNameCaseSensitivity(run: run)
+        }
+    }
+
+    // A server that will not answer keeps the plain comparison, for the calls that shared that read only.
+    func schemaNamesAreCaseSensitive(reading read: @escaping @Sendable () async -> Bool?) async -> Bool {
+        switch schemaNameCase(startingRead: read) {
+        case .known(let known):
+            return known
+        case .reading(let inFlight):
+            let answer = await inFlight.value
+            settleSchemaNameCaseRead(inFlight, answer: answer)
+            return answer ?? false
+        }
     }
 
     // Built per call, so each read sees the banner, flavor and database of the session it runs on.

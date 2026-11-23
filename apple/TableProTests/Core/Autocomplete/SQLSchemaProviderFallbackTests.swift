@@ -128,7 +128,7 @@ struct SQLSchemaProviderFallbackTests {
             ]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -153,7 +153,7 @@ struct SQLSchemaProviderFallbackTests {
             "orders": [TestFixtures.makeColumnInfo(name: "id")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -177,7 +177,7 @@ struct SQLSchemaProviderFallbackTests {
             "orders": [TestFixtures.makeColumnInfo(name: "total", dataType: "DECIMAL", isPrimaryKey: false)]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -202,7 +202,7 @@ struct SQLSchemaProviderFallbackTests {
             "orders": [TestFixtures.makeColumnInfo(name: "id")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -220,7 +220,7 @@ struct SQLSchemaProviderFallbackTests {
             "users": [TestFixtures.makeColumnInfo(name: "email", dataType: "VARCHAR", isPrimaryKey: false)]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -242,7 +242,7 @@ struct SQLSchemaProviderFallbackTests {
             "orders": [TestFixtures.makeColumnInfo(name: "total", dataType: "DECIMAL", isPrimaryKey: false)]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -264,7 +264,7 @@ struct SQLSchemaProviderFallbackTests {
             ]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -293,7 +293,7 @@ struct SQLSchemaProviderFallbackTests {
             ]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -321,7 +321,7 @@ struct SQLSchemaProviderFallbackTests {
             "orders": [TestFixtures.makeColumnInfo(name: "id")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -344,7 +344,7 @@ struct SQLSchemaProviderFallbackTests {
             ]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -364,7 +364,7 @@ struct SQLSchemaProviderFallbackTests {
         driver.currentSchema = "public"
         driver.allColumnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
         driver.columnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase(
             "db",
             tables: [
@@ -392,7 +392,7 @@ struct SQLSchemaProviderFallbackTests {
         let driver = MockDatabaseDriver(connection: connection)
         driver.currentSchema = "sales"
         driver.columnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase(
             "db",
             tables: [
@@ -425,7 +425,7 @@ struct SQLSchemaProviderFallbackTests {
             "orders": [TestFixtures.makeColumnInfo(name: "order_id")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase(
             "testdb",
             tables: driver.tablesToReturn,
@@ -456,7 +456,7 @@ struct SQLSchemaProviderFallbackTests {
             "orders": [TestFixtures.makeColumnInfo(name: "order_id")]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
 
         let manualColumns = await provider.getColumns(for: "users")
@@ -483,7 +483,7 @@ struct SQLSchemaProviderFallbackTests {
         }
         driver.tablesToReturn = tables
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("testdb", tables: tables, driver: driver)
         await provider.requestColumnPreload()
         await provider.waitForEagerColumnLoad()
@@ -505,7 +505,7 @@ struct SQLSchemaProviderFallbackTests {
         let listed = (0..<10).map { TestFixtures.makeTableInfo(name: "table_\($0)") }
         driver.tablesToReturn = listed
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("testdb", tables: listed, driver: driver)
         await provider.requestColumnPreload()
         await provider.waitForEagerColumnLoad()
@@ -525,7 +525,7 @@ struct SQLSchemaProviderFallbackTests {
             "users": [TestFixtures.makeColumnInfo(name: "name", dataType: "VARCHAR", isPrimaryKey: false)]
         ]
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         // getColumns lowercases the key, but the canonical name should be "Users"
         _ = await provider.getColumns(for: "Users")
@@ -554,7 +554,7 @@ struct SQLSchemaProviderFallbackTests {
         }
         driver.tablesToReturn = tables
 
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         await populateCache(provider: provider, driver: driver)
 
@@ -575,7 +575,7 @@ struct SQLSchemaProviderFallbackTests {
             "users": [TestFixtures.makeColumnInfo(name: "id")],
             "orders": [TestFixtures.makeColumnInfo(name: "total", dataType: "DECIMAL", isPrimaryKey: false)]
         ]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         _ = await provider.getColumns(for: "users")
         let usersOnly = await provider.allColumnsFromCachedTables().map(\.label)

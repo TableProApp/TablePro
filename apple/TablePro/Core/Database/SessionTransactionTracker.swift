@@ -42,17 +42,32 @@ internal final class SessionTransactionTracker: ObservableObject {
         var state: State
     }
 
+    /// Whether the connection may still hold a transaction a statement ran inside, on any of its lanes.
+    internal enum Standing: Equatable, Sendable {
+        case none
+        case held
+        /// A live driver's last read could not say: an engine that never answers, or a read that timed out.
+        case unknown
+    }
+
     // Whether a lane's driver ever answered with a definite state; a timed-out read keeps an earlier yes.
     private struct Reader {
         weak var driver: AnyObject?
         var answers: Bool
+        var lastAnswered: Bool
     }
 
     @Published private(set) var holds: [Key: Hold] = [:]
 
+    private struct IdleTableRead {
+        weak var driver: AnyObject?
+    }
+
     private var drivers: [Key: Entry] = [:]
     private var revisions: [Key: Int] = [:]
     private var readers: [Key: Reader] = [:]
+    // The driver whose last turn on the lane was a table read that found no transaction.
+    private var idleTableReads: [Key: IdleTableRead] = [:]
     private let isLive: @MainActor (Key, DatabaseDriver) -> Bool
 
     internal init(isLive: @escaping @MainActor (Key, DatabaseDriver) -> Bool) {
@@ -105,12 +120,19 @@ internal final class SessionTransactionTracker: ObservableObject {
         _ state: PluginSessionTransactionState,
         on driver: DatabaseDriver,
         for key: Key,
-        readsOnly: Bool = false
+        readsOnly: Bool = false,
+        readsTable: Bool = false
     ) {
         // A turn can outlive its session's teardown; its late answer must not touch the replacement's hold.
         guard isLive(key, driver) else {
             if drivers[key]?.driver === driver { clear(key) }
+            idleTableReads.removeValue(forKey: key)
             return
+        }
+        if readsTable, state == .idle {
+            idleTableReads[key] = IdleTableRead(driver: driver)
+        } else {
+            idleTableReads.removeValue(forKey: key)
         }
         noteReader(driver, answered: state != .unknown, for: key)
         let next = heldState(after: state, from: driver, for: key)
@@ -123,6 +145,21 @@ internal final class SessionTransactionTracker: ObservableObject {
         } else {
             clear(key)
         }
+    }
+
+    internal func standing(of connectionId: UUID) -> Standing {
+        if holds.values.contains(where: { $0.connectionId == connectionId }) { return .held }
+        let unsure = readers.contains { key, reader in
+            guard key.connectionId == connectionId, !reader.lastAnswered,
+                  let driver = reader.driver as? DatabaseDriver
+            else { return false }
+            return isLive(key, driver)
+        }
+        return unsure ? .unknown : .none
+    }
+
+    internal func lastTableReadFoundIdle(on driver: DatabaseDriver, for key: Key) -> Bool {
+        idleTableReads[key]?.driver === driver
     }
 
     // True once the live driver of a lane the container runs on has only ever answered `.unknown`.
@@ -158,9 +195,10 @@ internal final class SessionTransactionTracker: ObservableObject {
     private func noteReader(_ driver: DatabaseDriver, answered: Bool, for key: Key) {
         if let reader = readers[key], reader.driver === driver {
             if answered { readers[key]?.answers = true }
+            readers[key]?.lastAnswered = answered
             return
         }
-        readers[key] = Reader(driver: driver, answers: answered)
+        readers[key] = Reader(driver: driver, answers: answered, lastAnswered: answered)
     }
 
     /// Drops every hold whose connection is not the lane's live one any more: a disconnect, a
@@ -174,6 +212,10 @@ internal final class SessionTransactionTracker: ObservableObject {
         for (key, reader) in readers where key.connectionId == connectionId {
             if let driver = reader.driver as? DatabaseDriver, isLive(key, driver) { continue }
             readers.removeValue(forKey: key)
+        }
+        for (key, read) in idleTableReads where key.connectionId == connectionId {
+            if let driver = read.driver as? DatabaseDriver, isLive(key, driver) { continue }
+            idleTableReads.removeValue(forKey: key)
         }
     }
 

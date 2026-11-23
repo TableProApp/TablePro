@@ -38,16 +38,21 @@ final class CatalogChangeService {
     private let adoption: CatalogEditAdoption
     private let isSessionLive: @MainActor (UUID) -> Bool
     private let startupCommands: @MainActor (UUID) -> String?
+    private let standing: @MainActor (UUID) -> SessionTransactionTracker.Standing
 
     private var pendingChanges: [UUID: CatalogChange] = [:]
     private var nameHazards: [UUID: TableNameHazards] = [:]
     private var drains: [UUID: Task<Void, Never>] = [:]
+    /// What statements inside a transaction may have changed, which a connection reading outside that
+    /// transaction sees only once it ends.
+    private var uncommittedKinds: [UUID: SQLCatalogObjectKinds] = [:]
 
     init(
         targets: [any CatalogChangeTarget]? = nil,
         adoption: CatalogEditAdoption? = nil,
         isSessionLive: (@MainActor (UUID) -> Bool)? = nil,
-        startupCommands: (@MainActor (UUID) -> String?)? = nil
+        startupCommands: (@MainActor (UUID) -> String?)? = nil,
+        standing: (@MainActor (UUID) -> SessionTransactionTracker.Standing)? = nil
     ) {
         self.targets = targets ?? [
             SchemaRefreshService.shared,
@@ -63,6 +68,9 @@ final class CatalogChangeService {
         }
         self.startupCommands = startupCommands ?? { connectionId in
             DatabaseManager.shared.session(for: connectionId)?.connection.startupCommands
+        }
+        self.standing = standing ?? { connectionId in
+            DatabaseManager.shared.sessionTransactions.standing(of: connectionId)
         }
     }
 
@@ -88,14 +96,19 @@ final class CatalogChangeService {
 
     func record(_ event: CatalogEvent) {
         let connectionId = event.connectionId
-        guard isSessionLive(connectionId) else { return }
+        guard isSessionLive(connectionId) else {
+            uncommittedKinds.removeValue(forKey: connectionId)
+            return
+        }
         switch event {
         case .statementsRan(_, let statements, let databaseType):
             recordStatements(statements, databaseType: databaseType, connectionId: connectionId)
         case .statementsSucceeded(let succeeded):
             recordCommittedTableEdits(of: succeeded)
         case .transactionEnded:
-            schedule(CatalogChange(connectionId: connectionId, kinds: Self.transactionEndKinds))
+            let kinds = settledKinds(connectionId: connectionId, endsTransaction: true)
+            guard !kinds.isEmpty else { return }
+            schedule(CatalogChange(connectionId: connectionId, kinds: kinds))
         case .tablesDropped(let refs, _):
             recordDroppedTables(refs, connectionId: connectionId)
         case .tableRenamed(let ref, let newName, _):
@@ -141,12 +154,43 @@ final class CatalogChangeService {
             databaseType: databaseType,
             grammar: SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: connectionId)
         )
-        var kinds = effect.kinds
-        if effect.endsTransaction {
-            kinds.formUnion(Self.transactionEndKinds)
+        var held = effect.kinds
+        if statements.contains(where: {
+            Self.callsUnlistedFunctionOnly($0, databaseType: databaseType, connectionId: connectionId)
+        }) {
+            held.formUnion(Self.transactionEndKinds)
         }
+        if !held.isEmpty, standing(connectionId) != .none {
+            uncommittedKinds[connectionId, default: []].formUnion(held)
+        }
+        let kinds = effect.kinds.union(settledKinds(connectionId: connectionId, endsTransaction: effect.endsTransaction))
         guard !kinds.isEmpty else { return }
         schedule(CatalogChange(connectionId: connectionId, kinds: kinds))
+    }
+
+    // A definition statement already names what it changes; a call is what can change something unseen.
+    private static func callsUnlistedFunctionOnly(_ statement: String, databaseType: DatabaseType, connectionId: UUID) -> Bool {
+        guard ReadOnlyFunctionCalls.callsUnlistedFunction(statement, databaseType: databaseType) else { return false }
+        return CatalogChangeClassifier.effect(
+            ofStatements: [statement],
+            databaseType: databaseType,
+            grammar: SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: connectionId)
+        ).kinds.isEmpty
+    }
+
+    /// What a transaction that ended, or a connection that no longer stands in one, leaves to refresh.
+    /// The kinds are kept while any lane may still hold a transaction, so a COMMIT on one lane never
+    /// drops what another lane has not committed yet. A connection that cannot say whether it holds one
+    /// refreshes the objects and schemas at every end, whatever ran.
+    private func settledKinds(connectionId: UUID, endsTransaction: Bool) -> SQLCatalogObjectKinds {
+        switch standing(connectionId) {
+        case .unknown:
+            return endsTransaction ? Self.transactionEndKinds.union(uncommittedKinds[connectionId] ?? []) : []
+        case .held:
+            return endsTransaction ? uncommittedKinds[connectionId] ?? [] : []
+        case .none:
+            return uncommittedKinds.removeValue(forKey: connectionId) ?? []
+        }
     }
 
     /// A table dropped or renamed by SQL the user or an MCP client ran is adopted exactly as the
@@ -226,9 +270,8 @@ final class CatalogChangeService {
     }
 
     /// DDL inside an open transaction is invisible to the connection a refresh reads through until the
-    /// transaction ends, and the statement that ends it may run on a different driver of the same
-    /// connection than the one that ran the DDL. Remembering which transaction held catalog changes
-    /// cannot tell those drivers apart, so every transaction end refreshes the objects and schemas.
+    /// transaction ends. A function outside the Read-Only list can run DDL the classifier never sees,
+    /// so a call to one counts as changing the objects and schemas.
     private static let transactionEndKinds: SQLCatalogObjectKinds = [.objects, .schemas]
 
     private static func change(for container: DatabaseContainerRef, connectionId: UUID) -> CatalogChange {

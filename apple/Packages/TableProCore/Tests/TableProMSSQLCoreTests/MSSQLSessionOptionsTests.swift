@@ -118,3 +118,20 @@ struct MSSQLServerBannerTests {
         #expect(MSSQLServerBanner.displayText(from: "Microsoft SQL Server 2019 - 15.0.1.1") == "Microsoft SQL Server 2019 - 15.0.1.1")
     }
 }
+
+struct MSSQLSessionIdentityTests {
+    @Test("One row answers both the schema and the banner")
+    func readsSchemaAndVersion() {
+        let identity = MSSQLSessionIdentity(columns: ["dbo", MSSQLServerBannerTests.sqlServer2022])
+
+        #expect(identity.schema == "dbo")
+        #expect(identity.version == MSSQLServerBannerTests.sqlServer2022)
+    }
+
+    @Test("An empty or missing schema keeps the one the session had, and a short row has no banner")
+    func missingValuesStayNil() {
+        #expect(MSSQLSessionIdentity(columns: ["", "banner"]).schema == nil)
+        #expect(MSSQLSessionIdentity(columns: [nil]).version == nil)
+        #expect(MSSQLSessionIdentity(columns: []) == MSSQLSessionIdentity(columns: [nil, nil]))
+    }
+}

@@ -9,6 +9,7 @@ import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @MainActor
@@ -174,7 +175,7 @@ struct SchemaServiceTests {
         #expect(service.loadedScope(for: connection.id) == sales)
     }
 
-    @Test("Switching back to a database shows its tables at once and refreshes them without loading")
+    @Test("Switching back to a database a change reached shows its tables at once and refreshes them without loading")
     func switchingBackShowsTheKeptTables() async {
         let connection = TestFixtures.makeConnection()
         let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
@@ -189,6 +190,7 @@ struct SchemaServiceTests {
         #expect(service.state(for: connection.id) == .idle)
         driver.tablesToReturn = [TableInfo(name: "invoices", type: .table, rowCount: 0, schema: nil)]
         await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: billing)
+        service.markKeptCatalogsStale(reachedBy: CatalogChange(connectionId: connection.id, kinds: .tables))
 
         service.show(scope: sales, type: connection.type)
 
@@ -207,6 +209,82 @@ struct SchemaServiceTests {
         #expect(!sawLoading)
         #expect(service.state(for: connection.id) == .loaded([orders, refunds]))
         #expect(service.isCatalogCurrent(for: connection.id))
+    }
+
+    private func keptSalesCatalog(
+        clock: KeptCatalogClock = KeptCatalogClock()
+    ) async -> (SchemaService, DatabaseConnection, sales: DatabaseScope, billing: DatabaseScope) {
+        let connection = TestFixtures.makeConnection()
+        let sales = DatabaseScope(connectionId: connection.id, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connection.id, database: "billing", schema: nil)
+        let driver = MockDatabaseDriver()
+        let service = SchemaService(now: { clock.now })
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: sales)
+        service.show(scope: billing, type: connection.type)
+        driver.tablesToReturn = [TableInfo(name: "invoices", type: .table, rowCount: 0, schema: nil)]
+        await service.reload(connectionId: connection.id, driver: driver, connection: connection, scope: billing)
+        return (service, connection, sales, billing)
+    }
+
+    @Test("Switching back within the kept window shows the catalog as current, so nothing reads it again")
+    func switchingBackWithinTheWindowKeepsTheCatalogCurrent() async {
+        let clock = KeptCatalogClock()
+        let (service, connection, sales, _) = await keptSalesCatalog(clock: clock)
+        clock.advance(by: .seconds(299))
+
+        service.show(scope: sales, type: connection.type)
+
+        #expect(service.isCatalogCurrent(for: connection.id))
+        #expect(service.tables(for: connection.id).map(\.name) == ["orders"])
+    }
+
+    @Test("A catalog older than the kept window is read again when shown")
+    func anOldCatalogIsNotCurrent() async {
+        let clock = KeptCatalogClock()
+        let (service, connection, sales, _) = await keptSalesCatalog(clock: clock)
+        clock.advance(by: SchemaService.keptCatalogLifetime)
+
+        service.show(scope: sales, type: connection.type)
+
+        #expect(!service.isCatalogCurrent(for: connection.id))
+    }
+
+    @Test("A reconnect, or DDL anywhere on the connection, makes every kept catalog stale")
+    func reconnectOrConnectionWideChangeMakesKeptCatalogsStale() async {
+        let (reconnected, firstConnection, firstSales, _) = await keptSalesCatalog()
+        reconnected.markAllStale(connectionId: firstConnection.id)
+        reconnected.show(scope: firstSales, type: firstConnection.type)
+        #expect(!reconnected.isCatalogCurrent(for: firstConnection.id))
+
+        let (changed, connection, sales, _) = await keptSalesCatalog()
+        changed.markKeptCatalogsStale(reachedBy: CatalogChange(connectionId: connection.id, kinds: .tables))
+        changed.show(scope: sales, type: connection.type)
+        #expect(!changed.isCatalogCurrent(for: connection.id))
+    }
+
+    @Test("A change to another database leaves the kept catalog current")
+    func aChangeElsewhereKeepsTheCatalogCurrent() async {
+        let (service, connection, sales, _) = await keptSalesCatalog()
+        service.markKeptCatalogsStale(reachedBy: CatalogChange(connectionId: connection.id, database: "billing", kinds: .tables))
+
+        service.show(scope: sales, type: connection.type)
+
+        #expect(service.isCatalogCurrent(for: connection.id))
+    }
+
+    @Test("A catalog whose last refresh failed is read again when shown")
+    func aFailedRefreshMakesTheCatalogStale() async {
+        let (service, connection, sales, billing) = await keptSalesCatalog()
+        service.show(scope: sales, type: connection.type)
+        let failing = MockDatabaseDriver()
+        failing.fetchTablesError = DatabaseError.queryFailed("gone")
+        await service.reload(connectionId: connection.id, driver: failing, connection: connection, scope: sales)
+        service.show(scope: billing, type: connection.type)
+
+        service.show(scope: sales, type: connection.type)
+
+        #expect(!service.isCatalogCurrent(for: connection.id))
     }
 
     @Test("Forgetting a database drops its kept tables and leaves the one on screen")
@@ -311,5 +389,14 @@ struct SchemaServiceTests {
         await service.load(connectionId: connection.id, driver: driver, connection: connection)
 
         #expect(service.state(for: connection.id) == .idle)
+    }
+}
+
+@MainActor
+final class KeptCatalogClock {
+    private(set) var now = ContinuousClock.now
+
+    func advance(by duration: Duration) {
+        now = now.advanced(by: duration)
     }
 }

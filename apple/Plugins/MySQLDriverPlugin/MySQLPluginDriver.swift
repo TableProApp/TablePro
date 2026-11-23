@@ -70,6 +70,35 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         set { sessionLock.withLock { _schemaNamesAreCaseSensitive = newValue } }
     }
 
+    /// The `lower_case_table_names` read in flight. Catalog reads that run side by side each ask for
+    /// the setting, and share this one read instead of sending one each.
+    private var _schemaNameCaseRead: Task<Bool?, Never>?
+
+    internal enum SchemaNameCase {
+        case known(Bool)
+        case reading(Task<Bool?, Never>)
+    }
+
+    internal func schemaNameCase(startingRead read: @escaping @Sendable () async -> Bool?) -> SchemaNameCase {
+        sessionLock.withLock {
+            if let known = _schemaNamesAreCaseSensitive { return .known(known) }
+            if let inFlight = _schemaNameCaseRead { return .reading(inFlight) }
+            let task = Task { await read() }
+            _schemaNameCaseRead = task
+            return .reading(task)
+        }
+    }
+
+    /// A read that a disconnect overtook stores nothing, since the next server may answer otherwise,
+    /// and one that failed stores nothing, so the next caller asks again.
+    internal func settleSchemaNameCaseRead(_ read: Task<Bool?, Never>, answer: Bool?) {
+        sessionLock.withLock {
+            guard _schemaNameCaseRead == read else { return }
+            _schemaNameCaseRead = nil
+            if let answer { _schemaNamesAreCaseSensitive = answer }
+        }
+    }
+
     /// Which `information_schema` columns this server has, keyed `TABLE.COLUMN`. Kept and cleared like
     /// `_schemaNamesAreCaseSensitive`.
     private var _catalogColumnPresence: [String: Bool] = [:]
@@ -83,7 +112,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     /// Guards `_flavor`, `footprint`, `appliedQueryTimeoutSeconds`, `isReleased`, `sessionLoss`,
-    /// `_schemaNamesAreCaseSensitive`, `_catalogColumnPresence` and `lastActivity`. The driver is
+    /// `_schemaNamesAreCaseSensitive`, `_schemaNameCaseRead`, `_catalogColumnPresence` and `lastActivity`. The driver is
     /// `@unchecked Sendable` and the idle timer runs on its own task, so the release decision and a
     /// query arriving would otherwise read and write them at the same time.
     /// Nothing calls into the connection while holding it: the connection asks the driver back under
@@ -303,6 +332,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             _serverVersion = nil
             _flavor = initialFlavor
             _schemaNamesAreCaseSensitive = nil
+            _schemaNameCaseRead = nil
             _catalogColumnPresence = [:]
             isReleased = false
             isDisconnected = true

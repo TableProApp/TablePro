@@ -185,6 +185,46 @@ struct SchemaRefreshServiceTests {
         #expect(names.sorted() == ["customers", "orders"])
     }
 
+    @Test("a refresh takes one bulk lease and pushes the tables into completion without a second one")
+    func refreshLeasesOnceForTheCatalogAndTheCompletionSync() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TableInfo(name: "orders", type: .table, rowCount: 0, schema: nil)]
+        let provider = FakeScopedMetadataProvider(driver: driver)
+        let registry = SchemaProviderRegistry(metadataDriverProvider: provider)
+        let connection = TestFixtures.makeConnection()
+        let schemaProvider = registry.getOrCreate(
+            for: DatabaseScope(connectionId: connection.id, database: "testdb", schema: nil)
+        )
+        let service = makeService(schemaService: SchemaService(), provider: provider, providerRegistry: registry)
+
+        await service.refresh(connection: connection)
+
+        #expect(provider.requestedWorkloads == [.bulk])
+        #expect(await schemaProvider.getTables().map(\.name) == ["orders"])
+    }
+
+    @Test("the completion sync takes the facts of the catalog shown, not of the one left")
+    func completionSyncFollowsTheShownCatalogsFacts() async {
+        let schemaService = SchemaService()
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let shop = DatabaseScope(connectionId: connection.id, database: "shop", schema: "public")
+        let archive = DatabaseScope(connectionId: connection.id, database: "archive", schema: "public")
+        let shopDriver = MockDatabaseDriver(connection: connection)
+        shopDriver.currentSchema = "sales"
+        let archiveDriver = MockDatabaseDriver(connection: connection)
+        archiveDriver.currentSchema = "history"
+
+        await schemaService.load(connectionId: connection.id, driver: shopDriver, connection: connection, scope: shop)
+        #expect(schemaService.catalogFacts(for: connection.id)?.currentSchema == "sales")
+        schemaService.show(scope: archive, type: .postgresql)
+        await schemaService.load(
+            connectionId: connection.id, driver: archiveDriver, connection: connection, scope: archive
+        )
+        #expect(schemaService.catalogFacts(for: connection.id)?.currentSchema == "history")
+        schemaService.show(scope: shop, type: .postgresql)
+        #expect(schemaService.catalogFacts(for: connection.id)?.currentSchema == "sales")
+    }
+
     @Test("the sync creates the browse scope's provider when no tab has one yet")
     func autocompleteSyncCreatesTheBrowseScopeProvider() async throws {
         let driver = MockDatabaseDriver()

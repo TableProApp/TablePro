@@ -4,6 +4,28 @@ import TableProAutocomplete
 import TableProPluginKit
 import TableProSQLGrammar
 
+/// What completion needs to know about the driver that read a scope's table list, kept beside the list
+/// so pushing that list into a provider later opens no connection to ask again.
+struct CatalogDriverFacts: Sendable, Equatable {
+    let currentSchema: String?
+    let fetchesAllColumnsInOneRequest: Bool
+    let providesBulkColumnFetch: Bool
+
+    init(currentSchema: String?, fetchesAllColumnsInOneRequest: Bool, providesBulkColumnFetch: Bool) {
+        self.currentSchema = currentSchema
+        self.fetchesAllColumnsInOneRequest = fetchesAllColumnsInOneRequest
+        self.providesBulkColumnFetch = providesBulkColumnFetch
+    }
+
+    init(_ driver: DatabaseDriver) {
+        self.init(
+            currentSchema: (driver as? SchemaSwitchable)?.currentSchema,
+            fetchesAllColumnsInOneRequest: driver.fetchesAllColumnsInOneRequest,
+            providesBulkColumnFetch: driver.providesBulkColumnFetch
+        )
+    }
+}
+
 actor SQLSchemaProvider {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLSchemaProvider")
 
@@ -46,7 +68,6 @@ actor SQLSchemaProvider {
     private var columnReads: [ColumnCacheKey: ListedName] = [:]
     private var listedNames: [ColumnCacheKey: Set<ListedName>]?
     private var listedSpellings: ListedSpellings?
-    private var loadTask: Task<Void, Never>?
     private var eagerLoadSchema: String?
 
     private enum ColumnPreload {
@@ -113,7 +134,6 @@ actor SQLSchemaProvider {
     private var cachedTableColumnItems: TableColumnItems?
     private(set) var tableColumnItemsBuildCount = 0
 
-    private weak var cachedDriver: (any DatabaseDriver)?
     // Read from the driver that filled the table list, so learning it opens no connection.
     private var fetchesAllColumnsInOneRequest = false
     // Whether the bulk read reports everything a table's own read does, so a reader besides completion can trust it.
@@ -126,48 +146,6 @@ actor SQLSchemaProvider {
 
     init(metadataSource: ColumnMetadataSource? = nil) {
         self.metadataSource = metadataSource
-    }
-
-    // Concurrent callers await the same in-flight Task instead of firing duplicate queries.
-    func loadSchema(using driver: DatabaseDriver, connection: DatabaseConnection? = nil) async {
-        if let existing = loadTask {
-            Self.logger.debug("[schema] loadSchema awaiting existing in-flight task")
-            let t0 = Date()
-            if let connection { self.connectionInfo = connection }
-            await existing.value
-            Self.logger.debug("[schema] loadSchema coalesced, awaited existing task ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count)")
-            return
-        }
-
-        Self.logger.info("[schema] loadSchema starting new fetch")
-        let t0 = Date()
-        self.cachedDriver = driver
-        self.fetchesAllColumnsInOneRequest = driver.fetchesAllColumnsInOneRequest
-        self.bulkColumnsAreComplete = driver.providesBulkColumnFetch
-        self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
-        self.listedNames = nil
-        self.listedSpellings = nil
-        if let connection { self.connectionInfo = connection }
-
-        let task = Task<Void, Never> {
-            do {
-                let fetched = try await driver.fetchTables(schema: nil)
-                await self.setLoadedTables(fetched)
-            } catch {
-                Self.logger.error(
-                    "[schema] loadSchema failed: \(error.publicLogShape, privacy: .public)"
-                )
-            }
-        }
-        loadTask = task
-        await task.value
-        loadTask = nil
-        Self.logger.info("[schema] loadSchema done ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count)")
-    }
-
-    private func setLoadedTables(_ newTables: [TableInfo]) {
-        tables = newTables
-        noteTableListWritten()
     }
 
     func getConnectionInfo() -> DatabaseConnection? {
@@ -203,15 +181,11 @@ actor SQLSchemaProvider {
         table tableName: String,
         schema: String?
     ) -> Task<[ColumnInfo]?, Never>? {
-        let source = metadataSource
-        let driver = cachedDriver
-        guard source != nil || driver != nil else { return nil }
+        guard let source = metadataSource else { return nil }
 
         let task = Task<[ColumnInfo]?, Never> {
             do {
-                if let source { return try await source.fetchColumns(tableName, schema) }
-                guard let driver else { return nil }
-                return try await driver.fetchColumns(table: tableName, schema: schema)
+                return try await source.fetchColumns(tableName, schema)
             } catch {
                 Self.logger.error(
                     "Column fetch failed for autocomplete table=\(tableName) error=\(error.publicLogShape, privacy: .public)"
@@ -264,15 +238,8 @@ actor SQLSchemaProvider {
 
         let readSchema = schema.map { catalogSpelling(ofSchema: $0, isQuoted: false) ?? $0 }
         let read: @Sendable () async throws -> [ForeignKeyInfo]
-        if let source = metadataSource {
-            guard let fetch = source.fetchForeignKeys else { return [] }
-            read = { try await fetch(tableName, readSchema) }
-        } else if let driver = cachedDriver {
-            guard driver.connection.type.supportsForeignKeys else { return [] }
-            read = { try await driver.fetchForeignKeys(table: tableName, schema: readSchema) }
-        } else {
-            return []
-        }
+        guard let fetch = metadataSource?.fetchForeignKeys else { return [] }
+        read = { try await fetch(tableName, readSchema) }
 
         let task = Task<[SQLCompletionForeignKey]?, Never> {
             do {
@@ -353,11 +320,11 @@ actor SQLSchemaProvider {
     func resetForDatabase(
         _ database: String?,
         tables newTables: [TableInfo],
-        driver: DatabaseDriver,
+        facts: CatalogDriverFacts,
         connection: DatabaseConnection? = nil
     ) {
         let newDatabase = database.flatMap { $0.isEmpty ? nil : $0 }
-        let newEagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
+        let newEagerLoadSchema = facts.currentSchema
         let isSameScope = newDatabase != nil && CatalogName.same(newDatabase, scopeDatabase)
             && CatalogName.same(newEagerLoadSchema, eagerLoadSchema)
         self.scopeDatabase = newDatabase
@@ -381,9 +348,8 @@ actor SQLSchemaProvider {
         self.fieldPathTasks.removeAll()
         self.onDemandSchemaTables.removeAll()
         self.onDemandSchemaTableTasks.removeAll()
-        self.cachedDriver = driver
-        self.fetchesAllColumnsInOneRequest = driver.fetchesAllColumnsInOneRequest
-        self.bulkColumnsAreComplete = driver.providesBulkColumnFetch
+        self.fetchesAllColumnsInOneRequest = facts.fetchesAllColumnsInOneRequest
+        self.bulkColumnsAreComplete = facts.providesBulkColumnFetch
         if let connection { self.connectionInfo = connection }
         noteTableListWritten()
     }
@@ -475,20 +441,11 @@ actor SQLSchemaProvider {
             columnPreload = .settled(generation: generation, outcome: .skipped)
             return
         }
-        let source = metadataSource
-        let driver = cachedDriver
-        guard source != nil || driver != nil else { return }
+        guard let source = metadataSource else { return }
         Self.logger.info("[schema] column preload starting tableCount=\(tableCount)")
         let task = Task(priority: .utility) {
             do {
-                let allColumns: [CatalogName: [ColumnInfo]]
-                if let source {
-                    allColumns = try await source.fetchAllColumns()
-                } else if let driver {
-                    allColumns = try await driver.fetchAllColumns(schema: nil)
-                } else {
-                    return
-                }
+                let allColumns = try await source.fetchAllColumns()
                 self.commitColumnPreload(.success(allColumns), generation: generation)
             } catch {
                 self.commitColumnPreload(.failure(error), generation: generation)

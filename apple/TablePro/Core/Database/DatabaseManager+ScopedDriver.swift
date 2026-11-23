@@ -463,7 +463,9 @@ extension DatabaseManager {
         scope: DatabaseScope,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
     ) async throws -> TableReadTurn {
-        try await withSessionDriverTurn(scope: scope, sessionWork: .independent, readsOnly: true) { driver in
+        try await withSessionDriverTurn(
+            scope: scope, sessionWork: .independent, readsOnly: true, readsTable: true
+        ) { driver in
             let route = tableReadRoute(for: scope)
             guard route == .sessionDriver else { return .moved(route) }
             try await tracedPin(driver, to: scope)
@@ -476,6 +478,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         sessionWork: SessionWork,
         readsOnly: Bool = false,
+        readsTable: Bool = false,
         _ turn: (DatabaseDriver) async throws -> R
     ) async throws -> R {
         let connectionId = scope.connectionId
@@ -524,7 +527,8 @@ extension DatabaseManager {
                         throw DatabaseError.connectionFailed(Self.sessionLostMessage(database: lost.database, loss: lost.loss))
                     }
                     return try await recordingTransaction(
-                        on: browsedDriver, for: .init(connectionId: connectionId, lane: nil), readsOnly: readsOnly
+                        on: browsedDriver, for: .init(connectionId: connectionId, lane: nil),
+                        readsOnly: readsOnly, readsTable: readsTable
                     ) {
                         try await turn(browsedDriver)
                     }
@@ -554,7 +558,8 @@ extension DatabaseManager {
                 sessionLanes.noteOpenedUse(database: lane, for: connectionId)
                 defer { sessionLanes.noteOpenedUse(database: lane, for: connectionId) }
                 return try await recordingTransaction(
-                    on: laneDriver, for: .init(connectionId: connectionId, lane: lane), readsOnly: readsOnly
+                    on: laneDriver, for: .init(connectionId: connectionId, lane: lane),
+                    readsOnly: readsOnly, readsTable: readsTable
                 ) {
                     try await turn(laneDriver)
                 }
@@ -565,10 +570,15 @@ extension DatabaseManager {
     /// Read inside the turn, after the work and whether or not it threw, so nothing else runs on the
     /// connection between the statement and the answer: a failed statement can leave the transaction
     /// aborted, and a refused COMMIT can still have ended it.
+    ///
+    /// A table read that follows a table read which found the session idle is not asked about: a
+    /// SELECT the app built from a table cannot open a transaction the previous one did not, so only
+    /// another turn on the connection can change the answer, and that turn asks again.
     private func recordingTransaction<R>(
         on driver: DatabaseDriver,
         for key: SessionTransactionTracker.Key,
         readsOnly: Bool,
+        readsTable: Bool = false,
         _ work: () async throws -> R
     ) async throws -> R {
         guard driver.supportsTransactions else { return try await work() }
@@ -579,9 +589,17 @@ extension DatabaseManager {
         } catch {
             outcome = .failure(error)
         }
+        if readsTable, case .success = outcome, !turnHold.isHeld,
+           sessionTransactions.lastTableReadFoundIdle(on: driver, for: key) {
+            sessionTransactions.record(.idle, on: driver, for: key, readsOnly: true, readsTable: true)
+            return try outcome.get()
+        }
         let read = await Self.boundedTransactionState(of: driver, clock: ContinuousClock())
         let state = ManualCommit.recordedState(read: read, turnOpenedHold: turnHold.isHeld)
-        sessionTransactions.record(state, on: driver, for: key, readsOnly: readsOnly)
+        let succeeded = (try? outcome.get()) != nil
+        sessionTransactions.record(
+            state, on: driver, for: key, readsOnly: readsOnly, readsTable: readsTable && succeeded
+        )
         return try outcome.get()
     }
 
