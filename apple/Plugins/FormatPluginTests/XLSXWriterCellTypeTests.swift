@@ -27,8 +27,7 @@ struct XLSXWriterCellTypeTests {
             .appendingPathComponent("\(UUID().uuidString).xlsx")
         defer { try? FileManager.default.removeItem(at: destination) }
         try await writer.write(to: destination)
-        let written = try Data(contentsOf: destination)
-        let archive = try #require(String(bytes: written, encoding: .isoLatin1))
+        let archive = try XLSXArchiveContents(contentsOf: destination).text
         let start = try #require(archive.range(of: "<sheetData>"))
         let end = try #require(archive.range(of: "</sheetData>"))
         return String(archive[start.upperBound ..< end.lowerBound])

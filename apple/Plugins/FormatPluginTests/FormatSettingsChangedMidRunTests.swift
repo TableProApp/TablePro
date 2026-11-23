@@ -177,7 +177,7 @@ struct FormatSettingsChangedMidRunTests {
             plugin.settings.convertNullToEmpty = false
         }
         let written = try await export(plugin, from: source, fileExtension: "xlsx")
-        let text = try #require(String(bytes: written, encoding: .isoLatin1))
+        let text = try XLSXArchiveContents(written).text
         #expect(!text.contains("<t>NULL</t>"))
     }
 

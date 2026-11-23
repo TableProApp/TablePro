@@ -133,7 +133,7 @@ struct IntegrationsActivityLogPane: View {
         } label: {
             Label(String(localized: "Filters"), systemImage: ToolbarSymbols.filter(isActive: hasActiveFilters))
         }
-        // A toolbar-hosted Menu otherwise publishes "chevron.pulldown" from its label (see WelcomeViewOptionsMenu).
+        // A toolbar-hosted Menu otherwise publishes "chevron.pulldown" from its label.
         .accessibilityLabel(String(localized: "Filters"))
         .help(String(localized: "Filter activity"))
     }

@@ -281,7 +281,11 @@ final class CredentialProfileStorage {
 
     func loadPassword(for profileId: UUID) -> String? {
         keychain.readStringResult(forKey: Self.passwordKey(profileId))
-            .value(label: "Credential profile password (profileId=\(profileId.uuidString))", logger: Self.logger)
+            .value(label: Self.passwordLabel(profileId), logger: Self.logger)
+    }
+
+    func passwordRead(for profileId: UUID) -> DeferredSecretRead {
+        deferredRead(forKey: Self.passwordKey(profileId), label: Self.passwordLabel(profileId))
     }
 
     func readPassword(for profileId: UUID) -> ProfileSecretRead {
@@ -299,10 +303,11 @@ final class CredentialProfileStorage {
 
     func loadSecureField(fieldId: String, for profileId: UUID) -> String? {
         keychain.readStringResult(forKey: Self.fieldKey(fieldId, profileId))
-            .value(
-                label: "Credential profile field \(fieldId) (profileId=\(profileId.uuidString))",
-                logger: Self.logger
-            )
+            .value(label: Self.fieldLabel(fieldId, profileId), logger: Self.logger)
+    }
+
+    func secureFieldRead(fieldId: String, for profileId: UUID) -> DeferredSecretRead {
+        deferredRead(forKey: Self.fieldKey(fieldId, profileId), label: Self.fieldLabel(fieldId, profileId))
     }
 
     func readSecureField(fieldId: String, for profileId: UUID) -> ProfileSecretRead {
@@ -331,6 +336,21 @@ final class CredentialProfileStorage {
 
     private static func fieldKey(_ fieldId: String, _ profileId: UUID) -> String {
         "\(secretPrefix)field.\(fieldId).\(profileId.uuidString)"
+    }
+
+    private static func passwordLabel(_ profileId: UUID) -> String {
+        "Credential profile password (profileId=\(profileId.uuidString))"
+    }
+
+    private static func fieldLabel(_ fieldId: String, _ profileId: UUID) -> String {
+        "Credential profile field \(fieldId) (profileId=\(profileId.uuidString))"
+    }
+
+    private func deferredRead(forKey key: String, label: String) -> DeferredSecretRead {
+        let keychain = keychain
+        return DeferredSecretRead(key: key, label: label, logger: Self.logger) {
+            keychain.readStringResult(forKey: key)
+        }
     }
 
     private struct ProfileSecrets {

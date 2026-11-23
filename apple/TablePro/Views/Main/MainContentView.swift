@@ -47,7 +47,6 @@ struct MainContentView: View {
     @State var inspectorUpdateTask: Task<Void, Never>?
     @State var inspectorContextRefreshTask: Task<Void, Never>?
     @State var windowId = UUID()
-    @State var viewWindow: NSWindow?
 
     // MARK: - Environment
 
@@ -406,6 +405,13 @@ struct MainContentView: View {
             .onValueChange(of: \.viewMode, in: trailingPaneState.inspector) { _, _ in
                 updateInspectorContext()
             }
+            // The edit state is left empty while the inspector is hidden; a reveal fills it once, now.
+            .onValueChange(of: \.isOnScreen, in: trailingPaneState.inspector) { _, isOnScreen in
+                guard isOnScreen else { return }
+                inspectorUpdateTask?.cancel()
+                updateSidebarEditState()
+                updateInspectorContext()
+            }
             // Debounced: a detached value window commits per keystroke, and rebuilding the JSON tree cancels the reader's fetches.
             .onReceive(coordinator.inspectorRowContentChanged) { _ in
                 scheduleInspectorContextRefresh()
@@ -461,7 +467,7 @@ struct MainContentView: View {
                 Self.lifecycleLogger.debug(
                     "[switch] selectedTabId changed seq=\(seq) from=\(oldTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)"
                 )
-                (viewWindow?.windowController as? TabWindowController)?.refreshUserActivity()
+                (coordinator.contentWindow?.windowController as? TabWindowController)?.refreshUserActivity()
                 handleTabSelectionChange(from: oldTabId, to: newTabId)
             }
             .onChange(of: tabManager.tabStructureVersion) { _ in

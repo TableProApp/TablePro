@@ -7,6 +7,7 @@ import Foundation
 @testable import TablePro
 import TableProPluginKit
 import TableProSyncTransport
+import TableProTestSupport
 import Testing
 
 /// The stores a deleted connection leaves behind that can only be reached with `await`.
@@ -280,5 +281,73 @@ struct ConnectionLocalStatePurgeTests {
 
         #expect(versions.summaries(tabId: deletedTab).isEmpty)
         #expect(versions.summaries(tabId: keptTab).count == 1)
+    }
+
+    private static func agentRecord(connectionId: UUID, conversationId: UUID?) -> AgentSessionRecord {
+        AgentSessionRecord(
+            id: UUID(),
+            connectionId: connectionId,
+            conversationId: conversationId,
+            status: .stopped,
+            title: "Earlier work",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            lastActiveAt: Date(timeIntervalSince1970: 2_000)
+        )
+    }
+
+    private static func conversation(connectionId: UUID) -> AIConversation {
+        AIConversation(
+            messages: [ChatTurnWire(role: .user, blocks: [.text("Which orders shipped late?")])],
+            connectionId: connectionId
+        )
+    }
+
+    // D21: a deleted connection's sessions could never be opened again, and loaded on every launch.
+    @Test("Purging a connection deletes its agent sessions and their conversations, and leaves another's")
+    @MainActor
+    func purgeRemovesAgentSessions() async throws {
+        let suite = try EphemeralDefaults()
+        let (history, _) = makeHistory()
+        let deleted = UUID()
+        let kept = UUID()
+        let deletedConversation = Self.conversation(connectionId: deleted)
+        let keptConversation = Self.conversation(connectionId: kept)
+        await AIChatStorage.shared.save(deletedConversation)
+        await AIChatStorage.shared.save(keptConversation)
+        let store = AgentSessionStore(
+            directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("ConnectionLocalStatePurgeTests-\(UUID().uuidString)", isDirectory: true)
+        )
+        let keptRecord = Self.agentRecord(connectionId: kept, conversationId: keptConversation.id)
+        store.save([
+            Self.agentRecord(connectionId: deleted, conversationId: deletedConversation.id),
+            Self.agentRecord(connectionId: deleted, conversationId: nil),
+            keptRecord
+        ])
+        let registry = AgentSessionRegistry(store: store)
+        let purged = registry.sessions(for: deleted)
+
+        ConnectionLocalState.purge(
+            connectionIds: [deleted],
+            origin: .remote,
+            tableScopedStores: [],
+            queryHistory: history,
+            defaults: suite.defaults,
+            agentSessions: registry
+        )
+        registry.persistNow()
+
+        let keptIds = registry.sessions(for: kept).map { $0.id }
+        let storedOwners = store.load().map { $0.connectionId }
+        let built = purged.filter { $0.viewModelIfLoaded != nil }
+        #expect(purged.count == 2)
+        #expect(registry.sessions(for: deleted).isEmpty)
+        #expect(keptIds == [keptRecord.id])
+        #expect(storedOwners == [kept])
+        #expect(built.isEmpty)
+        try await waitUntil { await AIChatStorage.shared.load(id: deletedConversation.id) == nil }
+        #expect(await AIChatStorage.shared.load(id: keptConversation.id) != nil)
+
+        await AIChatStorage.shared.delete(keptConversation.id)
     }
 }

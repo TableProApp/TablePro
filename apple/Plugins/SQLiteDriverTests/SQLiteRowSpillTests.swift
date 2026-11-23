@@ -156,6 +156,28 @@ struct SQLiteRowSpillTests {
         }
     }
 
+    @Test("Rows of 1 MiB go one to a batch, so the 16 batches the stream buffers hold 16 rows, not the table")
+    func wideRowsCutByBytes() async throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("wide-rows-\(UUID().uuidString).db").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let driver = SQLitePluginDriver(config: DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: path))
+        try await driver.connect()
+        defer { driver.disconnect() }
+        _ = try await driver.execute(query: """
+            CREATE TABLE wide AS WITH RECURSIVE g(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM g WHERE x < 40)
+            SELECT x AS id, randomblob(1048576) AS payload FROM g
+            """)
+        var sizes: [Int] = []
+        var ids: [String] = []
+        for try await element in driver.streamRows(query: "SELECT id, payload FROM wide ORDER BY id") {
+            guard case .rows(let batch) = element else { continue }
+            sizes.append(batch.count)
+            ids += batch.compactMap { $0.first?.asText }
+        }
+        #expect(sizes == Array(repeating: 1, count: 40))
+        #expect(ids == (1...40).map { String($0) })
+    }
+
     // MARK: - The spill on its own
 
     private static let cells: PluginRow = [.null, .text(""), .text("naïve 🧪 \u{0}"), .bytes(Data()), .bytes(Data([0, 255, 7]))]
@@ -336,6 +358,73 @@ struct SQLiteRowSpillTests {
         _ = try await iterator?.next()
         iterator = nil
         try await waitUntil { !spill.deliver(Self.batch(99)) }
+    }
+
+    // A producer that runs as a task, as ClickHouse's does: past the budget it suspends instead of blocking a thread.
+    private static func produceSuspending(_ indices: Range<Int>, into spill: PluginRowSpill) -> Task<Bool, Never> {
+        Task.detached {
+            var accepted = true
+            for index in indices {
+                accepted = await spill.deliverSuspending(Self.batch(index)) && accepted
+            }
+            spill.finish()
+            return accepted
+        }
+    }
+
+    @Test("With no budget left a task producer waits for the reader, and every batch arrives in order")
+    func emptyBudgetPacesATaskProducer() async throws {
+        let (stream, spill) = Self.makeStream(budget: SpoolBudget(limit: 0))
+        let producer = Self.produceSuspending(0..<10, into: spill)
+        let expected = (0..<10).map { Self.batch($0) }
+        #expect(try await Self.batches(of: stream) == expected)
+        #expect(await producer.value)
+    }
+
+    @Test("Without a spool a task producer waits for the reader, and every batch arrives in order")
+    func failedSpoolPacesATaskProducer() async throws {
+        let (stream, spill) = Self.makeStream { throw SpoolFileError.cannotCreate(errno: ENOSPC) }
+        let producer = Self.produceSuspending(0..<20, into: spill)
+        let expected = (0..<20).map { Self.batch($0) }
+        #expect(try await Self.batches(of: stream) == expected)
+        #expect(await producer.value)
+    }
+
+    @Test("Task producers waiting on held readers leave the cooperative pool free")
+    func waitingTaskProducersLeaveThePoolFree() async throws {
+        let count = ProcessInfo.processInfo.activeProcessorCount + 4
+        var held: [(AsyncThrowingStream<PluginStreamElement, Error>, PluginRowSpill)] = []
+        var producers: [Task<Bool, Never>] = []
+        for _ in 0..<count {
+            let made = Self.makeStream(budget: SpoolBudget(limit: 0))
+            held.append(made)
+            producers.append(Self.produceSuspending(0..<10, into: made.1))
+        }
+        let answered = await BoundedCall.result(within: .seconds(5)) {
+            await Task.detached { 42 }.value
+        }
+        #expect(answered == 42)
+        for (stream, _) in held {
+            #expect(try await Self.batches(of: stream).count == 10)
+        }
+        for producer in producers {
+            #expect(await producer.value)
+        }
+    }
+
+    @Test("A task producer whose reader has gone is told so")
+    func readerGoneStopsATaskProducer() async throws {
+        let spill: PluginRowSpill
+        var iterator: AsyncThrowingStream<PluginStreamElement, Error>.Iterator?
+        do {
+            let (stream, made) = Self.makeStream(budget: SpoolBudget(limit: 0))
+            spill = made
+            iterator = stream.makeAsyncIterator()
+        }
+        #expect(await spill.deliverSuspending(Self.batch(0)))
+        _ = try await iterator?.next()
+        iterator = nil
+        try await waitUntil { !(await spill.deliverSuspending(Self.batch(99))) }
     }
 
     @Test("A batch survives the record format unchanged")

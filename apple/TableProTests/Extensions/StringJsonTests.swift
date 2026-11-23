@@ -1,10 +1,3 @@
-//
-//  StringJsonTests.swift
-//  TableProTests
-//
-//  Tests for String+JSON pretty-printing extension
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -86,6 +79,14 @@ struct StringJsonTests {
         #expect(!#"{"a":1,}"#.looksLikeJson)
         #expect(!"[1,]".looksLikeJson)
         #expect(!"123".looksLikeJson)
+    }
+
+    @Test("Pretty Print copies a value over half a million characters indented")
+    func prettyPrintsAValueInTheBand() throws {
+        let value = "{\"blob\":\"" + String(repeating: "a", count: 600_000) + "\"}"
+        let result = try #require(value.prettyPrintedAsJson())
+
+        #expect(result.hasPrefix("{\n  \"blob\": \"aaa"))
     }
 
     @Test("Slashes are preserved as written")

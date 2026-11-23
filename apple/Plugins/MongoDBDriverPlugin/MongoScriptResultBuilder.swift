@@ -24,16 +24,19 @@ nonisolated enum MongoScriptResultBuilder {
         }
 
         if outcome.producedDocuments {
-            let read = outcome.documents.readDocuments
+            var read = outcome.documents.readDocuments
+            // Taken once: the grid's row locators and the number kinds the build records both need them.
+            let locators = outcome.documents.holdsStoredDocuments
+                ? read.texts.map(MongoDocumentIdentity.locator(inDocument:))
+                : nil
+            read.locators = locators
             let grid = build(
                 read,
                 outcome.collection ?? "",
                 outcome.documents.isTruncated
             )
             .withRowsAffected(outcome.rowsAffected)
-            .withRowLocators(
-                outcome.documents.holdsStoredDocuments ? read.texts.map(MongoDocumentIdentity.locator(inDocument:)) : nil
-            )
+            .withRowLocators(locators)
             guard !outcome.printedLines.isEmpty else { return grid }
             return grid.withStatus(MongoScriptText.printedSummary(outcome.printedLines))
         }

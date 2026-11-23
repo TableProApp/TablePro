@@ -643,6 +643,11 @@ final class ConnectionStorage {
         return resolveString(.init(label: "Database password", connectionId: connectionId), forKey: key)
     }
 
+    func passwordRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.password.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "Database password", connectionId: connectionId), forKey: key)
+    }
+
     func deletePassword(for connectionId: UUID) {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
         deleteSecret(forKey: key, connectionId: connectionId)
@@ -697,6 +702,11 @@ final class ConnectionStorage {
         return resolveString(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
     }
 
+    func sslClientKeyPassphraseRead(for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        return deferredRead(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
+    }
+
     func deleteSSLClientKeyPassphrase(for connectionId: UUID) {
         let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
         deleteSecret(forKey: key, connectionId: connectionId)
@@ -713,6 +723,11 @@ final class ConnectionStorage {
     func loadPluginSecureField(fieldId: String, for connectionId: UUID) -> String? {
         let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
         return resolveString(.init(label: "Plugin field \(fieldId)", connectionId: connectionId), forKey: key)
+    }
+
+    func pluginSecureFieldRead(fieldId: String, for connectionId: UUID) -> DeferredSecretRead {
+        let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
+        return deferredRead(.init(label: "Plugin field \(fieldId)", connectionId: connectionId), forKey: key)
     }
 
     func deletePluginSecureField(fieldId: String, for connectionId: UUID) {
@@ -1110,11 +1125,22 @@ final class ConnectionStorage {
     private struct SecretContext {
         let label: String
         let connectionId: UUID
+
+        var logLabel: String { "\(label) (connId=\(connectionId.uuidString))" }
     }
 
     private func resolveString(_ context: SecretContext, forKey key: String) -> String? {
         readSecret(forKey: key, connectionId: context.connectionId)
-            .value(label: "\(context.label) (connId=\(context.connectionId.uuidString))", logger: Self.logger)
+            .value(label: context.logLabel, logger: Self.logger)
+    }
+
+    // A driver open's read: the scope is decided here, and the result never reaches a form's recorded reads.
+    private func deferredRead(_ context: SecretContext, forKey key: String) -> DeferredSecretRead {
+        let keychain = keychain
+        let deviceOnly = readsOwnItemFirst(context.connectionId)
+        return DeferredSecretRead(key: key, label: context.logLabel, logger: Self.logger) {
+            keychain.readStringResult(forKey: key, deviceOnly: deviceOnly)
+        }
     }
 
     // MARK: - Plugin Secure Field Migration

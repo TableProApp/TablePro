@@ -624,31 +624,28 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         header.columnOrigins = Self.columnOrigins(after: firstStep, of: statement, on: db, text: query)
         spill.yield(header)
 
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
+        var batch = PluginRowBatcher()
 
         var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
             if Task.isCancelled {
-                if !batch.isEmpty { spill.deliver(batch) }
+                if !batch.isEmpty { spill.deliver(batch.rows) }
                 sqlite3_finalize(statement)
                 spill.finish(throwing: CancellationError())
                 return
             }
-            batch.append(Self.readRow(statement, columnCount: columnCount))
-            if batch.count >= batchSize {
+            if batch.append(Self.readRow(statement, columnCount: columnCount)) {
                 // Synchronous on the actor's thread: an await here would let another call reach the handle mid-statement.
-                guard spill.deliver(batch) else {
+                guard spill.deliver(batch.rows) else {
                     sqlite3_finalize(statement)
                     return
                 }
-                batch.removeAll(keepingCapacity: true)
+                batch.removeAll()
             }
             stepResult = sqlite3_step(statement)
         }
 
-        if !batch.isEmpty { spill.deliver(batch) }
+        if !batch.isEmpty { spill.deliver(batch.rows) }
 
         guard stepResult == SQLITE_DONE else {
             let message = String(cString: sqlite3_errmsg(db))

@@ -47,7 +47,7 @@ internal final class EditorTabStripView: NSView {
         fatalError("EditorTabStripView does not support NSCoder init")
     }
 
-    override internal var isFlipped: Bool { true }
+    override nonisolated internal var isFlipped: Bool { true }
 
     private func configure() {
         addSubview(track)
@@ -815,7 +815,7 @@ internal enum EditorTabDragEnding {
 }
 
 internal final class EditorTabDocumentView: NSView {
-    override internal var isFlipped: Bool { true }
+    override nonisolated internal var isFlipped: Bool { true }
     override internal var mouseDownCanMoveWindow: Bool { false }
 }
 
@@ -840,7 +840,7 @@ internal final class EditorTabScrollView: NSScrollView {
 
 @MainActor
 internal final class EditorTabTrackView: NSView {
-    override internal var isFlipped: Bool { true }
+    override nonisolated internal var isFlipped: Bool { true }
     override internal var mouseDownCanMoveWindow: Bool { false }
 
     override internal func draw(_ dirtyRect: NSRect) {

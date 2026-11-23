@@ -759,6 +759,12 @@ final class MainContentCommandActions: ObservableObject {
     }
 
 
+    // Discard Changes in the Review Changes alert: the window closes as Don't Save closes it.
+    func discardWorkAndCloseWindow() {
+        stop(workInWindow)
+        discardAndClose(asBatchSurvivor: false)
+    }
+
     private func discardAndClose(asBatchSurvivor: Bool?) {
         coordinator?.changeManager.clearChangesAndUndoHistory()
         pendingTruncates.wrappedValue.removeAll()

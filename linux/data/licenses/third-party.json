@@ -307,7 +307,7 @@
       "name": "MIT License",
       "text": "Copyright (c) 2013-2016 The rust-url developers\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
       "used_by": [
-        { "crate": { "name": "form_urlencoded", "version": "1.2.2" } }
+        { "crate": { "name": "form_urlencoded", "version": "1.2.3" } }
       ]
     },
     {
@@ -317,7 +317,7 @@
       "used_by": [
         { "crate": { "name": "idna", "version": "1.1.0" } },
         { "crate": { "name": "percent-encoding", "version": "2.3.2" } },
-        { "crate": { "name": "url", "version": "2.5.8" } }
+        { "crate": { "name": "url", "version": "2.5.9" } }
       ]
     },
     {
@@ -2793,7 +2793,7 @@
     { "name": "foreign-types", "version": "0.5.0", "license": "MIT OR Apache-2.0" },
     { "name": "foreign-types-macros", "version": "0.2.4", "license": "MIT OR Apache-2.0" },
     { "name": "foreign-types-shared", "version": "0.3.1", "license": "MIT OR Apache-2.0" },
-    { "name": "form_urlencoded", "version": "1.2.2", "license": "MIT OR Apache-2.0" },
+    { "name": "form_urlencoded", "version": "1.2.3", "license": "MIT OR Apache-2.0" },
     { "name": "funty", "version": "2.0.0", "license": "MIT" },
     { "name": "futures", "version": "0.3.34", "license": "MIT OR Apache-2.0" },
     { "name": "futures-channel", "version": "0.3.34", "license": "MIT OR Apache-2.0" },
@@ -3136,7 +3136,7 @@
     { "name": "unicode_categories", "version": "0.1.1", "license": "MIT OR Apache-2.0" },
     { "name": "untrusted", "version": "0.7.1", "license": "ISC" },
     { "name": "untrusted", "version": "0.9.0", "license": "ISC" },
-    { "name": "url", "version": "2.5.8", "license": "MIT OR Apache-2.0" },
+    { "name": "url", "version": "2.5.9", "license": "MIT OR Apache-2.0" },
     { "name": "utf8_iter", "version": "1.0.4", "license": "Apache-2.0 OR MIT" },
     { "name": "uuid", "version": "1.26.1", "license": "Apache-2.0 OR MIT" },
     { "name": "want", "version": "0.3.1", "license": "MIT" },

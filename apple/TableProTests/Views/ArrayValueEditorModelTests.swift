@@ -1,10 +1,3 @@
-//
-//  ArrayValueEditorModelTests.swift
-//  TableProTests
-//
-//  Tests for the array cell editor's row model.
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -88,9 +81,9 @@ struct ArrayValueEditorModelTests {
 
     private let storedDocument = #"{"id": 1, "name": "example"}"#
 
-    /// PostgreSQL stores `json` text verbatim, so a cell the user only looked at must write back
-    /// the bytes the server sent. The editor shows every element pretty-printed, and without this
-    /// pressing OK would rewrite all of them.
+    // PostgreSQL stores `json` text verbatim, so a cell the user only looked at must write back
+    // the bytes the server sent. The editor shows every element pretty-printed, and without this
+    // pressing OK would rewrite all of them.
     @Test("An element the user only read commits the bytes the server sent")
     func keepsUntouchedJsonElementByteIdentical() {
         var rows = ArrayValueEditorModel.rows(from: [.value(storedDocument), .value(#"{"id": 2}"#)])
@@ -116,8 +109,8 @@ struct ArrayValueEditorModelTests {
         #expect(PostgresArrayLiteralCodec.parse(literal) == [.value(#"{"id":3}"#)])
     }
 
-    /// A scalar array can hold text that happens to parse as JSON, and there retyping the
-    /// whitespace inside it is a real edit rather than the same document.
+    // A scalar array can hold text that happens to parse as JSON, and there retyping the
+    // whitespace inside it is a real edit rather than the same document.
     @Test("The rule is confined to JSON elements")
     func leavesScalarElementsAlone() {
         var rows = ArrayValueEditorModel.rows(from: [.value(storedDocument)])
@@ -147,9 +140,9 @@ struct ArrayValueEditorModelTests {
         #expect(long.summary?.count == 9)
     }
 
-    /// The element list rebuilds on every keystroke in the detail editor, so parsing each visible
-    /// element per render is unbounded work on the main actor. Past the cap an element is previewed
-    /// from its prefix and reports no verdict rather than a wrong one.
+    // The element list rebuilds on every keystroke in the detail editor, so parsing each visible
+    // element per render is unbounded work on the main actor. Past the cap an element is previewed
+    // from its prefix and reports no verdict rather than a wrong one.
     @Test("An element too large to inspect is previewed without being parsed")
     func doesNotParseAnOversizeElement() {
         let oversize = "{\"k\": \"" + String(repeating: "x", count: 8_000) + "\"}"
@@ -160,5 +153,19 @@ struct ArrayValueEditorModelTests {
 
         let oversizeAndBroken = "{" + String(repeating: "x", count: 8_000)
         #expect(ArrayValueEditorModel.jsonDisplay(of: .value(oversizeAndBroken)).isValid)
+    }
+
+    @Test("An element over half a million characters commits compact when edited and as stored when only reindented")
+    func committedElementInTheBand() {
+        let blob = String(repeating: "a", count: 600_000)
+        let stored = "{\"blob\": \"\(blob)\", \"id\": 1}"
+        let reindented = "{\n  \"blob\": \"\(blob)\",\n  \"id\": 1\n}"
+        let edited = "{\n  \"blob\": \"\(blob)\",\n  \"id\": 2\n}"
+
+        let untouched = ArrayEditorRow(element: .value(reindented), originalElement: .value(stored))
+        let changed = ArrayEditorRow(element: .value(edited), originalElement: .value(stored))
+
+        #expect(ArrayValueEditorModel.committedElement(untouched, elementEditor: .json) == .value(stored))
+        #expect(ArrayValueEditorModel.committedElement(changed, elementEditor: .json) == .value("{\"blob\":\"\(blob)\",\"id\":2}"))
     }
 }

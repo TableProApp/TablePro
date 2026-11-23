@@ -120,7 +120,7 @@ extension TextView {
     // MARK: Text Ranges
 
     override open func accessibilityNumberOfCharacters() -> Int {
-        string.count
+        textStorage.length
     }
 
     override open func accessibilityRange(forLine line: Int) -> NSRange {

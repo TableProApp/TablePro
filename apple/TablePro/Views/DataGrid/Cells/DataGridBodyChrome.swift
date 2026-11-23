@@ -89,11 +89,18 @@ enum DataGridBodyChrome {
         return row.isMultiple(of: 2) ? resolved[.gridBackground] : resolved[.gridAlternateRow]
     }
 
-    // Opaque whatever the stripe is, because a frozen pane row covers the scrolling rows beneath it.
+    // Opaque whatever the stripe is, because a frozen pane row covers the scrolling rows beneath it. An even row's
+    // stripe is the grid background, which is always opaque (`ThemeSlot.requiresOpaque`), so it fills once.
     static func fillRowBackground(_ rect: NSRect, row: Int, of tableView: NSTableView, scope: ThemeScope) {
+        let stripe = stripeColor(forRow: row, of: tableView, scope: scope)
+        if let stripe, row.isMultiple(of: 2) {
+            stripe.setFill()
+            rect.fill()
+            return
+        }
         tableView.backgroundColor.setFill()
         rect.fill()
-        guard let stripe = stripeColor(forRow: row, of: tableView, scope: scope) else { return }
+        guard let stripe else { return }
         stripe.setFill()
         rect.fill(using: .sourceOver)
     }
