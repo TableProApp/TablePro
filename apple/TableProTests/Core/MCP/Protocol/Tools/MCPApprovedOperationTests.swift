@@ -320,6 +320,65 @@ extension GlobalStateSuites {
 
         // MARK: - create_database
 
+        private func elicitedMessage(
+            _ tool: some MCPToolImplementation,
+            _ arguments: [String: JsonValue],
+            on rig: WritePolicyRig
+        ) async throws -> String? {
+            var fields = arguments
+            fields["connection_id"] = .string(rig.connection.id.uuidString)
+            let params = MCPToolTestHarness.toolCallParams(name: type(of: tool).name, arguments: .object(fields))
+            let context = MCPToolTestHarness.context(
+                params: params,
+                principal: MCPToolTestHarness.principal(scopes: MCPScope.fullAccessSet),
+                clientCapabilities: MCPToolTestHarness.elicitingClient()
+            )
+            do {
+                _ = try await tool.call(
+                    arguments: .object(fields),
+                    context: context,
+                    services: MCPToolServices(
+                        connectionBridge: MCPConnectionBridge(),
+                        authPolicy: rig.authPolicy,
+                        settingsProvider: { MCPSettings() },
+                        queryHistoryManager: ToolTestQueryHistoryStore()
+                    )
+                )
+                return nil
+            } catch let signal as MCPInputRequired {
+                return signal.inputRequests.first?.message
+            }
+        }
+
+        // BigQuery's datasets are created and dropped inside the project it signed in to.
+        @Test("Dropping a database on BigQuery is approved naming the project its driver reported")
+        func bigQueryDropNamesTheReportedProject() async throws {
+            let rig = rig(type: .bigQuery, safeMode: .alert, executionGate: RequestRecordingGate(allows: false))
+            defer { rig.tearDown() }
+            var session = try #require(DatabaseManager.shared.session(for: rig.connection.id))
+            session.openedDatabase = "production"
+            DatabaseManager.shared.injectSession(session, for: rig.connection.id)
+
+            let message = try await elicitedMessage(
+                DropDatabaseObjectTool(), ["kind": .string("database"), "name": .string("analytics")], on: rig
+            )
+
+            #expect(message?.contains("database 'production'") == true)
+            #expect(rig.driver.received.isEmpty)
+        }
+
+        @Test("Creating a database on PostgreSQL is approved as server work, naming no database")
+        func postgresCreateNamesNoDatabase() async throws {
+            let rig = rig(type: .postgresql, safeMode: .alert, executionGate: RequestRecordingGate(allows: false))
+            defer { rig.tearDown() }
+
+            let message = try #require(try await elicitedMessage(CreateDatabaseTool(), ["name": .string("reports")], on: rig))
+
+            #expect(message.contains("'reports'"))
+            #expect(!message.contains(", database '"))
+            #expect(rig.driver.received.isEmpty)
+        }
+
         // Saved and not connected: the tool connects it through the SQL Server stand-in plugin.
         private func disconnectedRig(gate: (UUID) -> any ExecutionGate) -> WritePolicyRig {
             FakeMSSQLPluginRegistration.registerIfNeeded()

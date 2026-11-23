@@ -42,6 +42,11 @@ private final class CachedTargetDriver: PluginDriverStub, @unchecked Sendable {
     func switchDatabase(to database: String) async throws {
         record("DATABASE \(database)")
     }
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        record("COUNT \(table)")
+        return 0
+    }
 }
 
 // The person approving is still deciding when the connection moves to another database.
@@ -360,5 +365,61 @@ struct ApprovedTargetTests {
         _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
 
         #expect(driver.events.contains("DELETE FROM orders WHERE id = 1"))
+    }
+
+    // Approved with no statement of its own, with no database selected, while the connection moves to production.
+    private func approvedWithNoStatement(
+        _ kind: OperationKind,
+        scope: DatabaseScope,
+        bridge: DatabaseAccessBridge
+    ) async throws -> ApprovedOperation {
+        try await ExternalStatementGate.approve(
+            PendingOperation(
+                scope: scope,
+                driverGeneration: await bridge.driverGeneration(of: scope.connectionId),
+                databaseType: .mysql,
+                statements: [],
+                kind: kind,
+                caller: .mcpClient(label: "tests"),
+                capabilities: [.mayWrite],
+                operationDescription: "test"
+            ),
+            gate: SwitchingWhileAskedGate(connectionId: scope.connectionId, database: "production")
+        )
+    }
+
+    @Test(
+        "A COMMIT or ROLLBACK approved with no database selected never reaches the database switched to meanwhile",
+        arguments: ["commit", "rollback"]
+    )
+    func switchWhileATransactionActionWaitsRefuses(action: String) async throws {
+        let (id, driver) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveAppStatementScope(connectionId: id, database: nil, schema: nil)
+        let operation = try await approvedWithNoStatement(.writeQuery, scope: scope, bridge: bridge)
+
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            try await bridge.transactionControl(operation, action: action)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+        #expect(!driver.events.contains(action.uppercased()))
+    }
+
+    @Test("A row count approved with no database selected is not read from the database switched to meanwhile")
+    func switchWhileACountWaitsRefuses() async throws {
+        let (id, driver) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveScope(connectionId: id, database: nil, schema: nil)
+        let operation = try await approvedWithNoStatement(.readQuery, scope: scope, bridge: bridge)
+
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.countRows(operation, table: "orders", filters: [], logicMode: .and, exact: false)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+        #expect(!driver.events.contains("COUNT orders"))
     }
 }
