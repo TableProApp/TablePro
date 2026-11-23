@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 @testable import TablePro
 import TableProPluginKit
 import Testing
@@ -54,6 +55,53 @@ private final class CachedTargetDriver: PluginDriverStub, @unchecked Sendable {
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
         record("COUNT \(table)")
         return 0
+    }
+}
+
+// Opens the file named when it is created, as a path read from an environment variable at each connect does.
+private final class OpenedFileDriver: PluginDriverStub, @unchecked Sendable {
+    private let opened: String?
+
+    init(opened: String?) {
+        self.opened = opened
+    }
+
+    var currentDatabase: String? { opened }
+}
+
+private final class OpenedFilePlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Opened File"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Reports the file it opened"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "SQLite"
+    static let databaseDisplayName = "SQLite"
+    static let iconName = "cylinder"
+    static let defaultPort = 0
+
+    private static let nextFile = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+    static func opens(_ file: String?) {
+        nextFile.withLock { $0 = file }
+    }
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        OpenedFileDriver(opened: Self.nextFile.withLock { $0 })
+    }
+
+    override required init() {
+        super.init()
+    }
+}
+
+private final class DisconnectRecordingDriver: PluginDriverStub, @unchecked Sendable {
+    private let closed = OSAllocatedUnfairLock(initialState: false)
+
+    var isDisconnected: Bool { closed.withLock { $0 } }
+
+    func disconnect() {
+        closed.withLock { $0 = true }
     }
 }
 
@@ -720,5 +768,120 @@ struct ApprovedTargetTests {
         }
 
         #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
+    }
+
+    // The editor path, straight on the driver: T-SQL runs `SELECT 1` and then `USE production`.
+    @Test("On SQL Server a DELETE approved naming no database is refused after SELECT 1USE production")
+    func gluedUseRefusesAPendingDelete() async throws {
+        let (id, driver) = session(.mssql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: nil, schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DELETE FROM orders WHERE id = 1", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mssql)
+        let sessionDriver = try #require(DatabaseManager.shared.driver(for: id))
+
+        _ = try await sessionDriver.execute(query: "SELECT 1USE production")
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.databaseUnknown.message)
+        #expect(!driver.events.contains { $0.hasPrefix("DELETE") })
+    }
+
+    private func withOpenedFilePlugin(_ body: () async throws -> Void) async rethrows {
+        let typeId = OpenedFilePlugin.databaseTypeId
+        let previous = PluginManager.shared.driverPlugins[typeId]
+        PluginManager.shared.driverPlugins[typeId] = OpenedFilePlugin()
+        defer {
+            PluginManager.shared.driverPlugins[typeId] = previous
+            OpenedFilePlugin.opens(nil)
+        }
+        try await body()
+    }
+
+    @Test("A reconnect that opens b.sqlite approves b.sqlite, and one whose driver reports nothing keeps no old name")
+    func reconnectRecordsTheDatabaseItOpened() async throws {
+        try await withOpenedFilePlugin {
+            let connection = TestFixtures.makeConnection(database: "data.sqlite", type: .sqlite)
+            defer { DatabaseManager.shared.removeSession(for: connection.id) }
+            let bridge = DatabaseAccessBridge()
+
+            OpenedFilePlugin.opens("a.sqlite")
+            try await DatabaseManager.shared.ensureConnected(connection)
+            OpenedFilePlugin.opens("b.sqlite")
+            try await DatabaseManager.shared.reconnectSession(connection.id)
+            let scope = try await bridge.resolveStatementScope(connectionId: connection.id, database: nil, schema: nil)
+            OpenedFilePlugin.opens(nil)
+            try await DatabaseManager.shared.reconnectSession(connection.id)
+
+            #expect(scope.database == "b.sqlite")
+            #expect(DatabaseManager.shared.session(for: connection.id)?.openedDatabase == nil)
+        }
+    }
+
+    @Test("A health-check reconnect that opens b.sqlite records b.sqlite as the database it opened")
+    func healthReconnectRecordsTheDatabaseItOpened() async throws {
+        try await withOpenedFilePlugin {
+            let connection = TestFixtures.makeConnection(database: "data.sqlite", type: .sqlite)
+            defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+            OpenedFilePlugin.opens("a.sqlite")
+            try await DatabaseManager.shared.ensureConnected(connection)
+            OpenedFilePlugin.opens("b.sqlite")
+            let outcome = await DatabaseManager.shared.performHealthMonitorReconnect(connectionId: connection.id)
+
+            #expect(outcome == .success)
+            #expect(DatabaseManager.shared.session(for: connection.id)?.openedDatabase == "b.sqlite")
+        }
+    }
+
+    // A connection opened on production after the reconnect may hold work the drop must not end when it is refused.
+    @Test("A DROP DATABASE approved before a reconnect is refused before it closes the database's parked connection")
+    func staleDropDatabaseClosesNothing() async throws {
+        let (id, _) = session(.mysql, database: "")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let connection = try #require(DatabaseManager.shared.session(for: id)?.connection)
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveServerScope(connectionId: id)
+        let operation = try await ApprovedOperationFixture.approve([], scope: scope, databaseType: .mysql, kind: .destructiveQuery)
+
+        DatabaseManager.shared.updateSession(id) {
+            $0.install(PluginDriverAdapter(connection: connection, pluginDriver: CachedTargetDriver()), openedDatabase: nil)
+        }
+        let parked = DisconnectRecordingDriver()
+        DatabaseManager.shared.sessionLanes.park(
+            PluginDriverAdapter(connection: connection, pluginDriver: parked), database: "production", for: id
+        )
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            try await bridge.dropDatabase(operation, name: "production")
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+        #expect(!parked.isDisconnected)
+        #expect(DatabaseManager.shared.sessionLanes.parkedDriver(for: id, database: "production") != nil)
+    }
+
+    @Test("A statement approved before a reconnect is refused before it switches the new connection's database")
+    func staleStatementSwitchesNothing() async throws {
+        let (id, _) = session(.mysql, database: "app", browseDatabase: "app")
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let connection = try #require(DatabaseManager.shared.session(for: id)?.connection)
+        let bridge = DatabaseAccessBridge()
+        let scope = try await bridge.resolveStatementScope(connectionId: id, database: "app", schema: nil)
+        let statement = try await bridge.plannedStatement(scope: scope, query: "DELETE FROM orders WHERE id = 1", maxRows: 10)
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mysql)
+
+        let replacing = CachedTargetDriver()
+        DatabaseManager.shared.updateSession(id) {
+            $0.install(PluginDriverAdapter(connection: connection, pluginDriver: replacing), openedDatabase: nil)
+        }
+        let error = await #expect(throws: DatabaseAccessError.self) {
+            _ = try await bridge.runStatement(operation, maxRows: 10, timeoutSeconds: 30, cancellation: nil)
+        }
+
+        #expect(error?.message == DatabaseAccessBridge.connectionChanged.message)
+        #expect(!replacing.events.contains { $0.hasPrefix("DATABASE") || $0.hasPrefix("DELETE") })
     }
 }

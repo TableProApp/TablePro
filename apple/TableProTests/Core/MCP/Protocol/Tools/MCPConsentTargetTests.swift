@@ -157,7 +157,7 @@ extension GlobalStateSuites {
 
             let reconnected = WritePolicyDriver()
             DatabaseManager.shared.updateSession(rig.connection.id) {
-                $0.install(PluginDriverAdapter(connection: rig.connection, pluginDriver: reconnected))
+                $0.install(PluginDriverAdapter(connection: rig.connection, pluginDriver: reconnected), openedDatabase: nil)
             }
             let second = try await elicitation(tool, dropOrders(rig), on: rig, answering: state)
 

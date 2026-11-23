@@ -78,10 +78,19 @@ struct ConnectionSession: Identifiable {
         lastActiveAt = Date()
     }
 
-    // A database switch moves between this session's own connections and keeps the generation.
-    mutating func install(_ driver: DatabaseDriver) {
+    // A database switch moves between this session's own connections and keeps the generation. A connect or reconnect
+    // renews it together with the database the new driver reported, so an approval never pairs this connect with the
+    // last one's database; with no report the old one is cleared, not kept.
+    mutating func install(_ driver: DatabaseDriver, openedDatabase reported: String?) {
         self.driver = driver
         driverGeneration = UUID()
+        openedDatabase = reported
+    }
+
+    // Read once the driver connected and ran its startup commands, before a restore or post-connect action switches it.
+    static func openedDatabase(reportedBy driver: DatabaseDriver) -> String? {
+        guard let reported = (driver as? DatabaseReporting)?.currentDatabase, !reported.isEmpty else { return nil }
+        return reported
     }
 
     // `status` alone says connecting through a reconnect the app already stopped believing in.

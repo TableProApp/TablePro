@@ -156,7 +156,7 @@ extension DatabaseManager {
                 for: connectionId
             )
             updateSession(connectionId) { session in
-                session.install(result.driver)
+                session.install(result.driver, openedDatabase: result.openedDatabase)
                 session.effectiveConnection = result.effectiveConnection
                 session.status = .connected
                 session.connectionWarning = warning
@@ -262,6 +262,7 @@ extension DatabaseManager {
 
     internal struct ReconnectResult {
         let driver: DatabaseDriver
+        let openedDatabase: String?
         let effectiveConnection: DatabaseConnection
         let cachedPassword: String?
         let startupFailures: [StartupCommandFailure]
@@ -325,6 +326,7 @@ extension DatabaseManager {
             startupCommands: session.connection.startupCommands,
             connectionName: session.connection.name
         )
+        let openedDatabase = ConnectionSession.openedDatabase(reportedBy: driver)
         let restoreWarning = await restoreSchemaAndDatabase(
             on: driver,
             savedSchema: session.browseSchema,
@@ -333,6 +335,7 @@ extension DatabaseManager {
 
         return ReconnectResult(
             driver: driver,
+            openedDatabase: openedDatabase,
             effectiveConnection: connectionForDriver,
             cachedPassword: connectResult.cachedPassword,
             startupFailures: startupFailures,
@@ -518,6 +521,7 @@ extension DatabaseManager {
                 startupCommands: session.connection.startupCommands,
                 connectionName: session.connection.name
             )
+            let openedDatabase = ConnectionSession.openedDatabase(reportedBy: driver)
             let restoreWarning = await restoreSchemaAndDatabase(
                 on: driver,
                 savedSchema: activeSessions[sessionId]?.browseSchema,
@@ -532,7 +536,7 @@ extension DatabaseManager {
                 driver: driver, startupFailures: startupFailures, restoreWarning: restoreWarning, for: sessionId
             )
             updateSession(sessionId) { session in
-                session.install(driver)
+                session.install(driver, openedDatabase: openedDatabase)
                 session.status = .connected
                 session.effectiveConnection = effectiveConnection
                 session.connectionWarning = warning

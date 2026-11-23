@@ -37,6 +37,9 @@ private enum TableReadTurn: Sendable {
     case moved(ScopedDriverRoute)
 }
 
+// Throws to refuse work before its lease changes anything on the connection.
+internal typealias ScopedDriverAdmission = @MainActor @Sendable () throws -> Void
+
 // Weak and compared by identity: a reconnect's driver is not the one a pin moved. `moves` is the driver's count of texts
 // that may move its database when the host placed it, so a later one makes the position unknown.
 internal struct ExecutionPosition {
@@ -124,6 +127,8 @@ extension DatabaseManager {
     // `cancellation` decides whether Stop, or a navigation that supersedes a tab, can reach the leased driver. The
     // parameter has no default on purpose: a new call site must state which it is, because getting it wrong silently
     // either makes a query uncancellable or makes a commit killable.
+    // `admit` runs inside the lease, before it takes a lost session's report, opens or closes a connection or pins, so
+    // work it refuses changes nothing on the connection.
     func withScopedDriver<T: Sendable>(
         scope: DatabaseScope,
         route: ScopedDriverRoute,
@@ -131,6 +136,7 @@ extension DatabaseManager {
         cancellation: DriverCancellationPolicy,
         sessionWork: SessionWork = .app,
         readsOnly: Bool = false,
+        admit: ScopedDriverAdmission? = nil,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         try await Self.unboxed(
@@ -140,7 +146,8 @@ extension DatabaseManager {
                 workload: workload,
                 cancellation: cancellation,
                 sessionWork: sessionWork,
-                readsOnly: readsOnly
+                readsOnly: readsOnly,
+                admit: admit
             ) { driver in
                 try await body(driver)
             }
@@ -155,6 +162,7 @@ extension DatabaseManager {
         cancellation: DriverCancellationPolicy,
         sessionWork: SessionWork,
         readsOnly: Bool,
+        admit: ScopedDriverAdmission? = nil,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
     ) async throws -> any Sendable {
         let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
@@ -162,12 +170,14 @@ extension DatabaseManager {
         case .unavailable(let message):
             throw DatabaseError.queryFailed(message)
         case .pooled:
+            // The pool runs on this actor, so nothing lands between the check and its first suspension.
+            try admit?()
             return try await MetadataConnectionPool.shared.withDriver(
                 scope: scope, workload: workload, leased
             )
         case .sessionDriver:
             return try await withPinnedSessionDriver(
-                scope: scope, sessionWork: sessionWork, readsOnly: readsOnly, leased
+                scope: scope, sessionWork: sessionWork, readsOnly: readsOnly, admit: admit, leased
             )
         }
     }
@@ -456,9 +466,10 @@ extension DatabaseManager {
         scope: DatabaseScope,
         sessionWork: SessionWork,
         readsOnly: Bool,
+        admit: ScopedDriverAdmission?,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        try await withSessionDriverTurn(scope: scope, sessionWork: sessionWork, readsOnly: readsOnly) { driver in
+        try await withSessionDriverTurn(scope: scope, sessionWork: sessionWork, readsOnly: readsOnly, admit: admit) { driver in
             try await tracedPin(driver, to: scope)
             return try await body(driver)
         }
@@ -484,6 +495,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         sessionWork: SessionWork,
         readsOnly: Bool = false,
+        admit: ScopedDriverAdmission? = nil,
         _ turn: (DatabaseDriver) async throws -> R
     ) async throws -> R {
         let connectionId = scope.connectionId
@@ -519,6 +531,7 @@ extension DatabaseManager {
                 guard isUsable(connectionId), let browsedDriver = activeSessions[connectionId]?.driver else {
                     throw DatabaseError.notConnected
                 }
+                try admit?()
                 guard let lane else {
                     // A driver replaced while it held a transaction or session state, by a reconnect or a Vault lease
                     // rotation.

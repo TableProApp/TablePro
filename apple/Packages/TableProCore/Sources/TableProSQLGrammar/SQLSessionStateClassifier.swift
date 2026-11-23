@@ -561,10 +561,12 @@ extension SQLSessionStateClassifier {
         guard dialect == .mySQL || dialect == .sqlServer else { return false }
         return statements.contains { text in
             guard (text as NSString).length <= classifiedPrefixLength else { return true }
-            // A move word spelled anywhere only costs the full read, whose tokens leave out literals and comments.
-            let spellsMoveWord = dialect == .sqlServer && holdsWord(of: sqlServerMoveWords, in: text)
-            if spellsMoveWord, leavesSpanOpen(text, grammar: grammar) { return true }
-            if !spellsMoveWord, opensWithStayHead(text, dialect: dialect) { return false }
+            if dialect == .sqlServer {
+                // T-SQL reads a word glued to a number on its own, so `SELECT 1USE x` runs a USE: only its tokens say.
+                if holdsWord(of: sqlServerMoveWords, in: text), leavesSpanOpen(text, grammar: grammar) { return true }
+            } else if opensWithStayHead(text) {
+                return false
+            }
             return SQLStatementClassifier.statements(of: text, grammar: grammar).contains { statement in
                 guard let readings = SQLExecutableCommentReadings.texts(of: statement, grammar: grammar) else { return true }
                 return Array(readings).contains { reading in
@@ -576,14 +578,18 @@ extension SQLSessionStateClassifier {
         }
     }
 
-    // One plain statement whose first word is known to stay, read without the grammar: no `;`, comment or backslash can
-    // hide a second statement. SET, BEGIN and the explain words need the word after them, so they take the full read.
-    private static func opensWithStayHead(_ text: String, dialect: SQLSessionDialect) -> Bool {
+    // One plain MySQL statement whose first word is known to stay, read without the grammar: no `;`, comment or
+    // backslash can hide a second statement. SET, BEGIN and the explain words need the word after them, so they take
+    // the full read, and so does a word MySQL reads on into a digit, `$` or a letter outside ASCII, as in `SELECT1`.
+    private static func opensWithStayHead(_ text: String) -> Bool {
         guard !text.contains(";"), !text.contains("/*"), !text.contains("--"), !text.contains("#"), !text.contains("\\")
         else { return false }
-        let head = text.drop { $0.isWhitespace || $0 == "(" }.prefix { $0.isASCII && ($0.isLetter || $0 == "_") }.uppercased()
-        guard head != "SET", head != "BEGIN" else { return false }
-        return dialect == .mySQL ? mySQLStayHeads.contains(head) : sqlServerStayHeads.contains(head)
+        let opening = text.drop { $0.isWhitespace || $0 == "(" }
+        let head = opening.prefix { $0.isASCII && ($0.isLetter || $0 == "_") }
+        if let next = opening.dropFirst(head.count).first, next.isLetter || next.isNumber || next == "$" { return false }
+        let word = head.uppercased()
+        guard word != "SET", word != "BEGIN" else { return false }
+        return mySQLStayHeads.contains(word)
     }
 
     // The mysql client's `\u name` is a `USE`, should a driver pass it through. A label opens a block.
@@ -616,7 +622,7 @@ extension SQLSessionStateClassifier {
         return code.word(at: index).map(mySQLStatementWords.contains) == true
     }
 
-    // Whole words, so `users` or `executed_at` does not cost the full read.
+    // Runs of letters and `_`, so a number glued to a word, as in `1USE`, cannot hide it.
     private static func holdsWord(of words: Set<String>, in text: String) -> Bool {
         let units = text as NSString
         let longest = words.map(\.utf16.count).max() ?? 0
@@ -639,7 +645,7 @@ extension SQLSessionStateClassifier {
     }
 
     private static func isWordUnit(_ unit: UInt16) -> Bool {
-        (0x30...0x39).contains(unit) || (0x41...0x5A).contains(unit) || (0x61...0x7A).contains(unit) || unit == 0x5F
+        (0x41...0x5A).contains(unit) || (0x61...0x7A).contains(unit) || unit == 0x5F
     }
 
     private static func leavesSpanOpen(_ text: String, grammar: SQLLexicalGrammar) -> Bool {

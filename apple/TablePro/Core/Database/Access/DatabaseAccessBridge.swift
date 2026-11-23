@@ -454,59 +454,6 @@ internal actor DatabaseAccessBridge {
         .forbidden(String(localized: "This operation is not the one that was approved."))
     }
 
-    static var connectionChanged: DatabaseAccessError {
-        .forbidden(String(localized: "The connection changed after this was approved, so nothing ran. Ask again."))
-    }
-
-    static var databaseUnknown: DatabaseAccessError {
-        .invalidArgument(String(localized: "TablePro cannot tell which database this connection runs in. Pass database."))
-    }
-
-    // Read by whoever builds an approval, so the approval holds only on the connect its scope was resolved on.
-    internal func driverGeneration(of connectionId: UUID) async -> UUID? {
-        let manager = await databaseManager
-        return await MainActor.run { manager.session(for: connectionId)?.driverGeneration }
-    }
-
-    // Which resolver made the approved scope, so the run is held to what that scope's database means.
-    internal enum ApprovedScopeKind: Sendable {
-        // Resolved for SQL on the session's connection: the session's database, or the one a fixed engine reported.
-        case statement
-        // Resolved for the catalog: a pooled connection dials the named database, and with none the session's runs it.
-        case catalog
-        // Resolved for work on the server, which names its own object: no database, or a fixed engine's reported one.
-        case server
-    }
-
-    // A reconnect or a replaced session since the approval runs nothing. A fixed engine is never pinned, so a database
-    // the approval took from its driver's report has to be the one it reports still. A switching engine pins a named
-    // database, and nothing pins none, so a driver a pin, a switch or a statement moved to a database since an approval
-    // naming none would take the work there; where a statement may have moved it is unknown, and refused too.
-    nonisolated static func requireApproved(
-        _ scope: DatabaseScope,
-        as kind: ApprovedScopeKind,
-        generation: UUID?,
-        manager: DatabaseManager
-    ) async throws {
-        let refusal = await MainActor.run { () -> DatabaseAccessError? in
-            guard let session = manager.session(for: scope.connectionId), session.driverGeneration == generation else {
-                return connectionChanged
-            }
-            switch (kind, manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)) {
-            case (.statement, false), (.server, false):
-                let holds = scope.namedDatabase.map { $0 == session.openedDatabase } ?? true
-                return holds ? nil : connectionChanged
-            case (.statement, true), (.catalog, true):
-                guard scope.namedDatabase == nil else { return nil }
-                guard let executing = manager.executionDatabase(for: scope.connectionId) else { return databaseUnknown }
-                return executing.isEmpty ? nil : connectionChanged
-            case (.catalog, false), (.server, true):
-                return nil
-            }
-        }
-        if let refusal { throw refusal }
-    }
-
     // MARK: - Run
 
     internal struct StatementOutcome: Sendable {
@@ -792,7 +739,8 @@ internal actor DatabaseAccessBridge {
             scope: scope,
             route: route,
             cancellation: .protectedWrite,
-            sessionWork: .statements
+            sessionWork: .statements,
+            admit: Self.admission(scope, as: .statement, generation: operation.driverGeneration, manager: manager)
         ) { driver -> (affected: Int, notice: String?) in
             try await Self.requireApproved(scope, as: .statement, generation: operation.driverGeneration, manager: manager)
             reach.mark()
@@ -846,7 +794,14 @@ internal actor DatabaseAccessBridge {
         try await ensureConnected(scope.connectionId)
         let manager = await databaseManager
         let schema = scope.schema
-        return try await manager.withMetadataDriver(scope: scope) { driver -> (count: Int?, isApproximate: Bool) in
+        let route = await MainActor.run { manager.metadataRoute(for: scope) }
+        return try await manager.withScopedDriver(
+            scope: scope,
+            route: route,
+            cancellation: .untracked,
+            sessionWork: .independent,
+            admit: Self.admission(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
+        ) { driver -> (count: Int?, isApproximate: Bool) in
             try await Self.requireApproved(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
             reach.mark()
             if exact {
@@ -892,7 +847,8 @@ internal actor DatabaseAccessBridge {
             scope: scope,
             route: .sessionDriver,
             cancellation: .protectedWrite,
-            sessionWork: .statements
+            sessionWork: .statements,
+            admit: Self.admission(scope, as: .statement, generation: operation.driverGeneration, manager: manager)
         ) { driver in
             try await Self.requireApproved(scope, as: .statement, generation: operation.driverGeneration, manager: manager)
             reach.mark()
@@ -932,12 +888,17 @@ internal actor DatabaseAccessBridge {
         guard operation.kind == .destructiveQuery, operation.statements.isEmpty else { throw Self.notApproved }
         let connectionId = operation.scope.connectionId
         let manager = await databaseManager
-        await MainActor.run {
+        try await ensureConnected(connectionId)
+        // Checked on the turn that closes the dropped database's connections, so a stale approval closes none, ends no
+        // transaction open on them, and no reconnect lands between the check and the close.
+        let admit = Self.admission(operation.scope, as: .server, generation: operation.driverGeneration, manager: manager)
+        let driver = try await MainActor.run { () throws -> DatabaseDriver in
+            try admit()
+            guard let driver = manager.driver(for: connectionId) else { throw DatabaseAccessError.notConnected(connectionId) }
             MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: name)
             manager.sessionLanes.close(database: name, for: connectionId)
+            return driver
         }
-        let (driver, _) = try await resolveDriver(connectionId)
-        try await Self.requireApproved(operation.scope, as: .server, generation: operation.driverGeneration, manager: manager)
         try await manager.trackOperation(sessionId: connectionId) {
             try await driver.dropDatabase(name: name)
         }
@@ -951,7 +912,12 @@ internal actor DatabaseAccessBridge {
         let manager = await databaseManager
         // Pinned to the approved database, so a switch while the dialog was open cannot move the drop.
         let route = await MainActor.run { manager.schemaChangeRoute(for: scope) }
-        try await manager.withScopedDriver(scope: scope, route: route, cancellation: .protectedWrite) { driver in
+        try await manager.withScopedDriver(
+            scope: scope,
+            route: route,
+            cancellation: .protectedWrite,
+            admit: Self.admission(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
+        ) { driver in
             try await Self.requireApproved(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
             try await driver.dropSchema(name: name)
         }
@@ -993,7 +959,8 @@ internal actor DatabaseAccessBridge {
         return try await manager.withScopedDriver(
             scope: scope,
             route: route,
-            cancellation: .protectedWrite
+            cancellation: .protectedWrite,
+            admit: Self.admission(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
         ) { driver in
             try await Self.requireApproved(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
             reach.mark()
@@ -1038,6 +1005,7 @@ internal actor DatabaseAccessBridge {
         }
         // The pin trusts the driver's cached schema, which a SET search_path in the same session leaves stale.
         // An aborted transaction refuses everything but a rollback, the SET included, and runs no name to misroute.
+        let admit = Self.admission(scope, as: .statement, generation: approvedGeneration, manager: manager)
         let pinned: @Sendable (DatabaseDriver) async throws -> Output = { driver in
             try await Self.requireApproved(scope, as: .statement, generation: approvedGeneration, manager: manager)
             if let approvedSchema, let switchable = driver as? SchemaSwitchable,
@@ -1053,7 +1021,7 @@ internal actor DatabaseAccessBridge {
                 onLateCompletion: onLateCompletion
             ) { enterDriver in
                 try await manager.withScopedDriver(
-                    scope: scope, route: route, cancellation: policy, sessionWork: .statements
+                    scope: scope, route: route, cancellation: policy, sessionWork: .statements, admit: admit
                 ) { driver in
                     try enterDriver()
                     return try await pinned(driver)
@@ -1067,6 +1035,7 @@ internal actor DatabaseAccessBridge {
                     route: route,
                     cancellation: policy,
                     sessionWork: .statements,
+                    admit: admit,
                     pinned
                 )
             }

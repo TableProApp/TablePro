@@ -495,6 +495,28 @@ struct SQLSessionStateClassifierTests {
         #expect(movesDatabase(sql, .sqlServer))
     }
 
+    @Test("T-SQL reads a move word glued to a number on its own, so the batch moves", arguments: [
+        "SELECT 1USE production", "SELECT 1e1USE x", "SELECT $1USE x", "SELECT 0x1USE x",
+    ])
+    func tsqlMoveWordGluedToANumberMoves(sql: String) {
+        #expect(movesDatabase(sql, .sqlServer))
+    }
+
+    // MySQL needs a `;` before a second statement, so the glued word is a name or a syntax error inside one SELECT.
+    @Test("MySQL reads a word glued to a number inside one SELECT, which moves nothing", arguments: [
+        "SELECT 1USE production", "SELECT 1e1USE x", "SELECT $1USE x", "SELECT 0x1USE x",
+    ])
+    func mySQLWordGluedToANumberMovesNothing(sql: String) {
+        #expect(!movesDatabase(sql, .mySQL))
+    }
+
+    @Test("A MySQL first word that runs on into a digit or `$` is no stay word", arguments: [
+        "SELECT1USE production", "DELETE$x FROM t",
+    ])
+    func mySQLHeadRunningOnIsUnknown(sql: String) {
+        #expect(movesDatabase(sql, .mySQL))
+    }
+
     @Test("A transaction's BEGIN, or a word that only contains a trigger, moves nothing", arguments: [
         ("BEGIN", SQLSessionDialect.mySQL),
         ("SELECT executed_at, CASE WHEN id > 1 THEN 1 END FROM users", .mySQL),

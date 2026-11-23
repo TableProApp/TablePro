@@ -102,7 +102,7 @@ struct ChatToolShownScopeTests {
         let approved = context(driver, gate: gate, shown: DatabaseScope(connectionId: id, database: "staging", schema: nil))
 
         let reconnected = ScriptAnsweringDriver(connection: driver.connection) { _ in .empty }
-        DatabaseManager.shared.updateSession(id) { $0.install(reconnected) }
+        DatabaseManager.shared.updateSession(id) { $0.install(reconnected, openedDatabase: nil) }
         let error = await #expect(throws: DatabaseAccessError.self) {
             _ = try await ConfirmDestructiveOperationChatTool().execute(input: Self.dropOrders, context: approved)
         }

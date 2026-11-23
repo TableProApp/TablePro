@@ -137,7 +137,7 @@ extension DatabaseManager {
                 startupCommands: resolvedConnection.startupCommands,
                 connectionName: connection.name
             )
-            adoptReportedPosition(of: driver, for: connection.id)
+            let openedDatabase = adoptReportedPosition(of: driver, for: connection.id)
 
             await executePostConnectActions(
                 for: connection, resolvedConnection: resolvedConnection, driver: driver
@@ -156,7 +156,7 @@ extension DatabaseManager {
             )
             dialedConnections[connection.id] = routedConnection
             session.commitMode = session.connection.commitMode
-            session.install(driver)
+            session.install(driver, openedDatabase: openedDatabase)
             session.status = driver.status
             session.effectiveConnection = effectiveConnection
             session.connectionWarning = openingWarning(driver: driver, startupFailures: startupFailures, for: connection.id)
@@ -270,16 +270,16 @@ extension DatabaseManager {
         }
     }
 
-    // Where the driver says it opened, before any post-connect action moves it.
-    private func adoptReportedPosition(of driver: DatabaseDriver, for connectionId: UUID) {
+    // Where the driver says it opened, before any post-connect action moves it. The install records it as opened.
+    private func adoptReportedPosition(of driver: DatabaseDriver, for connectionId: UUID) -> String? {
         if let schemaDriver = driver as? SchemaSwitchable {
             activeSessions[connectionId]?.browseSchema = schemaDriver.currentSchema
         }
-        if let reportingDriver = driver as? DatabaseReporting,
-           let openedDatabase = reportingDriver.currentDatabase, !openedDatabase.isEmpty {
+        let openedDatabase = ConnectionSession.openedDatabase(reportedBy: driver)
+        if let openedDatabase {
             activeSessions[connectionId]?.browseDatabase = openedDatabase
-            activeSessions[connectionId]?.openedDatabase = openedDatabase
         }
+        return openedDatabase
     }
 
     private func prepareConnectingSession(for connection: DatabaseConnection) -> Int {
