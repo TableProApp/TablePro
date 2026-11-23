@@ -310,6 +310,23 @@ final class ServerDashboardViewModel: ObservableObject {
 
     // MARK: - Kill Session
 
+    // The list now holds the session the query tabs run on, so a cancel or terminate aimed at its
+    // running statement goes over a connection of its own, or it would wait for that statement.
+    private func runSessionAction(_ sql: String) async throws {
+        let manager = services.databaseManager
+        if let session = manager.session(for: connectionId), manager.canPool(session),
+           let scope = manager.browseScope(for: connectionId) {
+            try await manager.withMetadataDriver(scope: scope) { driver in
+                _ = try await driver.execute(query: sql)
+            }
+            return
+        }
+        guard let driver = manager.driver(for: connectionId) else {
+            throw DatabaseError.connectionFailed(String(localized: "No active connection"))
+        }
+        _ = try await driver.execute(query: sql)
+    }
+
     func confirmKillSession(_ session: DashboardSession) {
         pendingKillSession = session
         showKillConfirmation = true
@@ -334,12 +351,7 @@ final class ServerDashboardViewModel: ObservableObject {
         guard let sql = provider?.killSessionSQL(processId: processId) else { return }
 
         do {
-            guard let driver = services.databaseManager.driver(for: connectionId) else {
-                throw DatabaseError.connectionFailed(
-                    String(localized: "No active connection")
-                )
-            }
-            _ = try await driver.execute(query: sql)
+            try await runSessionAction(sql)
             Self.logger.info("Killed session \(processId)")
             await refresh(forcingTiles: false)
         } catch {
@@ -374,12 +386,7 @@ final class ServerDashboardViewModel: ObservableObject {
         guard let sql = provider?.cancelQuerySQL(processId: processId) else { return }
 
         do {
-            guard let driver = services.databaseManager.driver(for: connectionId) else {
-                throw DatabaseError.connectionFailed(
-                    String(localized: "No active connection")
-                )
-            }
-            _ = try await driver.execute(query: sql)
+            try await runSessionAction(sql)
             Self.logger.info("Cancelled query for process \(processId)")
             await refresh(forcingTiles: false)
         } catch {

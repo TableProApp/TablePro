@@ -172,6 +172,8 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
         var metrics: [DashboardMetric] = []
         var firstFailure: Error?
         var singleSummaryAnswered = false
+        // A kept size alone is not an answer: a server that refuses every read fails the panel.
+        var serverAnswered = activity != nil || summary != nil
         for definition in definitions {
             let value: String?
             if let activity, let counted = activity.count(for: definition.id) {
@@ -184,6 +186,7 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
                 do {
                     let read = try await execute(definition.query)
                     value = read.rows.first.map { self.value($0, at: 0) }
+                    serverAnswered = true
                     if Self.summaryMetricIds.contains(definition.id) {
                         singleSummaryAnswered = true
                     }
@@ -213,7 +216,7 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
         if summaryReadFailed, singleSummaryAnswered {
             plan.combinedSummaryRefused = true
         }
-        if metrics.isEmpty, let firstFailure {
+        if !serverAnswered, let firstFailure {
             return .failure(firstFailure)
         }
         return .success(metrics)

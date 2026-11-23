@@ -430,4 +430,20 @@ struct PostgreSQLDashboardProviderTests {
         )
         #expect(recorder.asked.contains { $0.contains("pg_database_size") })
     }
+
+    @Test("A kept size does not hide a server that refused every read")
+    func keptSizeDoesNotHideAFailure() async throws {
+        let provider = PostgreSQLDashboardProvider(activityCatalog: .current)
+        let recorder = Recorder()
+        var plan = DashboardFetchPlan()
+        let start = ContinuousClock.now
+        _ = await provider.fetchSnapshot(plan: &plan, now: start, readsEveryMetric: false, execute: execute(recorder))
+
+        recorder.refusesEverything = true
+        let snapshot = await provider.fetchSnapshot(
+            plan: &plan, now: start + .seconds(5), readsEveryMetric: false, execute: execute(recorder)
+        )
+        if case .failure = snapshot.metrics {} else { Issue.record("metrics should fail") }
+        #expect(!plan.combinedActivityRefused)
+    }
 }
