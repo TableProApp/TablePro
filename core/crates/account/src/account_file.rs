@@ -30,8 +30,8 @@ pub(crate) struct AccountFile {
     // The OAuth issuer a company server's sign-in came from, so its refresh token goes to no other.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issuer: Option<String>,
-    // Binds the issuer, license and keys above to the sign-in whose refresh token keys it, so what another process
-    // wrote in is not taken.
+    // Binds the license and keys above to the sign-in whose refresh token keys it, so keys another process wrote in
+    // admit nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust_tag: Option<String>,
 }

@@ -993,3 +993,35 @@ async fn a_restored_company_sign_in_refreshes_once_the_server_is_found() {
     assert_eq!(restarted.status().borrow().features(Utc::now()), LICENSED);
     assert_eq!(restarted.server().account_origin.as_deref(), Some(base.as_str()));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_tag_left_stale_by_a_failed_write_costs_a_refresh_not_the_sign_in() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let base = company(&LICENSED, |_, _, _, _| None);
+    let items = Arc::new(Items::default());
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &items,
+        browser.clone(),
+    );
+    let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), approve(&browser));
+    signed.expect("signed in");
+    let mut file = stored(dir.path()).await;
+    file.trust_tag = Some("c3RhbGU".to_owned());
+    crate::account_file::write(&dir.path().join("account.json"), &file)
+        .await
+        .expect("the account file");
+    let restarted = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &items,
+        Arc::default(),
+    );
+    restarted.restore().await;
+    let unverified = restarted.status().borrow().features(Utc::now());
+
+    restarted.refresh_entitlement().await.expect("refreshed");
+
+    assert!(unverified.is_empty(), "{unverified:?}");
+    assert_eq!(restarted.status().borrow().features(Utc::now()), LICENSED);
+}

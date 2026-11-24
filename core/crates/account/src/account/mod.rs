@@ -323,7 +323,9 @@ impl Account {
             account_id: file.account_id,
             remembered: true,
             licensed: licensed.as_ref().ok().cloned().flatten(),
-            issuer: file.issuer.filter(|_| tagged),
+            // Kept untagged: a tag left stale by a failed write must not strand the sign-in, and the issuer only
+            // narrows where the refresh token may go.
+            issuer: file.issuer,
             ..Session::default()
         };
         let (entitlement, problem) = match (&licensed, file.entitlement.as_deref()) {
