@@ -123,11 +123,11 @@ impl License {
                 _ => LicenseError::Malformed(error.to_string()),
             })?
             .claims;
-        if claims.seats == 0 {
-            return Err(LicenseError::Malformed("a license has at least one seat".to_owned()));
-        }
         if claims.origin.trim_end_matches('/') != origin {
             return Err(LicenseError::Origin(claims.origin));
+        }
+        if claims.seats == 0 {
+            return Err(LicenseError::Malformed("a license has at least one seat".to_owned()));
         }
         if claims.exp.is_some() == claims.maintenance_until.is_some() {
             return Err(LicenseError::Term("exactly one of exp and maintenance_until"));
