@@ -42,13 +42,14 @@ internal enum CoreAccountMapping {
         }
     }
 
-    static func server(_ info: ServerInfo) -> AccountServer? {
+    // A Debug run's development stack is a local tablepro.app: plans, shares and the rest work as there.
+    static func server(_ info: ServerInfo, isDevelopmentStack: Bool = false) -> AccountServer? {
         guard let api = URL(string: info.apiOrigin) else { return nil }
         return AccountServer(
             apiOrigin: api,
             accountOrigin: info.accountOrigin.flatMap(URL.init(string:)) ?? api,
             host: info.host,
-            isProduction: info.isProduction,
+            isProduction: info.isProduction || isDevelopmentStack,
             isManaged: info.isManaged,
             othersAllowed: info.othersAllowed
         )
@@ -123,11 +124,10 @@ internal enum CoreAccountMapping {
             return .network(info.message)
         case "account.rate_limited":
             return .server(status: 429, code: "rate_limited")
-        // invalid_grant on a license key; any other refusal of an interactive sign-in is the person declining.
+        // The OAuth error the server sent: invalid_grant refuses a license key, access_denied is the person declining.
         case "account.sign_in_refused":
-            return operation == .licenseKey
-                ? .oauth("invalid_grant", description: nil)
-                : .oauth("access_denied", description: nil)
+            let fallback = operation == .licenseKey ? "invalid_grant" : "access_denied"
+            return .oauth(oauthError(info.message) ?? fallback, description: nil)
         case "account.server_invalid", "account.server_insecure":
             return .companyServer(.invalidAddress)
         case "account.server_not_tablepro", "account.server_mismatch":
@@ -156,6 +156,14 @@ internal enum CoreAccountMapping {
             }
             return .network(info.message)
         }
+    }
+
+    // The core puts the OAuth error code only in its message, "the sign-in was refused: <error>"
+    // (core/crates/account/src/account_error.rs).
+    private static func oauthError(_ message: String) -> String? {
+        guard let range = message.range(of: "refused: ") else { return nil }
+        let code = message[range.upperBound...].prefix { $0.isLetter || $0 == "_" }
+        return code.isEmpty ? nil : String(code)
     }
 
     // The core words an entitlement the file holds only in English, for the log; the app's wording picks a reason.

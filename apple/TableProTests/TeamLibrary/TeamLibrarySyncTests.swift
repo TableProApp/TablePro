@@ -1066,6 +1066,30 @@ struct TeamLibrarySyncTests {
         fixture.sync.stop()
     }
 
+    @Test("A publish queued behind a sync is never sent to a server the Mac switches to while it waits")
+    func queuedPublishStaysWithItsServer() async throws {
+        let gate = AsyncGate()
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        await fixture.library { $0.pullGate = gate }
+        let syncing = Task { await fixture.sync.sync() }
+        await gate.arrived(1)
+        let publishing = Task {
+            try await fixture.sync.publishSavedQueries(
+                favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: Self.team
+            )
+        }
+        await Task.yield()
+
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        try await fixture.account.signIn()
+        await gate.open()
+        _ = await syncing.value
+
+        await #expect(throws: TeamLibraryPublishError.failed(.signedOut)) { try await publishing.value }
+        #expect(await fixture.pushes().isEmpty)
+    }
+
     // MARK: - Sign-out while a call is out
 
     @Test("A pull that answers after sign-out brings nothing back")

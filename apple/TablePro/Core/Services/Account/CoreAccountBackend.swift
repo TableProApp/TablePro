@@ -14,6 +14,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CoreAccountBackend")
 
     let machineID: String
+    private let isDevelopmentStack: Bool
     private let authenticator = CoreWebAuthenticator()
     private let restored = RestoredLatch()
     private let listenerBridge: CoreAccountListener
@@ -22,6 +23,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
 
     init(setup: AccountCoreSetup, machine: MachineDescription, keychain: AccountKeychain) {
         machineID = setup.machineID
+        isDevelopmentStack = setup.developmentStack != nil
         listenerBridge = CoreAccountListener(restored: restored)
         let config = Self.config(setup, machine: machine)
         let (authenticator, listener, opened, restored) = (authenticator, listenerBridge, opened, restored)
@@ -109,7 +111,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
 
     func server() -> AccountServer {
         guard let service else { return .production }
-        return CoreAccountMapping.server(service.server()) ?? .production
+        return CoreAccountMapping.server(service.server(), isDevelopmentStack: isDevelopmentStack) ?? .production
     }
 
     func license() -> AccountServerLicense? {

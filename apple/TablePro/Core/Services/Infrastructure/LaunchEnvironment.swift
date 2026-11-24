@@ -75,20 +75,10 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
         }
     }
 
-    /// A core that never answers holds launch no longer than the deferred work's backstop.
+    /// Every path of the core's restore ends in a status, a failed open included, as the synchronous Keychain read
+    /// before it did; no timeout, since one would route intents through gates that still read signed out.
     internal func accountRestored() async {
-        let gate = LaunchGate()
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            gate.continuation = continuation
-            Task { @MainActor in
-                await AccountServices.shared.waitUntilRestored()
-                gate.open()
-            }
-            Task { @MainActor in
-                try? await Task.sleep(for: Self.backstop)
-                gate.open()
-            }
-        }
+        await AccountServices.shared.waitUntilRestored()
     }
 
     internal func route(_ intent: LaunchIntent) async {
@@ -214,15 +204,5 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
         WindowOpener.shared.closeWelcome()
         frontWindow.makeKeyAndOrderFront(nil)
         AppActivationPolicyController.shared.activate()
-    }
-}
-
-@MainActor
-private final class LaunchGate {
-    var continuation: CheckedContinuation<Void, Never>?
-
-    func open() {
-        continuation?.resume()
-        continuation = nil
     }
 }

@@ -44,7 +44,8 @@ internal final class TeamLibrarySync: ObservableObject {
     @Published private(set) var writableTeams: [TeamLibraryTeam] = []
 
     private let account: AccountServices
-    private let client: TeamLibraryClient
+    // Pinned to one server for each pass, so nothing read or queued for one server reaches the next.
+    private var client: TeamLibraryClient
     private let store: TeamLibraryStateStore
     private let clock: any Clock<Duration>
     private let now: @Sendable () -> Date
@@ -76,7 +77,7 @@ internal final class TeamLibrarySync: ObservableObject {
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.account = account
-        self.client = TeamLibraryClient(api: account.api)
+        self.client = TeamLibraryClient(api: account.api(pinnedTo: account.server))
         self.store = store
         self.clock = clock
         self.now = now
@@ -212,8 +213,9 @@ internal final class TeamLibrarySync: ObservableObject {
         publishContent()
     }
 
-    private func performSync() async -> TeamLibrarySyncOutcome {
+    private func performSync(on server: AccountServer? = nil) async -> TeamLibrarySyncOutcome {
         guard account.isSignedIn else { return .skipped }
+        client = TeamLibraryClient(api: account.api(pinnedTo: server ?? account.server))
         guard account.access.isAvailable(.teamLibrary) else {
             // A current entitlement without team_library: the seat or the plan is gone, and with it what this Mac read.
             if account.access.currentEntitlement != nil, !teams.isEmpty || legacy != nil {
@@ -532,9 +534,14 @@ internal final class TeamLibrarySync: ObservableObject {
         owns: @escaping (TeamLibraryKey) -> Bool,
         plan: @escaping (TeamLibraryTeamState) throws -> [TeamLibraryEdit]
     ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
+        // What the person published for this server and account, never for one a switch while it waited signs in to.
+        let (queuedAt, server) = (generation, account.server)
         let result = await serially { [weak self] () -> Result<TeamLibraryPublishResult, TeamLibraryPublishError> in
             guard let self else { return .failure(.failed(.signedOut)) }
-            return await self.performPublish(to: teamID, owns: owns, plan: plan)
+            guard self.generation == queuedAt, self.account.server.apiOrigin == server.apiOrigin else {
+                return .failure(.failed(.signedOut))
+            }
+            return await self.performPublish(to: teamID, owns: owns, plan: plan, on: server)
         }.value
         return try result.get()
     }
@@ -542,10 +549,11 @@ internal final class TeamLibrarySync: ObservableObject {
     private func performPublish(
         to teamID: String,
         owns: (TeamLibraryKey) -> Bool,
-        plan: (TeamLibraryTeamState) throws -> [TeamLibraryEdit]
+        plan: (TeamLibraryTeamState) throws -> [TeamLibraryEdit],
+        on server: AccountServer
     ) async -> Result<TeamLibraryPublishResult, TeamLibraryPublishError> {
         let started = generation
-        let outcome = await performSync()
+        let outcome = await performSync(on: server)
         guard started == generation else { return .failure(.failed(.signedOut)) }
         guard let state = teams[teamID], state.canWrite else {
             if case .failed(let failure) = outcome, teams[teamID] == nil {

@@ -45,6 +45,7 @@ internal final class AccountServices: AccountBackendListener {
     let shares: any ShareService
     let events = PassthroughSubject<AccountEvent, Never>()
     private let backend: any AccountBackend
+    private let transport: any ClientTransport
     private let storedKey: StoredLicenseKey
     private let clock: any Clock<Duration>
     private let now: @Sendable () -> Date
@@ -68,27 +69,32 @@ internal final class AccountServices: AccountBackendListener {
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.backend = backend
+        self.transport = transport
         self.storedKey = storedKey
         self.access = access
         self.clock = clock
         self.now = now
         self.api = AccountAPI.client(backend: backend, transport: transport)
-        // Shared links are a tablepro.app service: a share sheet left open across a switch to a company server sends
-        // that server nothing.
-        let sharesServer = AccountServer.production.apiBaseURL
+        // Shared links live on tablepro.app, or a Debug run's development stack: a share sheet left open across a
+        // switch to a company server sends that server nothing.
         self.shares = CloudShareService(
-            api: AccountAPI.client(backend: backend, transport: transport, onlyTo: sharesServer),
+            api: AccountAPI.client(backend: backend, transport: transport, onlyTo: sharedLinkServer),
             publicAPI: AccountAPI.publicClient(serverURL: sharedLinkServer, transport: transport),
             createRequest: ShareCreateRequest(
-                serverURL: sharesServer,
+                serverURL: sharedLinkServer,
                 transport: transport,
-                middlewares: [AccountBearerMiddleware(backend: backend, onlyTo: sharesServer)]
+                middlewares: [AccountBearerMiddleware(backend: backend, onlyTo: sharedLinkServer)]
             )
         )
     }
 
     var machineID: String {
         backend.machineID
+    }
+
+    // A client whose calls go to this server only: one a sign-in elsewhere would take reads as signed out.
+    func api(pinnedTo server: AccountServer) -> any APIProtocol {
+        AccountAPI.client(backend: backend, transport: transport, onlyTo: server.apiBaseURL)
     }
 
     var server: AccountServer {

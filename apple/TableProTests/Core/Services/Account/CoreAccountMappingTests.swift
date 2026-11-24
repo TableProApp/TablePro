@@ -46,6 +46,10 @@ struct CoreAccountMappingTests {
     func refusedSignIns() {
         #expect(Self.mapped("account.sign_in_refused", .licenseKey) == .oauth("invalid_grant", description: nil))
         #expect(Self.mapped("account.sign_in_refused", .signIn).friendlyDescription == nil)
+        let declined = CoreAccountMapping.error(
+            Self.failure("account.sign_in_refused", message: "the sign-in was refused: access_denied"), during: .signIn
+        )
+        #expect(declined.friendlyDescription == nil)
         #expect(CoreAccountMapping.error(.Cancelled, during: .signIn) == .canceled)
         #expect(Self.mapped("account.sign_in_canceled", .signIn) == .canceled)
     }
@@ -57,6 +61,19 @@ struct CoreAccountMappingTests {
         #expect(CoreAccountMapping.signInError(.Cancelled, during: .signIn) == .canceled)
         #expect(CoreAccountMapping.signInError(Self.failure("account.sign_in_refused"), during: .licenseKey)
             == .oauth("invalid_grant", description: nil))
+    }
+
+    @Test("A sign-in the server refused for another reason says so instead of closing quietly")
+    func otherRefusalsAreWorded() {
+        let busy = CoreAccountMapping.error(
+            Self.failure("account.sign_in_refused", message: "the sign-in was refused: temporarily_unavailable"), during: .signIn
+        )
+        #expect(busy == .oauth("temporarily_unavailable", description: nil))
+        #expect(busy.friendlyDescription != nil)
+        let broken = CoreAccountMapping.error(
+            Self.failure("account.sign_in_refused", message: "the sign-in was refused: server_error"), during: .signIn
+        )
+        #expect(broken.friendlyDescription != nil)
     }
 
     @Test("A refusal the core passes on by its server code keeps that code, which the device page words")
@@ -127,6 +144,16 @@ struct CoreAccountMappingTests {
             seats: 10, isTrial: true, expiresAt: Date(timeIntervalSince1970: 1_800_000_000),
             graceEndsAt: Date(timeIntervalSince1970: 1_802_592_000), state: .grace
         ))
+    }
+
+    @Test("A Debug run's development stack reads as tablepro.app, so its shares and plans show")
+    func developmentStackIsTableProApp() throws {
+        let info = ServerInfo(
+            apiOrigin: "http://api.localhost:5284", accountOrigin: "http://account.localhost:5284", host: "api.localhost",
+            isProduction: false, isManaged: false, othersAllowed: false
+        )
+        #expect(try #require(CoreAccountMapping.server(info, isDevelopmentStack: true)).isProduction)
+        #expect(try #require(CoreAccountMapping.server(info)).isProduction == false)
     }
 
     @Test("The core's sign-out causes reach the app as its own")
