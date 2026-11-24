@@ -528,3 +528,31 @@ async fn the_mac_s_offline_file_with_no_sign_in_stays_an_offline_file() {
     assert!(matches!(*restarted.status().borrow(), AccountStatus::Offline(_)));
     assert_eq!(keyring.opened(), 1);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_429_on_the_key_exchange_holds_the_next_try() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let requests = Asked::default();
+    let endpoints = cloud_with_bodies({
+        let requests = requests.clone();
+        move |method, path, _| {
+            requests.lock().expect("the requests").push(format!("{method} {path}"));
+            (
+                429,
+                "retry-after: 60\r\n",
+                r#"{"error":"temporarily_unavailable"}"#.to_owned(),
+            )
+        }
+    });
+    let account = mac(dir.path(), endpoints, Keyring::holding(None), None);
+
+    let first = account.use_license_key(&SecretString::from("TP-KEY-1234")).await;
+    let second = account.use_license_key(&SecretString::from("TP-KEY-1234")).await;
+
+    assert!(
+        matches!(first, Err(AccountError::RateLimited { retry_after: Some(_) })),
+        "{first:?}"
+    );
+    assert!(matches!(second, Err(AccountError::RateLimited { .. })), "{second:?}");
+    assert_eq!(asked(&requests).len(), 1, "{:?}", asked(&requests));
+}

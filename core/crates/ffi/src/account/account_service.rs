@@ -170,9 +170,9 @@ impl AccountService {
 
     // A company server's license, once this app verified it.
     pub fn license(&self) -> Option<ServerLicenseInfo> {
-        let status = self.status.borrow();
-        let license = status.entitlement()?.license()?;
-        Some(ServerLicenseInfo::of(license, Utc::now()))
+        self.account
+            .license()
+            .map(|license| ServerLicenseInfo::of(&license, Utc::now()))
     }
 
     // The cancel ends only the wait for the browser: once it has come back, the sign-in is kept.

@@ -274,17 +274,19 @@ impl Account {
         let attempt = self.inner.attempts.fetch_add(1, Ordering::SeqCst) + 1;
         let server = {
             let mut session = self.inner.session.lock().await;
+            session.waited(Call::LicenseKey)?;
             self.connection(&mut session, false).await?
         };
         if server.is_company() {
             return Err(ServerError::Unsupported("a license key").into());
         }
         let settings = &self.inner.settings;
-        let tokens = server
+        let exchanged = server
             .connection()?
             .oauth
             .exchange_license_key(key, &settings.machine_id, &settings.device)
-            .await?;
+            .await;
+        let tokens = self.inner.session.lock().await.answered(Call::LicenseKey, exchanged)?;
         tracing::info!("exchanged a license key for a sign-in");
         self.commit_sign_in(attempt, &server, tokens).await
     }

@@ -16,7 +16,7 @@ use crate::account_status::{AccountStatus, EntitlementProblem, SignedIn};
 use crate::browser::{BrowserLauncher, WebAuthenticationError, WebAuthenticator};
 use crate::cloud_api::{Bearer, answer_error, v2};
 use crate::entitlement::{Entitlement, EntitlementError};
-use crate::license::LicenseError;
+use crate::license::{License, LicenseError};
 use crate::loopback::{Callback, Loopback, callback};
 use crate::machine_id::MachineId;
 use crate::oauth::{OAuth, Tokens};
@@ -96,6 +96,8 @@ struct Inner {
     // Bumped by each sign-in, sign-out and server change, so an earlier sign-in still out cannot commit over them.
     attempts: AtomicU64,
     sign_outs: broadcast::Sender<SignOutCause>,
+    // A company server's verified license, kept apart from the entitlement, which can fail after it.
+    license: watch::Sender<Option<Arc<License>>>,
 }
 
 #[derive(Default)]
@@ -121,6 +123,7 @@ enum Call {
     License,
     Keys,
     Discovery,
+    LicenseKey,
     Profile,
     Devices,
     RemoveDevice,
@@ -214,6 +217,7 @@ impl Account {
                 due: watch::Sender::new(Instant::now()),
                 attempts: AtomicU64::new(0),
                 sign_outs: broadcast::Sender::new(SIGN_OUT_BACKLOG),
+                license: watch::Sender::new(None),
             }),
         })
     }
@@ -228,6 +232,11 @@ impl Account {
 
     pub fn machine_id(&self) -> &MachineId {
         &self.inner.settings.machine_id
+    }
+
+    // The company server's license this sign-in verified last, whether or not an entitlement came with it.
+    pub fn license(&self) -> Option<License> {
+        self.inner.license.borrow().as_deref().cloned()
     }
 
     pub fn server(&self) -> ServerInfo {
@@ -787,10 +796,15 @@ impl Account {
 
     fn signed_out(&self, session: &mut Session) {
         *session = Session::default();
+        self.inner.license.send_replace(None);
         self.inner.status.send_replace(AccountStatus::SignedOut);
     }
 
+    // The license first, so an app told of the status reads the license that goes with it.
     fn publish(&self, session: &Session, entitlement: Option<Entitlement>, problem: Option<EntitlementProblem>) {
+        self.inner
+            .license
+            .send_replace(session.licensed.as_ref().map(|licensed| licensed.license.clone()));
         self.inner
             .status
             .send_replace(AccountStatus::SignedIn(Box::new(SignedIn {

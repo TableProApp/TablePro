@@ -804,3 +804,27 @@ async fn a_busy_candidate_server_holds_back_no_other_choice() {
     assert!(chosen.is_ok(), "{chosen:?}");
     assert_eq!(account.server().api_origin, healthy);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_verified_license_shows_when_the_entitlement_after_it_fails() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let base = company(&LICENSED, |_, method, path, _| {
+        (method == "POST" && path.ends_with("/entitlement")).then(|| (500, String::new()))
+    });
+    let items = Arc::new(Items::default());
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &items,
+        browser.clone(),
+    );
+
+    let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), approve(&browser));
+
+    assert!(signed.is_err(), "{signed:?}");
+    assert!(signed_in(&account).entitlement.is_none());
+    let license = account.license().expect("the verified license");
+    assert_eq!(license.claims().features, LICENSED);
+    account.sign_out().await.expect("signed out");
+    assert!(account.license().is_none());
+}
