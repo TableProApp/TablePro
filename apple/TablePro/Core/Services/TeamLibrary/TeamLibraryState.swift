@@ -195,22 +195,17 @@ internal struct TeamLibraryStorage {
         defaults.bool(forKey: Self.flatConsideredKey)
     }
 
-    // One shot: the flag is written before the first read, so no later launch reads it, whoever that launch restores.
-    // A flag that did not reach the disk reads nothing. The unsent edits it kept join `teams`, its read cache fills in
-    // what `cache` lacks, and its files go.
-    func takeFlat(merging teams: [TeamLibraryTeamState], into cache: TeamLibraryStateStore) -> [TeamLibraryTeamState] {
+    // One shot: the flag is written and read back before the first read, so no later launch reads it, whoever that
+    // launch restores; a flag that did not stick reads nothing. Its read cache fills in what `cache` lacks, its files
+    // go, and its teams come back with the unsent edits they kept.
+    func takeFlat(into cache: TeamLibraryStateStore) -> [TeamLibraryTeamState] {
         guard !hasConsideredFlat, markFlatConsidered() else {
             removeFlat()
-            return teams
+            return []
         }
-        var merged = Dictionary(teams.map { ($0.teamID, $0) }, uniquingKeysWith: { first, _ in first })
-        for kept in flat.loadAll() {
-            var team = merged[kept.teamID] ?? kept.cached
-            team.pending = kept.pending
-            team.conflicts = kept.conflicts
-            team.moves = kept.moves
-            team.declined = kept.declined
-            merged[kept.teamID] = team
+        let kept = flat.loadAll()
+        let cached = Set(cache.loadAll().map(\.teamID))
+        for team in kept where !cached.contains(team.teamID) {
             cache.save(team)
         }
         let manager = FileManager.default
@@ -219,10 +214,11 @@ internal struct TeamLibraryStorage {
             try? manager.copyItem(at: flat.legacyFile, to: cache.legacyFile)
         }
         removeFlat()
-        return Array(merged.values)
+        return kept
     }
 
-    // A sign-in made in this run, or one on a company server: the library 0.88 kept is not theirs, and goes unread.
+    // Any sign-in but the restored tablepro.app one, or a company server: the library 0.88 kept is not theirs, and goes
+    // unread.
     func discardFlat() {
         if !hasConsideredFlat {
             markFlatConsidered()

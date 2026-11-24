@@ -429,7 +429,7 @@ struct AccountSettingsModelTests {
             cacheRoot: root.appendingPathComponent("TeamLibraryCache", isDirectory: true),
             defaults: fixture.defaults.defaults
         )
-        return TeamLibrarySync(account: fixture.services, storage: storage, reportDiscarded: { _ in }, askAboutEarlierEdits: { _ in false })
+        return TeamLibrarySync(account: fixture.services, storage: storage, reportDiscarded: { _ in }, reportEarlierEditsNotTaken: { _ in })
     }
 
     @Test("Confirming a device removal clears the pending removal the dialog showed")

@@ -54,7 +54,7 @@ internal enum TeamLibraryUnsentChanges {
         alert.addButton(withTitle: String(localized: "Upload and Quit"))
         let discard = alert.addButton(withTitle: String(localized: "Discard and Quit"))
         discard.hasDestructiveAction = true
-        alert.addButton(withTitle: String(localized: "Cancel"))
+        _ = AlertHelper.addCancelButton(to: alert, title: String(localized: "Cancel"))
         switch await AlertHelper.response(to: alert, in: nil) {
         case .alertFirstButtonReturn: return .upload
         case .alertSecondButtonReturn: return .discard
@@ -77,22 +77,6 @@ internal enum TeamLibraryUnsentChanges {
         return sentences.joined(separator: " ")
     }
 
-    // True uploads them now, false discards them.
-    static func uploadsEarlierEdits(_ changes: [String]) async -> Bool {
-        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = String(localized: "Upload Team Library changes from before the update?")
-        alert.informativeText = String(
-            format: String(localized: "Not uploaded before TablePro updated: %@. They are not kept on disk any more, so TablePro asks once."),
-            changes.formatted(.list(type: .and))
-        )
-        alert.addButton(withTitle: String(localized: "Upload"))
-        let discard = alert.addButton(withTitle: String(localized: "Discard"))
-        discard.hasDestructiveAction = true
-        return await AlertHelper.response(to: alert, in: nil) == .alertFirstButtonReturn
-    }
-
     // A refused edit as the unsent list names it.
     nonisolated static func refused(_ name: String, because reason: TeamLibraryFailure) -> String {
         let why: String
@@ -109,15 +93,47 @@ internal enum TeamLibraryUnsentChanges {
         return String(format: String(localized: "%@ (not sent: %@)"), name, why)
     }
 
-    // An involuntary sign-out leaves no one to push for, so its unsent edits go and the person is told which.
+    nonisolated static func conflicted(_ name: String) -> String {
+        String(format: String(localized: "%@ (not sent: changed on the team since)"), name)
+    }
+
+    // An involuntary sign-out, or a lost team_library, leaves no one to push for, so its unsent edits go and the person
+    // is told which.
     static func presentDiscarded(_ changes: [String]) {
-        AlertHelper.showErrorSheet(
+        notify(
             title: String(localized: "Team Library changes were discarded"),
             message: String(
-                format: String(localized: "You were signed out before these changes were uploaded: %@."),
+                format: String(localized: "Team Library ended for this sign-in before these changes were uploaded: %@."),
                 changes.formatted(.list(type: .and))
-            ),
-            window: nil
+            )
         )
+    }
+
+    static func presentEarlierEditsNotTaken(_ changes: [String]) {
+        notify(
+            title: String(localized: "Some Team Library changes from before the update were not uploaded"),
+            message: String(
+                format: String(localized: "TablePro uploaded the changes left from before the update once. These were not taken and were dropped: %@."),
+                changes.formatted(.list(type: .and))
+            )
+        )
+    }
+
+    // Never waits on the person: a sheet on the window in front, or on the first one to come up.
+    private static func notify(title: String, message: String) {
+        Task { @MainActor in
+            if AlertHelper.resolveWindow(nil) == nil {
+                for await _ in NotificationCenter.default.notifications(named: NSWindow.didBecomeMainNotification) {
+                    if AlertHelper.resolveWindow(nil) != nil { break }
+                }
+            }
+            guard let window = AlertHelper.resolveWindow(nil) else { return }
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = title
+            alert.informativeText = message
+            alert.addButton(withTitle: String(localized: "OK"))
+            alert.beginSheetModal(for: window, completionHandler: nil)
+        }
     }
 }

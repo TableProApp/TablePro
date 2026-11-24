@@ -23,8 +23,8 @@ final class TeamLibraryFixture {
     let store: TeamLibraryStateStore
     // What each involuntary sign-out discarded.
     let discarded = DiscardedLog()
-    // The question about the edits 0.88 left, and the answer it gets.
-    let earlier = EarlierEditsLog()
+    // What each one-time upload of the edits 0.88 left could not get taken.
+    let notTaken = DiscardedLog()
     private(set) var sync: TeamLibrarySync
 
     init(role: String = "owner", hasSeat: Bool = true, seed: (inout FakeTeamLibrary) -> Void = { _ in }) async throws {
@@ -54,7 +54,7 @@ final class TeamLibraryFixture {
         store = storage.cache(in: storage.folder(server: AccountServer.production.apiOrigin, accountID: "acct_test"))
         sync = TeamLibrarySync(
             account: account.services, storage: storage, clock: clock,
-            reportDiscarded: discarded.record, askAboutEarlierEdits: earlier.answer
+            reportDiscarded: discarded.record, reportEarlierEditsNotTaken: notTaken.record
         )
         sync.loadIfNeeded()
     }
@@ -72,7 +72,7 @@ final class TeamLibraryFixture {
         sync.stop()
         sync = TeamLibrarySync(
             account: account.services, storage: storage, clock: clock,
-            reportDiscarded: discarded.record, askAboutEarlierEdits: earlier.answer
+            reportDiscarded: discarded.record, reportEarlierEditsNotTaken: notTaken.record
         )
         sync.loadIfNeeded()
     }
@@ -146,17 +146,6 @@ final class TeamLibraryFixture {
             data["parent_client_id"] = parent
         }
         return data
-    }
-}
-
-@MainActor
-final class EarlierEditsLog {
-    var uploads = true
-    private(set) var asked: [[String]] = []
-
-    func answer(_ changes: [String]) async -> Bool {
-        asked.append(changes)
-        return uploads
     }
 }
 

@@ -29,7 +29,7 @@ internal enum AccountSignOutPrompt {
             alert.addButton(withTitle: String(localized: "Discard and Sign Out")).hasDestructiveAction = true
             answers = [.upload, .discard]
         }
-        alert.addButton(withTitle: String(localized: "Cancel"))
+        _ = AlertHelper.addCancelButton(to: alert, title: String(localized: "Cancel"))
         open = alert
         defer { open = nil }
         let response = await AlertHelper.response(to: alert, in: nil)

@@ -2785,6 +2785,9 @@
         }
       }
     },
+    "%@ (not sent: changed on the team since)" : {
+
+    },
     "%@ (reader)" : {
       "localizations" : {
         "fr" : {
@@ -194571,6 +194574,9 @@
     "Some tabs have unsaved edits. Relaunching will discard these changes." : {
 
     },
+    "Some Team Library changes from before the update were not uploaded" : {
+
+    },
     "Some values are set outside this file" : {
       "localizations" : {
         "fr" : {
@@ -207538,6 +207544,9 @@
         }
       }
     },
+    "TablePro uploaded the changes left from before the update once. These were not taken and were dropped: %@." : {
+
+    },
     "TablePro Website" : {
       "localizations" : {
         "fr" : {
@@ -208936,6 +208945,9 @@
       }
     },
     "Team Library changes were discarded" : {
+
+    },
+    "Team Library ended for this sign-in before these changes were uploaded: %@." : {
 
     },
     "Team library updated %@" : {
