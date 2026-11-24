@@ -209,6 +209,9 @@ final class AIModelReference: @unchecked Sendable {
     private let lock = NSLock()
     private var file: AIModelReferenceFile?
     private var refreshTask: Task<Void, Never>?
+    // Failures count too, so an unreachable host is not asked again on every list (ADR 0049).
+    private var lastAttempt: Date?
+    private static let refreshInterval: TimeInterval = 60 * 60
     private let session: URLSession?
     // The last copy accepted, kept apart from the HTTP cache, which a rejected answer can overwrite.
     private let savedURL: URL?
@@ -273,11 +276,13 @@ final class AIModelReference: @unchecked Sendable {
         )
     }
 
-    // The HTTP cache answers for the server's max-age and revalidates with the ETag after it; concurrent callers share one request.
-    func refresh() async {
+    // At most once an hour, revalidated with the ETag; concurrent callers share one request.
+    func refresh(now: Date = Date()) async {
         guard let session else { return }
-        let task: Task<Void, Never> = lock.withLock {
+        let task: Task<Void, Never>? = lock.withLock {
             if let running = refreshTask { return running }
+            if let lastAttempt, now.timeIntervalSince(lastAttempt) < Self.refreshInterval { return nil }
+            lastAttempt = now
             let started = Task<Void, Never> { [weak self] in
                 guard let self else { return }
                 await self.load(using: session)
@@ -285,6 +290,7 @@ final class AIModelReference: @unchecked Sendable {
             refreshTask = started
             return started
         }
+        guard let task else { return }
         await task.value
         lock.withLock {
             if refreshTask == task { refreshTask = nil }

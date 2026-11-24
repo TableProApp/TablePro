@@ -193,6 +193,12 @@ struct AIModelReferenceTests {
         #expect(nextLaunch.current?.providers["openai"]?.defaultModel == "gpt-5.6-sol")
         #expect(FileManager.default.fileExists(atPath: saved.path))
 
+        CatalogHostProtocol.requests = 0
+        await reference.refresh()
+        #expect(CatalogHostProtocol.requests == 0, "a second refresh within the hour asks nothing")
+        await reference.refresh(now: Date().addingTimeInterval(2 * 60 * 60))
+        #expect(CatalogHostProtocol.requests == 1)
+
         try FileManager.default.removeItem(at: saved)
         CatalogHostProtocol.body = AIModelReferenceFixtures.json
             .replacingOccurrences(of: "2026-11-24T00:00:00Z", with: "2000-01-01T00:00:00Z")
@@ -253,12 +259,14 @@ private final class FailingModelListTransport: ChatTransport {
 
 private final class CatalogHostProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var body = ""
+    nonisolated(unsafe) static var requests = 0
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
 
     override func startLoading() {
+        Self.requests += 1
         guard let url = request.url,
               let response = HTTPURLResponse(
                   url: url, statusCode: 200, httpVersion: "HTTP/1.1",
