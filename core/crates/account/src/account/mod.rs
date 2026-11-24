@@ -392,10 +392,15 @@ impl Account {
             connected = discovering => connected?,
             () = &mut cancelled => return Err(AccountError::SignInCanceled),
         };
-        let oauth = &server.connection()?.oauth;
+        let connection = server.connection()?;
+        let oauth = &connection.oauth;
+        let issuer = connection.discovered.as_ref().map_or_else(
+            || connection.endpoints.account_origin(),
+            |discovered| discovered.issuer.clone(),
+        );
         let tokens = match self.inner.settings.client.redirect {
-            Redirect::Loopback => self.browser_sign_in(oauth, &mut cancelled).await?,
-            Redirect::Scheme(scheme) => self.web_sign_in(oauth, scheme, &mut cancelled).await?,
+            Redirect::Loopback => self.browser_sign_in(oauth, &issuer, &mut cancelled).await?,
+            Redirect::Scheme(scheme) => self.web_sign_in(oauth, &issuer, scheme, &mut cancelled).await?,
         };
         self.commit_sign_in(attempt, &server, tokens).await
     }
@@ -403,6 +408,7 @@ impl Account {
     async fn browser_sign_in(
         &self,
         oauth: &OAuth,
+        issuer: &str,
         cancelled: impl Future<Output = ()> + Send,
     ) -> Result<Tokens, AccountError> {
         let loopback = Loopback::bind()
@@ -419,12 +425,7 @@ impl Account {
             waited = tokio::time::timeout(SIGN_IN_TIMEOUT, waiting) => waited,
             () = cancelled => return Err(AccountError::SignInCanceled),
         };
-        let code = match callback.map_err(|_| AccountError::SignInTimedOut)? {
-            Callback::Code(code) => code,
-            Callback::Refused { error, description } => {
-                return Err(AccountError::SignInRefused { error, description });
-            }
-        };
+        let code = code_from(callback.map_err(|_| AccountError::SignInTimedOut)?, issuer)?;
         oauth.exchange_code(code, authorization).await
     }
 
@@ -432,6 +433,7 @@ impl Account {
     async fn web_sign_in(
         &self,
         oauth: &OAuth,
+        issuer: &str,
         scheme: &str,
         cancelled: impl Future<Output = ()> + Send,
     ) -> Result<Tokens, AccountError> {
@@ -458,17 +460,9 @@ impl Account {
                 "the sign-in came back to another address".to_owned(),
             ));
         }
-        let code = match callback(url.query().unwrap_or_default(), authorization.state.secret()) {
-            Some(Callback::Code(code)) => code,
-            Some(Callback::Refused { error, description }) => {
-                return Err(AccountError::SignInRefused { error, description });
-            }
-            None => {
-                return Err(AccountError::Protocol(
-                    "the sign-in came back for another request".to_owned(),
-                ));
-            }
-        };
+        let answered = callback(url.query().unwrap_or_default(), authorization.state.secret())
+            .ok_or_else(|| AccountError::Protocol("the sign-in came back for another request".to_owned()))?;
+        let code = code_from(answered, issuer)?;
         oauth.exchange_code(code, authorization).await
     }
 
@@ -910,6 +904,19 @@ impl Account {
 
     fn api(&self, bearer: Bearer) -> v2::Client {
         v2::Client::new_with_client(&self.current().api, self.inner.http.clone(), bearer)
+    }
+}
+
+// RFC 9207: an `iss` in the answer must be the issuer asked, so a code meant for another server is never sent to this
+// one. An answer without one is taken until servers send it (core ADR 0044, Discovery and mix-up).
+fn code_from(answered: Callback, issuer: &str) -> Result<String, AccountError> {
+    match answered {
+        Callback::Code(code) => Ok(code),
+        Callback::CodeFrom { code, issuer: named } if named.trim_end_matches('/') == issuer.trim_end_matches('/') => {
+            Ok(code)
+        }
+        Callback::CodeFrom { .. } => Err(ServerError::Mismatch("issuer").into()),
+        Callback::Refused { error, description } => Err(AccountError::SignInRefused { error, description }),
     }
 }
 

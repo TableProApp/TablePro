@@ -613,3 +613,40 @@ async fn a_mac_signed_in_without_an_entitlement_file_stays_signed_in() {
     let file = stored(dir.path()).await;
     assert_eq!(file.device_id, None);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_answer_naming_another_issuer_is_refused_and_one_naming_this_one_taken() {
+    let other: Answer = |url| {
+        let state = query(url, "state").unwrap_or_default();
+        Url::parse(&format!(
+            "app.tablepro:/oauth/callback?code=c&state={state}&iss=https%3A%2F%2Fevil.example"
+        ))
+        .map_err(|_| WebAuthenticationError::Canceled)
+    };
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let requests = Asked::default();
+    let endpoints = production_stub(requests.clone());
+    let issuer = endpoints.account_origin();
+    let refused = mac(
+        dir.path(),
+        endpoints.clone(),
+        Keyring::holding(None),
+        Some(Authenticator::answering(other)),
+    )
+    .sign_in(std::future::pending())
+    .await;
+    let named = Authenticator::answering(|url| {
+        let state = query(url, "state").unwrap_or_default();
+        let issuer = url.origin().ascii_serialization();
+        Url::parse(&format!(
+            "app.tablepro:/oauth/callback?code=c&state={state}&iss={issuer}"
+        ))
+        .map_err(|_| WebAuthenticationError::Canceled)
+    });
+    let taken = mac(dir.path(), endpoints, Keyring::holding(None), Some(named))
+        .sign_in(std::future::pending())
+        .await;
+
+    assert_eq!(refused.expect_err("another issuer").code(), "account.server_mismatch");
+    assert!(taken.is_ok(), "{taken:?} for {issuer}");
+}
