@@ -596,3 +596,20 @@ async fn a_token_lifetime_past_the_calendar_is_read_as_a_day() {
 
     assert!(first.is_ok() && again.is_ok(), "{first:?} {again:?}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_mac_signed_in_without_an_entitlement_file_stays_signed_in() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let account = mac(
+        dir.path(),
+        super::tests::unreachable(),
+        Keyring::holding(Some("kept-refresh")),
+        None,
+    );
+
+    account.restore().await;
+
+    assert!(signed_in(&account).entitlement.is_none());
+    let file = stored(dir.path()).await;
+    assert_eq!(file.device_id, None);
+}

@@ -310,12 +310,16 @@ impl Account {
         if self.current().target.kind == ServerKind::Company {
             return false;
         }
-        let Some(token) = read_legacy(&path).await else {
-            return false;
-        };
+        // The Mac was signed in whenever the Keychain held the token, with or without an entitlement file.
+        let token = read_legacy(&path).await;
         let refresh = match self.current().vault.load_refresh_token().await {
             Ok(Some(refresh)) => refresh,
-            Ok(None) => return self.adopt_offline_file(session, &path, &token).await,
+            Ok(None) => {
+                return match token {
+                    Some(token) => self.adopt_offline_file(session, &path, &token).await,
+                    None => false,
+                };
+            }
             Err(error) => {
                 tracing::warn!(%error, "the keyring gave no account sign-in, so the Mac's entitlement waits for the next run");
                 return false;
@@ -326,12 +330,16 @@ impl Account {
             remembered: true,
             ..Session::default()
         };
-        let (entitlement, problem) = match self.verify(session, &token, Utc::now()) {
-            Ok(entitlement) => (Some(entitlement), None),
-            Err(AccountError::Entitlement(EntitlementError::Expired(at))) => {
-                (self.lapsed(session, &token, at), Some(EntitlementProblem::Expired))
+        let (entitlement, problem) = match token
+            .as_deref()
+            .map(|token| (token, self.verify(session, token, Utc::now())))
+        {
+            None => (None, None),
+            Some((_, Ok(entitlement))) => (Some(entitlement), None),
+            Some((token, Err(AccountError::Entitlement(EntitlementError::Expired(at))))) => {
+                (self.lapsed(session, token, at), Some(EntitlementProblem::Expired))
             }
-            Err(error) => {
+            Some((_, Err(error))) => {
                 tracing::info!(%error, "the Mac's entitlement is not this machine's, so the device registers again");
                 (None, None)
             }
