@@ -556,3 +556,22 @@ async fn a_429_on_the_key_exchange_holds_the_next_try() {
     assert!(matches!(second, Err(AccountError::RateLimited { .. })), "{second:?}");
     assert_eq!(asked(&requests).len(), 1, "{:?}", asked(&requests));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_token_answer_past_its_cap_is_cut_off() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    keep(dir.path(), None).await;
+    let endpoints = cloud_with_bodies(|_, path, _| match path {
+        "/oauth/token" => (200, "", format!(r#"{{"access_token":"{}"}}"#, "a".repeat(100 * 1024))),
+        _ => (404, "", String::new()),
+    });
+    let account = mac(dir.path(), endpoints, Keyring::holding(Some("kept-refresh")), None);
+    account.restore().await;
+
+    let refused = account.access_token().await;
+
+    assert!(
+        matches!(refused, Err(AccountError::Protocol(ref detail)) if detail.contains("larger than")),
+        "{refused:?}"
+    );
+}

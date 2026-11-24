@@ -23,8 +23,9 @@ const ACCESS_TOKEN_LIFETIME: Duration = Duration::from_secs(15 * 60);
 // RFC 8693, with tablepro-cloud's own subject token type (api.md, Legacy key exchange).
 const TOKEN_EXCHANGE: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
 const LICENSE_KEY_TOKEN_TYPE: &str = "https://account.tablepro.app/token-types/license-key";
-// A token answer is a few kilobytes.
+// A token answer is a few kilobytes, and a refused revocation's text is only logged.
 const TOKEN_ANSWER_LIMIT: usize = 64 * 1024;
+const REVOKE_DETAIL_LIMIT: usize = 4 * 1024;
 
 type Client = BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
 
@@ -169,11 +170,18 @@ impl OAuth {
             .map_err(AccountError::unreachable)?;
         match response.status().is_success() {
             true => Ok(()),
-            false => Err(AccountError::Refused {
-                status: response.status().as_u16(),
-                code: "revoke".to_owned(),
-                detail: response.text().await.unwrap_or_default(),
-            }),
+            false => {
+                let status = response.status().as_u16();
+                let detail = read_capped(response, REVOKE_DETAIL_LIMIT)
+                    .await
+                    .map(|body| String::from_utf8_lossy(&body).into_owned())
+                    .unwrap_or_default();
+                Err(AccountError::Refused {
+                    status,
+                    code: "revoke".to_owned(),
+                    detail,
+                })
+            }
         }
     }
 }
@@ -185,7 +193,7 @@ async fn execute(
     limited: Arc<OnceLock<AccountError>>,
 ) -> Result<HttpResponse, HttpClientError<reqwest::Error>> {
     let (parts, body) = request.into_parts();
-    let response = client
+    let mut response = client
         .request(parts.method, parts.uri.to_string())
         .headers(parts.headers)
         .body(body)
@@ -199,8 +207,17 @@ async fn execute(
     if let Some(headers) = answer.headers_mut() {
         headers.extend(response.headers().clone());
     }
-    let body = response.bytes().await.map_err(Box::new)?;
-    Ok(answer.body(body.to_vec())?)
+    // A server the person typed in answers here before anything vouches for it, so its answer is cut off at the cap.
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(Box::new)? {
+        if body.len() + chunk.len() > TOKEN_ANSWER_LIMIT {
+            return Err(HttpClientError::Other(format!(
+                "the answer is larger than {TOKEN_ANSWER_LIMIT} bytes"
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(answer.body(body)?)
 }
 
 #[derive(serde::Deserialize)]
@@ -273,6 +290,7 @@ fn grant_error(
             detail: answer.error_description().cloned().unwrap_or_default(),
         },
         RequestTokenError::Request(HttpClientError::Reqwest(error)) => AccountError::unreachable(*error),
+        RequestTokenError::Request(HttpClientError::Other(detail)) => AccountError::Protocol(detail),
         other => AccountError::Protocol(other.to_string()),
     }
 }
