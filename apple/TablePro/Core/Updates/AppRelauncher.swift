@@ -31,7 +31,8 @@ final class AppRelauncher {
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         approveStoppingWork: @escaping @MainActor () -> QuitPlan? = {
             // Everything that can still refuse asks here, before Sparkle or the quit takes over.
-            guard ThemeEditorWindows.shared.prepareToTerminate() else { return nil }
+            guard ConnectionEditorWindowController.prepareToTerminate(), ThemeEditorWindows.shared.prepareToTerminate()
+            else { return nil }
             return QuitApproval.approvesStoppingWork(registry: .shared, action: .relaunch)
         },
         commitBeforeQuitting: @escaping @MainActor (QuitPlan) async -> Bool = { await QuitApproval.commitBeforeQuitting($0) },
@@ -73,6 +74,30 @@ final class AppRelauncher {
                 self.pendingCommit = nil
                 guard committed else { return }
                 // A terminate from inside a main-actor job never lets the quit's reply task run.
+                self.performOutsideTask { [weak self] in self?.quitToRelaunch() }
+            }
+        }
+    }
+
+    // Leaving a sign-in: everything that can refuse asks first, and a refusal or a failed commit runs `ifCancelled`
+    // only. Once all of it agrees, `work` runs, then the quit starts from the run loop, where its reply can run, with
+    // nothing left that asks.
+    func relaunch(after work: @escaping @MainActor () async -> Void, ifCancelled: @escaping @MainActor () -> Void) {
+        guard pendingCommit == nil else { return }
+        reviewUnsavedDocuments { [weak self] proceed in
+            guard let self, proceed, let plan = self.approveStoppingWork() else {
+                ifCancelled()
+                return
+            }
+            self.pendingCommit = Task { [weak self] in
+                guard let self else { return }
+                if !plan.commits.isEmpty, !(await self.commitBeforeQuitting(plan)) {
+                    self.pendingCommit = nil
+                    ifCancelled()
+                    return
+                }
+                await work()
+                self.pendingCommit = nil
                 self.performOutsideTask { [weak self] in self?.quitToRelaunch() }
             }
         }

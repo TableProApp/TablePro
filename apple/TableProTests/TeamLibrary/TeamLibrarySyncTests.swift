@@ -1117,6 +1117,91 @@ struct TeamLibrarySyncTests {
         fixture.sync.stop()
     }
 
+    @Test("A delete that did not finish is finished at the next launch before anything loads, even for the same account")
+    func unfinishedDeleteFinishesAtLaunch() async throws {
+        let fixture = try await TeamLibraryFixture()
+        fixture.sync.start()
+        try await Self.leaveUnsent("Orders", in: fixture)
+        let kept = fixture.account.backend.status()
+        try AccountSettingsModelTests.lock(fixture.store.directory)
+
+        await fixture.account.services.signOut()
+        #expect(fixture.sync.isDisabled)
+        #expect(fixture.store.isDeleting)
+        #expect(fixture.store.owner != nil, "The owner stays until its files are gone")
+        try AccountSettingsModelTests.unlock(fixture.store.directory)
+
+        fixture.account.backend.restoreLater(kept)
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        #expect(fixture.store.isEmpty, "Finished before the restore")
+        #expect(!fixture.store.isDeleting)
+        fixture.sync.start()
+        fixture.account.backend.finishRestore()
+
+        try await waitUntil { fixture.store.owner == TeamLibraryOwner(fixture.account.access.state) }
+        #expect(!fixture.sync.hasUnsentChanges)
+        #expect(fixture.store.loadAll().allSatisfy { $0.pending.isEmpty })
+        #expect(fixture.disabled.reports == 1)
+        fixture.sync.stop()
+    }
+
+    @Test("A delete mark wins over the library an earlier build kept, and a delete that fails again keeps Team Library off")
+    func deleteMarkWinsOverTheEarlierLibrary() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        #expect(await fixture.sync.sync() == .synced)
+        fixture.defaults.defaults.removeObject(forKey: TeamLibraryStateStore.ownerKey)
+        fixture.defaults.defaults.set(true, forKey: TeamLibraryStateStore.deletingKey)
+        try AccountSettingsModelTests.lock(fixture.store.directory)
+        defer { try? AccountSettingsModelTests.unlock(fixture.store.directory) }
+
+        fixture.relaunch()
+
+        #expect(fixture.sync.isDisabled)
+        #expect(fixture.sync.content == .empty)
+        #expect(fixture.store.owner == nil, "Nothing adopts what the mark holds")
+        #expect(fixture.store.isDeleting)
+
+        try AccountSettingsModelTests.unlock(fixture.store.directory)
+        fixture.relaunch()
+
+        #expect(!fixture.sync.isDisabled)
+        #expect(fixture.sync.content == .empty)
+        #expect(!fixture.store.isDeleting)
+        #expect(fixture.disabled.reports == 1)
+    }
+
+    @Test("Sign Out… waits for the pass that is out, and nothing changes the list it took until the hold ends")
+    func holdWaitsForThePassThatIsOut() async throws {
+        let gate = AsyncGate()
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        try await Self.leaveUnsent("Orders", in: fixture)
+        await fixture.library { $0.pushGate = gate }
+        let syncing = Task { await fixture.sync.sync() }
+        await gate.arrived(1)
+
+        let holding = Task { await fixture.sync.holdForSignOut() }
+        try await waitUntil { fixture.sync.isHeld }
+        await gate.open()
+        let listed = await holding.value
+
+        #expect(await syncing.value == .synced)
+        #expect(listed.isEmpty, "The push that was out landed before the list was taken")
+        #expect(await fixture.sync.sync() == .skipped)
+        await #expect(throws: TeamLibraryPublishError.failed(.signedOut)) {
+            try await fixture.sync.publishSavedQueries(
+                favorites: [TeamLibraryFixture.favorite(name: "Invoices")], folders: [], to: Self.team
+            )
+        }
+        #expect(fixture.sync.unsentChanges == listed)
+
+        fixture.sync.releaseHold()
+        #expect(await fixture.sync.sync() == .synced)
+    }
+
     @Test("A bearer of another sign-in is refused before anything is sent")
     func anotherSignInsBearerIsRefused() async throws {
         let fixture = try await TeamLibraryFixture()

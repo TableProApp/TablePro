@@ -60,6 +60,9 @@ internal final class TeamLibrarySync: ObservableObject {
     private var legacyOwner: TeamLibraryOwner??
     // Once stopped, a start waits for the pass that may still be out.
     private var hasStopped = false
+    // Set while Sign Out… asks: no pass, publish or resolve runs, so the unsent edits it listed stay the last.
+    private(set) var isHeld = false
+    private var resumesAfterHold = false
     private let clock: any Clock<Duration>
     private let now: @Sendable () -> Date
     private var teams: [String: TeamLibraryTeamState] = [:]
@@ -122,6 +125,8 @@ internal final class TeamLibrarySync: ObservableObject {
             while !Task.isCancelled {
                 guard let self else { return }
                 self.record(await self.sync())
+                // Stopped while the pass ran: a sleep started now would outlive the stop.
+                guard !Task.isCancelled else { return }
                 await self.pause()
             }
         }
@@ -138,6 +143,26 @@ internal final class TeamLibrarySync: ObservableObject {
         guard !hasLoaded else { return }
         hasLoaded = true
         follow(account.access.state)
+    }
+
+    // Stops the schedule and waits for the pass or publish still out, so what it returns is final until the release.
+    func holdForSignOut() async -> [String] {
+        if !isHeld {
+            isHeld = true
+            resumesAfterHold = scheduleTask != nil
+            stop()
+        }
+        await tail?.value
+        return unsentChanges
+    }
+
+    // The sign-out was canceled.
+    func releaseHold() {
+        guard isHeld else { return }
+        isHeld = false
+        if resumesAfterHold {
+            start()
+        }
     }
 
     // Ends the wait for the next scheduled pull, or skips it when the request lands during a sync.
@@ -199,7 +224,7 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     func resolve(_ conflict: TeamLibraryConflict, keepingMine: Bool) async {
-        guard var state = teams[conflict.teamID] else { return }
+        guard !isHeld, var state = teams[conflict.teamID] else { return }
         let key = conflict.key
         let stored = state.items[key]
         state.conflicts.removeAll { $0.id == conflict.id }
@@ -251,6 +276,7 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     private func performSync() async -> TeamLibrarySyncOutcome {
+        guard !isHeld else { return .skipped }
         follow(account.access.state, inPass: true)
         guard account.isSignedIn, let client = active?.client else { return .skipped }
         guard account.access.isAvailable(.teamLibrary) else {
@@ -555,7 +581,7 @@ internal final class TeamLibrarySync: ObservableObject {
         plan: @escaping (TeamLibraryTeamState) throws -> [TeamLibraryEdit]
     ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
         let result = await serially { [weak self] () -> Result<TeamLibraryPublishResult, TeamLibraryPublishError> in
-            guard let self, let sessionID = destination.sessionID, self.active?.sessionID == sessionID,
+            guard let self, !self.isHeld, let sessionID = destination.sessionID, self.active?.sessionID == sessionID,
                   self.account.access.state.sessionID == sessionID
             else { return .failure(.failed(.signedOut)) }
             return await self.performPublish(to: destination.teamID, owns: owns, plan: plan)
@@ -733,7 +759,10 @@ internal final class TeamLibrarySync: ObservableObject {
     // `state` is the one being published: the subscription sees it before `access.state` holds it.
     // `inPass` is a pass's own call, which no other pass can be out beside.
     private func follow(_ state: AccountState, inPass: Bool = false) {
-        guard state.isRestored, !isDisabled else { return }
+        guard !isDisabled else { return }
+        // A delete that did not finish, in this run or an earlier one, finishes before anything loads, whoever signs in.
+        if store.isDeleting, !deleteOrDisable() { return }
+        guard state.isRestored else { return }
         let owner = TeamLibraryOwner(state)
         if legacyOwner == nil {
             let established = owner?.server == AccountServer.production.apiOrigin.absoluteString ? owner : nil

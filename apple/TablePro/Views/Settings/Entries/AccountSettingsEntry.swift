@@ -108,17 +108,15 @@ private struct AccountPresentations: ViewModifier {
             }
             .alert(
                 String(localized: "Sign out of TablePro on this Mac?"),
-                isPresented: Binding(get: { model.confirmsSignOut }, set: { if !$0 { model.cancelSignOut() } }),
+                isPresented: Binding(get: { model.confirmsSignOut }, set: { if !$0 { model.closeSignOutConfirmation() } }),
                 presenting: model.signOutConfirmation
             ) { confirmation in
                 Button(String(localized: "Sign Out"), role: confirmation.discardsSomething ? .destructive : nil) {
-                    Task {
-                        if await model.signOut() {
-                            AppRelauncher.shared.relaunch()
-                        }
-                    }
+                    model.confirmSignOut()
                 }
-                Button(String(localized: "Cancel"), role: .cancel) {}
+                Button(String(localized: "Cancel"), role: .cancel) {
+                    model.cancelSignOut()
+                }
             } message: { confirmation in
                 Text(confirmation.message)
             }

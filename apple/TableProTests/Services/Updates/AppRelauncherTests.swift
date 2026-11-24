@@ -249,6 +249,57 @@ struct AppRelauncherTests {
         #expect(fixture.relauncher.pendingCommit == nil)
     }
 
+    @Test("Leaving a sign-in asks everything first, runs its work only then, and quits from the run loop")
+    func signOutRelaunchAsksFirstAndQuitsOutsideItsTask() async throws {
+        for refusal in ["none", "documents", "running work", "commit"] {
+            let fixture = try AppRelauncherFixture()
+            fixture.documentsReviewed = refusal != "documents"
+            fixture.stoppingWorkApproved = refusal != "running work"
+            if refusal == "commit" {
+                fixture.commits = [Self.hold()]
+                fixture.commitSucceeds = false
+            }
+            var worked = 0
+            var cancelled = 0
+
+            fixture.relauncher.relaunch(after: { worked += 1 }, ifCancelled: { cancelled += 1 })
+            await fixture.relauncher.pendingCommit?.value
+
+            if refusal == "none" {
+                #expect(worked == 1)
+                #expect(cancelled == 0)
+                #expect(fixture.deferredRuns == 1, "The quit starts from the run loop, never inside the task")
+                #expect(fixture.terminations == 1)
+                #expect(fixture.reopens.count == 1)
+            } else {
+                #expect(worked == 0, "\(refusal)")
+                #expect(cancelled == 1, "\(refusal)")
+                #expect(fixture.terminations == 0, "\(refusal)")
+            }
+        }
+    }
+
+    @Test("With nothing to save, the quit a sign-out starts runs from the run loop and finishes")
+    func signOutQuitCompletesWithNothingToSave() async throws {
+        let suite = try EphemeralDefaults()
+        let quit = TerminateLaterQuit()
+        let relauncher = AppRelauncher(
+            defaults: suite.defaults,
+            approveStoppingWork: { QuitPlan(commits: [], work: []) },
+            commitBeforeQuitting: { _ in true },
+            reviewUnsavedDocuments: { $0(true) },
+            installPendingUpdate: { false },
+            terminate: { quit.waitForReply() },
+            reopenAfterExit: { _, _ in }
+        )
+
+        relauncher.relaunch(after: {}, ifCancelled: {})
+        await relauncher.pendingCommit?.value
+        try await waitUntil { quit.isFinished }
+
+        #expect(quit.replied)
+    }
+
     @Test("Sparkle takes over only after the commit, outside its task")
     func sparkleInstallsAfterTheCommit() async throws {
         let fixture = try AppRelauncherFixture()
@@ -314,5 +365,21 @@ struct AppRelauncherTests {
 
         #expect(AppRelauncher.consumeReopenRequest(in: fixture.suite.defaults))
         #expect(!AppRelauncher.consumeReopenRequest(in: fixture.suite.defaults))
+    }
+}
+
+// NSApp.terminate answered with .terminateLater: it runs the run loop until the app delegate's reply task has run.
+@MainActor
+final class TerminateLaterQuit {
+    private(set) var replied = false
+    private(set) var isFinished = false
+
+    func waitForReply() {
+        Task { @MainActor in self.replied = true }
+        let deadline = Date().addingTimeInterval(2)
+        while !replied, Date() < deadline {
+            RunLoop.current.run(mode: .default, before: deadline)
+        }
+        isFinished = true
     }
 }

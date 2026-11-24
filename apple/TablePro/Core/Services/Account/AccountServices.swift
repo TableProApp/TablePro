@@ -142,6 +142,12 @@ internal final class AccountServices: AccountBackendListener {
         publish()
     }
 
+    // Until the core has restored the last sign-in the Mac may still be signed in, so a switch waits for that.
+    private func isSignedOutOnceRestored() async -> Bool {
+        await waitUntilRestored()
+        return !isSignedIn
+    }
+
     // For launch work a feature gates: it reads what the core restored, published.
     func waitUntilRestored() async {
         await backend.waitUntilRestored()
@@ -150,7 +156,7 @@ internal final class AccountServices: AccountBackendListener {
 
     // Signed in, another sign-in would switch accounts in this process; that goes through Sign Out instead.
     func signIn(using authenticator: some WebAuthenticating) async throws(AccountError) {
-        guard !isSignedIn else { throw .signOutFirst }
+        guard await isSignedOutOnceRestored() else { throw .signOutFirst }
         try await backend.signIn(using: authenticator)
         verifiedAt = now()
         publish()
@@ -172,7 +178,7 @@ internal final class AccountServices: AccountBackendListener {
     // Nil drops the choice, for a configuration profile's default or else tablepro.app. The core signs out of the
     // server it leaves.
     func chooseServer(_ url: URL?) async throws(AccountError) {
-        guard !isSignedIn else { throw .signOutFirst }
+        guard await isSignedOutOnceRestored() else { throw .signOutFirst }
         try await backend.chooseServer(url)
         verifiedAt = nil
         publish()
@@ -226,7 +232,7 @@ internal final class AccountServices: AccountBackendListener {
     // Use License Key…, signed out only: a stored key it matches is deleted once the Keychain holds the sign-in.
     @discardableResult
     func useLicenseKey(_ key: String) async throws(AccountError) -> EntitlementRefreshState {
-        guard !isSignedIn else { throw .signOutFirst }
+        guard await isSignedOutOnceRestored() else { throw .signOutFirst }
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         try await backend.useLicenseKey(key)
         if key == storedKey.value() {

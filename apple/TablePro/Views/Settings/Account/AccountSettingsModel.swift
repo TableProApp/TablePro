@@ -62,6 +62,13 @@ internal final class AccountSettingsModel: ObservableObject {
         }
     }
 
+    // Runs the work once every question a quit asks is answered, then quits and reopens; a Cancel runs the second
+    // closure instead.
+    typealias Relaunch = @MainActor (
+        _ work: @escaping @MainActor () async -> Void,
+        _ ifCancelled: @escaping @MainActor () -> Void
+    ) -> Void
+
     static let freshness: TimeInterval = 60
 
     @Published private(set) var profile = AccountRemote<AccountProfile>()
@@ -82,8 +89,8 @@ internal final class AccountSettingsModel: ObservableObject {
     private let loader: Loader
     private let now: () -> Date
     private let openURL: @MainActor (URL) -> Void
-    private let unsentTeamChanges: @MainActor () -> [String]
-    private let teamLibraryIsOff: @MainActor () -> Bool
+    private let teamLibrary: @MainActor () -> TeamLibrarySync
+    private let relaunch: Relaunch
     private var stateObserver: AnyCancellable?
     private var loadedSignedIn: Bool?
     // Bumped when the loaded data is dropped, so a load still out for the old account lands nowhere.
@@ -96,15 +103,15 @@ internal final class AccountSettingsModel: ObservableObject {
         loader: Loader? = nil,
         now: @escaping () -> Date = { Date() },
         openURL: @escaping @MainActor (URL) -> Void = { _ = WebPageOpener.open($0, scope: .httpsOrLoopbackHTTP) },
-        unsentTeamChanges: @escaping @MainActor () -> [String] = { TeamLibrarySync.shared.unsentChanges },
-        teamLibraryIsOff: @escaping @MainActor () -> Bool = { TeamLibrarySync.shared.isDisabled }
+        teamLibrary: @escaping @MainActor () -> TeamLibrarySync = { .shared },
+        relaunch: @escaping Relaunch = { AppRelauncher.shared.relaunch(after: $0, ifCancelled: $1) }
     ) {
         self.services = services
         self.loader = loader ?? .live(services)
         self.now = now
         self.openURL = openURL
-        self.unsentTeamChanges = unsentTeamChanges
-        self.teamLibraryIsOff = teamLibraryIsOff
+        self.teamLibrary = teamLibrary
+        self.relaunch = relaunch
         stateObserver = services.access.$state
             .dropFirst()
             .sink { [weak self] state in
@@ -230,27 +237,44 @@ internal final class AccountSettingsModel: ObservableObject {
         presentDeviceLimitIfReached()
     }
 
-    func requestSignOut() {
+    // Team Library stops first and its pass still out ends, so the dialog lists every edit the sign-out deletes.
+    func requestSignOut() async {
+        guard activity == nil, signOutConfirmation == nil else { return }
+        activity = .signingOut
+        let teamChanges = await teamLibrary().holdForSignOut()
+        activity = nil
         signOutConfirmation = AccountSignOutConfirmation(
-            teamChanges: unsentTeamChanges(),
+            teamChanges: teamChanges,
             removesOfflineFile: services.access.state.entitlement?.isOffline == true
         )
     }
 
+    // The one way to leave a sign-in by choice. The restart asks about unsaved documents and running work first, and a
+    // Cancel there signs nothing out. Past that, the sign-out deletes Team Library data and TablePro restarts with
+    // nothing left that asks; a delete that failed is finished at the next launch before anything loads.
+    func confirmSignOut() {
+        signOutConfirmation = nil
+        activity = .signingOut
+        // Held strongly: the Settings window may close while the restart asks, and the sign-out must still run.
+        relaunch({ await self.signOut() }, { self.cancelSignOut() })
+    }
+
     func cancelSignOut() {
+        signOutConfirmation = nil
+        activity = nil
+        teamLibrary().releaseHold()
+    }
+
+    // Either button closes the dialog; each one says what follows.
+    func closeSignOutConfirmation() {
         signOutConfirmation = nil
     }
 
-    // The one way to leave a sign-in by choice: the sign-out deletes Team Library data and checks it is gone, and then
-    // TablePro restarts, which the caller does when this says so. A delete that failed leaves the Mac signed out with
-    // Team Library off, and says so itself.
-    @discardableResult
-    func signOut() async -> Bool {
+    func signOut() async {
         signOutConfirmation = nil
         activity = .signingOut
         defer { activity = nil }
         await services.signOut()
-        return !teamLibraryIsOff()
     }
 
     func checkNow() async {

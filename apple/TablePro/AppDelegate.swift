@@ -182,8 +182,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        // The connection editors first: their Cancel keeps the app open before anything else is asked or stopped.
-        guard ConnectionEditorWindowController.prepareToTerminate(), let plan = QuitApproval.approve() else {
+        // The connection editors first: their Cancel keeps the app open before anything else is asked or stopped. A
+        // relaunch asked them before it started.
+        guard AppRelauncher.shared.hasApprovedRunningWork || ConnectionEditorWindowController.prepareToTerminate(),
+              let plan = QuitApproval.approve() else {
             AppRelauncher.shared.terminationWasCancelled()
             return .terminateCancel
         }

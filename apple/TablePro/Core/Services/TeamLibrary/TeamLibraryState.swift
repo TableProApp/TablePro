@@ -132,16 +132,18 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
 
 // The sign-in the stored Team Library belongs to. The rules that keep one sign-in's library from another:
 //
-// 1. Switching is a relaunch. Sign Out, a server change and an account change go one way: a confirmation that lists the
-//    unpushed edits, sign-out, delete all Team Library data and check it is gone, relaunch. A server change or a
-//    license key is refused while signed in. If the delete fails, the app stays signed out with Team Library off and an
-//    error shown, and nothing loads.
+// 1. Switching is a relaunch. Sign Out stops Team Library and lets the pass that is out end, then lists the unpushed
+//    edits; the restart then asks about unsaved documents and running work. A Cancel in any of these changes nothing.
+//    Past them, sign-out, the delete and the relaunch run with nothing left that asks. A sign-in, a server change or a
+//    license key is refused while signed in, and waits for the restore.
 // 2. An involuntary sign-out (refresh refused, device removed) stops Team Library and lets the pass that is out end. The
 //    data stays on disk with its owner. Nothing loads until the next sign-in: the same owner resumes, so offline edits
-//    survive; another or an unknown owner is deleted and checked first, or Team Library goes off as in 1.
-// 3. At launch Team Library loads only once the core has restored the sign-in. An owner that is missing or does not
-//    match is deleted without showing. The library builds before the core kept takes the tablepro.app account the
-//    core restores first as its owner; with none, it is deleted.
+//    survive; another or an unknown owner is deleted and checked first, or Team Library goes off as in 3.
+// 3. Every delete is marked before its first file goes, and the owner and the mark go only once the files are. A mark
+//    is finished first, before anything loads; while it cannot be, Team Library is off and says so. At launch Team
+//    Library loads only once the core has restored the sign-in, and an owner that is missing or does not match is
+//    deleted without showing. Only the library builds before the core kept, with no owner and no mark, goes to the
+//    tablepro.app account the core restores first; with none, it is deleted.
 // 4. The core's session id lives only in its process, a new one for each sign-in and launch. A bearer of another
 //    session is refused before anything is sent.
 // 5. A publish is bound to the session shown at its confirmation and checked again before it is sent; a changed one
@@ -167,6 +169,7 @@ internal struct TeamLibraryStateStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibraryStateStore")
     static let legacyPullKey = "com.TablePro.teamLibrary.lastPullAt"
     static let ownerKey = "com.TablePro.teamLibrary.owner"
+    static let deletingKey = "com.TablePro.teamLibrary.deleting"
 
     let directory: URL
     let legacyFile: URL
@@ -220,19 +223,30 @@ internal struct TeamLibraryStateStore {
         defaults.set(try? JSONEncoder().encode(owner), forKey: Self.ownerKey)
     }
 
+    // A folder that cannot be listed counts as holding files.
     var isEmpty: Bool {
-        !exists(directory) && !exists(legacyFile)
+        let manager = FileManager.default
+        let teamFiles = manager.fileExists(atPath: directory.path)
+            ? try? manager.contentsOfDirectory(atPath: directory.path)
+            : []
+        return teamFiles?.isEmpty == true && !manager.fileExists(atPath: legacyFile.path)
     }
 
-    // True only once every team file, the /v1 cache and the owner are gone.
+    // A delete that has not finished, so the next launch finishes it before anything loads.
+    var isDeleting: Bool {
+        defaults.bool(forKey: Self.deletingKey)
+    }
+
+    // Marked first and unmarked last: the owner and the mark go only once every team file and the /v1 cache are gone.
     func deleteAll() -> Bool {
+        defaults.set(true, forKey: Self.deletingKey)
+        // The mark reaches cfprefsd before the first file goes, so a crash in the middle still leaves it.
+        defaults.synchronize()
         removeAll()
+        guard isEmpty else { return false }
         defaults.removeObject(forKey: Self.ownerKey)
-        return isEmpty
-    }
-
-    private func exists(_ url: URL) -> Bool {
-        FileManager.default.fileExists(atPath: url.path)
+        defaults.removeObject(forKey: Self.deletingKey)
+        return true
     }
 
     // What the last /v1 pull cached, keyed by client ID like a /v2 snapshot, so the first one matches it item by item.
