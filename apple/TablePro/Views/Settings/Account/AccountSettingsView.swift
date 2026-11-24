@@ -80,7 +80,7 @@ private struct AccountIdentitySection: View {
             }
 
             Button(String(localized: "Sign Out…")) {
-                Task { await model.requestSignOut() }
+                Task { await model.signOut() }
             }
             .disabled(model.isBusy)
             .fixedSize()

@@ -12,12 +12,11 @@ internal enum TeamLibraryUnsentChanges {
         case upload
         case discard
         case cancel
-        // Only for the edits 0.88 left: they stay unsent in memory, and quitting or signing out asks again.
-        case later
     }
 
     // The quit's question, then the rest of the quit with Team Library held. A Cancel here or a later step that stops
-    // the quit releases the hold, so the app that stays open syncs again.
+    // the quit releases the hold, so the app that stays open syncs again. Discard drops the edits only once the quit
+    // is committed, in applicationWillTerminate, so a quit that stops later keeps them.
     static func quit(
         _ sync: TeamLibrarySync = .shared,
         ask: @MainActor ([String], TeamLibraryFailure?) async -> Choice = askBeforeQuitting,
@@ -37,9 +36,8 @@ internal enum TeamLibraryUnsentChanges {
             case .upload:
                 (changes, failure) = await sync.pushHeld()
             case .discard:
-                sync.discardHeld()
                 changes = []
-            case .cancel, .later:
+            case .cancel:
                 return false
             }
         }
@@ -79,24 +77,20 @@ internal enum TeamLibraryUnsentChanges {
         return sentences.joined(separator: " ")
     }
 
-    static func askAboutEarlierEdits(_ changes: [String]) async -> Choice {
+    // True uploads them now, false discards them.
+    static func uploadsEarlierEdits(_ changes: [String]) async -> Bool {
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = String(localized: "Upload Team Library changes from before the update?")
         alert.informativeText = String(
-            format: String(localized: "Not uploaded before TablePro updated: %@. Later keeps them in memory until you quit or sign out, which ask again."),
+            format: String(localized: "Not uploaded before TablePro updated: %@. They are not kept on disk any more, so TablePro asks once."),
             changes.formatted(.list(type: .and))
         )
         alert.addButton(withTitle: String(localized: "Upload"))
         let discard = alert.addButton(withTitle: String(localized: "Discard"))
         discard.hasDestructiveAction = true
-        alert.addButton(withTitle: String(localized: "Later"))
-        switch await AlertHelper.response(to: alert, in: nil) {
-        case .alertFirstButtonReturn: return .upload
-        case .alertSecondButtonReturn: return .discard
-        default: return .later
-        }
+        return await AlertHelper.response(to: alert, in: nil) == .alertFirstButtonReturn
     }
 
     // A refused edit as the unsent list names it.
@@ -107,6 +101,8 @@ internal enum TeamLibraryUnsentChanges {
             why = String(localized: "only the team's owner and admins publish")
         case .unreadable:
             why = String(localized: "no seat in the team")
+        case .offline, .rateLimited, .server:
+            why = String(localized: "the upload did not go through")
         default:
             why = String(localized: "the team library refused it")
         }

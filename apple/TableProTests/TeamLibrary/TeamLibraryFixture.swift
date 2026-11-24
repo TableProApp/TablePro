@@ -151,12 +151,12 @@ final class TeamLibraryFixture {
 
 @MainActor
 final class EarlierEditsLog {
-    var choice = TeamLibraryUnsentChanges.Choice.later
+    var uploads = true
     private(set) var asked: [[String]] = []
 
-    func answer(_ changes: [String]) async -> TeamLibraryUnsentChanges.Choice {
+    func answer(_ changes: [String]) async -> Bool {
         asked.append(changes)
-        return choice
+        return uploads
     }
 }
 
@@ -166,5 +166,12 @@ final class DiscardedLog {
 
     func record(_ changes: [String]) {
         reports.append(changes)
+    }
+}
+
+// Defaults whose writes never reach the disk, as when synchronize fails.
+final class UnsavedDefaults: UserDefaults {
+    override func synchronize() -> Bool {
+        false
     }
 }

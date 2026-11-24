@@ -73,16 +73,15 @@ internal final class AccountSettingsModel: ObservableObject {
     @Published private(set) var licenseKeyPrefill: String?
     @Published var presentsOfflineImporter = false
     @Published var pendingRemoval: AccountSettingsContent.DeviceRow?
-    // Taken when Sign Out… is clicked, so the dialog names what this Mac held at that moment.
-    @Published private(set) var signOutConfirmation: AccountSignOutConfirmation?
 
     let services: AccountServices
     private let loader: Loader
     private let now: () -> Date
     private let openURL: @MainActor (URL) -> Void
     private let teamLibrary: @MainActor () -> TeamLibrarySync
-    // Taken by Sign Out…, and released by whatever ends its dialog.
-    private var teamLibraryHold: TeamLibraryHold?
+    private let askSignOut: @MainActor (AccountSignOutConfirmation) async -> AccountSignOutAnswer
+    private let closeSignOutQuestion: @MainActor () -> Void
+    private var asksSignOut = false
     private var stateObserver: AnyCancellable?
     private var loadedSignedIn: Bool?
     // Bumped when the loaded data is dropped, so a load still out for the old account lands nowhere.
@@ -95,21 +94,25 @@ internal final class AccountSettingsModel: ObservableObject {
         loader: Loader? = nil,
         now: @escaping () -> Date = { Date() },
         openURL: @escaping @MainActor (URL) -> Void = { _ = WebPageOpener.open($0, scope: .httpsOrLoopbackHTTP) },
-        teamLibrary: @escaping @MainActor () -> TeamLibrarySync = { .shared }
+        teamLibrary: @escaping @MainActor () -> TeamLibrarySync = { .shared },
+        askSignOut: @escaping @MainActor (AccountSignOutConfirmation) async -> AccountSignOutAnswer = AccountSignOutPrompt.ask,
+        closeSignOutQuestion: @escaping @MainActor () -> Void = AccountSignOutPrompt.close
     ) {
         self.services = services
         self.loader = loader ?? .live(services)
         self.now = now
         self.openURL = openURL
         self.teamLibrary = teamLibrary
+        self.askSignOut = askSignOut
+        self.closeSignOutQuestion = closeSignOutQuestion
         stateObserver = services.access.$state
             .dropFirst()
             .sink { [weak self] state in
                 guard let self else { return }
                 objectWillChange.send()
-                // Signed out some other way while the dialog asks: nothing is left to sign out of.
-                if !state.isSignedIn, signOutConfirmation != nil {
-                    cancelSignOut()
+                // Signed out some other way while Sign Out asks: nothing is left to sign out of.
+                if !state.isSignedIn, asksSignOut {
+                    closeSignOutQuestion()
                 }
                 if let loadedSignedIn, state.isSignedIn != loadedSignedIn {
                     Task { await self.reload() }
@@ -133,10 +136,6 @@ internal final class AccountSettingsModel: ObservableObject {
 
     var isBusy: Bool {
         activity != nil
-    }
-
-    var confirmsSignOut: Bool {
-        signOutConfirmation != nil
     }
 
     // Every show of the pane and every return to the window: a portal visit may have changed the account.
@@ -231,60 +230,40 @@ internal final class AccountSettingsModel: ObservableObject {
         presentDeviceLimitIfReached()
     }
 
-    // Team Library stops first and its pass still out ends, so the dialog lists every edit not uploaded.
-    func requestSignOut() async {
-        guard activity == nil, signOutConfirmation == nil, teamLibraryHold == nil else { return }
-        activity = .signingOut
-        let teamLibrary = teamLibrary()
-        let hold = await teamLibrary.hold()
-        activity = nil
-        guard services.isSignedIn else {
-            hold.release()
-            return
-        }
-        teamLibraryHold = hold
-        signOutConfirmation = AccountSignOutConfirmation(
-            teamChanges: teamLibrary.unsentChanges,
-            removesOfflineFile: services.access.state.entitlement?.isOffline == true
-        )
-    }
-
-    func cancelSignOut() {
-        signOutConfirmation = nil
-        teamLibraryHold?.release()
-        teamLibraryHold = nil
-    }
-
-    // Either button closes the dialog; each one says what follows.
-    func closeSignOutConfirmation() {
-        signOutConfirmation = nil
-    }
-
-    // Uploading first, what the upload leaves is asked about again; otherwise the unsent edits are discarded.
-    func signOut(uploadingFirst: Bool) async {
-        signOutConfirmation = nil
+    // The whole of Sign Out. It holds Team Library from the question to its end, and every way out releases the hold:
+    // Cancel, a sign-out, and a sign-out that happened another way. What an upload leaves is asked about again.
+    func signOut() async {
+        guard activity == nil else { return }
         activity = .signingOut
         defer { activity = nil }
-        if teamLibraryHold != nil {
-            let teamLibrary = teamLibrary()
-            if uploadingFirst {
-                let (left, failure) = await teamLibrary.pushHeld()
-                guard left.isEmpty else {
-                    signOutConfirmation = AccountSignOutConfirmation(
-                        teamChanges: left,
-                        uploadFailure: failure,
-                        removesOfflineFile: services.access.state.entitlement?.isOffline == true
-                    )
+        let teamLibrary = teamLibrary()
+        let hold = await teamLibrary.hold()
+        defer { hold.release() }
+        var failure: TeamLibraryFailure?
+        while services.isSignedIn {
+            asksSignOut = true
+            let answer = await askSignOut(AccountSignOutConfirmation(
+                teamChanges: teamLibrary.unsentChanges,
+                uploadFailure: failure,
+                removesOfflineFile: services.access.state.entitlement?.isOffline == true
+            ))
+            asksSignOut = false
+            guard services.isSignedIn else { return }
+            switch answer {
+            case .cancel:
+                return
+            case .discard:
+                teamLibrary.discardHeld()
+                await services.signOut()
+                return
+            case .upload:
+                failure = await teamLibrary.pushHeld().failure
+                if teamLibrary.unsentChanges.isEmpty, services.isSignedIn {
+                    await services.signOut()
                     return
                 }
-            } else {
-                teamLibrary.discardHeld()
             }
         }
-        let hold = teamLibraryHold
-        teamLibraryHold = nil
-        defer { hold?.release() }
-        await services.signOut()
     }
 
     func checkNow() async {

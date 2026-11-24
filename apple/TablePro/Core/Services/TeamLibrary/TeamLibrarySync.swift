@@ -32,20 +32,22 @@ internal struct TeamLibraryDestination: Sendable {
 // this Mac publishes in batches. Who reads and who writes comes from GET /v2/me: a seat to read, owner or admin to write.
 //
 // One sign-in's library:
-// I1. Unsent edits, the pushes still to go and the conflicts not resolved, live only in `teams`, for the open session.
-//     Nothing about them is written to disk.
+// I1. Unsent edits, the pushes still to go, the conflicts not resolved and the edits the server refused, live only in
+//     memory, for the open session. Nothing about them is written to disk.
 // I2. The read cache sits in a folder named from the server and account (TeamLibraryStorage). Only the open session's
 //     folder is read; every other one is deleted, best-effort, on sign-out, switch and launch.
 // I3. The library 0.88 and earlier kept is read once, on the launch whose restored sign-in is tablepro.app's: a flag
-//     saying so is written first, its cache is copied into that account's folder and its files deleted, and its unsent
-//     edits are asked about once (upload, discard or later). A sign-in made in this run or on a company server sets the
-//     flag and deletes it unread.
+//     saying so is written and read back first (if it does not stick, nothing is read), its cache is copied into that
+//     account's folder and its files deleted, and its unsent edits are asked about once: upload now, where whatever
+//     fails stays listed as refused, or discard. Any other sign-in sets the flag and deletes it unread at once.
 // I4. A switch or sign-out stays in this process. Sync stops and the pass in flight ends, unsent edits are listed with
 //     push, discard or cancel (an involuntary sign-out can only discard and says what went), then the session's
-//     store goes. An edit the server refused stays listed, with why, until it is discarded. The session id lives only in the core's process and a bearer of another session is refused; a
-//     publish is bound to the session shown at its confirmation and checked again before it is sent.
-// I5. Quitting with unsent edits asks push, discard or cancel; while edits wait, Team Library shows them not uploaded.
-// I6. Losing team_library drops the session's store and deletes its folder, best-effort.
+//     store goes. A refused edit stays listed, with why, until it is discarded. The session id lives only in the
+//     core's process and a bearer of another session is refused; a publish is bound to the session shown at its
+//     confirmation and checked again before it is sent.
+// I5. Quitting with unsent edits asks push, discard or cancel, and a discard waits for the quit to be committed. While
+//     edits wait, Team Library counts them as not uploaded.
+// I6. Losing team_library closes the session as an involuntary sign-out does, and says what it discarded.
 // I7. Until the restore settles, a sign-in, a server choice or a license key waits; a restored sign-in refuses them.
 @MainActor
 internal final class TeamLibrarySync: ObservableObject {
@@ -80,7 +82,8 @@ internal final class TeamLibrarySync: ObservableObject {
     private var holds = 0
     private var resumesAfterHold = false
     private let reportDiscarded: @MainActor ([String]) -> Void
-    private let askAboutEarlierEdits: @MainActor ([String]) async -> TeamLibraryUnsentChanges.Choice
+    // True uploads them now; false discards them.
+    private let askAboutEarlierEdits: @MainActor ([String]) async -> Bool
     private let clock: any Clock<Duration>
     private let now: @Sendable () -> Date
     private var teams: [String: TeamLibraryTeamState] = [:] {
@@ -115,10 +118,11 @@ internal final class TeamLibrarySync: ObservableObject {
         let server: AccountServer
         let accountID: String
 
+        // None once the entitlement leaves team_library out: losing it ends the session like a sign-out.
         init?(_ state: AccountState) {
-            guard state.isSignedIn, let sessionID = state.sessionID, let accountID = state.entitlement?.accountID else {
-                return nil
-            }
+            guard state.isSignedIn, let sessionID = state.sessionID, let accountID = state.entitlement?.accountID,
+                  FeatureAccess.resolve(.teamLibrary, state: state) != .notIncluded
+            else { return nil }
             self.sessionID = sessionID
             self.server = state.server
             self.accountID = accountID
@@ -145,8 +149,7 @@ internal final class TeamLibrarySync: ObservableObject {
         clock: any Clock<Duration> = ContinuousClock(),
         now: @escaping @Sendable () -> Date = { Date() },
         reportDiscarded: @escaping @MainActor ([String]) -> Void = TeamLibraryUnsentChanges.presentDiscarded,
-        askAboutEarlierEdits: @escaping @MainActor ([String]) async -> TeamLibraryUnsentChanges.Choice
-            = TeamLibraryUnsentChanges.askAboutEarlierEdits
+        askAboutEarlierEdits: @escaping @MainActor ([String]) async -> Bool = TeamLibraryUnsentChanges.uploadsEarlierEdits
     ) {
         self.account = account
         self.storage = storage
@@ -359,34 +362,11 @@ internal final class TeamLibrarySync: ObservableObject {
         teams[teamID]?.teamName
     }
 
-    // The entitlement no longer includes the team library: this Mac's copy goes, unsent edits included.
-    func clear() {
-        generation += 1
-        rateLimitHold?.cancel()
-        rateLimitHold = nil
-        teams = [:]
-        refused = []
-        legacy = nil
-        accountEmail = nil
-        if active != nil {
-            storage.removeFolders(except: nil)
-        }
-        status = .idle
-        publishContent()
-    }
-
     private func performSync(whileHeld: Bool = false) async -> TeamLibrarySyncOutcome {
         follow(account.access.state, inPass: true)
         guard !isHeld || whileHeld else { return .skipped }
         guard account.isSignedIn, let client = active?.client else { return .skipped }
-        guard account.access.isAvailable(.teamLibrary) else {
-            // A current entitlement without team_library: the seat or the plan is gone, and with it what this Mac read.
-            if account.access.currentEntitlement != nil, !teams.isEmpty || legacy != nil {
-                Self.logger.notice("The entitlement no longer includes the team library; dropping this Mac's copy")
-                clear()
-            }
-            return .skipped
-        }
+        guard account.access.isAvailable(.teamLibrary) else { return .skipped }
         guard rateLimitHold == nil else { return .failed(.rateLimited(retryAfter: nil)) }
         status = .syncing
         let started = generation
@@ -415,7 +395,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 if error.isRetryable { break }
             }
         }
-        // Signed out while a pull or a push was out: clear() already dropped everything it would bring back.
+        // Signed out while a pull or a push was out: the session closed and dropped everything it would bring back.
         guard started == generation else { return .skipped }
         if legacy != nil, teams.values.allSatisfy({ $0.cursor != nil }) {
             legacy = nil
@@ -699,7 +679,7 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     private func countNotUploaded() {
-        let count = teams.values.reduce(refused.count) { $0 + $1.pending.count }
+        let count = teams.values.reduce(refused.count) { $0 + $1.pending.count + $1.conflicts.count }
         if count != notUploadedCount {
             notUploadedCount = count
         }
@@ -897,6 +877,10 @@ internal final class TeamLibrarySync: ObservableObject {
                 storage.removeFolders(except: nil)
             }
         }
+        // Any sign-in but the restored tablepro.app one decides the library 0.88 kept at once, entitlement or not.
+        if state.isSignedIn, state.sessionID != restoredSessionID || !state.server.isProduction {
+            storage.discardFlat()
+        }
         guard next != active?.key else { return }
         guard inPass || active == nil && !hasStopped else {
             // Behind the pass in flight, with the sign-in as it is by then.
@@ -941,15 +925,24 @@ internal final class TeamLibrarySync: ObservableObject {
         }
     }
 
+    // Asked once; nothing of it uploads without this answer, and what an upload leaves stays refused, never retried.
     private func reviewEarlierEdits(of sessionID: String) async {
         guard active?.key.sessionID == sessionID, hasUnsentChanges else { return }
-        switch await askAboutEarlierEdits(unsentChanges) {
-        case .upload:
-            record(await performSync(whileHeld: true))
-        case .discard:
+        guard await askAboutEarlierEdits(unsentChanges) else {
             discardHeld()
-        case .later, .cancel:
-            break
+            return
+        }
+        let outcome = await performSync(whileHeld: true)
+        record(outcome)
+        guard active?.key.sessionID == sessionID else { return }
+        var reason = TeamLibraryFailure.offline
+        if case .failed(let failure) = outcome {
+            reason = failure
+        }
+        for var state in teams.values where !state.pending.isEmpty {
+            refuse(state.pending, in: state, because: reason)
+            state.pending = []
+            commit(state)
         }
     }
 

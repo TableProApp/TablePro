@@ -140784,6 +140784,9 @@
     "Not uploaded before TablePro updated: %@. Later keeps them in memory until you quit or sign out, which ask again." : {
 
     },
+    "Not uploaded before TablePro updated: %@. They are not kept on disk any more, so TablePro asks once." : {
+
+    },
     "Not used" : {
       "localizations" : {
         "fr" : {
@@ -222607,6 +222610,9 @@
       }
     },
     "The upload did not finish. %@" : {
+
+    },
+    "the upload did not go through" : {
 
     },
     "The URL matches this connection." : {

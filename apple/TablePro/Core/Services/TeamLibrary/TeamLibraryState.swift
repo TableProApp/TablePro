@@ -196,13 +196,13 @@ internal struct TeamLibraryStorage {
     }
 
     // One shot: the flag is written before the first read, so no later launch reads it, whoever that launch restores.
-    // The unsent edits it kept join `teams`, its read cache fills in what `cache` lacks, and its files go.
+    // A flag that did not reach the disk reads nothing. The unsent edits it kept join `teams`, its read cache fills in
+    // what `cache` lacks, and its files go.
     func takeFlat(merging teams: [TeamLibraryTeamState], into cache: TeamLibraryStateStore) -> [TeamLibraryTeamState] {
-        guard !hasConsideredFlat else {
+        guard !hasConsideredFlat, markFlatConsidered() else {
             removeFlat()
             return teams
         }
-        markFlatConsidered()
         var merged = Dictionary(teams.map { ($0.teamID, $0) }, uniquingKeysWith: { first, _ in first })
         for kept in flat.loadAll() {
             var team = merged[kept.teamID] ?? kept.cached
@@ -224,7 +224,9 @@ internal struct TeamLibraryStorage {
 
     // A sign-in made in this run, or one on a company server: the library 0.88 kept is not theirs, and goes unread.
     func discardFlat() {
-        markFlatConsidered()
+        if !hasConsideredFlat {
+            markFlatConsidered()
+        }
         removeFlat()
     }
 
@@ -234,11 +236,12 @@ internal struct TeamLibraryStorage {
         flat.removeAll()
     }
 
-    private func markFlatConsidered() {
-        guard !hasConsideredFlat else { return }
+    // True once the flag is written and read back. False leaves it set for this launch only, so nothing reads the store.
+    @discardableResult
+    private func markFlatConsidered() -> Bool {
         defaults.set(true, forKey: Self.flatConsideredKey)
         // The flag reaches cfprefsd before the store is read, so a crash after the read cannot let a later launch read it.
-        defaults.synchronize()
+        return defaults.synchronize() && defaults.bool(forKey: Self.flatConsideredKey)
     }
 }
 

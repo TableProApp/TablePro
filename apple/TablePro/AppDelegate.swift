@@ -213,6 +213,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // The quit is committed: what its question said to discard goes now, not before a step that could stop it.
+        TeamLibrarySync.shared.discardHeld()
         ConnectionEditorWindowController.closeAllForTermination()
         SessionRecoveryTracker.saveOnQuit()
         // Synchronously: an actor hop at terminate may never run, which lost a killed session's last turn.
