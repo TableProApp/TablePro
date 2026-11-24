@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import TableProImport
 import TableProPluginKit
@@ -290,7 +291,8 @@ internal struct FavoritesTabView: View {
                 presentTeamLibraryInfo(String(localized: "You have no saved queries to publish."))
                 return
             }
-            guard await confirmPublishSavedQueries(count: favorites.count) else { return }
+            let closesOn = teamLibrarySync.sessionEnds(for: destination)
+            guard await confirmPublishSavedQueries(count: favorites.count, closesOn: closesOn) else { return }
             let outcome: TeamLibraryPublishOutcome
             do throws(TeamLibraryPublishError) {
                 outcome = .finished(try await teamLibrarySync.publishSavedQueries(
@@ -307,7 +309,7 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    private func confirmPublishSavedQueries(count: Int) async -> Bool {
+    private func confirmPublishSavedQueries(count: Int, closesOn: AnyPublisher<Void, Never>) async -> Bool {
         await AlertHelper.confirm(
             title: String(localized: "Publish saved queries to your team?"),
             message: String(
@@ -317,7 +319,8 @@ internal struct FavoritesTabView: View {
                 count
             ),
             confirmButton: String(localized: "Publish"),
-            window: nil
+            window: nil,
+            closesOn: closesOn
         )
     }
 

@@ -22,11 +22,35 @@ internal enum TeamLibraryPublishError: Error, Equatable {
     case failed(TeamLibraryFailure)
 }
 
-// A team as the person picked it: a publish confirmed later goes to it on that server and sign-in, or nowhere.
-internal struct TeamLibraryDestination: Equatable, Sendable {
+// One account on one server, from its restored or new sign-in to a sign-out or a server switch: the folder its library
+// is kept in, and a client that calls only its server and sends nothing once the session has ended.
+@MainActor
+internal final class TeamLibrarySession {
+    let key: TeamLibrarySessionKey
+    let store: TeamLibraryStateStore
+    let client: TeamLibraryClient
+    private let open = OSAllocatedUnfairLock(initialState: true)
+
+    init(key: TeamLibrarySessionKey, store: TeamLibraryStateStore, account: AccountServices, server: AccountServer) {
+        self.key = key
+        self.store = store
+        let open = open
+        client = TeamLibraryClient(api: account.api(pinnedTo: server, while: { open.withLock { $0 } }))
+    }
+
+    var isOpen: Bool {
+        open.withLock { $0 }
+    }
+
+    func close() {
+        open.withLock { $0 = false }
+    }
+}
+
+// A team as the person picked it: a publish confirmed later goes to it in that session, or nowhere.
+internal struct TeamLibraryDestination: Sendable {
     let teamID: String
-    fileprivate let server: URL
-    fileprivate let generation: Int
+    fileprivate let session: TeamLibrarySession?
 }
 
 // Pulls each team's library from its persisted cursor on launch, every 15 minutes and after each push, and pushes
@@ -34,7 +58,7 @@ internal struct TeamLibraryDestination: Equatable, Sendable {
 // to write.
 @MainActor
 internal final class TeamLibrarySync: ObservableObject {
-    static let shared = TeamLibrarySync(account: .shared, store: .live())
+    static let shared = TeamLibrarySync(account: .shared, storage: .live())
 
     static let pullInterval: Duration = .seconds(15 * 60)
     static let firstRetryDelay: Duration = .seconds(30)
@@ -51,9 +75,12 @@ internal final class TeamLibrarySync: ObservableObject {
     @Published private(set) var writableTeams: [TeamLibraryTeam] = []
 
     private let account: AccountServices
-    // Pinned to one server for each pass, so nothing read or queued for one server reaches the next.
-    private var client: TeamLibraryClient
-    private let store: TeamLibraryStateStore
+    private let storage: TeamLibraryStorage
+    // A session opens at launch or inside the serial queue, never while a pass is out, so a pass reads, writes and calls
+    // one session's library and server. It closes as soon as the account leaves it.
+    private var session: TeamLibrarySession?
+    private let sessionEnded = PassthroughSubject<Void, Never>()
+    private var adoptedSingleLocation = false
     private let clock: any Clock<Duration>
     private let now: @Sendable () -> Date
     private var teams: [String: TeamLibraryTeamState] = [:]
@@ -76,22 +103,21 @@ internal final class TeamLibrarySync: ObservableObject {
     private var rateLimitHold: Task<Void, Never>?
     // Bumped by sign-out, so a sync still out at that moment brings no team back.
     private var generation = 0
-    // Whose library this is, from the restored account; written into each team's file.
-    private var owner: TeamLibraryOwner?
-    // Nothing shows until the account names whose the stored copy may be.
-    private var isVerified = false
 
     init(
         account: AccountServices,
-        store: TeamLibraryStateStore,
+        storage: TeamLibraryStorage,
         clock: any Clock<Duration> = ContinuousClock(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.account = account
-        self.client = TeamLibraryClient(api: account.api(pinnedTo: account.server))
-        self.store = store
+        self.storage = storage
         self.clock = clock
         self.now = now
+    }
+
+    private var store: TeamLibraryStateStore? {
+        session?.store
     }
 
     var canPublish: Bool {
@@ -126,12 +152,7 @@ internal final class TeamLibrarySync: ObservableObject {
     func loadIfNeeded() {
         guard !hasLoaded else { return }
         hasLoaded = true
-        teams = Dictionary(store.loadAll().map { ($0.teamID, $0) }, uniquingKeysWith: { first, _ in first })
-        legacy = store.loadLegacy(now: now())
-        // Whose the stored copy is is known once the core has restored the account; it shows only after that.
-        guard account.access.state.isRestored else { return }
-        claim(for: account.access.state)
-        publishContent()
+        follow(account.access.state)
     }
 
     // Ends the wait for the next scheduled pull, or skips it when the request lands during a sync.
@@ -156,7 +177,13 @@ internal final class TeamLibrarySync: ObservableObject {
 
     // Taken when the person picks the team, before any confirmation waits.
     func destination(_ teamID: String) -> TeamLibraryDestination {
-        TeamLibraryDestination(teamID: teamID, server: account.server.apiOrigin, generation: generation)
+        TeamLibraryDestination(teamID: teamID, session: session?.isOpen == true ? session : nil)
+    }
+
+    // Fires once the session a destination was taken in has ended, for the sheet confirming it to close.
+    func sessionEnds(for destination: TeamLibraryDestination) -> AnyPublisher<Void, Never> {
+        guard destination.session?.isOpen == true else { return Just(()).eraseToAnyPublisher() }
+        return sessionEnded.prefix(1).eraseToAnyPublisher()
     }
 
     func publishConnections(
@@ -193,7 +220,7 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     func resolve(_ conflict: TeamLibraryConflict, keepingMine: Bool) async {
-        guard var state = teams[conflict.teamID] else { return }
+        guard session?.isOpen == true, var state = teams[conflict.teamID] else { return }
         let key = conflict.key
         let stored = state.items[key]
         state.conflicts.removeAll { $0.id == conflict.id }
@@ -239,14 +266,16 @@ internal final class TeamLibrarySync: ObservableObject {
         teams = [:]
         legacy = nil
         accountEmail = nil
-        store.removeAll()
+        store?.removeAll()
         status = .idle
         publishContent()
     }
 
-    private func performSync(on server: AccountServer? = nil) async -> TeamLibrarySyncOutcome {
-        guard account.isSignedIn else { return .skipped }
-        client = TeamLibraryClient(api: account.api(pinnedTo: server ?? account.server))
+    private func performSync() async -> TeamLibrarySyncOutcome {
+        follow(account.access.state)
+        openSessionIfNeeded(account.access.state)
+        guard account.isSignedIn, let session, session.isOpen else { return .skipped }
+        let client = session.client
         guard account.access.isAvailable(.teamLibrary) else {
             // A current entitlement without team_library: the seat or the plan is gone, and with it what this Mac read.
             if account.access.currentEntitlement != nil, !teams.isEmpty || legacy != nil {
@@ -256,7 +285,6 @@ internal final class TeamLibrarySync: ObservableObject {
             return .skipped
         }
         guard rateLimitHold == nil else { return .failed(.rateLimited(retryAfter: nil)) }
-        claim(for: account.access.state)
         status = .syncing
         let started = generation
         let profile: AccountProfile
@@ -288,42 +316,10 @@ internal final class TeamLibrarySync: ObservableObject {
         guard started == generation else { return .skipped }
         if legacy != nil, teams.values.allSatisfy({ $0.cursor != nil }) {
             legacy = nil
-            store.removeLegacy()
+            store?.removeLegacy()
         }
         publishContent()
         return finish(failure.map { .failed($0) } ?? .synced)
-    }
-
-    // Each team's file names the server and account it came from. One another server or account left, as when a
-    // configuration profile named another server while the app was closed, or a file a failed delete left behind, is
-    // dropped before anything shows it or pushes its edits, an offline file's account included.
-    private func claim(for state: AccountState) {
-        guard state.isRestored else { return }
-        let server = state.server.apiOrigin.absoluteString
-        let production = AccountServer.production.apiOrigin.absoluteString
-        let accountID = state.entitlement?.accountID
-        // Signed out, only the server is known: another server's copy goes, and this one's stays hidden.
-        isVerified = accountID != nil
-        if let accountID {
-            owner = TeamLibraryOwner(server: server, accountID: accountID)
-        }
-        let others = teams.values.filter { team in
-            let from = team.owner ?? TeamLibraryOwner(server: production, accountID: accountID ?? "")
-            return from.server != server || accountID.map { from.accountID != $0 } == true
-        }
-        let legacyIsAnothers = legacy != nil && server != production
-        guard !others.isEmpty || legacyIsAnothers else { return }
-        Self.logger.notice("Dropping \(others.count) stored team libraries another server or account left")
-        generation += 1
-        for state in others {
-            teams[state.teamID] = nil
-            store.remove(teamID: state.teamID)
-        }
-        if legacyIsAnothers {
-            legacy = nil
-            store.removeLegacy()
-        }
-        publishContent()
     }
 
     private func finish(_ outcome: TeamLibrarySyncOutcome) -> TeamLibrarySyncOutcome {
@@ -344,7 +340,7 @@ internal final class TeamLibrarySync: ObservableObject {
         let listed = Set(seated.map(\.teamID))
         for teamID in teams.keys where !listed.contains(teamID) {
             teams[teamID] = nil
-            store.remove(teamID: teamID)
+            store?.remove(teamID: teamID)
         }
         for membership in seated {
             var state = teams[membership.teamID]
@@ -383,7 +379,7 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     private func pull(_ teamID: String) async throws(TeamLibraryFailure) {
-        guard let start = teams[teamID] else { return }
+        guard let client = session?.client, let start = teams[teamID] else { return }
         var cursor = start.cursor
         // Without a cursor the answer is a snapshot, which replaces what this Mac holds once its last page is in.
         var snapshot: [TeamLibraryKey: TeamLibraryChange]? = cursor == nil ? [:] : nil
@@ -398,7 +394,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 continue
             } catch .unreadable {
                 teams[teamID] = nil
-                store.remove(teamID: teamID)
+                store?.remove(teamID: teamID)
                 throw .unreadable
             }
             guard var state = teams[teamID] else { return }
@@ -430,6 +426,7 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     private func push(_ teamID: String) async throws(TeamLibraryFailure) {
+        guard let client = session?.client else { return }
         dropOversizedEdits(teamID)
         var refusal: TeamLibraryFailure?
         while let state = teams[teamID], state.canWrite, !state.pending.isEmpty {
@@ -454,7 +451,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 throw .refused(nil)
             } catch .unreadable {
                 teams[teamID] = nil
-                store.remove(teamID: teamID)
+                store?.remove(teamID: teamID)
                 throw .unreadable
             }
             guard var current = teams[teamID] else { return }
@@ -580,14 +577,11 @@ internal final class TeamLibrarySync: ObservableObject {
         owns: @escaping (TeamLibraryKey) -> Bool,
         plan: @escaping (TeamLibraryTeamState) throws -> [TeamLibraryEdit]
     ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
-        // What the person published for that server and sign-in, never for one a switch while it waited signs in to.
         let result = await serially { [weak self] () -> Result<TeamLibraryPublishResult, TeamLibraryPublishError> in
-            guard let self else { return .failure(.failed(.signedOut)) }
-            let server = self.account.server
-            guard self.generation == destination.generation, server.apiOrigin == destination.server else {
+            guard let self, let session = destination.session, session === self.session, session.isOpen else {
                 return .failure(.failed(.signedOut))
             }
-            return await self.performPublish(to: destination.teamID, owns: owns, plan: plan, on: server)
+            return await self.performPublish(to: destination.teamID, owns: owns, plan: plan)
         }.value
         return try result.get()
     }
@@ -595,11 +589,10 @@ internal final class TeamLibrarySync: ObservableObject {
     private func performPublish(
         to teamID: String,
         owns: (TeamLibraryKey) -> Bool,
-        plan: (TeamLibraryTeamState) throws -> [TeamLibraryEdit],
-        on server: AccountServer
+        plan: (TeamLibraryTeamState) throws -> [TeamLibraryEdit]
     ) async -> Result<TeamLibraryPublishResult, TeamLibraryPublishError> {
         let started = generation
-        let outcome = await performSync(on: server)
+        let outcome = await performSync()
         guard started == generation else { return .failure(.failed(.signedOut)) }
         guard let state = teams[teamID], state.canWrite else {
             if case .failed(let failure) = outcome, teams[teamID] == nil {
@@ -661,18 +654,17 @@ internal final class TeamLibrarySync: ObservableObject {
 
     private func commit(_ state: TeamLibraryTeamState) {
         var state = state
-        state.owner = owner ?? state.owner
         // A move stays marked only while its edit waits to be pushed.
         if !state.moves.isEmpty {
             state.moves.formIntersection(state.pending.map { TeamLibraryKey($0) })
         }
         teams[state.teamID] = state
-        store.save(state)
+        guard let session, session.isOpen else { return }
+        session.store.save(state)
     }
 
     private func publishContent() {
-        let teams = isVerified ? teams : [:]
-        var items = isVerified ? legacy?.changes ?? [] : []
+        var items = legacy?.changes ?? []
         for state in teams.values.sorted(by: { $0.teamName < $1.teamName }) {
             items += state.liveItems
         }
@@ -746,24 +738,63 @@ internal final class TeamLibrarySync: ObservableObject {
 
     // Signing out, signing in or a new entitlement syncs at once; signing out also drops what the old account read.
     private func observeAccount() {
-        var previous = account.access.state
         accessCancellable = account.access.$state
             .dropFirst()
             .removeDuplicates()
             .sink { [weak self] state in
                 guard let self else { return }
-                // What the core restores at launch is where this Mac already was, not a sign-in or a server switch.
-                let wasRestored = previous.isRestored
-                let hadAccount = previous.isSignedIn
-                let changedServer = previous.server.apiOrigin != state.server.apiOrigin
-                previous = state
-                // Another server's teams are not this account's, whatever ids they share.
-                if wasRestored, hadAccount && !state.isSignedIn || changedServer {
-                    self.clear()
-                }
-                self.claim(for: state)
-                self.publishContent()
+                self.follow(state)
                 self.syncSoon()
             }
+    }
+
+    // The account left the open session: it closes now, and a sign-out or a server switch takes its library with it.
+    // The next one opens at once when no session was open, else behind the pass that may still be out.
+    private func follow(_ state: AccountState) {
+        guard state.isRestored else { return }
+        let key = Self.sessionKey(state)
+        if let current = session, current.isOpen {
+            guard key != current.key else { return }
+            current.close()
+            if !state.isSignedIn || state.server.apiOrigin != current.key.server || key != nil {
+                current.store.removeAll()
+            }
+            generation += 1
+            rateLimitHold?.cancel()
+            rateLimitHold = nil
+            teams = [:]
+            legacy = nil
+            accountEmail = nil
+            status = .idle
+            publishContent()
+            sessionEnded.send()
+            _ = serially { [weak self] in
+                guard let self else { return }
+                self.openSessionIfNeeded(self.account.access.state)
+            }
+        } else if session == nil {
+            openSessionIfNeeded(state)
+        }
+    }
+
+    // `state` is the one being published: the subscription sees it before `access.state` holds it.
+    private func openSessionIfNeeded(_ state: AccountState) {
+        guard state.isRestored, session?.isOpen != true else { return }
+        let key = Self.sessionKey(state)
+        // A sign-in still waiting for its first entitlement does not say whose the earlier build's library is yet.
+        if !adoptedSingleLocation, !state.isSignedIn || key != nil {
+            adoptedSingleLocation = true
+            storage.adoptSingleLocation(into: state.isSignedIn ? key : nil)
+        }
+        session = key.map { TeamLibrarySession(key: $0, store: storage.store(for: $0), account: account, server: state.server) }
+        if let store = session?.store {
+            teams = Dictionary(store.loadAll().map { ($0.teamID, $0) }, uniquingKeysWith: { first, _ in first })
+            legacy = store.loadLegacy(now: now())
+        }
+        publishContent()
+    }
+
+    private static func sessionKey(_ state: AccountState) -> TeamLibrarySessionKey? {
+        state.entitlement.map { TeamLibrarySessionKey(server: state.server.apiOrigin, accountID: $0.accountID) }
     }
 }

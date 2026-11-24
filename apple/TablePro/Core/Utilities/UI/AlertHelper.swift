@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import TableProPluginKit
 
@@ -111,6 +112,26 @@ final class AlertHelper {
         }
     }
 
+    /// `closesOn` ends the alert as a Cancel once what it asks about is gone.
+    static func response(
+        to alert: NSAlert,
+        in window: NSWindow?,
+        closesOn: AnyPublisher<Void, Never>
+    ) async -> NSApplication.ModalResponse {
+        var closing: AnyCancellable?
+        defer { closing?.cancel() }
+        return await withCheckedContinuation { continuation in
+            closing = closesOn.sink { _ in
+                if let parent = alert.window.sheetParent {
+                    parent.endSheet(alert.window, returnCode: .cancel)
+                } else {
+                    NSApp.abortModal()
+                }
+            }
+            present(alert, in: window) { continuation.resume(returning: $0) }
+        }
+    }
+
     // MARK: - Confirmations
 
     /// A question whose confirming button keeps Return. `confirmDestructive` takes it off on
@@ -120,7 +141,8 @@ final class AlertHelper {
         message: String,
         confirmButton: String,
         cancelButton: String = String(localized: "Cancel"),
-        window: NSWindow? = nil
+        window: NSWindow? = nil,
+        closesOn: AnyPublisher<Void, Never>? = nil
     ) async -> Bool {
         let alert = NSAlert()
         alert.messageText = title
@@ -128,7 +150,10 @@ final class AlertHelper {
         alert.alertStyle = .informational
         alert.addButton(withTitle: confirmButton)
         Self.addCancelButton(to: alert, title: cancelButton)
-        return await response(to: alert, in: window) == .alertFirstButtonReturn
+        guard let closesOn else {
+            return await response(to: alert, in: window) == .alertFirstButtonReturn
+        }
+        return await response(to: alert, in: window, closesOn: closesOn) == .alertFirstButtonReturn
     }
 
     // MARK: - Destructive Confirmations

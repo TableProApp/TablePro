@@ -92,9 +92,9 @@ internal final class AccountServices: AccountBackendListener {
         backend.machineID
     }
 
-    // A client whose calls go to this server only: one a sign-in elsewhere would take reads as signed out.
-    func api(pinnedTo server: AccountServer) -> any APIProtocol {
-        AccountAPI.client(backend: backend, transport: transport, onlyTo: server.apiBaseURL)
+    // A client whose calls go to this server only, and only while `isOpen`: any other call reads as signed out.
+    func api(pinnedTo server: AccountServer, while isOpen: @escaping @Sendable () -> Bool = { true }) -> any APIProtocol {
+        AccountAPI.client(backend: backend, transport: transport, onlyTo: server.apiBaseURL, while: isOpen)
     }
 
     var server: AccountServer {

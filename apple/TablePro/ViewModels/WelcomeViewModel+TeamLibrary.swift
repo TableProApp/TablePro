@@ -7,18 +7,21 @@
 //
 
 import AppKit
+import Combine
 import TableProImport
 
 extension WelcomeViewModel {
     func publishConnectionsToTeamLibrary(_ connectionsToPublish: [DatabaseConnection], teamID: String) {
         guard !connectionsToPublish.isEmpty else { return }
 
+        let sync = TeamLibrarySync.shared
+        let destination = sync.destination(teamID)
         Task { @MainActor in
             let outcome = await Self.publishConnections(
                 connectionsToPublish,
-                to: teamID,
-                through: TeamLibrarySync.shared,
-                confirm: Self.confirmPublishToTeamLibrary
+                to: destination,
+                through: sync,
+                confirm: { await Self.confirmPublishToTeamLibrary($0, closesOn: sync.sessionEnds(for: destination)) }
             )
             TeamLibraryPublishing.present(outcome) {
                 self.activeSheet = .teamLibraryConflicts
@@ -38,7 +41,16 @@ extension WelcomeViewModel {
         exporter: ConnectionBundleExporter = ConnectionBundleExporter(),
         confirm: @MainActor ([DatabaseConnection]) async -> Bool
     ) async -> TeamLibraryPublishOutcome {
-        let destination = sync.destination(teamID)
+        await publishConnections(connections, to: sync.destination(teamID), through: sync, exporter: exporter, confirm: confirm)
+    }
+
+    static func publishConnections(
+        _ connections: [DatabaseConnection],
+        to destination: TeamLibraryDestination,
+        through sync: TeamLibrarySync,
+        exporter: ConnectionBundleExporter = ConnectionBundleExporter(),
+        confirm: @MainActor ([DatabaseConnection]) async -> Bool
+    ) async -> TeamLibraryPublishOutcome {
         guard await confirm(connections) else { return .declined }
         let plan = connections.map {
             TeamLibraryPublishPlan.Connection(id: $0.id, settings: exporter.teamShareableSettings(for: $0))
@@ -50,11 +62,15 @@ extension WelcomeViewModel {
         }
     }
 
-    private static func confirmPublishToTeamLibrary(_ connections: [DatabaseConnection]) async -> Bool {
+    private static func confirmPublishToTeamLibrary(
+        _ connections: [DatabaseConnection],
+        closesOn: AnyPublisher<Void, Never>
+    ) async -> Bool {
         await AlertHelper.confirm(
             title: teamLibraryPublishConfirmationTitle(for: connections),
             message: teamLibraryPublishConfirmationMessage,
-            confirmButton: String(localized: "Publish")
+            confirmButton: String(localized: "Publish"),
+            closesOn: closesOn
         )
     }
 
