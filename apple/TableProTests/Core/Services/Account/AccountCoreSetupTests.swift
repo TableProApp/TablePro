@@ -89,3 +89,26 @@ struct AccountRefreshTokenItemTests {
         #expect(AccountRefreshTokenItem.key(signInKey: "a1b2") != AccountRefreshTokenItem.key(signInKey: "c3d4"))
     }
 }
+
+struct AccountKeychainTests {
+    @Test("The core reads the refresh token an earlier build stored, so the update stays signed in")
+    func readsTheEarlierItem() throws {
+        let keychain = InMemoryKeychain()
+        keychain.writeString("refresh-from-an-earlier-build", forKey: "com.TablePro.account.refreshToken")
+
+        #expect(try AccountKeychain(keychain: keychain).refreshToken(signInKey: nil) == "refresh-from-an-earlier-build")
+    }
+
+    @Test("A company server's token is stored, read and deleted apart from tablepro.app's")
+    func serversKeepTheirOwnTokens() throws {
+        let keychain = InMemoryKeychain()
+        let account = AccountKeychain(keychain: keychain)
+        try account.storeRefreshToken("production", signInKey: nil)
+        try account.storeRefreshToken("company", signInKey: "a1b2")
+
+        account.deleteRefreshToken(signInKey: "a1b2")
+
+        #expect(try account.refreshToken(signInKey: nil) == "production")
+        #expect(try account.refreshToken(signInKey: "a1b2") == nil)
+    }
+}
