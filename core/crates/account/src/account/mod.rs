@@ -822,7 +822,11 @@ impl Account {
     }
 
     fn reschedule(&self, refreshed: &Result<(), AccountError>) {
-        self.inner.due.send_replace(Instant::now() + next_refresh(refreshed));
+        let now = Instant::now();
+        let due = now
+            .checked_add(next_refresh(refreshed))
+            .unwrap_or(now + REFRESH_INTERVAL);
+        self.inner.due.send_replace(due);
     }
 
     fn signed_out(&self, session: &mut Session) {
