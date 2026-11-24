@@ -4,9 +4,18 @@ use jsonwebtoken::DecodingKey;
 
 use crate::entitlement_keys::{KeyError, keyed};
 
-// (kid, RFC 8037 `x`) of the license keys, current then next, from the public halves of the two KMS keys (core ADR
-// 0044, Key custody). Until they are made, a release build trusts no company server.
-const RELEASE_KEYS: &[(&str, &str)] = &[];
+// (kid, RFC 8037 `x`) of the license keys, current then next: the public halves of the two KMS keys (core ADR 0044,
+// Key custody).
+const RELEASE_KEYS: &[(&str, &str)] = &[
+    (
+        "Yo4CIBJnxzUMSLPnsLId8ngVVe5xuZgHkOU9Z-Hgo04",
+        "__t-FmLQg_hoUWy8BaTMFcGFXKdGx6uF86uOGjDBS50",
+    ),
+    (
+        "J5yCP_8iTKHyXvyYQ9y4-D2-Z_U4hbtGDvwkfzv57R0",
+        "q49wrIFwrmKMUdrOs97eKDM-hH81zVr7zCQskAZZL-w",
+    ),
+];
 // kids no build trusts any more, shipped with updates.
 const REVOKED_KIDS: &[&str] = &[];
 
@@ -76,7 +85,7 @@ mod tests {
     fn each_release_kid_is_the_rfc_7638_thumbprint_of_its_key_and_none_is_revoked() {
         let keys = LicenseKeys::release();
 
-        assert!(RELEASE_KEYS.len() <= 2, "a build carries the current and the next key");
+        assert_eq!(RELEASE_KEYS.len(), 2, "a build carries the current and the next key");
         for (kid, x) in RELEASE_KEYS {
             assert_eq!(thumbprint(x), *kid, "{x}");
             assert!(!REVOKED_KIDS.contains(kid), "{kid}");

@@ -64,7 +64,7 @@ The account takes the Mac's seams through the FFI, resolves and discovers the se
 
 - `SecretItemTag` gains a variant with a field, so C# reads it as a class hierarchy. The Windows `ISecretStore` takes a `SecretItem` record with the sign-in key, and its tests ask for the keyed item on a development stack.
 - `AccountSettings` takes a `ServerSettings` in place of endpoints and keys; the Linux app passes tablepro.app or its development stack.
-- The release license key list is empty until the KMS keys exist (0044, Key custody), so until then a release build trusts no company server.
+- A release build trusts the two license keys whose private halves are the KMS keys of 0044, Key custody: `Yo4CIBJnxzUMSLPnsLId8ngVVe5xuZgHkOU9Z-Hgo04`, current, and `J5yCP_8iTKHyXvyYQ9y4-D2-Z_U4hbtGDvwkfzv57R0`, next. Test keys reach only a development build.
 - RFC 9207's `iss` in the authorization response is not checked yet, a stated preview risk 0044 keeps as a release gate. A company server that names another company's account server can still receive that server's access tokens until it is.
 - The iOS app takes the same seams once it has an account.
 

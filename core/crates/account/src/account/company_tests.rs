@@ -781,3 +781,26 @@ async fn a_restore_asks_the_company_server_nothing_and_a_429_on_discovery_holds_
     assert!(matches!(second, Err(AccountError::RateLimited { .. })), "{second:?}");
     assert_eq!(asked(&requests).len(), 1, "{:?}", asked(&requests));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_busy_candidate_server_holds_back_no_other_choice() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let busy = company(&LICENSED, |_, _, _, _| Some((429, String::new())));
+    let healthy = company(&LICENSED, |_, _, _, _| None);
+    let policy = ServerSettings::Resolved(ServerPolicy {
+        license_keys: LicenseKeys::from_public_keys([fakes::PUBLIC_X]).expect("the test key"),
+        ..ServerPolicy::default()
+    });
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, policy),
+        &Arc::new(Items::default()),
+        Arc::default(),
+    );
+
+    let refused = account.choose_server(Some(&busy)).await;
+    let chosen = account.choose_server(Some(&healthy)).await;
+
+    assert!(matches!(refused, Err(AccountError::RateLimited { .. })), "{refused:?}");
+    assert!(chosen.is_ok(), "{chosen:?}");
+    assert_eq!(account.server().api_origin, healthy);
+}

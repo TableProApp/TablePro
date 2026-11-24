@@ -67,11 +67,8 @@ impl Account {
         }
         let target = server::resolve(policy, chosen.as_deref(), loopback);
         let discovered = match target.kind {
-            ServerKind::Company => {
-                session.waited(Call::Discovery)?;
-                let found = server::discover(&self.inner.http, &target.origin, loopback).await;
-                Some(session.answered(Call::Discovery, found)?)
-            }
+            // A candidate's 429 is the person's to see; it holds back nothing the current server does.
+            ServerKind::Company => Some(server::discover(&self.inner.http, &target.origin, loopback).await?),
             ServerKind::Production | ServerKind::Development => None,
         };
         let path = choice_file(&self.inner.settings.account_file);

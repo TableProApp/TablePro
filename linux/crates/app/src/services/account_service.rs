@@ -168,16 +168,19 @@ fn this_machine() -> Result<MachineId, String> {
 }
 
 impl Cloud {
+    fn keys(&self) -> Result<EntitlementKeys, String> {
+        if self.keys_x.is_empty() {
+            return Ok(EntitlementKeys::release());
+        }
+        EntitlementKeys::from_public_keys(self.keys_x.iter().map(String::as_str)).map_err(|error| error.to_string())
+    }
+
     // tablepro.app, or a development stack that signs with its own keys and names its API origin.
     fn server(self) -> Result<ServerSettings, String> {
         if self.endpoints == Endpoints::production() && self.keys_x.is_empty() {
             return Ok(ServerSettings::production());
         }
-        let keys = match self.keys_x.is_empty() {
-            true => EntitlementKeys::release(),
-            false => EntitlementKeys::from_public_keys(self.keys_x.iter().map(String::as_str))
-                .map_err(|error| error.to_string())?,
-        };
+        let keys = self.keys()?;
         Ok(ServerSettings::Fixed(FixedServer {
             issuer: self.endpoints.api_origin(),
             endpoints: self.endpoints,
