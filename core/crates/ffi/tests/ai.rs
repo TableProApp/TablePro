@@ -581,8 +581,32 @@ async fn the_models_listed_come_back_sorted() {
         .await
         .unwrap();
 
-    assert_eq!(models, ["llama3.2:latest", "qwen3"]);
+    let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
+    assert_eq!(ids, ["llama3.2:latest", "qwen3"]);
+    assert!(
+        models
+            .iter()
+            .all(|model| !model.offline && !model.is_default && model.name.is_none())
+    );
     assert_eq!(server.seen()[0].request_line, "GET /v1/models HTTP/1.1");
+}
+
+#[test]
+fn a_hosted_provider_has_offline_models_and_a_default_and_the_compatible_server_has_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let assistant = core(dir.path(), MemorySecrets::default()).ai_assistant();
+
+    for provider in [AiProviderTag::Anthropic, AiProviderTag::OpenAi] {
+        let offline = assistant.offline_models(provider);
+        let default = assistant.default_model(provider).unwrap();
+        assert!(offline.iter().all(|model| model.offline), "{provider:?}");
+        assert!(
+            offline.iter().any(|model| model.id == default),
+            "{provider:?} {default}"
+        );
+    }
+    assert!(assistant.offline_models(AiProviderTag::OpenAiCompatible).is_empty());
+    assert_eq!(assistant.default_model(AiProviderTag::OpenAiCompatible), None);
 }
 
 #[tokio::test(flavor = "multi_thread")]

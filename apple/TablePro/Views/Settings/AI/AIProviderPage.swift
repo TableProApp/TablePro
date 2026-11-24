@@ -162,7 +162,7 @@ struct AIProviderPage: View {
         descriptor: AIProviderDescriptor?,
         isLast: Bool
     ) -> some View {
-        let choices = AIModelChoices(curated: descriptor?.curatedModels(for: provider.preset) ?? [], fetched: loader.models)
+        let choices = AIModelChoices(models: loader.models)
         let selection = choices.selection(for: provider.model, choseOther: choseOtherModel)
         let reasoning = reasoning(for: provider, modelID: provider.model, descriptor: descriptor)
         return Section {
@@ -184,7 +184,7 @@ struct AIProviderPage: View {
                 )
                 .accessibilityIdentifier("ai-provider-model-id")
             }
-            if descriptor?.supportsReasoning == true, !reasoning.effortLevels.isEmpty {
+            if descriptor?.supportsReasoning == true, !reasoning.effortLevels.isEmpty || reasoning.canTurnOff {
                 Picker(selection: reasoningBinding(reasoning)) {
                     AIReasoningPickerItems(reasoning: reasoning)
                 } label: {
@@ -248,32 +248,18 @@ struct AIProviderPage: View {
         modelID: String,
         descriptor: AIProviderDescriptor?
     ) -> AIReasoningSupport {
-        descriptor?.reasoning(
-            forModelID: modelID,
-            fetched: loader.models.first { $0.id == modelID },
-            preset: provider.preset
-        ) ?? .unsupported
-    }
-
-    // What the Reasoning picker shows for a saved effort the model does not take; it is written only when picked.
-    private func displayedEffort(_ provider: AIProviderConfig, descriptor: AIProviderDescriptor?) -> ReasoningEffort? {
-        AIProviderDraftRules.effort(
-            keeping: provider.reasoningEffort,
-            reasoning: reasoning(for: provider, modelID: provider.model, descriptor: descriptor)
-        )
+        let info = loader.models.first { $0.id == modelID }
+            ?? AIModelCatalog.shared.info(providerID: provider.id, source: AIModelSource(config: provider), modelID: modelID)
+        return descriptor?.reasoning(for: info) ?? .unsupported
     }
 
     // The model and the effort it allows change together, in one write.
     private func selectModel(_ id: String, picked: Bool, descriptor: AIProviderDescriptor?) {
         commit { provider in
-            let current = displayedEffort(provider, descriptor: descriptor)
+            let current = provider.reasoningEffort
             let reasoning = reasoning(for: provider, modelID: id, descriptor: descriptor)
             provider.reasoningEffort = picked
-                ? AIProviderDraftRules.effort(
-                    afterPicking: current,
-                    reasoning: reasoning,
-                    curated: descriptor?.curatedModel(forID: id, preset: provider.preset)
-                )
+                ? AIProviderDraftRules.effort(afterPicking: current, reasoning: reasoning)
                 : AIProviderDraftRules.effort(keeping: current, reasoning: reasoning)
             provider.model = id
         }
@@ -287,7 +273,7 @@ struct AIProviderPage: View {
             get: { choices.selection(for: slice.value.provider(withID: providerID)?.model ?? "", choseOther: choseOther) },
             set: { selection in
                 switch selection {
-                case .curated(let id), .fetched(let id):
+                case .model(let id):
                     choseOtherModel = false
                     selectModel(id, picked: true, descriptor: descriptor)
                 case .custom:
@@ -316,8 +302,8 @@ struct AIProviderPage: View {
         let providerID = providerID
         return Binding(
             get: {
-                AIProviderDraftRules.effort(
-                    keeping: slice.value.provider(withID: providerID)?.reasoningEffort,
+                AIProviderDraftRules.displayedEffort(
+                    slice.value.provider(withID: providerID)?.reasoningEffort,
                     reasoning: reasoning
                 )
             },

@@ -332,6 +332,9 @@ targets:
       # The MCP client catalog, one file the Linux app reads too.
       - path: ../core/crates/mcp/clients.json
         buildPhase: resources
+      # The AI model catalog, one file the Linux and Windows apps read too.
+      - path: ../core/crates/ai/ai-models.json
+        buildPhase: resources
       - path: TablePro/CLI/tablepro
         buildPhase:
           copyFiles:

@@ -310,7 +310,12 @@ struct AIChatPanelView: View {
             let selectedProvider = providers.first(where: { $0.id == selectedProviderId }) ?? activeProvider
             let resolvedModel = viewModel.selectedModel ?? selectedProvider?.model ?? ""
             let label = selectedProvider.map { provider in
-                resolvedModel.isEmpty ? provider.displayName : resolvedModel
+                resolvedModel.isEmpty
+                    ? provider.displayName
+                    : AIChatModelMenu.label(
+                        for: resolvedModel,
+                        in: viewModel.availableModels[provider.id] ?? []
+                    )
             } ?? String(localized: "Select Model")
             let icon = selectedProvider?.icon ?? BrandIcon(slug: nil, fallbackSystemImage: "cpu")
 
@@ -441,17 +446,22 @@ struct AIChatPanelView: View {
         selectedProviderId: UUID?,
         selectedModel: String
     ) -> some View {
-        let fallback = provider.model.isEmpty ? [] : [provider.model]
-        let cached = viewModel.availableModels[provider.id] ?? []
-        let models = cached.isEmpty ? fallback : cached
+        let isSelectedProvider = provider.id == selectedProviderId
+        let models = AIChatModelMenu.entries(
+            listed: viewModel.availableModels[provider.id] ?? [],
+            saved: provider.model,
+            selected: isSelectedProvider ? selectedModel : nil
+        )
+        let titles = AIChatModelMenu.titles(for: models)
 
         if models.count > 1 {
             Section(provider.displayName) {
-                ForEach(models, id: \.self) { model in
+                ForEach(models) { model in
                     modelButton(
                         provider: provider,
                         model: model,
-                        isSelected: provider.id == selectedProviderId && model == selectedModel
+                        title: titles[model.id] ?? model.label,
+                        isSelected: isSelectedProvider && model.id == selectedModel
                     )
                 }
             }
@@ -459,7 +469,8 @@ struct AIChatPanelView: View {
             modelButton(
                 provider: provider,
                 model: single,
-                isSelected: provider.id == selectedProviderId && single == selectedModel,
+                title: titles[single.id] ?? single.label,
+                isSelected: isSelectedProvider && single.id == selectedModel,
                 showProviderPrefix: true
             )
         }
@@ -467,16 +478,17 @@ struct AIChatPanelView: View {
 
     private func modelButton(
         provider: AIProviderConfig,
-        model: String,
+        model: AIModelInfo,
+        title: String,
         isSelected: Bool,
         showProviderPrefix: Bool = false
     ) -> some View {
         Button {
             viewModel.selectedProviderId = provider.id
-            viewModel.selectedModel = model
+            viewModel.selectedModel = model.id
         } label: {
             HStack {
-                Text(showProviderPrefix ? "\(provider.displayName) (\(model))" : model)
+                Text(showProviderPrefix ? "\(provider.displayName) (\(title))" : title)
                 if isSelected {
                     Image(systemName: "checkmark")
                 }

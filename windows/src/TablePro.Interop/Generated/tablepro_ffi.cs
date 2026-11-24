@@ -1454,6 +1454,10 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1686,6 +1690,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_aiassistant_default_model(ulong @ptr,RustBuffer @provider,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_method_aiassistant_has_key(ulong @ptr,RustBuffer @provider
     );
 
@@ -1698,6 +1713,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_aiassistant_list_models(ulong @ptr,RustBuffer @settings,RustBuffer @cancel
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_aiassistant_offline_models(ulong @ptr,RustBuffer @provider,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -5426,6 +5452,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_aiassistant_default_model(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_aiassistant_has_key(
     );
 
@@ -5438,6 +5475,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_aiassistant_list_models(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_aiassistant_offline_models(
     );
 
     #if NET8_0_OR_GREATER
@@ -7896,6 +7944,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_aiassistant_default_model();
+            if (checksum != 44451) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_aiassistant_default_model` checksum `44451`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_aiassistant_has_key();
             if (checksum != 27946) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_aiassistant_has_key` checksum `27946`, library returned `{checksum}`");
@@ -7903,8 +7957,14 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_aiassistant_list_models();
-            if (checksum != 23464) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_aiassistant_list_models` checksum `23464`, library returned `{checksum}`");
+            if (checksum != 65187) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_aiassistant_list_models` checksum `65187`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_aiassistant_offline_models();
+            if (checksum != 47897) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_aiassistant_offline_models` checksum `47897`, library returned `{checksum}`");
             }
         }
         {
@@ -9785,10 +9845,12 @@ class FfiConverterTypeAccountService: FfiConverter<AccountService, ulong> {
 
 
 internal interface IAiAssistant {
+    string? DefaultModel(AiProviderTag @provider);
     /// <exception cref="CoreException"></exception>
     Task<bool> HasKey(AiProviderTag @provider);
     /// <exception cref="CoreException"></exception>
-    Task<string[]> ListModels(AiSettingsArg @settings, CancelToken? @cancel);
+    Task<AiModelInfo[]> ListModels(AiSettingsArg @settings, CancelToken? @cancel);
+    AiModelInfo[] OfflineModels(AiProviderTag @provider);
     AiReply Reply(DatabaseSession @session, AiSettingsArg @settings, AiChatArg @chat, AiReplyListener @listener);
     /// <exception cref="CoreException"></exception>
     Task SetKey(AiProviderTag @provider, SecretString @key);
@@ -9884,6 +9946,14 @@ internal class AiAssistant : IAiAssistant, IDisposable {
     }
 
     
+    public string? DefaultModel(AiProviderTag @provider) {
+        return CallWithPointer(thisPtr => FfiConverterOptionalString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_aiassistant_default_model(thisPtr, FfiConverterTypeAiProviderTag.INSTANCE.Lower(@provider), ref _status)
+)));
+    }
+    
+    
     /// <exception cref="CoreException"></exception>
     public async Task<bool> HasKey(AiProviderTag @provider) {
     return await _UniFFIAsync.UniffiRustCallAsync(
@@ -9907,7 +9977,7 @@ internal class AiAssistant : IAiAssistant, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<string[]> ListModels(AiSettingsArg @settings, CancelToken? @cancel) {
+    public async Task<AiModelInfo[]> ListModels(AiSettingsArg @settings, CancelToken? @cancel) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
@@ -9922,11 +9992,19 @@ internal class AiAssistant : IAiAssistant, IDisposable {
         // Free
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
         // Lift
-        (result) => FfiConverterSequenceString.INSTANCE.Lift(result),
+        (result) => FfiConverterSequenceTypeAiModelInfo.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
     }
+    
+    public AiModelInfo[] OfflineModels(AiProviderTag @provider) {
+        return CallWithPointer(thisPtr => FfiConverterSequenceTypeAiModelInfo.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_aiassistant_offline_models(thisPtr, FfiConverterTypeAiProviderTag.INSTANCE.Lower(@provider), ref _status)
+)));
+    }
+    
     
     public AiReply Reply(DatabaseSession @session, AiSettingsArg @settings, AiChatArg @chat, AiReplyListener @listener) {
         return CallWithPointer(thisPtr => FfiConverterTypeAiReply.INSTANCE.Lift(
@@ -16107,6 +16185,48 @@ class FfiConverterTypeAiMessageArg: FfiConverterRustBuffer<AiMessageArg> {
     public override void Write(AiMessageArg value, BigEndianStream stream) {
             FfiConverterTypeAiRoleTag.INSTANCE.Write(value.Role, stream);
             FfiConverterString.INSTANCE.Write(value.Text, stream);
+    }
+}
+
+
+
+internal record AiModelInfo (
+    string Id, 
+    string? Name, 
+    bool Deprecated, 
+    bool IsDefault, 
+    bool Offline
+) {
+}
+
+class FfiConverterTypeAiModelInfo: FfiConverterRustBuffer<AiModelInfo> {
+    public static FfiConverterTypeAiModelInfo INSTANCE = new FfiConverterTypeAiModelInfo();
+
+    public override AiModelInfo Read(BigEndianStream stream) {
+        return new AiModelInfo(
+            Id: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Deprecated: FfiConverterBoolean.INSTANCE.Read(stream),
+            IsDefault: FfiConverterBoolean.INSTANCE.Read(stream),
+            Offline: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(AiModelInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Deprecated)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.IsDefault)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Offline);
+    }
+
+    public override void Write(AiModelInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Id, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Name, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Deprecated, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.IsDefault, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Offline, stream);
     }
 }
 
@@ -29157,6 +29277,52 @@ class FfiConverterSequenceTypeAiMessageArg: FfiConverterRustBuffer<AiMessageArg[
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeAiMessageArg.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeAiModelInfo: FfiConverterRustBuffer<AiModelInfo[]> {
+    public static FfiConverterSequenceTypeAiModelInfo INSTANCE = new FfiConverterSequenceTypeAiModelInfo();
+
+    public override AiModelInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new AiModelInfo[length];
+        var readFn = FfiConverterTypeAiModelInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(AiModelInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeAiModelInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(AiModelInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeAiModelInfo.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }

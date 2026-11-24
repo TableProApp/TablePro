@@ -136,7 +136,8 @@ async fn the_assistant_starts_off_and_keeps_each_providers_model() -> TestResult
     let fixture = Fixture::new()?;
     assert_eq!(fixture.settings.ai_provider(), None);
     assert!(!fixture.settings.ai_inline_suggestions());
-    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "claude-opus-5-5");
+    // Empty until first use, when the app saves the model catalog's default.
+    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "");
     assert_eq!(fixture.settings.ai_model(AiProvider::OpenAi), "");
     assert_eq!(
         fixture.settings.ai_base_url(AiProvider::OpenAiCompatible),
@@ -152,7 +153,7 @@ async fn the_assistant_starts_off_and_keeps_each_providers_model() -> TestResult
 
     assert_eq!(fixture.settings.ai_provider(), Some(AiProvider::OpenAiCompatible));
     assert_eq!(fixture.settings.ai_model(AiProvider::OpenAiCompatible), "llama3.2");
-    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "claude-opus-5-5");
+    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "");
     assert_eq!(
         fixture.settings.ai_base_url(AiProvider::OpenAiCompatible),
         "http://gpu-box:11434/v1"

@@ -437,6 +437,17 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.assertEqual(self.verdict_after("macos", "core/crates/mcp/src/lib.rs"), "false")
         self.assertEqual(self.verdict_after("plugins", catalog), "false")
 
+    def test_the_mac_app_runs_on_the_ai_model_catalog_it_bundles(self):
+        catalog = "core/crates/ai/ai-models.json"
+        for suite in ["macos", "release", "shipped", "linux", "core", "windows"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, catalog), "true")
+        self.assertEqual(self.verdict_after("macos", "core/crates/ai/src/catalog.rs"), "false")
+        self.assertEqual(self.verdict_after("plugins", catalog), "false")
+
+    def test_the_mac_tests_run_on_the_model_merge_cases_they_share(self):
+        self.assertEqual(self.verdict_after("macos", "core/crates/ai/tests/model-merge-cases.json"), "true")
+
     def test_macos_runs_on_the_build_setup_action(self):
         self.assertEqual(self.verdict_after("macos", ".github/actions/prepare-build/action.yml"), "true")
 

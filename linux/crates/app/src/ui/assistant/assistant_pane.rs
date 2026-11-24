@@ -215,11 +215,10 @@ impl AssistantPane {
         }
         imp.stack.set_visible_child_name(page);
         imp.toolbar.set_reveal_bottom_bars(availability == Availability::Ready);
-        let settings = access.ai().settings();
         let model = access
             .ai()
             .provider()
-            .map(|provider| settings.ai_model(provider))
+            .map(|provider| access.ai().model(provider))
             .unwrap_or_default();
         imp.title.set_subtitle(&model);
         imp.empty_page.set_description(Some(&glib::markup_escape_text(&crate::i18n::gettext_f(

@@ -7034,6 +7034,14 @@ msgid "The provider lists no models."
 msgstr "Nhà cung cấp không liệt kê model nào."
 
 #: crates/app/src/ui/preferences_dialog/ai_page.rs
+msgid "{problem} The models below are from TablePro’s own list."
+msgstr "{problem} Các model bên dưới lấy từ danh sách riêng của TablePro."
+
+#: crates/app/src/ui/preferences_dialog/ai_page.rs
+msgid "Deprecated"
+msgstr "Sắp ngừng hỗ trợ"
+
+#: crates/app/src/ui/preferences_dialog/ai_page.rs
 msgid "The assistant is off, and nothing is sent anywhere."
 msgstr "Trợ lý đã tắt và không có dữ liệu nào được gửi đi."
 

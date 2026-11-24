@@ -8,10 +8,15 @@ import Foundation
 enum ClaudeAgent {
     static let mcpServerName = "tablepro"
 
-    static let curatedModels: [CuratedModel] = [
-        CuratedModel(id: "opus", displayName: "Claude Opus"),
-        CuratedModel(id: "sonnet", displayName: "Claude Sonnet"),
-        CuratedModel(id: "haiku", displayName: "Claude Haiku")
+    // The account's own default, which the claude CLI picks when no --model is given.
+    static let defaultAlias = "default"
+
+    // The claude CLI's aliases, which follow the newest model of each line (code.claude.com/docs/en/model-config).
+    static let models: [AIModelInfo] = [
+        AIModelInfo(id: defaultAlias, displayName: String(localized: "Default"), isProviderDefault: true),
+        AIModelInfo(id: "opus", displayName: "Claude Opus"),
+        AIModelInfo(id: "sonnet", displayName: "Claude Sonnet"),
+        AIModelInfo(id: "haiku", displayName: "Claude Haiku")
     ]
 
     static let systemPrompt = """

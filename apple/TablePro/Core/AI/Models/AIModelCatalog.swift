@@ -56,10 +56,10 @@ final class AIModelCatalog: @unchecked Sendable {
     /// Loads a provider's list again after Save dropped the one on record. Open chat windows read
     /// the catalog at send time and never refetch on their own, so without this they would run
     /// with no per-model limits until the next window.
-    func refresh(providerID: UUID, using transport: ChatTransport) async {
-        let token = beginRefresh(providerID: providerID)
-        let models = (try? await transport.fetchAvailableModels()) ?? []
-        finishRefresh(providerID: providerID, token: token, models: models)
+    func refresh(config: AIProviderConfig, using transport: ChatTransport) async {
+        let token = beginRefresh(providerID: config.id)
+        let result = await Self.list(for: config, using: transport)
+        finishRefresh(providerID: config.id, token: token, models: result.isLive ? result.models : [])
     }
 
     /// A refresh that a newer refresh, store or removal overtook is dropped when it lands, so a slow
@@ -96,5 +96,54 @@ final class AIModelCatalog: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return fetched[providerID]?[modelID]
+    }
+
+    // What a send knows about a model before any list loaded: the bundled or cached catalog, never the network.
+    func info(
+        providerID: UUID?,
+        source: AIModelSource,
+        modelID: String,
+        reference: AIModelReference = .shared
+    ) -> AIModelInfo? {
+        fetchedInfo(providerID: providerID, modelID: modelID) ?? reference.info(source: source, modelID: modelID)
+    }
+}
+
+struct AIModelListResult {
+    let models: [AIModelInfo]
+    // Set when the provider's own list could not be read; `models` then come from the catalog, marked offline.
+    let error: Error?
+
+    var isLive: Bool { error == nil }
+}
+
+extension AIModelCatalog {
+    // The one way a provider's model list is read: the provider's answer merged with the catalog.
+    static func list(
+        for config: AIProviderConfig,
+        using transport: ChatTransport,
+        reference: AIModelReference = .shared
+    ) async -> AIModelListResult {
+        let source = AIModelSource(config: config)
+        // The ChatGPT list is asked as the Codex release the catalog names, so a newer catalog goes first.
+        // Every other list merges with the catalog on hand; a refresh serves the next one.
+        if source.readsClientVersion {
+            await reference.refresh()
+        } else if source.key != nil {
+            Task { await reference.refresh() }
+        }
+        let live: [AIModelInfo]?
+        let failure: Error?
+        do {
+            live = try await transport.fetchAvailableModels()
+            failure = nil
+        } catch {
+            live = nil
+            failure = error
+        }
+        let unlisted = config.preset?.modelIDFilter(forEndpoint: config.endpoint) ?? .all
+        let models = AIModelMerge.merge(live: live, reference: reference.provider(source.key), source: source)
+            .filter { unlisted.lists($0.id) }
+        return AIModelListResult(models: models, error: failure)
     }
 }

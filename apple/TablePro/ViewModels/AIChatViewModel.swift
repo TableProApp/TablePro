@@ -30,7 +30,7 @@ final class AIChatViewModel: ObservableObject {
     @Published var showAIAccessConfirmation = false
     @Published var selectedProviderId: UUID?
     @Published var selectedModel: String?
-    @Published var availableModels: [UUID: [String]] = [:]
+    @Published var availableModels: [UUID: [AIModelInfo]] = [:]
     @Published private(set) var providerSettingsRevision = 0
     private var modelListSources: [UUID: AIModelListSource] = [:]
     private var staleModelLists: Set<UUID> = []
@@ -271,7 +271,9 @@ final class AIChatViewModel: ObservableObject {
     // A router lists text-only models beside vision ones, so the provider's own list narrows its type.
     nonisolated static func acceptsImages(config: AIProviderConfig, model: String, catalog: AIModelCatalog) -> Bool {
         guard let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) else { return false }
-        return descriptor.supportsImages(fetched: catalog.fetchedInfo(providerID: config.id, modelID: model))
+        return descriptor.supportsImages(
+            fetched: catalog.info(providerID: config.id, source: AIModelSource(config: config), modelID: model)
+        )
     }
 
     func sendWithContext(prompt: String, schemaQuestion: String? = nil) {
@@ -499,8 +501,9 @@ final class AIChatViewModel: ObservableObject {
     }
 
     private enum ModelListOutcome: Sendable {
-        case listed([String])
-        case failed
+        case listed([AIModelInfo])
+        // The catalog's models for the provider, shown until its own list answers.
+        case failed(offline: [AIModelInfo])
         case notReady
     }
 
@@ -539,17 +542,22 @@ final class AIChatViewModel: ObservableObject {
                 let catalogRevision = entry.catalogRevision
                 group.addTask {
                     let transport = await AIProviderFactory.createProvider(for: config, apiKey: apiKey)
-                    do {
-                        let models = try await transport.fetchAvailableModels()
-                        AIModelCatalog.shared.store(providerID: config.id, models: models, ifUnchangedSince: catalogRevision)
-                        return (config.id, .listed(models.map(\.id)))
-                    } catch is CancellationError {
-                        return (config.id, .notReady)
-                    } catch CopilotError.serverNotRunning {
-                        return (config.id, .notReady)
-                    } catch {
-                        return (config.id, .failed)
+                    let result = await AIModelCatalog.list(for: config, using: transport)
+                    guard let error = result.error else {
+                        AIModelCatalog.shared.store(
+                            providerID: config.id,
+                            models: result.models,
+                            ifUnchangedSince: catalogRevision
+                        )
+                        return (config.id, .listed(result.models))
                     }
+                    if error is CancellationError {
+                        return (config.id, .notReady)
+                    }
+                    if case .serverNotRunning? = error as? CopilotError {
+                        return (config.id, .notReady)
+                    }
+                    return (config.id, .failed(offline: result.models))
                 }
             }
 
@@ -573,10 +581,13 @@ final class AIChatViewModel: ObservableObject {
             case .listed(let models) where !models.isEmpty:
                 availableModels[id] = models
                 modelListSources[id] = entry.source
-            case .failed where modelListSources[id] == entry.source && availableModels[id]?.isEmpty == false:
+            case .failed where modelListSources[id] == entry.source && availableModels[id]?.contains(where: { !$0.isOffline }) == true:
                 break
-            case .listed, .failed:
-                // Recorded empty, so a dead server is asked again only after a change or a save.
+            case .failed(let offline):
+                // Recorded, so a dead server is asked again only after a change or a save.
+                availableModels[id] = offline
+                modelListSources[id] = entry.source
+            case .listed:
                 availableModels[id] = []
                 modelListSources[id] = entry.source
             }
@@ -683,5 +694,30 @@ struct AIModelListSource: Equatable, Sendable {
         type = config.type
         presetID = config.presetID
         endpoint = config.endpoint
+    }
+}
+
+// The chat panel's model menu for one provider.
+enum AIChatModelMenu {
+    // The saved and the picked model always appear, even when the provider's list no longer has them.
+    static func entries(listed: [AIModelInfo], saved: String, selected: String?) -> [AIModelInfo] {
+        var entries = listed
+        for id in [saved, selected ?? ""] where !id.isEmpty && !entries.contains(where: { $0.id == id }) {
+            entries.append(AIModelInfo(id: id))
+        }
+        return entries
+    }
+
+    // One pass per provider menu: a router lists hundreds of models.
+    static func titles(for models: [AIModelInfo]) -> [String: String] {
+        var titles = AIModelInfo.titles(for: models)
+        for model in models where model.isDeprecated {
+            titles[model.id] = String(format: String(localized: "%@ (deprecated)"), titles[model.id] ?? model.label)
+        }
+        return titles
+    }
+
+    static func label(for modelID: String, in listed: [AIModelInfo]) -> String {
+        listed.first { $0.id == modelID }?.label ?? modelID
     }
 }

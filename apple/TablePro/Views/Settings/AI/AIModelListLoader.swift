@@ -1,6 +1,11 @@
 import Combine
 import Foundation
 
+struct AIModelListInputs: Equatable {
+    let endpoint: String
+    let apiKey: String
+}
+
 @MainActor
 final class AIModelListLoader: ObservableObject {
     private struct Connection: Equatable {
@@ -15,6 +20,8 @@ final class AIModelListLoader: ObservableObject {
     @Published private(set) var blocker: AIModelListFetchGate.Blocker?
     // True once a list loaded for the key and Base URL of the last request.
     @Published private(set) var isCurrent = false
+    // The key and Base URL the last finished request answered for, with a list or an error.
+    @Published private(set) var answeredFor: AIModelListInputs?
 
     private var loadedFor: Connection?
     private var generation = 0
@@ -39,24 +46,23 @@ final class AIModelListLoader: ObservableObject {
         error = nil
         isLoading = true
         let transport = AIProviderFactory.makeUncachedProvider(for: config, apiKey: apiKey)
-        do {
-            let fetched = try await transport.fetchAvailableModels()
-            guard mine == generation else { return }
-            models = fetched
+        let result = await AIModelCatalog.list(for: config, using: transport)
+        guard mine == generation else { return }
+        isLoading = false
+        answeredFor = AIModelListInputs(endpoint: config.endpoint, apiKey: apiKey)
+        guard let failure = result.error else {
+            models = result.models
             loadedFor = connection
             isCurrent = true
-            isLoading = false
-        } catch {
-            guard mine == generation else { return }
-            // A list from another key or Base URL does not describe the server that just failed.
-            if loadedFor != connection {
-                models = []
-                isCurrent = false
-                loadedFor = nil
-            }
-            self.error = error.localizedDescription
-            isLoading = false
+            return
         }
+        // A list from another key or Base URL does not describe the server that just failed.
+        if loadedFor != connection {
+            models = result.models
+            isCurrent = false
+            loadedFor = nil
+        }
+        error = failure.localizedDescription
     }
 
     // The draft's key or Base URL changed, so the list on screen no longer answers for it.

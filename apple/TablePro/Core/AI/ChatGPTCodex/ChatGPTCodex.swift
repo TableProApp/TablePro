@@ -19,13 +19,8 @@ enum ChatGPTCodex {
     static let userAgent = "codex_cli_rs/0.1.0"
     static let authClaimsNamespace = "https://api.openai.com/auth"
     static let profileClaimsNamespace = "https://api.openai.com/profile"
-    static let curatedModels: [(id: String, name: String)] = [
-        ("gpt-5.6-sol", "GPT-5.6 Sol"),
-        ("gpt-5.6-terra", "GPT-5.6 Terra"),
-        ("gpt-5.5", "GPT-5.5")
-    ]
-
-    static var curatedModelIDs: [String] { curatedModels.map(\.id) }
+    // The catalog keeps the Codex release this list is asked as: an older client_version is answered with no models.
+    static let catalogKey = "openai-codex"
 }
 
 enum ChatGPTCodexBase64URL {

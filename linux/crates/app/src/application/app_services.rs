@@ -193,7 +193,8 @@ impl AppServices {
         services.mcp_tokens = Some(mcp_tokens);
         services.account_tokens = Some(account_tokens);
         services.telemetry = telemetry;
-        services.ai = AiService::new(services.settings.clone(), services.tasks.clone(), Some(ai_keys));
+        let models = tablepro_ai::ModelCatalog::new(services.storage.paths().cache.join("ai-models"));
+        services.ai = AiService::with_catalog(services.settings.clone(), services.tasks.clone(), Some(ai_keys), models);
         services
     }
 
