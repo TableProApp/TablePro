@@ -289,10 +289,7 @@ impl Account {
         };
         let refresh = match self.current().vault.load_refresh_token().await {
             Ok(Some(refresh)) => refresh,
-            Ok(None) => {
-                remove_legacy(&path).await;
-                return false;
-            }
+            Ok(None) => return self.adopt_offline_file(session, &path, &token).await,
             Err(error) => {
                 tracing::warn!(%error, "the keyring gave no account sign-in, so the Mac's entitlement waits for the next run");
                 return false;
@@ -325,6 +322,36 @@ impl Account {
         }
         tracing::info!(device = session.device_id.is_some(), "adopted the Mac's sign-in");
         self.publish(session, entitlement, problem);
+        true
+    }
+
+    // With no sign-in, the Mac kept an imported offline file in the same place. One that still verifies for this
+    // machine becomes the account file's offline file; anything else is a sign-in that ended.
+    async fn adopt_offline_file(&self, session: &mut Session, path: &std::path::Path, token: &str) -> bool {
+        let offline = self
+            .verify(session, token, Utc::now())
+            .ok()
+            .filter(|entitlement| entitlement.claims().offline);
+        let Some(entitlement) = offline else {
+            remove_legacy(path).await;
+            return false;
+        };
+        let file = AccountFile {
+            account_id: Some(entitlement.claims().sub.clone()),
+            entitlement: Some(token.to_owned()),
+            offline_only: true,
+            server: Some(self.current().api.clone()),
+            ..AccountFile::default()
+        };
+        match account_file::write(&self.inner.settings.account_file, &file).await {
+            Ok(()) => remove_legacy(path).await,
+            Err(error) => tracing::warn!(%error, "the account file was not written, so the Mac's offline file stays"),
+        }
+        *session = Session::default();
+        tracing::info!("adopted the Mac's offline file");
+        self.inner
+            .status
+            .send_replace(AccountStatus::Offline(Box::new(entitlement)));
         true
     }
 

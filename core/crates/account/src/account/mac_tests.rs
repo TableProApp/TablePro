@@ -505,3 +505,26 @@ async fn the_mac_s_entitlement_stays_while_the_account_file_cannot_be_written() 
     assert!(signed_in(&account).entitlement.is_some());
     assert!(dir.path().join("Account").join("entitlement.jwt").exists());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_mac_s_offline_file_with_no_sign_in_stays_an_offline_file() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut claims = fakes::claims(Utc::now(), TimeDelta::days(30), &["team_library"]);
+    claims.mid = machine().as_str().to_owned();
+    claims.offline = true;
+    legacy(dir.path(), &fakes::sign(&claims).expect("a token")).await;
+    let keyring = Keyring::holding(None);
+    let account = mac(dir.path(), super::tests::unreachable(), keyring.clone(), None);
+
+    account.restore().await;
+
+    assert!(matches!(*account.status().borrow(), AccountStatus::Offline(_)));
+    let file = stored(dir.path()).await;
+    assert!(file.offline_only);
+    assert_eq!(file.account_id.as_deref(), Some(ACCOUNT));
+    assert!(!dir.path().join("Account").join("entitlement.jwt").exists());
+    let restarted = mac(dir.path(), super::tests::unreachable(), keyring.clone(), None);
+    restarted.restore().await;
+    assert!(matches!(*restarted.status().borrow(), AccountStatus::Offline(_)));
+    assert_eq!(keyring.opened(), 1);
+}
