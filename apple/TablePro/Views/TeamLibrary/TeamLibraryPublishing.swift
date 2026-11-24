@@ -87,18 +87,6 @@ internal enum TeamLibraryPublishing {
         }
     }
 
-    // A delete of the last sign-in's library failed, so Team Library stays off rather than show or send it.
-    @MainActor
-    static func presentDisabled() {
-        AlertHelper.showErrorSheet(
-            title: String(localized: "Team Library is turned off"),
-            message: String(
-                localized: "TablePro could not delete the Team Library data of the last sign-in, so Team Library stays off. Quit TablePro and open it again to retry."
-            ),
-            window: nil
-        )
-    }
-
     @MainActor
     static func present(_ outcome: TeamLibraryPublishOutcome, showConflicts: () -> Void) {
         switch outcome {

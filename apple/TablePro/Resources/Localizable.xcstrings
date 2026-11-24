@@ -149582,9 +149582,6 @@
         }
       }
     },
-    "Paid features stop on this Mac until you sign in again, and TablePro restarts." : {
-
-    },
     "Paid features stop on this Mac until you sign in again." : {
       "localizations" : {
         "fr" : {
@@ -192226,9 +192223,6 @@
         }
       }
     },
-    "Sign out first. Signing out restarts TablePro, then sign in to the other account or server." : {
-
-    },
     "Sign out of TablePro on this Mac?" : {
       "localizations" : {
         "fr" : {
@@ -205980,9 +205974,6 @@
     "TablePro could not confirm its change to %@. Check the file before you try again." : {
 
     },
-    "TablePro could not delete the Team Library data of the last sign-in, so Team Library stays off. Quit TablePro and open it again to retry." : {
-
-    },
     "TablePro could not do this for you. Run this in Terminal instead:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -208906,9 +208897,6 @@
           }
         }
       }
-    },
-    "Team Library is turned off" : {
-
     },
     "Team library updated %@" : {
 
@@ -223653,9 +223641,6 @@
 
     },
     "These statements ran inside the transaction already open on this connection, so rolling it back undoes them:" : {
-
-    },
-    "These Team Library changes were not sent yet and are deleted: %@." : {
 
     },
     "These theme keys need theme format %1$d: %2$@." : {

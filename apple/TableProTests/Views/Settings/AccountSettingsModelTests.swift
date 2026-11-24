@@ -47,7 +47,7 @@ struct AccountSettingsModelTests {
         let model = AccountSettingsModel(services: fixture.services)
         await model.reload()
 
-        await model.signOut()
+        await model.signOut(uploadingFirst: false)
         try await waitUntil { model.devices.value == nil }
 
         #expect(model.profile.value == nil)
@@ -246,7 +246,7 @@ struct AccountSettingsModelTests {
 
         let load = Task { await model.reload() }
         await gate.arrived(1)
-        await model.signOut()
+        await model.signOut(uploadingFirst: false)
         try await waitUntil { !model.profile.isLoading }
         await gate.open()
         await load.value
@@ -256,44 +256,7 @@ struct AccountSettingsModelTests {
         #expect(model.content.identity == .signedOut)
     }
 
-    @Test("Sign Out signs out only once the restart's questions agree, then deletes the Team Library and restarts")
-    func signOutDeletesTheLibraryAndRelaunches() async throws {
-        for deleteFails in [false, true] {
-            let fixture = try await TeamLibraryFixture()
-            await fixture.sync.sync()
-            fixture.sync.start()
-            if deleteFails { try Self.lock(fixture.store.directory) }
-            defer { try? Self.unlock(fixture.store.directory) }
-            let sync = fixture.sync
-            let relaunch = RecordedRelaunch()
-            let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync }, relaunch: relaunch.record)
-
-            await model.requestSignOut()
-            model.confirmSignOut()
-            #expect(fixture.account.access.state.isSignedIn, "Nothing signs out while the restart asks")
-            await relaunch.agree()
-
-            #expect(relaunch.requests == 1)
-            #expect(!fixture.account.access.state.isSignedIn)
-            #expect(fixture.store.isEmpty == !deleteFails, "delete fails: \(deleteFails)")
-            #expect(fixture.store.isDeleting == deleteFails, "A failed delete stays marked for the next launch")
-            #expect(sync.isDisabled == deleteFails)
-            fixture.sync.stop()
-        }
-    }
-
-    // A folder whose files cannot be deleted.
-    static func lock(_ directory: URL) throws {
-        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-        #expect(!files.isEmpty)
-        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory.path)
-    }
-
-    static func unlock(_ directory: URL) throws {
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
-    }
-
-    @Test("Sign Out… asks first and names the team edits a sign-out discards; Cancel there or in the restart keeps the session")
+    @Test("Sign Out… lists the unsent Team Library edits with sync stopped; Cancel keeps the session and sync going")
     func signOutConfirmationNamesUnsentTeamChanges() async throws {
         let fixture = try await TeamLibraryFixture()
         await fixture.sync.sync()
@@ -305,8 +268,7 @@ struct AccountSettingsModelTests {
         )
         #expect(result == .queued(.server))
         let sync = fixture.sync
-        let relaunch = RecordedRelaunch()
-        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync }, relaunch: relaunch.record)
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync })
 
         await model.requestSignOut()
 
@@ -322,14 +284,64 @@ struct AccountSettingsModelTests {
         #expect(!fixture.sync.hasUnsentChanges)
         await model.requestSignOut()
         #expect(model.signOutConfirmation?.discardsSomething == false)
+    }
 
-        model.confirmSignOut()
-        relaunch.cancel()
-        #expect(relaunch.requests == 1)
-        #expect(model.activity == nil)
-        #expect(!model.confirmsSignOut)
+    @Test("Upload and Sign Out pushes first and signs out in this process; a failed upload asks again and signs nothing out")
+    func uploadThenSignOut() async throws {
+        let fixture = try await TeamLibraryFixture()
+        fixture.sync.start()
+        try await waitUntil {
+            if case .synced = fixture.sync.status { return true }
+            return false
+        }
+        await fixture.library { $0.pushFaults = [503, 503] }
+        _ = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: TeamLibraryFixture.team
+        )
+        let sync = fixture.sync
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync })
+        await model.requestSignOut()
+
+        await model.signOut(uploadingFirst: true)
+
         #expect(fixture.account.services.isSignedIn)
-        #expect(await fixture.sync.sync() == .synced)
+        #expect(model.signOutConfirmation == AccountSignOutConfirmation(
+            teamChanges: ["Orders"], uploadFailure: .server, removesOfflineFile: false
+        ))
+        await model.signOut(uploadingFirst: true)
+
+        #expect(!fixture.account.services.isSignedIn)
+        #expect(await fixture.server.library.live(TeamLibraryFixture.team).count == 1)
+        try await waitUntil { fixture.cacheFolders.isEmpty }
+        #expect(fixture.discarded.reports.isEmpty)
+        #expect(!sync.isHeld, "Team Library is ready for the next sign-in in this process")
+        fixture.sync.stop()
+    }
+
+    @Test("Discard and Sign Out drops the unsent edits without sending them, and reports nothing as lost by surprise")
+    func discardThenSignOut() async throws {
+        let fixture = try await TeamLibraryFixture()
+        fixture.sync.start()
+        try await waitUntil {
+            if case .synced = fixture.sync.status { return true }
+            return false
+        }
+        await fixture.library { $0.pushFaults = [503] }
+        _ = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: TeamLibraryFixture.team
+        )
+        let sync = fixture.sync
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync })
+        await model.requestSignOut()
+
+        await model.signOut(uploadingFirst: false)
+
+        #expect(!fixture.account.services.isSignedIn)
+        try await waitUntil { fixture.cacheFolders.isEmpty }
+        #expect(await fixture.server.library.live(TeamLibraryFixture.team).isEmpty)
+        #expect(!fixture.sync.hasUnsentChanges)
+        #expect(fixture.discarded.reports.isEmpty)
+        fixture.sync.stop()
     }
 
     @Test("A closed dialog keeps Team Library waiting: only Cancel lets it go on")
@@ -337,9 +349,7 @@ struct AccountSettingsModelTests {
         let fixture = try await TeamLibraryFixture()
         await fixture.sync.sync()
         let sync = fixture.sync
-        let model = AccountSettingsModel(
-            services: fixture.account.services, teamLibrary: { sync }, relaunch: RecordedRelaunch().record
-        )
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync })
 
         await model.requestSignOut()
         model.closeSignOutConfirmation()
@@ -429,27 +439,5 @@ private final class CountingLoads {
                 return []
             }
         )
-    }
-}
-
-// A restart that records what it was asked to run and lets the test answer its questions.
-@MainActor
-final class RecordedRelaunch {
-    private(set) var requests = 0
-    private var work: (@MainActor () async -> Void)?
-    private var ifCancelled: (@MainActor () -> Void)?
-
-    func record(_ work: @escaping @MainActor () async -> Void, _ ifCancelled: @escaping @MainActor () -> Void) {
-        requests += 1
-        self.work = work
-        self.ifCancelled = ifCancelled
-    }
-
-    func agree() async {
-        await work?()
-    }
-
-    func cancel() {
-        ifCancelled?()
     }
 }

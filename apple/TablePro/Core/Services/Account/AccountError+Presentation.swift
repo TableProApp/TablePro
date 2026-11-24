@@ -27,7 +27,7 @@ extension AccountError {
         case .companyServer(let problem):
             return problem.description
         case .signOutFirst:
-            return String(localized: "Sign out first. Signing out restarts TablePro, then sign in to the other account or server.")
+            return String(localized: "Sign out first, then sign in to the other account or server.")
         }
     }
 }

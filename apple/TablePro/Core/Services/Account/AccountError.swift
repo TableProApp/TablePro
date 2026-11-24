@@ -38,7 +38,7 @@ internal enum AccountError: Error, Equatable {
     case invalidResponse
     case offlineFileRejected(OfflineFileProblem)
     case companyServer(CompanyServerProblem)
-    // Another account or server while signed in: that goes through Sign Out, which restarts TablePro.
+    // Another account or server while signed in: that goes through Sign Out, which asks about unsent Team Library edits.
     case signOutFirst
 }
 

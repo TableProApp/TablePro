@@ -16,8 +16,9 @@ internal struct AccountActionFailure: Equatable, Identifiable {
 }
 
 internal struct AccountSignOutConfirmation: Equatable {
-    // The Team Library edits and conflicts not sent yet, which the sign-out deletes.
+    // The Team Library edits and conflicts not uploaded yet, taken with sync stopped.
     let teamChanges: [String]
+    var uploadFailure: TeamLibraryFailure?
     let removesOfflineFile: Bool
 
     var discardsSomething: Bool {
@@ -25,12 +26,9 @@ internal struct AccountSignOutConfirmation: Equatable {
     }
 
     var message: String {
-        var sentences = [String(localized: "Paid features stop on this Mac until you sign in again, and TablePro restarts.")]
+        var sentences = [String(localized: "Paid features stop on this Mac until you sign in again.")]
         if !teamChanges.isEmpty {
-            sentences.append(String(
-                format: String(localized: "These Team Library changes were not sent yet and are deleted: %@."),
-                teamChanges.formatted(.list(type: .and))
-            ))
+            sentences.append(TeamLibraryUnsentChanges.message(teamChanges, failure: uploadFailure))
         }
         if removesOfflineFile {
             sentences.append(String(localized: "The imported offline file is removed."))
@@ -62,13 +60,6 @@ internal final class AccountSettingsModel: ObservableObject {
         }
     }
 
-    // Runs the work once every question a quit asks is answered, then quits and reopens; a Cancel runs the second
-    // closure instead.
-    typealias Relaunch = @MainActor (
-        _ work: @escaping @MainActor () async -> Void,
-        _ ifCancelled: @escaping @MainActor () -> Void
-    ) -> Void
-
     static let freshness: TimeInterval = 60
 
     @Published private(set) var profile = AccountRemote<AccountProfile>()
@@ -90,7 +81,8 @@ internal final class AccountSettingsModel: ObservableObject {
     private let now: () -> Date
     private let openURL: @MainActor (URL) -> Void
     private let teamLibrary: @MainActor () -> TeamLibrarySync
-    private let relaunch: Relaunch
+    // Sign Out… stopped Team Library, and the answer to its dialog decides what follows.
+    private var holdsTeamLibrary = false
     private var stateObserver: AnyCancellable?
     private var loadedSignedIn: Bool?
     // Bumped when the loaded data is dropped, so a load still out for the old account lands nowhere.
@@ -103,15 +95,13 @@ internal final class AccountSettingsModel: ObservableObject {
         loader: Loader? = nil,
         now: @escaping () -> Date = { Date() },
         openURL: @escaping @MainActor (URL) -> Void = { _ = WebPageOpener.open($0, scope: .httpsOrLoopbackHTTP) },
-        teamLibrary: @escaping @MainActor () -> TeamLibrarySync = { .shared },
-        relaunch: @escaping Relaunch = { AppRelauncher.shared.relaunch(after: $0, ifCancelled: $1) }
+        teamLibrary: @escaping @MainActor () -> TeamLibrarySync = { .shared }
     ) {
         self.services = services
         self.loader = loader ?? .live(services)
         self.now = now
         self.openURL = openURL
         self.teamLibrary = teamLibrary
-        self.relaunch = relaunch
         stateObserver = services.access.$state
             .dropFirst()
             .sink { [weak self] state in
@@ -237,11 +227,12 @@ internal final class AccountSettingsModel: ObservableObject {
         presentDeviceLimitIfReached()
     }
 
-    // Team Library stops first and its pass still out ends, so the dialog lists every edit the sign-out deletes.
+    // Team Library stops first and its pass still out ends, so the dialog lists every edit not uploaded.
     func requestSignOut() async {
         guard activity == nil, signOutConfirmation == nil else { return }
         activity = .signingOut
-        let teamChanges = await teamLibrary().holdForSignOut()
+        holdsTeamLibrary = true
+        let teamChanges = await teamLibrary().hold()
         activity = nil
         signOutConfirmation = AccountSignOutConfirmation(
             teamChanges: teamChanges,
@@ -249,20 +240,11 @@ internal final class AccountSettingsModel: ObservableObject {
         )
     }
 
-    // The one way to leave a sign-in by choice. The restart asks about unsaved documents and running work first, and a
-    // Cancel there signs nothing out. Past that, the sign-out deletes Team Library data and TablePro restarts with
-    // nothing left that asks; a delete that failed is finished at the next launch before anything loads.
-    func confirmSignOut() {
-        signOutConfirmation = nil
-        activity = .signingOut
-        // Held strongly: the Settings window may close while the restart asks, and the sign-out must still run.
-        relaunch({ await self.signOut() }, { self.cancelSignOut() })
-    }
-
     func cancelSignOut() {
         signOutConfirmation = nil
-        activity = nil
-        teamLibrary().releaseHold()
+        guard holdsTeamLibrary else { return }
+        holdsTeamLibrary = false
+        teamLibrary().release()
     }
 
     // Either button closes the dialog; each one says what follows.
@@ -270,10 +252,28 @@ internal final class AccountSettingsModel: ObservableObject {
         signOutConfirmation = nil
     }
 
-    func signOut() async {
+    // Uploading first, what the upload leaves is asked about again; otherwise the unsent edits are discarded.
+    func signOut(uploadingFirst: Bool) async {
         signOutConfirmation = nil
         activity = .signingOut
         defer { activity = nil }
+        if holdsTeamLibrary {
+            let teamLibrary = teamLibrary()
+            if uploadingFirst {
+                let (left, failure) = await teamLibrary.pushHeld()
+                guard left.isEmpty else {
+                    signOutConfirmation = AccountSignOutConfirmation(
+                        teamChanges: left,
+                        uploadFailure: failure,
+                        removesOfflineFile: services.access.state.entitlement?.isOffline == true
+                    )
+                    return
+                }
+            } else {
+                teamLibrary.discardHeld()
+            }
+            holdsTeamLibrary = false
+        }
         await services.signOut()
     }
 

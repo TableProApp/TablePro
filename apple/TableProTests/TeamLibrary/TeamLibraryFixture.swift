@@ -18,9 +18,11 @@ final class TeamLibraryFixture {
     let defaults: EphemeralDefaults
     let directory: URL
     let clock = ManualClock()
+    let storage: TeamLibraryStorage
+    // The read cache of the account the fixture signs in.
     let store: TeamLibraryStateStore
-    // Each time Team Library turned itself off.
-    let disabled = DisabledLog()
+    // What each involuntary sign-out discarded.
+    let discarded = DiscardedLog()
     private(set) var sync: TeamLibrarySync
 
     init(role: String = "owner", hasSeat: Bool = true, seed: (inout FakeTeamLibrary) -> Void = { _ in }) async throws {
@@ -38,12 +40,17 @@ final class TeamLibraryFixture {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TeamLibraryTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        store = TeamLibraryStateStore(
-            directory: directory.appendingPathComponent("TeamLibrary", isDirectory: true),
-            legacyFile: directory.appendingPathComponent("team_library.json"),
+        storage = TeamLibraryStorage(
+            flat: TeamLibraryStateStore(
+                directory: directory.appendingPathComponent("TeamLibrary", isDirectory: true),
+                legacyFile: directory.appendingPathComponent("team_library.json"),
+                defaults: defaults.defaults
+            ),
+            cacheRoot: directory.appendingPathComponent("TeamLibraryCache", isDirectory: true),
             defaults: defaults.defaults
         )
-        sync = TeamLibrarySync(account: account.services, store: store, clock: clock, reportDisabled: disabled.record)
+        store = storage.cache(in: storage.folder(server: AccountServer.production.apiOrigin, accountID: "acct_test"))
+        sync = TeamLibrarySync(account: account.services, storage: storage, clock: clock, reportDiscarded: discarded.record)
         sync.loadIfNeeded()
     }
 
@@ -58,8 +65,20 @@ final class TeamLibraryFixture {
     // A new launch reading what the last one stored.
     func relaunch() {
         sync.stop()
-        sync = TeamLibrarySync(account: account.services, store: store, clock: clock, reportDisabled: disabled.record)
+        sync = TeamLibrarySync(account: account.services, storage: storage, clock: clock, reportDiscarded: discarded.record)
         sync.loadIfNeeded()
+    }
+
+    // A team file as 0.88 and earlier wrote it, unsent edits and conflicts included.
+    func writeFlat(_ state: TeamLibraryTeamState) throws {
+        try JSONFileStore<TeamLibraryTeamState>(url: storage.flat.directory.appendingPathComponent("\(state.teamID).json"))
+            .write(state)
+    }
+
+    // The folders of the read cache on disk, one per server and account.
+    var cacheFolders: [String] {
+        let folders = (try? FileManager.default.contentsOfDirectory(atPath: storage.cacheRoot.path)) ?? []
+        return folders.sorted()
     }
 
     func library(_ change: @escaping @Sendable (inout FakeTeamLibrary) -> Void) async {
@@ -116,10 +135,10 @@ final class TeamLibraryFixture {
 }
 
 @MainActor
-final class DisabledLog {
-    private(set) var reports = 0
+final class DiscardedLog {
+    private(set) var reports: [[String]] = []
 
-    func record() {
-        reports += 1
+    func record(_ changes: [String]) {
+        reports.append(changes)
     }
 }

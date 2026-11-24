@@ -182,15 +182,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        // The connection editors first: their Cancel keeps the app open before anything else is asked or stopped. A
-        // relaunch asked them before it started.
-        guard AppRelauncher.shared.hasApprovedRunningWork || ConnectionEditorWindowController.prepareToTerminate(),
-              let plan = QuitApproval.approve() else {
+        // The connection editors first: their Cancel keeps the app open before anything else is asked or stopped.
+        guard ConnectionEditorWindowController.prepareToTerminate(), let plan = QuitApproval.approve() else {
             AppRelauncher.shared.terminationWasCancelled()
             return .terminateCancel
         }
 
         Task {
+            // Team Library edits not uploaded live only in memory, so they are asked about while a Cancel changes nothing.
+            guard await TeamLibraryUnsentChanges.approveQuit() else {
+                NSApp.reply(toApplicationShouldTerminate: false)
+                AppRelauncher.shared.terminationWasCancelled()
+                return
+            }
             // Before anything the app could not take back if it stays open.
             guard await QuitApproval.commitBeforeQuitting(plan) else {
                 NSApp.reply(toApplicationShouldTerminate: false)

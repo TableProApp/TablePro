@@ -28,12 +28,28 @@ internal struct TeamLibraryDestination: Sendable {
     fileprivate let sessionID: String?
 }
 
-// Pulls each team's library from its persisted cursor on launch, every 15 minutes and after each push, and pushes
-// what this Mac publishes in batches. Who reads and who writes comes from GET /v2/me: a seat to read, owner or admin
-// to write.
+// Pulls each team's library from its cached cursor on launch, every 15 minutes and after each push, and pushes what
+// this Mac publishes in batches. Who reads and who writes comes from GET /v2/me: a seat to read, owner or admin to write.
+//
+// One sign-in's library:
+// I1. Unsent edits, the pushes still to go and the conflicts not resolved, live only in `teams`, for the open session.
+//     Nothing about them is written to disk.
+// I2. The read cache sits in a folder named from the server and account (TeamLibraryStorage). Only the open session's
+//     folder is read; every other one is deleted, best-effort, on sign-out, switch and launch.
+// I3. The library 0.88 and earlier kept goes only to the tablepro.app sign-in the core restored at launch: its cache is
+//     copied into that account's folder and its edits pushed with that session's bearer. Its files go once a push
+//     succeeds, or with the session; a failed push keeps them for the next launch. A sign-in made in this run or on a
+//     company server deletes them unread.
+// I4. A switch or sign-out stays in this process. Sync stops and the pass in flight ends, unsent edits are listed with
+//     push, discard or cancel (an involuntary sign-out can only discard and says what went), then the session's
+//     store goes. The session id lives only in the core's process and a bearer of another session is refused; a
+//     publish is bound to the session shown at its confirmation and checked again before it is sent.
+// I5. Quitting with unsent edits asks push, discard or cancel; while edits wait, Team Library shows them not uploaded.
+// I6. Losing team_library drops the session's store and deletes its folder, best-effort.
+// I7. Until the restore settles, a sign-in, a server choice or a license key waits; a restored sign-in refuses them.
 @MainActor
 internal final class TeamLibrarySync: ObservableObject {
-    static let shared = TeamLibrarySync(account: .shared, store: .live())
+    static let shared = TeamLibrarySync(account: .shared, storage: .live())
 
     static let pullInterval: Duration = .seconds(15 * 60)
     static let firstRetryDelay: Duration = .seconds(30)
@@ -48,21 +64,21 @@ internal final class TeamLibrarySync: ObservableObject {
     @Published private(set) var status: TeamLibrarySyncStatus = .idle
     @Published private(set) var conflicts: [TeamLibraryConflict] = []
     @Published private(set) var writableTeams: [TeamLibraryTeam] = []
+    // Edits waiting for a push, shown as not uploaded.
+    @Published private(set) var notUploadedCount = 0
 
     private let account: AccountServices
-    private let store: TeamLibraryStateStore
-    // The owning sign-in while Team Library runs for it, with a client that calls only its server under its bearer.
-    private var active: (owner: TeamLibraryOwner, sessionID: String, client: TeamLibraryClient)?
-    // A delete that did not finish: nothing loads until a relaunch.
-    @Published private(set) var isDisabled = false
-    private let reportDisabled: @MainActor () -> Void
-    // Builds before the core kept one library, which only tablepro.app filled; its account is the one restored first.
-    private var legacyOwner: TeamLibraryOwner??
-    // Once stopped, a start waits for the pass that may still be out.
+    private let storage: TeamLibraryStorage
+    private var active: ActiveSession?
+    // Set once the core has restored the last run's sign-in, with the session it restored, if any.
+    private var restoreSettled = false
+    private var restoredSessionID: String?
+    // Once a session closed, the next one opens behind the pass that may still be out.
     private var hasStopped = false
-    // Set while Sign Out… asks: no pass, publish or resolve runs, so the unsent edits it listed stay the last.
+    // Set while a sign-out or a quit asks: no pass, publish or resolve runs, so the unsent edits it listed stay the last.
     private(set) var isHeld = false
     private var resumesAfterHold = false
+    private let reportDiscarded: @MainActor ([String]) -> Void
     private let clock: any Clock<Duration>
     private let now: @Sendable () -> Date
     private var teams: [String: TeamLibraryTeamState] = [:]
@@ -75,7 +91,6 @@ internal final class TeamLibrarySync: ObservableObject {
     private var scheduleTask: Task<Void, Never>?
     private var sleepTask: Task<Void, Never>?
     private var accessCancellable: AnyCancellable?
-    private var eventsCancellable: AnyCancellable?
     // Failures in a row that the network or the server may recover from; each one doubles the wait for the next sync.
     private var retries = 0
     private var hasLoaded = false
@@ -84,33 +99,57 @@ internal final class TeamLibrarySync: ObservableObject {
     private var rescheduled = false
     // Set by a 429's Retry-After: no pull or push goes out until it ends.
     private var rateLimitHold: Task<Void, Never>?
-    // Bumped by sign-out, so a sync still out at that moment brings no team back.
+    // Bumped when a session closes, so a sync still out at that moment brings no team back.
     private var generation = 0
+
+    private struct SessionKey: Equatable {
+        let sessionID: String
+        let server: AccountServer
+        let accountID: String
+
+        init?(_ state: AccountState) {
+            guard state.isSignedIn, let sessionID = state.sessionID, let accountID = state.entitlement?.accountID else {
+                return nil
+            }
+            self.sessionID = sessionID
+            self.server = state.server
+            self.accountID = accountID
+        }
+    }
+
+    // The open session: its folder, and a client that calls only its server under its bearer.
+    private struct ActiveSession {
+        let key: SessionKey
+        let cache: TeamLibraryStateStore
+        let client: TeamLibraryClient
+        // Holds the edits of the library 0.88 kept, whose files stay until a push of them succeeds.
+        var usesFlat: Bool
+    }
 
     init(
         account: AccountServices,
-        store: TeamLibraryStateStore,
+        storage: TeamLibraryStorage,
         clock: any Clock<Duration> = ContinuousClock(),
         now: @escaping @Sendable () -> Date = { Date() },
-        reportDisabled: @escaping @MainActor () -> Void = TeamLibraryPublishing.presentDisabled
+        reportDiscarded: @escaping @MainActor ([String]) -> Void = TeamLibraryUnsentChanges.presentDiscarded
     ) {
         self.account = account
-        self.store = store
+        self.storage = storage
         self.clock = clock
         self.now = now
-        self.reportDisabled = reportDisabled
+        self.reportDiscarded = reportDiscarded
     }
 
     var canPublish: Bool {
         !writableTeams.isEmpty
     }
 
-    // What a sign-out drops with the rest of the library: edits not pushed yet and conflicts not resolved.
+    // Edits not pushed yet and conflicts not resolved, which live only in memory.
     var hasUnsentChanges: Bool {
         !unsentChanges.isEmpty
     }
 
-    // The names of the edits not pushed yet and the conflicts not resolved, which a sign-out deletes.
+    // Their names, as a sign-out or a quit lists them.
     var unsentChanges: [String] {
         teams.values.sorted { $0.teamName < $1.teamName }.flatMap { state in
             (state.pending + state.conflicts.map(\.edit)).map { Self.name(of: $0, in: state) }
@@ -133,10 +172,14 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     func stop() {
+        stopSchedule()
+        accessCancellable = nil
+    }
+
+    private func stopSchedule() {
         scheduleTask?.cancel()
         scheduleTask = nil
         sleepTask?.cancel()
-        accessCancellable = nil
     }
 
     func loadIfNeeded() {
@@ -145,24 +188,51 @@ internal final class TeamLibrarySync: ObservableObject {
         follow(account.access.state)
     }
 
-    // Stops the schedule and waits for the pass or publish still out, so what it returns is final until the release.
-    func holdForSignOut() async -> [String] {
+    // Stops the schedule and waits for the pass or publish still out, so what it returns stays final while held.
+    func hold() async -> [String] {
         if !isHeld {
             isHeld = true
             resumesAfterHold = scheduleTask != nil
-            stop()
+            stopSchedule()
         }
         await tail?.value
         return unsentChanges
     }
 
-    // The sign-out was canceled.
-    func releaseHold() {
+    // The sign-out or the quit was canceled.
+    func release() {
         guard isHeld else { return }
         isHeld = false
         if resumesAfterHold {
             start()
         }
+    }
+
+    // Push now: one pass while held. What is still not uploaded comes back, with why.
+    func pushHeld() async -> (unsent: [String], failure: TeamLibraryFailure?) {
+        guard isHeld else { return (unsentChanges, nil) }
+        let outcome = await serially { [weak self] () -> TeamLibrarySyncOutcome in
+            await self?.performSync(whileHeld: true) ?? .skipped
+        }.value
+        if case .failed(let failure) = outcome {
+            return (unsentChanges, failure)
+        }
+        return (unsentChanges, nil)
+    }
+
+    // Discard: the unsent edits go, and the library 0.88 kept with them.
+    func discardHeld() {
+        guard isHeld else { return }
+        for var state in teams.values where !state.pending.isEmpty || !state.conflicts.isEmpty {
+            state.pending = []
+            state.conflicts = []
+            commit(state)
+        }
+        if active?.usesFlat == true {
+            storage.removeFlat()
+            active?.usesFlat = false
+        }
+        publishContent()
     }
 
     // Ends the wait for the next scheduled pull, or skips it when the request lands during a sync.
@@ -187,7 +257,7 @@ internal final class TeamLibrarySync: ObservableObject {
 
     // Taken when the person picks the team, before any confirmation waits.
     func destination(_ teamID: String) -> TeamLibraryDestination {
-        TeamLibraryDestination(teamID: teamID, sessionID: active?.sessionID)
+        TeamLibraryDestination(teamID: teamID, sessionID: active?.key.sessionID)
     }
 
     func publishConnections(
@@ -224,7 +294,10 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     func resolve(_ conflict: TeamLibraryConflict, keepingMine: Bool) async {
-        guard !isHeld, var state = teams[conflict.teamID] else { return }
+        // Only a conflict of the open session: one a sheet kept from the last session is no one's to push.
+        guard !isHeld, var state = teams[conflict.teamID], state.conflicts.contains(where: { $0.id == conflict.id }) else {
+            return
+        }
         let key = conflict.key
         let stored = state.items[key]
         state.conflicts.removeAll { $0.id == conflict.id }
@@ -262,7 +335,7 @@ internal final class TeamLibrarySync: ObservableObject {
         teams[teamID]?.teamName
     }
 
-    // The entitlement no longer includes the team library: this Mac's copy goes.
+    // The entitlement no longer includes the team library: this Mac's copy goes, unsent edits included.
     func clear() {
         generation += 1
         rateLimitHold?.cancel()
@@ -270,13 +343,19 @@ internal final class TeamLibrarySync: ObservableObject {
         teams = [:]
         legacy = nil
         accountEmail = nil
-        store.removeAll()
+        if let active {
+            storage.removeFolders(except: nil)
+            if active.usesFlat {
+                storage.removeFlat()
+                self.active?.usesFlat = false
+            }
+        }
         status = .idle
         publishContent()
     }
 
-    private func performSync() async -> TeamLibrarySyncOutcome {
-        guard !isHeld else { return .skipped }
+    private func performSync(whileHeld: Bool = false) async -> TeamLibrarySyncOutcome {
+        guard !isHeld || whileHeld else { return .skipped }
         follow(account.access.state, inPass: true)
         guard account.isSignedIn, let client = active?.client else { return .skipped }
         guard account.access.isAvailable(.teamLibrary) else {
@@ -319,7 +398,11 @@ internal final class TeamLibrarySync: ObservableObject {
         guard started == generation else { return .skipped }
         if legacy != nil, teams.values.allSatisfy({ $0.cursor != nil }) {
             legacy = nil
-            store.removeLegacy()
+            active?.cache.removeLegacy()
+        }
+        if failure == nil, active?.usesFlat == true {
+            storage.removeFlat()
+            active?.usesFlat = false
         }
         publishContent()
         return finish(failure.map { .failed($0) } ?? .synced)
@@ -343,7 +426,7 @@ internal final class TeamLibrarySync: ObservableObject {
         let listed = Set(seated.map(\.teamID))
         for teamID in teams.keys where !listed.contains(teamID) {
             teams[teamID] = nil
-            store.remove(teamID: teamID)
+            active?.cache.remove(teamID: teamID)
         }
         for membership in seated {
             var state = teams[membership.teamID]
@@ -397,7 +480,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 continue
             } catch .unreadable {
                 teams[teamID] = nil
-                store.remove(teamID: teamID)
+                active?.cache.remove(teamID: teamID)
                 throw .unreadable
             }
             guard var state = teams[teamID] else { return }
@@ -454,7 +537,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 throw .refused(nil)
             } catch .unreadable {
                 teams[teamID] = nil
-                store.remove(teamID: teamID)
+                active?.cache.remove(teamID: teamID)
                 throw .unreadable
             }
             guard var current = teams[teamID] else { return }
@@ -581,7 +664,7 @@ internal final class TeamLibrarySync: ObservableObject {
         plan: @escaping (TeamLibraryTeamState) throws -> [TeamLibraryEdit]
     ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
         let result = await serially { [weak self] () -> Result<TeamLibraryPublishResult, TeamLibraryPublishError> in
-            guard let self, !self.isHeld, let sessionID = destination.sessionID, self.active?.sessionID == sessionID,
+            guard let self, !self.isHeld, let sessionID = destination.sessionID, self.active?.key.sessionID == sessionID,
                   self.account.access.state.sessionID == sessionID
             else { return .failure(.failed(.signedOut)) }
             return await self.performPublish(to: destination.teamID, owns: owns, plan: plan)
@@ -662,7 +745,7 @@ internal final class TeamLibrarySync: ObservableObject {
             state.moves.formIntersection(state.pending.map { TeamLibraryKey($0) })
         }
         teams[state.teamID] = state
-        store.save(state)
+        active?.cache.save(state)
     }
 
     private func publishContent() {
@@ -678,6 +761,10 @@ internal final class TeamLibrarySync: ObservableObject {
         let nextConflicts = teams.values.sorted(by: { $0.teamID < $1.teamID }).flatMap(\.conflicts)
         if nextConflicts != conflicts {
             conflicts = nextConflicts
+        }
+        let pendingCount = teams.values.reduce(0) { $0 + $1.pending.count }
+        if pendingCount != notUploadedCount {
+            notUploadedCount = pendingCount
         }
         let writable = teams.values.filter(\.canWrite)
             .map { TeamLibraryTeam(id: $0.teamID, name: $0.teamName) }
@@ -738,7 +825,7 @@ internal final class TeamLibrarySync: ObservableObject {
         wakeRequested = false
     }
 
-    // Signing out, signing in or a new entitlement syncs at once; signing out also drops what the old account read.
+    // Signing out, signing in or a new entitlement syncs at once.
     private func observeAccount() {
         accessCancellable = account.access.$state
             .dropFirst()
@@ -748,61 +835,69 @@ internal final class TeamLibrarySync: ObservableObject {
                 self.follow(state)
                 self.syncSoon()
             }
-        eventsCancellable = account.events.sink { [weak self] event in
-            guard case .signedOut(.user) = event, let self else { return }
-            self.deactivate()
-            self.deleteOrDisable()
-        }
     }
 
-    // Starts and stops Team Library with the restored sign-in that owns the store (TeamLibraryOwner has the rules).
-    // `state` is the one being published: the subscription sees it before `access.state` holds it.
-    // `inPass` is a pass's own call, which no other pass can be out beside.
+    // Opens and closes the session with the sign-in. `state` is the one being published: the subscription sees it
+    // before `access.state` holds it. `inPass` is a pass's own call, which no other pass can be out beside.
     private func follow(_ state: AccountState, inPass: Bool = false) {
-        guard !isDisabled else { return }
-        // A delete that did not finish, in this run or an earlier one, finishes before anything loads, whoever signs in.
-        if store.isDeleting, !deleteOrDisable() { return }
         guard state.isRestored else { return }
-        let owner = TeamLibraryOwner(state)
-        if legacyOwner == nil {
-            let established = owner?.server == AccountServer.production.apiOrigin.absoluteString ? owner : nil
-            legacyOwner = .some(established)
-            if store.owner == nil, !store.isEmpty, established == nil {
-                guard deleteOrDisable() else { return }
+        let next = SessionKey(state)
+        if !restoreSettled {
+            restoreSettled = true
+            restoredSessionID = state.isSignedIn ? state.sessionID : nil
+            // Only tablepro.app's sign-in of 0.88 can be restored, and a company server's core never restores it.
+            if !state.server.isProduction {
+                storage.removeFlat()
+            }
+            if next == nil {
+                storage.removeFolders(except: nil)
             }
         }
-        if let active {
-            guard owner != active.owner || state.sessionID != active.sessionID else { return }
-            deactivate()
-        }
-        guard let owner, let sessionID = state.sessionID else { return }
-        let server = state.server
-        guard hasStopped, !inPass else {
-            start(owner, sessionID: sessionID, server: server)
+        guard next != active?.key else { return }
+        guard inPass || active == nil && !hasStopped else {
+            // Behind the pass in flight, with the sign-in as it is by then.
+            _ = serially { [weak self] in
+                guard let self else { return }
+                self.open(SessionKey(self.account.access.state))
+            }
             return
         }
-        _ = serially { [weak self] in
-            // The sign-in may have moved on while the pass ran.
-            guard let self, self.account.access.state.sessionID == sessionID else { return }
-            self.start(owner, sessionID: sessionID, server: server)
-        }
+        open(next)
     }
 
-    private func start(_ owner: TeamLibraryOwner, sessionID: String, server: AccountServer) {
-        guard active == nil, !isDisabled else { return }
-        let adoptsLegacy = store.owner == nil && legacyOwner == .some(owner)
-        if store.owner != owner, !adoptsLegacy {
-            guard deleteOrDisable() else { return }
+    private func open(_ next: SessionKey?) {
+        guard next != active?.key else { return }
+        close()
+        guard let next else { return }
+        let folder = storage.folder(server: next.server.apiOrigin, accountID: next.accountID)
+        let cache = storage.cache(in: folder)
+        storage.removeFolders(except: folder)
+        var loaded = cache.loadAll().map(\.cached)
+        var usesFlat = false
+        if next.sessionID == restoredSessionID, next.server.isProduction, storage.hasFlat {
+            loaded = storage.adoptFlat(into: cache)
+            usesFlat = loaded.contains { !$0.pending.isEmpty || !$0.conflicts.isEmpty }
+            if !usesFlat {
+                storage.removeFlat()
+            }
+        } else {
+            storage.removeFlat()
         }
-        store.setOwner(owner)
-        active = (owner, sessionID, TeamLibraryClient(api: account.api(pinnedTo: server, session: sessionID)))
-        teams = Dictionary(store.loadAll().map { ($0.teamID, $0) }, uniquingKeysWith: { first, _ in first })
-        legacy = store.loadLegacy(now: now())
+        active = ActiveSession(
+            key: next,
+            cache: cache,
+            client: TeamLibraryClient(api: account.api(pinnedTo: next.server, session: next.sessionID)),
+            usesFlat: usesFlat
+        )
+        teams = Dictionary(loaded.map { ($0.teamID, $0) }, uniquingKeysWith: { first, _ in first })
+        legacy = cache.loadLegacy(now: now())
         publishContent()
     }
 
-    // The data stays on disk with its owner; a pass still out brings nothing back.
-    private func deactivate() {
+    // Drops the session's store and every folder; unsent edits still here at this point had no one to ask.
+    private func close() {
+        guard let closing = active else { return }
+        let dropped = unsentChanges
         active = nil
         hasStopped = true
         generation += 1
@@ -812,16 +907,17 @@ internal final class TeamLibrarySync: ObservableObject {
         legacy = nil
         accountEmail = nil
         status = .idle
+        storage.removeFolders(except: nil)
+        if closing.usesFlat {
+            storage.removeFlat()
+        }
         publishContent()
-    }
-
-    @discardableResult
-    private func deleteOrDisable() -> Bool {
-        if store.deleteAll() { return true }
-        Self.logger.error("The Team Library data was not deleted; Team Library is off until TablePro restarts")
-        deactivate()
-        isDisabled = true
-        reportDisabled()
-        return false
+        if !dropped.isEmpty {
+            Self.logger.notice("Discarding \(dropped.count) team library changes the sign-out left unsent")
+            reportDiscarded(dropped)
+        }
+        if isHeld {
+            release()
+        }
     }
 }

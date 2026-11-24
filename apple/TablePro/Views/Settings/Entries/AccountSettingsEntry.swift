@@ -111,8 +111,17 @@ private struct AccountPresentations: ViewModifier {
                 isPresented: Binding(get: { model.confirmsSignOut }, set: { if !$0 { model.closeSignOutConfirmation() } }),
                 presenting: model.signOutConfirmation
             ) { confirmation in
-                Button(String(localized: "Sign Out"), role: confirmation.discardsSomething ? .destructive : nil) {
-                    model.confirmSignOut()
+                if confirmation.teamChanges.isEmpty {
+                    Button(String(localized: "Sign Out"), role: confirmation.discardsSomething ? .destructive : nil) {
+                        Task { await model.signOut(uploadingFirst: false) }
+                    }
+                } else {
+                    Button(String(localized: "Upload and Sign Out")) {
+                        Task { await model.signOut(uploadingFirst: true) }
+                    }
+                    Button(String(localized: "Discard and Sign Out"), role: .destructive) {
+                        Task { await model.signOut(uploadingFirst: false) }
+                    }
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {
                     model.cancelSignOut()

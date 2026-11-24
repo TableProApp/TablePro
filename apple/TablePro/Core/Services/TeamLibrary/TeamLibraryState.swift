@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import CryptoKit
 import Foundation
 import os
 import TableProCloudAPI
@@ -120,6 +121,16 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         items.values.filter { !$0.deleted }
     }
 
+    // What the read cache keeps: what the team holds, never an edit this Mac has not sent.
+    var cached: TeamLibraryTeamState {
+        var cached = self
+        cached.pending = []
+        cached.conflicts = []
+        cached.moves = []
+        cached.declined = [:]
+        return cached
+    }
+
     func declines(_ key: TeamLibraryKey, sending data: TeamLibraryData) -> Bool {
         declined[key] == data
     }
@@ -130,59 +141,95 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     }
 }
 
-// The sign-in the stored Team Library belongs to. The rules that keep one sign-in's library from another:
-//
-// 1. Switching is a relaunch. Sign Out stops Team Library and lets the pass that is out end, then lists the unpushed
-//    edits; the restart then asks about unsaved documents and running work. A Cancel in any of these changes nothing.
-//    Past them, sign-out, the delete and the relaunch run with nothing left that asks. A sign-in, a server change or a
-//    license key is refused while signed in, and waits for the restore.
-// 2. An involuntary sign-out (refresh refused, device removed) stops Team Library and lets the pass that is out end. The
-//    data stays on disk with its owner. Nothing loads until the next sign-in: the same owner resumes, so offline edits
-//    survive; another or an unknown owner is deleted and checked first, or Team Library goes off as in 3.
-// 3. Every delete is marked before its first file goes, and the owner and the mark go only once the files are. A mark
-//    is finished first, before anything loads; while it cannot be, Team Library is off and says so. At launch Team
-//    Library loads only once the core has restored the sign-in, and an owner that is missing or does not match is
-//    deleted without showing. Only the library builds before the core kept, with no owner and no mark, goes to the
-//    tablepro.app account the core restores first; with none, it is deleted.
-// 4. The core's session id lives only in its process, a new one for each sign-in and launch. A bearer of another
-//    session is refused before anything is sent.
-// 5. A publish is bound to the session shown at its confirmation and checked again before it is sent; a changed one
-//    refuses it and says so.
-internal struct TeamLibraryOwner: Codable, Equatable, Sendable {
-    let server: String
-    let accountID: String
+// Where Team Library keeps what it read, one folder per server and account, and the library 0.88 and earlier kept
+// (TeamLibrarySync has the rules).
+internal struct TeamLibraryStorage {
+    // The library 0.88 and earlier kept: one file per team with its unsent edits, and the /v1 cache.
+    let flat: TeamLibraryStateStore
+    let cacheRoot: URL
+    let defaults: UserDefaults
 
-    // Signed in with a known account; nil otherwise.
-    init?(_ state: AccountState) {
-        guard state.isSignedIn, let accountID = state.entitlement?.accountID else { return nil }
-        self.init(server: state.server.apiOrigin.absoluteString, accountID: accountID)
+    static func live() -> TeamLibraryStorage {
+        let environment = AppStorageEnvironment.shared
+        let support = environment.supportDirectory
+        return TeamLibraryStorage(
+            flat: TeamLibraryStateStore(
+                directory: support.appendingPathComponent("TeamLibrary", isDirectory: true),
+                legacyFile: support.appendingPathComponent("team_library.json"),
+                defaults: environment.defaults
+            ),
+            cacheRoot: support.appendingPathComponent("TeamLibraryCache", isDirectory: true),
+            defaults: environment.defaults
+        )
     }
 
-    init(server: String, accountID: String) {
-        self.server = server
-        self.accountID = accountID
+    func folder(server: URL, accountID: String) -> URL {
+        let digest = SHA256.hash(data: Data("\(server.absoluteString)\n\(accountID)".utf8))
+        return cacheRoot.appendingPathComponent(digest.map { String(format: "%02x", $0) }.joined(), isDirectory: true)
+    }
+
+    func cache(in folder: URL) -> TeamLibraryStateStore {
+        TeamLibraryStateStore(
+            directory: folder.appendingPathComponent("Teams", isDirectory: true),
+            legacyFile: folder.appendingPathComponent("team_library.json"),
+            defaults: defaults
+        )
+    }
+
+    // Best-effort: a folder left behind is never read, and goes at the next sign-out, switch or launch.
+    func removeFolders(except kept: URL?) {
+        let folders = (try? FileManager.default.contentsOfDirectory(at: cacheRoot, includingPropertiesForKeys: nil)) ?? []
+        for folder in folders where folder.lastPathComponent != kept?.lastPathComponent {
+            try? FileManager.default.removeItem(at: folder)
+        }
+    }
+
+    var hasFlat: Bool {
+        let teamFiles = (try? FileManager.default.contentsOfDirectory(atPath: flat.directory.path)) ?? []
+        return !teamFiles.isEmpty || FileManager.default.fileExists(atPath: flat.legacyFile.path)
+    }
+
+    // The unsent edits 0.88 kept join the teams `cache` holds, and its read cache fills in what `cache` lacks.
+    func adoptFlat(into cache: TeamLibraryStateStore) -> [TeamLibraryTeamState] {
+        var teams = Dictionary(cache.loadAll().map { ($0.teamID, $0.cached) }, uniquingKeysWith: { first, _ in first })
+        for kept in flat.loadAll() {
+            var team = teams[kept.teamID] ?? kept.cached
+            team.pending = kept.pending
+            team.conflicts = kept.conflicts
+            team.moves = kept.moves
+            team.declined = kept.declined
+            teams[kept.teamID] = team
+            cache.save(team)
+        }
+        let manager = FileManager.default
+        if manager.fileExists(atPath: flat.legacyFile.path), !manager.fileExists(atPath: cache.legacyFile.path) {
+            try? manager.createDirectory(at: cache.legacyFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? manager.copyItem(at: flat.legacyFile, to: cache.legacyFile)
+        }
+        return Array(teams.values)
+    }
+
+    // One rename takes it out of reach first: a delete that stops halfway leaves a folder no sign-in reads.
+    func removeFlat() {
+        guard hasFlat else { return }
+        let manager = FileManager.default
+        let discarded = cacheRoot.appendingPathComponent("discarded-\(UUID().uuidString)", isDirectory: true)
+        try? manager.createDirectory(at: discarded, withIntermediateDirectories: true)
+        try? manager.moveItem(at: flat.directory, to: discarded.appendingPathComponent("TeamLibrary", isDirectory: true))
+        try? manager.moveItem(at: flat.legacyFile, to: discarded.appendingPathComponent("team_library.json"))
+        flat.removeAll()
+        try? manager.removeItem(at: discarded)
     }
 }
 
-// One JSON file per team under Application Support, plus the cache the /v1 library left behind.
+// One JSON file per team, plus the cache the /v1 library left behind.
 internal struct TeamLibraryStateStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibraryStateStore")
     static let legacyPullKey = "com.TablePro.teamLibrary.lastPullAt"
-    static let ownerKey = "com.TablePro.teamLibrary.owner"
-    static let deletingKey = "com.TablePro.teamLibrary.deleting"
 
     let directory: URL
     let legacyFile: URL
     let defaults: UserDefaults
-
-    static func live() -> TeamLibraryStateStore {
-        let environment = AppStorageEnvironment.shared
-        return TeamLibraryStateStore(
-            directory: environment.supportDirectory.appendingPathComponent("TeamLibrary", isDirectory: true),
-            legacyFile: environment.supportDirectory.appendingPathComponent("team_library.json"),
-            defaults: environment.defaults
-        )
-    }
 
     func loadAll() -> [TeamLibraryTeamState] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
@@ -202,7 +249,7 @@ internal struct TeamLibraryStateStore {
     }
 
     func save(_ state: TeamLibraryTeamState) {
-        try? teamFile(state.teamID).write(state)
+        try? teamFile(state.teamID).write(state.cached)
     }
 
     func remove(teamID: String) {
@@ -212,41 +259,6 @@ internal struct TeamLibraryStateStore {
     func removeAll() {
         try? FileManager.default.removeItem(at: directory)
         removeLegacy()
-    }
-
-    // Nil in a library builds before the core kept, which only tablepro.app filled.
-    var owner: TeamLibraryOwner? {
-        defaults.data(forKey: Self.ownerKey).flatMap { try? JSONDecoder().decode(TeamLibraryOwner.self, from: $0) }
-    }
-
-    func setOwner(_ owner: TeamLibraryOwner) {
-        defaults.set(try? JSONEncoder().encode(owner), forKey: Self.ownerKey)
-    }
-
-    // A folder that cannot be listed counts as holding files.
-    var isEmpty: Bool {
-        let manager = FileManager.default
-        let teamFiles = manager.fileExists(atPath: directory.path)
-            ? try? manager.contentsOfDirectory(atPath: directory.path)
-            : []
-        return teamFiles?.isEmpty == true && !manager.fileExists(atPath: legacyFile.path)
-    }
-
-    // A delete that has not finished, so the next launch finishes it before anything loads.
-    var isDeleting: Bool {
-        defaults.bool(forKey: Self.deletingKey)
-    }
-
-    // Marked first and unmarked last: the owner and the mark go only once every team file and the /v1 cache are gone.
-    func deleteAll() -> Bool {
-        defaults.set(true, forKey: Self.deletingKey)
-        // The mark reaches cfprefsd before the first file goes, so a crash in the middle still leaves it.
-        defaults.synchronize()
-        removeAll()
-        guard isEmpty else { return false }
-        defaults.removeObject(forKey: Self.ownerKey)
-        defaults.removeObject(forKey: Self.deletingKey)
-        return true
     }
 
     // What the last /v1 pull cached, keyed by client ID like a /v2 snapshot, so the first one matches it item by item.
