@@ -134,8 +134,10 @@ final class TelemetryFixture {
         )
     }
 
+    // As AppDelegate launches: telemetry first, then the account publishes what the core restored.
     func start() {
         telemetry.start(sharesUsageData: sharesUsageData.eraseToAnyPublisher(), account: account.services)
+        account.services.loadStoredState()
     }
 
     // Past the launch delay, so the first app_opened check has run.
@@ -206,6 +208,28 @@ struct TelemetryTests {
         fixture.start()
 
         #expect(fixture.client?.calls == [.optIn, .identify("acct_test", TelemetryFixture.person)])
+    }
+
+    @Test("A session the core restores after telemetry starts keeps its identity; one it does not find resets")
+    func restoreDecidesTheIdentity() async throws {
+        for keepsSession in [true, false] {
+            let fixture = try TelemetryFixture()
+            try await fixture.account.signIn()
+            fixture.start()
+            let kept = keepsSession ? fixture.account.backend.status() : AccountSnapshot()
+            fixture.account.backend.restoreLater(kept)
+            fixture.account.services.loadStoredState()
+            fixture.relaunch()
+            fixture.start()
+
+            fixture.account.backend.finishRestore()
+
+            let client = try #require(fixture.client)
+            let expected: [RecordingTelemetryClient.Call] = keepsSession
+                ? [.optIn, .identify("acct_test", TelemetryFixture.person)]
+                : [.optIn, .reset]
+            #expect(client.calls == expected, "keeps the session: \(keepsSession)")
+        }
     }
 
     @Test("An account on a company server is that company's record and never a PostHog person")

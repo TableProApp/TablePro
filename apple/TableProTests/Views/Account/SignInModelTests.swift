@@ -155,6 +155,28 @@ struct SignInModelTests {
         #expect(model.server.isManaged)
     }
 
+    @Test("A server a configuration profile only defaults to is left for tablepro.app on request")
+    func leavesAManagedDefault() async throws {
+        let fixture = try AccountFixture()
+        let managedDefault = AccountServer(
+            apiOrigin: URL(string: "https://tablepro.corp.example")!,
+            accountOrigin: URL(string: "https://tablepro.corp.example")!,
+            host: "tablepro.corp.example",
+            isProduction: false,
+            isManaged: true,
+            othersAllowed: true
+        )
+        fixture.backend.manage(managedDefault)
+        fixture.services.loadStoredState()
+        let model = SignInModel(services: fixture.services)
+        #expect(model.server == managedDefault)
+
+        await model.useTableProServer()
+
+        #expect(model.server.isProduction)
+        #expect(model.phase == .ready)
+    }
+
     @Test("Back on tablepro.app after a company server, the window signs in there again")
     func backToTableProServer() async throws {
         let fixture = try AccountFixture()

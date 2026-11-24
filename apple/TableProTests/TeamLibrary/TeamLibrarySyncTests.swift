@@ -989,6 +989,30 @@ struct TeamLibrarySyncTests {
         fixture.sync.stop()
     }
 
+    @Test("A company sign-in the core restores at launch is no server switch: the edits not sent yet stay")
+    func restoredCompanySignInKeepsTheEdits() async throws {
+        let fixture = try await TeamLibraryFixture()
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        try await fixture.account.signIn()
+        await fixture.sync.sync()
+        await fixture.library { $0.licenseExpired = true }
+        _ = try? await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: Self.team
+        )
+        #expect(fixture.sync.hasUnsentChanges)
+
+        fixture.account.backend.restoreLater(fixture.account.backend.status())
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        fixture.sync.start()
+        fixture.account.backend.finishRestore()
+
+        try await waitUntil { fixture.account.access.state.isSignedIn }
+        #expect(fixture.sync.hasUnsentChanges)
+        #expect(!fixture.store.loadAll().isEmpty)
+        fixture.sync.stop()
+    }
+
     // MARK: - Sign-out while a call is out
 
     @Test("A pull that answers after sign-out brings nothing back")

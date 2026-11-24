@@ -8,20 +8,23 @@ import os
 import TableProFFI
 
 // The core's AccountService (core/docs/decisions/0047-the-apple-apps-sign-in-through-the-core.md). It opens on a task
-// at launch; until then the account reads as signed out, and a call waits for it.
+// at launch and restores the last run's sign-in after that; until then the account reads as signed out, and a call
+// waits for the open.
 internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CoreAccountBackend")
 
     let machineID: String
     private let authenticator = CoreWebAuthenticator()
-    private let listenerBridge = CoreAccountListener()
+    private let restored = RestoredLatch()
+    private let listenerBridge: CoreAccountListener
     private let opened = OSAllocatedUnfairLock<AccountService?>(initialState: nil)
     private let opening: Task<AccountService?, Never>
 
     init(setup: AccountCoreSetup, machine: MachineDescription, keychain: AccountKeychain) {
         machineID = setup.machineID
+        listenerBridge = CoreAccountListener(restored: restored)
         let config = Self.config(setup, machine: machine)
-        let (authenticator, listener, opened) = (authenticator, listenerBridge, opened)
+        let (authenticator, listener, opened, restored) = (authenticator, listenerBridge, opened, restored)
         opening = Task.detached(priority: .userInitiated) {
             do {
                 let core = try Core(
@@ -35,13 +38,25 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
                     listener: listener
                 )
                 opened.withLock { $0 = service }
+                restored.mark(.opened)
                 await listener.notify(signedOutBy: nil)
                 return service
             } catch {
                 Self.logger.error("The account did not open: \(error.publicLogShape, privacy: .public)")
+                restored.mark(.opened)
+                restored.mark(.restored)
+                await listener.notify(signedOutBy: nil)
                 return nil
             }
         }
+    }
+
+    var isRestored: Bool {
+        restored.isOpen
+    }
+
+    func waitUntilRestored() async {
+        await restored.wait()
     }
 
     @MainActor
@@ -226,8 +241,16 @@ private final class NoLoopbackBrowser: HostBrowser, @unchecked Sendable {
 private final class CoreAccountListener: AccountListener, @unchecked Sendable {
     // Set once at launch and read only in notify, both on the main actor.
     nonisolated(unsafe) weak var target: (any AccountBackendListener)?
+    private let restored: RestoredLatch
 
+    init(restored: RestoredLatch) {
+        self.restored = restored
+    }
+
+    // Each of the core's restore paths ends by publishing a status, and nothing publishes one before it, so the first
+    // change is the restored account.
     func statusChanged() {
+        restored.mark(.restored)
         Task { await notify(signedOutBy: nil) }
     }
 
@@ -239,6 +262,52 @@ private final class CoreAccountListener: AccountListener, @unchecked Sendable {
     @MainActor
     func notify(signedOutBy cause: AccountSignOutCause?) {
         target?.accountStatusChanged(signedOutBy: cause)
+    }
+}
+
+// The core can publish the restored status before openAccount returns the service that reads it, so both count.
+private final class RestoredLatch: Sendable {
+    enum Step {
+        case opened
+        case restored
+    }
+
+    private struct State {
+        var opened = false
+        var restored = false
+        var waiting: [CheckedContinuation<Void, Never>] = []
+        var isOpen: Bool { opened && restored }
+    }
+
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    var isOpen: Bool {
+        state.withLock { $0.isOpen }
+    }
+
+    func mark(_ step: Step) {
+        let waiting = state.withLock { state -> [CheckedContinuation<Void, Never>] in
+            guard !state.isOpen else { return [] }
+            switch step {
+            case .opened: state.opened = true
+            case .restored: state.restored = true
+            }
+            guard state.isOpen else { return [] }
+            defer { state.waiting = [] }
+            return state.waiting
+        }
+        waiting.forEach { $0.resume() }
+    }
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            let resumeNow = state.withLock { state -> Bool in
+                guard !state.isOpen else { return true }
+                state.waiting.append(continuation)
+                return false
+            }
+            if resumeNow { continuation.resume() }
+        }
     }
 }
 

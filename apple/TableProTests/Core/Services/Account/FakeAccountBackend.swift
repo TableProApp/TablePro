@@ -39,8 +39,12 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     private let now: @Sendable () -> Date
     private let lock = NSLock()
     private var snapshot = AccountSnapshot()
-    private var chosen = AccountServer.production
+    // The person's choice; nil takes a configuration profile's default, else tablepro.app.
+    private var chosen: AccountServer?
     private var managed: AccountServer?
+    private var restored = true
+    private var restoreWaiters: [CheckedContinuation<Void, Never>] = []
+    private var pendingRestore: AccountSnapshot?
     private var serverLicense: AccountServerLicense?
     private var refusedAddresses: [String: AccountError.CompanyServerProblem] = [:]
     private var rejectedTokens: [String] = []
@@ -69,6 +73,33 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
         locked { serverLicense = license }
     }
 
+    // A launch on which the core has not opened yet: signed out on tablepro.app, as CoreAccountBackend reads then,
+    // until finishRestore hands over what the last run kept.
+    func restoreLater(_ kept: AccountSnapshot) {
+        locked {
+            restored = false
+            pendingRestore = kept
+            snapshot = AccountSnapshot()
+        }
+    }
+
+    var isWaitingForRestore: Bool {
+        locked { !restoreWaiters.isEmpty }
+    }
+
+    @MainActor
+    func finishRestore() {
+        let waiting = locked { () -> [CheckedContinuation<Void, Never>] in
+            restored = true
+            snapshot = pendingRestore ?? snapshot
+            pendingRestore = nil
+            defer { restoreWaiters = [] }
+            return restoreWaiters
+        }
+        waiting.forEach { $0.resume() }
+        listener?.accountStatusChanged(signedOutBy: nil)
+    }
+
     var tokensRejected: [String] {
         locked { rejectedTokens }
     }
@@ -90,6 +121,21 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     }
 
     // MARK: - AccountBackend
+
+    var isRestored: Bool {
+        locked { restored }
+    }
+
+    func waitUntilRestored() async {
+        await withCheckedContinuation { continuation in
+            let resumeNow = locked { () -> Bool in
+                guard !restored else { return true }
+                restoreWaiters.append(continuation)
+                return false
+            }
+            if resumeNow { continuation.resume() }
+        }
+    }
 
     func status() -> AccountSnapshot {
         locked { snapshot }
@@ -123,11 +169,11 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     }
 
     func server() -> AccountServer {
-        locked { managed ?? chosen }
+        locked { restored ? resolved() : .production }
     }
 
     func license() -> AccountServerLicense? {
-        locked { (managed ?? chosen).isProduction ? nil : serverLicense }
+        locked { !restored || resolved().isProduction ? nil : serverLicense }
     }
 
     func signIn(using authenticator: any WebAuthenticating) async throws(AccountError) {
@@ -173,7 +219,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
         let expiresAt = Date(timeIntervalSince1970: file["exp"] as? TimeInterval ?? 0)
         guard expiresAt > now() else { throw .offlineFileRejected(.expired) }
         let refusal: AccountError? = locked {
-            if !(managed ?? chosen).isProduction { return .companyServer(.unsupported) }
+            if !resolved().isProduction { return .companyServer(.unsupported) }
             if snapshot.state == .signedIn, snapshot.accountID != file["sub"] as? String { return .offlineFileRejected(.otherAccount) }
             return nil
         }
@@ -209,7 +255,9 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
         if let refusal { throw refusal }
         locked {
             snapshot = AccountSnapshot()
-            if let url, let host = url.host {
+            if let url, url == AccountServer.production.apiOrigin {
+                chosen = .production
+            } else if let url, let host = url.host {
                 chosen = AccountServer(
                     apiOrigin: url,
                     accountOrigin: url,
@@ -219,7 +267,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
                     othersAllowed: true
                 )
             } else {
-                chosen = .production
+                chosen = nil
             }
         }
     }
@@ -257,7 +305,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
         guard snapshot.state == .signedIn, let accountID = snapshot.accountID else { throw .signedOut }
         let (count, server) = locked {
             tokenCount += 1
-            return (tokenCount, managed ?? chosen)
+            return (tokenCount, resolved())
         }
         let token = FakeAccountServer.unsignedJWT([
             "sub": accountID, "dev": FakeAccountServer.deviceID, "jti": "token-\(count)"
@@ -275,6 +323,13 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     }
 
     // MARK: - Private
+
+    // As the core resolves it: a profile's server that allows no other, the person's choice, the profile's default,
+    // tablepro.app. Call it holding the lock.
+    private func resolved() -> AccountServer {
+        if let managed, !managed.othersAllowed { return managed }
+        return chosen ?? managed ?? .production
+    }
 
     private func adopt(_ answer: FakeEntitlementAnswer, refreshing: Bool) async throws(AccountError) {
         if answer.isOffline {

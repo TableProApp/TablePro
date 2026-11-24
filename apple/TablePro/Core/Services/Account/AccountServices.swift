@@ -37,6 +37,8 @@ internal final class AccountServices: AccountBackendListener {
     static let shared = AccountServices.live()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AccountServices")
+    // A stored key the network kept from its exchange is tried again this often, until it goes through.
+    static let migrationRetryInterval: Duration = .seconds(60 * 60)
 
     let access: FeatureAccess
     let api: any APIProtocol
@@ -50,6 +52,7 @@ internal final class AccountServices: AccountBackendListener {
     private var isStarted = false
     private var checkTask: Task<Bool, Never>?
     private var expiryTask: Task<Void, Never>?
+    private var migrationRetryTask: Task<Void, Never>?
     private var verifiedAt: Date?
     // Whether subscribers know of a session, so a sign-out reaches them once, whether the core's listener or the
     // call that caused it gets here first.
@@ -108,6 +111,8 @@ internal final class AccountServices: AccountBackendListener {
     func stop() {
         expiryTask?.cancel()
         expiryTask = nil
+        migrationRetryTask?.cancel()
+        migrationRetryTask = nil
     }
 
     // Back from the portal's device page, where the person may have freed a slot.
@@ -146,7 +151,8 @@ internal final class AccountServices: AccountBackendListener {
         announceSignOut(.user)
     }
 
-    // Nil goes back to tablepro.app. The core signs out of the server it leaves.
+    // Nil drops the choice, for a configuration profile's default or else tablepro.app. The core signs out of the
+    // server it leaves.
     func chooseServer(_ url: URL?) async throws(AccountError) {
         try await backend.chooseServer(url)
         verifiedAt = nil
@@ -215,6 +221,9 @@ internal final class AccountServices: AccountBackendListener {
     func migrateLegacyKeyIfNeeded() async -> LegacyMigrationOutcome {
         guard let key = storedKey.value() else { return .nothingToMigrate }
         guard !storedKey.isSetAside() else { return .keptAside }
+        // An exchange replaces the session, so the core must have read the last run's first.
+        await backend.waitUntilRestored()
+        publish()
         guard !isSignedIn else { return .keptWhileSignedIn }
         do throws(AccountError) {
             try await backend.useLicenseKey(key)
@@ -271,6 +280,7 @@ internal final class AccountServices: AccountBackendListener {
     private func runCheck() async -> Bool {
         switch await migrateLegacyKeyIfNeeded() {
         case .retryLater:
+            scheduleMigrationRetry()
             return false
         case .migrated, .keyRejected:
             return true
@@ -285,6 +295,16 @@ internal final class AccountServices: AccountBackendListener {
             return false
         }
         return true
+    }
+
+    // The core never sees a stored key, so its refresh schedule cannot retry the exchange.
+    private func scheduleMigrationRetry() {
+        guard isStarted, migrationRetryTask == nil else { return }
+        migrationRetryTask = Task { [weak self, clock] in
+            guard (try? await clock.sleep(for: Self.migrationRetryInterval)) != nil else { return }
+            self?.migrationRetryTask = nil
+            await self?.checkNow()
+        }
     }
 
     private func announceSignIn(_ method: AccountEvent.SignInMethod) {
@@ -326,7 +346,8 @@ internal final class AccountServices: AccountBackendListener {
             server: backend.server(),
             serverLicense: license,
             features: features,
-            verifiedAt: verifiedAt
+            verifiedAt: verifiedAt,
+            isRestored: backend.isRestored
         ))
         let current = now()
         let boundaries = [entitlement?.expiresAt, license?.expiresAt, license?.graceEndsAt].compactMap { $0 }

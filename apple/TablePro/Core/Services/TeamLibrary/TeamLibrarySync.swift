@@ -675,11 +675,13 @@ internal final class TeamLibrarySync: ObservableObject {
             .removeDuplicates()
             .sink { [weak self] state in
                 guard let self else { return }
+                // What the core restores at launch is where this Mac already was, not a sign-in or a server switch.
+                let wasRestored = previous.isRestored
                 let hadAccount = previous.isSignedIn
-                let changedServer = previous.server != state.server
+                let changedServer = previous.server.apiOrigin != state.server.apiOrigin
                 previous = state
                 // Another server's teams are not this account's, whatever ids they share.
-                if hadAccount && !state.isSignedIn || changedServer {
+                if wasRestored, hadAccount && !state.isSignedIn || changedServer {
                     self.clear()
                 }
                 self.syncSoon()

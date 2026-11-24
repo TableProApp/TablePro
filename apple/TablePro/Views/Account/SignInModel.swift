@@ -88,7 +88,8 @@ internal final class SignInModel: ObservableObject {
         guard phase != .signingIn else { return }
         phase = .signingIn
         do throws(AccountError) {
-            try await services.chooseServer(nil)
+            // Nil would fall back to a server a configuration profile sets as the default.
+            try await services.chooseServer(AccountServer.production.apiOrigin)
         } catch {
             phase = error.friendlyDescription.map(Phase.failed) ?? .ready
             return

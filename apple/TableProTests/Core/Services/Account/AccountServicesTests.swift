@@ -207,6 +207,39 @@ struct AccountServicesTests {
         #expect(events == [.signedIn(accountID: "acct_test", method: .migration)])
     }
 
+    @Test("A stored key waits for the core to read the last run's sign-in, which keeps it from the exchange")
+    func migrationWaitsForTheRestore() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        fixture.backend.restoreLater(fixture.backend.status())
+        fixture.services.loadStoredState()
+        fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+
+        let migration = Task { await fixture.services.migrateLegacyKeyIfNeeded() }
+        try await waitUntil { fixture.backend.isWaitingForRestore }
+        fixture.backend.finishRestore()
+
+        #expect(await migration.value == .keptWhileSignedIn)
+        #expect(fixture.keychain.readStringResult(forKey: StoredLicenseKey.keychainKey) == .found(FakeAccountServer.validKey))
+    }
+
+    @Test("A stored key the network kept from its exchange is tried again an hour later")
+    func migrationRetriesHourly() async throws {
+        let fixture = try AccountFixture()
+        fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        await fixture.server.set { $0.isOffline = true }
+        fixture.services.start()
+        try await waitUntil { fixture.clock.pendingSleeperCount > 0 }
+        #expect(!fixture.access.state.isSignedIn)
+
+        await fixture.server.set { $0.isOffline = false }
+        fixture.clock.advance(by: AccountServices.migrationRetryInterval)
+
+        try await waitUntil { fixture.access.state.isSignedIn }
+        #expect(fixture.keychain.readStringResult(forKey: StoredLicenseKey.keychainKey) == .notFound)
+        fixture.services.stop()
+    }
+
     @Test("The gate follows the entitlement's expiry without another call to the core")
     func gateLapsesAtExpiry() async throws {
         let clock = TestNow(Date(timeIntervalSince1970: 1_800_000_000))

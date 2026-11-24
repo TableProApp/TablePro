@@ -23,6 +23,8 @@ internal struct AccountState: Equatable, Sendable {
     var features: [ProFeature: ProFeatureAccess] = [:]
     // When this Mac last heard from the server that the entitlement holds.
     var verifiedAt: Date?
+    // False until the core has read the last run's sign-in: a change before then is no sign-in or server change.
+    var isRestored = false
 }
 
 // Whether the person in front of the app has paid, which losing the network cannot undo.

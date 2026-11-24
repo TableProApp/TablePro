@@ -98,6 +98,9 @@ internal protocol AccountBackendListener: AnyObject {
 // a fake over FakeAccountServer in the tests.
 internal protocol AccountBackend: AnyObject, Sendable {
     var machineID: String { get }
+    // False until the account has read what the last run kept; until then it reads as signed out.
+    var isRestored: Bool { get }
+    func waitUntilRestored() async
 
     func status() -> AccountSnapshot
     func featureAccess(_ feature: ProFeature) -> ProFeatureAccess
@@ -110,7 +113,8 @@ internal protocol AccountBackend: AnyObject, Sendable {
     func refreshPastDeviceLimit() async throws(AccountError) -> Bool
     func useLicenseKey(_ key: String) async throws(AccountError)
     func importOfflineFile(at url: URL) async throws(AccountError)
-    // Nil goes back to tablepro.app. Discovery runs first, and the old server's sign-in ends.
+    // Nil drops the choice, for a configuration profile's default or else tablepro.app. Discovery runs first, and the
+    // old server's sign-in ends.
     func chooseServer(_ url: URL?) async throws(AccountError)
 
     func profile() async throws(AccountError) -> AccountProfile
