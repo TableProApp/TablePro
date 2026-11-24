@@ -1108,6 +1108,60 @@ struct TeamLibrarySyncTests {
         #expect(fixture.sync.content.queries.map(\.name) == ["Orders"])
     }
 
+    @Test("Signed out at launch, the stored copy stays hidden, and another server's is dropped")
+    func signedOutLaunchShowsNothing() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        #expect(await fixture.sync.sync() == .synced)
+        fixture.sync.stop()
+
+        fixture.account.backend.restoreLater(AccountSnapshot())
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        fixture.sync.start()
+        fixture.account.backend.finishRestore()
+        try await waitUntil { fixture.account.access.state.isRestored }
+
+        #expect(fixture.sync.content == .empty)
+        #expect(fixture.sync.writableTeams.isEmpty)
+        #expect(!fixture.store.loadAll().isEmpty, "This server's copy waits for its account")
+        fixture.sync.stop()
+
+        fixture.account.backend.switchServerKeepingTheSession(to: FakeAccountBackend.companyServer)
+        fixture.account.backend.restoreLater(AccountSnapshot())
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        fixture.sync.start()
+        fixture.account.backend.finishRestore()
+        try await waitUntil { fixture.account.access.state.server == FakeAccountBackend.companyServer }
+
+        #expect(fixture.sync.content == .empty)
+        #expect(fixture.store.loadAll().isEmpty)
+        fixture.sync.stop()
+    }
+
+    @Test("A bearer the core could not renew sends nothing, and the edits wait for the next sync instead of being dropped")
+    func failedBearerKeepsTheEdits() async throws {
+        let fixture = try await TeamLibraryFixture()
+        #expect(await fixture.sync.sync() == .synced)
+        fixture.account.backend.failBearer(with: .server(status: 0, code: "temporarily_unavailable"))
+
+        let outcome = try? await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: Self.team
+        )
+        #expect(outcome != .published(1))
+        #expect(fixture.sync.hasUnsentChanges)
+        #expect(TeamLibraryFailure.from(.server(status: 0, code: "temporarily_unavailable")).isRetryable)
+        #expect(TeamLibraryFailure.from(.server(status: 403, code: "device_revoked")) == .signedOut)
+        #expect(TeamLibraryFailure.from(.server(status: 422, code: nil)) == .refused(nil))
+
+        fixture.account.backend.failBearer(with: nil)
+        #expect(await fixture.sync.sync() == .synced)
+        #expect(!fixture.sync.hasUnsentChanges)
+        #expect(await fixture.server.library.live(Self.team).count == 1)
+    }
+
     // MARK: - Sign-out while a call is out
 
     @Test("A pull that answers after sign-out brings nothing back")

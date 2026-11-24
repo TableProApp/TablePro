@@ -51,6 +51,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     private var tokenCount = 0
     private var refreshCalls = 0
     private var keychainRefuses = false
+    private var bearerFailure: AccountError?
     // Runs as the core is told its token was refused, as if the person changed server at that moment.
     var onTokenRejected: (@Sendable (FakeAccountBackend) -> Void)?
 
@@ -72,6 +73,11 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
 
     func installLicense(_ license: AccountServerLicense?) {
         locked { serverLicense = license }
+    }
+
+    // As the core when renewing the bearer fails, such as an OAuth temporarily_unavailable.
+    func failBearer(with error: AccountError?) {
+        locked { bearerFailure = error }
     }
 
     // As the core when the Keychain refuses the refresh token: signed in for this run only.
@@ -307,6 +313,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     }
 
     func accessToken() async throws(AccountError) -> AccountAccessToken {
+        if let failure = locked({ bearerFailure }) { throw failure }
         let snapshot = status()
         guard snapshot.state == .signedIn, let accountID = snapshot.accountID else { throw .signedOut }
         let (count, server) = locked {

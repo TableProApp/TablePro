@@ -38,12 +38,13 @@ extension WelcomeViewModel {
         exporter: ConnectionBundleExporter = ConnectionBundleExporter(),
         confirm: @MainActor ([DatabaseConnection]) async -> Bool
     ) async -> TeamLibraryPublishOutcome {
+        let destination = sync.destination(teamID)
         guard await confirm(connections) else { return .declined }
         let plan = connections.map {
             TeamLibraryPublishPlan.Connection(id: $0.id, settings: exporter.teamShareableSettings(for: $0))
         }
         do throws(TeamLibraryPublishError) {
-            return .finished(try await sync.publishConnections(plan, to: teamID))
+            return .finished(try await sync.publishConnections(plan, to: destination))
         } catch {
             return .failed(error)
         }

@@ -53,9 +53,14 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
             return .signedOut
         case .server(let status, _) where status == 401:
             return .signedOut
+        case .server(_, "device_revoked"):
+            return .signedOut
         case .server(let status, _) where status == 429:
             return .rateLimited(retryAfter: nil)
         case .server(let status, _) where status >= 500:
+            return .server
+        // Status 0 is the core refusing the bearer: nothing reached the library, so the edits stay for a retry.
+        case .server(0, _):
             return .server
         case .server:
             return .refused(nil)
