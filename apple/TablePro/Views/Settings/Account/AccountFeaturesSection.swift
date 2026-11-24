@@ -4,7 +4,7 @@ internal struct AccountFeaturesPage: View {
     @ObservedObject var access: FeatureAccess
 
     private var offersPurchase: Bool {
-        !access.state.isSignedIn && access.state.entitlement == nil && access.state.legacy == nil
+        access.state.server.isProduction && !access.state.isSignedIn && access.state.entitlement == nil
     }
 
     var body: some View {

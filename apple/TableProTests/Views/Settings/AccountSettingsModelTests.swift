@@ -95,25 +95,19 @@ struct AccountSettingsModelTests {
         #expect(model.devices.value?.contains { $0.id == "dev_air" } == true)
     }
 
-    @Test("Use License Key replaces an interactive session, revokes it and deletes the stored key it used")
+    @Test("Use License Key replaces an interactive session and deletes the stored key it used")
     func useStoredLicenseKey() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
-        let interactiveToken = try #require(Self.refreshToken(in: fixture.keychain))
+        fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
         let model = AccountSettingsModel(services: fixture.services)
         #expect(fixture.services.storedLicenseKey == FakeAccountServer.validKey)
 
         let failure = await model.useLicenseKey(" \(FakeAccountServer.validKey) ")
 
         #expect(failure == nil)
-        let exchange = try #require(await fixture.server.requests(to: "/oauth/token")
-            .first { $0.form["grant_type"] == OAuthTokenClient.tokenExchangeGrant })
-        #expect(exchange.form["subject_token"] == FakeAccountServer.validKey)
-        #expect(await fixture.server.requests(to: "/oauth/revoke").first?.form["token"] == interactiveToken)
-        #expect(Self.refreshToken(in: fixture.keychain) != interactiveToken)
         #expect(!fixture.hasLegacyLicense)
-        #expect(try await fixture.services.session.accessToken().isFromLicenseKey)
+        #expect(fixture.access.state.isSignedIn)
         #expect(fixture.access.isAvailable(.iCloudSync))
     }
 
@@ -121,15 +115,13 @@ struct AccountSettingsModelTests {
     func refusedLicenseKey() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
-        let interactiveToken = Self.refreshToken(in: fixture.keychain)
+        fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
         let model = AccountSettingsModel(services: fixture.services)
 
         let failure = await model.useLicenseKey("ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ")
 
         #expect(failure == AccountError.oauth("invalid_grant", description: nil).licenseKeyDescription)
-        #expect(Self.refreshToken(in: fixture.keychain) == interactiveToken)
-        #expect(await fixture.server.requests(to: "/oauth/revoke").isEmpty)
+        #expect(fixture.access.state.isSignedIn)
         #expect(fixture.hasLegacyLicense)
         #expect(fixture.access.isAvailable(.iCloudSync))
     }
@@ -149,26 +141,23 @@ struct AccountSettingsModelTests {
     @Test("An offline file made for another machine is refused with a reason")
     func offlineFileForAnotherMachine() async throws {
         let fixture = try AccountFixture()
-        let directory = fixture.entitlementFile.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let file = directory.appendingPathComponent("tablepro-offline-000000000000.jwt")
-        let token = await fixture.server.signedEntitlement(machineID: String(repeating: "0", count: 64), offline: true)
-        try Data(token.utf8).write(to: file)
+        let file = try FakeAccountBackend.offlineFile(
+            in: Self.directory(), machineID: String(repeating: "0", count: 64), expiresAt: Date().addingTimeInterval(86_400)
+        )
         let model = AccountSettingsModel(services: fixture.services)
 
         await model.importOfflineFile(at: file)
 
-        #expect(model.actionFailure?.message == AccountError.entitlementRejected(.machine).offlineFileDescription)
+        #expect(model.actionFailure?.message == AccountError.offlineFileRejected(.otherMachine).offlineFileDescription)
         #expect(model.content.identity == .signedOut)
     }
 
     @Test("A valid offline file shows its account and plan without a session")
     func offlineFileImport() async throws {
         let fixture = try AccountFixture()
-        let directory = fixture.entitlementFile.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let file = directory.appendingPathComponent("tablepro-offline-abababababab.jwt")
-        try Data(await fixture.server.signedEntitlement(offline: true).utf8).write(to: file)
+        let file = try FakeAccountBackend.offlineFile(
+            in: Self.directory(), machineID: FakeAccountServer.machine.machineID, expiresAt: Date().addingTimeInterval(86_400)
+        )
         let model = AccountSettingsModel(services: fixture.services)
 
         await model.importOfflineFile(at: file)
@@ -178,6 +167,22 @@ struct AccountSettingsModelTests {
         #expect(model.content.verification?.isOfflineFile == true)
         #expect(model.content.plans.first?.title == "Pro")
         #expect(model.content.plans.first?.status == .lifetime)
+    }
+
+    @Test("An offline file imported while signed in keeps the sign-in and still reads as a file")
+    func offlineFileImportWhileSignedIn() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        let file = try FakeAccountBackend.offlineFile(
+            in: Self.directory(), machineID: FakeAccountServer.machine.machineID, expiresAt: Date().addingTimeInterval(86_400)
+        )
+        let model = AccountSettingsModel(services: fixture.services)
+
+        await model.importOfflineFile(at: file)
+
+        #expect(model.actionFailure == nil)
+        #expect(fixture.access.state.isSignedIn)
+        #expect(model.content.verification?.isOfflineFile == true)
     }
 
     @Test("A visit within a minute of the last load reuses it, and a later one loads again")
@@ -270,32 +275,12 @@ struct AccountSettingsModelTests {
         #expect(model.signOutConfirmation?.discardsSomething == true)
         model.cancelSignOut()
         #expect(!model.confirmsSignOut)
-        #expect(fixture.account.services.session.isSignedIn)
+        #expect(fixture.account.services.isSignedIn)
 
         #expect(await fixture.sync.sync() == .synced)
         #expect(!fixture.sync.hasUnsentChanges)
         model.requestSignOut()
         #expect(model.signOutConfirmation?.discardsSomething == false)
-    }
-
-    @Test("Signing out with an imported offline file says the file goes, and it does")
-    func signOutRemovesTheOfflineFile() async throws {
-        let fixture = try AccountFixture()
-        try await fixture.signIn()
-        let directory = fixture.entitlementFile.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let file = directory.appendingPathComponent("tablepro-offline-abababababab.jwt")
-        try Data(await fixture.server.signedEntitlement(offline: true).utf8).write(to: file)
-        let model = AccountSettingsModel(services: fixture.services, hasUnsentTeamChanges: { false })
-        await model.importOfflineFile(at: file)
-
-        model.requestSignOut()
-        #expect(model.signOutConfirmation == AccountSignOutConfirmation(discardsTeamChanges: false, removesOfflineFile: true))
-        await model.signOut()
-
-        #expect(!model.confirmsSignOut)
-        #expect(!FileManager.default.fileExists(atPath: fixture.entitlementFile.path))
-        #expect(model.content.identity == .signedOut)
     }
 
     @Test("Confirming a device removal clears the pending removal the dialog showed")
@@ -323,25 +308,23 @@ struct AccountSettingsModelTests {
         let opened = OpenedURLs()
         let loads = CountingLoads()
         let model = AccountSettingsModel(services: fixture.services, loader: loads.loader, openURL: { opened.urls.append($0) })
-        let entitlementPath = "/devices/\(FakeAccountServer.deviceID)/entitlement"
         await model.refreshOnVisit()
-        let checks = await fixture.server.requests(to: entitlementPath).count
+        let checks = fixture.backend.refreshCount
 
-        model.openPortal(fixture.services.configuration.portalBilling)
-        #expect(opened.urls == [fixture.services.configuration.portalBilling])
+        model.openPortal(fixture.services.portal.portalBilling)
+        #expect(opened.urls == [fixture.services.portal.portalBilling])
         await model.refreshOnVisit()
 
-        #expect(await fixture.server.requests(to: entitlementPath).count == checks + 1)
+        #expect(fixture.backend.refreshCount == checks + 1)
         #expect(loads.profile == 2)
 
         await model.refreshOnVisit()
-        #expect(await fixture.server.requests(to: entitlementPath).count == checks + 1)
+        #expect(fixture.backend.refreshCount == checks + 1)
         #expect(loads.profile == 2)
     }
 
-    private static func refreshToken(in keychain: InMemoryKeychain) -> String? {
-        guard case .found(let token) = keychain.readStringResult(forKey: AccountSession.refreshTokenKey) else { return nil }
-        return token
+    private static func directory() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("AccountSettingsModelTests-\(UUID().uuidString)")
     }
 }
 

@@ -16,7 +16,7 @@ extension MainContentCoordinator {
 
     // Share Result…: the active result as the grid shows it, masked the way rows leaving the app are masked.
     func shareActiveResult() {
-        guard admitsSheetCommand(), let request = activeResultShareRequest() else { return }
+        guard ShareAvailability.isAvailable, admitsSheetCommand(), let request = activeResultShareRequest() else { return }
         activeSheet = .share(request)
     }
 
@@ -40,7 +40,7 @@ extension MainContentCoordinator {
 
     func presentShareQuery(_ sql: String, title: String) {
         let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, admitsSheetCommand() else { return }
+        guard ShareAvailability.isAvailable, !trimmed.isEmpty, admitsSheetCommand() else { return }
         activeSheet = .share(.query(title: title, sql: trimmed, dialect: connection.type.rawValue))
     }
 

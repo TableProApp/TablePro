@@ -30,6 +30,27 @@ struct WelcomeViewModelTeamLibraryTests {
         #expect(await fixture.libraryRequests().isEmpty)
     }
 
+    @Test("A switch to another server while the confirmation is open sends that server nothing")
+    func switchWhileConfirmingPublishesNothing() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+
+        let outcome = await WelcomeViewModel.publishConnections(
+            [DatabaseConnection(name: "Prod")],
+            to: TeamLibraryFixture.team,
+            through: fixture.sync,
+            confirm: { _ in
+                try? await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+                try? await fixture.account.signIn()
+                await fixture.sync.sync()
+                return true
+            }
+        )
+
+        #expect(outcome == .failed(.failed(.signedOut)))
+        #expect(await fixture.pushes().isEmpty)
+    }
+
     @Test("Confirming pushes each connection under its lowercase ID, settings without passwords")
     func confirmedPublishSendsConnections() async throws {
         let fixture = try await TeamLibraryFixture()

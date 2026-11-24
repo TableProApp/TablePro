@@ -20,6 +20,7 @@ internal struct FavoritesMenuContext {
     internal let activeDatabase: String?
     internal let linkedFileGitStates: [UUID: LinkedFileGitState]
     internal let linkedFolderGitStates: [UUID: LinkedFolderGitMenuState]
+    internal let sharesLinks: Bool
 
     internal init(
         clicked: FavoritesOutlineNode.Kind?,
@@ -29,7 +30,8 @@ internal struct FavoritesMenuContext {
         databaseEntityName: String = "Database",
         activeDatabase: String? = nil,
         linkedFileGitStates: [UUID: LinkedFileGitState] = [:],
-        linkedFolderGitStates: [UUID: LinkedFolderGitMenuState] = [:]
+        linkedFolderGitStates: [UUID: LinkedFolderGitMenuState] = [:],
+        sharesLinks: Bool = true
     ) {
         self.clicked = clicked
         self.allFolders = allFolders
@@ -39,6 +41,7 @@ internal struct FavoritesMenuContext {
         self.activeDatabase = activeDatabase
         self.linkedFileGitStates = linkedFileGitStates
         self.linkedFolderGitStates = linkedFolderGitStates
+        self.sharesLinks = sharesLinks
     }
 }
 
@@ -117,7 +120,8 @@ internal enum FavoritesMenuSpec {
                 linked,
                 pathCommands: pathItems(node.content.filePath),
                 gitState: context.linkedFileGitStates[linked.id],
-                folderGitState: context.linkedFolderGitStates[linked.folderId]
+                folderGitState: context.linkedFolderGitStates[linked.folderId],
+                sharesLinks: context.sharesLinks
             )
         case .folder(let folder):
             return folderSections(folder)
@@ -141,9 +145,11 @@ internal enum FavoritesMenuSpec {
         _ favorite: SQLFavorite,
         context: FavoritesMenuContext
     ) -> [FavoritesMenuSection] {
-        var edits: [FavoritesMenuItem] = [
-            .command(String(localized: "Copy Query"), .copyText(favorite.query)),
-            .command(String(localized: "Share…"), .shareFavorite(favorite)),
+        var edits: [FavoritesMenuItem] = [.command(String(localized: "Copy Query"), .copyText(favorite.query))]
+        if context.sharesLinks {
+            edits.append(.command(String(localized: "Share…"), .shareFavorite(favorite)))
+        }
+        edits += [
             .command(String(localized: "Edit…"), .editFavorite(favorite)),
             .command(String(localized: "Show History"), .showFavoriteHistory(favorite))
         ]
@@ -194,7 +200,8 @@ internal enum FavoritesMenuSpec {
         _ favorite: LinkedSQLFavorite,
         pathCommands: [FavoritesMenuItem],
         gitState: LinkedFileGitState?,
-        folderGitState: LinkedFolderGitMenuState?
+        folderGitState: LinkedFolderGitMenuState?,
+        sharesLinks: Bool
     ) -> [FavoritesMenuSection] {
         [
             FavoritesMenuSection([
@@ -203,10 +210,8 @@ internal enum FavoritesMenuSpec {
             ]),
             FavoritesMenuSection(gitItems(favorite, gitState: gitState, folderGitState: folderGitState)),
             FavoritesMenuSection(
-                [
-                    .command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite)),
-                    .command(String(localized: "Share…"), .shareLinkedFavorite(favorite))
-                ]
+                [.command(String(localized: "Copy Query"), .copyLinkedFavoriteQuery(favorite))]
+                    + (sharesLinks ? [.command(String(localized: "Share…"), .shareLinkedFavorite(favorite))] : [])
                     + pathCommands
                     + [.command(String(localized: "Show in Finder"), .revealLinkedFavorite(favorite))]
             ),

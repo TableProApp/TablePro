@@ -34,6 +34,8 @@ struct FakeTeamLibrary: Sendable {
     // Answered, one per pull or per push, before anything else.
     var faults: [Int] = []
     var pushFaults: [Int] = []
+    // A company server past its license's grace: pushes are refused, pulls go on.
+    var licenseExpired = false
     // Seconds, sent as Retry-After on each 429 fault.
     var retryAfter: Int?
     // Each writer's updated_by_name, as the server reads it from the accounts at answer time.
@@ -137,6 +139,9 @@ struct FakeTeamLibrary: Sendable {
     mutating func push(path: String, body: Data, memberships: [[String: Any]]) -> (HTTPResponse, HTTPBody?) {
         if !pushFaults.isEmpty {
             return fault(pushFaults.removeFirst())
+        }
+        if licenseExpired {
+            return FakeAccountServer.problem(status: 403, code: "license_expired")
         }
         guard let team = Self.team(in: path), let member = Self.member(team, in: memberships) else {
             return FakeAccountServer.problem(status: 404, code: "not_found")

@@ -51,6 +51,10 @@ packages:
     path: Packages/TableProMacCore
   TableProOracle:
     path: Packages/TableProOracle
+  # The shared Rust core (core/docs/decisions/0010-macos-on-the-core.md). Its binary target comes from
+  # scripts/build-core.sh, which has to run before a package resolve or a build.
+  TableProFFI:
+    path: Packages/TableProFFI
   # Exact, because .github/actions/setup-sparkle installs the feed signing tools from this pin.
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
@@ -440,6 +444,7 @@ targets:
         products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProMemcachedCore, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLFile, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTLSClientIdentity, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
       - package: TableProMacCore
         products: [TableProCloudAPI, TableProMCP, TableProMCPClients, TableProSSHConfig, TableProUtilities]
+      - package: TableProFFI
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
     postCompileScripts:
       - name: Write WhatsNew.md

@@ -58,6 +58,7 @@ internal final class Telemetry {
     private var reportedGates: Set<String> = []
     private var appOpenedTask: Task<Void, Never>?
     private var subscriptions: Set<AnyCancellable> = []
+    private var awaitsRestore = false
 
     init(
         projectKey: String?,
@@ -88,11 +89,25 @@ internal final class Telemetry {
             Self.logger.info("This build has no PostHog project key; usage data is off")
             return
         }
-        let state = account.access.state
-        let stored = state.entitlement?.accountID ?? defaults.string(forKey: Keys.identifiedAccount)
-        accountID = account.session.isSignedIn ? stored : nil
+        if account.access.state.isRestored {
+            accountID = restoredAccountID(account.access.state)
+        } else {
+            // Until the core has read the last run's sign-in, PostHog keeps the identity it has.
+            awaitsRestore = true
+            account.access.$state
+                .first(where: \.isRestored)
+                .sink { [weak self] state in
+                    guard let self else { return }
+                    awaitsRestore = false
+                    accountID = restoredAccountID(state)
+                    reconcileIdentity()
+                }
+                .store(in: &subscriptions)
+        }
         account.events
-            .sink { [weak self] event in self?.handle(event) }
+            .sink { [weak account, weak self] event in
+                self?.handle(event, isProduction: account?.server.isProduction ?? true)
+            }
             .store(in: &subscriptions)
         sharesUsageData
             .removeDuplicates()
@@ -100,10 +115,16 @@ internal final class Telemetry {
             .store(in: &subscriptions)
     }
 
-    private func handle(_ event: AccountEvent) {
+    private func restoredAccountID(_ state: AccountState) -> String? {
+        guard state.isSignedIn, state.server.isProduction else { return nil }
+        return state.entitlement?.accountID ?? defaults.string(forKey: Keys.identifiedAccount)
+    }
+
+    // An account on a company server is that company's record, never a PostHog person.
+    private func handle(_ event: AccountEvent, isProduction: Bool) {
         switch event {
         case .signedIn(let accountID, let method):
-            self.accountID = accountID
+            self.accountID = isProduction ? accountID : nil
             reconcileIdentity()
             capture("signed_in", ["method": method.rawValue])
         case .signedOut(.user):
@@ -169,7 +190,7 @@ internal final class Telemetry {
 
     // The SDK's reset() reloads feature flags even when opted out, so a sign-out while off resets at the next opt-in.
     private func reconcileIdentity() {
-        guard isEnabled, let client else { return }
+        guard isEnabled, !awaitsRestore, let client else { return }
         let identified = defaults.string(forKey: Keys.identifiedAccount)
         if let identified, identified != accountID {
             client.reset()

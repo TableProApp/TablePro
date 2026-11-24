@@ -138,7 +138,7 @@ internal final class FavoritesNSOutlineView: SidebarOutlineView {
         case #selector(copyRelativePath(_:)):
             return favoritesCoordinator?.selectedFilePath?.relative != nil
         case #selector(shareQuery(_:)):
-            return favoritesCoordinator?.selectedShareCommand != nil
+            return ShareAvailability.isAvailable && favoritesCoordinator?.selectedShareCommand != nil
         default:
             return super.validateUserInterfaceItem(item)
         }

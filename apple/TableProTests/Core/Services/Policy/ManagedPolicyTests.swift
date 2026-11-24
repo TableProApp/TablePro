@@ -88,29 +88,72 @@ struct ManagedPolicyResolverTests {
     }
 }
 
+// What a configuration profile delivers: the value, and whether the OS marks it forced.
+private struct FakePreferences: ManagedPreferences {
+    var forced: [String: Any] = [:]
+    var unforced: [String: Any] = [:]
+
+    func object(forKey defaultName: String) -> Any? { forced[defaultName] ?? unforced[defaultName] }
+    func objectIsForced(forKey key: String) -> Bool { forced[key] != nil }
+}
+
 struct ManagedPolicyReaderTests {
-    private let suite: EphemeralDefaults
-
-    init() throws {
-        suite = try EphemeralDefaults()
-    }
-
-    private func makeReader(_ values: [String: Any]) -> ManagedPolicyReader {
-        let defaults = suite.defaults
-        for (key, value) in values { defaults.set(value, forKey: key) }
-        return ManagedPolicyReader(defaults: defaults)
-    }
-
     @Test("an unset policy reads nil")
     func unsetPolicyIsNil() {
-        let reader = makeReader([:])
+        let reader = ManagedPolicyReader(preferences: FakePreferences())
+        #expect(reader.string(.minimumSafeModeLevel) == nil)
+        #expect(reader.string(.accountServerURL) == nil)
+        #expect(reader.bool(.allowOtherAccountServers) == nil)
+    }
+
+    @Test("a forced value is read back")
+    func readsForcedValues() {
+        let reader = ManagedPolicyReader(preferences: FakePreferences(forced: [
+            ManagedPolicy.minimumSafeModeLevel.key: SafeModeLevel.readOnly.rawValue,
+            ManagedPolicy.accountServerURL.key: "https://api.example.com",
+            ManagedPolicy.allowOtherAccountServers.key: false
+        ]))
+        #expect(reader.string(.minimumSafeModeLevel) == SafeModeLevel.readOnly.rawValue)
+        #expect(reader.string(.accountServerURL) == "https://api.example.com")
+        #expect(reader.bool(.allowOtherAccountServers) == false)
+    }
+
+    @Test("a value written to the same key without a profile is not policy")
+    func unforcedValueIsIgnored() {
+        let reader = ManagedPolicyReader(preferences: FakePreferences(unforced: [
+            ManagedPolicy.minimumSafeModeLevel.key: SafeModeLevel.readOnly.rawValue,
+            ManagedPolicy.accountServerURL.key: "https://api.example.com",
+            ManagedPolicy.allowOtherAccountServers.key: false
+        ]))
+        #expect(reader.string(.minimumSafeModeLevel) == nil)
+        #expect(reader.string(.accountServerURL) == nil)
+        #expect(reader.bool(.allowOtherAccountServers) == nil)
+    }
+
+    @Test("a value set in a defaults suite is not forced")
+    func userDefaultsValueIsNotForced() throws {
+        let suite = try EphemeralDefaults()
+        suite.defaults.set(SafeModeLevel.readOnly.rawValue, forKey: ManagedPolicy.minimumSafeModeLevel.key)
+        let reader = ManagedPolicyReader(preferences: suite.defaults)
         #expect(reader.string(.minimumSafeModeLevel) == nil)
     }
 
-    @Test("a set policy value is read back")
-    func readsSetValues() {
-        let reader = makeReader([ManagedPolicy.minimumSafeModeLevel.key: SafeModeLevel.readOnly.rawValue])
-        #expect(reader.string(.minimumSafeModeLevel) == SafeModeLevel.readOnly.rawValue)
+    @Test("a forced value of the wrong type reads nil")
+    func wrongTypeIsIgnored() {
+        let reader = ManagedPolicyReader(preferences: FakePreferences(forced: [
+            ManagedPolicy.accountServerURL.key: 42,
+            ManagedPolicy.allowOtherAccountServers.key: "false"
+        ]))
+        #expect(reader.string(.accountServerURL) == nil)
+        #expect(reader.bool(.allowOtherAccountServers) == nil)
+    }
+
+    @Test("a number is not a boolean policy")
+    func numberIsNotBoolean() {
+        let reader = ManagedPolicyReader(preferences: FakePreferences(forced: [
+            ManagedPolicy.allowOtherAccountServers.key: NSNumber(value: 0)
+        ]))
+        #expect(reader.bool(.allowOtherAccountServers) == nil)
     }
 
     @Test("policy keys are distinct and namespaced apart from the settings blobs")

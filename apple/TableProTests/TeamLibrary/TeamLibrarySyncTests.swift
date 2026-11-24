@@ -945,6 +945,223 @@ struct TeamLibrarySyncTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.store.legacyFile.path))
     }
 
+    // MARK: - A company server's license
+
+    @Test("A company server past its license's grace refuses the push: the edits wait on this Mac and go once it takes them")
+    func licenseExpiredKeepsTheEdits() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        await fixture.library { $0.licenseExpired = true }
+
+        await #expect(throws: TeamLibraryPublishError.failed(.licenseExpired)) {
+            try await fixture.sync.publishSavedQueries(
+                favorites: [TeamLibraryFixture.favorite(name: "Orders")],
+                folders: [],
+                to: Self.team
+            )
+        }
+        #expect(fixture.sync.hasUnsentChanges)
+        #expect(fixture.sync.status == .failed(.licenseExpired))
+        await fixture.library {
+            $0.write(Self.team, kind: "query", clientID: "q2", data: TeamLibraryFixture.queryData("Users"))
+        }
+        #expect(await fixture.sync.sync() == .failed(.licenseExpired), "The push is refused again")
+        #expect(fixture.sync.content.queries.map(\.name).contains("Users"), "Pulls go on past the grace")
+
+        await fixture.library { $0.licenseExpired = false }
+        #expect(await fixture.sync.sync() == .synced)
+        #expect(await fixture.server.library.live(Self.team).count == 2)
+        #expect(!fixture.sync.hasUnsentChanges)
+    }
+
+    @Test("Signing in to another server drops what this Mac read from the one it left")
+    func serverChangeClears() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        fixture.sync.start()
+        try await waitUntil { !fixture.sync.content.queries.isEmpty }
+
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+
+        try await waitUntil { fixture.sync.content == .empty }
+        #expect(fixture.store.loadAll().isEmpty)
+        fixture.sync.stop()
+    }
+
+    @Test("A company sign-in the core restores at launch is no server switch: the edits not sent yet stay")
+    func restoredCompanySignInKeepsTheEdits() async throws {
+        let fixture = try await TeamLibraryFixture()
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        try await fixture.account.signIn()
+        await fixture.sync.sync()
+        await fixture.library { $0.licenseExpired = true }
+        _ = try? await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: Self.team
+        )
+        #expect(fixture.sync.hasUnsentChanges)
+
+        fixture.account.backend.restoreLater(fixture.account.backend.status())
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        fixture.sync.start()
+        fixture.account.backend.finishRestore()
+
+        try await waitUntil { fixture.account.access.state.isSignedIn }
+        #expect(fixture.sync.hasUnsentChanges)
+        #expect(!fixture.store.loadAll().isEmpty)
+        fixture.sync.stop()
+    }
+
+    @Test("A library another server left while the app was closed is dropped, and its unsent edits never reach this one")
+    func anotherServersLibraryIsDropped() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        await fixture.library { $0.licenseExpired = true }
+        _ = try? await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: Self.team
+        )
+        #expect(fixture.sync.hasUnsentChanges)
+        await fixture.library { $0.licenseExpired = false }
+        let pushesBefore = await fixture.pushes().count
+
+        fixture.account.backend.switchServerKeepingTheSession(to: FakeAccountBackend.companyServer)
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        #expect(!fixture.sync.hasUnsentChanges, "Dropped as it loads, before it shows")
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(!fixture.sync.hasUnsentChanges)
+        #expect(await fixture.pushes().count == pushesBefore)
+        #expect(fixture.store.loadAll().allSatisfy { $0.owner?.server == FakeAccountBackend.companyServer.apiOrigin.absoluteString })
+    }
+
+    @Test("Another server's library never shows to an offline file's account after a launch on a new server")
+    func anotherServersLibraryNeverShowsOffline() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        try await fixture.account.signIn()
+        #expect(await fixture.sync.sync() == .synced)
+        #expect(fixture.sync.content.queries.map(\.name) == ["Orders"])
+        fixture.sync.stop()
+
+        fixture.account.backend.switchServerKeepingTheSession(to: .production)
+        fixture.account.backend.restoreLater(AccountSnapshot(
+            state: .offline, accountID: "acct_other", email: "grace@example.com", features: ["team_library"],
+            expiresAt: Date().addingTimeInterval(86_400), isOfflineFile: true
+        ))
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        fixture.sync.start()
+        #expect(fixture.sync.content == .empty, "Nothing shows before the core says whose this Mac is")
+
+        fixture.account.backend.finishRestore()
+
+        try await waitUntil { fixture.account.access.state.isRestored }
+        #expect(fixture.sync.content == .empty)
+        #expect(fixture.store.loadAll().isEmpty)
+        fixture.sync.stop()
+    }
+
+    @Test("A publish queued behind a sync is never sent to a server the Mac switches to while it waits")
+    func queuedPublishStaysWithItsServer() async throws {
+        let gate = AsyncGate()
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        await fixture.library { $0.pullGate = gate }
+        let syncing = Task { await fixture.sync.sync() }
+        await gate.arrived(1)
+        let publishing = Task {
+            try await fixture.sync.publishSavedQueries(
+                favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: Self.team
+            )
+        }
+        await Task.yield()
+
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        try await fixture.account.signIn()
+        await gate.open()
+        _ = await syncing.value
+
+        await #expect(throws: TeamLibraryPublishError.failed(.signedOut)) { try await publishing.value }
+        #expect(await fixture.pushes().isEmpty)
+    }
+
+    @Test("A team file another server's sign-in left, as after a delete that failed, is dropped and never adopted")
+    func leftoverFileOfAnotherOwnerIsDropped() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        #expect(await fixture.sync.sync() == .synced)
+        #expect(fixture.store.loadAll().allSatisfy { $0.owner?.accountID == "acct_test" })
+        var leftover = TeamLibraryTeamState(teamID: "team_leftover", teamName: "Other", canWrite: true)
+        leftover.owner = TeamLibraryOwner(server: "https://tablepro.example.com", accountID: "acct_test")
+        fixture.store.save(leftover)
+
+        fixture.relaunch()
+
+        #expect(fixture.sync.teamName(of: "team_leftover") == nil)
+        #expect(fixture.store.loadAll().map(\.teamID) == [Self.team])
+        #expect(fixture.sync.content.queries.map(\.name) == ["Orders"])
+    }
+
+    @Test("Signed out at launch, the stored copy stays hidden, and another server's is dropped")
+    func signedOutLaunchShowsNothing() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        #expect(await fixture.sync.sync() == .synced)
+        fixture.sync.stop()
+
+        fixture.account.backend.restoreLater(AccountSnapshot())
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        fixture.sync.start()
+        fixture.account.backend.finishRestore()
+        try await waitUntil { fixture.account.access.state.isRestored }
+
+        #expect(fixture.sync.content == .empty)
+        #expect(fixture.sync.writableTeams.isEmpty)
+        #expect(!fixture.store.loadAll().isEmpty, "This server's copy waits for its account")
+        fixture.sync.stop()
+
+        fixture.account.backend.switchServerKeepingTheSession(to: FakeAccountBackend.companyServer)
+        fixture.account.backend.restoreLater(AccountSnapshot())
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        fixture.sync.start()
+        fixture.account.backend.finishRestore()
+        try await waitUntil { fixture.account.access.state.server == FakeAccountBackend.companyServer }
+
+        #expect(fixture.sync.content == .empty)
+        #expect(fixture.store.loadAll().isEmpty)
+        fixture.sync.stop()
+    }
+
+    @Test("A bearer the core could not renew sends nothing, and the edits wait for the next sync instead of being dropped")
+    func failedBearerKeepsTheEdits() async throws {
+        let fixture = try await TeamLibraryFixture()
+        #expect(await fixture.sync.sync() == .synced)
+        fixture.account.backend.failBearer(with: .server(status: 0, code: "temporarily_unavailable"))
+
+        let outcome = try? await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: Self.team
+        )
+        #expect(outcome != .published(1))
+        #expect(fixture.sync.hasUnsentChanges)
+        #expect(TeamLibraryFailure.from(.server(status: 0, code: "temporarily_unavailable")).isRetryable)
+        #expect(TeamLibraryFailure.from(.server(status: 403, code: "device_revoked")) == .signedOut)
+        #expect(TeamLibraryFailure.from(.server(status: 422, code: nil)) == .refused(nil))
+
+        fixture.account.backend.failBearer(with: nil)
+        #expect(await fixture.sync.sync() == .synced)
+        #expect(!fixture.sync.hasUnsentChanges)
+        #expect(await fixture.server.library.live(Self.team).count == 1)
+    }
+
     // MARK: - Sign-out while a call is out
 
     @Test("A pull that answers after sign-out brings nothing back")

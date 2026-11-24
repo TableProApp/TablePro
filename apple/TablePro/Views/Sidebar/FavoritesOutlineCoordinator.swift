@@ -340,7 +340,8 @@ internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutline
             databaseEntityName: owner.input.databaseEntityName,
             activeDatabase: owner.input.activeDatabase,
             linkedFileGitStates: owner.input.linkedFileGitStates,
-            linkedFolderGitStates: owner.input.linkedFolderGitStates
+            linkedFolderGitStates: owner.input.linkedFolderGitStates,
+            sharesLinks: ShareAvailability.isAvailable
         )
         SidebarMenuBuilder.fill(
             menu,

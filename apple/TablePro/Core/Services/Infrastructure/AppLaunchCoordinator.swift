@@ -130,6 +130,7 @@ internal final class AppLaunchCoordinator: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
+            await self.environment.accountRestored()
             while !self.pendingIntents.isEmpty {
                 let intent = self.pendingIntents.removeFirst()
                 self.hasRoutedAnyIntent = true

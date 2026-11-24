@@ -4737,6 +4737,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "%@ is not part of your organization's license" : {
+
+    },
     "%@ is read-only, so nothing can be written to it." : {
       "localizations" : {
         "fr" : {
@@ -11693,6 +11696,9 @@
     "%d saved queries were not imported." : {
 
     },
+    "%d seats" : {
+
+    },
     "%d selected" : {
       "localizations" : {
         "fr" : {
@@ -15797,6 +15803,9 @@
 
     },
     "1 saved query was not imported." : {
+
+    },
+    "1 seat" : {
 
     },
     "1 statement" : {
@@ -32884,6 +32893,9 @@
     "Ask the SSH server's administrator to turn on a method TablePro supports." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Ask your administrator about it." : {
+
     },
     "Ask your administrator to register postgres/host.domain.com in the realm, and connect by hostname rather than IP address." : {
       "extractionState" : "manual",
@@ -52337,6 +52349,9 @@
           }
         }
       }
+    },
+    "Company server" : {
+
     },
     "Compare" : {
       "localizations" : {
@@ -83366,6 +83381,9 @@
     "Enter the address of jump host %lld." : {
 
     },
+    "Enter the address of your organization's TablePro server. Your administrator has it." : {
+
+    },
     "Enter the client ID and secret." : {
 
     },
@@ -83666,6 +83684,9 @@
           }
         }
       }
+    },
+    "Enter the server's https address, such as https://tablepro.example.com." : {
+
     },
     "Enter the sort key of index %@" : {
       "extractionState" : "manual",
@@ -85041,6 +85062,9 @@
     "Europe and Africa" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Evaluation license" : {
+
     },
     "Event" : {
       "extractionState" : "manual",
@@ -87494,6 +87518,22 @@
           }
         }
       }
+    },
+    "Expired on %@. Ask your administrator to renew it." : {
+
+    },
+    "Expired on %@. Team Library takes changes until %@; ask your administrator to renew it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Expired on %1$@. Team Library takes changes until %2$@; ask your administrator to renew it."
+          }
+        }
+      }
+    },
+    "Expired on %@. Team Library takes no changes until your administrator renews it." : {
+
     },
     "Expires" : {
       "localizations" : {
@@ -122504,6 +122544,9 @@
         }
       }
     },
+    "Managed by your organization" : {
+
+    },
     "Manual" : {
       "localizations" : {
         "fr" : {
@@ -133851,6 +133894,9 @@
           }
         }
       }
+    },
+    "No end date" : {
+
     },
     "No etcd v3 API found at %@. Point the connection at the client port, 2379 by default, and not the peer port on 2380." : {
       "extractionState" : "manual",
@@ -158070,6 +158116,9 @@
         }
       }
     },
+    "Profile and teams" : {
+
+    },
     "Profile Details" : {
       "localizations" : {
         "fr" : {
@@ -168553,6 +168602,9 @@
           }
         }
       }
+    },
+    "Removing a device signs TablePro out there." : {
+
     },
     "Removing…" : {
 
@@ -185378,6 +185430,9 @@
         }
       }
     },
+    "Server address" : {
+
+    },
     "Server Configuration" : {
       "localizations" : {
         "fr" : {
@@ -191567,6 +191622,9 @@
     "Sign in again to sync the team library." : {
 
     },
+    "Sign in to %@" : {
+
+    },
     "Sign in to Google with your browser?" : {
       "localizations" : {
         "fr" : {
@@ -191795,6 +191853,9 @@
 
     },
     "Sign in to Vault with your browser?" : {
+
+    },
+    "Sign in to your organization's own TablePro server." : {
 
     },
     "Sign in to your TablePro account to share links." : {
@@ -219745,6 +219806,9 @@
     "The server refused a change. The changes before it were saved." : {
 
     },
+    "The server refused the request. Try again in a moment." : {
+
+    },
     "The server rejected TablePro's credential." : {
       "localizations" : {
         "fr" : {
@@ -219923,6 +219987,9 @@
       "generatesSymbol" : false
     },
     "The server's socket file on this Mac. SELECT @@socket in the mysql client shows it." : {
+
+    },
+    "The server's TablePro license has expired, so it takes no changes. They stay on this Mac until your administrator renews the license." : {
 
     },
     "The server's TLS certificate could not be verified against any trusted root." : {
@@ -223688,6 +223755,9 @@
           }
         }
       }
+    },
+    "This address does not answer as a TablePro server. Check it with your administrator." : {
+
     },
     "This app also asks to list connections hidden from AI. To allow that, turn on “Allow apps to list connections hidden from AI” in Settings > MCP, then pair again." : {
       "localizations" : {
@@ -227869,6 +227939,9 @@
     "This offline file has expired. Create a new one in your account." : {
 
     },
+    "This offline file is for another account. Sign out first, or create one for the account signed in." : {
+
+    },
     "This offline file is not valid yet. Check this Mac's date and time." : {
 
     },
@@ -229202,6 +229275,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This server has no TablePro license installed. Ask your administrator to install one." : {
+
+    },
     "This server has no users or roles you can manage." : {
       "localizations" : {
         "fr" : {
@@ -229323,6 +229399,9 @@
     "This server signs in with Kerberos. Set Authentication to Kerberos (GSSAPI), then reconnect." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This server's TablePro license is not valid for this server. Ask your administrator." : {
+
     },
     "This sets %1$lld of %2$lld cells. The others cannot be edited." : {
 
@@ -239740,6 +239819,12 @@
         }
       }
     },
+    "Use a Company Server" : {
+
+    },
+    "Use a Company Server…" : {
+
+    },
     "Use a license key" : {
 
     },
@@ -240462,6 +240547,9 @@
           }
         }
       }
+    },
+    "Use TablePro's Server Instead" : {
+
     },
     "Use text mode to enter JSON." : {
 
@@ -249507,6 +249595,9 @@
         }
       }
     },
+    "Your organization manages which server TablePro signs in to." : {
+
+    },
     "Your organization requires Safe Mode to be at least %@ on every connection." : {
       "localizations" : {
         "fr" : {
@@ -249516,6 +249607,18 @@
           }
         }
       }
+    },
+    "Your organization set up this TablePro server. Sign in with your work account." : {
+
+    },
+    "Your organization's server licenses this Mac. A license key or an offline file is not needed." : {
+
+    },
+    "Your organization's TablePro server." : {
+
+    },
+    "Your organization's TablePro server. Sign in with your work account." : {
+
     },
     "Your plan could not be verified" : {
       "localizations" : {

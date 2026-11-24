@@ -5,20 +5,26 @@
 
 import Combine
 import Foundation
-import TableProCloudAPI
 
 internal enum EntitlementRefreshState: Equatable, Sendable {
     case idle
     case succeeded(Date)
     case failed(AccountError)
-    case deviceLimitReached([Components.Schemas.LicensedDevice])
+    case deviceLimitReached([AccountDevice])
 }
 
 internal struct AccountState: Equatable, Sendable {
     var isSignedIn = false
     var entitlement: Entitlement?
-    var legacy: LegacyEntitlement?
     var refresh: EntitlementRefreshState = .idle
+    var server: AccountServer = .production
+    var serverLicense: AccountServerLicense?
+    // The core's gate for each feature, as it answered at the last change.
+    var features: [ProFeature: ProFeatureAccess] = [:]
+    // When this Mac last heard from the server that the entitlement holds.
+    var verifiedAt: Date?
+    // False until the core has read the last run's sign-in: a change before then is no sign-in or server change.
+    var isRestored = false
 }
 
 // Whether the person in front of the app has paid, which losing the network cannot undo.
@@ -27,7 +33,7 @@ internal enum SupportAudience: Equatable {
     case prospect
 }
 
-// Maps the entitlement's feature codes to what each gate shows.
+// What each gate shows, from the core's answer for the feature's code.
 @MainActor
 internal final class FeatureAccess: ObservableObject {
     static let shared = FeatureAccess()
@@ -51,7 +57,7 @@ internal final class FeatureAccess: ObservableObject {
     }
 
     func check(_ feature: ProFeature) -> ProFeatureAccess {
-        Self.resolve(feature, state: state, now: now())
+        Self.resolve(feature, state: state)
     }
 
     var supportAudience: SupportAudience {
@@ -70,34 +76,19 @@ internal final class FeatureAccess: ObservableObject {
         state.entitlement.flatMap { $0.isValid(at: now()) ? $0 : nil }
     }
 
-    nonisolated static func resolve(_ feature: ProFeature, state: AccountState, now: Date) -> ProFeatureAccess {
-        let code = feature.rawValue
-        let entitlement = state.entitlement.flatMap { $0.isValid(at: now) ? $0 : nil }
-        let legacy = state.legacy.flatMap { $0.isValid(at: now) ? $0 : nil }
-
-        if entitlement?.features.contains(code) == true || legacy?.features.contains(code) == true {
-            return .available
-        }
-        if entitlement != nil || legacy != nil {
-            return .notIncluded
-        }
-        if state.entitlement?.features.contains(code) == true || state.legacy?.features.contains(code) == true {
-            return .expired
-        }
-        if !state.isSignedIn {
-            return .signedOut
-        }
-        if case .deviceLimitReached = state.refresh {
-            return .notIncluded
-        }
-        return .refreshFailed
+    nonisolated static func resolve(_ feature: ProFeature, state: AccountState) -> ProFeatureAccess {
+        state.features[feature] ?? (state.isSignedIn ? .refreshFailed : .signedOut)
     }
 
-    // A lapsed entitlement still names its licenses: someone offline past expiry has still paid.
+    // A lapsed entitlement still names its licenses: someone offline past expiry has still paid. A company server's
+    // people are covered by its organization's license.
     nonisolated static func resolveSupportAudience(state: AccountState) -> SupportAudience {
+        if !state.server.isProduction {
+            return .supporter
+        }
         if let entitlement = state.entitlement, !entitlement.licenses.isEmpty {
             return .supporter
         }
-        return state.legacy == nil ? .prospect : .supporter
+        return .prospect
     }
 }

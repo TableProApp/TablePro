@@ -17,6 +17,8 @@ pub struct AccountStatusInfo {
     pub features: Vec<String>,
     pub licenses: Vec<LicenseInfo>,
     pub entitlement_expires_at_secs: Option<i64>,
+    // The entitlement came from an offline file. A signed-in machine can import one too, so the state does not say.
+    pub offline_file: bool,
     pub problem: Option<EntitlementProblemTag>,
     // False when no secret store took the sign-in: the next launch starts signed out.
     pub remembered: bool,
@@ -239,6 +241,7 @@ impl AccountStatusInfo {
                 .map(|claims| claims.licenses.iter().map(LicenseInfo::from).collect())
                 .unwrap_or_default(),
             entitlement_expires_at_secs: status.entitlement().map(|it| it.expires_at().timestamp()),
+            offline_file: claims.is_some_and(|claims| claims.offline),
             problem: signed_in
                 .and_then(|signed_in| signed_in.problem.as_ref())
                 .map(|problem| EntitlementProblemTag::of(problem, machine_id)),
@@ -394,6 +397,7 @@ mod tests {
         assert_eq!(info.email.as_deref(), Some(claims.account.email.as_str()));
         assert_eq!(info.features, ["shared_links"]);
         assert_eq!(info.entitlement_expires_at_secs, Some(claims.exp));
+        assert!(!info.offline_file);
         assert_eq!(
             info.problem,
             Some(EntitlementProblemTag::RefreshFailed {
@@ -401,6 +405,22 @@ mod tests {
             })
         );
         assert!(info.remembered);
+    }
+
+    #[test]
+    fn an_offline_file_a_signed_in_machine_imported_says_so() {
+        let mut claims = fakes::claims(Utc::now(), TimeDelta::days(30), &["shared_links"]);
+        claims.offline = true;
+        let status = AccountStatus::SignedIn(Box::new(SignedIn {
+            entitlement: Some(fakes::entitlement(&claims).unwrap()),
+            problem: None,
+            remembered: true,
+        }));
+
+        let info = AccountStatusInfo::of(&status, fakes::MACHINE);
+
+        assert_eq!(info.state, AccountStateTag::SignedIn);
+        assert!(info.offline_file);
     }
 
     #[test]

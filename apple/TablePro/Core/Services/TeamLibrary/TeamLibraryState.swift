@@ -60,6 +60,8 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     // This Mac's copy Keep Theirs turned down: publishing leaves the team's version alone until the copy here changes.
     var declined: [TeamLibraryKey: TeamLibraryData]
     var syncedAt: Date?
+    // The server and account this copy came from; nil in a file an earlier build wrote, which only tablepro.app filled.
+    var owner: TeamLibraryOwner?
 
     init(teamID: String, teamName: String, canWrite: Bool) {
         self.teamID = teamID
@@ -76,7 +78,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, moves, declined, syncedAt
+        case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, moves, declined, syncedAt, owner
     }
 
     private struct Declined: Codable {
@@ -99,6 +101,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         let declinedList = (try? container.decodeIfPresent([Declined].self, forKey: .declined)) ?? []
         declined = Dictionary(declinedList.map { ($0.key, $0.data) }, uniquingKeysWith: { _, last in last })
         syncedAt = try container.decodeIfPresent(Date.self, forKey: .syncedAt)
+        owner = try container.decodeIfPresent(TeamLibraryOwner.self, forKey: .owner)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -114,6 +117,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         try container.encode(moves, forKey: .moves)
         try container.encode(declined.map { Declined(key: $0.key, data: $0.value) }, forKey: .declined)
         try container.encodeIfPresent(syncedAt, forKey: .syncedAt)
+        try container.encodeIfPresent(owner, forKey: .owner)
     }
 
     var liveItems: [TeamLibraryChange] {
@@ -128,6 +132,12 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     func clientID(kind: String, for id: String) -> String {
         items[TeamLibraryKey(kind: kind, clientID: id)]?.clientId ?? id.lowercased()
     }
+}
+
+// The server and account a stored library came from.
+internal struct TeamLibraryOwner: Codable, Equatable, Sendable {
+    let server: String
+    let accountID: String
 }
 
 // One JSON file per team under Application Support, plus the cache the /v1 library left behind.

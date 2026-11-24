@@ -153,6 +153,13 @@ class DetectChangedPathsTests(unittest.TestCase):
             "apple/Packages/TableProFFI/Package.swift",
             "apple/scripts/build-core.sh",
             "apple/scripts/lib/deployment-target.sh",
+            "apple/scripts/lib/system-sqlite.sh",
+            "apple/scripts/update-core-licenses.sh",
+            "apple/scripts/about/core-crates.txt.hbs",
+            "apple/TablePro/Resources/ThirdPartyLicenses/texts/tablepro-core-crates.txt",
+            "linux/about.toml",
+            "linux/build-aux/about/fallbacks.hbs",
+            "linux/build-aux/packaging/crate_notices.py",
             "apple/project.yml",
             "scripts/ci/start-windows-sshd.ps1",
             ".github/workflows/core.yml",
@@ -230,7 +237,6 @@ class DetectChangedPathsTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "true")
                 self.assertEqual(self.verdict_after("linux-docs", path), "true")
-                self.assertEqual(self.verdict_after("macos", path), "false")
         self.assertEqual(self.verdict_after("linux", "core/AGENTS.md"), "false")
         self.assertEqual(self.verdict_after("linux-docs", "core/docs/decisions/0001-shared-core.md"), "true")
 
@@ -246,7 +252,6 @@ class DetectChangedPathsTests(unittest.TestCase):
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "true")
-                self.assertEqual(self.verdict_after("macos", path), "false")
         self.assertEqual(self.verdict_after("linux", "apple/Packages/TableProCore/Package.toml"), "false")
 
     def test_linux_docs_runs_on_every_linux_path(self):
@@ -269,7 +274,6 @@ class DetectChangedPathsTests(unittest.TestCase):
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("windows", path), "true")
-                self.assertEqual(self.verdict_after("macos", path), "false")
 
     def test_windows_runs_on_every_core_crate_and_the_workspace_files(self):
         for path in [
@@ -282,7 +286,6 @@ class DetectChangedPathsTests(unittest.TestCase):
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("windows", path), "true")
-                self.assertEqual(self.verdict_after("macos", path), "false")
 
     def test_windows_skips_the_other_apps_markdown_and_other_tool_settings(self):
         for path in [
@@ -434,8 +437,41 @@ class DetectChangedPathsTests(unittest.TestCase):
         for suite in ["macos", "release", "shipped", "linux", "core"]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.verdict_after(suite, catalog), "true")
-        self.assertEqual(self.verdict_after("macos", "core/crates/mcp/src/lib.rs"), "false")
         self.assertEqual(self.verdict_after("plugins", catalog), "false")
+
+    def test_the_mac_app_runs_on_the_core_it_links(self):
+        for path in [
+            "core/crates/ffi/src/lib.rs",
+            "core/crates/ffi/uniffi.toml",
+            "core/crates/account/src/lib.rs",
+            "core/crates/storage/Cargo.toml",
+            "core/crates/bindgen/src/main.rs",
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "apple/scripts/build-core.sh",
+            "apple/scripts/lib/system-sqlite.sh",
+        ]:
+            for suite in ["macos", "release", "shipped"]:
+                with self.subTest(path=path, suite=suite):
+                    self.assertEqual(self.verdict_after(suite, path), "true")
+
+    def test_the_mac_app_skips_the_core_it_does_not_link(self):
+        for path in [
+            "core/crates/drivers/sqlite/src/driver.rs",
+            "core/crates/drivers/postgres/Cargo.toml",
+            "core/crates/account/tests/account.rs",
+            "core/crates/core/tests/fixtures/state_changing_functions.json",
+            "core/AGENTS.md",
+            "core/docs/decisions/0010-macos-on-the-core.md",
+            "rustfmt.toml",
+            "clippy.toml",
+            "deny.toml",
+            ".config/nextest.toml",
+        ]:
+            for suite in ["macos", "release", "shipped"]:
+                with self.subTest(path=path, suite=suite):
+                    self.assertEqual(self.verdict_after(suite, path), "false")
 
     def test_macos_runs_on_the_build_setup_action(self):
         self.assertEqual(self.verdict_after("macos", ".github/actions/prepare-build/action.yml"), "true")

@@ -16369,6 +16369,7 @@ internal record AccountStatusInfo (
     string[] Features, 
     LicenseInfo[] Licenses, 
     long? EntitlementExpiresAtSecs, 
+    bool OfflineFile, 
     EntitlementProblemTag? Problem, 
     bool Remembered
 ) {
@@ -16386,6 +16387,7 @@ class FfiConverterTypeAccountStatusInfo: FfiConverterRustBuffer<AccountStatusInf
             Features: FfiConverterSequenceString.INSTANCE.Read(stream),
             Licenses: FfiConverterSequenceTypeLicenseInfo.INSTANCE.Read(stream),
             EntitlementExpiresAtSecs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            OfflineFile: FfiConverterBoolean.INSTANCE.Read(stream),
             Problem: FfiConverterOptionalTypeEntitlementProblemTag.INSTANCE.Read(stream),
             Remembered: FfiConverterBoolean.INSTANCE.Read(stream)
         );
@@ -16400,6 +16402,7 @@ class FfiConverterTypeAccountStatusInfo: FfiConverterRustBuffer<AccountStatusInf
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Features)
             + FfiConverterSequenceTypeLicenseInfo.INSTANCE.AllocationSize(value.Licenses)
             + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.EntitlementExpiresAtSecs)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.OfflineFile)
             + FfiConverterOptionalTypeEntitlementProblemTag.INSTANCE.AllocationSize(value.Problem)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.Remembered);
     }
@@ -16412,6 +16415,7 @@ class FfiConverterTypeAccountStatusInfo: FfiConverterRustBuffer<AccountStatusInf
             FfiConverterSequenceString.INSTANCE.Write(value.Features, stream);
             FfiConverterSequenceTypeLicenseInfo.INSTANCE.Write(value.Licenses, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.EntitlementExpiresAtSecs, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.OfflineFile, stream);
             FfiConverterOptionalTypeEntitlementProblemTag.INSTANCE.Write(value.Problem, stream);
             FfiConverterBoolean.INSTANCE.Write(value.Remembered, stream);
     }

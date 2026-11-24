@@ -59,7 +59,7 @@ struct LicenseGateRow: View {
     @ObservedObject private var featureAccess = FeatureAccess.shared
 
     var body: some View {
-        if let notice = LicensePresentation.gate(for: feature, state: featureAccess.state, now: Date()) {
+        if let notice = LicensePresentation.gate(for: feature, state: featureAccess.state) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(notice.title)
@@ -114,7 +114,7 @@ extension LicenseNoticeAction {
 internal enum LicenseGateAlert {
     // A sheet, never runModal: a UI test without a plan froze the app on it.
     static func present(for feature: ProFeature, in window: NSWindow?, access: FeatureAccess = .shared) {
-        guard let notice = LicensePresentation.gate(for: feature, state: access.state, now: Date()) else { return }
+        guard let notice = LicensePresentation.gate(for: feature, state: access.state) else { return }
         Telemetry.shared.featureGateShown(feature, access: access.check(feature))
         let actions = [notice.action, notice.alternative].compactMap { $0 }
         // A state with no way out of its own opens the pane that explains it.
