@@ -927,7 +927,7 @@ struct TeamLibrarySyncTests {
         await fixture.account.services.signOut()
 
         try await waitUntil { fixture.sync.content == .empty }
-        #expect(fixture.store.loadAll().isEmpty)
+        try await waitUntil { fixture.store.loadAll().isEmpty }
         fixture.sync.stop()
     }
 
@@ -952,9 +952,9 @@ struct TeamLibrarySyncTests {
         #expect(await fixture.sync.sync() == .skipped)
 
         #expect(fixture.sync.content == .empty)
+        try await waitUntil { fixture.cacheFolders.isEmpty }
         #expect(fixture.store.loadAll().isEmpty)
         #expect(!FileManager.default.fileExists(atPath: fixture.store.legacyFile.path))
-        #expect(fixture.cacheFolders.isEmpty)
     }
 
     // MARK: - A company server's license
@@ -1291,7 +1291,7 @@ struct TeamLibrarySyncTests {
 
         try await waitUntil { !fixture.discarded.reports.isEmpty }
         #expect(fixture.discarded.reports == [["Orders"]])
-        #expect(fixture.cacheFolders.isEmpty)
+        try await waitUntil { fixture.cacheFolders.isEmpty }
         try await fixture.account.signIn()
         #expect(await fixture.sync.sync() == .synced)
         #expect(!fixture.sync.hasUnsentChanges)
@@ -1310,13 +1310,13 @@ struct TeamLibrarySyncTests {
         try await waitUntil { !fixture.discarded.reports.isEmpty }
         #expect(fixture.discarded.reports == [["Orders"]])
         #expect(!fixture.sync.hasUnsentChanges)
-        #expect(fixture.cacheFolders.isEmpty)
+        try await waitUntil { fixture.cacheFolders.isEmpty }
         #expect(fixture.account.access.state.isSignedIn)
         fixture.sync.stop()
     }
 
-    @Test("A sign-out while a push is out lets it land first, so nothing is reported discarded")
-    func signOutWaitsForThePushInFlight() async throws {
+    @Test("A sign-out while a push is out ends the session at once: the edit is listed, and the late answer records nothing")
+    func signOutEndsTheSessionAtOnce() async throws {
         let gate = AsyncGate()
         let fixture = try await TeamLibraryFixture()
         fixture.sync.start()
@@ -1331,12 +1331,15 @@ struct TeamLibrarySyncTests {
         await gate.arrived(1)
 
         try await Self.refuseRefresh(fixture)
+        #expect(fixture.sync.content == .empty, "Nothing of the ended session shows, though its push is out")
+        #expect(fixture.sync.writableTeams.isEmpty)
+        #expect(fixture.discarded.reports == [["Orders"]])
         await gate.open()
-        _ = try? await publishing.value
+        await #expect(throws: TeamLibraryPublishError.failed(.signedOut)) { try await publishing.value }
 
         try await waitUntil { fixture.cacheFolders.isEmpty }
-        #expect(fixture.discarded.reports.isEmpty)
-        #expect(await fixture.server.library.live(Self.team).count == 1)
+        #expect(fixture.sync.content == .empty)
+        #expect(!fixture.sync.hasUnsentChanges)
         fixture.sync.stop()
     }
 
