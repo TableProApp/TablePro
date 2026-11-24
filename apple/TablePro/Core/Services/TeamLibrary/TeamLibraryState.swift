@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import CryptoKit
 import Foundation
 import os
 import TableProCloudAPI
@@ -60,8 +61,6 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     // This Mac's copy Keep Theirs turned down: publishing leaves the team's version alone until the copy here changes.
     var declined: [TeamLibraryKey: TeamLibraryData]
     var syncedAt: Date?
-    // The server and account this copy came from; nil in a file an earlier build wrote, which only tablepro.app filled.
-    var owner: TeamLibraryOwner?
 
     init(teamID: String, teamName: String, canWrite: Bool) {
         self.teamID = teamID
@@ -78,7 +77,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, moves, declined, syncedAt, owner
+        case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, moves, declined, syncedAt
     }
 
     private struct Declined: Codable {
@@ -101,7 +100,6 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         let declinedList = (try? container.decodeIfPresent([Declined].self, forKey: .declined)) ?? []
         declined = Dictionary(declinedList.map { ($0.key, $0.data) }, uniquingKeysWith: { _, last in last })
         syncedAt = try container.decodeIfPresent(Date.self, forKey: .syncedAt)
-        owner = try container.decodeIfPresent(TeamLibraryOwner.self, forKey: .owner)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -117,11 +115,20 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         try container.encode(moves, forKey: .moves)
         try container.encode(declined.map { Declined(key: $0.key, data: $0.value) }, forKey: .declined)
         try container.encodeIfPresent(syncedAt, forKey: .syncedAt)
-        try container.encodeIfPresent(owner, forKey: .owner)
     }
 
     var liveItems: [TeamLibraryChange] {
         items.values.filter { !$0.deleted }
+    }
+
+    // What the read cache keeps: what the team holds, never an edit this Mac has not sent.
+    var cached: TeamLibraryTeamState {
+        var cached = self
+        cached.pending = []
+        cached.conflicts = []
+        cached.moves = []
+        cached.declined = [:]
+        return cached
     }
 
     func declines(_ key: TeamLibraryKey, sending data: TeamLibraryData) -> Bool {
@@ -134,13 +141,138 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     }
 }
 
-// The server and account a stored library came from.
-internal struct TeamLibraryOwner: Codable, Equatable, Sendable {
-    let server: String
-    let accountID: String
+// Where Team Library keeps what it read, one folder per server and account, and the library 0.88 and earlier kept
+// (TeamLibrarySync has the rules).
+internal struct TeamLibraryStorage {
+    static let flatConsideredKey = "com.TablePro.teamLibrary.earlierLibraryConsidered"
+
+    // The library 0.88 and earlier kept: one file per team with its unsent edits, and the /v1 cache.
+    let flat: TeamLibraryStateStore
+    let cacheRoot: URL
+    let defaults: UserDefaults
+
+    static func live() -> TeamLibraryStorage {
+        let environment = AppStorageEnvironment.shared
+        let support = environment.supportDirectory
+        return TeamLibraryStorage(
+            flat: TeamLibraryStateStore(
+                directory: support.appendingPathComponent("TeamLibrary", isDirectory: true),
+                legacyFile: support.appendingPathComponent("team_library.json"),
+                defaults: environment.defaults
+            ),
+            cacheRoot: support.appendingPathComponent("TeamLibraryCache", isDirectory: true),
+            defaults: environment.defaults
+        )
+    }
+
+    func folder(server: URL, accountID: String) -> URL {
+        let digest = SHA256.hash(data: Data("\(server.absoluteString)\n\(accountID)".utf8))
+        return cacheRoot.appendingPathComponent(digest.map { String(format: "%02x", $0) }.joined(), isDirectory: true)
+    }
+
+    func cache(in folder: URL) -> TeamLibraryStateStore {
+        TeamLibraryStateStore(
+            directory: folder.appendingPathComponent("Teams", isDirectory: true),
+            legacyFile: folder.appendingPathComponent("team_library.json"),
+            defaults: defaults
+        )
+    }
+
+    // Best-effort: a folder left behind is never read, and goes at the next sign-out, switch or launch.
+    func removeFolders(except kept: URL?) {
+        let folders = (try? FileManager.default.contentsOfDirectory(at: cacheRoot, includingPropertiesForKeys: nil)) ?? []
+        for folder in folders where folder.lastPathComponent != kept?.lastPathComponent {
+            try? FileManager.default.removeItem(at: folder)
+        }
+    }
+
+    var hasFlat: Bool {
+        let teamFiles = (try? FileManager.default.contentsOfDirectory(atPath: flat.directory.path)) ?? []
+        return !teamFiles.isEmpty || FileManager.default.fileExists(atPath: flat.legacyFile.path)
+    }
+
+    var hasConsideredFlat: Bool {
+        defaults.bool(forKey: Self.flatConsideredKey)
+    }
+
+    // One shot: the flag is written and read back before the first read, so no later launch reads it, whoever that
+    // launch restores; a flag that did not stick reads nothing. A file that names an owner, as development builds of
+    // the account move wrote, is read only for that owner. Its read cache fills in what `cache` lacks, its files go,
+    // and its teams come back with the unsent edits they kept.
+    func takeFlat(into cache: TeamLibraryStateStore, server: URL, accountID: String) -> [TeamLibraryTeamState] {
+        guard !hasConsideredFlat, markFlatConsidered() else {
+            removeFlat()
+            return []
+        }
+        let restored = FlatOwnerRecord.Owner(server: server.absoluteString, accountID: accountID)
+        let files = (try? FileManager.default.contentsOfDirectory(at: flat.directory, includingPropertiesForKeys: nil)) ?? []
+        var kept: [TeamLibraryTeamState] = []
+        // Each file is read once: its owner is checked before its library is decoded from the same bytes.
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let record = try? JSONDecoder().decode(FlatOwnerRecord.self, from: data),
+                  record.owner == nil || record.owner == restored,
+                  let team = try? StoreCoding.plain.decode(TeamLibraryTeamState.self, from: data)
+            else { continue }
+            kept.append(team)
+        }
+        let cached = Set(cache.loadAll().map(\.teamID))
+        for team in kept where !cached.contains(team.teamID) {
+            cache.save(team)
+        }
+        let manager = FileManager.default
+        if manager.fileExists(atPath: flat.legacyFile.path), !manager.fileExists(atPath: cache.legacyFile.path) {
+            try? manager.createDirectory(at: cache.legacyFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? manager.copyItem(at: flat.legacyFile, to: cache.legacyFile)
+        }
+        removeFlat()
+        return kept
+    }
+
+    private struct FlatOwnerRecord: Decodable {
+        struct Owner: Decodable, Equatable {
+            let server: String
+            let accountID: String
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case owner
+        }
+
+        // Nil only when the file names no owner, as 0.88 and earlier wrote it; an owner that cannot be read fails.
+        let owner: Owner?
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            owner = container.contains(.owner) ? try container.decode(Owner.self, forKey: .owner) : nil
+        }
+    }
+
+    // Any sign-in but the restored tablepro.app one, or a company server: the library 0.88 kept is not theirs, and goes
+    // unread.
+    func discardFlat() {
+        if !hasConsideredFlat {
+            markFlatConsidered()
+        }
+        removeFlat()
+    }
+
+    // Best-effort: once considered, what is left is never read.
+    private func removeFlat() {
+        guard hasFlat else { return }
+        flat.removeAll()
+    }
+
+    // True once the flag is written and read back. False leaves it set for this launch only, so nothing reads the store.
+    @discardableResult
+    private func markFlatConsidered() -> Bool {
+        defaults.set(true, forKey: Self.flatConsideredKey)
+        // The flag reaches cfprefsd before the store is read, so a crash after the read cannot let a later launch read it.
+        return defaults.synchronize() && defaults.bool(forKey: Self.flatConsideredKey)
+    }
 }
 
-// One JSON file per team under Application Support, plus the cache the /v1 library left behind.
+// One JSON file per team, plus the cache the /v1 library left behind.
 internal struct TeamLibraryStateStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibraryStateStore")
     static let legacyPullKey = "com.TablePro.teamLibrary.lastPullAt"
@@ -148,15 +280,6 @@ internal struct TeamLibraryStateStore {
     let directory: URL
     let legacyFile: URL
     let defaults: UserDefaults
-
-    static func live() -> TeamLibraryStateStore {
-        let environment = AppStorageEnvironment.shared
-        return TeamLibraryStateStore(
-            directory: environment.supportDirectory.appendingPathComponent("TeamLibrary", isDirectory: true),
-            legacyFile: environment.supportDirectory.appendingPathComponent("team_library.json"),
-            defaults: environment.defaults
-        )
-    }
 
     func loadAll() -> [TeamLibraryTeamState] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
@@ -176,7 +299,7 @@ internal struct TeamLibraryStateStore {
     }
 
     func save(_ state: TeamLibraryTeamState) {
-        try? teamFile(state.teamID).write(state)
+        try? teamFile(state.teamID).write(state.cached)
     }
 
     func remove(teamID: String) {

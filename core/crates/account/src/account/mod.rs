@@ -77,11 +77,12 @@ pub enum SignOutCause {
     ServerChanged,
 }
 
-// A bearer for an API call the app makes with its own client, and the /v2 base it goes to.
+// A bearer for an API call the app makes with its own client, the /v2 base it goes to, and the sign-in it is of.
 #[derive(Debug, Clone)]
 pub struct AccessToken {
     pub token: SecretString,
     pub api: String,
+    pub session_id: Option<String>,
 }
 
 struct Inner {
@@ -117,6 +118,8 @@ struct Session {
     licensed: Option<Licensed>,
     // The OAuth issuer a company server's sign-in came from.
     issuer: Option<String>,
+    // Set by each sign-in and each restore, in this process only: a bearer says which one it is of.
+    id: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -326,6 +329,7 @@ impl Account {
             // Kept untagged: a tag left stale by a failed write must not strand the sign-in, and the issuer only
             // narrows where the refresh token may go.
             issuer: file.issuer,
+            id: Some(new_session_id()),
             ..Session::default()
         };
         let (entitlement, problem) = match (&licensed, file.entitlement.as_deref()) {
@@ -500,6 +504,7 @@ impl Account {
                 .discovered
                 .as_ref()
                 .map(|discovered| discovered.issuer.clone()),
+            id: Some(new_session_id()),
             ..Session::default()
         };
         self.adopt(&mut session, tokens).await;
@@ -848,6 +853,7 @@ impl Account {
                 entitlement,
                 problem,
                 remembered: session.remembered,
+                session_id: session.id.clone(),
             })));
     }
 
@@ -918,6 +924,18 @@ fn code_from(answered: Callback, issuer: &str) -> Result<String, AccountError> {
         Callback::CodeFrom { .. } => Err(ServerError::Mismatch("issuer").into()),
         Callback::Refused { error, description } => Err(AccountError::SignInRefused { error, description }),
     }
+}
+
+// 128 random bits as hex.
+fn new_session_id() -> String {
+    use aws_lc_rs::rand::SecureRandom as _;
+    let mut bytes = [0u8; 16];
+    if aws_lc_rs::rand::SystemRandom::new().fill(&mut bytes).is_err() {
+        // The time and process still tell this sign-in from the last one.
+        let nanos = Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        bytes = ((i128::from(nanos) << 32) | i128::from(std::process::id())).to_be_bytes();
+    }
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn cause_of(error: &AccountError) -> SignOutCause {

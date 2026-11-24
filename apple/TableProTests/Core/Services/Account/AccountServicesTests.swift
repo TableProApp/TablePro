@@ -230,6 +230,8 @@ struct AccountServicesTests {
         fixture.backend.refuseKeychain()
 
         #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .migrated)
+        #expect(fixture.keychain.readStringResult(forKey: StoredLicenseKey.keychainKey) == .found(FakeAccountServer.validKey))
+        await fixture.services.signOut()
         _ = try await fixture.services.useLicenseKey(FakeAccountServer.validKey)
 
         #expect(fixture.access.state.isSignedIn)
@@ -290,21 +292,55 @@ struct AccountServicesTests {
 
     // MARK: - Company server
 
-    @Test("Choosing a company server publishes it and signs out of the server left, with that cause")
+    @Test("A company server is chosen signed out and published; signed in, the choice is refused for Sign Out")
     func chooseCompanyServer() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
-        var events: [AccountEvent] = []
-        let subscription = fixture.services.events.sink { events.append($0) }
-        defer { subscription.cancel() }
+        await #expect(throws: AccountError.signOutFirst) {
+            try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        }
+        #expect(fixture.access.state.server.isProduction)
+        await fixture.services.signOut()
 
         try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
 
-        #expect(!fixture.access.state.isSignedIn)
         #expect(fixture.access.state.server.host == "tablepro.example.com")
         #expect(!fixture.access.state.server.isProduction)
         #expect(fixture.services.portal.accountURL.host == "tablepro.example.com")
-        #expect(events == [.signedOut(.serverChanged)])
+    }
+
+    @Test("Before the restore settles, sign-in, a server choice and a license key wait: a restored sign-in refuses them")
+    func switchingWaitsForTheRestore() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        let kept = fixture.backend.status()
+        for attempt in ["sign-in", "server", "license key"] {
+            fixture.backend.restoreLater(kept)
+            fixture.services.loadStoredState()
+            #expect(!fixture.services.isSignedIn, "\(attempt)")
+
+            let switching = Task { () async throws in
+                switch attempt {
+                case "sign-in": try await fixture.signIn()
+                case "server": try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+                default: _ = try await fixture.services.useLicenseKey(FakeAccountServer.validKey)
+                }
+            }
+            try await waitUntil { fixture.backend.isWaitingForRestore }
+            fixture.backend.finishRestore()
+
+            await #expect(throws: AccountError.signOutFirst, "\(attempt)") { try await switching.value }
+            #expect(fixture.access.state.isSignedIn, "\(attempt)")
+            #expect(fixture.access.state.server.isProduction, "\(attempt)")
+        }
+
+        fixture.backend.restoreLater(AccountSnapshot())
+        fixture.services.loadStoredState()
+        let choosing = Task { try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!) }
+        try await waitUntil { fixture.backend.isWaitingForRestore }
+        fixture.backend.finishRestore()
+        try await choosing.value
+        #expect(fixture.access.state.server.host == "tablepro.example.com")
     }
 
     @Test("A managed server cannot be changed, and the refusal says the organization manages it")

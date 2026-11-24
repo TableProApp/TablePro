@@ -1320,6 +1320,7 @@ mod tests {
             entitlement: Some(fakes::entitlement(&claims).expect("an entitlement")),
             problem: None,
             remembered: true,
+            session_id: None,
         }))
     }
 
@@ -1628,6 +1629,7 @@ mod tests {
             entitlement: None,
             problem: Some(EntitlementProblem::DeviceLimitReached(holders.clone())),
             remembered: true,
+            session_id: None,
         })));
         let window = OwnedWindow::presented(adw::Window::builder().default_width(900).default_height(700).build());
         window.set_content(Some(&harness.page));
@@ -1686,6 +1688,7 @@ mod tests {
                 entitlement: None,
                 problem: Some(problem),
                 remembered: true,
+                session_id: None,
             })));
             harness
                 .page

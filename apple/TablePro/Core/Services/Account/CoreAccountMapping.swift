@@ -26,6 +26,7 @@ internal enum CoreAccountMapping {
             licenses: status.licenses.map(license),
             expiresAt: status.entitlementExpiresAtSecs.map(date),
             isOfflineFile: status.offlineFile,
+            sessionID: status.sessionId,
             problem: status.problem.map(problem),
             remembered: status.remembered
         )

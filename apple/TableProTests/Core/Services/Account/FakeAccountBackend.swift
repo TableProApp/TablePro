@@ -323,7 +323,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
         let token = FakeAccountServer.unsignedJWT([
             "sub": accountID, "dev": FakeAccountServer.deviceID, "jti": "token-\(count)"
         ])
-        return AccountAccessToken(token: token, apiBaseURL: server.apiBaseURL)
+        return AccountAccessToken(token: token, apiBaseURL: server.apiBaseURL, sessionID: snapshot.sessionID)
     }
 
     func accessTokenRejected(_ token: String) async {
@@ -364,6 +364,8 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
         let expiresAt = now().addingTimeInterval(answer.lifetime)
         locked {
             var next = AccountSnapshot(state: .signedIn, remembered: !keychainRefuses)
+            // As the core: a refresh keeps the sign-in's id, a new sign-in gets its own.
+            next.sessionID = refreshing ? snapshot.sessionID : UUID().uuidString
             next.accountID = answer.accountID
             next.email = account["email"] as? String
             next.name = name

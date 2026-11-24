@@ -44,7 +44,9 @@ struct AccountSettingsModelTests {
     func signOutForgetsLoadedData() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
-        let model = AccountSettingsModel(services: fixture.services)
+        let model = AccountSettingsModel(
+            services: fixture.services, teamLibrary: { Self.idleTeamLibrary(fixture) }, askSignOut: { _ in .discard }
+        )
         await model.reload()
 
         await model.signOut()
@@ -95,7 +97,7 @@ struct AccountSettingsModelTests {
         #expect(model.devices.value?.contains { $0.id == "dev_air" } == true)
     }
 
-    @Test("Use License Key replaces an interactive session and deletes the stored key it used")
+    @Test("Use License Key is refused while signed in; signed out it signs in and deletes the stored key it used")
     func useStoredLicenseKey() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
@@ -103,6 +105,10 @@ struct AccountSettingsModelTests {
         let model = AccountSettingsModel(services: fixture.services)
         #expect(fixture.services.storedLicenseKey == FakeAccountServer.validKey)
 
+        let refused = await model.useLicenseKey(" \(FakeAccountServer.validKey) ")
+        #expect(refused == AccountError.signOutFirst.licenseKeyDescription)
+        #expect(fixture.hasLegacyLicense)
+        await fixture.services.signOut()
         let failure = await model.useLicenseKey(" \(FakeAccountServer.validKey) ")
 
         #expect(failure == nil)
@@ -111,19 +117,17 @@ struct AccountSettingsModelTests {
         #expect(fixture.access.isAvailable(.iCloudSync))
     }
 
-    @Test("A key the server refuses keeps the session that was there and the key stored on this Mac")
+    @Test("A key the server refuses leaves the Mac signed out and the key stored on it")
     func refusedLicenseKey() async throws {
         let fixture = try AccountFixture()
-        try await fixture.signIn()
         fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
         let model = AccountSettingsModel(services: fixture.services)
 
         let failure = await model.useLicenseKey("ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ")
 
         #expect(failure == AccountError.oauth("invalid_grant", description: nil).licenseKeyDescription)
-        #expect(fixture.access.state.isSignedIn)
+        #expect(!fixture.access.state.isSignedIn)
         #expect(fixture.hasLegacyLicense)
-        #expect(fixture.access.isAvailable(.iCloudSync))
     }
 
     @Test("Signing in past the device limit opens the device limit sheet")
@@ -240,7 +244,10 @@ struct AccountSettingsModelTests {
         let gate = AsyncGate()
         let loads = CountingLoads()
         loads.profileGate = gate
-        let model = AccountSettingsModel(services: fixture.services, loader: loads.loader)
+        let model = AccountSettingsModel(
+            services: fixture.services, loader: loads.loader,
+            teamLibrary: { Self.idleTeamLibrary(fixture) }, askSignOut: { _ in .discard }
+        )
 
         let load = Task { await model.reload() }
         await gate.arrived(1)
@@ -254,7 +261,7 @@ struct AccountSettingsModelTests {
         #expect(model.content.identity == .signedOut)
     }
 
-    @Test("Sign Out… asks first and names the team edits a sign-out discards; Cancel keeps the session")
+    @Test("Sign Out lists the unsent Team Library edits with sync stopped; Cancel keeps the session and sync going")
     func signOutConfirmationNamesUnsentTeamChanges() async throws {
         let fixture = try await TeamLibraryFixture()
         await fixture.sync.sync()
@@ -266,21 +273,163 @@ struct AccountSettingsModelTests {
         )
         #expect(result == .queued(.server))
         let sync = fixture.sync
-        let model = AccountSettingsModel(services: fixture.account.services, hasUnsentTeamChanges: { sync.hasUnsentChanges })
+        var syncWhileAsked: TeamLibrarySyncOutcome?
+        let prompt = ScriptedSignOutPrompt([.cancel]) { syncWhileAsked = await sync.sync() }
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync }, askSignOut: prompt.ask)
 
-        model.requestSignOut()
+        await model.signOut()
 
-        #expect(model.confirmsSignOut)
-        #expect(model.signOutConfirmation == AccountSignOutConfirmation(discardsTeamChanges: true, removesOfflineFile: false))
-        #expect(model.signOutConfirmation?.discardsSomething == true)
-        model.cancelSignOut()
-        #expect(!model.confirmsSignOut)
+        #expect(prompt.asked == [AccountSignOutConfirmation(teamChanges: ["Orders"], removesOfflineFile: false)])
+        #expect(prompt.asked.first?.discardsSomething == true)
+        #expect(syncWhileAsked == .skipped, "Team Library waits while Sign Out asks")
         #expect(fixture.account.services.isSignedIn)
-
+        #expect(!sync.isHeld)
         #expect(await fixture.sync.sync() == .synced)
         #expect(!fixture.sync.hasUnsentChanges)
-        model.requestSignOut()
-        #expect(model.signOutConfirmation?.discardsSomething == false)
+    }
+
+    @Test("Upload and Sign Out pushes first and signs out in this process; a failed upload asks again and signs nothing out")
+    func uploadThenSignOut() async throws {
+        let fixture = try await TeamLibraryFixture()
+        fixture.sync.start()
+        try await waitUntil {
+            if case .synced = fixture.sync.status { return true }
+            return false
+        }
+        await fixture.library { $0.pushFaults = [503, 503] }
+        _ = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: TeamLibraryFixture.team
+        )
+        let sync = fixture.sync
+        let prompt = ScriptedSignOutPrompt([.upload, .upload])
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync }, askSignOut: prompt.ask)
+
+        await model.signOut()
+
+        #expect(prompt.asked.map(\.uploadFailure) == [nil, .server])
+        #expect(prompt.asked.last?.teamChanges == ["Orders"])
+        #expect(!fixture.account.services.isSignedIn)
+        #expect(await fixture.server.library.live(TeamLibraryFixture.team).count == 1)
+        try await waitUntil { fixture.cacheFolders.isEmpty }
+        #expect(fixture.discarded.reports.isEmpty)
+        #expect(!sync.isHeld, "Team Library is ready for the next sign-in in this process")
+        fixture.sync.stop()
+    }
+
+    @Test("Discard and Sign Out drops the unsent edits without sending them, and reports nothing as lost by surprise")
+    func discardThenSignOut() async throws {
+        let fixture = try await TeamLibraryFixture()
+        fixture.sync.start()
+        try await waitUntil {
+            if case .synced = fixture.sync.status { return true }
+            return false
+        }
+        await fixture.library { $0.pushFaults = [503] }
+        _ = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: TeamLibraryFixture.team
+        )
+        let sync = fixture.sync
+        let model = AccountSettingsModel(
+            services: fixture.account.services, teamLibrary: { sync }, askSignOut: ScriptedSignOutPrompt([.discard]).ask
+        )
+
+        await model.signOut()
+
+        #expect(!fixture.account.services.isSignedIn)
+        try await waitUntil { fixture.cacheFolders.isEmpty }
+        #expect(await fixture.server.library.live(TeamLibraryFixture.team).isEmpty)
+        #expect(!fixture.sync.hasUnsentChanges)
+        #expect(fixture.discarded.reports.isEmpty)
+        #expect(!sync.isHeld)
+        fixture.sync.stop()
+    }
+
+    @Test("Signed out another way while Sign Out asks: the question closes and Team Library goes on")
+    func involuntarySignOutClosesTheQuestion() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        let sync = fixture.sync
+        let prompt = ScriptedSignOutPrompt([], waitsUntilClosed: true)
+        let model = AccountSettingsModel(
+            services: fixture.account.services, teamLibrary: { sync }, askSignOut: prompt.ask, closeSignOutQuestion: prompt.close
+        )
+        let signingOut = Task { await model.signOut() }
+        try await waitUntil { prompt.asked.count == 1 }
+        #expect(sync.isHeld)
+
+        await fixture.server.set { $0.refusesRefresh = true }
+        await fixture.account.services.refreshEntitlement()
+        await signingOut.value
+
+        #expect(prompt.closes == 1)
+        #expect(!fixture.account.services.isSignedIn)
+        #expect(!sync.isHeld)
+    }
+
+    @Test("Signed out another way during Upload and Sign Out: the flow ends, the hold goes, and the discard is listed once")
+    func involuntarySignOutDuringUpload() async throws {
+        let gate = AsyncGate()
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        fixture.sync.start()
+        await fixture.library { $0.pushFaults = [503] }
+        _ = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: TeamLibraryFixture.team
+        )
+        await fixture.library {
+            $0.pushFaults = [503]
+            $0.pushGate = gate
+        }
+        let sync = fixture.sync
+        let prompt = ScriptedSignOutPrompt([.upload, .upload])
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync }, askSignOut: prompt.ask)
+        let signingOut = Task { await model.signOut() }
+        await gate.arrived(1)
+
+        await fixture.server.set { $0.refusesRefresh = true }
+        await fixture.account.services.refreshEntitlement()
+        await gate.open()
+        await signingOut.value
+
+        try await waitUntil { !fixture.discarded.reports.isEmpty }
+        #expect(prompt.asked.count == 1, "Nothing is asked of a sign-in that is gone")
+        #expect(fixture.discarded.reports == [["Orders"]])
+        #expect(!sync.isHeld)
+        fixture.sync.stop()
+    }
+
+    @Test("Sign Out with no Team Library session open still lets Team Library go on")
+    func signOutWithoutASessionReleasesTheHold() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.account.services.signOut()
+        await fixture.server.set { $0.deviceLimitReached = true }
+        try await fixture.account.signIn()
+        await fixture.sync.sync()
+        let sync = fixture.sync
+        let model = AccountSettingsModel(
+            services: fixture.account.services, teamLibrary: { sync }, askSignOut: ScriptedSignOutPrompt([.discard]).ask
+        )
+
+        await model.signOut()
+
+        #expect(!fixture.account.services.isSignedIn)
+        #expect(!sync.isHeld)
+    }
+
+    // A Team Library for an account fixture that has none: Sign Out still holds it while it asks.
+    static func idleTeamLibrary(_ fixture: AccountFixture) -> TeamLibrarySync {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AccountSettingsTests-\(UUID().uuidString)", isDirectory: true)
+        let storage = TeamLibraryStorage(
+            flat: TeamLibraryStateStore(
+                directory: root.appendingPathComponent("TeamLibrary", isDirectory: true),
+                legacyFile: root.appendingPathComponent("team_library.json"),
+                defaults: fixture.defaults.defaults
+            ),
+            cacheRoot: root.appendingPathComponent("TeamLibraryCache", isDirectory: true),
+            defaults: fixture.defaults.defaults
+        )
+        return TeamLibrarySync(account: fixture.services, storage: storage, reportDiscarded: { _ in }, reportEarlierEditsNotTaken: { _ in })
     }
 
     @Test("Confirming a device removal clears the pending removal the dialog showed")
@@ -362,5 +511,39 @@ private final class CountingLoads {
                 return []
             }
         )
+    }
+}
+
+// Sign Out's question, answered from a script; with `waitsUntilClosed` it waits until the model closes it.
+@MainActor
+final class ScriptedSignOutPrompt {
+    private var answers: [AccountSignOutAnswer]
+    private let waitsUntilClosed: Bool
+    private let whileAsked: @MainActor () async -> Void
+    private var waiting: CheckedContinuation<AccountSignOutAnswer, Never>?
+    private(set) var asked: [AccountSignOutConfirmation] = []
+    private(set) var closes = 0
+
+    init(
+        _ answers: [AccountSignOutAnswer],
+        waitsUntilClosed: Bool = false,
+        whileAsked: @escaping @MainActor () async -> Void = {}
+    ) {
+        self.answers = answers
+        self.waitsUntilClosed = waitsUntilClosed
+        self.whileAsked = whileAsked
+    }
+
+    func ask(_ confirmation: AccountSignOutConfirmation) async -> AccountSignOutAnswer {
+        asked.append(confirmation)
+        await whileAsked()
+        guard waitsUntilClosed else { return answers.isEmpty ? .cancel : answers.removeFirst() }
+        return await withCheckedContinuation { waiting = $0 }
+    }
+
+    func close() {
+        closes += 1
+        waiting?.resume(returning: .cancel)
+        waiting = nil
     }
 }

@@ -650,3 +650,53 @@ async fn an_answer_naming_another_issuer_is_refused_and_one_naming_this_one_take
     assert_eq!(refused.expect_err("another issuer").code(), "account.server_mismatch");
     assert!(taken.is_ok(), "{taken:?} for {issuer}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn each_sign_in_has_its_own_session_id_which_every_bearer_carries_and_a_sign_out_ends() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let requests = Asked::default();
+    let account = mac(
+        dir.path(),
+        production_stub(requests.clone()),
+        Keyring::holding(None),
+        None,
+    );
+
+    account
+        .use_license_key(&SecretString::from("TP-KEY-1234"))
+        .await
+        .expect("signed in");
+    let first = signed_in(&account).session_id.expect("a session id");
+    let bearer = account.access_token().await.expect("a bearer");
+    account
+        .use_license_key(&SecretString::from("TP-KEY-1234"))
+        .await
+        .expect("signed in again");
+    let second = signed_in(&account).session_id.expect("a session id");
+    let _ = account.sign_out().await;
+
+    assert_eq!(bearer.session_id.as_deref(), Some(first.as_str()));
+    assert_eq!(first.len(), 32);
+    assert_ne!(first, second, "a new sign-in of the same account is another session");
+    assert!(matches!(&*account.status().borrow(), AccountStatus::SignedOut));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn each_launch_restores_the_sign_in_under_a_session_id_of_its_own_that_no_file_keeps() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    keep(dir.path(), Some(super::tests::entitlement(Utc::now()))).await;
+    let endpoints = production_stub(Asked::default());
+
+    let first = mac(dir.path(), endpoints.clone(), Keyring::holding(Some("refresh")), None);
+    first.restore().await;
+    let next = mac(dir.path(), endpoints, Keyring::holding(Some("refresh")), None);
+    next.restore().await;
+
+    let (first, next) = (
+        signed_in(&first).session_id.expect("an id"),
+        signed_in(&next).session_id.expect("an id"),
+    );
+    assert_ne!(first, next);
+    let kept = std::fs::read_to_string(dir.path().join("account.json")).expect("the account file");
+    assert!(!kept.contains(&first) && !kept.contains(&next), "{kept}");
+}

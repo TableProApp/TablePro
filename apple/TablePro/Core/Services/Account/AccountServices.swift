@@ -92,9 +92,10 @@ internal final class AccountServices: AccountBackendListener {
         backend.machineID
     }
 
-    // A client whose calls go to this server only: one a sign-in elsewhere would take reads as signed out.
-    func api(pinnedTo server: AccountServer) -> any APIProtocol {
-        AccountAPI.client(backend: backend, transport: transport, onlyTo: server.apiBaseURL)
+    // A client whose calls go to this server under this sign-in only: under any other, a call reads as signed out and
+    // is never sent.
+    func api(pinnedTo server: AccountServer, session: String) -> any APIProtocol {
+        AccountAPI.client(backend: backend, transport: transport, onlyTo: server.apiBaseURL, session: session)
     }
 
     var server: AccountServer {
@@ -141,13 +142,21 @@ internal final class AccountServices: AccountBackendListener {
         publish()
     }
 
+    // Until the core has restored the last sign-in the Mac may still be signed in, so a switch waits for that.
+    private func isSignedOutOnceRestored() async -> Bool {
+        await waitUntilRestored()
+        return !isSignedIn
+    }
+
     // For launch work a feature gates: it reads what the core restored, published.
     func waitUntilRestored() async {
         await backend.waitUntilRestored()
         publish()
     }
 
+    // Signed in, another sign-in would switch accounts in this process; that goes through Sign Out instead.
     func signIn(using authenticator: some WebAuthenticating) async throws(AccountError) {
+        guard await isSignedOutOnceRestored() else { throw .signOutFirst }
         try await backend.signIn(using: authenticator)
         verifiedAt = now()
         publish()
@@ -169,6 +178,7 @@ internal final class AccountServices: AccountBackendListener {
     // Nil drops the choice, for a configuration profile's default or else tablepro.app. The core signs out of the
     // server it leaves.
     func chooseServer(_ url: URL?) async throws(AccountError) {
+        guard await isSignedOutOnceRestored() else { throw .signOutFirst }
         try await backend.chooseServer(url)
         verifiedAt = nil
         publish()
@@ -219,10 +229,10 @@ internal final class AccountServices: AccountBackendListener {
         storedKey.value() != nil && !storedKey.isSetAside()
     }
 
-    // Use License Key…: the key's account replaces any session on this Mac, and a stored key it matches is deleted
-    // once the Keychain holds the sign-in.
+    // Use License Key…, signed out only: a stored key it matches is deleted once the Keychain holds the sign-in.
     @discardableResult
     func useLicenseKey(_ key: String) async throws(AccountError) -> EntitlementRefreshState {
+        guard await isSignedOutOnceRestored() else { throw .signOutFirst }
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         try await backend.useLicenseKey(key)
         if key == storedKey.value() {
@@ -346,6 +356,8 @@ internal final class AccountServices: AccountBackendListener {
     }
 
     private func publish() {
+        // Read before the snapshot: once the restore is marked, the snapshot read after it holds what it restored.
+        let isRestored = backend.isRestored
         let snapshot = backend.status()
         let entitlement = Entitlement(snapshot)
         var features: [ProFeature: ProFeatureAccess] = [:]
@@ -373,7 +385,8 @@ internal final class AccountServices: AccountBackendListener {
             serverLicense: license,
             features: features,
             verifiedAt: verifiedAt,
-            isRestored: backend.isRestored
+            isRestored: isRestored,
+            sessionID: snapshot.sessionID
         ))
         let current = now()
         let boundaries = [entitlement?.expiresAt, license?.expiresAt, license?.graceEndsAt].compactMap { $0 }

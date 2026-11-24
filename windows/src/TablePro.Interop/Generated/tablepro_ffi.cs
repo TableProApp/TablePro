@@ -16247,7 +16247,8 @@ class FfiConverterTypeTablePageRead: FfiConverter<TablePageRead, ulong> {
 
 internal record AccessTokenInfo (
     SecretString Token, 
-    string ApiUrl
+    string ApiUrl, 
+    string? SessionId
 ) {
 }
 
@@ -16257,19 +16258,22 @@ class FfiConverterTypeAccessTokenInfo: FfiConverterRustBuffer<AccessTokenInfo> {
     public override AccessTokenInfo Read(BigEndianStream stream) {
         return new AccessTokenInfo(
             Token: FfiConverterTypeSecretString.INSTANCE.Read(stream),
-            ApiUrl: FfiConverterString.INSTANCE.Read(stream)
+            ApiUrl: FfiConverterString.INSTANCE.Read(stream),
+            SessionId: FfiConverterOptionalString.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(AccessTokenInfo value) {
         return 0
             + FfiConverterTypeSecretString.INSTANCE.AllocationSize(value.Token)
-            + FfiConverterString.INSTANCE.AllocationSize(value.ApiUrl);
+            + FfiConverterString.INSTANCE.AllocationSize(value.ApiUrl)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.SessionId);
     }
 
     public override void Write(AccessTokenInfo value, BigEndianStream stream) {
             FfiConverterTypeSecretString.INSTANCE.Write(value.Token, stream);
             FfiConverterString.INSTANCE.Write(value.ApiUrl, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.SessionId, stream);
     }
 }
 
@@ -16370,6 +16374,7 @@ internal record AccountStatusInfo (
     LicenseInfo[] Licenses, 
     long? EntitlementExpiresAtSecs, 
     bool OfflineFile, 
+    string? SessionId, 
     EntitlementProblemTag? Problem, 
     bool Remembered
 ) {
@@ -16388,6 +16393,7 @@ class FfiConverterTypeAccountStatusInfo: FfiConverterRustBuffer<AccountStatusInf
             Licenses: FfiConverterSequenceTypeLicenseInfo.INSTANCE.Read(stream),
             EntitlementExpiresAtSecs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             OfflineFile: FfiConverterBoolean.INSTANCE.Read(stream),
+            SessionId: FfiConverterOptionalString.INSTANCE.Read(stream),
             Problem: FfiConverterOptionalTypeEntitlementProblemTag.INSTANCE.Read(stream),
             Remembered: FfiConverterBoolean.INSTANCE.Read(stream)
         );
@@ -16403,6 +16409,7 @@ class FfiConverterTypeAccountStatusInfo: FfiConverterRustBuffer<AccountStatusInf
             + FfiConverterSequenceTypeLicenseInfo.INSTANCE.AllocationSize(value.Licenses)
             + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.EntitlementExpiresAtSecs)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.OfflineFile)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.SessionId)
             + FfiConverterOptionalTypeEntitlementProblemTag.INSTANCE.AllocationSize(value.Problem)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.Remembered);
     }
@@ -16416,6 +16423,7 @@ class FfiConverterTypeAccountStatusInfo: FfiConverterRustBuffer<AccountStatusInf
             FfiConverterSequenceTypeLicenseInfo.INSTANCE.Write(value.Licenses, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.EntitlementExpiresAtSecs, stream);
             FfiConverterBoolean.INSTANCE.Write(value.OfflineFile, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.SessionId, stream);
             FfiConverterOptionalTypeEntitlementProblemTag.INSTANCE.Write(value.Problem, stream);
             FfiConverterBoolean.INSTANCE.Write(value.Remembered, stream);
     }

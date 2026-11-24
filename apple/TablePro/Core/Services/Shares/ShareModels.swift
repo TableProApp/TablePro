@@ -217,7 +217,7 @@ internal enum ShareFailure: Error, Equatable, Sendable {
             return problem(status: status, code: code)
         case .oauth("invalid_grant", _):
             return .signedOut
-        case .oauth, .invalidResponse, .offlineFileRejected, .companyServer:
+        case .oauth, .invalidResponse, .offlineFileRejected, .companyServer, .signOutFirst:
             return .server
         }
     }

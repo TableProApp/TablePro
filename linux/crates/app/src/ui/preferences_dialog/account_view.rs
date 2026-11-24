@@ -684,6 +684,7 @@ mod tests {
             entitlement,
             problem,
             remembered: true,
+            session_id: None,
         }))
     }
 

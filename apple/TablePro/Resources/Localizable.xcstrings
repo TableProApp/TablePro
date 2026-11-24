@@ -2775,6 +2775,19 @@
         }
       }
     },
+    "%@ (not sent: %@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (not sent: %2$@)"
+          }
+        }
+      }
+    },
+    "%@ (not sent: changed on the team since)" : {
+
+    },
     "%@ (reader)" : {
       "localizations" : {
         "fr" : {
@@ -11008,6 +11021,9 @@
     "%d new" : {
 
     },
+    "%d Not Uploaded" : {
+
+    },
     "%d of %d" : {
       "localizations" : {
         "en" : {
@@ -15577,6 +15593,9 @@
 
     },
     "1 new column" : {
+
+    },
+    "1 Not Uploaded" : {
 
     },
     "1 of %lld conflicts" : {
@@ -75255,6 +75274,12 @@
           }
         }
       }
+    },
+    "Discard and Quit" : {
+
+    },
+    "Discard and Sign Out" : {
+
     },
     "Discard Changes" : {
       "localizations" : {
@@ -137186,6 +137211,9 @@
         }
       }
     },
+    "no seat in the team" : {
+
+    },
     "No selection" : {
       "localizations" : {
         "fr" : {
@@ -140755,6 +140783,12 @@
           }
         }
       }
+    },
+    "Not uploaded before TablePro updated: %@. Later keeps them in memory until you quit or sign out, which ask again." : {
+
+    },
+    "Not uploaded before TablePro updated: %@. They are not kept on disk any more, so TablePro asks once." : {
+
     },
     "Not used" : {
       "localizations" : {
@@ -144689,6 +144723,12 @@
     "Only the owner of %@ or a superuser can debug it." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "only the team's owner and admins publish" : {
+
+    },
+    "only the team's owner, admins and editors publish" : {
+
     },
     "Only the team's owner, admins and editors publish to its library." : {
       "localizations" : {
@@ -192260,6 +192300,9 @@
         }
       }
     },
+    "Sign out first, then sign in to the other account or server." : {
+
+    },
     "Sign out of TablePro on this Mac?" : {
       "localizations" : {
         "fr" : {
@@ -194569,6 +194612,9 @@
       }
     },
     "Some tabs have unsaved edits. Relaunching will discard these changes." : {
+
+    },
+    "Some Team Library changes from before the update were not uploaded" : {
 
     },
     "Some values are set outside this file" : {
@@ -207538,6 +207584,9 @@
         }
       }
     },
+    "TablePro uploaded the changes left from before the update once. These were not taken and were dropped: %@." : {
+
+    },
     "TablePro Website" : {
       "localizations" : {
         "fr" : {
@@ -208934,6 +208983,12 @@
           }
         }
       }
+    },
+    "Team Library changes were discarded" : {
+
+    },
+    "Team Library ended for this sign-in before these changes were uploaded: %@." : {
+
     },
     "Team library updated %@" : {
 
@@ -222152,6 +222207,9 @@
     "The team library refused “%@”. It may be too large or hold a field the library never stores." : {
 
     },
+    "the team library refused it" : {
+
+    },
     "The team library refused the change. It may be too large or hold a field the library never stores." : {
 
     },
@@ -222650,6 +222708,12 @@
           }
         }
       }
+    },
+    "The upload did not finish. %@" : {
+
+    },
+    "the upload did not go through" : {
+
     },
     "The URL matches this connection." : {
 
@@ -223433,6 +223497,9 @@
           }
         }
       }
+    },
+    "These changes are not uploaded yet and are lost if you discard them: %@." : {
+
     },
     "These changes drop %@, the account this connection uses." : {
       "localizations" : {
@@ -239414,9 +239481,27 @@
         }
       }
     },
+    "Upload" : {
+
+    },
     "Upload Again" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Upload and Quit" : {
+
+    },
+    "Upload and Sign Out" : {
+
+    },
+    "Upload Team Library changes before quitting?" : {
+
+    },
+    "Upload Team Library changes from before the update?" : {
+
+    },
+    "Uploaded when the team library answers. Signing out or quitting asks first, since they are not kept on this Mac." : {
+
     },
     "Upper Bound" : {
 
@@ -249100,6 +249185,9 @@
           }
         }
       }
+    },
+    "You were signed out before these changes were uploaded: %@." : {
+
     },
     "You were signed out. Sign in again." : {
 

@@ -60,6 +60,8 @@ internal struct AccountSnapshot: Equatable, Sendable {
     var expiresAt: Date?
     // From an offline file, which a signed-in Mac can import too.
     var isOfflineFile = false
+    // The core's id of this sign-in, across launches; another sign-in, even of the same account, has another.
+    var sessionID: String?
     var problem: Problem?
     // False when the Keychain refused the refresh token: the next launch starts signed out.
     var remembered = false
@@ -87,6 +89,8 @@ internal struct AccountServerLicense: Equatable, Sendable {
 internal struct AccountAccessToken: Equatable, Sendable {
     let token: String
     let apiBaseURL: URL
+    // The core's sign-in the token is of.
+    var sessionID: String?
 }
 
 @MainActor

@@ -176,7 +176,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
         let service = try await awaitService()
         let access = try await Self.call(.other) { try await service.accessToken() }
         guard let base = URL(string: access.apiUrl) else { throw .invalidResponse }
-        return AccountAccessToken(token: access.token, apiBaseURL: base)
+        return AccountAccessToken(token: access.token, apiBaseURL: base, sessionID: access.sessionId)
     }
 
     func accessTokenRejected(_ token: String) async {

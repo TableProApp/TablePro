@@ -262,6 +262,7 @@ impl Account {
         Ok(AccessToken {
             token,
             api: self.current().api.clone(),
+            session_id: session.id.clone(),
         })
     }
 
@@ -328,6 +329,7 @@ impl Account {
         *session = Session {
             refresh: Some(refresh),
             remembered: true,
+            id: Some(super::new_session_id()),
             ..Session::default()
         };
         let (entitlement, problem) = match token

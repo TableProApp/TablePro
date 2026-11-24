@@ -5,8 +5,8 @@
 
 import SwiftUI
 
-// The trailing part of a "Team Library" header: a spinner while it syncs, a warning when the last sync failed, and a
-// button that opens the conflicts a publish left.
+// The trailing part of a "Team Library" header: a spinner while it syncs, a warning when the last sync failed, the
+// edits not uploaded yet, and a button that opens the conflicts a publish left.
 internal struct TeamLibrarySyncStatusView: View {
     @ObservedObject var sync: TeamLibrarySync
     let resolveConflicts: () -> Void
@@ -15,7 +15,8 @@ internal struct TeamLibrarySyncStatusView: View {
         TeamLibrarySyncStatusContent(
             status: sync.status,
             conflictCount: sync.conflicts.count,
-            resolveConflicts: resolveConflicts
+            resolveConflicts: resolveConflicts,
+            notUploadedCount: sync.notUploadedCount
         )
     }
 }
@@ -24,6 +25,7 @@ internal struct TeamLibrarySyncStatusContent: View {
     let status: TeamLibrarySyncStatus
     let conflictCount: Int
     let resolveConflicts: () -> Void
+    var notUploadedCount = 0
 
     var body: some View {
         HStack(spacing: 6) {
@@ -41,6 +43,13 @@ internal struct TeamLibrarySyncStatusContent: View {
                     .accessibilityIdentifier("team-library-status-failed")
             case .idle, .synced:
                 EmptyView()
+            }
+            if notUploadedCount > 0 {
+                Label(TeamLibrarySyncDescription.notUploaded(notUploadedCount), systemImage: "icloud.slash")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(.secondary)
+                    .help(String(localized: "Uploaded when the team library answers. Signing out or quitting asks first, since they are not kept on this Mac."))
+                    .accessibilityIdentifier("team-library-not-uploaded")
             }
             if conflictCount > 0 {
                 Button(action: resolveConflicts) {
@@ -63,6 +72,12 @@ internal enum TeamLibrarySyncDescription {
         count == 1
             ? String(localized: "1 Conflict")
             : String(format: String(localized: "%d Conflicts"), count)
+    }
+
+    static func notUploaded(_ count: Int) -> String {
+        count == 1
+            ? String(localized: "1 Not Uploaded")
+            : String(format: String(localized: "%d Not Uploaded"), count)
     }
 
     static func failure(_ failure: TeamLibraryFailure) -> String {
