@@ -575,3 +575,24 @@ async fn a_token_answer_past_its_cap_is_cut_off() {
         "{refused:?}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_token_lifetime_past_the_calendar_is_read_as_a_day() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    keep(dir.path(), None).await;
+    let endpoints = cloud_with_bodies(|_, path, _| match path {
+        "/oauth/token" => (
+            200,
+            "",
+            TOKENS.replace(r#""expires_in":900"#, r#""expires_in":10000000000000"#),
+        ),
+        _ => (404, "", String::new()),
+    });
+    let account = mac(dir.path(), endpoints, Keyring::holding(Some("kept-refresh")), None);
+    account.restore().await;
+
+    let first = account.access_token().await;
+    let again = account.access_token().await;
+
+    assert!(first.is_ok() && again.is_ok(), "{first:?} {again:?}");
+}

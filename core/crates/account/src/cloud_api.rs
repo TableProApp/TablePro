@@ -78,9 +78,9 @@ pub(crate) async fn answer_error(error: Error<v2::types::Problem>) -> AccountErr
         // A status the document does not list, such as a proxy's.
         Error::UnexpectedResponse(response) => {
             let status = response.status().as_u16();
-            let body = match response.bytes().await {
+            let body = match crate::server::read_capped(response, PROBLEM_LIMIT).await {
                 Ok(body) => body,
-                Err(error) => return AccountError::unreachable(error),
+                Err(error) => return error,
             };
             match serde_json::from_slice::<v2::types::Problem>(&body) {
                 Ok(problem) => problem_error(status, problem),
@@ -96,6 +96,8 @@ pub(crate) async fn answer_error(error: Error<v2::types::Problem>) -> AccountErr
 }
 
 const TOO_LARGE: u16 = 413;
+// A problem is a few hundred bytes; a proxy's page is cut off rather than read whole.
+const PROBLEM_LIMIT: usize = 64 * 1024;
 
 fn too_large() -> AccountError {
     AccountError::Refused {

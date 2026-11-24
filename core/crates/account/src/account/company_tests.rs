@@ -927,3 +927,43 @@ async fn a_refresh_token_goes_to_no_issuer_but_the_one_that_gave_it() {
         asked(&stolen)
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nothing_of_a_company_server_s_api_is_read_before_its_license_verifies() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let requests = Asked::default();
+    let base = company(&LICENSED, {
+        let requests = requests.clone();
+        move |_, method, path, _| {
+            requests.lock().expect("the requests").push(format!("{method} {path}"));
+            (path == "/v2/license").then(|| {
+                (
+                    404,
+                    r#"{"type":"about:blank","title":"Not installed","status":404,"code":"license_not_installed"}"#
+                        .to_owned(),
+                )
+            })
+        }
+    });
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &Arc::new(Items::default()),
+        browser.clone(),
+    );
+
+    let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), approve(&browser));
+    let profile = account.profile().await;
+    let bearer = account.access_token().await;
+
+    assert_eq!(signed.expect_err("unlicensed").code(), "account.license_not_installed");
+    assert_eq!(profile.expect_err("unlicensed").code(), "account.license_not_installed");
+    assert_eq!(bearer.expect_err("unlicensed").code(), "account.license_not_installed");
+    let asked = asked(&requests);
+    assert!(
+        asked.iter().all(|request| request.starts_with("GET /.well-known/")
+            || request.starts_with("POST /oauth/")
+            || request == "GET /v2/license"),
+        "{asked:?}"
+    );
+}

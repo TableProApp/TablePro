@@ -37,6 +37,8 @@ pub(crate) use server_state::{Licensed, Server, Trust};
 // The server forgets an unanswered sign-in after 10 minutes.
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const ACCESS_TOKEN_MARGIN: TimeDelta = TimeDelta::seconds(60);
+// An `expires_in` past this is read as this: the wall clock cannot hold some values a server can send.
+const ACCESS_TOKEN_CAP: Duration = Duration::from_secs(24 * 60 * 60);
 pub const REFRESH_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 pub const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 60);
 // How soon after a wake a refresh that came due during the sleep runs.
@@ -619,15 +621,15 @@ impl Account {
     // A company server's license comes first: without it, nothing says which keys sign its entitlements.
     async fn fetch_entitlement(&self, session: &mut Session) -> Result<(), AccountError> {
         session.waited(Call::Entitlement)?;
+        if let Trust::Licensed(keys) = &self.current().trust {
+            self.fetch_license(session, keys).await?;
+            self.relicense(session).await;
+        }
         let device_id = match session.device_id.clone() {
             Some(device_id) => device_id,
             None => self.register(session).await?,
         };
         let bearer = self.bearer(session, false).await?;
-        if let Trust::Licensed(keys) = &self.current().trust {
-            self.fetch_license(session, keys).await?;
-            self.relicense(session).await;
-        }
         let device = &self.inner.settings.device;
         let request = v2::types::EntitlementRequest {
             app_version: field(&device.app_version)?,
@@ -730,7 +732,9 @@ impl Account {
         Ok(device.id)
     }
 
+    // Every call of the generated client takes its bearer here, so none reaches a company server unlicensed.
     async fn bearer(&self, session: &mut Session, renew: bool) -> Result<Bearer, AccountError> {
+        self.vouched(session).await?;
         self.access(session, renew).await.map(Bearer::token)
     }
 
@@ -754,7 +758,7 @@ impl Account {
     }
 
     async fn adopt(&self, session: &mut Session, tokens: Tokens) {
-        let lifetime = TimeDelta::from_std(tokens.lifetime).unwrap_or_default();
+        let lifetime = TimeDelta::from_std(tokens.lifetime.min(ACCESS_TOKEN_CAP)).unwrap_or_default();
         session.access = Some((tokens.access, Utc::now() + lifetime));
         let Some(refresh) = tokens.refresh else {
             return;

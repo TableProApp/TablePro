@@ -40,6 +40,7 @@ The account takes the Mac's seams through the FFI, resolves and discovers the se
 
 ### The license chain
 
+- Nothing of a company server's API is read before its license verifies: the license comes first after sign-in, before the device registers, and every other call and bearer waits for it. Answers read before then are capped.
 - After sign-in and at each entitlement refresh: `GET /v2/license`, verified offline against the license keys the build ships, current and next, minus the revoked `kid` list. It checks `alg`, `typ` `license+jwt`, `iss` `https://tablepro.app`, `aud` `tablepro-app`, `origin`, `nbf` with 300 seconds of leeway, exactly one of `exp` and `maintenance_until`, and `grace_until` with `exp` only and later than it ([0046](0046-a-monthly-license-has-7-days-grace.md)).
 - Then the JWKS from `jwks_uri`, each Ed25519 key kept by its RFC 7638 thumbprint. Entitlements verify against those keys only, with `iss` the API origin.
 - Features are the entitlement's cut to the license's. Past `grace_until` only `team_library` works and the rest read `Expired`, so the Mac pulls and exports while the server refuses pushes (0044, Expiry). A perpetual license never ends for the apps (0045).

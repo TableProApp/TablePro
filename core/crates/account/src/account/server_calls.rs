@@ -235,10 +235,28 @@ impl Account {
         self.publish(session, entitlement, expired.or(problem));
     }
 
+    // A company server's API is read only once its license verified (core ADR 0044): what an unlicensed server
+    // answers could be anything, of any size.
+    pub(super) async fn vouched(&self, session: &mut Session) -> Result<(), AccountError> {
+        let server = self.current();
+        let Trust::Licensed(keys) = &server.trust else {
+            return Ok(());
+        };
+        if session.licensed.is_some() {
+            return Ok(());
+        }
+        self.fetch_license(session, keys).await?;
+        self.relicense(session).await;
+        Ok(())
+    }
+
     // A bearer for the app's own /v2 calls, such as the Team Library's, refreshed first when it is about to end.
     pub async fn access_token(&self) -> Result<AccessToken, AccountError> {
         let mut session = self.inner.session.lock().await;
-        let taken = self.access(&mut session, false).await;
+        let taken = match self.vouched(&mut session).await {
+            Ok(()) => self.access(&mut session, false).await,
+            Err(error) => Err(error),
+        };
         let token = self.ended_by(&mut session, taken).await?;
         Ok(AccessToken {
             token,
