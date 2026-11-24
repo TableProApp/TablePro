@@ -113,8 +113,9 @@ impl Account {
     // GET /v2/license, then the JWKS it admits (core ADR 0044, How an app trusts a customer's server).
     pub(super) async fn fetch_license(&self, session: &mut Session, keys: &LicenseKeys) -> Result<(), AccountError> {
         session.waited(Call::License)?;
-        let server = self.current();
         let access = self.access(session, false).await?;
+        // After the token: a run that restored offline finds the server's endpoints there.
+        let server = self.current();
         let fetched = self.license_token(&server.api, &access).await;
         let token = session.answered(Call::License, fetched)?;
         let license = Arc::new(License::verify(&token, keys, &server.target.origin, Utc::now())?);
