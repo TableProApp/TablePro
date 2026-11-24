@@ -230,6 +230,11 @@ private final class CoreWebAuthenticator: HostWebAuthenticator, @unchecked Senda
         current.withLock { $0 = authenticator }
     }
 
+    func cancel() {
+        let authenticator = current.withLock { $0 }
+        Task { @MainActor in authenticator?.cancel() }
+    }
+
     func authenticate(url: String, callbackScheme: String) throws -> String {
         guard let target = URL(string: url), let authenticator = current.withLock({ $0 }) else {
             throw HostBrowserError.Failed(detail: "no sign-in window is open")
