@@ -232,6 +232,23 @@ struct AccountSettingsContentTests {
             profile: owner
         )
         #expect(owned.plans.first?.billing == URL(string: "http://account.localhost:5284/teams/team_acme/billing"))
+
+        let editor = AccountProfile(email: "ada@m16.example", name: nil, memberships: [
+            AccountMembership(teamID: "team_acme", teamName: "Acme", role: "editor", hasSeat: true)
+        ])
+        let edits = Self.make(
+            AccountState(
+                isSignedIn: true,
+                entitlement: Self.entitlement([Self.license(plan: "team", cycle: "yearly", team: team)])
+            ),
+            profile: editor
+        )
+        #expect(AccountCodes.roleName("editor") == "Editor")
+        #expect(edits.teams == [
+            .init(id: "team_acme", name: "Acme", role: "Editor", hasSeat: true,
+                  manage: URL(string: "http://account.localhost:5284/teams/team_acme")!)
+        ])
+        #expect(edits.plans.first?.billing == nil, "An editor cannot change the team's billing")
     }
 
     @Test("A past due license shows a payment problem and asks to update the payment method")

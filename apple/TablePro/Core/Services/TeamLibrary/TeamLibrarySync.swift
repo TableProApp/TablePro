@@ -30,8 +30,8 @@ internal struct TeamLibraryDestination: Equatable, Sendable {
 }
 
 // Pulls each team's library from its persisted cursor on launch, every 15 minutes and after each push, and pushes
-// what this Mac publishes in batches. Who reads and who writes comes from GET /v2/me: a seat to read, owner or admin
-// to write.
+// what this Mac publishes in batches. Who reads and who writes comes from GET /v2/me: a seat to read, owner, admin or
+// editor to write.
 @MainActor
 internal final class TeamLibrarySync: ObservableObject {
     static let shared = TeamLibrarySync(account: .shared, store: .live())
@@ -338,7 +338,7 @@ internal final class TeamLibrarySync: ObservableObject {
         return outcome
     }
 
-    // A seat reads, an owner or admin with a seat writes; a team no longer listed is dropped with its edits.
+    // A seat reads, an owner, admin or editor with a seat writes; a team no longer listed is dropped with its edits.
     private func adopt(_ memberships: [AccountMembership]) {
         let seated = memberships.filter(\.hasSeat)
         let listed = Set(seated.map(\.teamID))
@@ -350,7 +350,7 @@ internal final class TeamLibrarySync: ObservableObject {
             var state = teams[membership.teamID]
                 ?? TeamLibraryTeamState(teamID: membership.teamID, teamName: membership.teamName, canWrite: false)
             state.teamName = membership.teamName
-            state.canWrite = membership.role == "owner" || membership.role == "admin"
+            state.canWrite = membership.writesTeamLibrary
             if !state.canWrite, !state.pending.isEmpty || !state.conflicts.isEmpty {
                 Self.logger.notice(
                     "Dropping \(state.pending.count) unpushed team library edits and \(state.conflicts.count) conflicts: this account only reads the team's library"

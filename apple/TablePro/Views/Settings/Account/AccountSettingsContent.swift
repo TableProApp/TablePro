@@ -388,6 +388,12 @@ internal enum AccountCodes {
         switch code {
         case "owner": String(localized: "Owner")
         case "admin": String(localized: "Admin")
+        // A key of its own: "Editor" already names the code editor.
+        case "editor": String(
+            localized: "team.role.editor",
+            defaultValue: "Editor",
+            comment: "A team role that adds, changes and removes the team's library items"
+        )
         case "member": String(localized: "Member")
         default: nil
         }
