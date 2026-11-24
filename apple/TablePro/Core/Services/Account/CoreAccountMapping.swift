@@ -111,6 +111,12 @@ internal enum CoreAccountMapping {
         return self.error(error, during: operation)
     }
 
+    // A new session after the call, signed in where it was not, or to another account: the sign-in itself went
+    // through.
+    static func keptSignIn(before: AccountStatusInfo, after: AccountStatusInfo) -> Bool {
+        after.state == .signedIn && (before.state != .signedIn || before.accountId != after.accountId)
+    }
+
     static func error(_ error: CoreError, during operation: Operation) -> AccountError {
         guard case .Failed(let info) = error else { return .canceled }
         switch info.code {

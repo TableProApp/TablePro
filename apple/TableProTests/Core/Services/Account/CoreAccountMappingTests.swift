@@ -63,6 +63,20 @@ struct CoreAccountMappingTests {
             == .oauth("invalid_grant", description: nil))
     }
 
+    @Test("A sign-in the core kept stands when what followed it failed; a refusal that left the old session does not")
+    func keptSignIns() {
+        func status(_ state: AccountStateTag, _ account: String?) -> AccountStatusInfo {
+            AccountStatusInfo(
+                state: state, accountId: account, email: nil, name: nil, features: [], licenses: [],
+                entitlementExpiresAtSecs: nil, offlineFile: false, problem: nil, remembered: true
+            )
+        }
+        #expect(CoreAccountMapping.keptSignIn(before: status(.signedOut, nil), after: status(.signedIn, nil)))
+        #expect(CoreAccountMapping.keptSignIn(before: status(.signedIn, "acct_a"), after: status(.signedIn, nil)))
+        #expect(!CoreAccountMapping.keptSignIn(before: status(.signedIn, "acct_a"), after: status(.signedIn, "acct_a")))
+        #expect(!CoreAccountMapping.keptSignIn(before: status(.signedOut, nil), after: status(.signedOut, nil)))
+    }
+
     @Test("A sign-in the server refused for another reason says so instead of closing quietly")
     func otherRefusalsAreWorded() {
         let busy = CoreAccountMapping.error(

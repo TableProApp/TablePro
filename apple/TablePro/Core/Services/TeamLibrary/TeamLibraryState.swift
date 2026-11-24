@@ -60,6 +60,8 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     // This Mac's copy Keep Theirs turned down: publishing leaves the team's version alone until the copy here changes.
     var declined: [TeamLibraryKey: TeamLibraryData]
     var syncedAt: Date?
+    // The server and account this copy came from; nil in a file an earlier build wrote, which only tablepro.app filled.
+    var owner: TeamLibraryOwner?
 
     init(teamID: String, teamName: String, canWrite: Bool) {
         self.teamID = teamID
@@ -76,7 +78,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, moves, declined, syncedAt
+        case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, moves, declined, syncedAt, owner
     }
 
     private struct Declined: Codable {
@@ -99,6 +101,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         let declinedList = (try? container.decodeIfPresent([Declined].self, forKey: .declined)) ?? []
         declined = Dictionary(declinedList.map { ($0.key, $0.data) }, uniquingKeysWith: { _, last in last })
         syncedAt = try container.decodeIfPresent(Date.self, forKey: .syncedAt)
+        owner = try container.decodeIfPresent(TeamLibraryOwner.self, forKey: .owner)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -114,6 +117,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         try container.encode(moves, forKey: .moves)
         try container.encode(declined.map { Declined(key: $0.key, data: $0.value) }, forKey: .declined)
         try container.encodeIfPresent(syncedAt, forKey: .syncedAt)
+        try container.encodeIfPresent(owner, forKey: .owner)
     }
 
     var liveItems: [TeamLibraryChange] {
@@ -131,7 +135,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
 }
 
 // The server and account a stored library came from.
-internal struct TeamLibraryOwner: Equatable, Sendable {
+internal struct TeamLibraryOwner: Codable, Equatable, Sendable {
     let server: String
     let accountID: String
 }
@@ -140,7 +144,6 @@ internal struct TeamLibraryOwner: Equatable, Sendable {
 internal struct TeamLibraryStateStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibraryStateStore")
     static let legacyPullKey = "com.TablePro.teamLibrary.lastPullAt"
-    static let ownerKey = "com.TablePro.teamLibrary.owner"
 
     let directory: URL
     let legacyFile: URL
@@ -182,20 +185,7 @@ internal struct TeamLibraryStateStore {
 
     func removeAll() {
         try? FileManager.default.removeItem(at: directory)
-        defaults.removeObject(forKey: Self.ownerKey)
         removeLegacy()
-    }
-
-    // Nil for a library an earlier build stored, which only tablepro.app could have filled.
-    func owner() -> TeamLibraryOwner? {
-        guard let stored = defaults.dictionary(forKey: Self.ownerKey) as? [String: String],
-              let server = stored["server"], let accountID = stored["account"]
-        else { return nil }
-        return TeamLibraryOwner(server: server, accountID: accountID)
-    }
-
-    func saveOwner(_ owner: TeamLibraryOwner) {
-        defaults.set(["server": owner.server, "account": owner.accountID], forKey: Self.ownerKey)
     }
 
     // What the last /v1 pull cached, keyed by client ID like a /v2 snapshot, so the first one matches it item by item.

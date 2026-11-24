@@ -69,6 +69,8 @@ internal final class TeamLibrarySync: ObservableObject {
     private var rateLimitHold: Task<Void, Never>?
     // Bumped by sign-out, so a sync still out at that moment brings no team back.
     private var generation = 0
+    // Whose library this is, from the restored account; written into each team's file.
+    private var owner: TeamLibraryOwner?
 
     init(
         account: AccountServices,
@@ -263,21 +265,28 @@ internal final class TeamLibrarySync: ObservableObject {
         return finish(failure.map { .failed($0) } ?? .synced)
     }
 
-    // A library another server or account left, as when a configuration profile named another server while the app
-    // was closed, is dropped before anything shows it or pushes its edits, an offline file's account included.
+    // Each team's file names the server and account it came from. One another server or account left, as when a
+    // configuration profile named another server while the app was closed, or a file a failed delete left behind, is
+    // dropped before anything shows it or pushes its edits, an offline file's account included.
     private func claim(for state: AccountState) {
         guard state.isRestored, let accountID = state.entitlement?.accountID else { return }
         let current = TeamLibraryOwner(server: state.server.apiOrigin.absoluteString, accountID: accountID)
-        let stored = store.owner()
-        let fromAnother = stored.map { $0 != current }
-            ?? (current.server != AccountServer.production.apiOrigin.absoluteString)
-        if fromAnother, !teams.isEmpty || legacy != nil {
-            Self.logger.notice("The stored team library came from another server or account; dropping it")
-            clear()
+        owner = current
+        let production = AccountServer.production.apiOrigin.absoluteString
+        let others = teams.values.filter { ($0.owner ?? TeamLibraryOwner(server: production, accountID: accountID)) != current }
+        let legacyIsAnothers = legacy != nil && current.server != production
+        guard !others.isEmpty || legacyIsAnothers else { return }
+        Self.logger.notice("Dropping \(others.count) stored team libraries another server or account left")
+        generation += 1
+        for state in others {
+            teams[state.teamID] = nil
+            store.remove(teamID: state.teamID)
         }
-        if stored != current {
-            store.saveOwner(current)
+        if legacyIsAnothers {
+            legacy = nil
+            store.removeLegacy()
         }
+        publishContent()
     }
 
     private func finish(_ outcome: TeamLibrarySyncOutcome) -> TeamLibrarySyncOutcome {
@@ -615,6 +624,7 @@ internal final class TeamLibrarySync: ObservableObject {
 
     private func commit(_ state: TeamLibraryTeamState) {
         var state = state
+        state.owner = owner ?? state.owner
         // A move stays marked only while its edit waits to be pushed.
         if !state.moves.isEmpty {
             state.moves.formIntersection(state.pending.map { TeamLibraryKey($0) })

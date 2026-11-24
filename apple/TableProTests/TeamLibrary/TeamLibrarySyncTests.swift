@@ -1034,7 +1034,7 @@ struct TeamLibrarySyncTests {
 
         #expect(!fixture.sync.hasUnsentChanges)
         #expect(await fixture.pushes().count == pushesBefore)
-        #expect(fixture.store.owner()?.server == FakeAccountBackend.companyServer.apiOrigin.absoluteString)
+        #expect(fixture.store.loadAll().allSatisfy { $0.owner?.server == FakeAccountBackend.companyServer.apiOrigin.absoluteString })
     }
 
     @Test("Another server's library never shows to an offline file's account after a launch on a new server")
@@ -1088,6 +1088,24 @@ struct TeamLibrarySyncTests {
 
         await #expect(throws: TeamLibraryPublishError.failed(.signedOut)) { try await publishing.value }
         #expect(await fixture.pushes().isEmpty)
+    }
+
+    @Test("A team file another server's sign-in left, as after a delete that failed, is dropped and never adopted")
+    func leftoverFileOfAnotherOwnerIsDropped() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        #expect(await fixture.sync.sync() == .synced)
+        #expect(fixture.store.loadAll().allSatisfy { $0.owner?.accountID == "acct_test" })
+        var leftover = TeamLibraryTeamState(teamID: "team_leftover", teamName: "Other", canWrite: true)
+        leftover.owner = TeamLibraryOwner(server: "https://tablepro.example.com", accountID: "acct_test")
+        fixture.store.save(leftover)
+
+        fixture.relaunch()
+
+        #expect(fixture.sync.teamName(of: "team_leftover") == nil)
+        #expect(fixture.store.loadAll().map(\.teamID) == [Self.team])
+        #expect(fixture.sync.content.queries.map(\.name) == ["Orders"])
     }
 
     // MARK: - Sign-out while a call is out

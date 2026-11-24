@@ -124,7 +124,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
         let service = try await awaitService()
         self.authenticator.use(authenticator)
         defer { self.authenticator.use(nil) }
-        try await Self.call(.signIn, keepingDeviceLimit: true) { try await service.signIn(cancel: nil) }
+        try await Self.signingIn(service, .signIn) { try await service.signIn(cancel: nil) }
     }
 
     func signOut() async throws(AccountError) {
@@ -144,7 +144,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
 
     func useLicenseKey(_ key: String) async throws(AccountError) {
         let service = try await awaitService()
-        try await Self.call(.licenseKey, keepingDeviceLimit: true) { try await service.useLicenseKey(key: key) }
+        try await Self.signingIn(service, .licenseKey) { try await service.useLicenseKey(key: key) }
     }
 
     func importOfflineFile(at url: URL) async throws(AccountError) {
@@ -197,15 +197,22 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
         }
     }
 
-    private static func call(
+    // A sign-in the core kept stands though what followed it failed: the device registration or the first
+    // entitlement, whose problem the status then carries.
+    private static func signingIn(
+        _ service: AccountService,
         _ operation: CoreAccountMapping.Operation,
-        keepingDeviceLimit: Bool,
         _ body: () async throws -> Void
     ) async throws(AccountError) {
+        let before = service.status()
         do {
             try await body()
         } catch let error as CoreError {
             guard let failure = CoreAccountMapping.signInError(error, during: operation) else { return }
+            if CoreAccountMapping.keptSignIn(before: before, after: service.status()) {
+                logger.notice("Signed in; what followed failed: \(failure.publicLogShape, privacy: .public)")
+                return
+            }
             throw failure
         } catch {
             throw .network(error.localizedDescription)
