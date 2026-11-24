@@ -400,7 +400,7 @@ struct TelemetryTests {
         )
         window.addTab(QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query))
 
-        window.coordinator.runQuery(viewport: .firstRow)
+        window.coordinator.runQuery(onTab: window.coordinator.commandTabId, viewport: .firstRow)
         try await waitUntil { fixture.client?.captured.contains("first_query_executed") == true }
 
         #expect(Array(fixture.client?.calls.dropFirst() ?? []) == [

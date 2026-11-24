@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 /// Reads one container's table listing over a metadata connection, the way the sidebar reads the
 /// tables themselves.
@@ -25,13 +26,12 @@ internal struct TableListingLoader: Sendable {
         let slot = slot
         do {
             let result = try await provider.withMetadataDriver(scope: scope) { driver in
-                let adapter = driver as? PluginDriverAdapter
                 let container = AllTablesListing.container(slot: slot, scope: scope) { value in
-                    adapter?.escapeStringLiteral(value) ?? value
+                    driver.escapeStringLiteral(value)
                 }
                 guard let statement = AllTablesListing.statement(
                     databaseType: databaseType,
-                    pluginListing: adapter?.allTablesMetadataSQL(schema: container)
+                    pluginListing: driver.plugin?.allTablesMetadataSQL(schema: container)
                 ) else {
                     throw TableListingError.unavailable
                 }

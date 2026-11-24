@@ -1187,9 +1187,8 @@ mod tests {
 
         // An account whose service nothing answers, so only what a test sends shows.
         fn ready(&self) {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
-            let base = format!("http://{}", listener.local_addr().expect("its address"));
-            drop(listener);
+            // No test binds port 1, so a connect there is refused, unlike a freed port another test can take.
+            let base = "http://127.0.0.1:1".to_owned();
             let endpoints = Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints");
             let machine = MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine ID");
             self.ready_with(

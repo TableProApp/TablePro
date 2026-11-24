@@ -16,7 +16,7 @@
 
 import Foundation
 
-enum RedshiftExternalSchemaQueries {
+nonisolated enum RedshiftExternalSchemaQueries {
     static let listExternalSchemaNames = "SELECT schemaname FROM svv_external_schemas"
 
     /// Tables registered in one external schema. Both views carry rows for

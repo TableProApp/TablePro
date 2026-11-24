@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using TablePro.Interop;
 
 namespace TablePro.App.Model;
 
@@ -30,11 +31,50 @@ public sealed record AppSettings
     // As macOS offers them; 0 keeps every result.
     public static IReadOnlyList<int> ResultsKeptChoices { get; } = [0, 10, 20, 50, 100, 200, 500, 1_000];
 
+    public const string DefaultNullDisplay = "NULL";
+
+    // macOS caps the NULL text at 20 characters.
+    public const int NullDisplayMaxLength = 20;
+
+    public const double DefaultGridFontSize = 14;
+
+    public const int DefaultHistoryRetentionDays = 90;
+
+    public const int DefaultHistoryMaxEntries = 10_000;
+
+    // As macOS offers them; 0 keeps every age.
+    public static IReadOnlyList<int> HistoryRetentionChoices { get; } = [7, 30, 90, 180, 365, 0];
+
+    // As macOS offers them; 0 keeps as many as the store holds.
+    public static IReadOnlyList<int> HistoryMaxEntriesChoices { get; } = [100, 500, 1_000, 5_000, 10_000, 0];
+
+    // The Linux app's default, so a key is all a new user needs.
+    public const string DefaultAnthropicModel = "claude-opus-5-5";
+
+    public const string DefaultCompatibleAddress = "http://localhost:11434/v1";
+
     public AppTheme Theme { get; set; } = AppTheme.System;
 
     public bool ReopenSession { get; set; } = true;
 
     public double EditorFontSize { get; set; } = 14;
+
+    // Null keeps the editor's own monospaced family.
+    public string? EditorFontFamily { get; set; }
+
+    // Null keeps the grid's own family.
+    public string? GridFontFamily { get; set; }
+
+    public double GridFontSize { get; set; } = DefaultGridFontSize;
+
+    // What a grid shows in a NULL cell.
+    public string NullDisplay { get; set; } = DefaultNullDisplay;
+
+    // Unpinned history older than this is dropped; 0 keeps every age.
+    public int HistoryRetentionDays { get; set; } = DefaultHistoryRetentionDays;
+
+    // The newest unpinned runs the history keeps; 0 keeps as many as the store holds.
+    public int HistoryMaxEntries { get; set; } = DefaultHistoryMaxEntries;
 
     public int RowLimit { get; set; } = DefaultRowLimit;
 
@@ -50,15 +90,65 @@ public sealed record AppSettings
     // Results with rows a run keeps, the newest; 0 keeps them all.
     public int ResultSetsKeptPerRun { get; set; }
 
+    // Who answers the AI assistant; null while it is off, which is how it starts, so nothing is sent anywhere.
+    public AiProvider? AiProvider { get; set; }
+
+    public string AnthropicModel { get; set; } = DefaultAnthropicModel;
+
+    public string OpenAIModel { get; set; } = string.Empty;
+
+    public string CompatibleModel { get; set; } = string.Empty;
+
+    // An Ollama or other OpenAI-compatible server, version path included; the hosted providers' are fixed.
+    public string CompatibleAddress { get; set; } = DefaultCompatibleAddress;
+
+    // What the chosen provider's requests take, or null while the assistant is off.
+    [JsonIgnore]
+    public AiSettings? Assistant => AiProvider is { } provider ? AssistantFor(provider) : null;
+
+    public AiSettings AssistantFor(AiProvider provider) => new(
+        provider,
+        ModelOf(provider),
+        provider == Interop.AiProvider.OpenAICompatible ? CompatibleAddress : null);
+
+    public string ModelOf(AiProvider provider) => provider switch
+    {
+        Interop.AiProvider.Anthropic => AnthropicModel,
+        Interop.AiProvider.OpenAI => OpenAIModel,
+        _ => CompatibleModel,
+    };
+
+    public AppSettings WithModel(AiProvider provider, string model) => provider switch
+    {
+        Interop.AiProvider.Anthropic => this with { AnthropicModel = model },
+        Interop.AiProvider.OpenAI => this with { OpenAIModel = model },
+        _ => this with { CompatibleModel = model },
+    };
+
     public AppSettings Normalized() => this with
     {
         Theme = Enum.IsDefined(Theme) ? Theme : AppTheme.System,
         EditorFontSize = Math.Clamp(EditorFontSize, 8, 36),
+        EditorFontFamily = string.IsNullOrWhiteSpace(EditorFontFamily) ? null : EditorFontFamily.Trim(),
+        GridFontFamily = string.IsNullOrWhiteSpace(GridFontFamily) ? null : GridFontFamily.Trim(),
+        GridFontSize = double.IsFinite(GridFontSize) ? Math.Clamp(GridFontSize, 8, 36) : DefaultGridFontSize,
+        NullDisplay = string.IsNullOrEmpty(NullDisplay)
+            ? DefaultNullDisplay
+            : NullDisplay[..Math.Min(NullDisplay.Length, NullDisplayMaxLength)],
+        HistoryRetentionDays = Math.Max(0, HistoryRetentionDays),
+        HistoryMaxEntries = Math.Max(0, HistoryMaxEntries),
         RowLimit = Math.Clamp(RowLimit, 1, 1_000_000),
         PageSize = Math.Clamp(PageSize, 10, 100_000),
         QueryTimeoutSeconds = Math.Clamp(QueryTimeoutSeconds, 0, 86_400),
         CountRowsIfEstimateLessThan = Math.Max(0, CountRowsIfEstimateLessThan),
         ResultSetsKeptPerRun = Math.Max(0, ResultSetsKeptPerRun),
+        AiProvider = AiProvider is { } provider && Enum.IsDefined(provider) ? provider : null,
+        AnthropicModel = (AnthropicModel ?? string.Empty).Trim(),
+        OpenAIModel = (OpenAIModel ?? string.Empty).Trim(),
+        CompatibleModel = (CompatibleModel ?? string.Empty).Trim(),
+        CompatibleAddress = string.IsNullOrWhiteSpace(CompatibleAddress)
+            ? DefaultCompatibleAddress
+            : CompatibleAddress.Trim(),
     };
 }
 
@@ -86,6 +176,8 @@ public sealed class SettingsStore(string path)
     UseStringEnumConverter = true)]
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(SessionState))]
+[JsonSerializable(typeof(TableFilterFile))]
+[JsonSerializable(typeof(ColumnLayoutFile))]
 internal sealed partial class ModelJson : JsonSerializerContext;
 
 internal static class JsonFile

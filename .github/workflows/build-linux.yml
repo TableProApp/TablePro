@@ -460,6 +460,10 @@ jobs:
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
       options: --privileged
+      # Docker copies the image's runtimes into the volume. On AWS-hosted runners, updating a runtime that sits in
+      # an image layer fails with "Invalid cross-device link" (run 43615225881).
+      volumes:
+        - flatpak-system:/var/lib/flatpak
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

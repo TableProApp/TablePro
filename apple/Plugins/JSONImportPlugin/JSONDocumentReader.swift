@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum JSONDocumentError: LocalizedError, Equatable {
+nonisolated enum JSONDocumentError: LocalizedError, Equatable {
     case endsEarly
     case unexpectedCharacter(byteOffset: Int)
     case invalidText
@@ -27,7 +27,7 @@ enum JSONDocumentError: LocalizedError, Equatable {
 // each value a caller asks for, so every value reads exactly as it would in a whole-file parse.
 // UTF-16 and UTF-32 text is turned into UTF-8 as it is read, so `offset` counts UTF-8 bytes and
 // `fileOffset` the file's own.
-struct JSONDocumentReader {
+nonisolated struct JSONDocumentReader {
     static let defaultChunkSize = 1 << 20
 
     private static let quote: UInt8 = 0x22

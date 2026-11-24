@@ -40,6 +40,13 @@ public sealed partial class DataGridView
 
     public bool IsEditing => _edit is not null;
 
+    // What a commit would send now, without one: null with no editor open or its text as it opened.
+    public (int Row, int Column, string Text)? PendingEdit =>
+        _editor is not null && _edit is { } edit && EditorText(_editor) is var text
+        && !string.Equals(text, _editText, StringComparison.Ordinal)
+            ? (edit.Row, edit.Column, text)
+            : null;
+
     public string DefaultText
     {
         get => _defaultText;
@@ -70,6 +77,9 @@ public sealed partial class DataGridView
     public event EventHandler<GridEditCommittingEventArgs>? CellEditCommitting;
 
     public event EventHandler? DeleteRequested;
+
+    // The open editor's text changed, so what PendingEdit reads did too.
+    public event EventHandler? PendingEditChanged;
 
     internal TextBox? Editor => _editor;
 
@@ -106,6 +116,7 @@ public sealed partial class DataGridView
 
     public void EditsChanged()
     {
+        ClearCellTip();
         if (_data is null)
         {
             return;
@@ -220,7 +231,7 @@ public sealed partial class DataGridView
         {
             RowMark.Deleted => DeletedStatus,
             RowMark.Inserted => NewRowStatus,
-            RowMark.Modified when _edited.Edits.TryGetCell(row, column, out _) => EditedStatus,
+            RowMark.Modified when _edited.IsCellEdited(row, column) => EditedStatus,
             _ => string.Empty,
         };
     }
@@ -315,6 +326,7 @@ public sealed partial class DataGridView
 
     private void OpenEditor(int row, int column, string text)
     {
+        ClearCellTip();
         var editor = _editor ??= CreateEditor();
         var window = column < _columns.FrozenCount ? _frozenWindow : _window;
         if (!ReferenceEquals(editor.Parent, window))
@@ -421,22 +433,34 @@ public sealed partial class DataGridView
     {
         var editor = new TextBox
         {
-            FontFamily = new FontFamily(Painter.FamilyName),
-            // TextBox scales its text with the text scale factor, as the painter's size already is.
-            FontSize = BaseFontSize,
             MinWidth = 0,
             MinHeight = 0,
             TextWrapping = TextWrapping.NoWrap,
             Visibility = Visibility.Collapsed,
         };
+        ApplyEditorFont(editor);
         editor.PreviewKeyDown += OnEditorKeyDown;
         // Arrows and paging the TextBox leaves would reach the ScrollViewer around it and scroll the grid.
         editor.KeyDown += (_, e) => e.Handled |= e.Key is VirtualKey.Up or VirtualKey.Down or VirtualKey.Left
             or VirtualKey.Right or VirtualKey.PageUp or VirtualKey.PageDown or VirtualKey.Home or VirtualKey.End;
         editor.LostFocus += OnEditorLostFocus;
+        editor.TextChanged += (_, _) =>
+        {
+            if (IsEditing)
+            {
+                PendingEditChanged?.Invoke(this, EventArgs.Empty);
+            }
+        };
         // The grid has put the cell in view; for an editor in the frozen header the ScrollViewer would move too.
         editor.BringIntoViewRequested += (_, e) => e.Handled = true;
         return editor;
+    }
+
+    // TextBox scales its text with the text scale factor, as the painter's size already is.
+    private void ApplyEditorFont(TextBox editor)
+    {
+        editor.FontFamily = new FontFamily(Painter.FamilyName);
+        editor.FontSize = _cellFontSize;
     }
 
     private void OnEditorKeyDown(object sender, KeyRoutedEventArgs e)

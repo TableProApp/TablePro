@@ -11,7 +11,6 @@ struct CoordinatorQueryRoutingTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         coordinator.openTabInNewWindow = { _ in }

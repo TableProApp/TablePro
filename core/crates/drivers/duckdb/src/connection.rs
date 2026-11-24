@@ -5,10 +5,12 @@ use async_trait::async_trait;
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{DumpCatalog, DumpScope};
-use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
+use tablepro_core::meta::{
+    IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
+};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
-    CallOptions, ColumnInfo, CommitResolution, CommitToken, Connection, DriverError, EditorSession,
+    CallOptions, CatalogBudget, ColumnInfo, CommitResolution, CommitToken, Connection, DriverError, EditorSession,
     EditorSessionOptions, FileEndpoint, ForeignKeyInfo, LinkState, LinkWatch, LivenessPolicy, LossPhase, OwnedCalls,
     QueryResult, ReadOnlyRefusal, ReadStatement, ResultSink, RowLimit, ServerInfo, SinkFlow, StopRequest,
     StreamSummary, TimeoutPhase, WorkspaceSettings, WriteAtomicity, WriteBatch, WriteKind, WriteLedger, WriteReport,
@@ -176,15 +178,36 @@ fn server_info(version: &str) -> ServerInfo {
     ServerInfo::new("DuckDB", version, part(0), part(1), part(2))
 }
 
+// DuckDB reads, prints and saves the file's expressions one call per level with no limit of its own; 8 MiB is the
+// stack its CLI runs on, where a runtime's blocking thread has 2 (ADR 0030).
+const DUCKDB_STACK_BYTES: usize = 8 << 20;
+
+pub(crate) fn on_duckdb_stack<T, W>(work: W) -> Result<T, DriverError>
+where
+    T: Send,
+    W: FnOnce() -> T + Send,
+{
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("duckdb".to_owned())
+            .stack_size(DUCKDB_STACK_BYTES)
+            .spawn_scoped(scope, work)
+            .map_err(|error| DriverError::Protocol(format!("could not start a thread for DuckDB: {error}")))?
+            .join()
+            .map_err(|_| DriverError::Protocol("DuckDB failed inside a call".to_owned()))
+    })
+}
+
 /// Run DuckDB work that blocks, off the async threads.
 pub(crate) async fn blocking<T, W>(work: W) -> Result<T, DriverError>
 where
     T: Send + 'static,
     W: FnOnce() -> Result<T, DriverError> + Send + 'static,
 {
-    tokio::task::spawn_blocking(work)
+    tokio::task::spawn_blocking(move || on_duckdb_stack(work))
         .await
         .map_err(|error| DriverError::Protocol(format!("DuckDB work stopped: {error}")))?
+        .and_then(|result| result)
 }
 
 /// Hand a run's events to `sink` while `produce` makes them on the
@@ -269,7 +292,7 @@ impl Connection for DuckDbConnection {
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
         let scope = scope.clone();
         self.read(options, move |link, catalog| {
-            catalog::list_objects(link, catalog, &scope)
+            catalog::list_objects(link, catalog, &scope, &mut CatalogBudget::default())
         })
         .await
     }
@@ -277,7 +300,7 @@ impl Connection for DuckDbConnection {
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::fetch_columns(link, catalog, &table)
+            catalog::fetch_columns(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -285,7 +308,7 @@ impl Connection for DuckDbConnection {
     async fn fetch_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::fetch_indexes(link, catalog, &table)
+            catalog::fetch_indexes(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -297,7 +320,7 @@ impl Connection for DuckDbConnection {
     ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::fetch_foreign_keys(link, catalog, &table)
+            catalog::fetch_foreign_keys(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -309,7 +332,7 @@ impl Connection for DuckDbConnection {
     ) -> Result<Vec<OutboundForeignKey>, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::outbound_foreign_keys(link, catalog, &table)
+            catalog::outbound_foreign_keys(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -321,7 +344,7 @@ impl Connection for DuckDbConnection {
     ) -> Result<Vec<InboundForeignKey>, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::inbound_foreign_keys(link, catalog, &table)
+            catalog::inbound_foreign_keys(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -335,7 +358,7 @@ impl Connection for DuckDbConnection {
         // One transaction, so the parts come from the same moment.
         self.read(options, move |link, catalog| {
             batch(link, "BEGIN TRANSACTION READ ONLY")?;
-            let definition = catalog::fetch_table_definition(link, catalog, &table);
+            let definition = catalog::fetch_table_definition(link, catalog, &table, &mut CatalogBudget::default());
             link.hold_stops();
             batch(link, "ROLLBACK")?;
             definition
@@ -359,7 +382,7 @@ impl Connection for DuckDbConnection {
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError> {
         let table = table.clone();
         self.read(options, move |link, catalog| {
-            catalog::row_identity(link, catalog, &table)
+            catalog::row_identity(link, catalog, &table, &mut CatalogBudget::default())
         })
         .await
     }
@@ -370,6 +393,12 @@ impl Connection for DuckDbConnection {
             catalog::table_estimate(link, catalog, &table)
         })
         .await
+    }
+
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let table = table.clone();
+        self.read(options, move |link, catalog| catalog::table_info(link, catalog, &table))
+            .await
     }
 
     async fn query_bound(

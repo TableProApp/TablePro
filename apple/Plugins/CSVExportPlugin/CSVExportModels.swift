@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-public enum CSVDelimiter: String, CaseIterable, Identifiable, Codable, Sendable {
+nonisolated public enum CSVDelimiter: String, CaseIterable, Identifiable, Codable, Sendable {
     case comma = ","
     case semicolon = ";"
     case tab = "\\t"
@@ -28,7 +28,7 @@ public enum CSVDelimiter: String, CaseIterable, Identifiable, Codable, Sendable 
     }
 }
 
-public enum CSVQuoteHandling: String, CaseIterable, Identifiable, Codable, Sendable {
+nonisolated public enum CSVQuoteHandling: String, CaseIterable, Identifiable, Codable, Sendable {
     case always = "Always"
     case asNeeded = "Quote if needed"
     case never = "Never"
@@ -46,7 +46,7 @@ public enum CSVQuoteHandling: String, CaseIterable, Identifiable, Codable, Senda
     }
 }
 
-public enum CSVLineBreak: String, CaseIterable, Identifiable, Codable, Sendable {
+nonisolated public enum CSVLineBreak: String, CaseIterable, Identifiable, Codable, Sendable {
     case lf = "\\n"
     case crlf = "\\r\\n"
     case cr = "\\r"
@@ -62,7 +62,7 @@ public enum CSVLineBreak: String, CaseIterable, Identifiable, Codable, Sendable 
     }
 }
 
-public enum CSVDecimalFormat: String, CaseIterable, Identifiable, Codable, Sendable {
+nonisolated public enum CSVDecimalFormat: String, CaseIterable, Identifiable, Codable, Sendable {
     case period = "."
     case comma = ","
 
@@ -71,7 +71,7 @@ public enum CSVDecimalFormat: String, CaseIterable, Identifiable, Codable, Senda
     public var separator: String { rawValue }
 }
 
-public struct CSVExportOptions: Equatable, Codable, Sendable {
+nonisolated public struct CSVExportOptions: Equatable, Codable, Sendable {
     public var convertNullToEmpty: Bool = true
     public var convertLineBreakToSpace: Bool = false
     public var includeFieldNames: Bool = true

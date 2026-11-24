@@ -194,7 +194,7 @@ extension MainContentCoordinator {
             HeldShareRows(
                 tableRows: tableRows,
                 displayIDs: displayIDs(forTab: tab.id),
-                deletedRowIDs: changeManager.deletedRowIDs,
+                deletedRowIDs: changeManager(forTab: tab.id).deletedRowIDs,
                 overlay: externalOverlay(forTab: tab.id),
                 projection: projection,
                 untracedColumns: projection.positions(of: Set(untraced)),

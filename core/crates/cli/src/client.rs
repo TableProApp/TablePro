@@ -262,6 +262,13 @@ mod tests {
         statement_margin: Duration::from_millis(300),
     };
 
+    // A short tool call after a handshake with the usual bound: the server answers that itself, and a loaded package
+    // builder took over 300 ms to.
+    const SHORT_TOOL: Deadlines = Deadlines {
+        handshake: Deadlines::TABLEPRO.handshake,
+        ..SHORT
+    };
+
     // An app whose GTK thread never answers.
     struct Stalled;
 
@@ -331,7 +338,7 @@ mod tests {
         let client = McpClient::connect_within(
             &endpoint_at(server.address().port()),
             "1.0.0",
-            SHORT,
+            SHORT_TOOL,
             &crate::runner::tests::STOPPED,
         )
         .await

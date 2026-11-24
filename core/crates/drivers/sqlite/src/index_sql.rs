@@ -1,16 +1,7 @@
-//! The expression keys and the WHERE clause of an index, read from the
-//! CREATE INDEX that SQLite stored for it.
-//!
-//! sqlparser parses the statement, which settles how many keys there
-//! are and whether one has a sort order or the index a predicate. The
-//! text of each comes from sqlparser's own token stream rather than
-//! from the AST's spans: in sqlparser 0.63 a function call's span stops
-//! before its closing parenthesis and a parenthesised expression's
-//! span skips its parentheses, so a span slice would cut keys short.
-//! The tokens carry exact positions, and quotes, brackets and comments
-//! are already single tokens there, so the top-level commas are the
-//! only places a key list can split. Where the tokens and the AST do
-//! not line up, the AST's own rendering of the expression is used.
+// Key texts come from sqlparser's tokens, not the AST's spans: in sqlparser 0.63 a function call's span stops before its
+// closing parenthesis and a parenthesised expression's span skips its parentheses. Quotes, brackets and comments are
+// single tokens, so the top-level commas are the only places a key list splits. Where the tokens and the AST do not
+// line up, the AST's rendering is used.
 
 use std::ops::Range;
 
@@ -20,16 +11,13 @@ use sqlparser::keywords::Keyword;
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Location, Token, Tokenizer};
 
-/// What an index's stored SQL says beyond the pragmas.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct IndexSql {
-    /// One entry per key, in key order: the key as written, without its
-    /// ASC or DESC.
+    // In key order, each as written without its ASC or DESC.
     pub keys: Vec<String>,
     pub predicate: Option<String>,
 }
 
-/// Read a CREATE INDEX. `None` when it does not parse as exactly one.
 pub(crate) fn read_index_sql(sql: &str) -> Option<IndexSql> {
     let dialect = SQLiteDialect {};
     let mut statements = Parser::parse_sql(&dialect, sql).ok()?;
@@ -64,15 +52,12 @@ fn texts(index: &CreateIndex, cut: Option<Cut>) -> IndexSql {
     }
 }
 
-/// The key texts and the predicate text the tokens gave.
 #[derive(Debug, Default)]
 struct Cut {
     keys: Vec<String>,
     predicate: Option<String>,
 }
 
-/// The statement's tokens, each with the bytes of the text it came
-/// from.
 struct SourceTokens<'a> {
     sql: &'a str,
     tokens: Vec<(Token, Range<usize>)>,
@@ -80,14 +65,14 @@ struct SourceTokens<'a> {
 
 impl<'a> SourceTokens<'a> {
     fn read(dialect: &SQLiteDialect, sql: &'a str) -> Option<Self> {
-        let lines = LineStarts::new(sql);
+        let mut offsets = Offsets::new(sql);
         let tokens = Tokenizer::new(dialect, sql)
             .tokenize_with_location()
             .ok()?
             .into_iter()
             .map(|token| {
-                let start = lines.byte(token.span.start)?;
-                let end = lines.byte(token.span.end)?;
+                let start = offsets.byte(token.span.start)?;
+                let end = offsets.byte(token.span.end)?;
                 Some((token.token, start..end))
             })
             .collect::<Option<Vec<_>>>()?;
@@ -111,7 +96,6 @@ impl<'a> SourceTokens<'a> {
         })
     }
 
-    /// The parenthesis after ON that opens the key list.
     fn key_list_open(&self) -> Option<usize> {
         let mut after_on = false;
         let mut depth = 0usize;
@@ -127,8 +111,6 @@ impl<'a> SourceTokens<'a> {
         None
     }
 
-    /// The token ranges between the key list's top-level commas, and the
-    /// position of the parenthesis that closes it.
     fn segments(&self, open: usize) -> Option<(Vec<Range<usize>>, usize)> {
         let mut segments = Vec::new();
         let mut start = open + 1;
@@ -166,8 +148,6 @@ impl<'a> SourceTokens<'a> {
         self.text(segment)
     }
 
-    /// Everything after a top-level WHERE that follows the key list, up
-    /// to a closing semicolon.
     fn predicate(&self, close: usize) -> Option<String> {
         let start = self
             .tokens
@@ -187,7 +167,6 @@ impl<'a> SourceTokens<'a> {
         self.text(self.trimmed(start..end))
     }
 
-    /// The range without the whitespace and comments at either end.
     fn trimmed(&self, mut range: Range<usize>) -> Range<usize> {
         while range.start < range.end && self.is_trivia(range.start) {
             range.start += 1;
@@ -212,31 +191,42 @@ impl<'a> SourceTokens<'a> {
     }
 }
 
-/// Byte offsets for the tokenizer's line and column locations, which
-/// count characters from 1.
-struct LineStarts<'a> {
+// The tokenizer's locations count lines and characters from 1 and come in text order, so one cursor walks the text
+// once: counting from each line's start made a long one-line statement quadratic.
+struct Offsets<'a> {
     text: &'a str,
-    starts: Vec<usize>,
+    line: u64,
+    column: u64,
+    byte: usize,
 }
 
-impl<'a> LineStarts<'a> {
+impl<'a> Offsets<'a> {
     fn new(text: &'a str) -> Self {
-        let starts = std::iter::once(0)
-            .chain(text.match_indices('\n').map(|(newline, _)| newline + 1))
-            .collect();
-        Self { text, starts }
+        Self {
+            text,
+            line: 1,
+            column: 1,
+            byte: 0,
+        }
     }
 
-    fn byte(&self, location: Location) -> Option<usize> {
-        let line = usize::try_from(location.line).ok()?.checked_sub(1)?;
-        let column = usize::try_from(location.column).ok()?.checked_sub(1)?;
-        let start = *self.starts.get(line)?;
-        let rest = self.text.get(start..)?;
-        match rest.char_indices().nth(column) {
-            Some((offset, _)) => Some(start + offset),
-            None if rest.chars().count() == column => Some(self.text.len()),
-            None => None,
+    fn byte(&mut self, location: Location) -> Option<usize> {
+        let target = (location.line, location.column);
+        if target < (self.line, self.column) {
+            return None;
         }
+        while (self.line, self.column) < target {
+            let character = self.text.get(self.byte..)?.chars().next()?;
+            self.byte += character.len_utf8();
+            match character {
+                '\n' => {
+                    self.line += 1;
+                    self.column = 1;
+                }
+                _ => self.column += 1,
+            }
+        }
+        Some(self.byte)
     }
 }
 
@@ -278,6 +268,16 @@ mod tests {
     }
 
     #[test]
+    fn keys_after_wide_characters_on_their_line_keep_their_text() {
+        let sql = "CREATE INDEX \"ü\" ON \"té\" (lower(\"é,ß\"), \"ß\" DESC) WHERE \"é\" > '日本'";
+
+        let read = read_index_sql(sql).unwrap();
+
+        assert_eq!(read.keys, ["lower(\"é,ß\")", "\"ß\""]);
+        assert_eq!(read.predicate.as_deref(), Some("\"é\" > '日本'"));
+    }
+
+    #[test]
     fn keys_fall_back_to_the_parsed_expression_when_the_tokens_do_not_line_up() {
         let parsed = Parser::parse_sql(&SQLiteDialect {}, "CREATE INDEX i ON t (lower( a ), b) WHERE b > 1").unwrap();
         let Some(Statement::CreateIndex(index)) = parsed.into_iter().next() else {
@@ -292,6 +292,24 @@ mod tests {
 
         assert_eq!(read.keys, ["lower(a)", "b"]);
         assert_eq!(read.predicate.as_deref(), Some("b > 1"));
+    }
+
+    // Counted from each line's start, this took minutes.
+    #[test]
+    fn a_long_one_line_key_list_reads_in_one_pass() {
+        let terms = vec!["0"; 50_000].join(",");
+        let sql = format!("CREATE INDEX i ON t ((a IN ({terms})), b) WHERE a IN ({terms})");
+        let started = std::time::Instant::now();
+
+        let read = read_index_sql(&sql).unwrap();
+
+        assert_eq!(read.keys, [format!("(a IN ({terms}))"), "b".to_owned()]);
+        assert_eq!(read.predicate, Some(format!("a IN ({terms})")));
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(30),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     #[test]

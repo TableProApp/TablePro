@@ -26,8 +26,8 @@ extension MainContentCommandActions {
         switch discardTarget {
         case .structure(let session):
             session.discardChangesAfterConfirming()
-        case .data:
-            Task { await discardDataWorkAfterConfirming() }
+        case .data(let tabId):
+            Task { await discardDataWorkAfterConfirming(onTab: tabId) }
         case nil:
             break
         }
@@ -35,7 +35,7 @@ extension MainContentCommandActions {
 
     private enum DiscardTarget {
         case structure(StructureEditingSession)
-        case data
+        case data(tabId: UUID)
     }
 
     // Create Table has no saved state to return to.
@@ -43,10 +43,11 @@ extension MainContentCommandActions {
         guard let tab = coordinator?.tabManager.selectedTab,
               tab.tabType == .table || tab.tabType == .query else { return nil }
         if let session = stagedStructureSession { return .structure(session) }
-        return hasDataWork && coordinator?.isSavingSelectedTab != true ? .data : nil
+        return hasDataWork && coordinator?.isSavingSelectedTab != true ? .data(tabId: tab.id) : nil
     }
 
-    private func discardDataWorkAfterConfirming() async {
+    // Discards nothing once another tab is in front: the grid work it would clear is that tab's.
+    private func discardDataWorkAfterConfirming(onTab tabId: UUID) async {
         let confirmed = await AlertHelper.confirmDestructive(
             title: String(localized: "Discard Changes?"),
             message: String(localized: "The changes you have not saved will be lost."),
@@ -54,7 +55,7 @@ extension MainContentCommandActions {
             cancelButton: String(localized: "Cancel"),
             window: closeAnchorWindow
         )
-        guard confirmed else { return }
+        guard confirmed, coordinator?.tabManager.selectedTab?.id == tabId else { return }
         discardDataWork()
     }
 

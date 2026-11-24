@@ -68,6 +68,15 @@ pub(crate) fn tds_number(error: &DriverError) -> Option<u32> {
     }
 }
 
+/// Permission refused on an object, in a database, or for an action
+/// such as reading a DMV without VIEW DATABASE STATE.
+const PERMISSION_DENIED: [u32; 4] = [229, 262, 297, 300];
+
+/// Whether the server refused for want of a permission.
+pub(crate) fn permission_denied(error: &DriverError) -> bool {
+    tds_number(error).is_some_and(|number| PERMISSION_DENIED.contains(&number))
+}
+
 /// Whether the connection the error came from is gone or out of step
 /// with the server, so it must not run anything else.
 pub(crate) fn ends_connection(error: &DriverError) -> bool {
@@ -164,6 +173,17 @@ mod tests {
                 assert_eq!(tds_number(&mapped), Some(number), "{number} kept its number");
             }
         }
+    }
+
+    #[test]
+    fn a_refused_permission_is_told_apart() {
+        let refused = server_error(&message(
+            297,
+            "The user does not have permission to perform this action.",
+        ));
+        let missing = server_error(&message(208, "Invalid object name 't'."));
+        assert!(permission_denied(&refused));
+        assert!(!permission_denied(&missing));
     }
 
     #[test]

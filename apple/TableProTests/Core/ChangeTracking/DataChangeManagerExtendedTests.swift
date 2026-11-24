@@ -44,8 +44,7 @@ struct DataChangeManagerExtendedTests {
     func recordRowInsertionStoresInInsertedRowData() {
         let manager = makeManager()
         manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
-        let state = manager.saveState()
-        #expect(state.insertedRowData[insertedID(5)] == ["a", "b", "c"])
+        #expect(manager.pending.insertedRowData[insertedID(5)] == ["a", "b", "c"])
     }
 
     @Test("Record row insertion adds insert-type change with empty cellChanges")
@@ -182,173 +181,95 @@ struct DataChangeManagerExtendedTests {
         #expect(manager.getModifiedColumnsForRow(.existing(0)).isEmpty)
     }
 
-    // MARK: - State Save/Restore
+    // MARK: - Describing the Table
 
-    @Test("saveState captures changes")
-    func saveStateCapturesChanges() {
-        let manager = makeManager()
-        manager.recordCellChange(
-            rowID: .existing(0), columnIndex: 1, columnName: "name",
-            oldValue: "Alice", newValue: "Bob"
-        )
-        let state = manager.saveState()
-        #expect(state.changes.count == 1)
-        #expect(state.changes[0].type == .update)
-    }
-
-    @Test("saveState captures deleted row indices")
-    func saveStateCapturesDeletedRowIndices() {
-        let manager = makeManager()
-        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
-        let state = manager.saveState()
-        #expect(state.deletedRowIDs.contains(.existing(2)))
-    }
-
-    @Test("saveState captures inserted row indices")
-    func saveStateCapturesInsertedRowIndices() {
-        let manager = makeManager()
-        manager.recordRowInsertion(rowID: insertedID(0), values: ["a", "b", "c"])
-        let state = manager.saveState()
-        #expect(state.insertedRowIDs.contains(insertedID(0)))
-    }
-
-    @Test("saveState captures modified cells")
-    func saveStateCapturesModifiedCells() {
-        let manager = makeManager()
-        manager.recordCellChange(
-            rowID: .existing(0), columnIndex: 1, columnName: "name",
-            oldValue: "Alice", newValue: "Bob"
-        )
-        let state = manager.saveState()
-        #expect(state.modifiedCells[.existing(0)]?.contains(1) == true)
-    }
-
-    @Test("saveState captures inserted row data")
-    func saveStateCapturesInsertedRowData() {
-        let manager = makeManager()
-        manager.recordRowInsertion(rowID: insertedID(0), values: ["x", "y", "z"])
-        let state = manager.saveState()
-        #expect(state.insertedRowData[insertedID(0)] == ["x", "y", "z"])
-    }
-
-    @Test("saveState captures columns and primary key")
-    func saveStateCapturesColumnsAndPrimaryKey() {
-        let manager = makeManager(columns: ["a", "b", "c"], pk: "a")
-        let state = manager.saveState()
-        #expect(state.columns == ["a", "b", "c"])
-        #expect(state.primaryKeyColumns == ["a"])
-    }
-
-    @Test("Round-trip save/restore preserves hasChanges")
-    func roundTripPreservesHasChanges() {
-        let manager = makeManager()
-        manager.recordCellChange(
-            rowID: .existing(0), columnIndex: 1, columnName: "name",
-            oldValue: "Alice", newValue: "Bob"
-        )
-        let state = manager.saveState()
-        manager.clearChanges()
-        #expect(!manager.hasChanges)
-        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
-        #expect(manager.hasChanges)
-    }
-
-    @Test("Round-trip save/restore preserves isRowDeleted")
-    func roundTripPreservesIsRowDeleted() {
-        let manager = makeManager()
-        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
-        let state = manager.saveState()
-        manager.clearChanges()
-        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
-        #expect(manager.isRowDeleted(.existing(2)))
-    }
-
-    @Test("Round-trip save/restore preserves isCellModified")
-    func roundTripPreservesIsCellModified() {
-        let manager = makeManager()
-        manager.recordCellChange(
-            rowID: .existing(0), columnIndex: 1, columnName: "name",
-            oldValue: "Alice", newValue: "Bob"
-        )
-        let state = manager.saveState()
-        manager.clearChanges()
-        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
-        #expect(manager.isCellModified(rowID: .existing(0), columnIndex: 1))
-    }
-
-    @Test("Round-trip save/restore allows continued editing")
-    func roundTripCanContinueEditing() {
-        let manager = makeManager()
-        manager.recordCellChange(
-            rowID: .existing(0), columnIndex: 1, columnName: "name",
-            oldValue: "Alice", newValue: "Bob"
-        )
-        let state = manager.saveState()
-        manager.clearChanges()
-        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
-        manager.recordCellChange(
-            rowID: .existing(0), columnIndex: 2, columnName: "email",
-            oldValue: "a@test.com", newValue: "b@test.com"
-        )
-        #expect(manager.changes.count == 1)
-        #expect(manager.changes[0].cellChanges.count == 2)
-    }
-
-    @Test("Empty state round-trip preserves empty state")
-    func emptyStateRoundTrip() {
-        let manager = makeManager()
-        let state = manager.saveState()
-        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
-        #expect(!manager.hasChanges)
-        #expect(manager.changes.isEmpty)
-    }
-
-    @Test("Restoring another tab's changes drops the undo steps recorded before it")
-    func restoreStateDropsTheOutgoingTabsUndoSteps() {
+    @Test("Describing the table keeps the staged edits and their undo steps")
+    func describeTableKeepsTheUndoSteps() {
         let manager = makeManager()
         manager.recordCellChange(
             rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob", originalRow: ["1", "Alice", "a@test.com"]
         )
         manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
+
+        describeTestTable(on: manager)
+
+        #expect(manager.hasChanges)
         #expect(manager.canUndo)
-
-        manager.restoreState(
-            from: makeProductsTabState(), tableName: "products", databaseType: .mysql, generatedColumns: []
-        )
-        #expect(!manager.canUndo)
-
         manager.undoManagerProvider?()?.undo()
         manager.undoManagerProvider?()?.undo()
         #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
         #expect(!manager.isRowDeleted(.existing(2)))
-        #expect(manager.changes.map(\.rowID) == [.existing(5)])
+        #expect(manager.changes.isEmpty)
     }
 
-    @Test("Restoring another tab's changes drops the redo steps recorded before it")
-    func restoreStateDropsTheOutgoingTabsRedoSteps() {
+    @Test("Describing the table keeps the redo steps")
+    func describeTableKeepsTheRedoSteps() {
         let manager = makeManager()
         manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
         manager.undoManagerProvider?()?.undo()
         #expect(manager.canRedo)
 
-        manager.restoreState(
-            from: makeProductsTabState(), tableName: "products", databaseType: .mysql, generatedColumns: []
-        )
-        #expect(!manager.canRedo)
+        describeTestTable(on: manager)
 
+        #expect(manager.canRedo)
         manager.undoManagerProvider?()?.redo()
-        #expect(!manager.isRowDeleted(.existing(2)))
-        #expect(manager.changes.map(\.rowID) == [.existing(5)])
+        #expect(manager.isRowDeleted(.existing(2)))
     }
 
-    private func makeProductsTabState() -> TabChangeSnapshot {
-        let productsTab = makeManager(columns: ["sku", "title"], pk: "sku")
-        productsTab.recordCellChange(
-            rowID: .existing(5), columnIndex: 1, columnName: "title",
-            oldValue: "Lamp", newValue: "Desk Lamp", originalRow: ["P-5", "Lamp"]
+    @Test("Describing the table updates what the edits are written against")
+    func describeTableUpdatesTheTableContext() {
+        let manager = makeManager()
+
+        manager.describeTable(
+            tableName: "products",
+            schemaName: "sales",
+            columns: ["sku", "title"],
+            primaryKeyColumns: ["sku"],
+            databaseType: .postgresql,
+            generatedColumns: ["title"],
+            rowMatchPolicy: .none,
+            columnTypeNames: ["sku": "text"]
         )
-        return productsTab.saveState()
+
+        #expect(manager.tableName == "products")
+        #expect(manager.schemaName == "sales")
+        #expect(manager.columns == ["sku", "title"])
+        #expect(manager.primaryKeyColumns == ["sku"])
+        #expect(manager.databaseType == .postgresql)
+        #expect(manager.generatedColumns == ["title"])
+        #expect(manager.columnTypeNames == ["sku": "text"])
+    }
+
+    @Test("Configuring for a table drops the staged edits' undo steps")
+    func configureForTableDropsTheUndoSteps() {
+        let manager = makeManager()
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
+        #expect(manager.canUndo)
+
+        manager.configureForTable(
+            tableName: "products",
+            columns: ["sku", "title"],
+            primaryKeyColumns: ["sku"],
+            databaseType: .mysql,
+            generatedColumns: []
+        )
+
+        #expect(!manager.canUndo)
+        #expect(!manager.hasChanges)
+    }
+
+    private func describeTestTable(on manager: DataChangeManager) {
+        manager.describeTable(
+            tableName: "test_table",
+            schemaName: nil,
+            columns: ["id", "name", "email"],
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql,
+            generatedColumns: [],
+            rowMatchPolicy: .none,
+            columnTypeNames: ["id": "INT"]
+        )
     }
 
     // MARK: - discardChanges
@@ -621,8 +542,7 @@ struct DataChangeManagerExtendedTests {
         )
         #expect(manager.changes.count == 1)
         #expect(manager.changes[0].type == .insert)
-        let state = manager.saveState()
-        #expect(state.insertedRowData[insertedID(0)]?[1] == "hello")
+        #expect(manager.pending.insertedRowData[insertedID(0)]?[1] == "hello")
     }
 
     @Test("Insert then edit then undo reverts inserted row cell data")
@@ -634,10 +554,8 @@ struct DataChangeManagerExtendedTests {
             oldValue: nil, newValue: "hello"
         )
         manager.undoManagerProvider?()?.undo()
-        let state = manager.saveState()
-        /// `.null`, not a Swift nil. An inserted row holds an explicit SQL NULL for a cell with no
-        /// value, so undoing an edit restores `.null` rather than removing the entry.
-        #expect(state.insertedRowData[insertedID(0)]?[1] == .null)
+        // `.null`, not a Swift nil: an inserted row holds an explicit SQL NULL for a cell with no value.
+        #expect(manager.pending.insertedRowData[insertedID(0)]?[1] == .null)
     }
 
     @Test("Edit multiple cells in same row all tracked")
@@ -877,8 +795,7 @@ struct DataChangeManagerExtendedTests {
         )
         let cellChange = manager.changes[0].cellChanges.first { $0.columnIndex == 1 }
         #expect(cellChange?.newValue == "hello")
-        let state = manager.saveState()
-        #expect(state.insertedRowData[insertedID(0)]?[1] == "hello")
+        #expect(manager.pending.insertedRowData[insertedID(0)]?[1] == "hello")
     }
 }
 

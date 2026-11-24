@@ -11,7 +11,7 @@
 import Foundation
 import TableProPluginKit
 
-enum MySQLPrivilegeCatalog {
+nonisolated enum MySQLPrivilegeCatalog {
     static let dataPrivileges: Set<String> = [
         "SELECT", "INSERT", "UPDATE", "DELETE", "EXECUTE", "SHOW VIEW", "LOCK TABLES"
     ]

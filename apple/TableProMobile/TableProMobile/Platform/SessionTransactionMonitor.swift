@@ -40,6 +40,9 @@ final class SessionTransactionMonitor {
     // Sessions whose last answer was idle, apart from those that could not say.
     @ObservationIgnored private var idleDrivers: [UUID: ObjectIdentifier] = [:]
     private var workCounts: [UUID: Int] = [:]
+    // Sessions an import holds: every other statement on them is refused until it ends.
+    private var heldByImport: Set<UUID> = []
+    @ObservationIgnored private var importEndHandlers: [UUID: [@MainActor () -> Void]] = [:]
     @ObservationIgnored private var statementCounts: [UUID: Int] = [:]
     private var rollBackCounts: [UUID: Int] = [:]
     @ObservationIgnored private var refreshGenerations: [UUID: Int] = [:]
@@ -84,6 +87,19 @@ final class SessionTransactionMonitor {
         workCounts[connectionId, default: 0] > 0
     }
 
+    func isHeldByImport(_ connectionId: UUID) -> Bool {
+        heldByImport.contains(connectionId)
+    }
+
+    // Runs `handler` once the import holding the connection ends, or at once when none holds it.
+    func afterImport(_ connectionId: UUID, _ handler: @escaping @MainActor () -> Void) {
+        guard heldByImport.contains(connectionId) else {
+            handler()
+            return
+        }
+        importEndHandlers[connectionId, default: []].append(handler)
+    }
+
     // A grid page is a read the app built, so a session lost under it cannot have committed anything.
     func isRunningStatements(_ connectionId: UUID) -> Bool {
         statementCounts[connectionId, default: 0] > 0
@@ -110,18 +126,34 @@ final class SessionTransactionMonitor {
     }
 
     // `reading` work keeps Commit and Roll Back off the session while it streams, and stales a dialog opened before it.
-    func track<T>(_ connectionId: UUID, reading: Bool = false, _ work: () async throws -> T) async rethrows -> T {
+    // Admission is decided before the first suspension, so nothing can slip in between the check and the mark, and
+    // nothing ever waits: an import (`importing`) is refused while any other work runs on the session or the session
+    // is moving (`sessionMoving`: a switch, a `USE`, a dial or a check), and every other statement, reads included, is
+    // refused while an import holds it. A read inside an import's transaction is not harmless: a cancelled or failed
+    // one aborts a PostgreSQL transaction, and an interrupt rolls back SQLite's.
+    func track<T>(
+        _ connectionId: UUID,
+        reading: Bool = false,
+        importing: Bool = false,
+        sessionMoving: Bool = false,
+        _ work: () async throws -> T
+    ) async throws -> T {
+        if heldByImport.contains(connectionId) { throw SessionHeldByImport() }
+        if importing {
+            if workCounts[connectionId, default: 0] > 0 || sessionMoving { throw SessionBusyForImport() }
+            heldByImport.insert(connectionId)
+        }
         workCounts[connectionId, default: 0] += 1
         if !reading { statementCounts[connectionId, default: 0] += 1 }
         workGenerations[connectionId, default: 0] += 1
         do {
             let value = try await work()
             await refresh(connectionId)
-            endWork(connectionId, reading: reading)
+            endWork(connectionId, reading: reading, importing: importing)
             return value
         } catch {
             await refresh(connectionId)
-            endWork(connectionId, reading: reading)
+            endWork(connectionId, reading: reading, importing: importing)
             throw error
         }
     }
@@ -221,10 +253,16 @@ final class SessionTransactionMonitor {
     }
 
     // A read cannot end a transaction, so only its start, which a confirmation may race, stales a dialog.
-    private func endWork(_ connectionId: UUID, reading: Bool) {
+    private func endWork(_ connectionId: UUID, reading: Bool, importing: Bool) {
         if !reading { workGenerations[connectionId, default: 0] += 1 }
         let remaining = workCounts[connectionId, default: 1] - 1
         workCounts[connectionId] = remaining > 0 ? remaining : nil
+        if importing {
+            heldByImport.remove(connectionId)
+            for handler in importEndHandlers.removeValue(forKey: connectionId) ?? [] {
+                handler()
+            }
+        }
         guard !reading else { return }
         let statements = statementCounts[connectionId, default: 1] - 1
         statementCounts[connectionId] = statements > 0 ? statements : nil
@@ -232,6 +270,30 @@ final class SessionTransactionMonitor {
         for waiter in (statementWaiters.removeValue(forKey: connectionId) ?? [:]).values {
             waiter.resume()
         }
+    }
+}
+
+// Any statement on a session an import holds, reads included, from any window.
+nonisolated struct SessionHeldByImport: Error, LocalizedError, Equatable {
+    var errorDescription: String? {
+        String(localized: "An import is running on this connection.")
+    }
+
+    var appError: AppError {
+        AppError(
+            category: .query,
+            title: String(localized: "Import Running"),
+            message: errorDescription ?? "",
+            recovery: String(localized: "Try again once it ends."),
+            underlying: self
+        )
+    }
+}
+
+// An import asked for a session that other work is using or moving; it starts only on one nothing else touches.
+nonisolated struct SessionBusyForImport: Error, LocalizedError, Equatable {
+    var errorDescription: String? {
+        String(localized: "Other work is running on this connection. Start the import again once it ends.")
     }
 }
 

@@ -3,8 +3,7 @@ use std::sync::Arc;
 use futures_util::TryStreamExt;
 use tablepro_core::statement::{RowGuard, Statement};
 use tablepro_core::{
-    DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteAtomicity, WriteBatch, WriteKind, WriteLedger,
-    WriteReport,
+    DriverError, SessionFate, StopRequest, WriteAtomicity, WriteBatch, WriteKind, WriteLedger, WriteReport,
 };
 use tiberius::{Command, CommandItem};
 use tokio::time::Instant;
@@ -20,10 +19,7 @@ use crate::workspace_call::{catalogue_rows, exact_count};
 /// Refuse a batch before anything is sent: a read-only connection never
 /// writes, and SQL Server cannot suspend foreign keys for one batch.
 pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), DriverError> {
-    if read_only {
-        return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
-    }
-    batch.foreign_keys.require_enforced()
+    batch.precheck(read_only)
 }
 
 /// Whether the batch runs inside one transaction. SQL Server refuses
@@ -267,7 +263,7 @@ impl Write<'_> {
 #[cfg(test)]
 mod tests {
     use tablepro_core::meta::TableRef;
-    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, UnsupportedFeature};
+    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, ReadOnlyRefusal, UnsupportedFeature};
 
     use super::*;
 

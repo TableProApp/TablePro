@@ -471,6 +471,7 @@ internal struct CompareRunner {
             in: Self.referenceNamespace(of: context.target)
         )
 
+        let targetSchema = context.target.scope.schema
         return try await DatabaseManager.shared.withMetadataDriver(scope: context.target.scope) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
                 throw CompareSyncError.unsupportedOperation(
@@ -478,7 +479,7 @@ internal struct CompareRunner {
                 )
             }
             var statements = try SchemaSyncScriptBuilder(
-                targetDriver: plugin, targetDatabaseType: driver.connection.type
+                targetDriver: plugin, targetDatabaseType: driver.connection.type, targetSchema: targetSchema
             ).build(operations: tableOperations, foreignKeysByTable: foreignKeys)
             let sourceBuilder = SourceObjectSyncBuilder(
                 targetDriver: plugin,

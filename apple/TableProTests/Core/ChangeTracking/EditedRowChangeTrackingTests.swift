@@ -106,19 +106,16 @@ struct EditedRowDeletionTests {
         #expect(originals.first?.value == "US")
     }
 
-    @Test("A deleted row's parked edit survives a tab switch")
-    func parkedEditSurvivesSaveAndRestore() {
+    @Test("Restoring a deleted row brings back the edit parked under it")
+    func restoringADeletedRowBringsBackItsEdit() {
         let (manager, _) = makeManager()
         editCode(manager)
         manager.recordRowDeletion(rowID: .existing(0), originalRow: ["UK", "United States"])
-        let state = manager.saveState()
 
-        let (restored, _) = makeManager()
-        restored.restoreState(from: state, tableName: "countries", databaseType: .mysql, generatedColumns: [])
-        restored.undoRowDeletion(rowID: .existing(0))
+        manager.undoRowDeletion(rowID: .existing(0))
 
-        #expect(restored.isCellModified(rowID: .existing(0), columnIndex: 0))
-        #expect(restored.changes.first?.type == .update)
+        #expect(manager.isCellModified(rowID: .existing(0), columnIndex: 0))
+        #expect(manager.changes.first?.type == .update)
     }
 
     @Test("Deleting an edited row from the grid deletes the row the server holds")
@@ -308,13 +305,11 @@ struct UpdateSaveOrderTests {
         #expect(bound == [["6", "3"], ["2"], ["Cyd", "6"]])
     }
 
-    @Test("A tab switch keeps the place of every edit of a row, so a later change sorts after them")
-    func aTabSwitchKeepsEveryRunsPlace() throws {
+    @Test("A change recorded after a row edited around a delete sorts after every edit of that row")
+    func aLaterChangeSortsAfterEveryRun() throws {
         let (manager, _) = EditAroundADelete.manager()
         EditAroundADelete.record(on: manager)
-        let state = manager.saveState()
 
-        manager.restoreState(from: state, tableName: "users", databaseType: .mysql, generatedColumns: [])
         manager.recordRowInsertion(rowID: .inserted(UUID()), values: ["9", "Di", "d@test.com"])
         let verbs = try EditAroundADelete.verbs(manager.generateSQL())
 

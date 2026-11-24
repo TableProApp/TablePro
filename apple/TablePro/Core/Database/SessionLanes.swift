@@ -45,9 +45,10 @@ internal final class SessionLanes {
     /// Drivers being checked before use. A turn held on one of these is not a query proving the
     /// driver answers, so a switch back waits for the check instead of promoting it on trust.
     private var verifying: [ObjectIdentifier: [CheckedContinuation<Void, Never>]] = [:]
-    // Databases whose connection died holding a transaction or session state and was replaced. The next turn there is
-    // refused once, so work meant for that session does not carry on without it.
+    // Databases whose connection died holding a transaction or session state and was replaced. The next statements
+    // someone wrote and the app's own next work are each told once, so neither hears it at the other's expense.
     private var losses: [UUID: [String: SessionLoss]] = [:]
+    private var appLosses: [UUID: [String: SessionLoss]] = [:]
 
     private struct Opened {
         weak var driver: AnyObject?
@@ -144,6 +145,7 @@ internal final class SessionLanes {
         closedIdle.removeValue(forKey: connectionId)
         if !keepingLosses {
             losses.removeValue(forKey: connectionId)
+            appLosses.removeValue(forKey: connectionId)
         }
         for driver in drivers.values {
             verifiedAt.removeValue(forKey: ObjectIdentifier(driver))
@@ -220,6 +222,7 @@ internal final class SessionLanes {
         guard transaction || !state.isEmpty else { return }
         let loss = SessionLoss(transaction: transaction, state: state)
         losses[connectionId, default: [:]][database] = losses[connectionId]?[database]?.merging(loss) ?? loss
+        appLosses[connectionId, default: [:]][database] = appLosses[connectionId]?[database]?.merging(loss) ?? loss
         Self.logger.info(
             "noted a lost session connId=\(connectionId, privacy: .public) transaction=\(transaction) kinds=\(state.rawValue)"
         )
@@ -229,8 +232,16 @@ internal final class SessionLanes {
         losses[connectionId]?[database] != nil
     }
 
+    internal func lossIncludes(_ kind: SQLSessionStateKinds, database: String, for connectionId: UUID) -> Bool {
+        losses[connectionId]?[database]?.state.contains(kind) ?? false
+    }
+
+    internal func anyLossIncludes(_ kind: SQLSessionStateKinds, for connectionId: UUID) -> Bool {
+        losses[connectionId]?.values.contains { $0.state.contains(kind) } ?? false
+    }
+
     // Closes every parked connection when the transport under them is rebuilt, first noting each one that held a
-    // transaction or session state, so the next work on that database is told what the server dropped instead of
+    // transaction or session state, so the next statements on that database are told what the server dropped instead of
     // quietly starting over on a new connection.
     internal func closeAllNotingLosses(for connectionId: UUID) async {
         for (database, driver) in parked[connectionId] ?? [:] {
@@ -245,7 +256,7 @@ internal final class SessionLanes {
         closeAll(for: connectionId, keepingLosses: true)
     }
 
-    // Reported once, whole, to the first turn that owns session state, as a lost transaction always was.
+    // Reported once, whole, to the next turn running statements someone wrote; the app's own work leaves it standing.
     internal func takeLoss(database: String, for connectionId: UUID) -> SessionLoss? {
         let loss = losses[connectionId]?.removeValue(forKey: database)
         if losses[connectionId]?.isEmpty == true {
@@ -254,9 +265,26 @@ internal final class SessionLanes {
         return loss
     }
 
+    // The app's own copy: its next work on the session, which would have joined the lost transaction, is told once too.
+    internal func takeAppLoss(database: String, for connectionId: UUID) -> SessionLoss? {
+        let loss = appLosses[connectionId]?.removeValue(forKey: database)
+        if appLosses[connectionId]?.isEmpty == true {
+            appLosses.removeValue(forKey: connectionId)
+        }
+        return loss
+    }
+
+    internal func takeAnyAppLoss(for connectionId: UUID) -> (database: String, loss: SessionLoss)? {
+        Self.merged(appLosses.removeValue(forKey: connectionId))
+    }
+
     // A connection with one driver for every database lost the session whichever name it was noted under.
     internal func takeAnyLoss(for connectionId: UUID) -> (database: String, loss: SessionLoss)? {
-        guard let noted = losses.removeValue(forKey: connectionId), let database = noted.keys.min() else { return nil }
+        Self.merged(losses.removeValue(forKey: connectionId))
+    }
+
+    private static func merged(_ noted: [String: SessionLoss]?) -> (database: String, loss: SessionLoss)? {
+        guard let noted, let database = noted.keys.min() else { return nil }
         let loss = noted.values.reduce(SessionLoss(transaction: false, state: [])) { $0.merging($1) }
         return (database: database, loss: loss)
     }

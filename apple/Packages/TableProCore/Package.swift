@@ -51,6 +51,7 @@ let package = Package(
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
         .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
+        .library(name: "TableProSQLFile", targets: ["TableProSQLFile"]),
         .library(name: "TableProSQLQuoting", targets: ["TableProSQLQuoting"]),
         .library(name: "TableProProcess", targets: ["TableProProcess"]),
         .library(name: "TableProSQLVocabulary", targets: ["TableProSQLVocabulary"]),
@@ -267,6 +268,13 @@ let package = Package(
             name: "TableProSQLGrammar",
             dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProSQLGrammar"
+        ),
+        // Reads a .sql file for both apps' imports, so never TableProPluginKit.
+        .target(
+            name: "TableProSQLFile",
+            dependencies: ["TableProSQLGrammar", "TableProTabularIO"],
+            path: "Sources/TableProSQLFile",
+            swiftSettings: pluginCoreSettings
         ),
         // Linked by PluginKit, plugin bundles and both apps, so it depends on nothing.
         .target(
@@ -526,6 +534,12 @@ let package = Package(
             name: "TableProSQLGrammarTests",
             dependencies: ["TableProSQLGrammar"],
             path: "Tests/TableProSQLGrammarTests"
+        ),
+        .testTarget(
+            name: "TableProSQLFileTests",
+            dependencies: ["TableProSQLFile", "TableProSQLGrammar", "TableProTabularIO"],
+            path: "Tests/TableProSQLFileTests",
+            swiftSettings: pluginCoreSettings
         ),
         .testTarget(
             name: "TableProSQLQuotingTests",

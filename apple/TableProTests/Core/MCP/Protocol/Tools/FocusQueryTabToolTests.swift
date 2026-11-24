@@ -95,7 +95,6 @@ struct FocusQueryTabSelectionTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         return (coordinator, tabs.map(\.id))

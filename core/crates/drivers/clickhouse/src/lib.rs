@@ -33,7 +33,6 @@ mod param_value;
 mod result_origin;
 mod result_reader;
 mod row_seed;
-mod session_status;
 mod stream_read;
 mod transport_connector;
 mod transport_io;

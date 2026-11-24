@@ -2,41 +2,24 @@
 //  DuckDBSchemaQueries.swift
 //  DuckDBDriverPlugin
 //
-//  Static SQL used to enumerate catalogs, schemas and objects. Extracted so the
-//  queries can be exercised by unit tests via TableProTests, which never loads
-//  the plugin bundle.
+//  Static SQL used to enumerate catalogs, schemas and objects.
 //
 
 import Foundation
 import TableProPluginKit
 import TableProSQLQuoting
 
-enum DuckDBTableListingScope: Sendable, Equatable {
+nonisolated enum DuckDBTableListingScope: Sendable, Equatable {
     case schema
     case schemas([String])
     case allSchemas
 }
 
-/// DuckDB's namespace is `catalog.schema.table`, and the `duckdb_*` table functions span
-/// every attached catalog. A predicate on the schema alone therefore matches same-named
-/// schemas in other catalogs: with a second database attached, `WHERE schema_name = 'main'`
-/// returns both catalogs' `main` tables. Every query here takes the catalog as its first
-/// bound parameter for that reason, and the driver's `switchDatabase` is what moves it.
-///
-/// Nothing here may call `current_database()`, `current_schema()`, or read
-/// `information_schema.key_column_usage` or `information_schema.referential_constraints`.
-/// All four live in DuckDB's `core_functions` extension, which the macOS build does not
-/// link statically, so DuckDB fetches it from `extensions.duckdb.org` on first use. A Mac
-/// that cannot reach that host answers every one of them with
-/// `Binder Error: Referenced table "system" not found!`, which left the sidebar with no
-/// databases, schemas, tables or columns at all. The `duckdb_*()` table functions and the
-/// remaining `information_schema` views are part of the core engine and need no download.
-/// `scripts/probes/check-duckdb-offline-metadata.sh` runs every query here against the shipped
-/// static library with the extension directory pointed at an empty folder.
-enum DuckDBSchemaQueries {
-    /// `system` and `temp` are DuckDB's built-in catalogs; `internal` marks them and
-    /// nothing else. Filtering catalogs is also what keeps `information_schema` and
-    /// `pg_catalog` out of the schema list, because they are schemas of `system`.
+// `duckdb_*()` spans every attached catalog, so every query binds the catalog first. Nothing here may call
+// `current_database()`, `current_schema()` or the key and constraint `information_schema` views: they live in the
+// `core_functions` extension, which an offline Mac cannot fetch (`scripts/probes/check-duckdb-offline-metadata.sh`).
+nonisolated enum DuckDBSchemaQueries {
+    // `internal` marks only `system` and `temp`, which also keeps `information_schema` and `pg_catalog` out.
     static let listDatabases = """
         SELECT database_name
         FROM duckdb_databases()
@@ -44,17 +27,14 @@ enum DuckDBSchemaQueries {
         ORDER BY database_name
         """
 
-    /// `USE` writes the catalog and schema it landed on into the `search_path` setting, and
-    /// the `schema` setting carries the schema on its own. Reading them back is how the
-    /// driver learns its position without `current_database()` or `current_schema()`.
+    // Where `USE` landed, read without `current_database()` or `current_schema()`.
     static let currentPosition = """
         SELECT name, value
         FROM duckdb_settings()
         WHERE name IN ('search_path', 'schema')
         """
 
-    /// Never filters on the schema's own `internal` flag: DuckDB marks the auto-created
-    /// `main` internal in every catalog, so that predicate hides the default schema.
+    // Never on the schema's `internal` flag: DuckDB marks every catalog's `main` internal.
     static let listSchemas = """
         SELECT schema_name
         FROM duckdb_schemas()
@@ -62,10 +42,7 @@ enum DuckDBSchemaQueries {
         ORDER BY schema_name
         """
 
-    /// One schema's objects, bound to the catalog and the schema; a named set's or every schema's,
-    /// bound to the catalog alone. Every schema's filters by `listSchemas` itself rather than dropping
-    /// the schema predicate, so an object is listed here exactly when its schema is listed there.
-    /// Both multi-schema listings project each row's schema as a third column.
+    // Every schema's listing filters by `listSchemas` itself, so an object is listed exactly when its schema is.
     static func listTables(in scope: DuckDBTableListingScope) -> String {
         let schemaFilter: String
         let schemaColumn: String
@@ -119,8 +96,7 @@ enum DuckDBSchemaQueries {
         ORDER BY table_name, column_index
         """
 
-    /// `constraint_column_names` is a LIST, so `UNNEST` turns a composite key into one row
-    /// per column and keeps the caller's row shape flat.
+    // `UNNEST` turns a composite key into one row per column.
     static let primaryKeyColumnsForSchema = """
         SELECT table_name, UNNEST(constraint_column_names) AS column_name
         FROM duckdb_constraints()
@@ -146,9 +122,7 @@ enum DuckDBSchemaQueries {
           AND table_name = $3
         """
 
-    /// The statement DuckDB itself recorded, which is the only form that reproduces an expression
-    /// index. `duckdb_indexes()` lists user indexes only, so a constraint's backing index is absent
-    /// rather than needing to be filtered out.
+    // Only the recorded statement reproduces an expression index.
     static let indexDDLForTable = """
         SELECT sql
         FROM duckdb_indexes()
@@ -159,11 +133,7 @@ enum DuckDBSchemaQueries {
         ORDER BY index_name
         """
 
-    /// The referencing and referenced column lists are parallel, so unnesting both in one
-    /// SELECT pairs them by position: a two-column key yields `(x, a)` then `(y, b)`.
-    /// DuckDB rejects `CASCADE`, `SET NULL` and `SET DEFAULT` at parse time, so a foreign
-    /// key can only ever be `NO ACTION` and the literals below say exactly what the engine
-    /// reports.
+    // The two parallel lists unnest pairwise by position. DuckDB parses no action but `NO ACTION`.
     static let foreignKeysForTable = """
         SELECT
             constraint_name,
@@ -209,13 +179,8 @@ enum DuckDBSchemaQueries {
           AND view_name = $3
         """
 
-    /// The app runs this one itself rather than through the driver's parameterized path, so
-    /// both values are interpolated.
-    ///
-    /// They need opposite treatment, which is why they are named apart. The schema reaches the
-    /// driver through `SchemaSwitchable.escapedSchema`, which has already run
-    /// `escapeStringLiteral` over it, so escaping it again turns a schema called `it's` into
-    /// `it''''s` and the query matches nothing. The catalog comes from `currentDatabase` raw.
+    // Run by the app itself, so both values are interpolated: the schema arrives already escaped through
+    // `SchemaSwitchable.escapedSchema`, the catalog raw from `currentDatabase`.
     static func allTablesMetadata(catalog: String, escapedSchema: String) -> String {
         let catalogLiteral = quoteLiteral(catalog)
         let schemaLiteral = "'\(escapedSchema)'"
@@ -255,15 +220,14 @@ enum DuckDBSchemaQueries {
         return "COMMENT ON COLUMN \(target) IS \(commentValue(comment))"
     }
 
-    /// `IS ''` stores an empty comment; only `IS NULL` removes one.
+    // `IS ''` stores an empty comment; only `IS NULL` removes one.
     static func commentValue(_ comment: String?) -> String {
         guard let comment, !comment.isEmpty else { return "NULL" }
         return quoteLiteral(comment)
     }
 
-    /// DuckDB 1.5.2 has no SERIAL or identity column, so an auto-increment column takes `nextval` of
-    /// a sequence of its own. `nextval` cannot resolve a name holding `"`, so none is kept, and the
-    /// hash of the exact pair keeps `a_b.id` and `a.b_id` from sharing one sequence.
+    // DuckDB 1.5.2 has no SERIAL or identity, so each such column gets a sequence. `nextval` cannot resolve a name
+    // holding `"`, and the hash keeps `a_b.id` and `a.b_id` apart.
     static func autoIncrementSequenceName(table: String, column: String) -> String {
         let readable = "\(table)_\(column)".unicodeScalars.filter { $0 != "\"" }
         return "\(String(String.UnicodeScalarView(readable)))_\(fnv1a32(table + "\u{0}" + column))_seq"
@@ -279,7 +243,7 @@ enum DuckDBSchemaQueries {
         return String(repeating: "0", count: 8 - hex.count) + hex
     }
 
-    /// `DROP TABLE` leaves the sequence behind, so a table created again under the same name reuses it.
+    // `DROP TABLE` leaves the sequence behind, so a table created again under the same name reuses it.
     static func createSequenceStatement(schema: String, sequence: String) -> String {
         "CREATE SEQUENCE IF NOT EXISTS \(quoteIdentifier(schema)).\(quoteIdentifier(sequence))"
     }
@@ -292,24 +256,9 @@ enum DuckDBSchemaQueries {
         return "nextval(\(quoteLiteral(name)))"
     }
 
-    /// What the session is holding that closing the handle would destroy, in one round trip.
-    ///
-    /// `internal = false` is not optional on either count. DuckDB keeps its own machinery in the
-    /// `temp` catalog and marks it temporary: measured on the shipped v1.5.2, a connection that
-    /// has run nothing already reports 46 temporary views. Without the predicate the answer is
-    /// never zero and the lock is never released.
-    ///
-    /// Tables and views are not the whole of it. Measured on the shipped v1.5.2, a `CREATE TEMP
-    /// MACRO`, a `PREPARE` and a `SET VARIABLE` each leave both temporary counts at zero while
-    /// living in `duckdb_functions()`, `duckdb_prepared_statements()` and `duckdb_variables()`, and
-    /// each is destroyed by a close. All five are summed because the gate only asks whether the
-    /// session holds anything at all.
-    ///
-    /// One catalog is the file itself, so a count above one means the user attached something,
-    /// and an `ATTACH` does not survive a reopen. A catalog the connection attached itself is left
-    /// out of the count only while it still holds the same file, under the same name and access,
-    /// and one that is gone counts as held: a reopen attaches every one of them again, which would
-    /// undo a `DETACH` or replace whatever the user attached under that name.
+    // Whether closing the handle would destroy anything. Measured on 1.5.2: without `internal = false` an idle
+    // connection reports 46 temporary views; a TEMP MACRO, a PREPARE and a SET VARIABLE count nowhere else. A
+    // catalog the driver attached itself is left out only while it still holds the same file, name and access.
     static let sessionHeldState = sessionHeldState(excluding: [])
 
     static func sessionHeldState(excluding attachments: [AttachedDatabase], readOnly: Bool = false) -> String {
@@ -333,15 +282,13 @@ enum DuckDBSchemaQueries {
         """
     }
 
-    /// `ATTACH` takes no bound parameters, so the path goes in as a quoted literal.
+    // `ATTACH` takes no bound parameters, so the path goes in as a quoted literal.
     static func attach(_ database: AttachedDatabase, readOnly: Bool) -> String {
         let options = readOnly ? " (READ_ONLY)" : ""
         return "ATTACH \(quoteLiteral(database.expandedPath)) AS \(quoteIdentifier(database.name))\(options)"
     }
 
-    /// `duckdb_settings()` reports no default, so a setting the user changed is only visible by
-    /// comparing against what the connection opened with. The driver snapshots this at connect
-    /// and again before releasing, and any difference it does not own itself blocks the release.
+    // `duckdb_settings()` reports no default, so the driver compares this against its snapshot from connect.
     static let allSettings = """
         SELECT name, value
         FROM duckdb_settings()
@@ -351,9 +298,7 @@ enum DuckDBSchemaQueries {
         "USE \(quoteIdentifier(database))"
     }
 
-    /// `SET schema` splits its value on `.`, so it cannot address a schema whose name
-    /// contains one, and it cannot say which catalog it means. The two-part `USE` form
-    /// is unambiguous for both.
+    // `SET schema` splits on `.` and names no catalog; the two-part `USE` does neither.
     static func useSchema(_ schema: String, in database: String?) -> String {
         guard let database, !database.isEmpty else {
             return "USE \(quoteIdentifier(schema))"

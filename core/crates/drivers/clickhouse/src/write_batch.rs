@@ -3,9 +3,7 @@ use std::sync::Arc;
 use clickhouse::error::Error as ClickHouseError;
 use tablepro_core::meta::TableRef;
 use tablepro_core::statement::{GuardedStatement, RowGuard, Statement};
-use tablepro_core::{
-    CommitToken, DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport,
-};
+use tablepro_core::{CommitToken, DriverError, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport};
 use uuid::Uuid;
 
 use crate::call_client::CallClient;
@@ -19,10 +17,7 @@ use crate::write_error_class::{WriteErrorClass, classify};
 /// writes, ClickHouse cannot suspend foreign keys it does not have, and
 /// a mutation reports no row count for an exact guard to check.
 pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), DriverError> {
-    if read_only {
-        return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
-    }
-    batch.foreign_keys.require_enforced()?;
+    batch.precheck(read_only)?;
     match batch
         .steps
         .iter()
@@ -182,7 +177,7 @@ async fn count(calls: &CallClient, probe: &Statement) -> Result<u64, DriverError
 mod tests {
     use tablepro_core::meta::TableRef;
     use tablepro_core::statement::{GuardedStatement, StatementBuilder};
-    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, UnsupportedFeature, WriteKind};
+    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, ReadOnlyRefusal, UnsupportedFeature, WriteKind};
 
     use super::*;
 

@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use secrecy::SecretString;
 use tablepro_core::credentials::{SecretKind, SecretLookup, SecretVault};
 use tablepro_core::{
-    AuthMode, ClientIdentity, ConfigError, DriverError, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode,
+    AiPolicy, AuthMode, ClientIdentity, ConfigError, DriverError, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode,
 };
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
@@ -15,6 +15,7 @@ use tablepro_storage::{
 use uuid::Uuid;
 
 use crate::error::CoreError;
+use crate::export::write_whole_file;
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -67,6 +68,34 @@ impl From<SafeModeTag> for SafeModeLevel {
     }
 }
 
+// What the AI assistant may send from the connection (core AiPolicy).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AiPolicyTag {
+    Ask,
+    Allow,
+    Never,
+}
+
+impl From<AiPolicyTag> for AiPolicy {
+    fn from(tag: AiPolicyTag) -> Self {
+        match tag {
+            AiPolicyTag::Ask => Self::Ask,
+            AiPolicyTag::Allow => Self::Allow,
+            AiPolicyTag::Never => Self::Never,
+        }
+    }
+}
+
+impl From<AiPolicy> for AiPolicyTag {
+    fn from(policy: AiPolicy) -> Self {
+        match policy {
+            AiPolicy::Ask => Self::Ask,
+            AiPolicy::Allow => Self::Allow,
+            AiPolicy::Never => Self::Never,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct TlsSettings {
     pub mode: TlsModeTag,
@@ -115,6 +144,9 @@ pub struct ConnectionRecord {
     pub last_opened_ms: Option<i64>,
     // Read only: a save keeps the stored tags, which change through tag_connections.
     pub tags: Vec<String>,
+    // Always set on a record read back; None on a save keeps the stored policy, Ask for a new connection.
+    #[uniffi(default = None)]
+    pub ai_policy: Option<AiPolicyTag>,
 }
 
 // Each secret as the form holds it: None keeps what is stored, an empty string is stored as one.
@@ -278,6 +310,31 @@ impl ConnectionLibrary {
             Ok(())
         })
         .await
+    }
+
+    // A secret the store cannot read stops the copy, which would otherwise fail to connect for no reason it shows.
+    async fn copy_secrets(&self, source: &SavedConnection, copy: &SavedConnection) -> Result<(), CoreError> {
+        let vault = self.secrets.clone();
+        let (from, to) = (source.id, copy.clone());
+        on_runtime(&self.tasks, async move {
+            for kind in SecretKind::ALL {
+                if let SecretLookup::Found(secret) = vault.load(from, kind).await.map_err(secret_error)? {
+                    let label = english_secret_label(kind, &to.secret_target(kind));
+                    vault.store(to.id, kind, &secret, &label).await.map_err(secret_error)?;
+                }
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    async fn forget_secrets(&self, id: Uuid) {
+        if let Err(error) = self.delete_secrets(vec![id]).await {
+            tracing::warn!(
+                code = error.code(),
+                "the secrets of a copy that was not saved are still in the store"
+            );
+        }
     }
 
     // A value that cannot be read counts as none, so putting it back removes the new one rather than keep it.
@@ -609,6 +666,17 @@ impl ConnectionLibrary {
             .await
     }
 
+    // None takes the colour off; the id is one ConnectionColor names, as a tag's is.
+    pub async fn set_group_color(&self, id: String, color: Option<String>) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
+        let color = color
+            .filter(|color| !color.trim().is_empty())
+            .map(|color| tag_color(&color))
+            .transpose()?;
+        self.blocking(move |store| Ok(store.set_group_color_blocking(id, color)?))
+            .await
+    }
+
     pub async fn delete_group(&self, id: String) -> Result<(), CoreError> {
         let id = parse_id(&id)?;
         self.blocking(move |store| {
@@ -644,6 +712,79 @@ impl ConnectionLibrary {
         let before = optional_id(before.as_deref())?;
         self.blocking(move |store| Ok(store.move_groups_blocking(&ids, parent, before)?))
             .await
+    }
+
+    // A copy under a new id right after the original in its group, with every secret the original keeps, so either
+    // connects alone. It has never been opened and is no favourite.
+    pub async fn duplicate(&self, id: String, name: String) -> Result<ConnectionRecord, CoreError> {
+        let id = parse_id(&id)?;
+        let name = name.trim().to_owned();
+        if name.is_empty() {
+            return Err(CoreError::failed("library.name_required", "a connection needs a name"));
+        }
+        let _held = self.hold_writes().await;
+        let source = self
+            .blocking(move |store| {
+                store
+                    .list_blocking()?
+                    .connections
+                    .iter()
+                    .find(|saved| saved.id == id)
+                    .cloned()
+                    .ok_or_else(|| StorageError::ConnectionNotFound { id }.into())
+            })
+            .await?;
+        let copy = SavedConnection {
+            id: Uuid::new_v4(),
+            name,
+            last_opened_at: None,
+            ..source.clone()
+        };
+        if let Err(error) = self.copy_secrets(&source, &copy).await {
+            self.forget_secrets(copy.id).await;
+            return Err(error);
+        }
+        let entry = copy.clone();
+        let written = self
+            .blocking(move |store| {
+                let id = entry.id;
+                store.insert_after_blocking(entry, source.id)?;
+                // The store gives the copy its place in the group; a read that fails now leaves the copy saved.
+                Ok(store
+                    .list_blocking()
+                    .ok()
+                    .and_then(|list| list.connections.iter().find(|saved| saved.id == id).cloned()))
+            })
+            .await;
+        let error = match written {
+            Ok(stored) => return Ok(ConnectionRecord::from(&stored.unwrap_or(copy))),
+            Err(error) => error,
+        };
+        // A write can fail after the file was replaced, as when the folder's sync fails; a listed copy keeps its secrets.
+        let id = copy.id;
+        let listed = self
+            .blocking(move |store| Ok(store.list_blocking()?.connections.iter().any(|saved| saved.id == id)))
+            .await;
+        match listed {
+            Ok(true) => Ok(ConnectionRecord::from(&copy)),
+            Ok(false) => {
+                self.forget_secrets(copy.id).await;
+                Err(error)
+            }
+            Err(_) => Err(error),
+        }
+    }
+
+    // The saved connections, groups and tags as a TablePro connections file at `path`, which appears only once
+    // whole. It carries no passwords: those stay in the system's store. Gives how many connections it holds.
+    pub async fn export_file(&self, path: String) -> Result<u32, CoreError> {
+        self.blocking(move |store| {
+            let count = store.list_blocking()?.connections.len();
+            let bytes = store.export_blocking()?;
+            write_whole_file(&path, &bytes)?;
+            Ok(u32::try_from(count).unwrap_or(u32::MAX))
+        })
+        .await
     }
 
     // Merges a TablePro connections file; it carries no passwords.
@@ -757,6 +898,9 @@ pub(crate) fn apply(
     saved.query_timeout_secs = record.query_timeout_secs;
     saved.color = record.color.as_deref().and_then(ConnectionColor::from_id);
     saved.group_id = group_id;
+    if let Some(policy) = record.ai_policy {
+        saved.ai_policy = policy.into();
+    }
 }
 
 fn path(text: Option<&String>) -> Option<PathBuf> {
@@ -784,6 +928,14 @@ pub(crate) fn tls_config(settings: &TlsSettings) -> Result<TlsConfig, CoreError>
         .map(|name| name.trim().to_owned())
         .filter(|name| !name.is_empty());
     Ok(config)
+}
+
+// The form's jump hosts as OpenSSH's -J takes them, checked as a connect would read them; the list is saved as typed.
+#[uniffi::export]
+pub fn check_jump_hosts(list: String) -> Result<(), CoreError> {
+    tablepro_ssh::SshDestination::parse_jump_list(&list)
+        .map(|_| ())
+        .map_err(|problem| DriverError::from(tablepro_core::TransportError::Ssh(problem.into())).into())
 }
 
 pub(crate) fn saved_ssh(settings: &SshSettings) -> SavedSshConfig {
@@ -867,6 +1019,7 @@ impl From<&SavedConnection> for ConnectionRecord {
             group_id: saved.group_id.map(|id| id.to_string()),
             last_opened_ms: saved.last_opened_at.map(|at: DateTime<Utc>| at.timestamp_millis()),
             tags: saved.tags.iter().map(Uuid::to_string).collect(),
+            ai_policy: Some(saved.ai_policy.into()),
         }
     }
 }

@@ -11,7 +11,7 @@ import zlib
 // Each sheet's XML goes to its own file as rows arrive, and `write(to:)` copies those files into a
 // stored ZIP, so no sheet is ever held in memory whole. Strings are inline (`t="inlineStr"`), so
 // there is no shared string table to grow with the data either.
-final class XLSXWriter {
+nonisolated final class XLSXWriter {
     static let defaultFlushThreshold = 1 << 20
     static let partsDirectoryPrefix = "TablePro-XLSX-"
 
@@ -209,15 +209,22 @@ final class XLSXWriter {
         )
     }
 
-    func write(to url: URL) async throws {
+    func write(to url: URL, progress: PluginExportProgress? = nil) async throws {
         if let part = sheets.last, part.isOpen {
             try closeSheet(part)
         }
         let entries = archiveEntries()
         let maximumSize = maximumArchiveSize
-        try await Task.detached(priority: .userInitiated) {
-            try ZipBuilder.write(entries, to: url, maximumSize: maximumSize)
-        }.value
+        let archive = Task.detached(priority: .userInitiated) {
+            var meter = ZipBuilder.Meter(progress: progress, totalBytes: entries.reduce(0) { $0 + $1.size })
+            try ZipBuilder.write(entries, to: url, maximumSize: maximumSize, meter: &meter)
+        }
+        // A detached task inherits no cancellation, so the caller's is handed on to the copy.
+        try await withTaskCancellationHandler {
+            try await archive.value
+        } onCancel: {
+            archive.cancel()
+        }
     }
 
     private func archiveEntries() -> [ZipFileEntry] {
@@ -328,10 +335,11 @@ final class XLSXWriter {
 
             switch cell {
             case .string(let value):
+                let space = Self.keepsOuterWhitespace(value) ? " xml:space=\"preserve\"" : ""
                 if isHeader {
-                    data.appendUTF8("<c r=\"\(cellRef)\" t=\"inlineStr\" s=\"1\"><is><t>")
+                    data.appendUTF8("<c r=\"\(cellRef)\" t=\"inlineStr\" s=\"1\"><is><t\(space)>")
                 } else {
-                    data.appendUTF8("<c r=\"\(cellRef)\" t=\"inlineStr\"><is><t>")
+                    data.appendUTF8("<c r=\"\(cellRef)\" t=\"inlineStr\"><is><t\(space)>")
                 }
                 data.appendXMLEscaped(value)
                 data.appendUTF8("</t></is></c>")
@@ -345,6 +353,11 @@ final class XLSXWriter {
         }
 
         data.appendUTF8("</row>")
+    }
+
+    // Excel trims a `<t>`'s outer whitespace without it; XlsxWriter's `_xml_inline_string` adds it only in this case.
+    static func keepsOuterWhitespace(_ text: String) -> Bool {
+        text.first?.isWhitespace == true || text.last?.isWhitespace == true
     }
 
     // MARK: - XML Generation
@@ -463,7 +476,7 @@ final class XLSXWriter {
 
 // MARK: - Data XML Helpers
 
-private extension Data {
+nonisolated private extension Data {
     mutating func appendUTF8(_ string: String) {
         string.utf8.withContiguousStorageIfAvailable { buffer in
             if let baseAddress = buffer.baseAddress {
@@ -500,7 +513,7 @@ private extension Data {
 
 // MARK: - Sheet Part
 
-private final class XLSXSheetPart {
+nonisolated private final class XLSXSheetPart {
     let name: String
     let fileURL: URL
     var pending = Data()
@@ -546,7 +559,7 @@ private final class XLSXSheetPart {
 // MARK: - ZIP File Builder
 
 // A stored (uncompressed) ZIP, written entry by entry. A sheet's bytes are copied from its file.
-private struct ZipFileEntry {
+nonisolated private struct ZipFileEntry {
     enum Contents {
         case data(Data)
         case file(URL)
@@ -572,7 +585,7 @@ private struct ZipFileEntry {
     }
 }
 
-private enum ZipBuilder {
+nonisolated private enum ZipBuilder {
     enum ZipError: LocalizedError {
         case fileTooLarge
         case tooManySheets
@@ -589,11 +602,44 @@ private enum ZipBuilder {
 
     private static let copyChunkSize = 1 << 20
 
+    // The copy reads no rows, so it checks Stop and reports its bytes itself: iOS expires a background task that stalls.
+    struct Meter {
+        static let reportInterval = 4 << 20
+
+        let progress: PluginExportProgress?
+        let totalBytes: Int
+        private var writtenBytes = 0
+        private var reportedBytes = 0
+
+        init(progress: PluginExportProgress?, totalBytes: Int) {
+            self.progress = progress
+            self.totalBytes = totalBytes
+        }
+
+        func checkCancellation() throws {
+            if let progress {
+                try progress.checkCancellation()
+            } else {
+                try Task.checkCancellation()
+            }
+        }
+
+        mutating func didWrite(_ count: Int) {
+            writtenBytes += count
+            guard let progress, writtenBytes - reportedBytes >= Self.reportInterval else { return }
+            reportedBytes = writtenBytes
+            progress.setStatus(String(
+                format: String(localized: "Writing the workbook: %1$@ of %2$@"),
+                ByteCountFormatter.string(fromByteCount: Int64(writtenBytes), countStyle: .file),
+                ByteCountFormatter.string(fromByteCount: Int64(totalBytes), countStyle: .file)))
+        }
+    }
+
     static func localHeaderSize(path: String) -> Int {
         30 + path.utf8.count
     }
 
-    static func write(_ entries: [ZipFileEntry], to destination: URL, maximumSize: Int) throws {
+    static func write(_ entries: [ZipFileEntry], to destination: URL, maximumSize: Int, meter: inout Meter) throws {
         var offsets: [Int] = []
         offsets.reserveCapacity(entries.count)
         var offset = 0
@@ -610,12 +656,14 @@ private enum ZipBuilder {
         guard entries.count <= Int(UInt16.max) else {
             throw ZipError.tooManySheets
         }
+        try meter.checkCancellation()
 
         let (handle, temporaryURL) = try PluginExportUtilities.beginAtomicWrite(for: destination)
         var isOpen = true
         do {
             var centralDirectory = Data()
             for (entry, entryOffset) in zip(entries, offsets) {
+                try meter.checkCancellation()
                 let pathData = Data(entry.path.utf8)
 
                 var header = Data()
@@ -632,7 +680,7 @@ private enum ZipBuilder {
                 header.appendUInt16(0)
                 header.append(pathData)
                 try handle.write(contentsOf: header)
-                try writeContents(of: entry, to: handle)
+                try writeContents(of: entry, to: handle, meter: &meter)
 
                 centralDirectory.append(contentsOf: [0x50, 0x4B, 0x01, 0x02])
                 centralDirectory.appendUInt16(20)
@@ -668,6 +716,7 @@ private enum ZipBuilder {
             try handle.write(contentsOf: end)
             isOpen = false
             try handle.close()
+            try meter.checkCancellation()
             try PluginExportUtilities.commitAtomicWrite(from: temporaryURL, to: destination)
         } catch {
             if isOpen {
@@ -678,19 +727,22 @@ private enum ZipBuilder {
         }
     }
 
-    private static func writeContents(of entry: ZipFileEntry, to handle: FileHandle) throws {
+    private static func writeContents(of entry: ZipFileEntry, to handle: FileHandle, meter: inout Meter) throws {
         switch entry.contents {
         case .data(let data):
             try handle.write(contentsOf: data)
+            meter.didWrite(data.count)
         case .file(let url):
             let reader = try FileHandle(forReadingFrom: url)
             defer { try? reader.close() }
             var copied = 0
             while true {
+                try meter.checkCancellation()
                 let chunk = try autoreleasepool { try reader.read(upToCount: copyChunkSize) } ?? Data()
                 guard !chunk.isEmpty else { break }
                 try handle.write(contentsOf: chunk)
                 copied += chunk.count
+                meter.didWrite(chunk.count)
             }
             // The header already promised this size and CRC.
             guard copied == entry.size else {
@@ -709,7 +761,7 @@ private enum ZipBuilder {
 
 // MARK: - Data Extensions for ZIP
 
-private extension Data {
+nonisolated private extension Data {
     mutating func appendUInt16(_ value: UInt16) {
         var val = value.littleEndian
         Swift.withUnsafeBytes(of: &val) { append(contentsOf: $0) }

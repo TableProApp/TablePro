@@ -7,7 +7,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::call_options::CallOptions;
+use crate::call_options::{CallOptions, deadline_elapsed};
 use crate::engine_stop::{CallResource, EngineStop, StopDelivery, StopScope};
 use crate::error::DriverError;
 use crate::loss_phase::LossPhase;
@@ -337,13 +337,6 @@ fn reason_error(reason: StopReason) -> DriverError {
         StopReason::Shutdown => DriverError::ConnectionLost {
             during: LossPhase::Statement,
         },
-    }
-}
-
-async fn deadline_elapsed(deadline: Option<Instant>) {
-    match deadline {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
     }
 }
 

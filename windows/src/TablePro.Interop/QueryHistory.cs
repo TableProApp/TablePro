@@ -42,6 +42,13 @@ public sealed record HistoryEntry(
     HistoryOutcome Outcome,
     bool Pinned);
 
+public enum HistoryExportFormat
+{
+    // Each run as it ran, under comments that say where and when.
+    Sql,
+    Csv,
+}
+
 // Next is null on the last page.
 public sealed record HistoryPage(IReadOnlyList<HistoryEntry> Entries, HistoryCursor? Next);
 
@@ -108,11 +115,41 @@ public sealed class QueryHistory : IDisposable
         return CoreCall.RunAsync(() => _store.Delete(native));
     }
 
+    // Drops unpinned runs older than retentionDays (0 keeps every age), then the oldest past maxEntries (0 keeps the
+    // store's own cap). Returns how many went.
+    public async Task<long> PruneAsync(int retentionDays, int maxEntries, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(retentionDays);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxEntries);
+        cancellationToken.ThrowIfCancellationRequested();
+        var removed = await CoreCall.RunAsync(() => _store.Prune(checked((uint)retentionDays), checked((uint)maxEntries)))
+            .ConfigureAwait(false);
+        return Mapping.Count(removed);
+    }
+
     public Task ClearAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return CoreCall.RunAsync(() => _store.Clear());
     }
+
+    // A pinned run comes first in every search and is never pruned.
+    public Task SetPinnedAsync(long id, bool pinned) => CoreCall.RunAsync(() => _store.SetPinned(id, pinned));
+
+    // The file at path appears only once whole.
+    public Task ExportAsync(IReadOnlyList<long> ids, HistoryExportFormat format, string path)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        long[] native = [.. ids];
+        var tag = format == HistoryExportFormat.Csv ? Native.HistoryExportFormat.Csv : Native.HistoryExportFormat.Sql;
+        return CoreCall.RunAsync(() => _store.Export(native, tag, path));
+    }
+
+    // The same database, so every store from one QueryHistory sees the others' writes.
+    public SavedQueries OpenSavedQueries() => new(CoreCall.Run(() => _store.SavedQueries()));
+
+    public Favourites OpenFavourites() => new(CoreCall.Run(() => _store.Favourites()));
 
     public void Dispose() => _store.Dispose();
 

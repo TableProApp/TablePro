@@ -91,6 +91,15 @@ fn every_category_has_a_message() {
 }
 
 #[test]
+fn a_catalog_past_the_budget_names_the_limit() {
+    let message = driver_message(&DriverError::CatalogTooLarge {
+        limit_bytes: 64_000_000,
+    });
+
+    assert!(message.contains("64.0"), "{message}");
+}
+
+#[test]
 fn server_message_includes_code_detail_hint() {
     let diagnostics = ServerDiagnostics {
         detail: Some("Key (email)=(a@b.c) already exists.".to_owned()),
@@ -268,6 +277,16 @@ fn file_not_found_names_path() {
     });
 
     assert!(message.contains("/srv/app.db"), "{message}");
+}
+
+#[test]
+fn a_file_already_there_names_it_and_says_it_was_kept() {
+    let message = driver_message(&DriverError::FileExists {
+        path: PathBuf::from("/srv/new.db"),
+    });
+
+    assert!(message.contains("/srv/new.db"), "{message}");
+    assert!(message.contains("left as it is"), "{message}");
 }
 
 #[test]

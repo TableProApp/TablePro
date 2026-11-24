@@ -15,7 +15,6 @@ extension GlobalStateSuites {
             MainContentCoordinator(
                 connection: TestFixtures.makeConnection(database: "shop", type: .postgresql),
                 tabManager: QueryTabManager(),
-                changeManager: DataChangeManager(),
                 toolbarState: ConnectionToolbarState()
             )
         }

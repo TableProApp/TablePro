@@ -600,7 +600,7 @@ impl RowSave {
     }
 }
 
-fn save_gate(level: SafeModeLevel) -> SaveGate {
+pub(crate) fn save_gate(level: SafeModeLevel) -> SaveGate {
     match level.gate(StatementAccess::Write) {
         WriteGate::Run => SaveGate::Run,
         WriteGate::Confirm => SaveGate::Confirm,
@@ -688,7 +688,7 @@ fn same_plan(left: &SavePlan, right: &SavePlan) -> bool {
 }
 
 // Ask the server what became of a commit whose acknowledgement was lost, where the engine left a way to ask.
-async fn resolve_commit(
+pub(crate) async fn resolve_commit(
     session: &Session,
     written: &Result<WriteReport, OperationError>,
 ) -> Option<Result<CommitResolution, OperationError>> {

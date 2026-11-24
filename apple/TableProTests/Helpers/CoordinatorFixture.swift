@@ -1,3 +1,4 @@
+import Foundation
 @testable import TablePro
 
 /// Tears the coordinator down when the fixture goes away: an untorn coordinator keeps its
@@ -6,7 +7,7 @@
 final class CoordinatorFixture {
     let connection: DatabaseConnection
     let tabManager = QueryTabManager()
-    let changeManager = DataChangeManager()
+    var changeManager: DataChangeManager { coordinator.changeManager }
     let coordinator: MainContentCoordinator
     private let injectedSession: Bool
 
@@ -25,7 +26,6 @@ final class CoordinatorFixture {
         coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             toolbarState: ConnectionToolbarState(),
             services: services
         )
@@ -42,5 +42,51 @@ final class CoordinatorFixture {
     isolated deinit {
         if !coordinator.isTearingDown { coordinator.teardown() }
         if injectedSession { DatabaseManager.shared.removeSession(for: connection.id) }
+    }
+}
+
+extension MainContentCoordinator {
+    // What a menu command passes: the shown tab, or an id no tab has, so the command does nothing.
+    var commandTabId: UUID { tabManager.selectedTab?.id ?? UUID() }
+}
+
+@MainActor
+extension AppServices {
+    // Live services that write query history into the given manager, so a test can read what a run filed.
+    func recordingHistory(in queryHistoryManager: QueryHistoryManager) -> AppServices {
+        AppServices(
+            appEvents: appEvents,
+            appSettings: appSettings,
+            appSettingsStorage: appSettingsStorage,
+            connectionStorage: connectionStorage,
+            databaseManager: databaseManager,
+            pluginManager: pluginManager,
+            schemaService: schemaService,
+            schemaRefreshService: schemaRefreshService,
+            schemaProviderRegistry: schemaProviderRegistry,
+            catalogChangeService: catalogChangeService,
+            sqlFavoriteManager: sqlFavoriteManager,
+            favoriteTablesStorage: favoriteTablesStorage,
+            favoriteDatabasesStorage: favoriteDatabasesStorage,
+            tableFolderStorage: tableFolderStorage,
+            aiChatStorage: aiChatStorage,
+            aiKeyStorage: aiKeyStorage,
+            aiAccessApprovals: aiAccessApprovals,
+            groupStorage: groupStorage,
+            tagStorage: tagStorage,
+            sshProfileStorage: sshProfileStorage,
+            credentialProfileStorage: credentialProfileStorage,
+            featureAccess: featureAccess,
+            syncMetadataStorage: syncMetadataStorage,
+            favoritesExpansionState: favoritesExpansionState,
+            linkedFolderWatcher: linkedFolderWatcher,
+            queryHistoryManager: queryHistoryManager,
+            dateFormattingService: dateFormattingService,
+            copilotService: copilotService,
+            mcpServerManager: mcpServerManager,
+            syncTracker: syncTracker,
+            welcomeRouter: welcomeRouter,
+            telemetry: telemetry
+        )
     }
 }

@@ -31,6 +31,37 @@ fn batch_texts<'a>(plan: &ScriptPlan, text: &'a str) -> Vec<&'a str> {
 }
 
 #[test]
+fn the_first_statement_ends_where_its_terminator_starts() {
+    let cases = [
+        ("CREATE TABLE t (a)", "CREATE TABLE t (a)"),
+        ("CREATE TABLE t (a); DROP TABLE t", "CREATE TABLE t (a)"),
+        (
+            "CREATE TABLE t (a DEFAULT ';', \"b;\" /* ; */, [c;] -- ;\n); SELECT 1",
+            "CREATE TABLE t (a DEFAULT ';', \"b;\" /* ; */, [c;] -- ;\n)",
+        ),
+        (
+            "CREATE TRIGGER r AFTER INSERT ON t BEGIN SELECT 1; SELECT 2; END; SELECT 3",
+            "CREATE TRIGGER r AFTER INSERT ON t BEGIN SELECT 1; SELECT 2; END",
+        ),
+        ("CREATE INDEX i ON t (a) /* ; */", "CREATE INDEX i ON t (a) /* ; */"),
+        ("CREATE VIEW v AS SELECT 1 -- note", "CREATE VIEW v AS SELECT 1 -- note"),
+        (
+            "CREATE VIRTUAL TABLE t USING fts4(a;b, tokenize=simple (x;y)); DROP TABLE t",
+            "CREATE VIRTUAL TABLE t USING fts4(a;b, tokenize=simple (x;y))",
+        ),
+        (
+            "CREATE VIRTUAL TABLE t USING fts4(a;b)",
+            "CREATE VIRTUAL TABLE t USING fts4(a;b)",
+        ),
+        ("", ""),
+    ];
+    for (text, first) in cases {
+        let end = ScriptPlan::first_statement_end(text, SqlGrammar::Sqlite);
+        assert_eq!(text.get(..end), Some(first), "{text}");
+    }
+}
+
+#[test]
 fn dollar_quoted_body_hides_semicolons() {
     let text = "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1; SELECT 2; $$ LANGUAGE sql;\nSELECT 3;";
     let plan = plan(SqlGrammar::PostgreSql, text);

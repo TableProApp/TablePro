@@ -234,9 +234,8 @@ struct RowPasteBatchRecordingTests {
             )
         ])
 
-        let state = changeManager.saveState()
-        #expect(state.insertedRowData[first] == ["1", "now()"])
-        #expect(state.insertedRowData[second] == ["2", nil])
+        #expect(changeManager.pending.insertedRowData[first] == ["1", "now()"])
+        #expect(changeManager.pending.insertedRowData[second] == ["2", nil])
         #expect(changeManager.expressionColumns(forRow: first) == [1])
         let secondChange = changeManager.changes.first { $0.rowID == second }
         #expect(secondChange?.absentColumns == [1])

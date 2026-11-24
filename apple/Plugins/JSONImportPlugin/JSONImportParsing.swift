@@ -7,7 +7,7 @@ import Foundation
 import TableProNumberFormatting
 import TableProPluginKit
 
-enum JSONImportParsing {
+nonisolated enum JSONImportParsing {
     static func isLineDelimited(_ url: URL) -> Bool {
         ["jsonl", "ndjson"].contains(url.pathExtension.lowercased())
     }

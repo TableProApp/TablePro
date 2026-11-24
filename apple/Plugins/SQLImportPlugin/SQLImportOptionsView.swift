@@ -36,3 +36,10 @@ struct SQLImportOptionsView: View {
         }
     }
 }
+
+extension SQLImportPlugin {
+    @MainActor
+    func settingsView() -> AnyView? {
+        AnyView(SQLImportOptionsView(plugin: self))
+    }
+}

@@ -9,7 +9,7 @@ use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey,
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
-    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::statement::Statement;
 use tablepro_core::{
@@ -418,6 +418,15 @@ impl Connection for MssqlConnection {
             read_op(move |client, watch| {
                 Box::pin(async move { metadata::table_estimate(client, watch, &relation).await })
             }),
+        )
+        .await
+    }
+
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let relation = self.relation(table);
+        self.read(
+            options,
+            read_op(move |client, watch| Box::pin(async move { metadata::table_info(client, watch, &relation).await })),
         )
         .await
     }

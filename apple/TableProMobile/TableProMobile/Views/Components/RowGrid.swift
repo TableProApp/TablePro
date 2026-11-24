@@ -92,6 +92,8 @@ struct RowGrid<Line: View>: View {
     let columns: [ColumnInfo]
     let window: RowWindow
     let keyColumn: Int?
+    // Nil outside Select mode; then no selection column is drawn.
+    var selectedRows: Set<Int>?
     @ViewBuilder let row: (_ index: Int, _ line: RowGridLine) -> Line
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -100,6 +102,7 @@ struct RowGrid<Line: View>: View {
     @ScaledMetric(relativeTo: .subheadline) private var maximumWidth: CGFloat = 320
     @ScaledMetric(relativeTo: .subheadline) private var horizontalPadding: CGFloat = 12
     @ScaledMetric(relativeTo: .subheadline) private var verticalPadding: CGFloat = 10
+    @ScaledMetric(relativeTo: .subheadline) private var selectionColumnWidth: CGFloat = 44
     @State private var computedLayout: (key: LayoutKey, layout: RowGridLayout)?
     @State private var viewport = RowGridViewport(width: 0, leadingInset: 0)
 
@@ -123,15 +126,17 @@ struct RowGrid<Line: View>: View {
             horizontalPadding: horizontalPadding,
             verticalPadding: verticalPadding,
             hairline: HairlineThickness.points(forDisplayScale: displayScale),
-            pinnedInset: viewport.leadingInset
+            pinnedInset: viewport.leadingInset,
+            selectionWidth: selectedRows == nil ? 0 : selectionColumnWidth
         )
     }
 
     var body: some View {
         let key = layoutKey
         let layout = currentLayout(for: key).limitingKeyColumn(toViewportWidth: viewport.width)
+        let selectionWidth = selectedRows == nil ? 0 : selectionColumnWidth
         ScrollView([.horizontal, .vertical]) {
-            grid(layout, width: max(layout.totalWidth, viewport.width))
+            grid(layout, width: max(layout.totalWidth + selectionWidth, viewport.width))
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .defaultScrollAnchor(.topLeading, for: .alignment)
@@ -173,7 +178,8 @@ struct RowGrid<Line: View>: View {
                 // Indices of the same array the closure reads, so a result that shrank cannot put one out of range.
                 ForEach(rows.indices, id: \.self) { index in
                     row(index, RowGridLine(
-                        columns: columns, values: rows[index].displayValues(), layout: layout, width: width, style: style
+                        columns: columns, values: rows[index].displayValues(), layout: layout, width: width, style: style,
+                        isSelected: selectedRows.map { $0.contains(index) }
                     ))
                 }
             } header: {
@@ -186,15 +192,20 @@ struct RowGrid<Line: View>: View {
     private func header(_ layout: RowGridLayout, width: CGFloat, style: RowGridLine.Style) -> some View {
         HStack(spacing: 0) {
             ForEach(layout.order.indices, id: \.self) { position in
-                Text(verbatim: columns[layout.order[position]].name)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .padding(.horizontal, style.horizontalPadding)
-                    .padding(.vertical, style.verticalPadding)
-                    .frame(width: layout.widths[position], alignment: .leading)
-                    .modifier(RowGridCell(isPinned: position == 0, style: style))
+                HStack(spacing: 0) {
+                    if position == 0, style.selectionWidth > 0 {
+                        Color.clear.frame(width: style.selectionWidth)
+                    }
+                    Text(verbatim: columns[layout.order[position]].name)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, style.horizontalPadding)
+                        .padding(.vertical, style.verticalPadding)
+                        .frame(width: layout.widths[position], alignment: .leading)
+                }
+                .modifier(RowGridCell(isPinned: position == 0, style: style, background: Color(.systemBackground)))
             }
         }
         .frame(width: width, alignment: .leading)
@@ -229,6 +240,7 @@ struct RowGridLine: View {
         let verticalPadding: CGFloat
         let hairline: CGFloat
         let pinnedInset: CGFloat
+        let selectionWidth: CGFloat
     }
 
     let columns: [ColumnInfo]
@@ -236,16 +248,29 @@ struct RowGridLine: View {
     let layout: RowGridLayout
     let width: CGFloat
     let style: Style
+    // Nil outside Select mode.
+    let isSelected: Bool?
+
+    // Opaque, so the pinned cells still cover the columns scrolled under them.
+    private var background: Color {
+        isSelected == true ? Color(.systemGray5) : Color(.systemBackground)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(layout.order.indices, id: \.self) { position in
-                cell(value(at: layout.order[position]))
-                    .frame(width: layout.widths[position], alignment: .leading)
-                    .modifier(RowGridCell(isPinned: position == 0, style: style))
+                HStack(spacing: 0) {
+                    if position == 0, let isSelected {
+                        selectionMark(isSelected)
+                    }
+                    cell(value(at: layout.order[position]))
+                        .frame(width: layout.widths[position], alignment: .leading)
+                }
+                .modifier(RowGridCell(isPinned: position == 0, style: style, background: background))
             }
         }
         .frame(width: width, alignment: .leading)
+        .background(isSelected == true ? Color(.systemGray5) : Color.clear)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color(.separator)).frame(height: style.hairline)
         }
@@ -256,6 +281,13 @@ struct RowGridLine: View {
 
     private func value(at column: Int) -> String? {
         values.indices.contains(column) ? values[column] : nil
+    }
+
+    private func selectionMark(_ isSelected: Bool) -> some View {
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            .imageScale(.large)
+            .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            .frame(width: style.selectionWidth)
     }
 
     private var accessibilityText: String {
@@ -284,6 +316,7 @@ struct RowGridLine: View {
 private struct RowGridCell: ViewModifier {
     let isPinned: Bool
     let style: RowGridLine.Style
+    let background: Color
 
     func body(content: Content) -> some View {
         if isPinned {
@@ -291,7 +324,7 @@ private struct RowGridCell: ViewModifier {
             // Offset in the render pass, so a sideways scroll moves no state and rebuilds no row.
             content
                 // Reaches over the leading inset, so cells scrolled past the key never show beside it.
-                .background(Color(.systemBackground).padding(.leading, -inset))
+                .background(background.padding(.leading, -inset))
                 .overlay(alignment: .trailing) {
                     Rectangle().fill(Color(.separator)).frame(width: style.hairline)
                 }

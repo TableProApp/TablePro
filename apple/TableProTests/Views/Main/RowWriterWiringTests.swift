@@ -73,14 +73,18 @@ struct RowWriterWiringTests {
             for: connection.id
         )
         state.coordinator.setupPluginDriver()
-        state.changeManager.configureForTable(
+        let tab = QueryTab(title: "events", query: "SELECT * FROM events", tabType: .table, tableName: "events")
+        state.tabManager.tabs.append(tab)
+        state.tabManager.selectedTabId = tab.id
+        let changeManager = state.coordinator.changeManager(forTab: tab.id)
+        changeManager.configureForTable(
             tableName: "events",
             columns: ["d", "id", "v"],
             primaryKeyColumns: ["d"],
             databaseType: .clickhouse,
             generatedColumns: []
         )
-        return (state.coordinator, state.changeManager)
+        return (state.coordinator, changeManager)
     }
 
     // The bug in #3776: the host keyed this on the sorting key `d`, and its DELETE removed every row sharing `d`.

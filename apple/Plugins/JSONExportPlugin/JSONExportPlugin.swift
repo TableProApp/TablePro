@@ -5,10 +5,9 @@
 
 import Combine
 import Foundation
-import SwiftUI
 import TableProPluginKit
 
-final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "JSON Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to JSON format"
@@ -20,7 +19,9 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
     typealias Settings = JSONExportOptions
     static let settingsStorageId = "json"
 
-    @Published var settings = JSONExportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = JSONExportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
@@ -28,11 +29,6 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
 
     var currentFileExtension: String {
         settings.layout.fileExtension
-    }
-
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(JSONExportOptionsView(plugin: self))
     }
 
     func resetSettingsToDefaults() {
@@ -115,7 +111,7 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                                         let colTypeName = colIndex < (columnTypeNames ?? []).count
                                             ? (columnTypeNames ?? [])[colIndex]
                                             : ""
-                                        let jsonValue = formatJSONValue(
+                                        let jsonValue = Self.formatJSONValue(
                                             value,
                                             columnTypeName: colTypeName,
                                             preserveAsString: options.preserveAllAsStrings
@@ -162,9 +158,7 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
         return ExportFormatResult()
     }
 
-    // MARK: - Private
-
-    private func formatJSONValue(_ value: PluginCellValue, columnTypeName: String, preserveAsString: Bool) -> String {
+    static func formatJSONValue(_ value: PluginCellValue, columnTypeName: String, preserveAsString: Bool) -> String {
         switch value {
         case .null:
             return "null"
@@ -175,13 +169,13 @@ final class JSONExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
         }
     }
 
-    private func formatJSONTextValue(_ val: String, columnTypeName: String, preserveAsString: Bool) -> String {
+    private static func formatJSONTextValue(_ val: String, columnTypeName: String, preserveAsString: Bool) -> String {
         if preserveAsString {
             return "\"\(PluginExportUtilities.escapeJSONString(val))\""
         }
 
         let folded = val.lowercased()
-        if Self.isBooleanColumnType(columnTypeName), folded == "true" || folded == "false" {
+        if isBooleanColumnType(columnTypeName), folded == "true" || folded == "false" {
             return folded
         }
 

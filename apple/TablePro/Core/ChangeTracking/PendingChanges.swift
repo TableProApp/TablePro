@@ -402,31 +402,6 @@ struct PendingChanges: Equatable {
         supersededUpdates.removeAll()
     }
 
-    mutating func restore(from snapshot: TabChangeSnapshot) {
-        changes = snapshot.changes
-        deletedRowIDs = snapshot.deletedRowIDs
-        insertedRowIDs = snapshot.insertedRowIDs
-        modifiedCells = snapshot.modifiedCells
-        insertedRowData = snapshot.insertedRowData
-        supersededUpdates = snapshot.supersededUpdates
-        let sequences = (changes + supersededUpdates.values).flatMap { [$0.sequence] + $0.runs.map(\.sequence) }
-        nextSequence = (sequences.max() ?? -1) + 1
-        rebuildChangeIndex()
-    }
-
-    func snapshot(primaryKeyColumns: [String], columns: [String]) -> TabChangeSnapshot {
-        var snap = TabChangeSnapshot()
-        snap.changes = changes
-        snap.deletedRowIDs = deletedRowIDs
-        snap.insertedRowIDs = insertedRowIDs
-        snap.modifiedCells = modifiedCells
-        snap.insertedRowData = insertedRowData
-        snap.supersededUpdates = supersededUpdates
-        snap.primaryKeyColumns = primaryKeyColumns
-        snap.columns = columns
-        return snap
-    }
-
     // MARK: - Internals
 
     private mutating func appendChange(_ change: RowChange) {
@@ -479,13 +454,6 @@ struct PendingChanges: Equatable {
             changeIndex[RowChangeKey(rowID: moved.rowID, type: moved.type)] = arrayIndex
         }
         changes.removeLast()
-    }
-
-    private mutating func rebuildChangeIndex() {
-        changeIndex.removeAll(keepingCapacity: true)
-        for (index, change) in changes.enumerated() {
-            changeIndex[RowChangeKey(rowID: change.rowID, type: change.type)] = index
-        }
     }
 
     private mutating func removeModifiedCell(rowID: RowID, columnIndex: Int) {

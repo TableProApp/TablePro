@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -6,6 +7,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TablePro.App.Model;
 using TablePro.App.Services;
+using Microsoft.Windows.Storage.Pickers;
 using TablePro.Interop;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
@@ -16,6 +18,10 @@ namespace TablePro.App.Views;
 public sealed partial class HomeView : UserControl
 {
     private static readonly string[] TagColors = ["blue", "green", "orange", "purple", "teal", "red", "pink", "yellow", "slate"];
+
+    // In the connection form's order, None first.
+    private static readonly string[] GroupColors =
+        ["", "blue", "teal", "green", "yellow", "orange", "red", "pink", "purple", "slate"];
 
     private readonly Workbench _workbench;
     private readonly IShell _shell;
@@ -347,6 +353,7 @@ public sealed partial class HomeView : UserControl
             {
                 AddItem(menu, "MenuEdit", Symbol.Edit, () => _shell.EditConnection(connection));
                 AddItem(menu, "MenuRename", Symbol.Rename, () => StartRename(item));
+                AddItem(menu, "MenuDuplicate", Symbol.Copy, async () => await DuplicateAsync(connection).ConfigureAwait(true));
             }
 
             var ids = Ids(targets);
@@ -367,6 +374,7 @@ public sealed partial class HomeView : UserControl
         {
             AddItem(menu, "MenuNewSubgroup", Symbol.NewFolder, async () => await NewGroupAsync(group.Id).ConfigureAwait(true));
             AddItem(menu, "MenuRename", Symbol.Rename, () => StartRename(item));
+            menu.Items.Add(GroupColorMenu(group));
             menu.Items.Add(new MenuFlyoutSeparator());
             AddItem(menu, "MenuDelete", Symbol.Delete, async () => await DeleteGroupAsync(group).ConfigureAwait(true));
         }
@@ -384,6 +392,39 @@ public sealed partial class HomeView : UserControl
         {
             menu.ShowAt((FrameworkElement)sender);
         }
+    }
+
+    // As macOS offers it: None and each colour a connection can take, the group's own checked.
+    private MenuFlyoutSubItem GroupColorMenu(ConnectionGroup group)
+    {
+        var menu = new MenuFlyoutSubItem
+        {
+            Text = Strings.Get("MenuGroupColor"),
+            Icon = new SymbolIcon(Symbol.FontColor),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(menu, "GroupColorMenu");
+        foreach (var color in GroupColors)
+        {
+            var choice = new RadioMenuFlyoutItem
+            {
+                Text = Strings.Get(color.Length == 0 ? "ColorNone" : "Color_" + color),
+                GroupName = "GroupColor",
+                IsChecked = string.Equals(group.Color ?? string.Empty, color, StringComparison.Ordinal),
+            };
+            if (color.Length > 0)
+            {
+                var icon = new SymbolIcon(Symbol.Folder);
+                EngineIcons.Tint(icon, color);
+                choice.Icon = icon;
+            }
+
+            var picked = color.Length == 0 ? null : color;
+            choice.Click += async (_, _) =>
+                await Write(() => _workbench.Library.SetGroupColorAsync(group.Id, picked)).ConfigureAwait(true);
+            menu.Items.Add(choice);
+        }
+
+        return menu;
     }
 
     private MenuFlyoutSubItem MoveMenu(IReadOnlyList<SavedConnection> targets)
@@ -522,6 +563,68 @@ public sealed partial class HomeView : UserControl
         _workbench.NotifyLibraryChanged();
     }
 
+    // As macOS does, the form opens on the copy, which sits right after its original.
+    private async Task DuplicateAsync(SavedConnection connection)
+    {
+        if (connection.Id is not { } id)
+        {
+            return;
+        }
+
+        SavedConnection copy;
+        try
+        {
+            var name = CopyName.For(
+                connection.Name,
+                _snapshot.Connections.Select(saved => saved.Name),
+                Strings.Get("CopyNamePattern"),
+                Strings.Get("CopyNameNumberedPattern"));
+            copy = await _workbench.Library.DuplicateAsync(id, name).ConfigureAwait(true);
+        }
+        catch (TableProException exception)
+        {
+            ShowMessage(Strings.Format("DuplicateFailed", Strings.Error(exception.Error)), InfoBarSeverity.Error);
+            return;
+        }
+        finally
+        {
+            _workbench.NotifyLibraryChanged();
+        }
+
+        _shell.EditConnection(copy);
+    }
+
+    // The file is the one Import reads: every connection, group and tag, and no password.
+    public async Task ExportConnectionsAsync()
+    {
+        if (XamlRoot is not { } root)
+        {
+            return;
+        }
+
+        var picker = new FileSavePicker(root.ContentIslandEnvironment.AppWindowId)
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            SuggestedFileName = Strings.Get("ExportConnectionsFileName"),
+        };
+        picker.FileTypeChoices.Add(Strings.Get("ConnectionsFileType"), [".json"]);
+        var result = await picker.PickSaveFileAsync();
+        if (result is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var count = await _workbench.Library.ExportAsync(result.Path).ConfigureAwait(true);
+            ShowMessage(Strings.Format(count == 1 ? "ExportConnectionsDoneOne" : "ExportConnectionsDone", count), InfoBarSeverity.Success);
+        }
+        catch (TableProException exception)
+        {
+            ShowMessage(Strings.Format("ExportConnectionsFailed", Strings.Error(exception.Error)), InfoBarSeverity.Error);
+        }
+    }
+
     private async Task DeleteConnectionsAsync(List<SavedConnection> connections)
     {
         if (connections.Count == 0)
@@ -548,6 +651,7 @@ public sealed partial class HomeView : UserControl
                 foreach (var id in Ids(connections))
                 {
                     await _workbench.Library.DeleteAsync(id).ConfigureAwait(true);
+                    await _workbench.ForgetSavedQueriesAsync(id).ConfigureAwait(true);
                 }
             }).ConfigureAwait(true);
         }
@@ -941,9 +1045,129 @@ public sealed partial class HomeView : UserControl
 
     private void OnNewConnection(object sender, RoutedEventArgs e) => _shell.NewConnection();
 
+    // As macOS's Import from URL, a URL already on the clipboard is filled in.
+    private async void OnHomeUrlFlyoutOpened(object sender, object e)
+    {
+        HomeUrlBox.Description = null;
+        HomeUrlBox.Focus(FocusState.Programmatic);
+        if (HomeUrlBox.Text.Length == 0 && PastedUrl.In(await ReadClipboardAsync().ConfigureAwait(true)) is { } url
+            && HomeUrlBox.Text.Length == 0)
+        {
+            HomeUrlBox.Text = url;
+            HomeUrlBox.SelectAll();
+        }
+    }
+
+    private void OnHomeUrlKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            e.Handled = true;
+            ContinueFromUrl();
+        }
+    }
+
+    private void OnHomeUrlContinue(object sender, RoutedEventArgs e) => ContinueFromUrl();
+
+    private void ContinueFromUrl()
+    {
+        if (StartFromUrl(HomeUrlBox.Text.Trim()) is { } error)
+        {
+            HomeUrlBox.Description = error;
+            return;
+        }
+
+        HomeUrlBox.Text = string.Empty;
+        HomeUrlFlyout.Hide();
+    }
+
+    // Ctrl+V while the page shows, outside a text box, a dialog or a menu, opens the form on a URL the clipboard holds.
+    private async void OnPasteInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (_renaming is not null || XamlRoot is not { } root)
+        {
+            return;
+        }
+
+        var focused = FocusManager.GetFocusedElement(root) as DependencyObject;
+        if (focused is TextBox or PasswordBox or RichEditBox || InPopup(focused, root))
+        {
+            return;
+        }
+
+        args.Handled = true;
+        if (PastedUrl.In(await ReadClipboardAsync().ConfigureAwait(true)) is { } url && StartFromUrl(url) is { } error)
+        {
+            ShowMessage(error, InfoBarSeverity.Error);
+        }
+    }
+
+    // An element of a dialog or a flyout sits in a popup, so its ancestors do not include the window's content.
+    private static bool InPopup(DependencyObject? element, XamlRoot root)
+    {
+        if (element is null)
+        {
+            return false;
+        }
+
+        for (var node = element; node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (ReferenceEquals(node, root.Content))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Null once the form opens; otherwise why the URL cannot start a connection.
+    private string? StartFromUrl(string text)
+    {
+        try
+        {
+            var parsed = TableProCore.ParseConnectionUrl(text);
+            if (_workbench.Engine(parsed.EngineId) is not { } engine)
+            {
+                return Strings.Get("Error_url_unknown_scheme");
+            }
+
+            _shell.NewConnection(ConnectionDraft.FromUrl(parsed, engine));
+            return null;
+        }
+        catch (TableProException exception)
+        {
+            return Strings.Error(exception.Error);
+        }
+    }
+
+    // Null when the clipboard holds no text or does not answer. A program holding it open, as Remote Desktop's
+    // clipboard copy does after each change, makes a read throw for a moment, so it is tried again.
+    private static async Task<string?> ReadClipboardAsync()
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                var content = Clipboard.GetContent();
+                return content.Contains(StandardDataFormats.Text) ? await content.GetTextAsync() : null;
+            }
+            catch (COMException) when (attempt < 5)
+            {
+                await Task.Delay(20).ConfigureAwait(true);
+            }
+            catch (COMException)
+            {
+                return null;
+            }
+        }
+    }
+
     private async void OnOpenFile(object sender, RoutedEventArgs e) => await _shell.OpenFileAsync().ConfigureAwait(true);
 
     private async void OnImport(object sender, RoutedEventArgs e) => await _shell.ImportAsync().ConfigureAwait(true);
+
+    private async void OnExportConnections(object sender, RoutedEventArgs e) => await ExportConnectionsAsync().ConfigureAwait(true);
 
     private async void OnSample(object sender, RoutedEventArgs e) => await _shell.OpenSampleAsync().ConfigureAwait(true);
 

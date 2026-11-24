@@ -27,6 +27,7 @@ mod read_guard;
 mod result_stream;
 mod sqlite_pooled;
 mod sqlite_standalone;
+mod statement_limit;
 mod write_batch;
 
 pub use catalog::{SQLITE_MIN_VERSION, SqliteVersion, check_runtime_version};

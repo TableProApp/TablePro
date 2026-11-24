@@ -117,6 +117,10 @@ pub enum DriverError {
     #[error("no permission to open {}", .path.display())]
     FileAccessDenied { path: PathBuf },
 
+    // A new database is made only where nothing is, so a file another program made there is kept.
+    #[error("a file is already at {}", .path.display())]
+    FileExists { path: PathBuf },
+
     #[error("{} is not a database file", .path.display())]
     NotADatabase { path: PathBuf },
 
@@ -143,6 +147,10 @@ pub enum DriverError {
 
     #[error("this engine has no {feature}")]
     Unsupported { feature: UnsupportedFeature },
+
+    // A crafted file can repeat a long name across thousands of keys, so a catalog read stops at a byte budget.
+    #[error("the catalog read would hold more than {limit_bytes} bytes")]
+    CatalogTooLarge { limit_bytes: u64 },
 }
 
 impl DriverError {
@@ -168,6 +176,7 @@ impl DriverError {
             Self::FileNotFound { .. } => "driver.file_not_found",
             Self::DatabaseNotFound { .. } => "driver.database_not_found",
             Self::FileAccessDenied { .. } => "driver.file_access_denied",
+            Self::FileExists { .. } => "driver.file_exists",
             Self::NotADatabase { .. } => "driver.not_a_database",
             Self::FileIo { .. } => "driver.file_io",
             Self::Busy(..) => "driver.busy",
@@ -176,6 +185,7 @@ impl DriverError {
             Self::Decode { .. } => "driver.decode",
             Self::Protocol(..) => "driver.protocol",
             Self::Unsupported { .. } => "driver.unsupported",
+            Self::CatalogTooLarge { .. } => "driver.catalog_too_large",
         }
     }
 }
@@ -212,11 +222,14 @@ impl DriverError {
             | Self::PartiallyApplied { .. } => ErrorCategory::WriteOutcome,
             Self::FileNotFound { .. }
             | Self::FileAccessDenied { .. }
+            | Self::FileExists { .. }
             | Self::NotADatabase { .. }
             | Self::FileIo { .. } => ErrorCategory::File,
             Self::Busy(_) | Self::EditorSessionBusy => ErrorCategory::Busy,
             Self::Config(_) | Self::Unsupported { .. } | Self::DatabaseNotFound { .. } => ErrorCategory::Configuration,
-            Self::GuardUnsupported { .. } | Self::Decode { .. } | Self::Protocol(_) => ErrorCategory::Internal,
+            Self::GuardUnsupported { .. } | Self::Decode { .. } | Self::Protocol(_) | Self::CatalogTooLarge { .. } => {
+                ErrorCategory::Internal
+            }
         }
     }
 
@@ -265,6 +278,17 @@ mod tests {
             full.to_string().contains(&std::io::ErrorKind::StorageFull.to_string()),
             "{full}"
         );
+    }
+
+    #[test]
+    fn a_file_already_there_is_a_file_problem_with_its_own_code() {
+        let there = DriverError::FileExists {
+            path: PathBuf::from("/data/app.sqlite3"),
+        };
+
+        assert_eq!(there.category(), ErrorCategory::File);
+        assert_eq!(there.code(), "driver.file_exists");
+        assert!(there.to_string().contains("/data/app.sqlite3"), "{there}");
     }
 
     #[test]
@@ -366,6 +390,10 @@ mod tests {
             (DriverError::Cancelled.code(), "driver.cancelled"),
             (DriverError::auth(None).code(), "driver.auth"),
             (DriverError::server("no such table").code(), "driver.server"),
+            (
+                DriverError::CatalogTooLarge { limit_bytes: 1 }.code(),
+                "driver.catalog_too_large",
+            ),
             (DriverError::Config(ConfigError::EmptyHost).code(), "driver.config"),
             (ConfigError::EmptyHost.code(), "config.empty_host"),
             (

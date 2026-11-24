@@ -84,10 +84,7 @@ struct RestoreDatabaseFlow: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    /// An engine that reaches one database is not asked which one.
-    ///
-    /// SQLite reports an empty database list, so the picker rendered its empty state with a
-    /// permanently dimmed Restore button and no way forward but Cancel. DuckDB is the same shape.
+    // SQLite and DuckDB report no database list, which would leave the picker with no way forward.
     @MainActor
     private func resolveTarget() async {
         guard phase == .resolvingTarget else { return }
@@ -103,12 +100,10 @@ struct RestoreDatabaseFlow: View {
         VStack(spacing: 0) {
             sourceBanner
             Divider()
-            DatabaseSwitcherSheet(
-                isPresented: $isPresented,
-                mode: .restore,
+            RestoreTargetPicker(
+                connection: connection,
                 currentDatabase: initialDatabase,
-                databaseType: connection.type,
-                connectionId: connection.id,
+                onCancel: { isPresented = false },
                 onSelect: { database in
                     Task { await startRestore(database: database) }
                 }
@@ -138,8 +133,7 @@ struct RestoreDatabaseFlow: View {
 
     private var serviceState: NativeDumpState { service.state }
 
-    /// Which of an engine's formats this file is. DuckDB writes either one `.duckdb` file or a
-    /// folder of Parquet, and only the file system says which one the user picked.
+    // DuckDB writes either one `.duckdb` file or a folder of Parquet; only the file system says which.
     private var formatId: String? {
         let formats = NativeDumpRegistry.formats(for: connection.type)
         guard formats.count > 1 else { return formats.first?.id }
@@ -171,8 +165,7 @@ struct RestoreDatabaseFlow: View {
         }
     }
 
-    /// A restore replays a dump into a database that already has contents, and the tools it drives
-    /// do not ask. Picking a database in the list used to be the last step before the first write.
+    // The dump tools overwrite without asking, so the confirmation is the last step before a write.
     private func startRestore(database: String) async {
         guard let message = RestoreConfirmationText.message(for: connection.type, formatId: formatId) else {
             phase = .failed(
@@ -205,5 +198,65 @@ struct RestoreDatabaseFlow: View {
         } catch {
             phase = .failed(message: error.localizedDescription, targetMayBeModified: false)
         }
+    }
+}
+
+private struct RestoreTargetPicker: View {
+    let currentDatabase: String
+    let databaseType: DatabaseType
+    let connectionId: UUID
+    let onCancel: () -> Void
+    let onSelect: (String) -> Void
+    @StateObject private var viewModel: DatabaseSwitcherViewModel
+
+    init(
+        connection: DatabaseConnection,
+        currentDatabase: String,
+        onCancel: @escaping () -> Void,
+        onSelect: @escaping (String) -> Void
+    ) {
+        self.currentDatabase = currentDatabase
+        self.databaseType = connection.type
+        self.connectionId = connection.id
+        self.onCancel = onCancel
+        self.onSelect = onSelect
+        self._viewModel = StateObject(
+            wrappedValue: DatabaseSwitcherViewModel(
+                connectionId: connection.id,
+                currentDatabase: currentDatabase,
+                databaseType: connection.type,
+                switchTarget: .database,
+                sidebarState: SharedSidebarState.forConnection(connection.id)
+            ))
+    }
+
+    var body: some View {
+        NavigationStack {
+            DatabaseSwitcherList(
+                viewModel: viewModel,
+                currentDatabase: currentDatabase,
+                activeDatabase: currentDatabase,
+                databaseType: databaseType,
+                connectionId: connectionId,
+                commands: nil,
+                onCommit: onSelect,
+                dismiss: onCancel
+            )
+            .navigationTitle(String(localized: "Restore Database"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "Cancel"), action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "Restore")) {
+                        if let database = viewModel.primarySelection {
+                            onSelect(database)
+                        }
+                    }
+                    .disabled(viewModel.primarySelection == nil)
+                }
+            }
+        }
+        .frame(width: 480, height: 460)
     }
 }

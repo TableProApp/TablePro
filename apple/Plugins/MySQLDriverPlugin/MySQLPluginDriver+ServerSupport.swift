@@ -29,16 +29,26 @@ internal extension MySQLPluginDriver {
         holdsForServer(MySQLServerVersion.appendsInnoDBStatusToComment(banner:flavor:))
     }
 
-    /// Whether a catalog read has to compare the schema name byte for byte: true under
-    /// `lower_case_table_names = 0`. A server that will not answer keeps the plain comparison, for
-    /// this call only.
+    // A server that will not answer keeps the plain comparison, for this call only.
     func schemaNamesAreCaseSensitive() async -> Bool {
         if let known = cachedSchemaNamesAreCaseSensitive { return known }
-        guard let result = try? await execute(ownStatement: MySQLObjectQueries.lowerCaseTableNames),
-              let setting = result.rows.first?[safe: 0]?.asText.flatMap({ Int($0) })
-        else { return false }
-        let sensitive = setting == 0
+        let run: MySQLExportCatalog.Run = { [self] in try await self.execute(ownStatement: $0) }
+        guard let sensitive = await MySQLExportCatalog.schemaNameCaseSensitivity(run: run) else { return false }
         cachedSchemaNamesAreCaseSensitive = sensitive
         return sensitive
+    }
+
+    // Built per call, so each read sees the banner, flavor and database of the session it runs on.
+    var exportCatalog: MySQLExportCatalog {
+        let identity = serverIdentity
+        return MySQLExportCatalog(
+            banner: identity.banner,
+            flavor: identity.flavor,
+            activeDatabase: activeDatabaseName,
+            quote: { [self] in self.quoteIdentifier($0) },
+            run: { [self] in try await self.execute(ownStatement: $0) },
+            schemaNamesAreCaseSensitive: { [self] in await self.schemaNamesAreCaseSensitive() },
+            settlesBlindness: { MySQLPluginDriver.settlesBlindness($0) }
+        )
     }
 }

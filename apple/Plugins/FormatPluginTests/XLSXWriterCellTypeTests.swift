@@ -129,6 +129,20 @@ struct XLSXWriterCellTypeTests {
             + "</row>")
     }
 
+    @Test("A string with leading or trailing whitespace asks Excel to keep it", arguments: [
+        "  A1", "Ada ", " ", "\tx", "x\n"
+    ])
+    func outerWhitespaceIsPreserved(value: String) async throws {
+        let xml = try await sheetXML(columnTypeNames: ["text"], row: [.text(value)])
+        #expect(xml == "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t xml:space=\"preserve\">\(value)</t></is></c></row>")
+    }
+
+    @Test("A string with whitespace only inside it gets no space attribute")
+    func innerWhitespaceNeedsNoAttribute() async throws {
+        let xml = try await sheetXML(columnTypeNames: ["text"], row: [.text("Ada Lovelace")])
+        #expect(xml == "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Ada Lovelace</t></is></c></row>")
+    }
+
     @Test("A missing or unknown type name is untyped", arguments: ["", "  ", "interval", "geometry", "variant"])
     func untypedTypeNames(typeName: String) {
         #expect(XLSXWriter.ColumnNumbers(typeName: typeName) == .untyped)

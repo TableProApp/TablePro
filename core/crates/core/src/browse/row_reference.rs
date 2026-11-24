@@ -112,7 +112,7 @@ fn key_filter(key: &str, cells: Vec<(&ColumnType, &Value)>, targets: &[String]) 
 /// The other side reads it under a type that compares alike with this
 /// column's, so text this column's own type does not read back as the
 /// same value has no filter.
-fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
+pub fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
     let text = match value {
         Value::Bytes(bytes) if matches!(column_type.kind, ColumnKind::Bytes { .. }) => {
             format!("0x{}", crate::hex::encode_lower(bytes))

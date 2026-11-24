@@ -415,10 +415,8 @@ final class SidebarViewModel: ObservableObject {
     private func tableOperationEligibility(
         for targets: [DatabaseTreeTableRef]
     ) -> TableOperationEligibility.Context? {
-        guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter else {
-            return nil
-        }
-        return adapter.tableOperationEligibility(for: targets, isReadOnly: false)
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return nil }
+        return driver.tableOperationEligibility(for: targets, isReadOnly: false)
     }
 
     private func unstage(_ targets: [DatabaseTreeTableRef], from queue: inout Set<DatabaseTreeTableRef>) {

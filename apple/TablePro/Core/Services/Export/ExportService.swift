@@ -86,7 +86,7 @@ final class ExportService: ObservableObject {
     ) {
         self.driver = driver
         self.databaseType = databaseType
-        self.effectiveQueryTimeoutSeconds = (driver as? PluginDriverAdapter)?.effectiveQueryTimeoutSeconds
+        self.effectiveQueryTimeoutSeconds = driver.sessionQueryTimeoutSeconds
             ?? ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
                 configuredSeconds: driver.connection.queryTimeoutSeconds,
                 globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
@@ -103,7 +103,7 @@ final class ExportService: ObservableObject {
         self.driver = driver
         self.databaseType = databaseType
         self.effectiveQueryTimeoutSeconds = driver.map { driver in
-            (driver as? PluginDriverAdapter)?.effectiveQueryTimeoutSeconds
+            driver.sessionQueryTimeoutSeconds
                 ?? ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
                     configuredSeconds: driver.connection.queryTimeoutSeconds,
                     globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
@@ -265,7 +265,8 @@ final class ExportService: ObservableObject {
             PluginExportTable(
                 name: object.name,
                 databaseName: dataSource.pluginDatabaseName(for: object.databaseName),
-                tableType: object.kind.rawValue,
+                // A routine's own kind, which picks DROP FUNCTION or DROP PROCEDURE.
+                tableType: object.routineKind?.rawValue ?? object.kind.rawValue,
                 optionValues: object.optionValues,
                 schema: dataSource.exportSchema(for: object.databaseName),
                 kind: object.kind,

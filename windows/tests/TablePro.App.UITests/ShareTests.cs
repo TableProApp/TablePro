@@ -17,7 +17,7 @@ public sealed partial class ShellTests
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "SELECT TrackId, Name FROM Track");
         app.Chord(
-            () => app.Find("QueryStatus").Name.StartsWith("Rows: ", StringComparison.Ordinal),
+            () => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Rows: ", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL,
             VirtualKeyShort.ENTER);
         var grid = app.Find("ResultsGrid");

@@ -147,11 +147,7 @@ extension MainContentCoordinator {
             return false
         }
         mutateActiveTableRows(for: tabId) { $0.fillUnloaded(read.values) }
-        if tabManager.selectedTabId == tabId {
-            changeManager.adoptLoadedValues(read.values)
-        } else {
-            tabManager.mutate(tabId: tabId) { $0.pendingChanges.adoptLoadedValues(read.values) }
-        }
+        changeManager(forTab: tabId).adoptLoadedValues(read.values)
         inspectorRowSourceRevision &+= 1
         return read.isComplete
     }

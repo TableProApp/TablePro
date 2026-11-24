@@ -22,6 +22,9 @@ internal static class Program
             return;
         }
 
+        // Only the process that owns the data folder, so a launch that handed over is never started again.
+        AppRestart.Register();
+
         AppInstance? current = null;
         Application.Start(_ =>
         {

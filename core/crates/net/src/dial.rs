@@ -151,6 +151,11 @@ mod tests {
         Instant::now() + liveness.connect_timeout
     }
 
+    // Port 1 is below every system's ephemeral range, so no test's listener takes it and a connect is refused.
+    fn refused() -> SocketAddr {
+        SocketAddr::from(([127, 0, 0, 1], 1))
+    }
+
     fn full_backlog_listener() -> (Socket, SocketAddr, Vec<std::net::TcpStream>) {
         let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
         socket.bind(&SocketAddr::from(([127, 0, 0, 1], 0)).into()).unwrap();
@@ -163,14 +168,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dropped_port_then_live_listener_connects_second() {
-        let dropped = StdListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
+    async fn refused_port_then_live_listener_connects_second() {
         let live = StdListener::bind("127.0.0.1:0").unwrap();
         let live_address = live.local_addr().unwrap();
         let endpoint = NetworkEndpoint::new("127.0.0.1", live_address.port()).unwrap();
         let liveness = quick_liveness();
 
-        let stream = dial_addresses(vec![dropped, live_address], &endpoint, &liveness, deadline(&liveness))
+        let stream = dial_addresses(vec![refused(), live_address], &endpoint, &liveness, deadline(&liveness))
             .await
             .unwrap();
         assert_eq!(stream.peer_addr().unwrap(), live_address);
@@ -243,13 +247,11 @@ mod tests {
 
     #[tokio::test]
     async fn every_address_refused_is_refused() {
-        let first = StdListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
-        let second = StdListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
-        let endpoint = NetworkEndpoint::new("127.0.0.1", first.port()).unwrap();
+        let endpoint = NetworkEndpoint::new("127.0.0.1", refused().port()).unwrap();
         let liveness = racing_liveness();
 
         assert_eq!(
-            dial_addresses(vec![first, second], &endpoint, &liveness, deadline(&liveness))
+            dial_addresses(vec![refused(), refused()], &endpoint, &liveness, deadline(&liveness))
                 .await
                 .err(),
             Some(TransportError::Refused {

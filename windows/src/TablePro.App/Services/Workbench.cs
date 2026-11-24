@@ -9,6 +9,7 @@ internal sealed class Workbench : IDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private bool _settingsUnsaved;
     private Task<QueryHistory?>? _history;
+    private Task<SavedQueries?>? _savedQueries;
     private Task<TableProAccount?>? _account;
     private CancellationTokenSource? _signingIn;
 
@@ -18,13 +19,19 @@ internal sealed class Workbench : IDisposable
         Folder = folder;
         _settings = new SettingsStore(Path.Combine(folder, "settings.json"));
         Sessions = new SessionStore(Path.Combine(folder, "session.json"));
+        TableFilters = new TableFilterMemory(Path.Combine(folder, "table-filters.json"));
+        ColumnLayouts = new ColumnLayoutMemory(Path.Combine(folder, "table-columns.json"));
         Settings = _settings.Load();
+        DisplaySettings.Update(Settings);
     }
 
     public event EventHandler? SettingsChanged;
 
     // Raised after this app changed the saved connections, so every list rebuilds from a new snapshot.
     public event EventHandler? LibraryChanged;
+
+    // Raised after Settings cleared the query history, so an open history pane reads it again.
+    public event EventHandler? HistoryCleared;
 
     // Raised on the UI thread after the account's status or a sign-in's progress changed.
     public event EventHandler? AccountChanged;
@@ -39,10 +46,47 @@ internal sealed class Workbench : IDisposable
 
     public SessionStore Sessions { get; }
 
+    // The last filter of each table, read when the table opens again.
+    public TableFilterMemory TableFilters { get; }
+
+    // Each table's column order, hidden columns and frozen count, read when the table opens again.
+    public ColumnLayoutMemory ColumnLayouts { get; }
+
     public AppSettings Settings { get; private set; }
 
     // Shared by every workspace and kept in the session file.
     public double ObjectPaneWidth { get; set; } = ObjectPane.DefaultWidth;
+
+    // File, Open recent in every window; kept in the session file.
+    public RecentFiles RecentFiles { get; private set; } = new();
+
+    public event EventHandler? RecentFilesChanged;
+
+    public void LoadRecentFiles(IEnumerable<string> paths)
+    {
+        RecentFiles = new RecentFiles(paths);
+        RecentFilesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void UseFile(string path)
+    {
+        RecentFiles.Add(path);
+        RecentFilesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ForgetFile(string path)
+    {
+        if (RecentFiles.Remove(path))
+        {
+            RecentFilesChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public void ClearRecentFiles()
+    {
+        RecentFiles.Clear();
+        RecentFilesChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public AccountStatus AccountStatus { get; private set; } = AccountStatus.SignedOut;
 
@@ -72,9 +116,16 @@ internal sealed class Workbench : IDisposable
             return;
         }
 
+        var pruneAgain = next.HistoryRetentionDays != Settings.HistoryRetentionDays
+            || next.HistoryMaxEntries != Settings.HistoryMaxEntries;
         Settings = next;
         SaveSettings();
+        DisplaySettings.Update(next);
         SettingsChanged?.Invoke(this, EventArgs.Empty);
+        if (pruneAgain && _history is { IsCompletedSuccessfully: true, Result: { } history })
+        {
+            _ = PruneHistoryAsync(history);
+        }
     }
 
     public void SaveUnsavedSettings()
@@ -187,13 +238,76 @@ internal sealed class Workbench : IDisposable
 
     private async Task<QueryHistory?> OpenHistoryAsync()
     {
+        QueryHistory history;
         try
         {
-            return await Core.OpenHistoryAsync().ConfigureAwait(true);
+            history = await Core.OpenHistoryAsync().ConfigureAwait(true);
         }
         catch (TableProException)
         {
             return null;
+        }
+
+        await PruneHistoryAsync(history).ConfigureAwait(true);
+        return history;
+    }
+
+    // To the age and count Settings keeps, when the store opens and when either changes; pinned runs stay.
+    private async Task PruneHistoryAsync(QueryHistory history)
+    {
+        try
+        {
+            await history.PruneAsync(Settings.HistoryRetentionDays, Settings.HistoryMaxEntries).ConfigureAwait(true);
+        }
+        catch (TableProException)
+        {
+            // The runs stay until the next prune; recording and search do not depend on it.
+        }
+        catch (ObjectDisposedException)
+        {
+            // The app closed the store as it quit.
+        }
+    }
+
+    // Every connection's runs, pinned ones too, as Settings' Clear history asks. False when the store could not open.
+    public async Task<bool> ClearHistoryAsync()
+    {
+        if (await GetHistoryAsync().ConfigureAwait(true) is not { } history)
+        {
+            return false;
+        }
+
+        await history.ClearAsync().ConfigureAwait(true);
+        HistoryCleared?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    // Kept in the history's database, so null when the history cannot open.
+    public Task<SavedQueries?> GetSavedQueriesAsync() => _savedQueries ??= OpenSavedQueriesAsync();
+
+    private async Task<SavedQueries?> OpenSavedQueriesAsync()
+    {
+        if (await GetHistoryAsync().ConfigureAwait(true) is not { } history)
+        {
+            return null;
+        }
+
+        try
+        {
+            return history.OpenSavedQueries();
+        }
+        catch (TableProException)
+        {
+            return null;
+        }
+    }
+
+    // A deleted connection's saved queries, folders and favourites go with it, as on Linux; none are kept without a store.
+    public async Task ForgetSavedQueriesAsync(Guid connectionId)
+    {
+        if (await GetSavedQueriesAsync().ConfigureAwait(true) is { } savedQueries)
+        {
+            await savedQueries.DeleteForConnectionAsync(connectionId).ConfigureAwait(true);
         }
     }
 
@@ -227,6 +341,11 @@ internal sealed class Workbench : IDisposable
     {
         _lifetime.Cancel();
         _signingIn?.Cancel();
+        if (_savedQueries is { IsCompletedSuccessfully: true, Result: { } savedQueries })
+        {
+            savedQueries.Dispose();
+        }
+
         if (_history is { IsCompletedSuccessfully: true, Result: { } history })
         {
             history.Dispose();

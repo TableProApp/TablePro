@@ -21,6 +21,9 @@ public interface IWorkspaceTab
 
     SessionTab Snapshot();
 
+    // For the session's own writes alone: what an end without a close would lose, which a relaunch brings back.
+    SessionTab WithPendingWork(SessionTab snapshot);
+
     // Once only, however often it is asked for: the tab lets go of its session exactly once.
     Task CloseAsync();
 }
@@ -89,6 +92,35 @@ public sealed class WorkspaceTabs<TItem>
                 }
 
                 _closed.Push(content.Snapshot(), IndexOf(item));
+                await content.CloseAsync().ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _closing.Remove(item);
+        }
+
+        _view.Remove(item);
+        if (_view.Items.Count == 0)
+        {
+            Emptied?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    // The table the tab shows was dropped: nothing is asked, since its changes have nowhere to go, and the tab is not
+    // kept to reopen.
+    public async Task DiscardAsync(TItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (!_closing.Add(item))
+        {
+            return;
+        }
+
+        try
+        {
+            if (_view.ContentOf(item) is { } content)
+            {
                 await content.CloseAsync().ConfigureAwait(true);
             }
         }

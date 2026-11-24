@@ -13,18 +13,23 @@ public sealed class TableProCore : IDisposable
 {
     private readonly Native.Core _core;
     private readonly Lazy<ConnectionLibrary> _library;
+    private readonly Lazy<AiAssistant> _assistant;
 
     private TableProCore(Native.Core core)
     {
         _core = core;
         Engines = [.. core.Drivers().Select(Mapping.Engine)];
         _library = new Lazy<ConnectionLibrary>(() => new ConnectionLibrary(CoreCall.Run(_core.Library)));
+        _assistant = new Lazy<AiAssistant>(() => new AiAssistant(_core.AiAssistant()));
     }
 
     public IReadOnlyList<DatabaseEngine> Engines { get; }
 
     // Throws TableProException with code ffi.no_storage when the configuration named no storage directory.
     public ConnectionLibrary Library => _library.Value;
+
+    // Its keys go to the store the core was given, Credential Manager for the app.
+    public AiAssistant Assistant => _assistant.Value;
 
     public static TableProCore Create(HostConfiguration configuration, ISecretStore secrets)
     {
@@ -46,6 +51,14 @@ public sealed class TableProCore : IDisposable
     {
         ArgumentNullException.ThrowIfNull(url);
         return Mapping.Url(CoreCall.Run(() => Native.CoreMethods.ParseConnectionUrl(url)));
+    }
+
+    // Jump hosts as OpenSSH's -J takes them, user@host:port separated by commas; throws TableProException with code
+    // ssh.invalid_destination for a list a connect would refuse.
+    public static void CheckJumpHosts(string list)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        CoreCall.Run(() => Native.CoreMethods.CheckJumpHosts(list));
     }
 
     // Opened once per core and shared. Throws TableProException with code ffi.no_storage without a storage directory.
@@ -81,11 +94,13 @@ public sealed class TableProCore : IDisposable
     }
 
     // Logs in with secrets where set, else Credential Manager's; the core stores keep once it has logged in.
+    // Database, in place of the saved one, opens the connection in another of the server's databases.
     public async Task<DatabaseSession> ConnectAsync(
         Guid connectionId,
         ConnectionSecrets? secrets = null,
         ICredentialPrompter? prompter = null,
         ConnectionSecrets? keep = null,
+        string? database = null,
         CancellationToken cancellationToken = default)
     {
         var typed = Mapping.Secrets(secrets ?? ConnectionSecrets.None);
@@ -95,7 +110,7 @@ public sealed class TableProCore : IDisposable
         try
         {
             var session = await CoreCall.RunAsync(
-                    token => _core.ConnectSaved(connectionId.ToString(), typed, kept, adapter, token),
+                    token => _core.ConnectSaved(connectionId.ToString(), database, typed, kept, adapter, token),
                     cancellationToken)
                 .ConfigureAwait(false);
             return new DatabaseSession(session, adapter);

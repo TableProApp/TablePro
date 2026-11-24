@@ -90,6 +90,10 @@ public sealed class ConnectionLibrary : IDisposable
         return CoreCall.RunAsync(() => _library.RenameGroup(id.ToString(), name));
     }
 
+    // A colour ConnectionColor names, such as "red"; null takes it off.
+    public Task SetGroupColorAsync(Guid id, string? color) =>
+        CoreCall.RunAsync(() => _library.SetGroupColor(id.ToString(), color));
+
     // The group's subgroups go with it, and its connections move to the top level.
     public Task DeleteGroupAsync(Guid id) => CoreCall.RunAsync(() => _library.DeleteGroup(id.ToString()));
 
@@ -113,6 +117,22 @@ public sealed class ConnectionLibrary : IDisposable
         ArgumentNullException.ThrowIfNull(path);
         var summary = await CoreCall.RunAsync(() => _library.ImportFile(path)).ConfigureAwait(false);
         return new ImportSummary(checked((int)summary.Added), checked((int)summary.Updated));
+    }
+
+    // A copy under a new id right after the original, with every secret the original keeps; it is no favourite.
+    public async Task<SavedConnection> DuplicateAsync(Guid id, string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        var copy = await CoreCall.RunAsync(() => _library.Duplicate(id.ToString(), name)).ConfigureAwait(false);
+        return Mapping.Connection(copy);
+    }
+
+    // Every connection, group and tag, and no password, in a file that appears at path only once whole.
+    public async Task<int> ExportAsync(string path)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        var count = await CoreCall.RunAsync(() => _library.ExportFile(path)).ConfigureAwait(false);
+        return checked((int)count);
     }
 
     public void Dispose() => _library.Dispose();

@@ -22,7 +22,6 @@ struct TableLoadForeignKeyPrefetchTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer {
@@ -37,7 +36,7 @@ struct TableLoadForeignKeyPrefetchTests {
         tabManager.selectedTabId = tab.id
         let scope = try #require(coordinator.scope(for: tab))
 
-        coordinator.executeQueryInternal("SELECT * FROM orders")
+        coordinator.executeQueryInternal("SELECT * FROM orders", onTab: coordinator.commandTabId)
         _ = try? await waitUntil { paused.isRaised }
         try #require(paused.isRaised, "The row query never reached the driver")
 

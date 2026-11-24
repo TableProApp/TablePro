@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum RedshiftSchemaQueries {
+nonisolated enum RedshiftSchemaQueries {
     static func columnsQuery(schema: String, table: String?) -> String {
         ColumnQueryShape.informationSchemaColumnsQuery(schema: schema, table: table)
     }

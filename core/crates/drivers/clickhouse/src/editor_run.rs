@@ -4,7 +4,7 @@ use std::time::Duration;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::{
     DriverError, ErrorCategory, LossPhase, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, RunOptions, RunSummary,
-    SinkFlow, TimeoutPhase, TransactionState, Truncation, UserSql, Value,
+    SinkFlow, TimeoutPhase, TransactionState, Truncation, UserSql, Value, deadline_elapsed,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -167,7 +167,7 @@ impl EditorRun {
                     tracing::debug!(%error, "waiting for a stopped editor query to end failed");
                 }
             }
-            () = reached(give_up) => {
+            () = deadline_elapsed(give_up) => {
                 tracing::debug!("a stopped editor query did not end within the cancel grace");
             }
         }
@@ -274,14 +274,6 @@ async fn kill_within(control: &clickhouse::Client, query_id: Uuid, grace: Durati
     }
 }
 
-/// Ends at `at`, or never without one.
-async fn reached(at: Option<Instant>) {
-    match at {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
-    }
-}
-
 /// What stops a run, and when the stop was sent.
 struct Stop {
     cancel: CancellationToken,
@@ -308,7 +300,7 @@ impl Stop {
         tokio::select! {
             () = self.cancel.cancelled() => Interrupt::Cancelled,
             () = self.shutdown.cancelled() => Interrupt::Cancelled,
-            () = reached(self.deadline) => Interrupt::DeadlineElapsed,
+            () = deadline_elapsed(self.deadline) => Interrupt::DeadlineElapsed,
         }
     }
 
@@ -323,7 +315,7 @@ impl Stop {
     }
 
     async fn gave_up(&self) {
-        reached(self.give_up).await;
+        deadline_elapsed(self.give_up).await;
     }
 
     /// How a stopped run ends. The server's 394 or its own timeout is the
@@ -487,12 +479,9 @@ mod tests {
         )
     }
 
-    /// A port nothing listens on, so a request is refused at once.
-    async fn closed_route() -> clickhouse::Client {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("a listener");
-        let address = listener.local_addr().expect("an address");
-        drop(listener);
-        clickhouse::Client::default().with_url(format!("http://{address}"))
+    // Port 1 is below every system's ephemeral range, so no test's listener takes it and a request is refused at once.
+    fn closed_route() -> clickhouse::Client {
+        clickhouse::Client::default().with_url("http://127.0.0.1:1")
     }
 
     struct Discard;
@@ -526,7 +515,7 @@ mod tests {
         let lingering = Arc::new(LingeringQuery::default());
         lingering.left(Uuid::new_v4());
         let run = EditorRun {
-            session: closed_route().await,
+            session: closed_route(),
             control,
             statement_timeout: None,
             bounds_on_server: true,
@@ -558,7 +547,7 @@ mod tests {
         for bounds_on_server in [false, true] {
             let run = EditorRun {
                 session: clickhouse::Client::default().with_url(url.clone()),
-                control: closed_route().await,
+                control: closed_route(),
                 statement_timeout: None,
                 bounds_on_server,
                 grace: Duration::from_millis(200),

@@ -9,7 +9,7 @@ use tablepro_core::sql_syntax::StatementAccess;
 use tablepro_core::sql_syntax::mongo::{access_of, parse_statement, statement_ranges};
 use tablepro_core::{
     DriverError, ErrorCategory, ReadOnlyRefusal, ResultSink, RunEnd, RunOptions, RunSummary, SinkFlow, StopReason,
-    StopRequest, TimeoutPhase, TransactionState, UserSql,
+    StopRequest, TimeoutPhase, TransactionState, UserSql, deadline_elapsed,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -185,7 +185,7 @@ impl EditorRun {
                     }),
                     () = options.cancel.cancelled() => ControlFlow::Continue(Interrupt::Cancelled),
                     () = self.shutdown.cancelled() => ControlFlow::Continue(Interrupt::Cancelled),
-                    () = until(deadline) => ControlFlow::Continue(Interrupt::DeadlineElapsed),
+                    () = deadline_elapsed(deadline) => ControlFlow::Continue(Interrupt::DeadlineElapsed),
                 };
                 match interrupt {
                     ControlFlow::Break(ran) => ran,
@@ -239,12 +239,5 @@ fn summary(started: Instant, end: RunEnd) -> RunSummary {
         elapsed: started.elapsed(),
         end,
         transaction_state: TransactionState::Idle,
-    }
-}
-
-async fn until(deadline: Option<Instant>) {
-    match deadline {
-        Some(deadline) => tokio::time::sleep_until(deadline).await,
-        None => std::future::pending().await,
     }
 }

@@ -16,7 +16,7 @@ struct TableLoadConfirmationTests {
         defer { harness.tearDown() }
         let tabId = harness.addTableTab("users")
 
-        let confirmation = harness.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
+        let confirmation = harness.coordinator.executeTableTabQueryDirectly(onTab: tabId, viewport: .firstRow)
         await harness.gate.release()
         await confirmation?.value
 
@@ -34,7 +34,7 @@ struct TableLoadConfirmationTests {
         defer { harness.tearDown() }
         let firstId = harness.addTableTab("users")
 
-        let confirmation = harness.coordinator.executeTableTabQueryDirectly(viewport: .firstRow)
+        let confirmation = harness.coordinator.executeTableTabQueryDirectly(onTab: firstId, viewport: .firstRow)
         await harness.gate.untilAsked()
         let secondId = harness.addTableTab("orders")
         await harness.gate.release()
@@ -108,7 +108,6 @@ struct TableLoadConfirmationTests {
             let coordinator = MainContentCoordinator(
                 connection: connection,
                 tabManager: QueryTabManager(),
-                changeManager: DataChangeManager(),
                 toolbarState: toolbarState
             )
             coordinator.executionGate = gate

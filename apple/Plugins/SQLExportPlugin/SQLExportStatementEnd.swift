@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-extension PluginExportDataSource {
+nonisolated extension PluginExportDataSource {
     /// What ends every statement of a dump of this source: a line break, and on an engine whose client runs a script in
     /// batches cut at `GO` lines, that line too. SQL Server refuses a view, a routine or a trigger that is not the first
     /// statement of its batch, and a routine's body runs to the end of its batch, so each statement is written as a

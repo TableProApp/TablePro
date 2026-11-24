@@ -59,7 +59,7 @@ extension MainContentCoordinator {
         guard supportsColumnSort else { return }
         let tabId = tab.id
         let capturedSort = newState
-        confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .sort) { [weak self] confirmed in
             guard let self, confirmed else { return }
             guard self.tabManager.mutate(tabId: tabId, { tab in
                 tab.sortState = capturedSort
@@ -71,7 +71,11 @@ extension MainContentCoordinator {
             }) else { return }
             guard let tabIndex = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
             self.rebuildTableQuery(at: tabIndex)
-            self.runQuery(viewport: .firstRow)
+            self.runQuery(onTab: tabId, viewport: .firstRow)
         }
+    }
+
+    func rebuildTableQuery(forTab tabId: UUID) {
+        filterCoordinator.rebuildTableQuery(forTab: tabId)
     }
 }

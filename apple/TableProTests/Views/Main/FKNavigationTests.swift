@@ -12,7 +12,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -43,7 +42,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -79,7 +77,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -111,7 +108,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -153,7 +149,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -182,7 +177,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -215,7 +209,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -244,7 +237,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -276,7 +268,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -285,7 +276,6 @@ struct FKNavigationTests {
         let targetCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: targetTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
@@ -345,7 +335,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -354,7 +343,6 @@ struct FKNavigationTests {
         let targetCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: targetTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
@@ -407,7 +395,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -416,7 +403,6 @@ struct FKNavigationTests {
         let targetCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: targetTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
@@ -474,7 +460,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -483,7 +468,6 @@ struct FKNavigationTests {
         let targetCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: targetTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
@@ -542,7 +526,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -551,7 +534,6 @@ struct FKNavigationTests {
         let targetCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: targetTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
@@ -601,7 +583,6 @@ struct FKNavigationTests {
         let originCoordinator = MainContentCoordinator(
             connection: connection,
             tabManager: originTabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         originCoordinator.registerEagerly()
@@ -645,7 +626,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -690,7 +670,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -722,7 +701,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -753,7 +731,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -782,7 +759,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -818,7 +794,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -849,7 +824,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -883,7 +857,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -911,7 +884,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -942,7 +914,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -973,7 +944,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1005,7 +975,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1046,7 +1015,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1088,7 +1056,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1121,7 +1088,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1154,7 +1120,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }
@@ -1191,7 +1156,6 @@ struct FKNavigationTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }

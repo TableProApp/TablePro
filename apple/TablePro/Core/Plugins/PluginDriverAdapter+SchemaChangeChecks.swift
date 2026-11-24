@@ -7,16 +7,12 @@ import Foundation
 import TableProPluginKit
 
 internal extension PluginDriverAdapter {
-    func schemaChangeToken() async throws -> String? {
-        try await schemaPluginDriver.schemaChangeToken()
-    }
-
     func reviewSchemaChange(
         table: String,
         schema: String?,
         operations: [PluginSchemaOperation]
     ) async throws -> PluginSchemaChangeReview {
-        try await schemaPluginDriver.reviewSchemaChange(table: table, schema: schema, operations: operations)
+        try await pluginDriver.reviewSchemaChange(table: table, schema: schema, operations: operations)
     }
 
     func schemaChangeRefusalBeforeWriting(
@@ -25,7 +21,7 @@ internal extension PluginDriverAdapter {
         operations: [PluginSchemaOperation],
         review: PluginSchemaChangeReview
     ) async throws -> String? {
-        try await schemaPluginDriver.schemaChangeRefusalBeforeWriting(
+        try await pluginDriver.schemaChangeRefusalBeforeWriting(
             table: table,
             schema: schema,
             operations: operations,
@@ -39,7 +35,7 @@ internal extension PluginDriverAdapter {
         operations: [PluginSchemaOperation],
         review: PluginSchemaChangeReview
     ) async throws -> String? {
-        try await schemaPluginDriver.schemaChangeShortfallAfterWriting(
+        try await pluginDriver.schemaChangeShortfallAfterWriting(
             table: table,
             schema: schema,
             operations: operations,
@@ -48,6 +44,6 @@ internal extension PluginDriverAdapter {
     }
 
     func tableDefinitionDidChange(table: String, schema: String?) {
-        schemaPluginDriver.tableDefinitionDidChange(table: table, schema: schema)
+        pluginDriver.tableDefinitionDidChange(table: table, schema: schema)
     }
 }

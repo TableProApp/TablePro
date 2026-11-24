@@ -435,6 +435,11 @@ mod tests {
         };
         assert_eq!(reason, "no answer within 8 seconds");
         assert!(state.starts_with("status running, "), "{state}");
-        assert!(logs.contains("Listening for http://0.0.0.0:8124"), "{logs}");
+        // 26.8.36 and 26.3 bind 0.0.0.0 and 26.8.37 binds `::`: the image picks the address, the config the port.
+        assert!(
+            logs.lines()
+                .any(|line| line.contains("Listening for http://") && line.trim_end().ends_with(":8124")),
+            "{logs}"
+        );
     }
 }

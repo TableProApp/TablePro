@@ -23,7 +23,6 @@ struct FoldTabOwnershipTests {
                 type: .mysql
             ),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
     }

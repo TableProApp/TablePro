@@ -484,6 +484,21 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]?
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String?
 
+    // The schema the caller's scope names, nil for the session's. The defaults forward to the schema-less
+    // requirements above, so a driver that only answers those keeps qualifying with its session schema.
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String?
+    func generateModifyColumnSQL(table: String, schema: String?, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String?
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String?
+    func generateAddIndexSQL(table: String, schema: String?, index: PluginIndexDefinition) -> String?
+    func generateDropIndexSQL(table: String, schema: String?, indexName: String) -> String?
+    func generateModifyIndexSQL(table: String, schema: String?, oldIndexName: String, newIndex: PluginIndexDefinition) -> String?
+    func generateAddForeignKeySQL(table: String, schema: String?, fk: PluginForeignKeyDefinition) -> String?
+    func generateDropForeignKeySQL(table: String, schema: String?, constraintName: String) -> String?
+    func generateAddCheckConstraintSQL(table: String, schema: String?, constraint: PluginCheckConstraintDefinition) -> String?
+    func generateDropCheckConstraintSQL(table: String, schema: String?, constraintName: String) -> String?
+    func generateRenameCheckConstraintSQL(table: String, schema: String?, from oldName: String, to newName: String) -> String?
+    func generateModifyPrimaryKeySQL(table: String, schema: String?, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]?
+
     /// The statements that put `table`'s columns into `desiredOrder`, or nil where the engine
     /// cannot reorder them.
     ///
@@ -615,6 +630,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// answers ORA-03405 and creates nothing. Only the driver knows where its own statements end, so a driver whose
     /// DDL holds more than one statement answers here. The default is that one string, sent whole.
     func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]?
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]?
 
     // Definition SQL for clipboard copy (optional — return nil if not supported)
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String?
@@ -753,6 +769,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String?
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String?
     func generateDropRoutineSQL(name: String, signature: String?, schema: String?, isFunction: Bool) -> String?
+    // A dump's drop of a table, view or materialized view, which succeeds when the relation is missing. Nil keeps the
+    // export's own `DROP ... IF EXISTS`.
+    func generateDropRelationSQL(name: String, kind: PluginExportObjectKind, schema: String?) -> String?
     var triggerEditUsesReplace: Bool { get }
 
     /// Whether an object whose definition this driver reports as `CREATE OR REPLACE` is replaced by running that
@@ -984,6 +1003,7 @@ public extension PluginDatabaseDriver {
         schema: String?,
         isFunction: Bool
     ) -> String? { nil }
+    func generateDropRelationSQL(name: String, kind: PluginExportObjectKind, schema: String?) -> String? { nil }
     var triggerEditUsesReplace: Bool { false }
     var replacesDefinitionsInPlace: Bool { false }
     var supportsTransactionalDDL: Bool { false }
@@ -1360,6 +1380,81 @@ public extension PluginDatabaseDriver {
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? { nil }
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? { nil }
 
+    func generateAddColumnSQL(table: String, schema: String?, column: PluginColumnDefinition) -> String? {
+        generateAddColumnSQL(table: table, column: column)
+    }
+
+    func generateModifyColumnSQL(
+        table: String,
+        schema: String?,
+        oldColumn: PluginColumnDefinition,
+        newColumn: PluginColumnDefinition
+    ) -> String? {
+        generateModifyColumnSQL(table: table, oldColumn: oldColumn, newColumn: newColumn)
+    }
+
+    func generateDropColumnSQL(table: String, schema: String?, columnName: String) -> String? {
+        generateDropColumnSQL(table: table, columnName: columnName)
+    }
+
+    func generateAddIndexSQL(table: String, schema: String?, index: PluginIndexDefinition) -> String? {
+        generateAddIndexSQL(table: table, index: index)
+    }
+
+    func generateDropIndexSQL(table: String, schema: String?, indexName: String) -> String? {
+        generateDropIndexSQL(table: table, indexName: indexName)
+    }
+
+    func generateModifyIndexSQL(
+        table: String,
+        schema: String?,
+        oldIndexName: String,
+        newIndex: PluginIndexDefinition
+    ) -> String? {
+        generateModifyIndexSQL(table: table, oldIndexName: oldIndexName, newIndex: newIndex)
+    }
+
+    func generateAddForeignKeySQL(table: String, schema: String?, fk: PluginForeignKeyDefinition) -> String? {
+        generateAddForeignKeySQL(table: table, fk: fk)
+    }
+
+    func generateDropForeignKeySQL(table: String, schema: String?, constraintName: String) -> String? {
+        generateDropForeignKeySQL(table: table, constraintName: constraintName)
+    }
+
+    func generateAddCheckConstraintSQL(
+        table: String,
+        schema: String?,
+        constraint: PluginCheckConstraintDefinition
+    ) -> String? {
+        generateAddCheckConstraintSQL(table: table, constraint: constraint)
+    }
+
+    func generateDropCheckConstraintSQL(table: String, schema: String?, constraintName: String) -> String? {
+        generateDropCheckConstraintSQL(table: table, constraintName: constraintName)
+    }
+
+    func generateRenameCheckConstraintSQL(
+        table: String,
+        schema: String?,
+        from oldName: String,
+        to newName: String
+    ) -> String? {
+        generateRenameCheckConstraintSQL(table: table, from: oldName, to: newName)
+    }
+
+    func generateModifyPrimaryKeySQL(
+        table: String,
+        schema: String?,
+        oldColumns: [String],
+        newColumns: [String],
+        constraintName: String?
+    ) -> [String]? {
+        generateModifyPrimaryKeySQL(
+            table: table, oldColumns: oldColumns, newColumns: newColumns, constraintName: constraintName
+        )
+    }
+
     func generateColumnReorderPlan(
         table: String,
         schema: String?,
@@ -1415,6 +1510,10 @@ public extension PluginDatabaseDriver {
 
     func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
         generateCreateTableSQL(definition: definition).map { [$0] }
+    }
+
+    func generateCreateTableStatements(definition: PluginCreateTableDefinition, schema: String?) -> [String]? {
+        generateCreateTableStatements(definition: definition)
     }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }

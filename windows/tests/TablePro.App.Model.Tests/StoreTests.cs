@@ -92,6 +92,51 @@ public sealed class StoreTests : IDisposable
     }
 
     [Fact]
+    public void DisplayAndHistorySettingsComeBackAsSavedAndStartAsMacOSStartsThem()
+    {
+        var path = File("settings.json");
+        var fresh = new SettingsStore(path).Load();
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings
+        {
+            EditorFontFamily = "Consolas",
+            GridFontFamily = "Segoe UI",
+            GridFontSize = 12,
+            NullDisplay = "(null)",
+            HistoryRetentionDays = 30,
+            HistoryMaxEntries = 1_000,
+        });
+        var saved = store.Load();
+
+        Assert.Null(fresh.EditorFontFamily);
+        Assert.Null(fresh.GridFontFamily);
+        Assert.Equal(14, fresh.GridFontSize);
+        Assert.Equal("NULL", fresh.NullDisplay);
+        Assert.Equal(90, fresh.HistoryRetentionDays);
+        Assert.Equal(10_000, fresh.HistoryMaxEntries);
+        Assert.Equal(("Consolas", "Segoe UI", 12.0), (saved.EditorFontFamily, saved.GridFontFamily, saved.GridFontSize));
+        Assert.Equal(("(null)", 30, 1_000), (saved.NullDisplay, saved.HistoryRetentionDays, saved.HistoryMaxEntries));
+    }
+
+    [Fact]
+    public void ANullTextPastTwentyCharactersIsCutAndAnEmptyOneReadsAsNull()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(
+            path,
+            """{ "nullDisplay": "", "gridFontSize": 99, "editorFontFamily": "  ", "historyRetentionDays": -1 }""");
+
+        var settings = new SettingsStore(path).Load();
+        var cut = new AppSettings { NullDisplay = new string('x', 30) }.Normalized();
+
+        Assert.Equal("NULL", settings.NullDisplay);
+        Assert.Equal(36, settings.GridFontSize);
+        Assert.Null(settings.EditorFontFamily);
+        Assert.Equal(0, settings.HistoryRetentionDays);
+        Assert.Equal(20, cut.NullDisplay.Length);
+    }
+
+    [Fact]
     public void ANewTableTabPagesByAThousandRowsAsOnMacOS()
     {
         var settings = new SettingsStore(File("settings.json")).Load();

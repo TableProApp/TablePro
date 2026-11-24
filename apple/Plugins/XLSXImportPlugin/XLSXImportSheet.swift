@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 import TableProTabularIO
 
-struct XLSXImportSheet {
+nonisolated struct XLSXImportSheet {
     enum ReadError: LocalizedError {
         case noWorksheet
 
@@ -19,12 +19,18 @@ struct XLSXImportSheet {
         }
     }
 
+    // Excel stores at most 32,767 characters in a cell and Google Sheets 50,000; 1 MiB of UTF-8 holds either.
+    static let cellByteLimit = 1 << 20
+
+    // One read is the header, a batch or the detection sample. Capped at what the reader buffers for one workbook part.
+    static let readByteLimit = ZipArchive.bufferedEntryLimit
+
     let header: [String]?
     private let source: XLSXSheetSource
     private let columns: [Int]
     private let dataRows: [Int]
 
-    init(source: XLSXSheetSource, hasHeaderRow: Bool) {
+    init(source: XLSXSheetSource, hasHeaderRow: Bool) throws {
         let columns = Array(0..<source.columnCount)
         let occupied = source.occupiedRows()
         self.source = source
@@ -39,7 +45,7 @@ struct XLSXImportSheet {
             dataRows = []
             return
         }
-        let headerCells = Self.rows([headerRow], of: source, columns: columns).first?.values ?? []
+        let headerCells = try Self.rows([headerRow], of: source, columns: columns).first?.values ?? []
         header = Self.headerNames(from: headerCells)
         dataRows = Array(occupied.dropFirst())
     }
@@ -50,7 +56,7 @@ struct XLSXImportSheet {
             throw ReadError.noWorksheet
         }
         let source = try workbook.source(for: sheet, isCancelled: isCancelled)
-        return XLSXImportSheet(source: source, hasHeaderRow: hasHeaderRow)
+        return try XLSXImportSheet(source: source, hasHeaderRow: hasHeaderRow)
     }
 
     static func headerNames(from row: [String?]) -> [String] {
@@ -63,15 +69,16 @@ struct XLSXImportSheet {
 
     var rowCount: Int { dataRows.count }
 
-    func rows(_ range: Range<Int>) -> [(line: Int, values: [String?])] {
-        Self.rows(dataRows[range.clamped(to: dataRows.indices)], of: source, columns: columns)
+    func rows(_ range: Range<Int>) throws -> [(line: Int, values: [String?])] {
+        try Self.rows(dataRows[range.clamped(to: dataRows.indices)], of: source, columns: columns)
     }
 
     private static func rows(
         _ picked: some Collection<Int>,
         of source: XLSXSheetSource,
         columns: [Int]
-    ) -> [(line: Int, values: [String?])] {
+    ) throws -> [(line: Int, values: [String?])] {
+        try checkTextSize(of: picked, in: source, columns: columns)
         var result: [(line: Int, values: [String?])] = []
         result.reserveCapacity(picked.count)
         source.scan(columns: columns, rows: picked, absentKind: .missing) { row, cells in
@@ -79,6 +86,42 @@ struct XLSXImportSheet {
             return true
         }
         return result
+    }
+
+    // Measured before any cell becomes a String: one shared string can back every cell, so a small file can expand to gigabytes.
+    private static func checkTextSize(
+        of picked: some Collection<Int>,
+        in source: XLSXSheetSource,
+        columns: [Int]
+    ) throws {
+        var total = 0
+        var failure: PluginImportError?
+        source.scan(columns: columns, rows: picked, absentKind: .missing) { row, cells in
+            for index in 0..<cells.count {
+                let length = cells.bytes[index].count
+                guard length <= cellByteLimit else {
+                    failure = .importFailed(String(
+                        format: String(localized: "Cell %1$@ holds more than %2$@ of text, so the workbook was not read."),
+                        source.sheetReference(row: row, column: columns[index]).text,
+                        byteCount(cellByteLimit)))
+                    return false
+                }
+                total += length
+            }
+            guard total <= readByteLimit else {
+                failure = .importFailed(String(
+                    format: String(localized: "Rows read together hold more than %1$@ of text by row %2$@, so the workbook was not read."),
+                    byteCount(readByteLimit),
+                    (source.sheetReference(row: row, column: 0).row + 1).formatted()))
+                return false
+            }
+            return true
+        }
+        if let failure { throw failure }
+    }
+
+    private static func byteCount(_ bytes: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .binary)
     }
 
     private static func values(of cells: TabularRowCells) -> [String?] {

@@ -201,29 +201,6 @@ struct PendingChangesReplayTests {
     }
 }
 
-struct PendingChangesSnapshotTests {
-    @Test("Snapshot round-trip preserves state")
-    func snapshotRoundTrip() {
-        var pending = PendingChanges()
-        pending.recordCellChange(
-            rowID: .existing(0), columnIndex: 1, columnName: "name",
-            oldValue: "a", newValue: "b"
-        )
-        pending.recordRowDeletion(rowID: .existing(5), originalRow: ["x"])
-        pending.recordRowInsertion(rowID: insertedID(7), values: ["new"])
-
-        let snapshot = pending.snapshot(primaryKeyColumns: ["id"], columns: ["id", "name"])
-
-        var restored = PendingChanges()
-        restored.restore(from: snapshot)
-
-        #expect(restored.changes.count == pending.changes.count)
-        #expect(restored.isRowDeleted(.existing(5)))
-        #expect(restored.isRowInserted(insertedID(7)))
-        #expect(restored.isCellModified(rowID: .existing(0), columnIndex: 1))
-    }
-}
-
 struct PendingChangesLifecycleTests {
     @Test("Clear empties all internal state")
     func clearResets() {

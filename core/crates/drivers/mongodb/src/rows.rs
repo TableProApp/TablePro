@@ -6,7 +6,9 @@ use mongodb::ClientSession;
 use tablepro_core::column::{ColumnType, ResultColumn};
 use tablepro_core::document::NUMBER_TYPE;
 use tablepro_core::value::Value;
-use tablepro_core::{DriverError, QueryResult, ResultEvent, ResultSink, RowLimit, ServerNotice, SinkFlow, Truncation};
+use tablepro_core::{
+    DriverError, QueryResult, ResultEvent, ResultSink, RowBatch, RowLimit, ServerNotice, SinkFlow, Truncation,
+};
 
 use crate::call::ReadStop;
 use crate::cells::cell;
@@ -15,10 +17,6 @@ use crate::endpoint::MongoEndpoint;
 use crate::execute::Source;
 use crate::field_types::{column_type, shared_type, type_alias};
 use crate::shell_command::{Columns, NamedColumn};
-
-/// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a slow
-/// grid slows the read instead of growing a queue.
-pub(crate) const BATCH_ROWS: usize = 256;
 
 /// The columns documents are laid out in, which a layout whose fields
 /// are found from the documents adds to.
@@ -258,7 +256,7 @@ async fn emit_documents(
         .collect::<Vec<_>>()
         .into_iter();
     loop {
-        let batch: Vec<_> = rows.by_ref().take(BATCH_ROWS).collect();
+        let batch: Vec<_> = rows.by_ref().take(RowBatch::MAX_ROWS).collect();
         if batch.is_empty() {
             break;
         }

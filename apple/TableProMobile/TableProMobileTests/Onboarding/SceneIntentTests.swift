@@ -58,4 +58,25 @@ struct SceneIntentTests {
         )
         #expect(SceneIntent.parse(activityType: "com.example.other", userInfo: ["connectionId": id]) == nil)
     }
+
+    @Test(
+        "Every file an import plugin reads goes to the data import",
+        arguments: ["csv", "tsv", "json", "jsonl", "ndjson", "xlsx", "sql", "gz"]
+    )
+    func dataFiles(fileExtension: String) {
+        let file = URL(fileURLWithPath: "/tmp/orders.\(fileExtension)")
+        #expect(SceneIntent.parse(url: file) == .importData(file))
+    }
+
+    @Test("A data file's extension is matched in any case")
+    func dataFileExtensionCase() {
+        let file = URL(fileURLWithPath: "/tmp/Orders.CSV")
+        #expect(SceneIntent.parse(url: file) == .importData(file))
+    }
+
+    @Test("A file no import plugin reads is ignored", arguments: ["numbers", "txt", "parquet", ""])
+    func unknownDataFiles(fileExtension: String) {
+        let name = fileExtension.isEmpty ? "orders" : "orders.\(fileExtension)"
+        #expect(SceneIntent.parse(url: URL(fileURLWithPath: "/tmp/\(name)")) == nil)
+    }
 }

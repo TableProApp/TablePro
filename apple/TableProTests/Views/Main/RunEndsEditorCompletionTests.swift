@@ -17,14 +17,15 @@ struct RunEndsEditorCompletionTests {
     /// Blank text runs nothing, so no case reaches a driver or the execution gate, and each one still shows
     /// that the session ends before the run decides what to execute.
     @Test("Run, Run Statement and Run All end the completion session in the coordinator's window")
-    func everyRunPathEndsTheSession() {
+    func everyRunPathEndsTheSession() throws {
         let harness = Harness()
         defer { harness.tearDown() }
+        let tabId = try #require(harness.tabManager.selectedTabId)
 
-        harness.coordinator.runQuery(viewport: .keepPlace)
-        harness.coordinator.runQuery(viewport: .keepPlace, bypassRowLimit: true)
-        harness.coordinator.runStatement("   ", sourceOffset: 0)
-        harness.coordinator.runAllStatements()
+        harness.coordinator.runQuery(onTab: tabId, viewport: .keepPlace)
+        harness.coordinator.runQuery(onTab: tabId, viewport: .keepPlace, bypassRowLimit: true)
+        harness.coordinator.runStatement("   ", sourceOffset: 0, onTab: tabId)
+        harness.coordinator.runAllStatements(onTab: tabId)
 
         #expect(harness.recorder.windows.count == 4)
         #expect(harness.recorder.windows.allSatisfy { $0 === harness.window })
@@ -38,8 +39,8 @@ struct RunEndsEditorCompletionTests {
         let claim = harness.coordinator.tabExecution.claim(tabId)
         defer { _ = harness.coordinator.tabExecution.settle(claim) }
 
-        harness.coordinator.runQuery(viewport: .keepPlace)
-        harness.coordinator.runStatement("SELECT 1", sourceOffset: 0)
+        harness.coordinator.runQuery(onTab: tabId, viewport: .keepPlace)
+        harness.coordinator.runStatement("SELECT 1", sourceOffset: 0, onTab: tabId)
 
         #expect(harness.recorder.windows.isEmpty)
     }
@@ -63,7 +64,6 @@ private struct Harness {
         coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(type: .sqlite),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         window = NSWindow(

@@ -9,7 +9,7 @@ import TableProPluginKit
 /// Every field any row of the file names, each with the first value it holds and a type that fits
 /// every value it holds. It keeps one small record per field rather than the values themselves,
 /// so it can read every row of a file of any size.
-struct JSONFieldSurvey {
+nonisolated struct JSONFieldSurvey {
     private var profiles: [String: JSONFieldProfile] = [:]
 
     mutating func add(_ row: NSDictionary) {
@@ -35,7 +35,7 @@ struct JSONFieldSurvey {
     }
 }
 
-struct JSONFieldProfile {
+nonisolated struct JSONFieldProfile {
     private(set) var sampleValue: String?
     private(set) var kinds = JSONValueKinds()
 
@@ -49,7 +49,7 @@ struct JSONFieldProfile {
     }
 }
 
-struct JSONValueKinds {
+nonisolated struct JSONValueKinds {
     private var sawValue = false
     private var allNested = true
     private var allBoolean = true
@@ -76,7 +76,7 @@ struct JSONValueKinds {
 
 /// Reads a parsed JSON value's kind from its Core Foundation type. A survey classifies every value
 /// in the file, and a Swift `is` or `as?` cast from `Any` costs about ten times as much.
-enum JSONValueKind: Equatable {
+nonisolated enum JSONValueKind: Equatable {
     case null
     case nested
     case boolean

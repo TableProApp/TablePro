@@ -17,7 +17,7 @@ struct ConsoleRequestDiagnosticsProducer: QueryDiagnosticsProducing {
 
         // The body highlights as JavaScript, so `//` and `/* */` read as comments on screen and the
         // scan has to read them the same way.
-        let structure = QueryBracketScanner.scan(blankingRequestLine(source), comments: .javaScript)
+        let structure = QueryBracketScanner.scan(blankingRequestLine(source), language: .javaScript)
         var results: [QueryDiagnostic] = []
 
         if let range = structure.unmatchedClose {

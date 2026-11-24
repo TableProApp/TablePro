@@ -17,6 +17,7 @@ struct ForeignKeyPreviewPage: View {
         databaseType: DatabaseType,
         currentSchema: String?,
         allowsOpen: Bool,
+        trackRead: DataBrowserViewModel.SessionReadTracker? = nil,
         refreshTransaction: @escaping () async -> Void,
         onOpen: ((ForeignKeyReference) -> Void)?,
         close: @escaping () -> Void
@@ -29,7 +30,8 @@ struct ForeignKeyPreviewPage: View {
         _model = State(initialValue: ForeignKeyPreviewModel(
             reference: reference,
             session: session,
-            databaseType: databaseType
+            databaseType: databaseType,
+            trackRead: trackRead
         ))
     }
 

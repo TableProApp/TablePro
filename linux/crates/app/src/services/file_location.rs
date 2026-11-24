@@ -106,6 +106,11 @@ fn mount_kind_blocking(path: &Path) -> FileLocationKind {
     }
 }
 
+// A dangling link counts, since a create where nothing is refuses it too.
+pub fn is_taken_blocking(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
 /// The file a document portal path stands for, when the portal says.
 pub fn portal_host_path_blocking(path: &Path) -> Option<PathBuf> {
     let info = gio::File::for_path(path)

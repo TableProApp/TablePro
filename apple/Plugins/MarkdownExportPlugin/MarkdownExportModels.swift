@@ -5,7 +5,7 @@
 
 import Foundation
 
-public struct MarkdownExportOptions: Equatable, Codable {
+nonisolated public struct MarkdownExportOptions: Equatable, Codable {
     /// Pads every cell so the columns line up in the raw text. Off writes the narrowest table a
     /// renderer still reads correctly, which is what a large result wants.
     public var alignsColumns: Bool = true
@@ -33,12 +33,7 @@ public struct MarkdownExportOptions: Equatable, Codable {
     }
 }
 
-/// Renders GitHub-flavoured Markdown tables.
-///
-/// Pure and separate from the plugin so the escaping is testable without a database: a value
-/// holding a pipe or a line break has to be neutralised or it ends the cell early and every column
-/// after it shifts.
-public enum MarkdownTableRenderer {
+nonisolated public enum MarkdownTableRenderer {
     // A pipe closes a cell and a line break a row, and no renderer takes a raw newline inside a cell.
     public static func cell(_ value: String) -> String {
         value
@@ -53,8 +48,9 @@ public enum MarkdownTableRenderer {
         guard let widths, widths.count == cells.count else {
             return "| \(cells.joined(separator: " | ")) |"
         }
+        // Widths count Characters; NSString padding counts UTF-16 units and truncates an emoji or a combining mark.
         let padded = zip(cells, widths).map { cell, width in
-            cell.padding(toLength: max(width, cell.count), withPad: " ", startingAt: 0)
+            cell + String(repeating: " ", count: max(0, width - cell.count))
         }
         return "| \(padded.joined(separator: " | ")) |"
     }
@@ -80,7 +76,7 @@ public enum MarkdownTableRenderer {
     }
 }
 
-private extension Array {
+nonisolated private extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
     }

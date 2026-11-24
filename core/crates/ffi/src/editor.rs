@@ -71,7 +71,13 @@ impl QueryEditor {
         self.editor.state() == EditorSessionState::Lost
     }
 
-    // Where a definition names no database of its own, its text has to run in the one it was read from.
+    // The database an unqualified name resolves to now, as the server last said, a typed USE included. None where
+    // the engine does not follow it.
+    pub fn database(&self) -> Option<String> {
+        self.editor.database().filter(|name| !name.is_empty())
+    }
+
+    // Moves the editor's connection, keeping its transaction. An engine that binds the database at connect refuses.
     pub async fn use_database(&self, database: String, cancel: Option<Arc<CancelToken>>) -> Result<(), CoreError> {
         let editor = self.editor.clone();
         let cancel = token(cancel);

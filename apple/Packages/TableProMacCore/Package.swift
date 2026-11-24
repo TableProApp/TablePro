@@ -106,6 +106,7 @@ let package = Package(
             name: "TableProUtilitiesTests",
             dependencies: [
                 "TableProUtilities",
+                .product(name: "TableProTabularIO", package: "TableProCore"),
                 .product(name: "TableProTestSupport", package: "TableProCore")
             ],
             path: "Tests/TableProUtilitiesTests",

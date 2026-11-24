@@ -50,7 +50,13 @@ public sealed partial class HistoryPane : UserControl
     // Open in new tab: the workspace opens a query tab with the run's text.
     public event EventHandler<string>? OpenRequested;
 
+    // Save query...: the workspace asks its name and folder.
+    public event EventHandler<string>? SaveRequested;
+
     public event EventHandler? CloseRequested;
+
+    // Saved queries belong to a saved connection, which a file opened without saving is not.
+    public bool CanSaveQuery { get; set; }
 
     public Task RefreshAsync() => _list?.RefreshAsync() ?? Task.CompletedTask;
 
@@ -182,9 +188,18 @@ public sealed partial class HistoryPane : UserControl
         open.Click += (_, _) => OpenRequested?.Invoke(this, item.Entry.Sql);
         var copy = MenuItem("HistoryMenuCopy", Symbol.Copy);
         copy.Click += (_, _) => WorkspaceView.CopyText(item.Entry.Sql);
+        var save = MenuItem("HistoryMenuSaveQuery", Symbol.Save);
+        save.IsEnabled = CanSaveQuery;
+        save.Click += (_, _) => SaveRequested?.Invoke(this, item.Entry.Sql);
+        var pinned = item.Entry.Pinned;
+        var pin = pinned ? MenuItem("HistoryMenuUnpin", Symbol.UnPin) : MenuItem("HistoryMenuPin", Symbol.Pin);
+        pin.Click += async (_, _) => await list.SetPinnedAsync(item.Entry, !pinned).ConfigureAwait(true);
         var menu = new MenuFlyout();
         menu.Items.Add(open);
         menu.Items.Add(copy);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(save);
+        menu.Items.Add(pin);
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(delete);
         if (args.TryGetPosition(container, out var point))
@@ -197,8 +212,12 @@ public sealed partial class HistoryPane : UserControl
         }
     }
 
-    private static MenuFlyoutItem MenuItem(string text, Symbol icon) =>
-        new() { Text = Strings.Get(text), Icon = new SymbolIcon(icon) };
+    private static MenuFlyoutItem MenuItem(string text, Symbol icon)
+    {
+        var item = new MenuFlyoutItem { Text = Strings.Get(text), Icon = new SymbolIcon(icon) };
+        AutomationProperties.SetAutomationId(item, text);
+        return item;
+    }
 
     // The row under the pointer, or the focused row, from whichever element inside it raised the event.
     private static ListViewItem? ContainerAt(object? source)
@@ -241,7 +260,10 @@ public sealed partial class HistoryItemCollection : ObservableCollection<History
     internal void Show(IReadOnlyList<HistoryEntry> entries, DateTimeOffset now)
     {
         var kept = 0;
-        while (kept < Count && kept < entries.Count && this[kept].Entry.Id == entries[kept].Id)
+        while (kept < Count
+            && kept < entries.Count
+            && this[kept].Entry.Id == entries[kept].Id
+            && this[kept].Entry.Pinned == entries[kept].Pinned)
         {
             kept++;
         }
@@ -286,7 +308,9 @@ public sealed partial class HistoryItem
         Glyph = glyph;
         MarkName = mark;
         MarkVisibility = glyph.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        AccessibleName = string.Join(", ", new[] { FirstLine, Detail, MarkName }.Where(part => part.Length > 0));
+        PinName = entry.Pinned ? Strings.Get("HistoryPinned") : string.Empty;
+        PinVisibility = entry.Pinned ? Visibility.Visible : Visibility.Collapsed;
+        AccessibleName = string.Join(", ", new[] { FirstLine, Detail, MarkName, PinName }.Where(part => part.Length > 0));
     }
 
     public HistoryEntry Entry { get; }
@@ -300,6 +324,10 @@ public sealed partial class HistoryItem
     public string MarkName { get; }
 
     public Visibility MarkVisibility { get; }
+
+    public string PinName { get; }
+
+    public Visibility PinVisibility { get; }
 
     public string AccessibleName { get; }
 

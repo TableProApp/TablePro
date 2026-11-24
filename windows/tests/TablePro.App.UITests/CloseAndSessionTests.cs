@@ -1,4 +1,5 @@
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
 
@@ -30,6 +31,45 @@ public sealed partial class ShellTests
             AppSession.Wait,
             throwOnTimeout: false).Success;
         Assert.True(back);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void APendingEditComesBackAfterTheAppIsKilledEvenWithReopenOff(string theme)
+    {
+        const string Renamed = "Kept after a forced end";
+        var folder = AppSession.NewDataFolder(theme);
+        var session = Path.Combine(folder, "session.json");
+        using (var app = AppSession.Relaunch(folder, theme))
+        {
+            app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+            app.Click(app.FindByName("Artist", app.Find("ObjectTree")), () => app.TryFind("TableStatus") is not null);
+            AppSession.WaitForText(
+                app.Find("TableStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal));
+            var grid = app.Find("ResultsGrid");
+            app.Click(CellOf(grid, 0, 1));
+            app.Chord(() => GridEditor(grid) is not null, VirtualKeyShort.F2);
+            Keyboard.Type(Renamed);
+            app.Chord(() => GridEditor(grid) is null, VirtualKeyShort.RETURN);
+            Assert.Equal("edited", ItemStatusOf(grid, 0, 1));
+
+            // As a forced Restart Manager close ends it: nothing runs on the way out, so the file holds the edit first.
+            Assert.True(
+                Retry.WhileFalse(() => FileHolds(session, Renamed), AppSession.Wait, throwOnTimeout: false).Success);
+            app.Kill();
+        }
+
+        File.WriteAllText(
+            Path.Combine(folder, "settings.json"),
+            $$"""{ "theme": "{{theme}}", "reopenSession": false }""");
+        using var again = AppSession.Relaunch(folder, theme);
+        var table = again.Find("ResultsGrid");
+        Assert.Equal(Renamed, again.WaitForCell(table, 0, 1, value => value == Renamed));
+        Assert.Equal("edited", ItemStatusOf(table, 0, 1));
+        Assert.NotNull(again.TryFind("RecoveredEditsBar"));
+        again.Screenshot("63-table-edits-recovered");
+        // Closing would ask about the change; the data folder goes with the test.
+        again.Kill();
     }
 
     [Theory]

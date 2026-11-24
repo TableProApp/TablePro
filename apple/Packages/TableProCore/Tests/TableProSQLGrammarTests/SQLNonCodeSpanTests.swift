@@ -402,4 +402,42 @@ struct SQLNonCodeSpanTests {
         )
         #expect(sqlite == "SELECT eval     (   )")
     }
+
+    private func needsMoreText(_ text: String, at index: Int = 0, _ grammar: SQLLexicalGrammar) -> Bool {
+        let buffer = text as NSString
+        let span = SQLNonCodeSpan.span(at: index, in: buffer, grammar: grammar)
+        return SQLNonCodeSpan.needsMoreText(span, at: index, in: buffer, grammar: grammar)
+    }
+
+    private static let continued: SQLLexicalGrammar = [.escapeStringPrefix, .escapeStringContinuations]
+    private static let longTag: String = "$" + String(repeating: "t", count: 40)
+    private static let longName: String = "$" + String(repeating: "p", count: 40)
+    private static let blanks = String(repeating: " ", count: 20)
+
+    private static let unsettled: [(String, SQLLexicalGrammar)] = [
+        (longTag, .taggedDollarQuotes),
+        ("'a doubled quote may follow'", .ansi),
+        ("-- a comment with no line break", .ansi),
+        ("/* open comment ", .ansi),
+        (longName, .parenthesizedParameterNames),
+        ("E'x'" + blanks + "-", continued),
+        ("E'x'\n" + blanks + "-- c", continued),
+    ]
+
+    private static let settled: [(String, SQLLexicalGrammar)] = [
+        ("'abc' + 1          ", .ansi),
+        ("E'x'" + blanks + "+ 1", continued),
+        ("-- note\nSELECT 1 FROM t", .ansi),
+        ("SELECT 1 FROM t WHERE a = 1", .ansi),
+    ]
+
+    @Test("A reader of a buffer waits when more text could change the span", arguments: unsettled)
+    func waitsForMoreText(text: String, grammar: SQLLexicalGrammar) {
+        #expect(needsMoreText(text, grammar), "\(text)")
+    }
+
+    @Test("A span whose end no later text can move is settled", arguments: settled)
+    func settledSpan(text: String, grammar: SQLLexicalGrammar) {
+        #expect(!needsMoreText(text, grammar), "\(text)")
+    }
 }

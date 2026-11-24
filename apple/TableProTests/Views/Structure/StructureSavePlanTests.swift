@@ -163,7 +163,6 @@ struct StructureSavePlanTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         let tab = QueryTab(

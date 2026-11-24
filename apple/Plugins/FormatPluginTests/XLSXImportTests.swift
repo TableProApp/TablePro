@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProTabularIO
 import Testing
 
 private final class RecordingSink: PluginImportDataSink, @unchecked Sendable {
@@ -31,8 +32,8 @@ struct XLSXImportSheetTests {
         return try XLSXImportSheet.read(at: url, hasHeaderRow: hasHeaderRow, isCancelled: { false })
     }
 
-    private func values(_ sheet: XLSXImportSheet) -> [[String?]] {
-        sheet.rows(0 ..< sheet.rowCount).map(\.values)
+    private func values(_ sheet: XLSXImportSheet) throws -> [[String?]] {
+        try sheet.rows(0 ..< sheet.rowCount).map(\.values)
     }
 
     private func number(_ reference: String, _ value: String) -> String {
@@ -77,7 +78,7 @@ struct XLSXImportSheetTests {
     func cellsArePlacedByReference() throws {
         let cells = [("A1", "a"), ("B1", "b"), ("Z1", "z"), ("AA1", "aa"), ("AB1", "ab"), ("BA1", "ba")]
         let sheet = try read(XLSXImportFixture(rows: "<row r=\"1\">\(cells.map { inline($0.0, $0.1) }.joined())</row>"), hasHeaderRow: false)
-        let row = try #require(values(sheet).first)
+        let row = try #require(try values(sheet).first)
         #expect(row.count == 53)
         #expect([0, 1, 25, 26, 27, 52].map { row[$0] } == ["a", "b", "z", "aa", "ab", "ba"])
         #expect(row.compactMap { $0 }.count == 6)
@@ -102,7 +103,7 @@ struct XLSXImportSheetTests {
             """
         let sheet = try read(XLSXImportFixture(rows: rows))
         #expect(sheet.header == ["id", "name"])
-        #expect(values(sheet) == [["1", nil]])
+        #expect(try values(sheet) == [["1", nil]])
     }
 
     @Test("A cell at the last column and many empty rows import as one row")
@@ -116,7 +117,7 @@ struct XLSXImportSheetTests {
         #expect(header[1] == "column2")
         #expect(header.last == "far")
         #expect(sheet.rowCount == 1)
-        let row = try #require(sheet.rows(0 ..< 1).first)
+        let row = try #require(try sheet.rows(0 ..< 1).first)
         #expect(row.line == 100_002)
         #expect(row.values.first == "7")
         #expect(row.values.dropFirst().allSatisfy { $0 == nil })
@@ -141,38 +142,38 @@ struct XLSXImportSheetTests {
     @Test("A shared-string index the table lacks keeps the raw value")
     func outOfRangeIndexKeepsRawValue() throws {
         let rows = "<row r=\"1\"><c r=\"A1\" t=\"s\"><v>99</v></c></row>"
-        #expect(values(try read(XLSXImportFixture(rows: rows, sharedStrings: ["<si><t>only</t></si>"]), hasHeaderRow: false)) == [["99"]])
+        #expect(try values(read(XLSXImportFixture(rows: rows, sharedStrings: ["<si><t>only</t></si>"]), hasHeaderRow: false)) == [["99"]])
     }
 
     @Test("A gap in a row is filled from the cell references")
     func gapsArePlacedByReference() throws {
         let rows = "<row r=\"1\">\(number("A1", "1"))\(number("C1", "3"))</row>"
-        #expect(values(try read(XLSXImportFixture(rows: rows), hasHeaderRow: false)) == [["1", nil, "3"]])
+        #expect(try values(read(XLSXImportFixture(rows: rows), hasHeaderRow: false)) == [["1", nil, "3"]])
     }
 
     @Test("Rows are padded to the widest row")
     func rowsArePadded() throws {
         let rows = "<row r=\"1\">\(number("A1", "1"))\(number("B1", "2"))</row><row r=\"2\">\(number("A2", "3"))</row>"
-        #expect(values(try read(XLSXImportFixture(rows: rows), hasHeaderRow: false)) == [["1", "2"], ["3", nil]])
+        #expect(try values(read(XLSXImportFixture(rows: rows), hasHeaderRow: false)) == [["1", "2"], ["3", nil]])
     }
 
     @Test("Numbers keep their text and booleans read as 1 and 0")
     func valuesKeepTheirStoredText() throws {
         let rows = "<row r=\"1\">\(number("A1", "12.50"))\(number("B1", "007"))<c r=\"C1\" t=\"b\"><v>1</v></c><c r=\"D1\" t=\"b\"><v>0</v></c></row>"
-        #expect(values(try read(XLSXImportFixture(rows: rows), hasHeaderRow: false)) == [["12.50", "007", "1", "0"]])
+        #expect(try values(read(XLSXImportFixture(rows: rows), hasHeaderRow: false)) == [["12.50", "007", "1", "0"]])
     }
 
     @Test("A number of nineteen digits reads as its text")
     func nineteenDigitNumberIsRead() throws {
         let rows = "<row r=\"1\">\(number("A1", "9999999999999999999"))\(number("B1", "-9223372036854775808"))</row>"
-        #expect(values(try read(XLSXImportFixture(rows: rows), hasHeaderRow: false)) == [["9999999999999999999", "-9223372036854775808"]])
+        #expect(try values(read(XLSXImportFixture(rows: rows), hasHeaderRow: false)) == [["9999999999999999999", "-9223372036854775808"]])
     }
 
     @Test("A row's line is its row number in the sheet")
     func linesFollowTheSheet() throws {
         let rows = "<row r=\"3\">\(inline("A3", "id"))</row><row r=\"5\">\(number("A5", "1"))</row>"
         let sheet = try read(XLSXImportFixture(rows: rows))
-        #expect(sheet.rows(0 ..< sheet.rowCount).map(\.line) == [5])
+        #expect(try sheet.rows(0 ..< sheet.rowCount).map(\.line) == [5])
     }
 
     @Test("An empty sheet reads as no rows rather than failing")
@@ -189,8 +190,8 @@ struct XLSXImportSheetTests {
     func emptyTextIsNotAMissingCell() throws {
         let sheet = try read(emptyCells)
         #expect(sheet.header == ["id", "note", "code"])
-        #expect(values(sheet) == [["1", "", ""], [nil, "", ""], ["2", nil, nil]])
-        #expect(sheet.rows(0 ..< sheet.rowCount).map(\.line) == [2, 3, 5])
+        #expect(try values(sheet) == [["1", "", ""], [nil, "", ""], ["2", nil, nil]])
+        #expect(try sheet.rows(0 ..< sheet.rowCount).map(\.line) == [2, 3, 5])
     }
 
     @Test("With Empty as NULL off, a cell that stores empty text imports as empty text")
@@ -220,7 +221,7 @@ struct XLSXImportSheetTests {
             <c r="C1" s="3"><v>0.5</v></c><c r="D1" s="4"><v>1.5</v></c>\(number("E1", "45292"))</row>
             """
         let fixture = XLSXImportFixture(rows: rows, cellFormatIDs: [0, 14, 22, 20, 46])
-        #expect(values(try read(fixture, hasHeaderRow: false)) == [["2024-01-01", "2024-01-01 12:00:00", "12:00:00", "36:00:00", "45292"]])
+        #expect(try values(read(fixture, hasHeaderRow: false)) == [["2024-01-01", "2024-01-01 12:00:00", "12:00:00", "36:00:00", "45292"]])
     }
 
     @Test("Field detection types a date column as text")
@@ -256,5 +257,67 @@ struct XLSXImportSheetTests {
         #expect(fields.map(\.name) == ["id", "name"])
         #expect(fields.map(\.sampleValue) == ["1", "Ada"])
         #expect(fields.map(\.inferredType) == [.integer, .text])
+    }
+
+    private func sharedStringCell(_ reference: String) -> String {
+        "<c r=\"\(reference)\" t=\"s\"><v>0</v></c>"
+    }
+
+    // One shared string of `length` bytes, referenced by every cell the rows name: stored once, read once per cell.
+    private func repeatedSharedString(length: Int, rows: String) -> XLSXImportFixture {
+        XLSXImportFixture(rows: rows, sharedStrings: ["<si><t>\(String(repeating: "x", count: length))</t></si>"])
+    }
+
+    private func headerReferencing(_ count: Int) -> String {
+        let cells = (0..<count).map { sharedStringCell("\(XLSXCellReference.columnName($0))1") }
+        return "<row r=\"1\">\(cells.joined())</row>"
+    }
+
+    @Test("A shared string past the cell limit fails the header before any cell referencing it is copied")
+    func oversizedSharedStringInTheHeaderFails() throws {
+        let fixture = repeatedSharedString(length: XLSXImportSheet.cellByteLimit + 1, rows: headerReferencing(256))
+        #expect(throws: PluginImportError.self) { try read(fixture) }
+    }
+
+    @Test("Field detection fails on a header that repeats an oversized shared string")
+    func detectionFailsOnAnOversizedSharedString() throws {
+        let url = try repeatedSharedString(length: XLSXImportSheet.cellByteLimit + 1, rows: headerReferencing(256)).write()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let plugin = XLSXImportPlugin()
+        let saved = plugin.settings
+        defer { plugin.settings = saved }
+        plugin.settings = XLSXImportOptions()
+        #expect(throws: PluginImportError.self) { try plugin.detectSourceFields(at: url, targetTable: nil) }
+    }
+
+    @Test("A header whose cells fit the cell limit fails once their references pass the read limit")
+    func repeatedSharedStringPastTheReadLimitFails() throws {
+        let references = XLSXImportSheet.readByteLimit / XLSXImportSheet.cellByteLimit + 1
+        let fixture = repeatedSharedString(length: XLSXImportSheet.cellByteLimit, rows: headerReferencing(references))
+        #expect(throws: PluginImportError.self) { try read(fixture) }
+    }
+
+    @Test("An import whose batch repeats a shared string past the read limit fails and inserts nothing")
+    func importFailsOnABatchPastTheReadLimit() async throws {
+        let references = XLSXImportSheet.readByteLimit / XLSXImportSheet.cellByteLimit + 1
+        let dataRows = (2...(references + 1)).map { "<row r=\"\($0)\">\(sharedStringCell("A\($0)"))</row>" }
+        let fixture = repeatedSharedString(
+            length: XLSXImportSheet.cellByteLimit,
+            rows: "<row r=\"1\">\(inline("A1", "note"))</row>\(dataRows.joined())")
+        let url = try fixture.write()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let plugin = XLSXImportPlugin()
+        let saved = plugin.settings
+        defer { plugin.settings = saved }
+        plugin.settings = XLSXImportOptions()
+        let sink = RecordingSink()
+        await #expect(throws: PluginImportError.self) {
+            _ = try await plugin.performImport(
+                source: RoundTripImportFile(url),
+                sink: sink,
+                progress: PluginImportProgress(progress: Progress(totalUnitCount: 1))
+            )
+        }
+        #expect(sink.rows.isEmpty)
     }
 }

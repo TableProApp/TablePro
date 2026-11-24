@@ -37,7 +37,6 @@ struct GridReloadViewportTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: "users", query: "SELECT * FROM users", tabType: tabType, tableName: "users")

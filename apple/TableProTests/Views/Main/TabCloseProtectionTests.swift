@@ -23,8 +23,7 @@ struct TabCloseProtectionTests {
         return SessionStateFactory.create(connection: connection, payload: nil).coordinator
     }
 
-    /// Puts a real pending change in the coordinator's change manager, the same way an inline cell
-    /// edit does, so the predicate is exercised against live state rather than a hand-built stub.
+    // Stages a real change in the selected tab's manager, as an inline cell edit does.
     private func stageCellEdit(on coordinator: MainContentCoordinator, table: String = "users") {
         coordinator.changeManager.configureForTable(
             tableName: table,
@@ -38,10 +37,7 @@ struct TabCloseProtectionTests {
 
     // MARK: - The reported bug
 
-    /// The case the user reported, and the reason the old predicate could not answer it. Live grid
-    /// edits sit in the coordinator's change manager until a tab switch snapshots them into
-    /// `pendingChanges`, so a table tab edited and closed without ever leaving it had an empty
-    /// snapshot and reported itself clean.
+    // A table tab edited and closed without ever leaving it once reported itself clean.
     @Test("The selected tab reports its live cell edits with no tab switch")
     func selectedTabSeesLiveGridEdits() {
         let coordinator = makeCoordinator()
@@ -56,16 +52,11 @@ struct TabCloseProtectionTests {
 
         stageCellEdit(on: coordinator)
 
-        #expect(!tab.pendingChanges.hasChanges)
         #expect(coordinator.hasUnsavedWork(in: tab))
     }
 
-    /// The other half of the same rule: a tab the user is not looking at has no live state on the
-    /// coordinator, so its own snapshot is the only honest answer. Reading the live manager here
-    /// would report the selected tab's edits against a tab that does not own them, and would ask
-    /// about work the user cannot see on the tab they are closing.
-    @Test("A background tab reports its own snapshot, not the selected tab's live edits")
-    func backgroundTabReadsItsOwnSnapshot() {
+    @Test("A background tab reports its own edits, not the selected tab's")
+    func backgroundTabReadsItsOwnEdits() {
         let coordinator = makeCoordinator()
         defer { coordinator.teardown() }
 
@@ -81,10 +72,8 @@ struct TabCloseProtectionTests {
         #expect(coordinator.changeManager.hasChanges)
         #expect(!coordinator.hasUnsavedWork(in: background))
 
-        var carriesSnapshot = background
-        carriesSnapshot.pendingChanges = coordinator.changeManager.saveState()
-        #expect(carriesSnapshot.pendingChanges.hasChanges)
-        #expect(coordinator.hasUnsavedWork(in: carriesSnapshot))
+        coordinator.changeManager(forTab: background.id).recordRowDeletion(rowID: .existing(0), originalRow: Self.originalRow)
+        #expect(coordinator.hasUnsavedWork(in: background))
     }
 
     /// Work the connection holds must not gate an unrelated tab. Neither Save nor Don't Save could
@@ -311,9 +300,7 @@ struct TabCloseProtectionTests {
 
     // MARK: - A closed tab takes its state with it
 
-    /// Nothing else can clear the change manager on this path: `handleTabChange` snapshots a tab by
-    /// looking it up in `tabManager.tabs`, and by the time it runs the tab is gone. Left behind, the
-    /// edits outlive their tab and the next Save runs them under whatever scope the sidebar moved to.
+    // Edits left behind would outlive their tab, and the next Save would run them under whatever scope the sidebar moved to.
     @Test("Closing the selected tab clears the change manager it was using")
     func closingClearsTheOrphanedChangeManager() {
         let coordinator = makeCoordinator()
@@ -325,11 +312,14 @@ struct TabCloseProtectionTests {
             return
         }
         stageCellEdit(on: coordinator)
-        #expect(coordinator.changeManager.hasChanges)
+        let edits = coordinator.changeManager
+        #expect(edits.hasChanges)
 
         coordinator.closeTabsByUser(ids: [id])
 
         #expect(coordinator.tabManager.tabs.isEmpty)
+        #expect(!edits.hasChanges)
+        #expect(coordinator.existingChangeManager(forTab: id) == nil)
         #expect(!coordinator.changeManager.hasChanges)
         #expect(!coordinator.hasAnyUnsavedWork())
     }

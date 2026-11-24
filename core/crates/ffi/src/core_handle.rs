@@ -5,10 +5,11 @@ use std::sync::{Arc, Mutex};
 use futures::future::BoxFuture;
 use secrecy::SecretString;
 use tablepro_account::{AccountSettings, RefreshTokenVault};
+use tablepro_ai::AiClient;
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
-    SafeModeLevel, WorkspaceSettings,
+    SafeModeLevel, UnsupportedFeature, WorkspaceSettings,
 };
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{
@@ -20,6 +21,7 @@ use tablepro_storage::{ConnectionStore, CredentialDemand, KeyringCredentials, Sa
 use tokio::sync::OnceCell;
 use uuid::Uuid;
 
+use crate::ai::AiAssistant;
 use crate::cancel_token::{CancelToken, token};
 use crate::drivers::{self, DriverInfo};
 use crate::error::CoreError;
@@ -50,6 +52,9 @@ pub struct Core {
     history: Arc<OnceCell<Arc<QueryHistoryStore>>>,
     pub(crate) tasks: Tasks,
     pub(crate) ssh: Arc<InProcessSsh>,
+    client_version: String,
+    // One AI client for the app, built on first use.
+    ai_client: Arc<OnceCell<AiClient>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -97,6 +102,17 @@ impl Core {
             .collect();
         drivers.sort_by(|a, b| a.display_name.cmp(&b.display_name));
         drivers
+    }
+
+    // Every assistant shares the core's one AI client.
+    pub fn ai_assistant(&self) -> Arc<AiAssistant> {
+        Arc::new(AiAssistant::new(
+            self.items.clone(),
+            self.store.clone(),
+            self.tasks.clone(),
+            self.client_version.clone(),
+            self.ai_client.clone(),
+        ))
     }
 
     pub fn library(&self) -> Result<Arc<ConnectionLibrary>, CoreError> {
@@ -177,9 +193,11 @@ impl Core {
     }
 
     // Typed secrets come first, then Credential Manager; `keep` is stored once it logs in; no prompter, no SSH asks.
+    // `database`, in place of the saved one, opens the connection in another of the server's databases.
     pub async fn connect_saved(
         &self,
         id: String,
+        database: Option<String>,
         secrets: ConnectionSecrets,
         keep: ConnectionSecrets,
         prompter: Option<Box<dyn HostPrompter>>,
@@ -215,8 +233,17 @@ impl Core {
                 CredentialDemand::default(),
             )
             .await?;
+            let request = match database.as_deref().filter(|name| !name.is_empty()) {
+                Some(database) => refreshed
+                    .request
+                    .in_database(database)
+                    .ok_or(DriverError::Unsupported {
+                        feature: UnsupportedFeature::NetworkConnection,
+                    })?,
+                None => refreshed.request,
+            };
             let pending = connector
-                .establish(refreshed.request, interaction(prompter.as_ref()), cancel.clone())
+                .establish(request, interaction(prompter.as_ref()), cancel.clone())
                 .await?;
             if cancel.is_cancelled() {
                 let report = pending.discard().await;
@@ -307,6 +334,7 @@ impl Core {
         let liveness = LivenessPolicy::DESKTOP;
         let deadlines = Arc::new(DefaultDeadlines::new(liveness));
         let ssh = Arc::new(InProcessSsh::system());
+        let client_version = config.client_version.clone();
         let services = ConnectServices {
             environment: ConnectEnvironment::new(config.client_version),
             ssh: ssh.clone(),
@@ -330,6 +358,8 @@ impl Core {
             history: Arc::default(),
             tasks,
             ssh,
+            client_version,
+            ai_client: Arc::default(),
         })
     }
 
@@ -657,7 +687,14 @@ mod tests {
         };
 
         let connect = core
-            .connect_saved(stored.id.to_string(), typed(), ConnectionSecrets::default(), None, None)
+            .connect_saved(
+                stored.id.to_string(),
+                None,
+                typed(),
+                ConnectionSecrets::default(),
+                None,
+                None,
+            )
             .await
             .unwrap_err();
         let test = core

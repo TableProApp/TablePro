@@ -7,7 +7,7 @@ import TableProPluginKit
 
 // Runs a driver the Mac ships as a plugin, compiled into this app, the way the Mac's PluginDriverAdapter does. Its
 // rows are written with SQLBuilder's statements, as the Mac writes them for a plugin that generates none of its own.
-nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
+nonisolated class PluginBackedDriver: DatabaseDriver, CatalogQuerying, ExportRowStreaming, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginBackedDriver")
 
     let plugin: any PluginDatabaseDriver
@@ -317,6 +317,54 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     var currentSchema: String? { plugin.currentSchema }
+
+    // MARK: - Transfer
+
+    // The plugin's own result, bytes kept and no row cap, taking its turn like any other request.
+    func catalogQuery(_ sql: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
+        let plugin = plugin
+        var catalogContext = statementContext(sql)
+        catalogContext.readsCatalog = true
+        let context = catalogContext
+        return try await inSessionDatabase {
+            guard !parameters.isEmpty else { return try await plugin.execute(query: sql, context: context) }
+            return try await plugin.executeParameterized(query: sql, parameters: parameters, context: context)
+        }
+    }
+
+    // The plugin's stream, which reads a batch only when the export asks for one. It skips the request gate, so a
+    // transfer runs it on a driver of its own (`ConnectionManager.openDedicatedDriver`).
+    func exportRows(query: String, readOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        var context = statementContext(query)
+        // A file export only reads, whatever the statement classifies as, as on the Mac.
+        context.readOnly = true
+        context.enforcesReadOnly = readOnly
+        return plugin.streamRows(query: query, context: context)
+    }
+
+    // A query export with the plugin's typed documents beside its rows, which MQL writes from (MongoDB).
+    func exportDocuments(query: String, readOnly: Bool) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        var context = statementContext(query)
+        context.readOnly = true
+        context.enforcesReadOnly = readOnly
+        return plugin.streamExportRows(query: query, context: context)
+    }
+
+    // The column types reach the plugin as the Mac's import hands them over.
+    func executeParameterized(query: String, parameters: [PluginCellValue], typeNames: [String?]?) async throws
+        -> QueryResult {
+        let plugin = plugin
+        var typedContext = statementContext(query)
+        typedContext.parameterTypeNames = typeNames
+        let context = typedContext
+        return QueryResult(from: try await inSessionDatabase {
+            try await plugin.executeParameterized(query: query, parameters: parameters, context: context)
+        })
+    }
+
+    func foreignKeyCheckStatements(enabled: Bool) -> [String] {
+        (enabled ? plugin.foreignKeyEnableStatements() : plugin.foreignKeyDisableStatements()) ?? []
+    }
 
     // MARK: - Transactions
 

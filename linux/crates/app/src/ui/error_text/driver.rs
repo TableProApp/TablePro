@@ -317,6 +317,10 @@ fn file_message(error: &DriverError) -> String {
             "No permission to open {path}.",
             &[("path", &path.display().to_string())],
         ),
+        DriverError::FileExists { path } => crate::i18n::gettext_f(
+            "A file is already at {path}, so it was left as it is. Use Choose… to open it, or New Database… to replace it.",
+            &[("path", &path.display().to_string())],
+        ),
         DriverError::NotADatabase { path } => crate::i18n::gettext_f(
             "{path} is not a database file.",
             &[("path", &path.display().to_string())],
@@ -340,6 +344,10 @@ fn internal_message(error: &DriverError) -> String {
             &[("column", column)],
         ),
         DriverError::Protocol(_) => crate::i18n::gettext("The driver could not read the server's reply."),
+        DriverError::CatalogTooLarge { limit_bytes } => crate::i18n::gettext_f(
+            "The database's structure is larger than TablePro reads at once ({size}).",
+            &[("size", gtk4::glib::format_size(*limit_bytes).as_str())],
+        ),
         _ => crate::i18n::gettext("The driver hit an internal error."),
     }
 }

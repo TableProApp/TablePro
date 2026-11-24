@@ -164,10 +164,8 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
 
     private func tableOperationEligibility(candidates: Set<DatabaseTreeTableRef>)
         -> TableOperationEligibility.Context {
-        guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter else {
-            return .unavailable
-        }
-        return adapter.tableOperationEligibility(
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return .unavailable }
+        return driver.tableOperationEligibility(
             for: candidates,
             isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
         )

@@ -208,7 +208,7 @@ final class ServerDashboardViewModel: ObservableObject {
             return try await manager.withCancellableRead(
                 scope: scope,
                 route: manager.executionRoute(for: scope),
-                ownsSessionState: false,
+                sessionWork: .independent,
                 readsOnly: true
             ) { driver in
                 if let context = driver.readOnlyRunContext(safeModeIsReadOnly: isReadOnly) {

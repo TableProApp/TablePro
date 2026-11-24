@@ -21,20 +21,22 @@ struct MainContentView: View {
     @Binding var windowTitle: String
     @Binding var windowSubtitle: String
     @Binding var windowRepresentedURL: URL?
-    @ObservedObject var schemaService = SchemaService.shared
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     @Binding var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
     @ObservedObject var trailingPaneState: TrailingPaneState
+    @ObservedObject var catalogSnapshot: ConnectionCatalogSnapshot
 
     var tables: [TableInfo] {
-        schemaService.tables(for: connection.id)
+        catalogSnapshot.tables
     }
 
     // MARK: - State Objects
 
     @ObservedObject var tabManager: QueryTabManager
-    @ObservedObject var changeManager: DataChangeManager
+    // The selected tab's edits; each tab keeps its own, and this follows the selection.
+    @ObservedObject var selectedEdits: SelectedTabEdits
+    var changeManager: DataChangeManager { selectedEdits.manager }
     @ObservedObject var toolbarState: ConnectionToolbarState
     @ObservedObject var coordinator: MainContentCoordinator
 
@@ -63,7 +65,6 @@ struct MainContentView: View {
         tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
         trailingPaneState: TrailingPaneState,
         tabManager: QueryTabManager,
-        changeManager: DataChangeManager,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator
     ) {
@@ -76,8 +77,9 @@ struct MainContentView: View {
         self._pendingDeletes = pendingDeletes
         self._tableOperationOptions = tableOperationOptions
         self.trailingPaneState = trailingPaneState
+        self.catalogSnapshot = coordinator.catalogSnapshot
         self.tabManager = tabManager
-        self.changeManager = changeManager
+        self.selectedEdits = coordinator.selectedTabEdits
         self.toolbarState = toolbarState
         self.coordinator = coordinator
     }
@@ -530,7 +532,8 @@ struct MainContentView: View {
             tabManager: tabManager,
             coordinator: coordinator,
             historyState: HistoryPanelState.forConnection(connection.id),
-            changeManager: changeManager,
+            selectedEdits: selectedEdits,
+            catalogSnapshot: catalogSnapshot,
             connection: connection,
             windowId: windowId,
             connectionId: connection.id,

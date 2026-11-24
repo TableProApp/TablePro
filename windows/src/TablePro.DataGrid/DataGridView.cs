@@ -32,6 +32,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     private const double ContentMinimumWidth = 60;
     private const double ContentMaximumWidth = 800;
     private const float BaseFontSize = 14;
+    private const double MinimumFontSize = 8;
+    private const double MaximumFontSize = 36;
 
     [ThreadStatic]
     private static SurfaceDevice? s_device;
@@ -74,6 +76,9 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     private float _scale = 1;
     private double _textScale = 1;
     private double _rowHeight = BaseRowHeight;
+    private string? _cellFontFamily;
+    private double _cellFontSize = BaseFontSize;
+    private string _nullText = CellPainter.NullWord;
     private double _viewX;
     private double _viewY;
     private double _originY;
@@ -154,7 +159,11 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _scroller = new ScrollViewer
         {
             Content = _content,
-            TopHeader = new HeaderRow { HorizontalAlignment = HorizontalAlignment.Left, Children = { _header } },
+            TopHeader = new HeaderRow
+            {
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Children = { _header, _moveLayer },
+            },
             LeftHeader = _frozenContent,
             TopLeftHeader = _corner,
             HorizontalScrollMode = ScrollMode.Enabled,
@@ -174,6 +183,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _header.SizeChanged += (_, _) => MeasureInsets();
         _frozenContent.SizeChanged += (_, _) => MeasureInsets();
         Content = _scroller;
+        InitializeCellTips();
+        InitializeColumnMoves();
 
         IsTabStop = true;
         UseSystemFocusVisuals = false;
@@ -223,6 +234,72 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     public string SortedDescendingStatus { get; set; } = "Sorted descending";
 
+    // What a NULL cell shows and UIA reads; null or empty is the word NULL. A copy still writes an empty cell.
+    [System.Diagnostics.CodeAnalysis.AllowNull]
+    public string NullText
+    {
+        get => _nullText;
+        set
+        {
+            var text = string.IsNullOrEmpty(value) ? CellPainter.NullWord : value;
+            if (string.Equals(_nullText, text, StringComparison.Ordinal))
+            {
+                return;
+            }
+            _nullText = text;
+            if (_painter is not null)
+            {
+                _painter.NullText = text;
+                // A column sized to its content may hold a NULL.
+                if (SizeToContent())
+                {
+                    ColumnsChanged();
+                }
+                else
+                {
+                    InvalidateRows();
+                }
+            }
+        }
+    }
+
+    // Null, or a family that is not installed, keeps the grid's own: Segoe UI Variable Text, or Segoe UI.
+    public string? CellFontFamily
+    {
+        get => _cellFontFamily;
+        set
+        {
+            if (string.Equals(_cellFontFamily, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+            _cellFontFamily = value;
+            if (_painter is not null)
+            {
+                ApplyFont();
+            }
+        }
+    }
+
+    // At 100% text scale; the text scale factor grows it as it grows XAML text.
+    public double CellFontSize
+    {
+        get => _cellFontSize;
+        set
+        {
+            var size = double.IsFinite(value) ? Math.Clamp(value, MinimumFontSize, MaximumFontSize) : BaseFontSize;
+            if (size == _cellFontSize)
+            {
+                return;
+            }
+            _cellFontSize = size;
+            if (_painter is not null)
+            {
+                ApplyFont();
+            }
+        }
+    }
+
     public int FrozenColumnCount
     {
         get => _columns.FrozenCount;
@@ -240,8 +317,10 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         get => _sort;
         set
         {
+            var previous = _sort;
             _sort = value;
             RebindHeaders();
+            RaiseSortStatus(previous, value);
         }
     }
 
@@ -262,6 +341,12 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     public event EventHandler<GridSort>? SortRequested;
 
     public event EventHandler? FocusedCellChanged;
+
+    // The selected cells changed without the focus moving, as Select All does, or a whole-row selection grew with them.
+    public event EventHandler? SelectedCellsChanged;
+
+    // The user dragged or fitted a column's width, which can make frozen columns too wide for the grid.
+    public event EventHandler<int>? ColumnResized;
 
     internal GridColumns Columns => _columns;
 
@@ -357,6 +442,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     // Shows data, or nothing for null. The grid opens its own reader on this thread and disposes it with the data.
     public void SetData(IGridData? data)
     {
+        CancelColumnMove();
+        ClearCellTip();
         Cancel(EditorFocused);
         // A copy still reading the old data would read it after the host lets it go, then put it on the clipboard.
         _copy?.Cancel();
@@ -438,6 +525,10 @@ public sealed partial class DataGridView : UserControl, IGridWindow
             ColumnsChanged();
         }
         Follow(_viewX, _viewY);
+        if (_selection.Kind != SelectionKind.Cells)
+        {
+            SelectedCellsChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     internal double FetchMilliseconds => _cache?.FetchMilliseconds ?? 0;
@@ -455,7 +546,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     internal string CellName(int row, int column)
     {
         var cell = Cell(row, column);
-        return cell.IsNull ? CellPainter.NullText : cell.IsDefault ? DefaultText : cell.Text.ToString();
+        return cell.IsNull ? _nullText : cell.IsDefault ? DefaultText : cell.Text.ToString();
     }
 
     internal void OnDeviceLost()
@@ -485,12 +576,28 @@ public sealed partial class DataGridView : UserControl, IGridWindow
             return;
         }
         _textScale = scale;
-        _rowHeight = Math.Ceiling(BaseRowHeight * scale);
-        _painter?.Configure((float)(BaseFontSize * scale), _painter.Colors);
+        ApplyFont();
+    }
+
+    // The text scale, family or size changed: rows, header, row numbers, content-sized columns and the editor follow.
+    private void ApplyFont()
+    {
+        _rowHeight = FontRowHeight;
+        _painter?.Configure(_cellFontFamily, CellFontPixels, _painter.Colors);
+        if (_editor is not null)
+        {
+            ApplyEditorFont(_editor);
+        }
         _rowNumberDigits = 0;
         UpdateRowNumberWidth();
+        SizeToContent();
         ColumnsChanged();
     }
+
+    // 32 px rows for the 14 px font at 100%, growing with both, as a TextBlock cell's would.
+    private double FontRowHeight => Math.Ceiling(BaseRowHeight * _textScale * _cellFontSize / BaseFontSize);
+
+    private float CellFontPixels => (float)(_cellFontSize * _textScale);
 
     internal void ApplyRasterizationScale(double scale)
     {
@@ -530,10 +637,11 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     {
         s_device ??= new SurfaceDevice(ElementCompositionPreview.GetElementVisual(this).Compositor, PreferSoftwareRendering);
         _textScale = _settings.TextScaleFactor;
-        _rowHeight = Math.Ceiling(BaseRowHeight * _textScale);
-        var painter = new CellPainter(s_device, (float)(BaseFontSize * _textScale), GridColors.Resolve(ActualTheme))
+        _rowHeight = FontRowHeight;
+        var painter = new CellPainter(s_device, _cellFontFamily, CellFontPixels, GridColors.Resolve(ActualTheme))
         {
             DefaultText = _defaultText,
+            NullText = _nullText,
         };
         FontWarmupTask = Task.WhenAll(
             FontWarmup.Start(s_device.DWrite, painter.FamilyName, BaseFontSize, PreferSoftwareRendering),
@@ -563,6 +671,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        CancelColumnMove();
+        ClearCellTip();
         // As when the editor loses focus, so text typed into a grid that leaves the window still reaches the host.
         CommitOrCancel(refocus: false);
         foreach (var rows in new[] { _rowsLayout.Realized.Values, _frozenRowsLayout.Realized.Values, _rowPool.Pooled, _frozenRowPool.Pooled })
@@ -604,6 +714,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     private void ColumnsChanged()
     {
+        // A wider column may show the value whole now.
+        ClearCellTip();
         _layoutVersion++;
         _content.Width = _columns.ScrollWidth;
         _frozenContent.Width = _columns.FrozenWidth;
@@ -725,6 +837,10 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     private void Follow(double x, double y)
     {
+        if (x != _viewX || y != _viewY)
+        {
+            ClearCellTip();
+        }
         _viewX = x;
         _viewY = y;
         var origin = Math.Floor(y / OriginStep) * OriginStep;

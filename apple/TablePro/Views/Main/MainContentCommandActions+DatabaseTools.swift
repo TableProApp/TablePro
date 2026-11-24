@@ -57,8 +57,8 @@ extension MainContentCommandActions {
 
     var supportsUserManagement: Bool {
         guard let connectionId = coordinator?.connectionId,
-              let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter
+              let plugin = DatabaseManager.shared.driver(for: connectionId)?.plugin
         else { return false }
-        return adapter.schemaPluginDriver.capabilities.contains(.userManagement)
+        return plugin.capabilities.contains(.userManagement)
     }
 }

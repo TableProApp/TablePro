@@ -204,10 +204,10 @@ struct CatalogChangeWindowTests {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let (coordinator, tabManager) = makeCoordinator(connection: connection)
-        var selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
-        selected.pendingChanges.deletedRowIDs = [.existing(0)]
+        let selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
         tabManager.tabs = [selected]
         tabManager.selectedTabId = selected.id
+        coordinator.changeManager(forTab: selected.id).recordRowDeletion(rowID: .existing(0), originalRow: [.text("0")])
 
         coordinator.applyObjectChange(Self.change(connection, name: "users", database: "shop", schema: nil, kind: .rows))
 
@@ -355,10 +355,10 @@ struct CatalogChangeWindowTests {
         let (coordinator, tabManager) = makeCoordinator(connection: connection)
         let background = Self.tabWithCachedMetadata("users", in: coordinator)
         let unrelated = Self.tabWithCachedMetadata("orders", in: coordinator)
-        var editing = Self.tabWithCachedMetadata("users", in: coordinator)
-        editing.pendingChanges.deletedRowIDs = [.existing(0)]
+        let editing = Self.tabWithCachedMetadata("users", in: coordinator)
         tabManager.tabs = [background, unrelated, editing]
         tabManager.selectedTabId = editing.id
+        coordinator.changeManager(forTab: editing.id).recordRowDeletion(rowID: .existing(0), originalRow: [.text("0")])
         #expect(coordinator.isMetadataCached(tabId: background.id, tableName: "users"))
 
         coordinator.applyObjectChange(Self.change(connection, name: "users", database: "shop", schema: nil, kind: .rows))
@@ -497,10 +497,10 @@ struct CatalogChangeWindowTests {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
         let (coordinator, tabManager) = makeCoordinator(connection: connection)
-        var selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
-        selected.pendingChanges.deletedRowIDs = [.existing(0)]
+        let selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
         tabManager.tabs = [selected]
         tabManager.selectedTabId = selected.id
+        coordinator.changeManager(forTab: selected.id).recordRowDeletion(rowID: .existing(0), originalRow: [.text("0")])
 
         coordinator.applyObjectChange(Self.change(connection, name: "users", database: "shop", schema: nil, kind: .rows))
         coordinator.resumeDeferredTableRefresh()
@@ -577,10 +577,8 @@ struct CatalogChangeWindowTests {
         #expect(Self.totalRowCount(of: selected.id, in: tabManager) == nil)
     }
 
-    /// Switching back to a tab restores its edits into the change manager, and the copy left on the
-    /// tab went on reporting them after the reader undid them all, so it vetoed the reload they had
-    /// put off for as long as the tab stayed in front.
-    @Test("a tab switched back to holds its edits in the change manager only, so undoing them reloads it")
+    // A copy of the edits left on the tab once vetoed the reload after the reader undid them all.
+    @Test("a tab switched back to holds its edits in its own change manager only, so undoing them reloads it")
     func aTabShownAgainDropsItsSavedEditsOnceRestored() async throws {
         let connection = TestFixtures.makeConnection(database: "shop")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
@@ -596,8 +594,9 @@ struct CatalogChangeWindowTests {
         coordinator.handleTabChange(from: edited.id, to: other.id, tabs: tabManager.tabs)
         tabManager.selectedTabId = edited.id
         coordinator.handleTabChange(from: other.id, to: edited.id, tabs: tabManager.tabs)
+        #expect(coordinator.changeManager === coordinator.changeManager(forTab: edited.id))
         #expect(coordinator.changeManager.hasChanges)
-        #expect(tabManager.tabs.first { $0.id == edited.id }?.pendingChanges.hasChanges == false)
+        #expect(coordinator.existingChangeManager(forTab: other.id)?.hasChanges != true)
 
         coordinator.applyObjectChange(Self.change(connection, name: "users", database: "shop", schema: nil, kind: .rows))
         await Self.afterQueuedMainWork()

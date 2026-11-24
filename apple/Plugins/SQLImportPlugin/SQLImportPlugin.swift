@@ -6,10 +6,9 @@
 import Combine
 import Foundation
 import os
-import SwiftUI
 import TableProPluginKit
 
-final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLImportPlugin")
 
     static let pluginName = "SQL Import"
@@ -24,16 +23,13 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
     typealias Settings = SQLImportOptions
     static let settingsStorageId = "sql-import"
 
-    @Published var settings = SQLImportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = SQLImportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
     required init() { loadSettings() }
-
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(SQLImportOptionsView(plugin: self))
-    }
 
     func resetSettingsToDefaults() {
         settings = SQLImportOptions()

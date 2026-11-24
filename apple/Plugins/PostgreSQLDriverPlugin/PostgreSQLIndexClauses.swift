@@ -10,7 +10,7 @@
 import Foundation
 import TableProPluginKit
 
-enum PostgreSQLIndexClauses {
+nonisolated enum PostgreSQLIndexClauses {
     static func createStatement(for index: PluginIndexDefinition, qualifiedTable: String) -> String {
         let unique = index.isUnique ? "UNIQUE " : ""
         let name = PostgreSQLObjectQueries.quoteIdentifier(index.name)

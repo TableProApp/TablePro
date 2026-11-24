@@ -33,7 +33,6 @@ struct FailedContainerSwitchCommandTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: QueryTabManager(containerTarget: .database, visibleContainer: "db_a"),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator.teardown() }

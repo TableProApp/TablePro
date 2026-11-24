@@ -8,8 +8,7 @@
 import Foundation
 
 public enum TeradataObjectQueries {
-    /// DBC.TablesV.TableKind is a single character. These are the ones that are routines or
-    /// triggers rather than tables, views or indexes.
+    // The DBC.TablesV.TableKind codes of routines and triggers, as opposed to tables, views and indexes.
     public enum TableKind {
         public static let storedProcedure = "P"
         public static let externalProcedure = "E"
@@ -54,8 +53,7 @@ public enum TeradataObjectQueries {
         return query + "\nORDER BY TableName, TriggerName"
     }
 
-    /// SHOW PROCEDURE only returns text when the procedure was created with SPL retention on, so
-    /// DBC.TablesV.RequestText is tried first and this is the fallback.
+    // The fallback after DBC.TablesV.RequestText: SHOW PROCEDURE has text only for a procedure created with SPL on.
     public static func routineDefinition(kind: String, database: String, name: String) -> String {
         let qualified = TeradataSchemaQueries.qualifiedName(database: database, table: name)
         return TableKind.procedures.contains(kind)
@@ -88,5 +86,10 @@ public enum TeradataObjectQueries {
 
     public static func orientation(fromKind kind: String?) -> String {
         kind?.trimmingCharacters(in: .whitespaces).uppercased() == "R" ? "ROW" : "STATEMENT"
+    }
+
+    // Teradata's DROP TRIGGER takes no IF EXISTS and names the trigger in its database, not on its table.
+    public static func dropTriggerStatement(name: String, database: String?) -> String {
+        "DROP TRIGGER \(TeradataSchemaQueries.qualifiedName(database: database, table: name))"
     }
 }

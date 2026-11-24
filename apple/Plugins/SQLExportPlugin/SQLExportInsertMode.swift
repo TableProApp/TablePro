@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 
 /// How a dump's `INSERT` behaves when a row it writes already exists.
-public enum SQLExportInsertMode: String, Codable, CaseIterable, Sendable, Identifiable {
+nonisolated public enum SQLExportInsertMode: String, Codable, CaseIterable, Sendable, Identifiable {
     case insert
     case ignoreExisting
     case replaceExisting
@@ -33,7 +33,7 @@ public enum SQLExportInsertMode: String, Codable, CaseIterable, Sendable, Identi
 /// a resolution clause (`INSERT OR IGNORE`), and PostgreSQL puts it in a trailing `ON CONFLICT`
 /// that has to name the conflict target. An engine with no spelling at all falls back to a plain
 /// `INSERT` and says so, rather than writing a statement the restore would reject.
-public struct SQLExportInsertRenderer {
+nonisolated public struct SQLExportInsertRenderer {
     public struct Rendered: Equatable, Sendable {
         public let prefix: String
         public let suffix: String

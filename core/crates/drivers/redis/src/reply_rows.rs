@@ -5,7 +5,7 @@ use tablepro_core::column::{
     ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm, ResultColumn, TextLength,
 };
 use tablepro_core::value::{JsonText, Value};
-use tablepro_core::{DriverError, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
+use tablepro_core::{DriverError, ResultEvent, ResultSink, RowBatch, RowLimit, SinkFlow, Truncation};
 
 use crate::errors::server_error;
 use crate::key_name::quoted_argument;
@@ -111,10 +111,6 @@ fn json(reply: &Reply) -> serde_json::Value {
     }
 }
 
-/// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a
-/// slow grid slows the run instead of growing a queue.
-const BATCH_ROWS: usize = 256;
-
 /// Stream one reply into `sink`, keeping at most `limit` rows of a table.
 /// The reply is already whole in memory, so the rows past the limit are
 /// counted and dropped.
@@ -131,7 +127,7 @@ pub(crate) async fn emit(sink: &mut dyn ResultSink, shape: ReplyShape, limit: Op
     }
     let mut rows = rows.into_iter().peekable();
     while rows.peek().is_some() {
-        let batch: Vec<_> = rows.by_ref().take(BATCH_ROWS).collect();
+        let batch: Vec<_> = rows.by_ref().take(RowBatch::MAX_ROWS).collect();
         if sink.accept(ResultEvent::Rows(batch)).await == SinkFlow::ConsumerGone {
             return SinkFlow::ConsumerGone;
         }

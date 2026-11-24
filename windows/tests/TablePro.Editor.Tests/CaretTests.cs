@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using TablePro.Testing;
 using TerraFX.Interop.Windows;
+using Windows.Graphics;
 using static TerraFX.Interop.Windows.Windows;
 
 namespace TablePro.Editor.Tests;
@@ -70,6 +72,95 @@ public sealed class CaretTests
         });
     }
 
+    // Focus leaving the editor drew a whole frame though nothing on the swap chain changed.
+    [Fact]
+    public Task FocusLeavingTheEditorAndComingBackDrawsNoFrame()
+    {
+        return WinUiApp.RunAsync(async () =>
+        {
+            var editor = new SqlEditor { Text = "SELECT 1;" };
+            var other = new Button
+            {
+                Content = "Other",
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+            };
+            try
+            {
+                Assert.True(await EditorHost.ShowAsync(editor, other), "the editor drew no frame");
+                WinUiApp.Window.Activate();
+                await FramesAsync(3);
+                Assert.SkipUnless(editor.IsInActiveWindow, "The test window is not the active window.");
+                Assert.True(editor.Focus(FocusState.Programmatic));
+                await FramesAsync(3);
+                Assert.True(editor.IsCaretShown, "no caret shown after focus");
+                var frames = 0;
+                editor.FramePresented += (_, _) => frames++;
+
+                Assert.True(other.Focus(FocusState.Programmatic));
+                await FramesAsync(3);
+                Assert.Equal(FocusState.Unfocused, editor.FocusState);
+                Assert.False(editor.IsCaretShown, "the caret is shown after focus left");
+                Assert.True(editor.Focus(FocusState.Programmatic));
+                await FramesAsync(3);
+                Assert.True(editor.IsCaretShown, "no caret shown after focus came back");
+                Assert.Equal(0, frames);
+            }
+            finally
+            {
+                EditorHost.Clear();
+                editor.Dispose();
+            }
+        });
+    }
+
+    // Another test process opening its window took the activation and drew a frame in the timeout test.
+    [Fact]
+    public Task AnotherWindowTakingTheActivationDrawsNoFrame()
+    {
+        return WinUiApp.RunAsync(async () =>
+        {
+            var editor = new SqlEditor { Text = "SELECT 1;" };
+            try
+            {
+                Assert.True(await EditorHost.ShowAsync(editor), "the editor drew no frame");
+                WinUiApp.Window.Activate();
+                await FramesAsync(3);
+                Assert.SkipUnless(editor.IsInActiveWindow, "The test window is not the active window.");
+                Assert.True(editor.Focus(FocusState.Programmatic));
+                await FramesAsync(3);
+                var frames = 0;
+                editor.FramePresented += (_, _) => frames++;
+
+                var other = new Window { Title = "Other" };
+                other.AppWindow.MoveAndResize(new RectInt32(120, 120, 480, 320));
+                try
+                {
+                    other.Activate();
+                    await UntilAsync(() => !editor.IsInActiveWindow);
+                    Assert.SkipWhen(editor.IsInActiveWindow, "The other window did not take the activation.");
+                    await FramesAsync(3);
+                    Assert.False(editor.IsCaretShown, "the caret is shown in an inactive window");
+                }
+                finally
+                {
+                    other.Close();
+                }
+                WinUiApp.Window.Activate();
+                await UntilAsync(() => editor.IsInActiveWindow);
+                Assert.SkipUnless(editor.IsInActiveWindow, "The test window did not get the activation back.");
+                await FramesAsync(3);
+                Assert.True(editor.IsCaretShown, "no caret shown once the window was active again");
+                Assert.Equal(0, frames);
+            }
+            finally
+            {
+                EditorHost.Clear();
+                editor.Dispose();
+            }
+        });
+    }
+
     // Read from the screen: the caret's visual draws over the swap chain and the blink hides it.
     [Fact]
     public Task TheCaretShowsOverTheTextAndTheBlinkHidesIt()
@@ -112,6 +203,24 @@ public sealed class CaretTests
                 editor.Dispose();
             }
         });
+    }
+
+    private static async Task FramesAsync(int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            await WinUiApp.NextFrameAsync();
+        }
+    }
+
+    private static async Task UntilAsync(Func<bool> condition)
+    {
+        var cancel = TestContext.Current.CancellationToken;
+        var waited = Stopwatch.StartNew();
+        while (!condition() && waited.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(20, cancel);
+        }
     }
 
     // Once the compositor has had time to show the caret's state; null when a blink changed it meanwhile.

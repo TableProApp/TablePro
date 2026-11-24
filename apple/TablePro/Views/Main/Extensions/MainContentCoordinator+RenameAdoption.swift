@@ -14,9 +14,9 @@ import Foundation
 extension MainContentCoordinator {
     func retitleTabs(ids: Set<UUID>, to newName: String) {
         guard !ids.isEmpty else { return }
-        var renamedSelectedTab = false
         for index in tabManager.tabs.indices where ids.contains(tabManager.tabs[index].id) {
-            if tabManager.tabs[index].id == tabManager.selectedTabId { renamedSelectedTab = true }
+            // Staged edits name the table their statements target, so a save after the rename writes to the new name.
+            existingChangeManager(forTab: tabManager.tabs[index].id)?.tableName = newName
             tabManager.mutate(at: index) { tab in
                 tab.tableContext.tableName = newName
                 tab.title = newName
@@ -27,11 +27,6 @@ extension MainContentCoordinator {
             // run against a name the server no longer has.
             rebuildTableQuery(at: index)
         }
-        // One change manager serves the whole window and holds the name its statements target, so
-        // a save started after the rename would still write to the old one. It moves only when the
-        // tab it is serving is one of the tabs that was renamed.
-        guard renamedSelectedTab else { return }
-        changeManager.tableName = newName
     }
 
     // A container's new name has to reach every tab keyed by its old one, or the next page or save
@@ -45,6 +40,10 @@ extension MainContentCoordinator {
             tabManager.mutate(at: index) { tab in
                 tab.tableContext.databaseName = toDatabase
                 if schema != nil { tab.tableContext.schemaName = toSchema }
+            }
+            // Staged edits keep their undo history across the rename, so their schema moves without clearing them.
+            if let schema, let manager = existingChangeManager(forTab: tabManager.tabs[index].id), manager.schemaName == schema {
+                manager.schemaName = toSchema
             }
             followRename(ofTableMetadataFor: tabManager.tabs[index])
             rebuildTableQuery(at: index)

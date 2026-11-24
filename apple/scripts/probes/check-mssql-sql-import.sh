@@ -11,9 +11,8 @@
 # runs none of it. None of that shows in a unit test, because each case depends on what the server does with the text
 # it is sent.
 #
-# So this builds a harness from the real TablePro/Core/Utilities/SQL/SQLFileParser.swift, the TableProUtilities module it
-# reads lines and chunks with, the real Plugins/MSSQLDriverPlugin sources, the TableProCore package and the shipped
-# Libs/libsybdb.a. Each script is read by SQLFileParser with the SQL Server grammar and every batch it hands out goes
+# So this builds a harness from the real SQL file parser in TableProSQLFile, the real Plugins/MSSQLDriverPlugin
+# sources, the TableProCore package and the shipped Libs/libsybdb.a. Each script is read by SQLFileParser with the SQL Server grammar and every batch it hands out goes
 # through MSSQLPluginDriver.executeBatch, as ImportDataSinkAdapter sends it: the first batch that raises an error stops
 # the import, with the server's line placed in the file. Then the database is read back.
 #
@@ -78,7 +77,7 @@ fi
 
 mkdir -p "$WORK/Sources/Check"
 ln -s "$ROOT/Plugins/MSSQLDriverPlugin/CFreeTDS" "$WORK/CFreeTDS"
-for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift "$ROOT/TablePro/Core/Utilities/SQL/SQLFileParser.swift"; do
+for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift; do
     ln -s "$source" "$WORK/Sources/Check/$(basename "$source")"
 done
 
@@ -91,7 +90,6 @@ let package = Package(
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(path: "$ROOT/Packages/TableProCore"),
-        .package(path: "$ROOT/Packages/TableProMacCore"),
     ],
     targets: [
         .systemLibrary(name: "CFreeTDS", path: "CFreeTDS"),
@@ -104,7 +102,7 @@ let package = Package(
                 .product(name: "TableProMSSQLCore", package: "TableProCore"),
                 .product(name: "TableProLogRedaction", package: "TableProCore"),
                 .product(name: "TableProSQLGrammar", package: "TableProCore"),
-                .product(name: "TableProUtilities", package: "TableProMacCore"),
+                .product(name: "TableProSQLFile", package: "TableProCore"),
             ],
             path: "Sources/Check",
             swiftSettings: [.swiftLanguageMode(.v6)],
@@ -121,13 +119,8 @@ cat > "$WORK/Sources/Check/Check.swift" << 'SWIFT'
 import Foundation
 import TableProCoreTypes
 import TableProPluginKit
+import TableProSQLFile
 import TableProSQLGrammar
-
-/// The one type SQLFileParser needs from the app beyond the files linked in beside it.
-enum DecompressionError: Error {
-    case decompressFailed
-    case fileReadFailed(String)
-}
 
 @main
 enum Check {

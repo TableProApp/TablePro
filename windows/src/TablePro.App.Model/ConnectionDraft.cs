@@ -11,6 +11,7 @@ public enum FormField
     SshHost,
     SshPort,
     SshKey,
+    JumpHosts,
     ClientKey,
     Timeout,
 }
@@ -21,6 +22,9 @@ public enum FieldProblem
     NotANumber,
     OutOfRange,
     NotAbsolute,
+
+    // The core refused the text, as a connect would.
+    Invalid,
 }
 
 public sealed record FieldError(FormField Field, FieldProblem Problem);
@@ -29,6 +33,9 @@ public sealed record FieldError(FormField Field, FieldProblem Problem);
 public sealed class ConnectionDraft
 {
     private SshSettings? _savedSsh;
+
+    // The record's own, which a save leaves as it was unless the form changed it.
+    private AiPolicy? _savedAiPolicy;
 
     public Guid? Id { get; set; }
 
@@ -69,6 +76,9 @@ public sealed class ConnectionDraft
 
     public string SshPassword { get; set; } = string.Empty;
 
+    // As OpenSSH's -J takes them, user@host:port separated by commas, and saved as one entry the way Linux saves it.
+    public string JumpHosts { get; set; } = string.Empty;
+
     public TlsMode TlsMode { get; set; } = TlsMode.Disable;
 
     // A saved connection's mode was picked when it was saved; a new one follows the engine's default until the user picks.
@@ -84,6 +94,8 @@ public sealed class ConnectionDraft
 
     public SafeMode SafeMode { get; set; } = SafeMode.Off;
 
+    // What the AI assistant may send from the connection; a new one starts at Ask, as the core saves it.
+    public AiPolicy AiPolicy { get; set; } = AiPolicy.Ask;
     public string Timeout { get; set; } = string.Empty;
 
     public string? Color { get; set; }
@@ -121,6 +133,14 @@ public sealed class ConnectionDraft
         };
     }
 
+    // A new connection with what the URL names, the way the engine chooser's From connection URL fills one.
+    public static ConnectionDraft FromUrl(ParsedConnectionUrl url, DatabaseEngine engine)
+    {
+        var draft = New(engine);
+        draft.Apply(url, engine);
+        return draft;
+    }
+
     public static ConnectionDraft From(SavedConnection connection, DatabaseEngine engine)
     {
         ArgumentNullException.ThrowIfNull(connection);
@@ -145,6 +165,7 @@ public sealed class ConnectionDraft
             SshUserName = connection.Ssh?.UserName ?? string.Empty,
             SshAuth = connection.Ssh?.Auth ?? SshAuthMethod.Agent,
             SshKeyPath = connection.Ssh?.KeyPath ?? string.Empty,
+            JumpHosts = string.Join(", ", connection.Ssh?.JumpHosts ?? []),
             TlsMode = connection.Tls.Mode,
             TlsModeChosen = true,
             CaFile = connection.Tls.CaFile ?? string.Empty,
@@ -152,6 +173,8 @@ public sealed class ConnectionDraft
             ClientCertificate = connection.Tls.ClientCertificate ?? string.Empty,
             ClientKey = connection.Tls.ClientKey ?? string.Empty,
             SafeMode = connection.SafeMode,
+            AiPolicy = connection.AiPolicy ?? AiPolicy.Ask,
+            _savedAiPolicy = connection.AiPolicy,
             Timeout = connection.QueryTimeoutSeconds?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
             Color = connection.Color,
             GroupId = connection.GroupId,
@@ -278,7 +301,10 @@ public sealed class ConnectionDraft
         {
             return new SavedConnection(
                 Id, name, EngineId, string.Empty, 0, Database.Trim(), string.Empty, TlsSettings.Disabled,
-                SafeMode, Color: Color, GroupId: GroupId, LastOpened: LastOpened);
+                SafeMode, Color: Color, GroupId: GroupId, LastOpened: LastOpened)
+            {
+                AiPolicy = ChosenAiPolicy(),
+            };
         }
 
         return new SavedConnection(
@@ -302,7 +328,7 @@ public sealed class ConnectionDraft
                     SshHost.Trim(),
                     ParsePort(SshPort),
                     Blank(SshUserName),
-                    _savedSsh?.JumpHosts ?? [],
+                    JumpHostList(),
                     SshAuth,
                     SshAuth == SshAuthMethod.PrivateKey ? Blank(SshKeyPath) : null,
                     SshAuth == SshAuthMethod.PrivateKey && _savedSsh is { KeyHasPassphrase: true }
@@ -313,10 +339,15 @@ public sealed class ConnectionDraft
                 : int.Parse(Timeout.Trim(), NumberStyles.None, CultureInfo.InvariantCulture),
             Color: Color,
             GroupId: GroupId,
-            LastOpened: LastOpened);
+            LastOpened: LastOpened)
+        {
+            AiPolicy = ChosenAiPolicy(),
+        };
     }
 
-    // A rename, a colour or a group is nothing a connect reads, so a connect under way goes on without them.
+    private AiPolicy? ChosenAiPolicy() => AiPolicy == (_savedAiPolicy ?? AiPolicy.Ask) ? _savedAiPolicy : AiPolicy;
+
+    // A rename, a colour, a group or the AI policy is nothing a connect reads, so a connect under way goes on.
     public static bool ChangesConnect(SavedConnection before, SavedConnection after)
     {
         ArgumentNullException.ThrowIfNull(before);
@@ -332,6 +363,7 @@ public sealed class ConnectionDraft
             GroupId = before.GroupId,
             LastOpened = before.LastOpened,
             Tags = before.Tags,
+            AiPolicy = before.AiPolicy,
             Ssh = ssh,
         } != before;
     }
@@ -349,6 +381,18 @@ public sealed class ConnectionDraft
             ? SshPassword
             : null;
         return new ConnectionSecrets(password, sshPassword);
+    }
+
+    // A list left as it was shown keeps its stored entries, so an import's several entries are not counted as an edit.
+    private IReadOnlyList<string> JumpHostList()
+    {
+        if (_savedSsh is { } saved
+            && string.Equals(string.Join(", ", saved.JumpHosts), JumpHosts, StringComparison.Ordinal))
+        {
+            return saved.JumpHosts;
+        }
+
+        return Blank(JumpHosts) is { } list ? [list] : [];
     }
 
     private static void CheckPort(List<FieldError> errors, FormField field, string text, bool required)

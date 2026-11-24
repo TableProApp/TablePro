@@ -191,14 +191,15 @@ extension MainContentCoordinator {
         return nil
     }
 
-    // One discard guard: applyFilters deferred behind the alert but setFKFilter didn't, so a refusal left a stale filter.
+    // One discard guard over the filter and the history entry, so a refusal writes neither.
     private func refilterSelectedTab(with filter: TableFilter, showsReferenceAlready: Bool) {
+        guard let tabId = tabManager.selectedTabId else { return }
         // Not recorded when the tab already shows this reference, or Back would step through identical entries.
         let departing = showsReferenceAlready ? nil : captureNavigationEntry()
-        confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
             guard let self, confirmed else { return }
-            filterCoordinator.commitReferenceFilter(filter)
-            commitNavigationEntry(departing)
+            filterCoordinator.commitReferenceFilter(filter, forTab: tabId)
+            commitNavigationEntry(departing, inTab: tabId)
         }
     }
 }

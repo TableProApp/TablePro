@@ -24,7 +24,9 @@ internal final class ExternalConnectionTrustStore: ExternalConnectionTrustChecki
     internal static let shared = ExternalConnectionTrustStore()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ExternalConnectionTrustStore")
-    private static let storageKey = "com.TablePro.externalConnectionTrust.entries"
+    private static let storageKey = JSONDefaultsKey<[TrustedExternalConnection]>(
+        "com.TablePro.externalConnectionTrust.entries"
+    )
 
     private let defaults: UserDefaults
 
@@ -53,22 +55,18 @@ internal final class ExternalConnectionTrustStore: ExternalConnectionTrustChecki
     }
 
     internal func revokeAll() {
-        defaults.removeObject(forKey: Self.storageKey)
+        defaults.removeValue(for: Self.storageKey)
     }
 
     internal func entries() -> [TrustedExternalConnection] {
-        guard let data = defaults.data(forKey: Self.storageKey),
-              let decoded = try? JSONDecoder().decode([TrustedExternalConnection].self, from: data)
-        else { return [] }
-        return decoded.filter { $0.key.isLoopbackHost }
+        (defaults.read(Self.storageKey).value ?? []).filter { $0.key.isLoopbackHost }
     }
 
     private func save(_ entries: [TrustedExternalConnection]) {
         guard !entries.isEmpty else {
-            defaults.removeObject(forKey: Self.storageKey)
+            defaults.removeValue(for: Self.storageKey)
             return
         }
-        guard let data = try? JSONEncoder().encode(entries) else { return }
-        defaults.set(data, forKey: Self.storageKey)
+        try? defaults.write(entries, to: Self.storageKey)
     }
 }

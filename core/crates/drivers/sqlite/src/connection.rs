@@ -10,20 +10,20 @@ use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition}
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{DumpCatalog, DumpScope};
 use tablepro_core::meta::{
-    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableInfo, TableRef,
 };
 use tablepro_core::statement::Statement;
 use tablepro_core::{
     CallOptions, ColumnInfo, CommitResolution, CommitToken, Connection, DriverError, EditorSession,
     EditorSessionOptions, FileEndpoint, FileOpenMode, ForeignKeyInfo, LinkState, LinkWatch, LivenessPolicy, LossPhase,
     OwnedCalls, QueryResult, ReadOnlyRefusal, ReadStatement, ResultSink, RowLimit, ServerInfo, StreamSummary,
-    TimeoutPhase, WorkspaceSettings, WriteAtomicity, WriteBatch, WriteKind, WriteLedger, WriteReport,
+    TimeoutPhase, WorkspaceSettings, WriteAtomicity, WriteBatch, WriteKind, WriteLedger, WriteReport, deadline_elapsed,
 };
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::catalog::{SqliteVersion, check_runtime_version};
-use crate::create_file::create_or_replace;
+use crate::create_file::make_file;
 use crate::deadline;
 use crate::dialect::SqliteDialect;
 use crate::driver::WORKSPACE_POOL_MAX_SIZE;
@@ -56,8 +56,6 @@ pub(crate) struct SqliteConnection {
 }
 
 impl SqliteConnection {
-    /// Open the file the endpoint names, creating it first when the
-    /// user asked for a new database.
     pub(crate) async fn open(
         endpoint: &FileEndpoint,
         settings: WorkspaceSettings,
@@ -72,9 +70,10 @@ impl SqliteConnection {
         if tablepro_core::claimed_by_another(&path, crate::driver::ENGINE) {
             return Err(DriverError::Busy(tablepro_core::BusyReason::FileLocked));
         }
-        if endpoint.mode() == FileOpenMode::CreateNew {
+        let mode = endpoint.mode();
+        if mode != FileOpenMode::OpenExisting {
             let target = path.clone();
-            tokio::task::spawn_blocking(move || create_or_replace(&target))
+            tokio::task::spawn_blocking(move || make_file(&target, mode))
                 .await
                 .map_err(|error| DriverError::Protocol(format!("creating the database file stopped: {error}")))??;
         }
@@ -89,6 +88,9 @@ impl SqliteConnection {
             .acquire_timeout(liveness.pool_wait)
             .after_connect(|connection, _| {
                 Box::pin(async move {
+                    crate::statement_limit::install(connection)
+                        .await
+                        .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
                     crate::attach_guard::install(connection)
                         .await
                         .map_err(|error| sqlx::Error::Protocol(error.to_string()))
@@ -156,7 +158,7 @@ impl SqliteConnection {
         tokio::select! {
             biased;
             () = options.cancel().cancelled() => Err(DriverError::Cancelled),
-            () = deadline::elapsed(options.deadline()) => Err(DriverError::Timeout {
+            () = deadline_elapsed(options.deadline()) => Err(DriverError::Timeout {
                 phase: TimeoutPhase::Statement,
                 server_cancelled: false,
             }),
@@ -171,12 +173,28 @@ impl SqliteConnection {
     {
         let options = self.statement_bounded(options);
         let pooled = self.acquire(&options).await?;
-        self.run_on(options, pooled, work).await
+        self.run_on(options, pooled, ReadScope::Statements, work).await
+    }
+
+    async fn read_catalog<T, W>(&self, options: CallOptions, work: W) -> Result<T, DriverError>
+    where
+        T: Send + 'static,
+        W: for<'c> FnOnce(&'c mut SqlxConnection) -> BoxFuture<'c, Result<T, DriverError>> + Send + 'static,
+    {
+        let options = self.statement_bounded(options);
+        let pooled = self.acquire(&options).await?;
+        self.run_on(options, pooled, ReadScope::Snapshot, work).await
     }
 
     /// Run one call's work on a connection the call holds, under the
     /// call's own stop.
-    async fn run_on<T, W>(&self, options: CallOptions, pooled: SqlitePooled, work: W) -> Result<T, DriverError>
+    async fn run_on<T, W>(
+        &self,
+        options: CallOptions,
+        pooled: SqlitePooled,
+        scope: ReadScope,
+        work: W,
+    ) -> Result<T, DriverError>
     where
         T: Send + 'static,
         W: for<'c> FnOnce(&'c mut SqlxConnection) -> BoxFuture<'c, Result<T, DriverError>> + Send + 'static,
@@ -186,9 +204,10 @@ impl SqliteConnection {
         let lock_timeout = self.settings.lock_timeout;
         self.calls
             .run_read(options, pooled, stop, move |mut pooled, _request| async move {
-                let result = match flag.install(pooled.connection(), lock_timeout).await {
-                    Ok(()) => work(pooled.connection()).await,
-                    Err(error) => Err(error),
+                let result = match (flag.install(pooled.connection(), lock_timeout).await, scope) {
+                    (Ok(()), ReadScope::Statements) => work(pooled.connection()).await,
+                    (Ok(()), ReadScope::Snapshot) => in_snapshot(&mut pooled, &flag, work).await,
+                    (Err(error), _) => Err(error),
                 };
                 (pooled, result)
             })
@@ -212,7 +231,7 @@ impl SqliteConnection {
         tokio::select! {
             biased;
             () = options.cancel().cancelled() => Err(DriverError::Cancelled),
-            () = deadline::elapsed(options.deadline()) => Err(DriverError::Timeout {
+            () = deadline_elapsed(options.deadline()) => Err(DriverError::Timeout {
                 phase: TimeoutPhase::Probe,
                 server_cancelled: false,
             }),
@@ -225,17 +244,50 @@ impl SqliteConnection {
         tokio::select! {
             biased;
             () = options.cancel().cancelled() => Err(DriverError::Cancelled),
-            () = deadline::elapsed(options.deadline()) => Err(DriverError::Timeout {
+            () = deadline_elapsed(options.deadline()) => Err(DriverError::Timeout {
                 phase: TimeoutPhase::Statement,
                 server_cancelled: false,
             }),
             opened = SqlxConnection::connect_with(&read_only) => {
                 let mut connection = opened.map_err(|error| map_open_error(error, &self.path))?;
+                crate::statement_limit::install(&mut connection).await?;
                 crate::read_guard::install(&mut connection).await?;
                 Ok(connection)
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadScope {
+    Statements,
+    Snapshot,
+}
+
+// One read transaction: a schema change by another connection between the statements of one catalog read cannot make
+// it miss a table.
+async fn in_snapshot<T, W>(pooled: &mut SqlitePooled, flag: &InterruptFlag, work: W) -> Result<T, DriverError>
+where
+    W: for<'c> FnOnce(&'c mut SqlxConnection) -> BoxFuture<'c, Result<T, DriverError>>,
+{
+    pooled
+        .connection()
+        .execute("SAVEPOINT tablepro_catalog")
+        .await
+        .map_err(map_error)?;
+    let read = work(pooled.connection()).await;
+    // A stop that ended the read must not stop its release, which would leave the read's lock held, and has to stand
+    // again after it: the stop is what tells a lock wait it cut short from one that gave up.
+    let stopped = flag.is_raised();
+    flag.lower();
+    if let Err(error) = pooled.connection().execute("RELEASE tablepro_catalog").await {
+        tracing::warn!(%error, "a catalog read could not end its transaction; closing the connection");
+        pooled.discard_on_release();
+    }
+    if stopped {
+        flag.raise();
+    }
+    read
 }
 
 /// User SQL on a read connection, run only once SQLite reads it as one
@@ -303,7 +355,7 @@ impl Connection for SqliteConnection {
         let probed = match self.pool.try_acquire() {
             Some(connection) => {
                 let pooled = SqlitePooled::new(connection);
-                self.run_on(options, pooled, |connection| {
+                self.run_on(options, pooled, ReadScope::Statements, |connection| {
                     Box::pin(async move { connection.execute("SELECT 1").await.map(|_| ()).map_err(map_error) })
                 })
                 .await
@@ -319,13 +371,13 @@ impl Connection for SqliteConnection {
     }
 
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
-        self.read(options, |connection| Box::pin(metadata::list_schemas(connection)))
+        self.read_catalog(options, |connection| Box::pin(metadata::list_schemas(connection)))
             .await
     }
 
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
         let scope = scope.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::list_objects(connection, &scope).await })
         })
         .await
@@ -337,7 +389,7 @@ impl Connection for SqliteConnection {
         options: CallOptions,
     ) -> Result<Option<ObjectDefinition>, DriverError> {
         let object = object.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::fetch_object_definition(connection, &object).await })
         })
         .await
@@ -345,7 +397,7 @@ impl Connection for SqliteConnection {
 
     async fn read_dump_catalog(&self, scope: &DumpScope, options: CallOptions) -> Result<DumpCatalog, DriverError> {
         let scope = scope.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { crate::dump::read_dump_catalog(connection, &scope).await })
         })
         .await
@@ -353,7 +405,7 @@ impl Connection for SqliteConnection {
 
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let table = table.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::fetch_columns(connection, &table).await })
         })
         .await
@@ -361,7 +413,7 @@ impl Connection for SqliteConnection {
 
     async fn fetch_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>, DriverError> {
         let table = table.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::fetch_indexes(connection, &table).await })
         })
         .await
@@ -373,7 +425,7 @@ impl Connection for SqliteConnection {
         options: CallOptions,
     ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
         let table = table.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::fetch_foreign_keys(connection, &table).await })
         })
         .await
@@ -385,7 +437,7 @@ impl Connection for SqliteConnection {
         options: CallOptions,
     ) -> Result<Vec<OutboundForeignKey>, DriverError> {
         let table = table.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::fetch_outbound_foreign_keys(connection, &table).await })
         })
         .await
@@ -397,7 +449,7 @@ impl Connection for SqliteConnection {
         options: CallOptions,
     ) -> Result<Vec<InboundForeignKey>, DriverError> {
         let table = table.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::fetch_inbound_foreign_keys(connection, &table).await })
         })
         .await
@@ -409,7 +461,7 @@ impl Connection for SqliteConnection {
         options: CallOptions,
     ) -> Result<TableDefinition, DriverError> {
         let table = table.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::fetch_table_definition(connection, &table).await })
         })
         .await
@@ -417,7 +469,7 @@ impl Connection for SqliteConnection {
 
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError> {
         let table = table.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::row_identity(connection, &table).await })
         })
         .await
@@ -425,8 +477,16 @@ impl Connection for SqliteConnection {
 
     async fn table_estimate(&self, table: &TableRef, options: CallOptions) -> Result<TableEstimate, DriverError> {
         let table = table.clone();
-        self.read(options, move |connection| {
+        self.read_catalog(options, move |connection| {
             Box::pin(async move { metadata::table_estimate(connection, &table).await })
+        })
+        .await
+    }
+
+    async fn table_info(&self, table: &TableRef, options: CallOptions) -> Result<TableInfo, DriverError> {
+        let table = table.clone();
+        self.read_catalog(options, move |connection| {
+            Box::pin(async move { metadata::table_info(connection, &table).await })
         })
         .await
     }
@@ -558,5 +618,45 @@ impl Connection for SqliteConnection {
         self.calls.shutdown().await;
         let _ = tokio::time::timeout(self.liveness.close_timeout, self.pool.close()).await;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::sqlite::SqliteConnectOptions;
+
+    use super::*;
+    use crate::autocommit::is_autocommit;
+
+    async fn in_transaction(connection: &mut SqlxConnection) -> Result<bool, DriverError> {
+        let mut handle = connection.lock_handle().await.map_err(map_error)?;
+        Ok(!is_autocommit(&mut handle))
+    }
+
+    #[tokio::test]
+    async fn a_catalog_read_runs_in_one_transaction_and_ends_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let options = SqliteConnectOptions::new()
+            .filename(directory.path().join("snapshot.sqlite3"))
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        let mut pooled = SqlitePooled::new(pool.acquire().await.unwrap());
+        let flag = InterruptFlag::new();
+
+        let inside = in_snapshot(&mut pooled, &flag, |connection| Box::pin(in_transaction(connection))).await;
+        let failed: Result<(), DriverError> =
+            in_snapshot(&mut pooled, &flag, |_| Box::pin(async { Err(DriverError::Cancelled) })).await;
+
+        assert_eq!(inside, Ok(true), "every statement of the read sees one snapshot");
+        assert_eq!(failed, Err(DriverError::Cancelled));
+        assert_eq!(
+            in_transaction(pooled.connection()).await,
+            Ok(false),
+            "a read that failed still ends its transaction"
+        );
     }
 }

@@ -15,7 +15,7 @@ import TableProPluginKit
 ///
 /// Separate from `SQLExportInsertRenderer`, which owns the statement's prefix and suffix for an
 /// insert mode. This owns the rows between them.
-internal struct SQLExportRowValueEncoder {
+nonisolated internal struct SQLExportRowValueEncoder {
     internal let includedColumnIndices: [Int]
 
     /// The values this encoder rendered that the engine cannot carry in one statement whatever

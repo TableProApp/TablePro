@@ -135,10 +135,9 @@ async fn open(base: &str) -> Opened {
     }
 }
 
-// Nothing listens once the listener is dropped, so every request is refused.
+// Port 1 is below every system's ephemeral range, so no test's listener takes it and every request is refused.
 fn unreachable() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    format!("http://{}", listener.local_addr().unwrap())
+    "http://127.0.0.1:1".to_owned()
 }
 
 // Stands in for tablepro-cloud: `answer` gives the status and body for a method, path and request body.
@@ -355,7 +354,7 @@ mod shares {
     }
 
     async fn run(session: &DatabaseSession, sql: &str) -> Option<Arc<ResultSet>> {
-        let editor = session.open_editor(None).await.unwrap();
+        let editor = session.open_editor(None, None).await.unwrap();
         let run = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Quiet));
         let outcome = run.outcome().await.unwrap();
         assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
@@ -498,7 +497,7 @@ mod shares {
             name: "notes".to_owned(),
         };
         let page = session
-            .read_table_page(notes.clone(), None, None, 2, 0, Box::new(Quiet), None)
+            .read_table_page(notes.clone(), None, None, 2, 0, None, Box::new(Quiet), None)
             .await
             .unwrap();
         let outcome = page.run().outcome().await.unwrap();

@@ -20,7 +20,7 @@ import TableProSQLQuoting
 /// because a bound `123.45` fails with ORA-01722 once `NLS_NUMERIC_CHARACTERS` is `,.`; NULL is the literal,
 /// because a NULL bind into an object-type column fails with ORA-00932; and text for an NCHAR, NVARCHAR2 or NCLOB
 /// column is `UNISTR`, because a literal or bind passes through the database character set (``OracleNationalText``).
-internal struct OracleRowWriter {
+nonisolated internal struct OracleRowWriter {
     /// A keyed delete carries at most this many key values. One statement with 32,767 binds took 30 seconds on 23ai
     /// and one with 1,000 took 0.07, and a statement that outlives the query timeout closes the session.
     static let maxValuesPerDelete = 1_000
@@ -289,7 +289,7 @@ internal struct OracleRowWriter {
 }
 
 /// How a value is written for the type of the column it goes into.
-internal enum OracleValueKind: Equatable {
+nonisolated internal enum OracleValueKind: Equatable {
     case date
     case timestamp
     case timestampWithTimeZone
@@ -399,7 +399,7 @@ internal enum OracleValueKind: Equatable {
 
 /// An Oracle numeric literal in ASCII: an optional sign, digits with at most one decimal point, and an optional
 /// exponent. It is written into the statement unquoted, so nothing else may pass.
-internal enum OracleNumericLiteral {
+nonisolated internal enum OracleNumericLiteral {
     static func isValid(_ text: String) -> Bool {
         var bytes = Array(text.utf8)[...]
         if let first = bytes.first, first == UInt8(ascii: "+") || first == UInt8(ascii: "-") {
@@ -434,7 +434,7 @@ internal enum OracleNumericLiteral {
 /// The `BFILENAME('DIR', 'file')` text a BFILE reads as, taken apart only in exactly that shape: two single-quoted
 /// literals with `''` escapes and nothing else. Both names are quoted again, so nothing from the text reaches the
 /// statement unescaped.
-internal enum OracleBFileText {
+nonisolated internal enum OracleBFileText {
     static func call(from text: String) -> String? {
         guard let names = names(in: text),
               let directory = OracleBindPlaceholders.quotedLiteral(names.directory),

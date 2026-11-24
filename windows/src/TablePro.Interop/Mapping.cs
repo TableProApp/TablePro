@@ -25,6 +25,7 @@ internal static partial class Mapping
             : null)
     {
         TlsFailure = info.TlsFailure is { } failure ? TlsFailureKind(failure) : null,
+        Ai = info.Ai is { } ai ? Failure(ai) : null,
     };
 
     private static TlsFailure TlsFailureKind(Native.TlsFailureTag failure) => failure switch
@@ -79,6 +80,13 @@ internal static partial class Mapping
 
     public static SchemaEntry Schema(Native.SchemaEntry schema) =>
         new(schema.Name, schema.IsDefault, schema.IsSystem);
+
+    public static DatabaseLayout Layout(Native.DatabaseLayoutTag layout) => layout switch
+    {
+        Native.DatabaseLayoutTag.AsSchemas => DatabaseLayout.AsSchemas,
+        Native.DatabaseLayoutTag.WithSchemas => DatabaseLayout.WithSchemas,
+        _ => DatabaseLayout.OneDatabase,
+    };
 
     public static ObjectEntry Object(Native.ObjectEntry entry) =>
         new(entry.Schema, entry.Name, ObjectKind(entry.Kind), entry.ParentTable);
@@ -196,6 +204,13 @@ internal static partial class Mapping
         Native.RowEstimate.Approximate approximate => new RowEstimate(Count(approximate.Rows), IsExact: false),
         _ => null,
     };
+
+    public static TableInfo Info(Native.TableInfoRecord info) => new(
+        Estimate(info.Rows),
+        info.Comment,
+        info.DataBytes is { } data ? Count(data) : null,
+        info.IndexBytes is { } index ? Count(index) : null,
+        info.TotalBytes is { } total ? Count(total) : null);
 
     public static ObjectSource Source(Native.ObjectSource source) =>
         new(source.Sql, source.Database, source.OpensInEditor);
@@ -433,7 +448,8 @@ internal static partial class Mapping
         connection.Color,
         connection.GroupId?.ToString(),
         connection.LastOpened?.ToUnixTimeMilliseconds(),
-        [.. connection.Tags.Select(tag => tag.ToString())]);
+        [.. connection.Tags.Select(tag => tag.ToString())],
+        connection.AiPolicy is { } policy ? Policy(policy) : null);
 
     public static SavedConnection Connection(Native.ConnectionRecord record) => new(
         Guid.Parse(record.Id),
@@ -478,6 +494,7 @@ internal static partial class Mapping
         record.LastOpenedMs is { } opened ? DateTimeOffset.FromUnixTimeMilliseconds(opened) : null)
     {
         Tags = [.. record.Tags.Select(Guid.Parse)],
+        AiPolicy = Policy(record.AiPolicy ?? Native.AiPolicyTag.Ask),
     };
 
     public static ConnectionGroup Group(Native.GroupRecord group) => new(

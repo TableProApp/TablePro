@@ -5,10 +5,9 @@
 
 import Combine
 import Foundation
-import SwiftUI
 import TableProPluginKit
 
-final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+nonisolated final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "XLSX Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to Excel format"
@@ -20,16 +19,13 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
     typealias Settings = XLSXExportOptions
     static let settingsStorageId = "xlsx"
 
-    @Published var settings = XLSXExportOptions() {
+    // A nonisolated class cannot hold an @Published property, so the change is announced by hand.
+    var settings = XLSXExportOptions() {
+        willSet { objectWillChange.send() }
         didSet { saveSettings() }
     }
 
     required init() { loadSettings() }
-
-    @MainActor
-    func settingsView() -> AnyView? {
-        AnyView(XLSXExportOptionsView(plugin: self))
-    }
 
     func resetSettingsToDefaults() {
         settings = XLSXExportOptions()
@@ -106,6 +102,8 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
                 }
             }
 
+            // The stream's own checks end with its last element, and the batch left over can be 4,999 rows.
+            try progress.checkCancellation()
             if !rowBatch.isEmpty {
                 try writeBatch()
             }
@@ -123,7 +121,7 @@ final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlug
             }
         }
 
-        try await writer.write(to: destination)
+        try await writer.write(to: destination, progress: progress)
 
         progress.finalizeTable()
 

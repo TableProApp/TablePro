@@ -204,7 +204,7 @@ public sealed partial class ShellTests
         app.Find("PrimaryButton", torn).AsButton().Invoke();
         app.WaitForClose(SampleWindow);
         app.TypeInto("Query 1", "SELECT COUNT(*) FROM Track WHERE TrackId = 1 AND Name = 'Pending';");
-        app.Chord(() => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
+        app.Chord(() => AppSession.TextOf(app.Find("QueryStatus")).StartsWith("Rows: 1", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
         Assert.Equal("0", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "0"));
     }
@@ -243,6 +243,33 @@ public sealed partial class ShellTests
         app.Find("Rail_First").Patterns.SelectionItem.Pattern.Select();
         app.Find("RollBackButton").AsButton().Invoke();
         app.PressDialogButton();
+    }
+
+    // The cancelled prompt is still playing its closing transition when Roll back asks.
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void RollBackRightAfterCancellingCloseStillAsks(string theme)
+    {
+        var folder = AppSession.NewDataFolder(theme);
+        var state = new
+        {
+            connections = new[]
+            {
+                new { filePath = AppSession.SampleDatabase(folder), name = "First", engineId = "sqlite",
+                    tabs = new[] { new { kind = "Query", title = "Query 1", sql = "BEGIN" } } },
+            },
+            front = 0,
+        };
+        File.WriteAllText(Path.Combine(folder, "session.json"), JsonSerializer.Serialize(state));
+        using var app = AppSession.Relaunch(folder, theme);
+        app.Find("SqlEditor");
+        app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+        app.Chord(() => app.TryFind("PrimaryButton") is not null, VirtualKeyShort.ALT, VirtualKeyShort.F4);
+        app.CloseDialog();
+        app.Find("RollBackButton").AsButton().Invoke();
+        app.PressDialogButton("Roll back");
+        Assert.True(Retry.WhileFalse(() => app.TryFind("CommitButton") is null or { IsOffscreen: true },
+            AppSession.Wait, throwOnTimeout: false).Success);
     }
 
     private static void OpenTrack(AppSession app)

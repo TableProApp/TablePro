@@ -95,13 +95,4 @@ struct UnloadedValueWriteTests {
         let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
         #expect(build.operations.first?.preImage?[2] == .bytes(Data([5])))
     }
-
-    @Test("A value loaded for a tab in the background completes that tab's saved deletion")
-    func backgroundTabSnapshotTakesLoadedValue() {
-        let row = Self.page().rows[0]
-        var snapshot = TabChangeSnapshot()
-        snapshot.changes = [RowChange(rowID: row.id, type: .delete, originalRow: Array(row.values))]
-        snapshot.adoptLoadedValues([row.id: [2: .bytes(Data([5]))]])
-        #expect(snapshot.changes.first?.originalRow?[2] == .bytes(Data([5])))
-    }
 }

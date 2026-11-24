@@ -181,4 +181,41 @@ struct SQLQueryFingerprintTests {
         #expect(normalize("") == "")
         #expect(normalize("   \n\t ") == "")
     }
+
+    @Test("A psql COPY keeps its command in the shape, and its rows stay out")
+    func copyFromStandardInputKeepsItsCommand() {
+        let users = "COPY users FROM stdin;\n1\tada\n\\.\n"
+        let orders = "COPY orders FROM stdin;\n1\tada\n\\.\n"
+        #expect(normalize(users) == "COPY users FROM stdin")
+        #expect(hash(users) != hash(orders))
+        #expect(hash(users) == hash("COPY users FROM stdin;\n2\tbob\n\\.\n"))
+        #expect(hash("/* load */ " + users) == hash(users))
+        #expect(hash("/* load */ " + users) != hash("/* load */ " + orders))
+    }
+
+    @Test("A quoted name that needs its quotes keeps them, so it never reads as the list it spells")
+    func quotedNamesKeepNeededQuotes() {
+        #expect(hash("SELECT [a, b] FROM t", .mssql) != hash("SELECT a, b FROM t", .mssql))
+        #expect(hash(#"SELECT "a, b" FROM t"#) != hash("SELECT a, b FROM t"))
+        #expect(hash("SELECT [a] FROM t", .mssql) == hash("SELECT a FROM t", .mssql))
+    }
+
+    @Test("A SurrealQL angle-quoted name is the name it quotes")
+    func angleQuotedNamesStayNames() {
+        #expect(hash("SELECT * FROM \u{27E8}users\u{27E9}", .surrealdb) == hash("SELECT * FROM users", .surrealdb))
+        #expect(hash("SELECT * FROM \u{27E8}users\u{27E9}", .surrealdb) != hash("SELECT * FROM \u{27E8}orders\u{27E9}", .surrealdb))
+    }
+
+    @Test("A MySQL hint leaves the sign after it on its literal")
+    func hintIsNotAnOperand() {
+        #expect(hash("SELECT /*!40001 SQL_NO_CACHE */ -1", .mysql) == hash("SELECT /*!40001 SQL_NO_CACHE */ 1", .mysql))
+        #expect(normalize("SELECT /*!40001 SQL_NO_CACHE */ -1", .mysql) == "SELECT ?")
+    }
+
+    @Test("A word glued to a literal stays in the shape, so SQLite's column and alias never read as one literal")
+    func literalPrefixStaysInTheShape() {
+        #expect(hash("SELECT b'alias' FROM t", .sqlite) != hash("SELECT n'alias' FROM t", .sqlite))
+        #expect(normalize("SELECT b'alias' FROM t", .sqlite) == "SELECT b ? FROM t")
+        #expect(hash("SELECT N'x' FROM t", .mssql) == hash("SELECT N'other' FROM t", .mssql))
+    }
 }

@@ -4,7 +4,6 @@
 //! only that tab, as cqlsh moves only its own connection. CQL keeps no
 //! other state on a connection: no transaction, no temporary table.
 
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -14,9 +13,9 @@ use scylla::statement::unprepared::Statement as CqlStatement;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
 use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
 use tablepro_core::{
-    CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionState, ErrorCategory, LossPhase,
-    ReadOnlyRefusal, ResultEvent, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, ServerNotice, SinkFlow,
-    TransactionState, Truncation, UserSql,
+    CallOptions, DriverError, EditorSession, EditorSessionId, EditorSessionState, EditorSessionStatus, ErrorCategory,
+    LossPhase, ReadOnlyRefusal, ResultEvent, ResultSink, RowBatch, RowLimit, RunEnd, RunOptions, RunSummary,
+    ServerNotice, SinkFlow, TransactionState, Truncation, UserSql, deadline_elapsed,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -26,20 +25,12 @@ use crate::result_origin::SpecTable;
 use crate::rows::{ColumnsRead, MAX_PAGE_ROWS, next_state, page_size};
 use crate::session::{CqlLink, LinkSlot};
 
-/// Rows per `ResultEvent::Rows`. The sink is awaited per batch, so a slow
-/// grid slows the read instead of growing a queue.
-const BATCH_ROWS: usize = 256;
-
-const READY: u8 = 0;
-const RUNNING: u8 = 1;
-const LOST: u8 = 2;
-
 pub(crate) struct CqlEditorSession {
     id: EditorSessionId,
     link: LinkSlot,
     read_only: bool,
     statement_timeout: Option<Duration>,
-    state: Arc<AtomicU8>,
+    status: Arc<EditorSessionStatus>,
     shutdown: CancellationToken,
     /// The keyspace the server confirmed. The driver records one it is
     /// still moving to, or failed to.
@@ -55,21 +46,8 @@ impl CqlEditorSession {
             link: LinkSlot::new(link),
             read_only,
             statement_timeout,
-            state: Arc::new(AtomicU8::new(READY)),
+            status: Arc::new(EditorSessionStatus::new()),
             shutdown: CancellationToken::new(),
-        }
-    }
-
-    fn begin(&self) -> Result<(), DriverError> {
-        match self
-            .state
-            .compare_exchange(READY, RUNNING, Ordering::SeqCst, Ordering::SeqCst)
-        {
-            Ok(_) => Ok(()),
-            Err(RUNNING) => Err(DriverError::EditorSessionBusy),
-            Err(_) => Err(DriverError::ConnectionLost {
-                during: LossPhase::Idle,
-            }),
         }
     }
 }
@@ -90,12 +68,12 @@ impl EditorSession for CqlEditorSession {
     /// session ends.
     async fn use_database(&self, database: &str, options: CallOptions) -> Result<(), DriverError> {
         let link = self.link.get()?;
-        self.begin()?;
+        self.status.begin()?;
         let using = link.session().use_keyspace(database, true);
         let used = tokio::select! {
             biased;
             () = options.cancel().cancelled() => Err(DriverError::Cancelled),
-            () = until(options.deadline()) => Err(DriverError::Timeout {
+            () = deadline_elapsed(options.deadline()) => Err(DriverError::Timeout {
                 phase: tablepro_core::TimeoutPhase::Statement,
                 server_cancelled: false,
             }),
@@ -104,11 +82,11 @@ impl EditorSession for CqlEditorSession {
         match used {
             Ok(()) => {
                 *self.keyspace.lock().unwrap_or_else(PoisonError::into_inner) = Some(database.to_owned());
-                self.state.store(READY, Ordering::SeqCst);
+                self.status.finish();
                 Ok(())
             }
             Err(error) => {
-                self.state.store(LOST, Ordering::SeqCst);
+                self.status.lose();
                 self.link.release();
                 Err(error)
             }
@@ -116,11 +94,7 @@ impl EditorSession for CqlEditorSession {
     }
 
     fn state(&self) -> EditorSessionState {
-        match self.state.load(Ordering::SeqCst) {
-            READY => EditorSessionState::Ready,
-            RUNNING => EditorSessionState::Running,
-            _ => EditorSessionState::Lost,
-        }
+        self.status.state()
     }
 
     /// The run goes on a task of its own, so a dropped caller is a
@@ -132,7 +106,7 @@ impl EditorSession for CqlEditorSession {
         sink: Box<dyn ResultSink>,
     ) -> Result<RunSummary, DriverError> {
         let link = self.link.get()?;
-        self.begin()?;
+        self.status.begin()?;
         let guard = options.cancel.clone().drop_guard();
         let run = Run {
             link,
@@ -140,7 +114,7 @@ impl EditorSession for CqlEditorSession {
             statement_timeout: self.statement_timeout,
             shutdown: self.shutdown.clone(),
         };
-        let state = self.state.clone();
+        let status = self.status.clone();
         let (keyspace, link) = (self.keyspace.clone(), run.link.clone());
         let follows = tablepro_core::sql_syntax::may_change_database(sql.as_str(), SqlGrammar::Cql);
         let running = tokio::spawn(async move {
@@ -150,15 +124,14 @@ impl EditorSession for CqlEditorSession {
                 *keyspace.lock().unwrap_or_else(PoisonError::into_inner) =
                     link.session().get_keyspace().map(|keyspace| keyspace.to_string());
             }
-            let next = match &outcome {
-                Ok(_) => READY,
-                Err(_) => LOST,
-            };
-            let _ = state.compare_exchange(RUNNING, next, Ordering::SeqCst, Ordering::SeqCst);
+            match &outcome {
+                Ok(_) => status.finish(),
+                Err(_) => status.lose(),
+            }
             outcome
         });
         let outcome = running.await.unwrap_or_else(|_| {
-            self.state.store(LOST, Ordering::SeqCst);
+            self.status.lose();
             Err(DriverError::ConnectionLost {
                 during: LossPhase::Statement,
             })
@@ -180,7 +153,7 @@ impl EditorSession for CqlEditorSession {
     /// server runs to its own timeout.
     async fn close(&self) {
         self.shutdown.cancel();
-        self.state.store(LOST, Ordering::SeqCst);
+        self.status.lose();
         self.link.release();
     }
 }
@@ -336,7 +309,7 @@ impl Run {
             let past_limit = decoded.len() > room;
             let kept: Vec<_> = decoded.into_iter().take(room).collect();
             retained += kept.len() as u64;
-            for batch in kept.chunks(BATCH_ROWS) {
+            for batch in kept.chunks(RowBatch::MAX_ROWS) {
                 emitter.send(ResultEvent::Rows(batch.to_vec())).await;
             }
             if past_limit {
@@ -385,16 +358,10 @@ struct Stop<'a> {
 
 impl Stop<'_> {
     async fn triggered(&self) -> Interrupt {
-        let deadline = async {
-            match self.deadline {
-                Some(at) => tokio::time::sleep_until(at).await,
-                None => std::future::pending().await,
-            }
-        };
         tokio::select! {
             () = self.cancel.cancelled() => Interrupt::Cancelled,
             () = self.shutdown.cancelled() => Interrupt::Cancelled,
-            () = deadline => Interrupt::DeadlineElapsed,
+            () = deadline_elapsed(self.deadline) => Interrupt::DeadlineElapsed,
         }
     }
 }
@@ -421,11 +388,4 @@ fn lost(error: &DriverError) -> bool {
         error.category(),
         ErrorCategory::Network | ErrorCategory::ConnectionLost | ErrorCategory::Tls
     )
-}
-
-async fn until(deadline: Option<Instant>) {
-    match deadline {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
-    }
 }

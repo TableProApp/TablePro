@@ -14,7 +14,7 @@ import TableProPluginKit
 /// is not portable: MySQL takes a modifier on `START TRANSACTION`, PostgreSQL sets the isolation
 /// level on `BEGIN`, and SQLite gets the same guarantee from a plain deferred transaction. An
 /// engine with no spelling for it opens nothing rather than sending a statement it would reject.
-internal struct SQLExportSnapshot {
+nonisolated internal struct SQLExportSnapshot {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLExportSnapshot")
 
     private let dialect: SqlDialect

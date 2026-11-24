@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 
 // The driver pulls a COPY's rows on its own thread, so the check for a Stop and the progress note ride on each pull.
-internal final class SQLImportCopyRows: @unchecked Sendable {
+nonisolated internal final class SQLImportCopyRows: @unchecked Sendable {
     private static let lineFeed = UInt8(ascii: "\n")
     private static let linesPerNote = 10_000
 

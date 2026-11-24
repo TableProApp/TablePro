@@ -5,8 +5,12 @@ import TableProDatabase
 import TableProModels
 import TableProSQLQuoting
 
-nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
-    let actor = DuckDBActor()
+nonisolated final class DuckDBDriver: DatabaseDriver, CatalogQuerying, ExportRowStreaming,
+    DedicatedTransferConnection, @unchecked Sendable {
+    let actor: DuckDBActor
+    // A second connection on the session's database, which a transfer reads through; nil for the session itself.
+    let transferLane: UInt64?
+    let laneInterrupt: DuckDBInterruptHandle?
     private let source: LocalDatabaseFileSource
     private let openMode: LocalDatabaseOpenMode
     private let fileAccess = LocalDatabaseFileAccess()
@@ -16,7 +20,8 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
     var serverVersion: String? { String(cString: duckdb_library_version()) }
-    var holdsSuspensionBlockingResource: Bool { source != .inMemory }
+    // The session holds the file; a transfer connection lives and ends inside it.
+    var holdsSuspensionBlockingResource: Bool { transferLane == nil && source != .inMemory }
 
     // DuckDB ends statement text at a NUL, so a NUL in a value goes in as chr(0) between two literals.
     func escapeStringLiteral(_ value: String) -> String {
@@ -32,13 +37,25 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     init(source: LocalDatabaseFileSource, openMode: LocalDatabaseOpenMode = .existingOnly) {
+        self.actor = DuckDBActor()
+        self.transferLane = nil
+        self.laneInterrupt = nil
         self.source = source
         self.openMode = openMode
+    }
+
+    init(transferOn actor: DuckDBActor, lane: UInt64, interrupt: DuckDBInterruptHandle, source: LocalDatabaseFileSource) {
+        self.actor = actor
+        self.transferLane = lane
+        self.laneInterrupt = interrupt
+        self.source = source
+        self.openMode = .existingOnly
     }
 
     // MARK: - Connection
 
     func connect() async throws {
+        guard transferLane == nil else { return }
         let path = try fileAccess.begin(source, openMode: openMode)
         do {
             try await actor.open(path: path)
@@ -49,20 +66,24 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func disconnect() async throws {
+        if let transferLane {
+            await actor.closeTransferLane(transferLane)
+            return
+        }
         await actor.close()
         fileAccess.end()
     }
 
     // In-process, so an open handle is a live session; an aborted transaction refuses every statement until ROLLBACK.
     func ping() async throws -> Bool {
-        guard await actor.isOpen else { throw DuckDBDriverError.notConnected }
+        guard await actor.isOpen(lane: transferLane) else { throw DuckDBDriverError.notConnected }
         return true
     }
 
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> QueryResult {
-        let raw = try await actor.query(query)
+        let raw = try await actor.query(query, lane: transferLane)
         let columns = raw.columnNames.enumerated().map { index, name in
             ColumnInfo(
                 name: name,
@@ -81,21 +102,21 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
 
     /// Runs off the actor: the actor is busy inside the query for as long as it runs.
     func cancelCurrentQuery() async throws {
-        actor.interruptHandle.interrupt()
+        (laneInterrupt ?? actor.interruptHandle).interrupt()
     }
 
     // MARK: - Transactions
 
     func beginTransaction() async throws {
-        _ = try await actor.query("BEGIN TRANSACTION")
+        _ = try await actor.query("BEGIN TRANSACTION", lane: transferLane)
     }
 
     func commitTransaction() async throws {
-        _ = try await actor.query("COMMIT")
+        _ = try await actor.query("COMMIT", lane: transferLane)
     }
 
     func rollbackTransaction() async throws {
-        _ = try await actor.query("ROLLBACK")
+        _ = try await actor.query("ROLLBACK", lane: transferLane)
     }
 
     // MARK: - State
@@ -168,13 +189,16 @@ nonisolated final class DuckDBInterruptHandle: @unchecked Sendable {
 actor DuckDBActor {
     static let maxRows = 100_000
 
-    private let queue = DispatchSerialQueue(label: "com.TablePro.duckdb")
+    private let executor = DuckDBStackExecutor(name: "com.TablePro.duckdb")
 
-    nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
+    nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
 
     nonisolated let interruptHandle = DuckDBInterruptHandle()
-    private var database: duckdb_database?
+    private(set) var database: duckdb_database?
     var connection: duckdb_connection?
+    // The transfer connections on `database`, which `close()` ends before the database.
+    var transferLanes: [UInt64: DuckDBTransferLane] = [:]
+    var lastTransferLane: UInt64 = 0
 
     /// One result streams at a time. Each `beginStream` gets a new generation, so the producer of a stream that a
     /// later one replaced cannot fetch from or destroy the later result.
@@ -191,6 +215,7 @@ actor DuckDBActor {
         ("storage_compatibility_version", "v0.10.2"),
         ("autoinstall_known_extensions", "false"),
         ("autoload_known_extensions", "false"),
+        (DuckDBExpressionDepth.configurationOption, DuckDBExpressionDepth.limit),
     ]
 
     func open(path: String) throws {
@@ -236,7 +261,14 @@ actor DuckDBActor {
 
     var isOpen: Bool { database != nil && connection != nil }
 
+    func isOpen(lane: UInt64?) -> Bool {
+        guard let lane else { return isOpen }
+        return database != nil && transferLanes[lane] != nil
+    }
+
+    // A connection left open after `duckdb_close` keeps reading the file, so each transfer connection goes first.
     func close() {
+        closeTransferLanes()
         interruptHandle.detach()
         closeStreamResult()
         if connection != nil {
@@ -249,11 +281,15 @@ actor DuckDBActor {
         }
     }
 
-    func query(_ sql: String) throws -> DuckDBRawResult {
-        guard let connection else { throw DuckDBDriverError.notConnected }
+    func query(_ sql: String, lane: UInt64? = nil) throws -> DuckDBRawResult {
+        guard let connection = connection(for: lane) else { throw DuckDBDriverError.notConnected }
         // Another statement closes an open streaming result inside DuckDB, and its next fetch would fail with an
         // internal error. Closing it here ends that stream as cancelled.
-        closeStreamResult()
+        if let lane {
+            closeExportResult(lane: lane)
+        } else {
+            closeStreamResult()
+        }
 
         let startTime = Date()
         var result = duckdb_result()

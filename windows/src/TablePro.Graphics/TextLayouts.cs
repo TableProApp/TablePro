@@ -55,20 +55,16 @@ internal sealed unsafe class TextLayouts : IDisposable
     public const int LongLine = 4096;
     private const int SliceMargin = 512;
 
-    private static readonly string[] Families = ["Cascadia Mono", "Consolas", "Courier New"];
-
     private readonly IDWriteFactory* _factory;
     private readonly Dictionary<LayoutKey, LineLayout> _cache = [];
     private IDWriteTextFormat* _format;
     private IDWriteTextFormat* _gutterFormat;
     private long _frame;
 
-    public TextLayouts(IDWriteFactory* factory, float fontSize, int tabSize)
+    public TextLayouts(IDWriteFactory* factory, string? family, float fontSize, int tabSize)
     {
         _factory = factory;
-        FamilyName = PickFamily();
-        Configure(fontSize, tabSize);
-        FontWarmup.Start(factory, FamilyName, fontSize);
+        Configure(family, fontSize, tabSize);
     }
 
     // Not cached; the caller releases it.
@@ -83,7 +79,8 @@ internal sealed unsafe class TextLayouts : IDisposable
     public IDWriteTextLayout* CreateLayout(char* text, int length, float maxWidth) =>
         CreateLayout(text, length, _format, maxWidth);
 
-    public string FamilyName { get; }
+    // The family drawn with, which is the requested one only when it is installed.
+    public string FamilyName { get; private set; } = string.Empty;
 
     public float FontSize { get; private set; }
 
@@ -95,11 +92,14 @@ internal sealed unsafe class TextLayouts : IDisposable
 
     public int CreatedThisFrame { get; private set; }
 
-    public void Configure(float fontSize, int tabSize)
+    public void Configure(string? family, float fontSize, int tabSize)
     {
         Clear();
         NativeCom.Release(ref _format);
         NativeCom.Release(ref _gutterFormat);
+        var picked = FontFamilies.Pick(_factory, family, FontFamilies.EditorFallbacks);
+        var changed = picked != FamilyName;
+        FamilyName = picked;
         FontSize = fontSize;
         _format = CreateFormat(fontSize);
         _gutterFormat = CreateFormat(fontSize * 0.92f);
@@ -119,6 +119,10 @@ internal sealed unsafe class TextLayouts : IDisposable
         {
             format->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, LineHeight, baseline);
             format->SetIncrementalTabStop(CharWidth * tabSize);
+        }
+        if (changed)
+        {
+            FontWarmup.Start(_factory, FamilyName, fontSize);
         }
     }
 
@@ -257,32 +261,6 @@ internal sealed unsafe class TextLayouts : IDisposable
         }
         format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
         return format;
-    }
-
-    private string PickFamily()
-    {
-        IDWriteFontCollection* fonts;
-        NativeCom.Check(_factory->GetSystemFontCollection(&fonts, BOOL.FALSE));
-        try
-        {
-            foreach (var name in Families)
-            {
-                uint index;
-                BOOL exists;
-                fixed (char* chars = name)
-                {
-                    if (fonts->FindFamilyName(chars, &index, &exists).SUCCEEDED && exists)
-                    {
-                        return name;
-                    }
-                }
-            }
-        }
-        finally
-        {
-            fonts->Release();
-        }
-        return Families[^1];
     }
 
     private readonly record struct LayoutKey(string Text, ulong Style, int SegmentStart, int SegmentLength);

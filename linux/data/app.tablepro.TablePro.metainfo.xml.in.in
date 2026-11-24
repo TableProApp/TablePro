@@ -104,6 +104,27 @@
     <binary>tablepro</binary>
   </provides>
   <releases>
+    <release version="0.1.0~beta.5" type="development" date="2026-11-18">
+      <url type="details">https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0-beta.5</url>
+      <description>
+        <p>The fifth beta of TablePro for Linux.</p>
+        <ul>
+          <li>The tablepro command no longer refuses the running app on Linux kernels before 6.17</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.1.0~beta.4" type="development" date="2026-11-16">
+      <url type="details">https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0-beta.4</url>
+      <description>
+        <p>The fourth beta of TablePro for Linux.</p>
+        <ul>
+          <li>A tablepro command runs queries and lists, describes and exports tables</li>
+          <li>Share a query or a result as a public link, with sensitive columns masked first</li>
+          <li>Highlight Rules, Open Quickly, saved query folders, and a reworked sidebar and row details</li>
+          <li>Safer handling of crafted SQLite and DuckDB files</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0~beta.3" type="development" date="2026-11-07">
       <url type="details">https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0-beta.3</url>
       <description>

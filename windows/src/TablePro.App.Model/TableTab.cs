@@ -27,6 +27,24 @@ public enum CellValueKind
     Default,
 }
 
+// The open editor's cell and text, which a commit would keep; Row counts the page's rows, then the new ones.
+public sealed record CellDraft(int Row, int Column, string Text);
+
+// One column of a row as the details pane shows it: what the cell holds now, its pending edit included. Text is null
+// for NULL and for DEFAULT; a value too long to show whole is cut, and then not edited here.
+public sealed record RowField(
+    int Column,
+    string Name,
+    string TypeName,
+    string? Text,
+    bool TextCut,
+    bool IsDefault,
+    bool IsEdited,
+    bool CanEdit)
+{
+    public bool IsNull => Text is null && !IsDefault;
+}
+
 // The run that read the page shown, which the status words with the page.
 public readonly record struct PageRun(long Milliseconds, bool Truncated);
 
@@ -87,8 +105,17 @@ public interface ITableTabView
     // The grid has an editor open, whose text counts as a change until it is kept or cancelled.
     bool HasOpenEdit { get; }
 
+    // The open editor's text where it differs from what it opened with; null otherwise.
+    CellDraft? OpenDraft { get; }
+
+    // Writes the session file at once, the edits marked uncertain; a write the file refuses is logged, never thrown.
+    void WriteSessionNow();
+
     // The grid's open editor keeps its text first; false when the text was refused and the editor stays open.
     bool CommitOpenEdit();
+
+    // A confirmed Discard drops what is still typed and not kept, a refused value included.
+    void DiscardOpenEdit();
 
     void FocusRow(int row);
 
@@ -113,6 +140,12 @@ public interface ITableTabView
 
     // Without the columns and their operators the filter bar has nothing to offer.
     void ShowFilterChoicesFailed(CoreError failure);
+
+    // The details pane's table figures could not be read; the rows stay as they are.
+    void ShowTableInfoFailed(CoreError failure);
+
+    // Recovered changes back and waiting, and whether Save waits for a reload or a discard; all empty hides it.
+    void ShowRecovered(int restored, int waiting, bool saveBlocked);
 }
 
 // A sort and a filter are the page's ORDER BY and WHERE, so they order and pick from the whole table.
@@ -136,6 +169,11 @@ public sealed class TableTab : IWorkspaceTab
     private readonly TabWork _work = new();
     private readonly KeptRead<TableStructure> _structure;
     private readonly KeptRead<FilterChoices> _choices;
+    private readonly KeptRead<TableInfo> _info;
+    private readonly ITableFilters? _filters;
+
+    // Where each page of a server-paged table resumes, by its offset: a paging state only goes forward.
+    private readonly Dictionary<long, IPageResume> _resumes = [];
     private ITableEditor? _tableEditor;
     private bool _reopenTableEditor;
     private Task? _closing;
@@ -162,9 +200,21 @@ public sealed class TableTab : IWorkspaceTab
 
     // The set the edits name rows of, which the core reads each key and stored value from.
     private ResultSet? _editsRows;
+
+    // Read once a page shows and again after a refresh; a read that fails leaves the grid's menu without references.
+    private ITableKeys? _keys;
+    private bool _keysStale = true;
+    private bool _readingKeys;
+    private int _keysVersion;
     private EditLock? _pageLock;
     private bool _saveBlocked;
     private Task<bool> _save = Task.FromResult(true);
+
+    // The block came from recovered changes, so the notice that says so goes with it.
+    private bool _recoveredBlock;
+
+    // Changes the app ended holding without a close that no page has taken yet; each page read tries them again.
+    private SavedEdits? _recovered;
 
     public TableTab(
         ITabSession session,
@@ -173,7 +223,8 @@ public sealed class TableTab : IWorkspaceTab
         TableName table,
         ObjectKind kind,
         Func<AppSettings> settings,
-        SessionTab? restore = null)
+        SessionTab? restore = null,
+        ITableFilters? filters = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(view);
@@ -189,9 +240,12 @@ public sealed class TableTab : IWorkspaceTab
         _chosenSize = restore?.PageSize is { } size ? Math.Clamp(size, 1, TablePage.LargestSize) : null;
         var first = TablePage.First(PageSize);
         _page = first.At((restore?.Offset ?? 0) / first.Size * first.Size);
-        // A restored filter stays until the user changes it, even when the first read refuses it.
-        Filter = restore?.Filter?.ToFilter();
+        _filters = filters;
+        // A restored filter stays until the user changes it, even when the first read refuses it. A table opened again
+        // reads with the filter it last had, as macOS restores and applies it.
+        Filter = restore is null ? filters?.Recall(table) : restore.Filter?.ToFilter();
         _shownFilter = Filter;
+        _recovered = restore?.Edits is { Changes: > 0 } recovered ? recovered : null;
         _structure = new KeptRead<TableStructure>(
             _work,
             token => _session.GetStructureAsync(Table, ObjectKind, token),
@@ -200,6 +254,10 @@ public sealed class TableTab : IWorkspaceTab
             _work,
             token => _session.GetFilterChoicesAsync(Table, token),
             _view.ShowFilterChoicesFailed);
+        _info = new KeptRead<TableInfo>(
+            _work,
+            token => _session.GetTableInfoAsync(Table, token),
+            _view.ShowTableInfoFailed);
         _results.ShownSetChanged += OnShownSetChanged;
     }
 
@@ -221,6 +279,8 @@ public sealed class TableTab : IWorkspaceTab
 
     public bool IsSaving { get; private set; }
 
+    public bool IsClosed => _work.IsClosed;
+
     // A page is read on one of the session's pooled connections, and a save commits before it returns.
     public TransactionState Transaction => TransactionState.Idle;
 
@@ -233,6 +293,9 @@ public sealed class TableTab : IWorkspaceTab
     // Null until LoadStructureAsync has read it.
     public TableStructure? Structure => _structure.Value;
 
+    // The details pane's figures, read when it first shows them and again after a refresh.
+    public TableInfo? Info => _info.Value;
+
     public TablePage Page => _page;
 
     // Null until a run has read the page; a count that arrives later adds the total, as on macOS.
@@ -240,8 +303,9 @@ public sealed class TableTab : IWorkspaceTab
 
     public bool IsCounting => _counting is not null;
 
-    // Only an exact total pages to the end; a count the tab runs by itself is on its way, so Count rows waits for it.
-    public bool OffersCount => _page.Total is null && _page.IsPaged && (_counting is null || _countAsked);
+    // Only an exact total pages to the end, and only where the engine seeks; one the tab runs by itself is on its way.
+    public bool OffersCount =>
+        _page.CanSeek && _page.Total is null && _page.IsPaged && (_counting is null || _countAsked);
 
     public bool CanCountRows => OffersCount && !IsCounting && !IsRunning && !IsSaving && !_work.IsClosed;
 
@@ -298,6 +362,86 @@ public sealed class TableTab : IWorkspaceTab
         string.Equals(Table.Name, table, StringComparison.Ordinal)
         && string.Equals(Table.Schema, schema, StringComparison.Ordinal);
 
+    // A tab on the table a reference leads to that shows rows read with exactly its filter, or will on its first
+    // show. One still reading may end on the rows it showed before, and one whose read failed shows none.
+    public bool ShowsReference(FollowedReference.Rows reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        return !IsRunning && Table == reference.Table && TableFilters.Same(_shownFilter, reference.Filter)
+            && (!_shown || _results.Outcome is QueryOutcome.Completed);
+    }
+
+    // A new table tab on the rows a reference leads to, its filter kept with the tab as one the user set.
+    public static SessionTab TabFor(FollowedReference.Rows reference)
+    {
+        ArgumentNullException.ThrowIfNull(reference);
+        return new SessionTab
+        {
+            Kind = TabKind.Table,
+            Title = reference.Table.Name,
+            Schema = reference.Table.Schema,
+            Table = reference.Table.Name,
+            ObjectKind = nameof(Interop.ObjectKind.Table),
+            Filter = SavedFilter.From(reference.Filter),
+        };
+    }
+
+    // What a cell's row leads to as the server holds the row: nothing while the page is read or saved, or on a new
+    // or deleted row; and of the row's own keys, none whose cells hold a pending change, which the server has not.
+    public ReferenceMenu ReferencesAt(int row, int column)
+    {
+        if (_keys is not { } keys || IsRunning || IsSaving || _work.IsClosed
+            || column < 0 || column >= _results.Columns.Count || row < 0 || row >= _results.ShownRowCount
+            || (Edits is { } shown && (shown.IsAdded(row) || shown.IsDeleted(row))))
+        {
+            return ReferenceMenu.None;
+        }
+
+        var rows = _results.ShownSet;
+        RowReferences references;
+        try
+        {
+            references = keys.ReferencesAt(rows, row, _results.Columns[column].Name);
+        }
+        catch (TableProException)
+        {
+            return ReferenceMenu.None;
+        }
+
+        if (Edits is { } edits)
+        {
+            references = references with
+            {
+                Referenced = [.. references.Referenced.Where(reference =>
+                    !reference.Columns.Any(name => IsChanged(edits, row, name)))],
+            };
+        }
+
+        return new ReferenceMenu(references, keys, rows, row);
+    }
+
+    // Built once a key is chosen. Null when the menu's page or keys are no longer the tab's, as after a reload.
+    public FollowedReference? Follow(ReferenceMenu menu, RowReferenceChoice choice)
+    {
+        ArgumentNullException.ThrowIfNull(menu);
+        ArgumentNullException.ThrowIfNull(choice);
+        if (menu.Keys is not { } keys || !ReferenceEquals(keys, _keys) || !ReferenceEquals(menu.Rows, _results.ShownSet)
+            || IsRunning || IsSaving || _work.IsClosed)
+        {
+            return null;
+        }
+
+        try
+        {
+            return keys.Follow(menu.Rows, menu.Row, choice);
+        }
+        catch (TableProException)
+        {
+            return null;
+        }
+    }
+
+    // Recovered changes not yet put back go along, since nothing has asked about them.
     public SessionTab Snapshot() => new()
     {
         Kind = TabKind.Table,
@@ -308,7 +452,40 @@ public sealed class TableTab : IWorkspaceTab
         PageSize = _chosenSize,
         Offset = _page.Offset > 0 ? _page.Offset : null,
         Filter = Filter is { } filter ? SavedFilter.From(filter) : null,
+        Edits = _recovered,
     };
+
+    // Recovered changes still waiting, then the ones pending now, by key; a relaunch puts them back on its page.
+    public SessionTab WithPendingWork(SessionTab snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        // The open editor's text goes too, as if kept, while the grid keeps it open.
+        var draft = _view.OpenDraft;
+        if (Edits is not { } edits || _tableEditor is null || (!edits.HasChanges && draft is null))
+        {
+            return snapshot;
+        }
+
+        // A save that may have written them, or is writing them now, leaves them blocked after a relaunch as here.
+        var pending = SavedEdits.From(edits, ReadStoredValues, uncertain: _saveBlocked || IsSaving, draft);
+        return snapshot with { Edits = SavedEdits.Join(_recovered, pending) };
+    }
+
+    // Recovered changes no page has taken yet, which the tab's bar counts and offers to discard.
+    public int WaitingChanges => _recovered?.Changes ?? 0;
+
+    // Only the waiting changes go, without a question: the bar that offers this names them.
+    public void DiscardWaiting()
+    {
+        if (_recovered is null)
+        {
+            return;
+        }
+
+        _recovered = null;
+        _view.ShowRecovered(0, 0, _saveBlocked && _recoveredBlock);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     // The edits name rows of the page shown, so a reload asks first while any is pending, as macOS asks.
     public async Task<bool> MayReloadAsync(ReloadReason reason)
@@ -330,7 +507,7 @@ public sealed class TableTab : IWorkspaceTab
         }
 
         // The discarded edits took the blocked save with them, whether or not the reload then reads the page.
-        _saveBlocked = false;
+        Unblock();
         Edits?.Discard();
         return true;
     }
@@ -362,9 +539,32 @@ public sealed class TableTab : IWorkspaceTab
         {
             _page = _page with { Total = null, Estimate = null };
             _reopenTableEditor = true;
+            // A key another client dropped or changed would lead to the wrong rows, so none is offered until read again.
+            _keysVersion++;
+            _keysStale = true;
+            _keys?.Dispose();
+            _keys = null;
             _structure.MarkStale();
             _choices.MarkStale();
+            _info.MarkStale();
             await LoadAsync(_page.Offset, recount: true).ConfigureAwait(true);
+        }
+    }
+
+    // Another table's drop can take a foreign key of this one with it: its keys, structure and filter choices are read
+    // again, and the rows and their edits stay.
+    public void ForgetCatalog()
+    {
+        _reopenTableEditor = true;
+        _keysVersion++;
+        _keysStale = true;
+        _keys?.Dispose();
+        _keys = null;
+        _structure.MarkStale();
+        _choices.MarkStale();
+        if (!IsRunning && !IsSaving && _shown)
+        {
+            ReadKeysIfNeeded();
         }
     }
 
@@ -380,11 +580,28 @@ public sealed class TableTab : IWorkspaceTab
         await LoadAsync(0, recount: true).ConfigureAwait(true);
     }
 
+    // A cell's rule joins the filter and the table reads again; false when it was already running, the user kept their
+    // edits instead, or the filter was refused.
+    public async Task<bool> FilterByAsync(FilterRule rule)
+    {
+        ArgumentNullException.ThrowIfNull(rule);
+        var filter = CellFilters.With(Filter, rule);
+        if (ReferenceEquals(filter, Filter))
+        {
+            return false;
+        }
+
+        await ApplyFilterAsync(filter).ConfigureAwait(true);
+        return ReferenceEquals(Filter, filter);
+    }
+
     // Read once per tab, and again after a refresh, since the table's columns can change.
     public Task<FilterChoices?> LoadFilterChoicesAsync() => _choices.LoadAsync(refresh: false);
 
     // Read beside the page, never in its way, and kept until a refresh of the tab or of the structure.
     public Task<TableStructure?> LoadStructureAsync(bool refresh) => _structure.LoadAsync(refresh);
+
+    public Task<TableInfo?> LoadInfoAsync(bool refresh) => _info.LoadAsync(refresh);
 
     public async Task SortAsync(GridSort sort)
     {
@@ -399,13 +616,13 @@ public sealed class TableTab : IWorkspaceTab
         await LoadAsync(_page.Offset).ConfigureAwait(true);
     }
 
-    public Task FirstPageAsync() => PageToAsync(_ => 0);
+    public Task FirstPageAsync() => PageToAsync(_ => 0, keepsResumes: true);
 
-    public Task PreviousPageAsync() => PageToAsync(page => page.PreviousOffset);
+    public Task PreviousPageAsync() => PageToAsync(page => page.PreviousOffset, keepsResumes: true);
 
-    public Task NextPageAsync() => PageToAsync(page => page.NextOffset);
+    public Task NextPageAsync() => PageToAsync(page => page.NextOffset, keepsResumes: true);
 
-    public Task LastPageAsync() => PageToAsync(page => page.LastOffset);
+    public Task LastPageAsync() => _page.HasLast ? PageToAsync(page => page.LastOffset) : Task.CompletedTask;
 
     public async Task GoToPageAsync(long number)
     {
@@ -465,6 +682,89 @@ public sealed class TableTab : IWorkspaceTab
 
         text = stored ?? string.Empty;
         return null;
+    }
+
+    // Each column of the row in the table's own order; a binary value shows as the grid shows it, 0x and hex. A stored
+    // value past maxCharacters is cut and not edited here, so a large one is never read whole to show a row.
+    public IReadOnlyList<RowField> FieldsAt(int row, int maxCharacters = CellValue.MaximumShownCharacters)
+    {
+        var columns = _results.Columns;
+        var rows = ShownRows;
+        var edits = Edits;
+        if (row < 0 || (edits is null ? rows is null || row >= rows.RowCount : row >= edits.RowCount))
+        {
+            return [];
+        }
+
+        var fields = new List<RowField>(columns.Count);
+        var count = edits is null ? columns.Count : Math.Min(columns.Count, edits.Columns.Count);
+        for (var column = 0; column < count; column++)
+        {
+            var info = columns[column];
+            var editable = CanEdit && edits is not null && CellRefusal(edits, row, column) is null;
+            if (edits?.GetCell(row, column) is { } pending)
+            {
+                var edited = !edits.IsAdded(row);
+                (string? Text, bool IsDefault) shown = pending switch
+                {
+                    CellEdit.Text typed => (typed.Value, false),
+                    CellEdit.ServerDefault => (null, true),
+                    _ => (null, false),
+                };
+                // A duplicated row's copy of a value is pending text: one with a NUL, or past maxCharacters, is shown
+                // as the stored value would be, read only.
+                var cut = shown.Text is { } whole && whole.Length > maxCharacters;
+                var text = cut ? Head(shown.Text!, maxCharacters) : shown.Text;
+                var canEdit = editable && !cut && text?.Contains('\0', StringComparison.Ordinal) != true;
+                fields.Add(new RowField(
+                    column, info.Name, info.TypeName, text, cut, shown.IsDefault, edited, canEdit));
+                continue;
+            }
+
+            var held = StoredField(rows, row, column, info, maxCharacters);
+            // An editable cell opens with its whole stored text, as the grid's editor does, once it fits.
+            if (editable && !held.TextCut && ReadStored(row, column, out var stored) is null)
+            {
+                // A TextBox ends its text at a NUL, so such a value is shown and never edited here, as in the grid.
+                var editableText = stored?.Contains('\0', StringComparison.Ordinal) != true;
+                fields.Add(new RowField(column, info.Name, info.TypeName, stored, false, false, false, editableText));
+                continue;
+            }
+
+            fields.Add(held);
+        }
+
+        return fields;
+    }
+
+    // Never between the halves of a surrogate pair.
+    private static string Head(string text, int length) =>
+        text[..(length > 0 && char.IsHighSurrogate(text[length - 1]) ? length - 1 : length)];
+
+    private static RowField StoredField(ResultSet? rows, int row, int column, ResultColumn info, int maxCharacters)
+    {
+        if (rows is null || row >= rows.RowCount)
+        {
+            return new RowField(column, info.Name, info.TypeName, null, false, false, false, false);
+        }
+
+        try
+        {
+            if (rows.GetCellBytes(row, column, Math.Clamp(maxCharacters / 2, 1, CellValue.MaximumHexBytes)) is { } binary)
+            {
+                var hex = "0x" + Convert.ToHexStringLower(binary.Bytes.Span);
+                var cut = binary.Bytes.Length < binary.Length;
+                return new RowField(column, info.Name, info.TypeName, hex, cut, false, false, false);
+            }
+
+            return rows.GetCellTextHead(row, column, maxCharacters) is { } head
+                ? new RowField(column, info.Name, info.TypeName, head.Text, head.Cut, false, false, false)
+                : new RowField(column, info.Name, info.TypeName, null, false, false, false, false);
+        }
+        catch (TableProException)
+        {
+            return new RowField(column, info.Name, info.TypeName, null, false, false, false, false);
+        }
     }
 
     // Read as the save will read it, so a cell the user leaves says why it would not save.
@@ -579,7 +879,8 @@ public sealed class TableTab : IWorkspaceTab
             return;
         }
 
-        _saveBlocked = false;
+        _view.DiscardOpenEdit();
+        Unblock();
         edits.Discard();
     }
 
@@ -644,7 +945,7 @@ public sealed class TableTab : IWorkspaceTab
             ? null
             : new ColumnSort(_shownSort.Column, _shownSort.Direction == SortDirection.Ascending);
         var filter = _shownFilter;
-        var read = await _session.ReadTablePageAsync(Table, sort, filter, maxRows, 0, cancellationToken)
+        var read = await _session.ReadTablePageAsync(Table, sort, filter, maxRows, 0, null, cancellationToken)
             .ConfigureAwait(true);
         try
         {
@@ -692,10 +993,13 @@ public sealed class TableTab : IWorkspaceTab
         await _work.CloseAsync().ConfigureAwait(true);
         _run?.Dispose();
         _run = null;
+        ForgetResumes();
         _results.Clear();
         SetEdits(null, null);
         _tableEditor?.Dispose();
         _tableEditor = null;
+        _keys?.Dispose();
+        _keys = null;
         await _session.ReleaseAsync().ConfigureAwait(true);
     }
 
@@ -709,11 +1013,11 @@ public sealed class TableTab : IWorkspaceTab
         && !IsSaving
         && !_work.IsClosed;
 
-    private async Task PageToAsync(Func<TablePage, long> offset)
+    private async Task PageToAsync(Func<TablePage, long> offset, bool keepsResumes = false)
     {
         if (await MayReloadNowAsync(ReloadReason.Page).ConfigureAwait(true))
         {
-            await LoadAsync(offset(_page)).ConfigureAwait(true);
+            await LoadAsync(offset(_page), keepsResumes: keepsResumes).ConfigureAwait(true);
         }
     }
 
@@ -739,11 +1043,17 @@ public sealed class TableTab : IWorkspaceTab
     }
 
     // Recount after a filter, a refresh or a save, which can change the total; it is counted once the page is read.
-    private async Task LoadAsync(long offset, bool recount = false)
+    private async Task LoadAsync(long offset, bool recount = false, bool keepsResumes = false)
     {
         _shown = true;
         if (!IsRunning)
         {
+            // Any read but a step between pages may change the rows, sort, filter or size a paging state was for.
+            if (!keepsResumes)
+            {
+                ForgetResumes();
+            }
+
             await _work.RunAsync(token => LoadPageAsync(offset, recount, token)).ConfigureAwait(true);
         }
     }
@@ -762,14 +1072,18 @@ public sealed class TableTab : IWorkspaceTab
             if (_chosenSize is null && page.Size != PageSize)
             {
                 page = page.Resized(PageSize);
+                // A paging state resumes only a read of the size it was handed back for.
+                ForgetResumes();
             }
 
             var sort = _sort.Direction == SortDirection.None
                 ? null
                 : new ColumnSort(_sort.Column, _sort.Direction == SortDirection.Ascending);
             var filter = Filter;
+            var resume = _resumes.GetValueOrDefault(page.Offset);
             // The core binds the filter's values and stops the read at the page's size.
-            var read = await _session.ReadTablePageAsync(Table, sort, filter, page.Size, page.Offset, cancellationToken)
+            var read = await _session.ReadTablePageAsync(
+                    Table, sort, filter, page.Size, page.Offset, resume, cancellationToken)
                 .ConfigureAwait(true);
             if (_work.IsClosed)
             {
@@ -817,11 +1131,16 @@ public sealed class TableTab : IWorkspaceTab
 
             _shownSort = _sort;
             _shownFilter = filter;
-            _page = _page with { Rows = _results.RowCount };
+            _filters?.Remember(Table, filter);
+            var next = read.NextPage?.Invoke();
+            KeepResume(page.NextOffset, next);
+            _page = _page with { Rows = _results.RowCount, EndsTable = !read.CanSeek && next is null };
             // The server's rows are read again, so a save whose outcome was unknown may be judged by them now.
-            _saveBlocked = false;
+            Unblock();
             BindEdits();
+            RestoreRecovered();
             CountIfNeeded();
+            ReadKeysIfNeeded();
         }
         catch (TableProException exception)
         {
@@ -839,6 +1158,30 @@ public sealed class TableTab : IWorkspaceTab
         {
             SetRunning(false);
         }
+    }
+
+    // The page at offset resumes here; once the server says nothing follows, that page is read by offset.
+    private void KeepResume(long offset, IPageResume? resume)
+    {
+        if (_resumes.Remove(offset, out var kept) && !ReferenceEquals(kept, resume))
+        {
+            kept.Dispose();
+        }
+
+        if (resume is not null)
+        {
+            _resumes[offset] = resume;
+        }
+    }
+
+    private void ForgetResumes()
+    {
+        foreach (var resume in _resumes.Values)
+        {
+            resume.Dispose();
+        }
+
+        _resumes.Clear();
     }
 
     // Once per tab, and again on a refresh, since the table's columns can change.
@@ -889,6 +1232,52 @@ public sealed class TableTab : IWorkspaceTab
         var rows = (int)Math.Clamp(_results.RowCount, 0, int.MaxValue);
         SetEdits(new TableEdits(editor.Columns, rows), shown);
     }
+
+    // Each change goes back as if typed on the row its key finds; a lock keeps every one, and the rest wait.
+    private void RestoreRecovered()
+    {
+        if (_recovered is not { } recovered || Edits is not { } edits)
+        {
+            return;
+        }
+
+        if (Lock is not null)
+        {
+            _view.ShowRecovered(0, recovered.Changes, saveBlocked: false);
+            return;
+        }
+
+        var (restored, uncertain, waiting) = recovered.RestoreTo(edits, ReadStoredValues, (row, column, edit) =>
+            CellRefusal(edits, row, column) is null && Apply(edits, row, column, edit) is null);
+        _recovered = waiting;
+        // Changes a save may have written wait for a reload or a discard before the next save, as here after one.
+        if (uncertain)
+        {
+            _saveBlocked = true;
+            _recoveredBlock = true;
+        }
+
+        _view.ShowRecovered(restored, waiting?.Changes ?? 0, uncertain);
+        if (restored > 0)
+        {
+            OnEditsChanged(this, EventArgs.Empty);
+        }
+    }
+
+    // A reload or a discard settles a save whose outcome was unknown, and a recovered notice that said so is told.
+    private void Unblock()
+    {
+        _saveBlocked = false;
+        if (_recoveredBlock)
+        {
+            _recoveredBlock = false;
+            _view.ShowRecovered(0, WaitingChanges, saveBlocked: false);
+        }
+    }
+
+    // A key column's stored values with their kinds, which name a row in the session file and find it again.
+    private IReadOnlyList<StoredValue> ReadStoredValues(int column, int firstRow, int rowCount) =>
+        _tableEditor!.GetStoredValues(_editsRows, column, firstRow, rowCount);
 
     private void SetEdits(TableEdits? edits, ResultSet? rows)
     {
@@ -1089,6 +1478,8 @@ public sealed class TableTab : IWorkspaceTab
             SetSaving(true);
             try
             {
+                // On disk before the first statement: an end while it runs leaves the edits blocked, not saved twice.
+                _view.WriteSessionNow();
                 outcome = await save.RunAsync(confirmed, CancellationToken.None).ConfigureAwait(true);
             }
             catch (TableProException exception) when (exception.Error.Codes.Any(NothingSent.Contains))
@@ -1172,6 +1563,68 @@ public sealed class TableTab : IWorkspaceTab
         _view.ShowSaving(saving);
         _view.ShowEdits();
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool IsChanged(TableEdits edits, int row, string name)
+    {
+        for (var column = 0; column < _results.Columns.Count && column < edits.Columns.Count; column++)
+        {
+            if (string.Equals(_results.Columns[column].Name, name, StringComparison.Ordinal))
+            {
+                return edits.GetCell(row, column) is not null;
+            }
+        }
+
+        return false;
+    }
+
+    private async void ReadKeysIfNeeded()
+    {
+        if (!_keysStale || _readingKeys || _work.IsClosed)
+        {
+            return;
+        }
+
+        _keysStale = false;
+        _readingKeys = true;
+        var version = _keysVersion;
+        try
+        {
+            await _work.RunAsync(async token =>
+            {
+                ITableKeys keys;
+                try
+                {
+                    keys = await _session.ReadTableKeysAsync(Table, token).ConfigureAwait(true);
+                }
+                catch (Exception exception) when (exception is TableProException or OperationCanceledException)
+                {
+                    // An engine without foreign keys, a read that failed or one the server stopped; a refresh reads
+                    // them again.
+                    return;
+                }
+
+                // Read before a refresh or as the tab closed, the keys may no longer be the table's.
+                if (_work.IsClosed || version != _keysVersion)
+                {
+                    keys.Dispose();
+                    return;
+                }
+
+                _keys?.Dispose();
+                _keys = keys;
+            }).ConfigureAwait(true);
+        }
+        finally
+        {
+            _readingKeys = false;
+        }
+
+        // A refresh while this read ran wants its own, which its page could not start while this one ran.
+        if (version != _keysVersion && !IsRunning)
+        {
+            ReadKeysIfNeeded();
+        }
     }
 
     private async void CountIfNeeded() =>
@@ -1359,4 +1812,11 @@ internal sealed class KeptRead<T>(TabWork work, Func<CancellationToken, Task<T>>
         }).ConfigureAwait(true);
         return work.IsClosed ? null : value;
     }
+}
+
+// What a grid menu offers from one row, and the page and keys it was worked out from, so a choice made later
+// follows that row or nothing.
+public sealed record ReferenceMenu(RowReferences References, ITableKeys? Keys, ResultSet? Rows, int Row)
+{
+    public static ReferenceMenu None { get; } = new(RowReferences.None, null, null, -1);
 }

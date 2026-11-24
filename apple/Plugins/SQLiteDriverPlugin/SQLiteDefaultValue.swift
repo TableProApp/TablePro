@@ -7,7 +7,7 @@ import Foundation
 import TableProSQLQuoting
 
 // The pragma drops a default's parentheses and a bare word's quotes (3.54.0); only an expression has a call or an operator.
-internal func sqliteDefaultValueFromCatalog(_ value: String?) -> String? {
+nonisolated internal func sqliteDefaultValueFromCatalog(_ value: String?) -> String? {
     guard let value, !value.isEmpty else { return nil }
     let upper = value.uppercased()
     if upper == "NULL" || upper == "TRUE" || upper == "FALSE"
@@ -20,8 +20,8 @@ internal func sqliteDefaultValueFromCatalog(_ value: String?) -> String? {
     return sqliteLooksLikeExpression(value) ? "(\(value))" : SQLQuoting.stringLiteral(value)
 }
 
-private let sqliteExpressionScalars: Set<Unicode.Scalar> = ["(", ")", "|", "+", "-", "*", "/", "%", "<", ">", "=", "!", "~", "&", " ", ","]
+nonisolated private let sqliteExpressionScalars: Set<Unicode.Scalar> = ["(", ")", "|", "+", "-", "*", "/", "%", "<", ">", "=", "!", "~", "&", " ", ","]
 
-internal func sqliteLooksLikeExpression(_ value: String) -> Bool {
+nonisolated internal func sqliteLooksLikeExpression(_ value: String) -> Bool {
     value.unicodeScalars.contains { sqliteExpressionScalars.contains($0) }
 }

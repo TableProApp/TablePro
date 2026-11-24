@@ -128,6 +128,18 @@ internal sealed class FakeSession : ITabSession
 
     public ObjectSource? Definition { get; set; }
 
+    // What every key read gives; each read makes a new one, so a test tells a kept read from a new one.
+    public RowReferences References { get; set; } = RowReferences.None;
+
+    public FollowedReference Followed { get; set; } = new FollowedReference.Refused(ReferenceRefusal.UnevenKey, "fk");
+
+    public CoreError? KeysFailure { get; set; }
+
+    // The read ends as one the server stopped does.
+    public bool KeysStopped { get; set; }
+
+    public List<FakeKeys> KeyReads { get; } = [];
+
     // Every open gives this one, so a test sets it up before the page loads.
     public FakeTableEditor TableEditor { get; } = new();
 
@@ -157,17 +169,42 @@ internal sealed class FakeSession : ITabSession
 
     public bool IsReadOnly { get; set; }
 
-    public async Task<ITabEditor> OpenEditorAsync(CancellationToken cancellationToken)
+    public DatabaseLayout Layout { get; set; } = DatabaseLayout.OneDatabase;
+
+    public string? Database { get; set; }
+
+    // What GetDatabasesAsync lists.
+    public List<SchemaEntry> ServerDatabases { get; } = [];
+
+    // The database each editor was opened for, null for the connection's own.
+    public List<string?> EditorDatabases { get; } = [];
+
+    // The resume each page read was given.
+    public List<IPageResume?> Resumes { get; } = [];
+
+    // Set, each page read hands back a resume for the page after it, as a server-paged engine does.
+    public bool PagesOnServer { get; set; }
+
+    public async Task<ITabEditor> OpenEditorAsync(string? database, CancellationToken cancellationToken)
     {
         if (Opening is { } opening)
         {
             await opening.PassAsync(cancellationToken);
         }
 
-        var editor = new FakeEditor(this) { DatabaseRefusal = DatabaseRefusal };
+        EditorDatabases.Add(database);
+        if (database is not null && DatabaseRefusal is { } refusal)
+        {
+            throw new TableProException(refusal);
+        }
+
+        var editor = new FakeEditor(this) { Database = database ?? Database };
         Editors.Add(editor);
         return editor;
     }
+
+    public Task<IReadOnlyList<SchemaEntry>> GetDatabasesAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<SchemaEntry>>([.. ServerDatabases]);
 
     public async Task<TablePageRead> ReadTablePageAsync(
         TableName table,
@@ -175,9 +212,11 @@ internal sealed class FakeSession : ITabSession
         TableFilter? filter,
         long limit,
         long offset,
+        IPageResume? continuation,
         CancellationToken cancellationToken)
     {
         Queries.Add((sort, limit, offset));
+        Resumes.Add(continuation);
         PageFilters.Add(filter);
         if (Querying is { } querying)
         {
@@ -209,6 +248,12 @@ internal sealed class FakeSession : ITabSession
         var page = FakeRun.Rows(Math.Clamp(RowsPicked(filter) - offset, 0, limit));
         page.Reading = PageReading;
         Pages.Add(page);
+        if (PagesOnServer)
+        {
+            var next = offset + limit < RowsPicked(filter) ? new FakeResume(offset + limit) : null;
+            return new TablePageRead(page, 2, CanSeek: false, ViewSql, () => next);
+        }
+
         return new TablePageRead(page, 2, CanSeek: true, ViewSql);
     }
 
@@ -241,6 +286,20 @@ internal sealed class FakeSession : ITabSession
         return ChoicesFailure is { } failure
             ? Task.FromException<FilterChoices>(new TableProException(failure))
             : Task.FromResult(Choices);
+    }
+
+    public TableInfo Info { get; set; } = new(null, null, null, null, null);
+
+    public CoreError? InfoFailure { get; set; }
+
+    public int InfoReads { get; private set; }
+
+    public Task<TableInfo> GetTableInfoAsync(TableName table, CancellationToken cancellationToken)
+    {
+        InfoReads++;
+        return InfoFailure is { } failure
+            ? Task.FromException<TableInfo>(new TableProException(failure))
+            : Task.FromResult(Info);
     }
 
     // A new structure each read, so a test tells a kept one from one read again.
@@ -292,6 +351,23 @@ internal sealed class FakeSession : ITabSession
         return TableEditorFailure is { } failure ? throw new TableProException(failure) : TableEditor;
     }
 
+    public Task<ITableKeys> ReadTableKeysAsync(TableName table, CancellationToken cancellationToken)
+    {
+        if (KeysFailure is { } failure)
+        {
+            return Task.FromException<ITableKeys>(new TableProException(failure));
+        }
+
+        if (KeysStopped)
+        {
+            return Task.FromException<ITableKeys>(new OperationCanceledException());
+        }
+
+        var keys = new FakeKeys(this);
+        KeyReads.Add(keys);
+        return Task.FromResult<ITableKeys>(keys);
+    }
+
     public ValueTask ReleaseAsync()
     {
         Releases++;
@@ -299,6 +375,39 @@ internal sealed class FakeSession : ITabSession
     }
 
     private long RowsPicked(TableFilter? filter) => filter is null ? TableRows : FilteredRows;
+}
+
+// The page a server-paged read resumes at, by the offset it stands for.
+internal sealed class FakeResume(long offset) : IPageResume
+{
+    public long Offset => offset;
+
+    public bool Disposed { get; private set; }
+
+    public void Dispose() => Disposed = true;
+}
+
+internal sealed class FakeKeys(FakeSession session) : ITableKeys
+{
+    public List<(long Row, string? Column)> Asked { get; } = [];
+
+    public bool IsDisposed { get; private set; }
+
+    public List<(long Row, RowReferenceChoice Choice)> Follows { get; } = [];
+
+    public RowReferences ReferencesAt(ResultSet? rows, long row, string? column)
+    {
+        Asked.Add((row, column));
+        return session.References;
+    }
+
+    public FollowedReference Follow(ResultSet? rows, long row, RowReferenceChoice choice)
+    {
+        Follows.Add((row, choice));
+        return session.Followed;
+    }
+
+    public void Dispose() => IsDisposed = true;
 }
 
 internal sealed class FakeEditor(FakeSession session) : ITabEditor
@@ -313,10 +422,13 @@ internal sealed class FakeEditor(FakeSession session) : ITabEditor
 
     public int Disposals { get; private set; }
 
+    // Each database UseDatabaseAsync moved the editor to.
     public List<string> Databases { get; } = [];
 
     // Set, the move to a database fails with it.
     public CoreError? DatabaseRefusal { get; set; }
+
+    public string? Database { get; set; }
 
     public ITabRun Run(string sql, QueryOptions options, CancellationToken cancellationToken)
     {
@@ -329,7 +441,13 @@ internal sealed class FakeEditor(FakeSession session) : ITabEditor
     public Task UseDatabaseAsync(string database, CancellationToken cancellationToken)
     {
         Databases.Add(database);
-        return DatabaseRefusal is { } refusal ? Task.FromException(new TableProException(refusal)) : Task.CompletedTask;
+        if (DatabaseRefusal is { } refusal)
+        {
+            return Task.FromException(new TableProException(refusal));
+        }
+
+        Database = database;
+        return Task.CompletedTask;
     }
 
     public async ValueTask DisposeAsync()
@@ -564,11 +682,27 @@ internal sealed class FakeTableView : ITableTabView
 
     public List<int> Focused { get; } = [];
 
+    // What each recovered notice said: the changes put back, the ones still waiting, and whether Save waits.
+    public List<(int Restored, int Waiting, bool SaveBlocked)> Recovered { get; } = [];
+
     public bool ShowsAllRows { get; set; } = true;
 
     public bool CommitsOpenEdit { get; set; } = true;
 
     public bool HasOpenEdit { get; set; }
+
+    public CellDraft? OpenDraft { get; set; }
+
+    public int SessionWrites { get; private set; }
+
+    // What the window does as it writes the session file before a save.
+    public Action? OnSessionWrite { get; set; }
+
+    public void WriteSessionNow()
+    {
+        SessionWrites++;
+        OnSessionWrite?.Invoke();
+    }
 
     // What keeping the open editor's text does, as the grid raises CellEditCommitting.
     public Action? OnCommit { get; set; }
@@ -637,6 +771,10 @@ internal sealed class FakeTableView : ITableTabView
 
     public Task<bool> ConfirmDiscardAsync() => Task.FromResult(Discards);
 
+    public int OpenEditsDiscarded { get; private set; }
+
+    public void DiscardOpenEdit() => OpenEditsDiscarded++;
+
     public Task<SaveBeforeClose> AskSaveBeforeCloseAsync(string tab, bool offerSave)
     {
         ClosesAsked++;
@@ -671,6 +809,13 @@ internal sealed class FakeTableView : ITableTabView
     public void ShowStructureFailed(CoreError failure) => StructureFailures.Add(failure);
 
     public void ShowFilterChoicesFailed(CoreError failure) => ChoicesFailures.Add(failure);
+
+    public List<CoreError> InfoFailures { get; } = [];
+
+    public void ShowTableInfoFailed(CoreError failure) => InfoFailures.Add(failure);
+
+    public void ShowRecovered(int restored, int waiting, bool saveBlocked) =>
+        Recovered.Add((restored, waiting, saveBlocked));
 }
 
 // A stored cell reads "r{row}c{column}", and each change plans one statement named for its kind.
@@ -705,6 +850,10 @@ internal sealed class FakeTableEditor : ITableEditor
 
     public Func<long, int, EditStart> Start { get; set; } = (row, column) => new EditStart.Editable(Stored(row, column), IsNull: false);
 
+    // Any cell's stored value with its kind, the key's too, which names a row in the session file.
+    public Func<long, int, StoredValue> Values { get; set; } =
+        (row, column) => new StoredValue(column == 0 ? ValueKind.Integer : ValueKind.Text, Stored(row, column));
+
     public Func<int, CellEdit, bool, CoreError?> Checker { get; set; } = (_, _, _) => null;
 
     public SaveGate Verdict { get; set; } = SaveGate.Run;
@@ -729,6 +878,9 @@ internal sealed class FakeTableEditor : ITableEditor
     public EditLock? LockFor(ResultSet? rows) => PageLock;
 
     public EditStart GetEditStart(ResultSet? rows, long row, int column) => Start(row, column);
+
+    public IReadOnlyList<StoredValue> GetStoredValues(ResultSet? rows, int column, long firstRow, int rowCount) =>
+        [.. Enumerable.Range(0, rowCount).Select(row => Values(firstRow + row, column))];
 
     public CoreError? Check(int column, CellEdit edit, bool newRow) => Checker(column, edit, newRow);
 

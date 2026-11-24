@@ -12,7 +12,7 @@ import TableProPluginKit
 /// A JSON Lines file's fields do not depend on the table they are matched against, and reading
 /// them means reading every line. The import sheet asks again on every destination table pick, so
 /// each pick used to read the whole file again.
-final class JSONFieldDetectionCache: Sendable {
+nonisolated final class JSONFieldDetectionCache: Sendable {
     /// A file counts as unchanged while its path, file number, size and modification date all
     /// match. The identity is taken before the read, so an edit made during one leaves a stale
     /// identity behind and the next request reads the file again. It describes the file a link

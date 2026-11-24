@@ -32,6 +32,14 @@ final class IntegrityStampedFileStore<Element: Codable> {
     private let userSaveEstablishesTrust: Bool
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    // Records the last load could not decode; every save writes them back after the decoded ones.
+    private var preserved: [PreservedJSON] = []
+    // Unreadable records of an untrusted file that could not be set aside: kept, so a save writes but never signs them.
+    private var holdsUnverifiedRecords = false
+
+    var backupURL: URL { fileURL.appendingPathExtension("backup") }
+    var unreadableURL: URL { fileURL.appendingPathExtension("unreadable") }
+    var unreadableRecordsURL: URL { fileURL.appendingPathExtension("unreadable-records") }
 
     /// `userSaveEstablishesTrust` says whether writing this file is itself the user's consent to
     /// trust what is in it.
@@ -56,9 +64,11 @@ final class IntegrityStampedFileStore<Element: Codable> {
         self.integrity = integrity
     }
 
-    // Only an absent file is an empty list, a fresh install; one that cannot be read or decoded is nil, never saved over.
+    // Only an absent file is an empty list, a fresh install; one that cannot be read, or parsed with no backup, is nil, never saved over.
     func load() -> [Element]? {
-        let data: Data
+        preserved = []
+        holdsUnverifiedRecords = false
+        var data: Data
         do {
             data = try Data(contentsOf: fileURL)
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
@@ -70,18 +80,88 @@ final class IntegrityStampedFileStore<Element: Codable> {
             return nil
         }
 
-        switch integrity.verify(data, fileURL: fileURL) {
+        var entries: [StoredEntry<Element>]?
+        var restoredWithoutTag = false
+        do {
+            entries = try decoder.decode([StoredEntry<Element>].self, from: data)
+        } catch {
+            logger.error("Failed to decode \(self.label, privacy: .public): \(error.publicLogShape, privacy: .public)")
+            if let restored = restoreBackup(over: data) {
+                data = restored.data
+                restoredWithoutTag = !restored.hasTag
+                entries = try? decoder.decode([StoredEntry<Element>].self, from: data)
+            }
+        }
+
+        adoptVerdict(for: data, restoredWithoutTag: restoredWithoutTag)
+
+        guard let entries else { return nil }
+        var elements: [Element] = []
+        for entry in entries {
+            switch entry {
+            case .decoded(let element):
+                elements.append(element)
+            case .preserved(let json):
+                preserved.append(json)
+            }
+        }
+        if !preserved.isEmpty {
+            logger.error(
+                "\(self.label, privacy: .public) holds \(self.preserved.count, privacy: .public) records this build cannot read; they are kept as they are"
+            )
+        }
+        // A save signs the whole file, and the user never saw these records, so an untrusted file's go beside it instead.
+        if !isTrusted, !preserved.isEmpty {
+            if setAside(preserved) {
+                preserved = []
+            } else {
+                holdsUnverifiedRecords = true
+            }
+        }
+        return elements
+    }
+
+    /// False when nothing reached disk. A caller that also writes keychain items or sync tombstones
+    /// has to abort on that rather than strand them against a record that was never persisted.
+    /// `byUser` false is a write nobody asked for, such as a sync pull, which is not consent either.
+    @discardableResult
+    func save(_ elements: [Element], byUser: Bool = true) -> Bool {
+        do {
+            let entries = elements.map(StoredEntry<Element>.decoded) + preserved.map(StoredEntry<Element>.preserved)
+            let data = try encoder.encode(entries)
+            keepBackup()
+            try data.write(to: fileURL, options: .atomic)
+            // A store that does not take a save as consent keeps the verdict its last load reached.
+            guard (userSaveEstablishesTrust && byUser) || isTrusted, !holdsUnverifiedRecords else {
+                logger.warning("Saved \(self.label, privacy: .public) without a trust tag; it stays untrusted")
+                return true
+            }
+            // With no tag written, later edits are undetectable, so the file is not trusted.
+            isTrusted = integrity.stamp(data, fileURL: fileURL)
+            return true
+        } catch {
+            logger.error("Failed to save \(self.label, privacy: .public): \(error.publicLogShape, privacy: .public)")
+            return false
+        }
+    }
+
+    private func adoptVerdict(for data: Data, restoredWithoutTag: Bool) {
+        var verdict = integrity.verify(data, fileURL: fileURL)
+        // A restored backup that carried no tag is not a store from before the tag existed.
+        if restoredWithoutTag, verdict == .unstamped {
+            verdict = .modified
+        }
+
+        switch verdict {
         case .trusted:
             isTrusted = true
         case .unstamped:
             guard userSaveEstablishesTrust else {
                 logger.warning("\(self.label, privacy: .public) has no integrity tag; anything it declares will not run")
                 isTrusted = false
-                break
+                return
             }
-            /// An install that predates the tag: this device never tagged the store. Adopt the file as it
-            /// stands, which is the only option without a prior baseline, and stamp it so later edits are
-            /// detectable. A tag that went missing afterwards reads as modified instead.
+            // Never tagged on this device: adopt the file as it stands, the only baseline there is.
             integrity.stamp(data, fileURL: fileURL)
             isTrusted = true
         case .modified:
@@ -91,37 +171,156 @@ final class IntegrityStampedFileStore<Element: Codable> {
             logger.warning("No integrity key for \(self.label, privacy: .public); anything it declares will not run")
             isTrusted = false
         }
+    }
 
+    // Each step leaves either the damaged file in place, so the next load retries, or the backup with its own tag.
+    private func restoreBackup(over damaged: Data) -> (data: Data, hasTag: Bool)? {
+        guard let backup = try? Data(contentsOf: backupURL), parsesAsArray(backup) else { return nil }
+        let backupTag = try? Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: backupURL))
+        let hasTag = backupTag?.isEmpty == false
+        let tagURL = ConnectionStoreIntegrity.tagURL(for: fileURL)
         do {
-            return try decoder.decode([Element].self, from: data)
+            try damaged.write(to: unreadableURL, options: .atomic)
+            if let backupTag, hasTag {
+                try backupTag.write(to: tagURL, options: .atomic)
+            } else {
+                try removeIfPresent(tagURL)
+                // Remembered as tagged, so the next load reads the missing tag as modified and never adopts these bytes.
+                guard integrity.recordTagged(fileURL: fileURL) else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+            }
+            try backup.write(to: fileURL, options: .atomic)
         } catch {
-            logger.error("Failed to decode \(self.label, privacy: .public): \(error.publicLogShape, privacy: .public)")
+            logger.error(
+                "Could not restore \(self.label, privacy: .public) from its backup: \(error.publicLogShape, privacy: .public)"
+            )
             return nil
+        }
+        logger.warning(
+            "Restored \(self.label, privacy: .public) from its backup; the damaged file is kept as \(self.label, privacy: .public).unreadable"
+        )
+        return (backup, hasTag)
+    }
+
+    // A file that no longer parses never replaces the last good copy.
+    private func keepBackup() {
+        guard let current = try? Data(contentsOf: fileURL), parsesAsArray(current) else { return }
+        let tag = try? Data(contentsOf: ConnectionStoreIntegrity.tagURL(for: fileURL))
+        let backupTagURL = ConnectionStoreIntegrity.tagURL(for: backupURL)
+        do {
+            try current.write(to: backupURL, options: .atomic)
+            if let tag {
+                try tag.write(to: backupTagURL, options: .atomic)
+            } else {
+                try removeIfPresent(backupTagURL)
+            }
+        } catch {
+            logger.error(
+                "Could not keep a backup of \(self.label, privacy: .public): \(error.publicLogShape, privacy: .public)"
+            )
         }
     }
 
-    /// False when nothing reached disk. A caller that also writes keychain items or sync tombstones
-    /// has to abort on that rather than strand them against a record that was never persisted.
-    /// `byUser` false is a write nobody asked for, such as a sync pull, which is not consent either.
-    @discardableResult
-    func save(_ elements: [Element], byUser: Bool = true) -> Bool {
+    // Added to what an earlier load set aside, so a file loaded again before its next save adds nothing twice.
+    private func setAside(_ records: [PreservedJSON]) -> Bool {
+        var kept = (try? Data(contentsOf: unreadableRecordsURL)).flatMap { try? decoder.decode([PreservedJSON].self, from: $0) } ?? []
+        for record in records where !kept.contains(record) {
+            kept.append(record)
+        }
         do {
-            let data = try encoder.encode(elements)
-            try data.write(to: fileURL, options: .atomic)
-            /// A store that does not take a save as consent keeps the verdict its last load
-            /// reached: the write lands, so the user's edit is not lost, but nothing in the file
-            /// becomes trusted because of it.
-            guard (userSaveEstablishesTrust && byUser) || isTrusted else {
-                logger.warning("Saved \(self.label, privacy: .public) without a trust tag; it stays untrusted")
-                return true
-            }
-            /// Trust follows the tag. If no tag could be written, later edits are undetectable, so
-            /// the file is not treated as trusted.
-            isTrusted = integrity.stamp(data, fileURL: fileURL)
+            try encoder.encode(kept).write(to: unreadableRecordsURL, options: .atomic)
             return true
         } catch {
-            logger.error("Failed to save \(self.label, privacy: .public): \(error.publicLogShape, privacy: .public)")
+            logger.error(
+                "Could not set aside unreadable records of \(self.label, privacy: .public): \(error.publicLogShape, privacy: .public)"
+            )
             return false
+        }
+    }
+
+    // The same check load makes, so a restored backup always loads.
+    private func parsesAsArray(_ data: Data) -> Bool {
+        (try? decoder.decode([PreservedJSON].self, from: data)) != nil
+    }
+
+    private func removeIfPresent(_ url: URL) throws {
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            return
+        }
+    }
+}
+
+private enum StoredEntry<Element: Codable>: Codable {
+    case decoded(Element)
+    case preserved(PreservedJSON)
+
+    init(from decoder: any Decoder) throws {
+        if let element = try? Element(from: decoder) {
+            self = .decoded(element)
+        } else {
+            self = .preserved(try PreservedJSON(from: decoder))
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        switch self {
+        case .decoded(let element):
+            try element.encode(to: encoder)
+        case .preserved(let json):
+            try json.encode(to: encoder)
+        }
+    }
+}
+
+// Integers decode before doubles so ids and ports keep their precision.
+private enum PreservedJSON: Codable, Equatable {
+    case null
+    case bool(Bool)
+    case integer(Int64)
+    case double(Double)
+    case string(String)
+    case array([PreservedJSON])
+    case object([String: PreservedJSON])
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Int64.self) {
+            self = .integer(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .double(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([PreservedJSON].self) {
+            self = .array(value)
+        } else {
+            self = .object(try container.decode([String: PreservedJSON].self))
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .null:
+            try container.encodeNil()
+        case .bool(let value):
+            try container.encode(value)
+        case .integer(let value):
+            try container.encode(value)
+        case .double(let value):
+            try container.encode(value)
+        case .string(let value):
+            try container.encode(value)
+        case .array(let value):
+            try container.encode(value)
+        case .object(let value):
+            try container.encode(value)
         }
     }
 }

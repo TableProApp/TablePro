@@ -220,6 +220,7 @@ public sealed partial class DataGridView
         _columns.SetWidth(column, width);
         _sizedByUser[column] = true;
         ColumnsChanged();
+        ColumnResized?.Invoke(this, column);
     }
 
     // Fits a column to its header and the rows in view; a result set may hold far more rows than can be read here.
@@ -236,18 +237,24 @@ public sealed partial class DataGridView
         {
             return false;
         }
-        var rows = Math.Min(RowCount, ColumnCount > ContentSampleWideColumns ? ContentSampleRowsWide : ContentSampleRows);
+        var rows = ContentSampleRowCount;
         for (var column = 0; column < ColumnCount; column++)
         {
             if (!_sizedByUser[column])
             {
-                _columns.SetWidth(column, Math.Clamp(ContentWidth(column, 0, rows - 1, ContentSampleCharacters),
-                    ContentMinimumWidth, Math.Max(ContentMinimumWidth, MaximumContentColumnWidth)));
+                SizeColumnToContent(column, rows);
             }
         }
         _sizedToRows = rows > 0;
         return true;
     }
+
+    private int ContentSampleRowCount =>
+        Math.Min(RowCount, ColumnCount > ContentSampleWideColumns ? ContentSampleRowsWide : ContentSampleRows);
+
+    private void SizeColumnToContent(int column, int rows) =>
+        _columns.SetWidth(column, Math.Clamp(ContentWidth(column, 0, rows - 1, ContentSampleCharacters),
+            ContentMinimumWidth, Math.Max(ContentMinimumWidth, MaximumContentColumnWidth)));
 
     private double ContentWidth(int column, int firstRow, int lastRow, int maxCharacters)
     {
@@ -258,7 +265,7 @@ public sealed partial class DataGridView
         {
             var cell = Cell(row, column);
             widest = Math.Max(widest, cell.IsNull
-                ? painter.Measure(CellPainter.NullText, placeholder: true)
+                ? painter.Measure(_nullText, placeholder: true)
                 : cell.IsDefault ? painter.MeasureDefault() : painter.Measure(Head(cell.Text, maxCharacters)));
         }
         return Math.Ceiling(widest + (CellPainter.Padding * 2) + 2);
@@ -338,26 +345,6 @@ public sealed partial class DataGridView
         return new Rect(bounds.X * scale, bounds.Y * scale, bounds.Width * scale, bounds.Height * scale);
     }
 
-    internal AutomationPeer? CellPeerAt(Point physical)
-    {
-        if (XamlRoot is null || FrameworkElementAutomationPeer.CreatePeerForElement(this) is not DataGridAutomationPeer peer)
-        {
-            return null;
-        }
-        var scale = XamlRoot.RasterizationScale;
-        var point = new Point(physical.X / scale, physical.Y / scale);
-        foreach (var frozen in new[] { true, false })
-        {
-            var pane = frozen ? (UIElement)_frozenContent : _content;
-            var local = pane.TransformToVisual(null).Inverse.TransformPoint(point);
-            if (HitTest(frozen, local) is { Column: >= 0 } hit && IsCellVisible(hit.Row, hit.Column))
-            {
-                return peer.Cell(hit.Row, hit.Column);
-            }
-        }
-        return null;
-    }
-
     protected override void OnKeyDown(KeyRoutedEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
@@ -365,6 +352,12 @@ public sealed partial class DataGridView
         if (e.Handled || (_editor is not null && ReferenceEquals(e.OriginalSource, _editor)))
         {
             base.OnKeyDown(e);
+            return;
+        }
+        if (e.Key == VirtualKey.Escape && IsMovingColumn)
+        {
+            CancelColumnMove();
+            e.Handled = true;
             return;
         }
         if (HandleKey(e.Key, IsDown(VirtualKey.Control), IsDown(VirtualKey.Shift)))
@@ -444,6 +437,7 @@ public sealed partial class DataGridView
     // A press picks a cell, or a row on the row numbers; Shift extends from the anchor. Dragging extends too.
     private void OnPanePressed(PointerRoutedEventArgs e, bool frozen)
     {
+        ClearCellTip();
         var pane = frozen ? (UIElement)_frozenContent : _content;
         var point = e.GetCurrentPoint(pane);
         if (!point.Properties.IsLeftButtonPressed)
@@ -462,9 +456,9 @@ public sealed partial class DataGridView
     private void OnPaneMoved(PointerRoutedEventArgs e, bool frozen)
     {
         var pane = frozen ? (UIElement)_frozenContent : _content;
-        if (!_dragging && ShowsCellTips)
+        if (!_dragging)
         {
-            ShowCellTip(pane, HitTest(frozen, e.GetCurrentPoint(pane).Position));
+            TrackCellTip(frozen, HitTest(frozen, e.GetCurrentPoint(pane).Position));
         }
         if (!_dragging || frozen != _dragFrozen)
         {
@@ -485,30 +479,6 @@ public sealed partial class DataGridView
         {
             SelectCell(hit.Row, hit.Column, extend: true);
         }
-    }
-
-    // One tooltip per pane, its text following the cell under the pointer; none over a NULL or the row numbers.
-    private void ShowCellTip(UIElement pane, (int Row, int Column)? hit)
-    {
-        string? text = null;
-        if (hit is { Column: >= 0 } at)
-        {
-            var cell = Cell(at.Row, at.Column);
-            text = cell.IsNull || cell.IsDefault ? null
-                : cell.IsTruncated ? _cache?.ReadWhole(at.Row, at.Column)
-                : cell.Text.ToString();
-        }
-        if (string.IsNullOrEmpty(text))
-        {
-            ToolTipService.SetToolTip(pane, null);
-            return;
-        }
-        var tip = ToolTipService.GetToolTip(pane) as ToolTip ?? new ToolTip();
-        if (!string.Equals(tip.Content as string, text, StringComparison.Ordinal))
-        {
-            tip.Content = text;
-        }
-        ToolTipService.SetToolTip(pane, tip);
     }
 
     // A press at a point in a pane, in that pane's coordinates. Also how the tests click.
@@ -588,6 +558,7 @@ public sealed partial class DataGridView
         {
             peer.Cell(_selection.FocusRow, _selection.FocusColumn).RaiseAutomationEvent(AutomationEvents.SelectionItemPatternOnElementSelected);
         }
+        SelectedCellsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void RaiseFocusChanged()

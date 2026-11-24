@@ -3,7 +3,7 @@ use std::sync::Arc;
 use mongodb::{Client, ClientSession};
 use tablepro_core::sql_syntax::mongo::ShellStatement;
 use tablepro_core::statement::{GuardedStatement, RowGuard};
-use tablepro_core::{DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport};
+use tablepro_core::{DriverError, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport};
 
 use crate::call::generated;
 use crate::endpoint::MongoEndpoint;
@@ -12,11 +12,7 @@ use crate::execute::{Source, start, start_write};
 /// Refuse a batch before anything is sent: a read-only connection never
 /// writes, and MongoDB has no foreign keys to suspend.
 pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), DriverError> {
-    if read_only {
-        return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
-    }
-    batch.foreign_keys.require_enforced()?;
-    Ok(())
+    batch.precheck(read_only)
 }
 
 /// Everything one save needs once its task runs.

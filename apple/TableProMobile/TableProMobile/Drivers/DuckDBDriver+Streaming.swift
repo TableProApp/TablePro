@@ -72,6 +72,10 @@ nonisolated extension DuckDBDriver {
     }
 
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
+        // A transfer connection reads with `exportRows`; anything else it runs is read whole.
+        guard transferLane == nil else {
+            return QueryResultStreaming.stream(options: options) { try await self.execute(query: query) }
+        }
         let actor = self.actor
         let interruptHandle = actor.interruptHandle
         let token = DuckDBStreamToken()
@@ -271,7 +275,7 @@ extension DuckDBActor {
 
     // MARK: - Column Planning
 
-    private func planColumns(connection: duckdb_connection, query: String) throws -> [DuckDBStreamColumn] {
+    func planColumns(connection: duckdb_connection, query: String) throws -> [DuckDBStreamColumn] {
         var probe = duckdb_result()
         guard duckdb_query(connection, Self.zeroRowQuery(for: query), &probe) != DuckDBError else {
             let message = duckdb_result_error(&probe).map { String(cString: $0) } ?? "Unknown DuckDB error"

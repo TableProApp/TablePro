@@ -86,6 +86,7 @@ extension MainContentCoordinator {
         prune(&navigationHistories, keeping: openTabIds)
         // The editor stores the outgoing tab's history on its next update, after the close forgot it.
         editorUndoHistories.forgetAll(except: openTabIds)
+        releaseEdits(exceptTabs: openTabIds)
         toolbarState.forgetQueryTimings(keeping: openTabIds)
         for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
             session.releaseViewWiring()
@@ -108,6 +109,8 @@ extension MainContentCoordinator {
         erDiagramModels.removeValue(forKey: tabId)
         discardTableHealthModels([tabId])
         tabsWithStagedPrincipals.remove(tabId)
+        // Rows read from the old target must not stay editable under the new one.
+        dropEdits(ofReplacedResultIn: tabId)
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
         toolbarState.hasTypeChanges = false
@@ -125,8 +128,8 @@ extension MainContentCoordinator {
         editorUndoHistories.forget(tab.id)
         releaseGridModel(forTab: tab.id)
         tableMetadataCache.removeValue(forKey: tab.id)
+        releaseEdits(ofTab: tab.id)
         guard isSelectedTab(tab) else { return }
-        changeManager.clearChangesAndUndoHistory()
         toolbarState.hasCreateTablePending = false
         toolbarState.hasPrincipalChanges = false
         toolbarState.hasTypeChanges = false

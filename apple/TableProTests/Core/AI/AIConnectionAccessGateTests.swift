@@ -287,7 +287,6 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
         let coordinator = MainContentCoordinator(
             connection: makeConnection(id: id, policy: held),
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState(),
             services: services(manager: DatabaseManager(connectionStorage: storage))
         )

@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -8,17 +9,22 @@ using TablePro.DataGrid;
 using TablePro.DataGrid.Model;
 using TablePro.Editor;
 using TablePro.Interop;
+using Windows.System;
 
 namespace TablePro.App.Views;
 
 // Data and Structure over one table; the page, its count and filter, every reload and every save are TableTab's.
-public sealed partial class TableTabView : UserControl, ITabContent, ITableTabView, IShareSource
+public sealed partial class TableTabView : UserControl, ITabContent, ITableTabView, IShareSource, IExportSource
 {
     private readonly TableTab _model;
     private bool _messagesIsTarget;
     private bool _showsStructure;
     private FilterBar? _filters;
     private StructureView? _structure;
+    private DetailsPane? _details;
+    private TextBox? _detailsTarget;
+    private readonly ITableColumns? _columns;
+    private ColumnLayout _layout;
 
     internal TableTabView(
         Workbench workbench,
@@ -26,7 +32,9 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         string? schema,
         string table,
         ObjectKind kind,
-        SessionTab? restore = null)
+        SessionTab? restore = null,
+        ITableFilters? filters = null,
+        ITableColumns? columns = null)
     {
         InitializeComponent();
         Results.ShowsEdits = true;
@@ -42,8 +50,19 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             new TableName(schema, table),
             restore?.ObjectKindOr(kind) ?? kind,
             () => workbench.Settings,
-            restore);
+            restore,
+            filters);
         _model.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
+        // As macOS keeps a table's column layout: by name, so the table's own changes since are taken in.
+        _columns = columns;
+        _layout = columns?.Recall(_model.Table) ?? ColumnLayout.Default;
+        Results.Arrangement = shown => _layout.Resolve([.. shown.Select(column => column.Name)]);
+        grid.CanReorderColumns = true;
+        grid.ColumnMoveRequested += (_, move) => MoveColumn(move.From, move.To);
+        grid.SizeChanged += (_, _) => FitFrozen();
+        grid.ColumnResized += (_, _) => FitFrozen();
+        Results.ShownSetChanged += (_, _) => FitFrozen();
+        AddColumnKeys(grid);
         Results.StatusChanged += (_, status) => StatusText.Text = status;
         Results.RowsStatus = (rows, milliseconds, truncated) =>
         {
@@ -54,14 +73,20 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         grid.GotFocus += (_, _) =>
         {
             _messagesIsTarget = false;
+            _detailsTarget = null;
             EditStateMayHaveChanged();
         };
         // The editor takes focus as it opens and gives it back as it closes, so Save and the closes follow it.
         grid.LostFocus += (_, _) => EditStateMayHaveChanged();
-        Results.MessagesBox.GotFocus += (_, _) => _messagesIsTarget = true;
+        Results.MessagesBox.GotFocus += (_, _) =>
+        {
+            _messagesIsTarget = true;
+            _detailsTarget = null;
+        };
         grid.CellEditStarting += OnCellEditStarting;
         grid.CellEditCommitting += OnCellEditCommitting;
         grid.DeleteRequested += (_, _) => DeleteRows();
+        grid.PendingEditChanged += (_, _) => DraftChanged?.Invoke(this, EventArgs.Empty);
         grid.ContextRequested += OnGridContextRequested;
         // TabView loads only the content it shows, so a restored tab reads nothing until it first shows.
         Loaded += OnFirstLoaded;
@@ -73,6 +98,17 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     // Share... on the grid's menu shares the page shown; the workspace opens the sheet.
     public event EventHandler<ShareKind>? ShareRequested;
+
+    public event EventHandler? ExportRequested;
+
+    // A foreign key's rows to open, in a tab of the workspace that holds this one.
+    public event EventHandler<FollowedReference.Rows>? ReferenceRequested;
+
+    // The open cell editor's text changed, which the session file keeps as a draft.
+    public event EventHandler? DraftChanged;
+
+    // A save is about to send its statements; the window writes the session file first.
+    public event EventHandler? SessionWriteRequested;
 
     public string Title => _model.Title;
 
@@ -98,6 +134,11 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             if (_showsStructure)
             {
                 return _structure?.TextTarget;
+            }
+
+            if (_detailsTarget is { IsLoaded: true } detailsField && DetailsHost.Visibility == Visibility.Visible)
+            {
+                return detailsField;
             }
 
             return _messagesIsTarget && Results.MessagesBox.Visibility == Visibility.Visible
@@ -129,7 +170,15 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     // The workspace that holds the tab, always in the tree while its window shows it, so a close can ask from it.
     internal FrameworkElement? DialogOwner { get; set; }
 
-    bool ITableTabView.HasOpenEdit => Results.GridView.IsEditing;
+    // A field of the Details pane typed in and not kept yet is an open edit as the grid's editor is.
+    bool ITableTabView.HasOpenEdit => Results.GridView.IsEditing || _details?.HasDraft == true;
+
+    CellDraft? ITableTabView.OpenDraft =>
+        Results.GridView.PendingEdit is { } open
+            ? new CellDraft(open.Row, Results.DataColumn(open.Column), open.Text)
+            : _details?.Draft;
+
+    void ITableTabView.WriteSessionNow() => SessionWriteRequested?.Invoke(this, EventArgs.Empty);
 
     private FrameworkElement Owner => DialogOwner ?? this;
 
@@ -155,6 +204,12 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     public void ShowData() => ShowView(structure: false);
 
+    public void ShowDdl()
+    {
+        ShowView(structure: true);
+        _structure?.ShowDdl();
+    }
+
     // The menu's Filter rows, as the command bar's toggle; from Structure it brings the rows back with the bar open.
     public void ToggleFilter()
     {
@@ -164,6 +219,8 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     }
 
     public SessionTab Snapshot() => _model.Snapshot();
+
+    public SessionTab WithPendingWork(SessionTab snapshot) => _model.WithPendingWork(snapshot);
 
     public Task<bool> ConfirmCloseAsync(bool offerSave) => _model.ConfirmCloseAsync(offerSave);
 
@@ -179,7 +236,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     public void AddRow()
     {
         var grid = Results.GridView;
-        if (!grid.CommitEdit())
+        if (!CommitOpenEdits())
         {
             return;
         }
@@ -190,14 +247,14 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             return;
         }
 
-        grid.FocusCell(row, _model.FirstColumnToFill);
+        grid.FocusCell(row, ShownColumn(_model.FirstColumnToFill));
         grid.BeginEdit();
     }
 
     public void DuplicateRows()
     {
         var grid = Results.GridView;
-        if (!grid.CommitEdit())
+        if (!CommitOpenEdits())
         {
             return;
         }
@@ -218,7 +275,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     public void DeleteRows()
     {
-        if (Results.GridView.CommitEdit())
+        if (CommitOpenEdits())
         {
             ShowRefusal(_model.DeleteRows(SelectedRows()));
         }
@@ -278,7 +335,16 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     void ITableTabView.ShowSaveCancelled() => StatusText.Text = Strings.Get("SaveCancelled");
 
-    bool ITableTabView.CommitOpenEdit() => Results.GridView.CommitEdit();
+    bool ITableTabView.CommitOpenEdit() => CommitOpenEdits();
+
+    // The grid's editor and the Details pane's fields keep what was typed, as one open edit.
+    private bool CommitOpenEdits() => Results.GridView.CommitEdit() && _details?.CommitDraft() != false;
+
+    void ITableTabView.DiscardOpenEdit()
+    {
+        Results.GridView.CancelEdit();
+        _details?.CancelDraft();
+    }
 
     void ITableTabView.FocusRow(int row)
     {
@@ -317,7 +383,54 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     // Only the structure view asks for a read, so there is one to say it in.
     void ITableTabView.ShowStructureFailed(CoreError failure) => _structure?.ShowFailure(failure);
 
+    void ITableTabView.ShowTableInfoFailed(CoreError failure) => Results.ShowNotice(Strings.Error(failure));
+
     void ITableTabView.ShowFilterChoicesFailed(CoreError failure) => _filters?.ShowChoicesFailed(failure);
+
+    // While changes wait, the bar stays until a page takes them or Discard drops them.
+    void ITableTabView.ShowRecovered(int restored, int waiting, bool saveBlocked)
+    {
+        if (restored == 0 && waiting == 0 && !saveBlocked)
+        {
+            RecoveredBar.IsOpen = false;
+            RecoveredBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var waits = waiting > 0;
+        List<string> sentences = [];
+        if (saveBlocked)
+        {
+            // The words Save gives when it refuses, as after a save whose outcome is unknown.
+            sentences.Add(Strings.Get("RecoveredUncertainMessage"));
+            sentences.Add(Strings.Get("SaveUnknownBlocked"));
+        }
+        else if (!waits)
+        {
+            sentences.Add(Strings.Get("RecoveredEditsMessage"));
+        }
+
+        if (waits)
+        {
+            sentences.Add(
+                waiting == 1 ? Strings.Get("RecoveredWaitingOne") : Strings.Format("RecoveredWaitingMany", waiting));
+        }
+
+        var message = string.Join(" ", sentences);
+        RecoveredBar.Severity = waits || saveBlocked ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
+        RecoveredBar.Title = Strings.Get(waits ? "RecoveredWaitingTitle" : "RecoveredEditsTitle");
+        RecoveredBar.IsClosable = !waits;
+        DiscardWaitingButton.Visibility = waits ? Visibility.Visible : Visibility.Collapsed;
+        // A closed InfoBar keeps its margin, so the bar is collapsed while it is closed.
+        RecoveredBar.Visibility = Visibility.Visible;
+        // Narrator reads an InfoBar when it opens, not when its text changes, so a new count opens it again.
+        if (!RecoveredBar.IsOpen || !string.Equals(RecoveredBar.Message, message, StringComparison.Ordinal))
+        {
+            RecoveredBar.Message = message;
+            RecoveredBar.IsOpen = false;
+            RecoveredBar.IsOpen = true;
+        }
+    }
 
     // SelectorBar raises SelectionChanged for ShowView's own change too, which finds the view already shown.
     private void ShowView(bool structure)
@@ -490,6 +603,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             {
                 edited.Edits = edits;
                 grid.EditsChanged();
+                Results.RefreshSummary();
             }
         }
 
@@ -504,7 +618,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     private void OnCellEditStarting(object? sender, GridEditStartingEventArgs e)
     {
-        if (_model.StartEdit(e.Row, e.Column, out var text) is { } refusal)
+        if (_model.StartEdit(e.Row, Results.DataColumn(e.Column), out var text) is { } refusal)
         {
             e.Cancel = true;
             ShowRefusal(refusal);
@@ -517,7 +631,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     // A refusal keeps the editor open with the reason on it; on a focus loss the editor closes, so the status says it too.
     private void OnCellEditCommitting(object? sender, GridEditCommittingEventArgs e)
     {
-        if (_model.CommitEdit(e.Row, e.Column, e.Text) is { } refusal)
+        if (_model.CommitEdit(e.Row, Results.DataColumn(e.Column), e.Text) is { } refusal)
         {
             var text = RefusalText(refusal) ?? Strings.Get("EditCellReadOnly");
             e.Error = text;
@@ -553,7 +667,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     }
 
     // Built when asked for, since a menu keeps the window it first opened in and a tab can move to another.
-    private void OnGridContextRequested(UIElement sender, ContextRequestedEventArgs args)
+    private async void OnGridContextRequested(UIElement sender, ContextRequestedEventArgs args)
     {
         var grid = Results.GridView;
         // The editor's TextBox shows its own menu; a right-click on another cell keeps the edit first.
@@ -563,7 +677,30 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         }
 
         args.Handled = true;
+        var place = GridMenus.Place(grid, args);
+        if (grid.HeaderColumnOf(args.OriginalSource) is var header and >= 0)
+        {
+            GridMenus.Show(HeaderMenu(header), grid, place);
+            return;
+        }
+
         var (row, column) = (grid.FocusedRow, grid.FocusedColumn);
+        // The grid counts columns as it shows them; the model as the table has them.
+        var source = Results.DataColumn(column);
+        var rows = Results.ShownSet;
+        var cellRules = grid.RowCount > 0 && !_model.IsDeleted(row)
+            ? await CellRulesAsync(row, source).ConfigureAwait(true)
+            : [];
+        // The first read of the choices can outlast a page change or another click, and the menu acts on its cell.
+        if (XamlRoot is null
+            || _model.IsClosed
+            || !ReferenceEquals(rows, Results.ShownSet)
+            || grid.FocusedRow != row
+            || grid.FocusedColumn != column)
+        {
+            return;
+        }
+
         var menu = new MenuFlyout();
         // A row marked for delete offers only to keep it, as macOS does.
         if (grid.RowCount > 0 && _model.IsDeleted(row))
@@ -573,9 +710,9 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         else
         {
             var setValue = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuSetValue"), IsEnabled = _model.CanEdit };
-            setValue.Items.Add(ValueItem("GridMenuEmpty", row, column, CellValueKind.Empty));
-            setValue.Items.Add(ValueItem("GridMenuNull", row, column, CellValueKind.Null));
-            setValue.Items.Add(ValueItem("GridMenuDefault", row, column, CellValueKind.Default));
+            setValue.Items.Add(ValueItem("GridMenuEmpty", row, source, CellValueKind.Empty));
+            setValue.Items.Add(ValueItem("GridMenuNull", row, source, CellValueKind.Null));
+            setValue.Items.Add(ValueItem("GridMenuDefault", row, source, CellValueKind.Default));
             menu.Items.Add(setValue);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(MenuItem("GridMenuAddRow", CanAddRow, AddRow));
@@ -584,31 +721,179 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
-        var copy = new MenuFlyoutItem { Text = Strings.Get("GridMenuCopy"), IsEnabled = grid.RowCount > 0 };
-        copy.Click += async (_, _) => await grid.CopySelectionAsync().ConfigureAwait(true);
-        menu.Items.Add(copy);
+        menu.Items.Add(GridMenus.Copy(grid));
+        menu.Items.Add(GridMenus.ViewValue(Results));
+        if (cellRules.Count > 0)
+        {
+            menu.Items.Add(FilterMenu(cellRules));
+        }
+
+        AddReferences(menu, _model.ReferencesAt(row, source));
         menu.Items.Add(new MenuFlyoutSeparator());
-        var share = new MenuFlyoutItem
+        menu.Items.Add(GridMenus.Item("GridMenuHideColumn", CanHide, () => HideColumn(column)));
+        menu.Items.Add(ColumnsMenu());
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var finished = !IsRunning && Results.ShownSet is { IsFinished: true };
+        menu.Items.Add(GridMenus.Item("GridMenuExport", finished, () => ExportRequested?.Invoke(this, EventArgs.Empty)));
+        menu.Items.Add(GridMenus.Item(
+            "ShareCommand",
+            finished && !_model.HasUnsavedChanges,
+            () => ShareRequested?.Invoke(this, ShareKind.Result),
+            Symbol.Share));
+        GridMenus.Show(menu, grid, place);
+    }
+
+    // The cell's value read before the choices, which can take a read the first time, so a later focus is not used.
+    private async Task<IReadOnlyList<FilterRule>> CellRulesAsync(int row, int column)
+    {
+        var value = Results.FocusedCellForFilter();
+        var pending = _model.Edits is { } edits && (edits.IsAdded(row) || edits.GetCell(row, column) is not null);
+        if (value is null || pending)
         {
-            Text = Strings.Get("ShareCommand"),
-            Icon = new SymbolIcon(Symbol.Share),
-            IsEnabled = !IsRunning && !_model.HasUnsavedChanges && Results.ShownSet is { IsFinished: true },
-        };
-        share.Click += (_, _) => ShareRequested?.Invoke(this, ShareKind.Result);
-        menu.Items.Add(share);
-        if (args.TryGetPosition(grid, out var point))
-        {
-            menu.ShowAt(grid, new FlyoutShowOptions { Position = point });
+            return [];
         }
-        else if (grid.FocusedCellMenuPoint() is { } cell)
+
+        // The core reads the whole stored value, so a value the menu would refuse anyway is never read whole.
+        var filterText = value is { IsNull: false, Bytes: null, TextCut: false } ? FilterTextAt(row, column) : null;
+        // Kept until a refresh makes them stale, so this reads them only the first time and after a refresh.
+        var choices = await _model.LoadFilterChoicesAsync().ConfigureAwait(true);
+        var offered = choices?.Columns
+            .FirstOrDefault(choice => string.Equals(choice.Name, value.Column, StringComparison.Ordinal))?.Operators ?? [];
+        return CellFilters.For(value.Column, offered, value, filterText, pending);
+    }
+
+    private string? FilterTextAt(int row, int column)
+    {
+        try
         {
-            // From the keyboard, the menu opens at the cell it acts on, not over the editor.
-            menu.ShowAt(grid, new FlyoutShowOptions { Position = cell });
+            return Results.ShownSet is { } rows && row < rows.RowCount ? rows.GetFilterText(row, column) : null;
         }
-        else
+        catch (TableProException)
         {
-            menu.ShowAt(grid);
+            return null;
         }
+    }
+
+    // As macOS titles them: the column, the operator and the value the rule compares with.
+    private MenuFlyoutSubItem FilterMenu(IReadOnlyList<FilterRule> rules)
+    {
+        var filter = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuFilter"), Icon = new SymbolIcon(Symbol.Filter) };
+        AutomationProperties.SetAutomationId(filter, "FilterByCell");
+        foreach (var rule in rules)
+        {
+            var shown = rule.Value is FilterValue.One one ? MenuValue(one.Value) : string.Empty;
+            var item = new MenuFlyoutItem
+            {
+                Text = Strings.Format("CellFilter_" + Enum.GetName(rule.Operator), rule.Column, shown),
+            };
+            AutomationProperties.SetAutomationId(item, "FilterByCell_" + Enum.GetName(rule.Operator));
+            item.Click += async (_, _) => await FilterByAsync(rule).ConfigureAwait(true);
+            filter.Items.Add(item);
+        }
+
+        return filter;
+    }
+
+    // On one line and cut, since the rule itself carries the whole value.
+    private static string MenuValue(string value)
+    {
+        const int Shown = 40;
+        var line = value.ReplaceLineEndings(" ");
+        return line.Length <= Shown ? line : string.Concat(line.AsSpan(0, Shown), "…");
+    }
+
+    // The rule applies at once and shows in the bar, as one typed there would.
+    private async Task FilterByAsync(FilterRule rule)
+    {
+        if (!await _model.FilterByAsync(rule).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        ShowView(structure: false);
+        ShowFilter(true, focus: false);
+        _filters?.ShowApplied();
+    }
+
+    // One key the cell's column is in opens from the menu itself; several, and every key pointing at the row, are
+    // listed by the other table and the key's columns, which tell two keys into one table apart.
+    private void AddReferences(MenuFlyout menu, ReferenceMenu references)
+    {
+        if (references.References.IsEmpty)
+        {
+            return;
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var open = Labels(references.References.Referenced);
+        if (open.Count == 1)
+        {
+            menu.Items.Add(ReferenceItem(Strings.Get("GridMenuOpenReferenced"), references, open[0].Choice, "OpenReferencedRow"));
+        }
+        else if (open.Count > 1)
+        {
+            var choose = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuOpenReferenced") };
+            foreach (var (label, choice) in open)
+            {
+                choose.Items.Add(ReferenceItem(label, references, choice, null));
+            }
+
+            menu.Items.Add(choose);
+        }
+
+        var pointing = Labels(references.References.Referencing);
+        if (pointing.Count > 0)
+        {
+            var show = new MenuFlyoutSubItem { Text = Strings.Get("GridMenuShowReferencing") };
+            foreach (var (label, choice) in pointing)
+            {
+                show.Items.Add(ReferenceItem(label, references, choice, null));
+            }
+
+            menu.Items.Add(show);
+        }
+    }
+
+    private MenuFlyoutItem ReferenceItem(string label, ReferenceMenu references, RowReferenceChoice choice, string? automationId)
+    {
+        var item = new MenuFlyoutItem { Text = label };
+        if (automationId is not null)
+        {
+            AutomationProperties.SetAutomationId(item, automationId);
+        }
+
+        item.Click += (_, _) => FollowReference(references, choice);
+        return item;
+    }
+
+    // A key that cannot be followed is still offered, so choosing it says why.
+    private void FollowReference(ReferenceMenu references, RowReferenceChoice choice)
+    {
+        switch (_model.Follow(references, choice))
+        {
+            case FollowedReference.Refused refused:
+                Results.ShowNotice(Strings.Format("Reference" + refused.Refusal, refused.Subject));
+                break;
+            case FollowedReference.Rows rows:
+                ReferenceRequested?.Invoke(this, rows);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private List<(string Label, RowReferenceChoice Choice)> Labels(IReadOnlyList<RowReferenceChoice> choices)
+    {
+        var shorts = choices.Select(choice =>
+        {
+            var table = choice.Table.Schema is { } schema && !string.Equals(schema, _model.Table.Schema, StringComparison.Ordinal)
+                ? $"{schema}.{choice.Table.Name}"
+                : choice.Table.Name;
+            return Strings.Format("ReferenceKey", table, string.Join(", ", choice.Columns));
+        }).ToList();
+        var counts = shorts.CountBy(label => label).ToDictionary(StringComparer.Ordinal);
+        return [.. choices.Select((choice, index) =>
+            (counts[shorts[index]] > 1 ? Strings.Format("ReferenceKeyThrough", shorts[index], choice.KeyName) : shorts[index], choice))];
     }
 
     private MenuFlyoutItem ValueItem(string text, int row, int column, CellValueKind kind) =>
@@ -698,13 +983,35 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     private async void OnCountRows(object sender, RoutedEventArgs e) =>
         await _model.CountRowsAsync().ConfigureAwait(true);
 
-    private async void OnRefresh(object sender, RoutedEventArgs e)
+    private async void OnRefresh(object sender, RoutedEventArgs e) => await RefreshRowsAsync().ConfigureAwait(true);
+
+    // As Refresh does, for rows written from outside the tab, such as an import.
+    // The rows and their edits stay; a structure or filter bar on screen reads again.
+    internal async Task ForgetCatalogAsync()
     {
-        await _model.RefreshAsync().ConfigureAwait(true);
+        _model.ForgetCatalog();
         await ReloadShownAsync().ConfigureAwait(true);
     }
 
+    internal async Task RefreshRowsAsync()
+    {
+        await _model.RefreshAsync().ConfigureAwait(true);
+        await ReloadShownAsync().ConfigureAwait(true);
+        _details?.Reload();
+    }
+
     private void OnStop(object sender, RoutedEventArgs e) => Stop();
+
+    // Only the close button hides it for good; a bar opened again for a new count stays.
+    private void OnRecoveredBarClosed(InfoBar sender, InfoBarClosedEventArgs args)
+    {
+        if (args.Reason == InfoBarCloseReason.CloseButton)
+        {
+            RecoveredBar.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void OnDiscardWaiting(object sender, RoutedEventArgs e) => _model.DiscardWaiting();
 
     private void OnViewChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
@@ -721,6 +1028,246 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         {
             ShowFilter(show, focus: true);
         }
+    }
+
+    private void OnDetailsToggled(object sender, RoutedEventArgs e) => ShowDetails(DetailsButton.IsChecked == true);
+
+    // As macOS's inspector: the focused row's fields, and the table's figures beside them.
+    private void ShowDetails(bool show)
+    {
+        if (show)
+        {
+            var details = _details ??= CreateDetails();
+            DetailsHost.Visibility = Visibility.Visible;
+            details.Visibility = Visibility.Visible;
+            details.Show();
+        }
+        else if (_details is { } details)
+        {
+            DetailsHost.Visibility = Visibility.Collapsed;
+            details.Visibility = Visibility.Collapsed;
+        }
+
+        DetailsButton.IsChecked = show;
+    }
+
+    private DetailsPane CreateDetails()
+    {
+        // A refused field on a focus loss is gone with its row, as the grid's editor is, so the status says why.
+        var details = new DetailsPane(_model, Results.GridView, refusal =>
+        {
+            var text = RefusalText(refusal) ?? Strings.Get("EditCellReadOnly");
+            StatusText.Text = text;
+            return text;
+        });
+        details.DraftChanged += (_, _) =>
+        {
+            DraftChanged?.Invoke(this, EventArgs.Empty);
+            EditStateMayHaveChanged();
+        };
+        details.FieldFocused += (_, field) =>
+        {
+            _messagesIsTarget = false;
+            _detailsTarget = field;
+        };
+        DetailsHost.Child = details;
+        return details;
+    }
+
+    private IReadOnlyList<string> ColumnNames => [.. Results.Columns.Select(column => column.Name)];
+
+    private int ShownCount => Results.GridView.ColumnCount;
+
+    // The last shown column stays.
+    private bool CanHide => ShownCount > 1;
+
+    // A column the layout hides gets the editor's focus on the first shown one.
+    private int ShownColumn(int column) => Math.Max(0, Results.DisplayColumn(column));
+
+    // Kept for the table at once, so another tab of it and the next time it opens show the same.
+    private void ApplyLayout(ColumnLayout layout)
+    {
+        if (ReferenceEquals(layout, _layout))
+        {
+            return;
+        }
+
+        _layout = layout;
+        _columns?.Remember(_model.Table, layout);
+        Results.Rearrange();
+        FitFrozen();
+    }
+
+    // As the macOS grid freezes them: the columns asked for that fit in two thirds of the grid, worked out again as
+    // the grid or its rows change size, so a wide column or a small window never leaves nothing to scroll.
+    private void FitFrozen()
+    {
+        var grid = Results.GridView;
+        if (grid.Data is not EditedGridData)
+        {
+            return;
+        }
+
+        var fits = Math.Min(_layout.Resolve(ColumnNames).Frozen, grid.ColumnCount);
+        while (fits > 0 && !CanFreezeThrough(fits - 1))
+        {
+            fits--;
+        }
+
+        if (grid.FrozenColumnCount != fits)
+        {
+            grid.FrozenColumnCount = fits;
+        }
+    }
+
+    private void HideColumn(int column)
+    {
+        if (CanHide && Results.GridView.CommitEdit())
+        {
+            ApplyLayout(_layout.Hide(ColumnNames, Results.DataColumn(column)));
+        }
+    }
+
+    private void MoveColumn(int from, int to)
+    {
+        var grid = Results.GridView;
+        if (from == to || from < 0 || to < 0 || from >= ShownCount || to >= ShownCount || !grid.CommitEdit())
+        {
+            return;
+        }
+
+        ApplyLayout(_layout.Move(ColumnNames, from, to));
+        grid.ScrollIntoView(Math.Max(0, grid.FocusedRow), to);
+    }
+
+    private void FreezeThrough(int column) => ApplyLayout(_layout.Freeze(column + 1));
+
+    // As macOS refuses it: frozen columns that leave less than a third of the grid to scroll the rest.
+    private bool CanFreezeThrough(int column)
+    {
+        var grid = Results.GridView;
+        var width = 0.0;
+        for (var shown = 0; shown <= column && shown < ShownCount; shown++)
+        {
+            width += grid.ColumnWidth(shown);
+        }
+
+        // Before the first layout there is no width to compare with.
+        return grid.ActualWidth <= 0 || width <= grid.ActualWidth * 2 / 3;
+    }
+
+    // Alt+Left and Alt+Right move the focused column, as Move Column Left and Right in its menu do.
+    private void AddColumnKeys(DataGridView grid)
+    {
+        grid.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
+        foreach (var (key, step) in new[] { (VirtualKey.Left, -1), (VirtualKey.Right, 1) })
+        {
+            var accelerator = new KeyboardAccelerator
+            {
+                Key = key,
+                Modifiers = VirtualKeyModifiers.Menu,
+                ScopeOwner = grid,
+            };
+            accelerator.Invoked += (_, args) =>
+            {
+                var from = grid.FocusedColumn;
+                if (grid.IsEditing || grid.ColumnCount == 0 || from + step < 0 || from + step >= ShownCount)
+                {
+                    return;
+                }
+
+                args.Handled = true;
+                MoveColumn(from, from + step);
+            };
+            grid.KeyboardAccelerators.Add(accelerator);
+        }
+    }
+
+    private MenuFlyout HeaderMenu(int column)
+    {
+        var menu = new MenuFlyout();
+        menu.Items.Add(GridMenus.Item("GridMenuHideColumn", CanHide, () => HideColumn(column)));
+        menu.Items.Add(ShowAllItem());
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var left = GridMenus.Item("GridMenuMoveLeft", column > 0, () => MoveColumn(column, column - 1));
+        left.KeyboardAcceleratorTextOverride = Strings.Get("GridMenuMoveLeftKeys");
+        var right = GridMenus.Item("GridMenuMoveRight", column < ShownCount - 1, () => MoveColumn(column, column + 1));
+        right.KeyboardAcceleratorTextOverride = Strings.Get("GridMenuMoveRightKeys");
+        menu.Items.Add(left);
+        menu.Items.Add(right);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        var frozen = _layout.Resolve(ColumnNames).Frozen;
+        if (frozen != column + 1)
+        {
+            var fits = CanFreezeThrough(column);
+            var freeze = GridMenus.Item("GridMenuFreeze", fits, () => FreezeThrough(column));
+            if (!fits)
+            {
+                ToolTipService.SetToolTip(freeze, Strings.Get("GridMenuFreezeTooWide"));
+            }
+
+            menu.Items.Add(freeze);
+        }
+
+        if (frozen > 0)
+        {
+            menu.Items.Add(GridMenus.Item("GridMenuUnfreeze", true, () => ApplyLayout(_layout.Freeze(0))));
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(ColumnsMenu());
+        return menu;
+    }
+
+    // Every column of the table with whether it shows, as macOS's Columns popover lists them.
+    private MenuFlyoutSubItem ColumnsMenu()
+    {
+        var menu = new MenuFlyoutSubItem
+        {
+            Text = Strings.Get("GridMenuColumns"),
+            Icon = new SymbolIcon(Symbol.ViewAll),
+        };
+        AutomationProperties.SetAutomationId(menu, "ColumnsMenu");
+        FillColumns(menu.Items);
+        return menu;
+    }
+
+    private void FillColumns(IList<MenuFlyoutItemBase> items)
+    {
+        var names = ColumnNames;
+        for (var column = 0; column < names.Count; column++)
+        {
+            var shown = Results.DisplayColumn(column) >= 0;
+            var source = column;
+            var item = new ToggleMenuFlyoutItem
+            {
+                Text = names[column],
+                IsChecked = shown,
+                // The last shown column stays, so its check cannot be taken off.
+                IsEnabled = !shown || CanHide,
+            };
+            item.Click += (_, _) =>
+                ApplyLayout(shown ? _layout.Hide(ColumnNames, source) : _layout.Show(ColumnNames, source));
+            items.Add(item);
+        }
+
+        if (names.Count > 0)
+        {
+            items.Add(new MenuFlyoutSeparator());
+        }
+
+        items.Add(ShowAllItem());
+        items.Add(GridMenus.Item("GridMenuResetColumns", !_layout.IsDefault, () => ApplyLayout(ColumnLayout.Default)));
+    }
+
+    private MenuFlyoutItem ShowAllItem() =>
+        GridMenus.Item("GridMenuShowAllColumns", _layout.Hidden.Count > 0, () => ApplyLayout(_layout.ShowAll()));
+
+    private void OnColumns(object sender, RoutedEventArgs e)
+    {
+        var menu = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedRight };
+        FillColumns(menu.Items);
+        menu.ShowAt(Anchor(ColumnsButton));
     }
 
     private void OnAddRow(object sender, RoutedEventArgs e) => AddRow();

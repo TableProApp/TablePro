@@ -21,7 +21,6 @@ struct MainContentCoordinatorTabSwitchTests {
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         return (coordinator, tabManager)
@@ -235,15 +234,8 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(saved.isVisible == true)
     }
 
-    @Test("Switching saves outgoing pending changes into the tab")
-    func savesOutgoingPendingChanges() {
-        let (coordinator, tabManager) = makeCoordinator()
-        let oldId = addQueryTab(to: tabManager, title: "Old")
-        let newId = addQueryTab(to: tabManager, title: "New")
-        seedRows(coordinator, for: oldId)
-        seedRows(coordinator, for: newId)
-
-        coordinator.changeManager.configureForTable(
+    private func stageNameEdit(on edits: DataChangeManager) {
+        edits.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
             primaryKeyColumns: ["id"],
@@ -251,7 +243,7 @@ struct MainContentCoordinatorTabSwitchTests {
             generatedColumns: [],
             triggerReload: false
         )
-        coordinator.changeManager.recordCellChange(
+        edits.recordCellChange(
             rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
@@ -259,45 +251,38 @@ struct MainContentCoordinatorTabSwitchTests {
             newValue: "Bob",
             originalRow: ["1", "Alice"]
         )
-        #expect(coordinator.changeManager.hasChanges == true)
-
-        coordinator.handleTabChange(from: oldId, to: newId, tabs: tabManager.tabs)
-
-        guard let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId }) else {
-            Issue.record("Expected old tab to exist after switch")
-            return
-        }
-        #expect(tabManager.tabs[oldIndex].pendingChanges.hasChanges == true)
     }
 
-    // Gated on `hasChanges`, an undo left an older snapshot on the tab, and switching back restored the undone edit.
-    @Test("Switching clears a snapshot the reader has undone")
-    func undoneChangesClearTheOutgoingSnapshot() throws {
+    @Test("Switching keeps the outgoing tab's edits in its own change manager")
+    func keepsOutgoingEditsInTheirTab() {
         let (coordinator, tabManager) = makeCoordinator()
         let oldId = addQueryTab(to: tabManager, title: "Old")
         let newId = addQueryTab(to: tabManager, title: "New")
         seedRows(coordinator, for: oldId)
         seedRows(coordinator, for: newId)
+        let edits = coordinator.changeManager(forTab: oldId)
+        stageNameEdit(on: edits)
+        #expect(edits.hasChanges == true)
 
-        coordinator.changeManager.configureForTable(
-            tableName: "users",
-            columns: ["id", "name"],
-            primaryKeyColumns: ["id"],
-            databaseType: .mysql,
-            generatedColumns: [],
-            triggerReload: false
-        )
-        coordinator.changeManager.recordCellChange(
-            rowID: .existing(0),
-            columnIndex: 1,
-            columnName: "name",
-            oldValue: "Alice",
-            newValue: "Bob",
-            originalRow: ["1", "Alice"]
-        )
         coordinator.handleTabChange(from: oldId, to: newId, tabs: tabManager.tabs)
-        let afterFirstSwitch = try #require(tabManager.tabs.first { $0.id == oldId })
-        #expect(afterFirstSwitch.pendingChanges.hasChanges == true)
+
+        #expect(edits.hasChanges == true)
+        #expect(coordinator.hasStagedRowEdits(inTab: oldId))
+        #expect(coordinator.changeManager === coordinator.changeManager(forTab: newId))
+        #expect(coordinator.changeManager.hasChanges == false)
+    }
+
+    // A copy of the edits left on the tab once restored an edit the reader had undone.
+    @Test("An edit the reader takes back stays taken back across switches")
+    func undoneChangesStayUndoneAcrossSwitches() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let oldId = addQueryTab(to: tabManager, title: "Old")
+        let newId = addQueryTab(to: tabManager, title: "New")
+        seedRows(coordinator, for: oldId)
+        seedRows(coordinator, for: newId)
+        stageNameEdit(on: coordinator.changeManager(forTab: oldId))
+        coordinator.handleTabChange(from: oldId, to: newId, tabs: tabManager.tabs)
+        #expect(coordinator.hasStagedRowEdits(inTab: oldId))
 
         tabManager.selectedTabId = oldId
         coordinator.handleTabChange(from: newId, to: oldId, tabs: tabManager.tabs)
@@ -306,9 +291,11 @@ struct MainContentCoordinatorTabSwitchTests {
 
         tabManager.selectedTabId = newId
         coordinator.handleTabChange(from: oldId, to: newId, tabs: tabManager.tabs)
+        #expect(!coordinator.hasStagedRowEdits(inTab: oldId))
 
-        let afterUndo = try #require(tabManager.tabs.first { $0.id == oldId })
-        #expect(afterUndo.pendingChanges.hasChanges == false)
+        tabManager.selectedTabId = oldId
+        coordinator.handleTabChange(from: newId, to: oldId, tabs: tabManager.tabs)
+        #expect(coordinator.changeManager.hasChanges == false)
     }
 
     @Test("Hiding a column persists into the active tab's column layout")
@@ -450,17 +437,17 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(coordinator.toolbarState.isResultsCollapsed == true)
     }
 
-    // MARK: - Pending changes restore
+    // MARK: - The incoming tab's edits
 
-    @Test("Switching restores pending changes when the incoming tab has them")
-    func restoresIncomingPendingChanges() {
+    @Test("Switching to a tab shows the edits it holds")
+    func showsTheIncomingTabsEdits() {
         let (coordinator, tabManager) = makeCoordinator()
         let oldId = addTableTab(to: tabManager, tableName: "users")
         let newId = addTableTab(to: tabManager, tableName: "orders")
         seedRows(coordinator, for: oldId)
         seedRows(coordinator, for: newId, columns: ["id", "total"])
-
-        coordinator.changeManager.configureForTable(
+        let edits = coordinator.changeManager(forTab: newId)
+        edits.configureForTable(
             tableName: "orders",
             columns: ["id", "total"],
             primaryKeyColumns: ["id"],
@@ -468,7 +455,7 @@ struct MainContentCoordinatorTabSwitchTests {
             generatedColumns: [],
             triggerReload: false
         )
-        coordinator.changeManager.recordCellChange(
+        edits.recordCellChange(
             rowID: .existing(0),
             columnIndex: 1,
             columnName: "total",
@@ -476,25 +463,17 @@ struct MainContentCoordinatorTabSwitchTests {
             newValue: "99",
             originalRow: ["1", "10"]
         )
-        let snapshot = coordinator.changeManager.saveState()
-
-        guard let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) else {
-            Issue.record("Expected new tab to exist before switch")
-            return
-        }
-        tabManager.tabs[newIndex].pendingChanges = snapshot
-
-        coordinator.changeManager.clearChanges()
-        #expect(coordinator.changeManager.hasChanges == false)
 
         coordinator.handleTabChange(from: oldId, to: newId, tabs: tabManager.tabs)
 
+        #expect(coordinator.changeManager === edits)
+        #expect(coordinator.selectedTabEdits.manager === edits)
         #expect(coordinator.changeManager.hasChanges == true)
         #expect(coordinator.changeManager.tableName == "orders")
     }
 
-    @Test("Switching configures the change manager when the incoming tab has no pending state")
-    func configuresChangeManagerWhenNoPendingState() {
+    @Test("Switching describes the incoming tab's result to its change manager when it holds no edits")
+    func describesIncomingResultWhenNoEdits() {
         let (coordinator, tabManager) = makeCoordinator()
         let oldId = addQueryTab(to: tabManager, title: "Old")
         let newId = addTableTab(to: tabManager, tableName: "products")
@@ -506,12 +485,12 @@ struct MainContentCoordinatorTabSwitchTests {
             return
         }
         tabManager.tabs[newIndex].tableContext.primaryKeyColumns = ["id"]
-        tabManager.tabs[newIndex].pendingChanges = TabChangeSnapshot()
 
         coordinator.handleTabChange(from: oldId, to: newId, tabs: tabManager.tabs)
 
         #expect(coordinator.changeManager.tableName == "products")
         #expect(coordinator.changeManager.primaryKeyColumns == ["id"])
+        #expect(coordinator.changeManager.columns == ["id", "name", "price"])
         #expect(coordinator.changeManager.hasChanges == false)
     }
 
@@ -945,39 +924,6 @@ struct MainContentCoordinatorTabSwitchTests {
         let saved = savedUsersFilterState(coordinator)
         #expect(saved.filters.map(\.id) == [first.id, second.id])
         #expect(!saved.isApplied)
-    }
-
-    @Test("DataChangeManager restoreState rehydrates table context and changes")
-    func dataChangeManagerRestoresFromSnapshot() {
-        let manager = DataChangeManager()
-        manager.configureForTable(
-            tableName: "users",
-            columns: ["id", "name"],
-            primaryKeyColumns: ["id"],
-            databaseType: .mysql,
-            generatedColumns: [],
-            triggerReload: false
-        )
-        manager.recordCellChange(
-            rowID: .existing(0),
-            columnIndex: 1,
-            columnName: "name",
-            oldValue: "Alice",
-            newValue: "Bob",
-            originalRow: ["1", "Alice"]
-        )
-        let snapshot = manager.saveState()
-
-        let fresh = DataChangeManager()
-        #expect(fresh.hasChanges == false)
-
-        fresh.restoreState(from: snapshot, tableName: "users", databaseType: .postgresql, generatedColumns: [])
-
-        #expect(fresh.hasChanges == true)
-        #expect(fresh.tableName == "users")
-        #expect(fresh.primaryKeyColumns == ["id"])
-        #expect(fresh.databaseType == .postgresql)
-        #expect(fresh.columns == ["id", "name"])
     }
 
     @Test("Coordinator helpers round-trip hidden columns through the active tab's layout")

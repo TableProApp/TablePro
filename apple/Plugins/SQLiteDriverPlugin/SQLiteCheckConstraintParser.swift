@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 
 // SQLite keeps constraints only in `sqlite_master.sql`. Only named table-level checks are read: DROP CONSTRAINT needs a name.
-enum SQLiteCheckConstraintParser {
+nonisolated enum SQLiteCheckConstraintParser {
     struct ParsedConstraint: Equatable {
         let name: String
         let expression: String

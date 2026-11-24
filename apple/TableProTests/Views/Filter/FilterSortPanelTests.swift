@@ -27,7 +27,6 @@ struct FilterSortPanelTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(type: type),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: "users", query: "unfiltered", tabType: .table, tableName: "users")
@@ -282,7 +281,7 @@ struct FilterSortPanelTests {
         )
         let cell = TestFixtures.makeTableFilter(column: "name", value: "name_1")
 
-        coordinator.filterCoordinator.applyCellFilter(cell)
+        coordinator.filterCoordinator.applyCellFilter(cell, forTab: tabId)
 
         let after = try tab(tabManager, tabId)
         #expect(after.filterState.filters.map { $0.id } == [cell.id])

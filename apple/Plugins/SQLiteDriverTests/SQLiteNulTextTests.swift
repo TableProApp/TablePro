@@ -80,4 +80,18 @@ struct SQLiteNulTextTests {
         let after = try await driver.execute(query: "SELECT id, body FROM notes ORDER BY id")
         #expect(texts(after.rows) == [["k", "other"], [Self.key, "x\u{0}y"]])
     }
+
+    @Test("A literal the driver escapes keeps a NUL, so a SQL dump restores the text whole")
+    func escapedLiteralKeepsNul() async throws {
+        let (driver, url) = try await connectedDriver()
+        defer {
+            driver.disconnect()
+            try? FileManager.default.removeItem(at: url)
+        }
+        let literal = driver.escapeStringLiteral(Self.value)
+        #expect(literal == "a'||char(0)||'b")
+        _ = try await driver.execute(query: "INSERT INTO notes VALUES ('k', '\(literal)')")
+        let result = try await driver.execute(query: "SELECT hex(body) FROM notes WHERE id = 'k'")
+        #expect(texts(result.rows) == [["610062"]])
+    }
 }

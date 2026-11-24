@@ -3,7 +3,7 @@
 use tablepro_core::column::{BoolStorage, ColumnKind, IntegerKind, IntegerWidth};
 use tablepro_core::ddl::{ColumnVisibility, GeneratedStorage, IdentityStyle, TableOptions};
 use tablepro_core::dialect::{BindTarget, LikeForm, SqlDialect};
-use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind, ObjectScope};
+use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind, ObjectScope, TableInfo};
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{Connection, DatabaseDriver, DriverError, RowLimit, TlsConfig, Value, WorkspaceSettings};
 use tablepro_driver_mysql::MysqlDriver;
@@ -402,6 +402,50 @@ async fn objects_and_estimates_are_listed() {
                 .any(|schema| schema.name == "information_schema" && schema.is_system)
         );
         assert!(estimate.rows.value().is_some(), "{flavour:?}: {estimate:?}");
+        connection.close().await.expect("a close");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn table_info_reports_comment_and_sizes() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE sized (id int PRIMARY KEY, label varchar(100), KEY sized_label (label)) \
+                 COMMENT 'the sized one'",
+                "INSERT INTO sized VALUES (1, 'a'), (2, 'b'), (3, 'c')",
+                "CREATE VIEW sized_view AS SELECT id FROM sized",
+            ],
+        )
+        .await;
+
+        let sized = connection
+            .table_info(&table("sized"), within(CALL))
+            .await
+            .expect("the table's info");
+        let view = connection
+            .table_info(&table("sized_view"), within(CALL))
+            .await
+            .expect("the view's info");
+        let missing = connection
+            .table_info(&table("missing"), within(CALL))
+            .await
+            .expect("no info");
+
+        assert_eq!(sized.comment.as_deref(), Some("the sized one"), "{flavour:?}");
+        let (data, index, total) = (
+            sized.data_bytes.expect("data"),
+            sized.index_bytes.expect("indexes"),
+            sized.total_bytes.expect("total"),
+        );
+        assert!(data > 0 && index > 0, "{flavour:?}: {sized:?}");
+        assert_eq!(total, data + index, "{flavour:?}");
+        assert_eq!(view, TableInfo::default(), "{flavour:?}");
+        assert_eq!(missing, TableInfo::default(), "{flavour:?}");
         connection.close().await.expect("a close");
     }
 }

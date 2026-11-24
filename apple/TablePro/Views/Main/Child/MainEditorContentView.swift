@@ -23,7 +23,6 @@ internal enum ContainerChangeRerunPolicy {
 }
 
 struct MainEditorContentView: View {
-    @ObservedObject private var schemaService = SchemaService.shared
     @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     // Must clear the nested editor/results split's required minimums, or dragging the drawer asks AppKit for an unreachable height.
@@ -36,7 +35,9 @@ struct MainEditorContentView: View {
 
     // Handed in, not resolved in `body` where nothing would observe it: the drawer state is a per-connection singleton.
     @ObservedObject var historyState: HistoryPanelState
-    @ObservedObject var changeManager: DataChangeManager
+    @ObservedObject var selectedEdits: SelectedTabEdits
+    @ObservedObject var catalogSnapshot: ConnectionCatalogSnapshot
+    private var changeManager: DataChangeManager { selectedEdits.manager }
     let connection: DatabaseConnection
     let windowId: UUID
     let connectionId: UUID
@@ -56,7 +57,6 @@ struct MainEditorContentView: View {
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
 
-    @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
     // Table highlight rules live here, not on the tab; unobserved, Add Rule on a table tab changed nothing on screen.
     @ObservedObject private var highlightRuleStorage = HighlightRuleStorage.shared
 
@@ -254,10 +254,12 @@ struct MainEditorContentView: View {
             )
         }
         let tableEntityName = PluginManager.shared.tableEntityName(for: connection.type)
-        return TableListingTabView(
+        return ObjectsTabContent(
             model: model,
             databaseType: connection.type,
-            kinds: ObjectListingKinds.available(itemCounts: listedObjectCounts(in: scope), declared: declared, current: kind),
+            scope: scope,
+            declared: declared,
+            kind: kind,
             kindTitle: { $0.title(tableEntityName: tableEntityName) },
             onSelectKind: { coordinator.selectListingKind($0, inTab: tabId) }
         )
@@ -269,15 +271,6 @@ struct MainEditorContentView: View {
             }
         }
         .id(tab.id)
-    }
-
-    private func listedObjectCounts(in scope: DatabaseScope) -> [SidebarObjectKind: Int] {
-        ObjectListingKinds.itemCounts(
-            tables: treeService.tables(connectionId: scope.connectionId, database: scope.database, schema: scope.schema),
-            routines: treeService.routines(connectionId: scope.connectionId, database: scope.database, schema: scope.schema),
-            triggers: treeService.triggers(connectionId: scope.connectionId, database: scope.database, schema: scope.schema),
-            types: treeService.userDefinedTypes(connectionId: scope.connectionId, database: scope.database, schema: scope.schema)
-        )
     }
 
     // MARK: - Version History Tab Content
@@ -478,12 +471,12 @@ struct MainEditorContentView: View {
         switch containerSwitchTarget {
         case .database:
             return DatabaseSwitchList.sections(
-                databases: treeService.databases(for: connectionId),
+                databases: catalogSnapshot.databases,
                 selected: SharedSidebarState.forConnection(connectionId).databaseFilterSelected,
                 activeDatabase: containerName(for: tab)
             ).all
         case .schema:
-            return schemaService.schemas(for: connectionId).map { DatabaseMetadata.minimal(name: $0) }
+            return catalogSnapshot.schemas.map { DatabaseMetadata.minimal(name: $0) }
         case nil:
             return []
         }
@@ -537,16 +530,17 @@ struct MainEditorContentView: View {
             },
             set: { newValue in
                 // By ID: mid-switch, flushTextUpdate() fires for the old tab while selectedTabIndex already points to the new one.
-                guard tabManager.mutate(tabId: tabId, { $0.content.query = newValue }) else { return }
+                guard tabManager.setEditorText(newValue, ofTab: tabId) else { return }
 
                 coordinator.scheduleDraftSave(editedTab: tabId)
 
                 // Scratch tabs dirty too. Only this tab's window: a background window tab's editor stays mounted and can fire here.
                 guard tabId == tabManager.selectedTabId,
-                      let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
+                      let tab = tabManager.tabs.first(where: { $0.id == tabId }),
                       let window = coordinator.contentWindow else { return }
-                let showsIndicator = coordinator.showsUnsavedIndicator(for: tabManager.tabs[index])
+                let showsIndicator = coordinator.showsUnsavedIndicator(for: tab)
                 Task { @MainActor in
+                    guard window.isDocumentEdited != showsIndicator else { return }
                     window.isDocumentEdited = showsIndicator
                 }
             }
@@ -593,7 +587,7 @@ struct MainEditorContentView: View {
             InlineErrorBanner(
                 message: error.message,
                 onFixWithAI: coordinator.aiQueryActionAvailability(for: tab).isVisible
-                    ? { coordinator.fixErrorWithAI(query: error.query ?? tab.content.query, error: error.message) }
+                    ? { fixWithAI(error, inTab: tab) }
                     : nil,
                 onDismiss: error.isDismissible
                     ? {
@@ -606,6 +600,12 @@ struct MainEditorContentView: View {
             )
             Divider()
         }
+    }
+
+    // Read at click time: typing does not rebuild this view, so the captured tab's text can be stale.
+    private func fixWithAI(_ error: QueryTabError, inTab tab: QueryTab) {
+        let current = tabManager.tabs.first(where: { $0.id == tab.id }) ?? tab
+        coordinator.fixErrorWithAI(query: error.query ?? current.content.query, error: error.message)
     }
 
     private func structureScope(for tab: QueryTab) -> DatabaseScope? {
@@ -1049,7 +1049,7 @@ struct MainEditorContentView: View {
                 onCancel: { coordinator.stopExecution(for: tab.id) }
             ),
             selectionSummary: coordinator.selectionSummary,
-            isRefreshingSchema: schemaService.isRefreshing(connectionId: connectionId),
+            isRefreshingSchema: catalogSnapshot.isRefreshing,
             viewMode: resultsViewModeBinding(for: tab),
             resultSetMenu: resultSetMenuModel(for: tab, placedIn: .statusBar),
             resultSetActions: coordinator.resultSetActions(forTab: tab.id),
@@ -1253,11 +1253,11 @@ extension MainEditorContentView {
                     vimMode: vimMode,
                     showsHistoryTip: showsHistoryTip,
                     onAIAction: { action in coordinator.runAIQueryAction(action, target: .selectionOrStatementAtCursor) },
-                    onRun: { coordinator.runQuery(viewport: .firstRow) },
-                    onRunAllStatements: { coordinator.runAllStatements() },
-                    onRunWithoutLimit: { coordinator.runQuery(viewport: .firstRow, bypassRowLimit: true) },
+                    onRun: { coordinator.runQuery(onTab: tab.id, viewport: .firstRow) },
+                    onRunAllStatements: { coordinator.runAllStatements(onTab: tab.id) },
+                    onRunWithoutLimit: { coordinator.runQuery(onTab: tab.id, viewport: .firstRow, bypassRowLimit: true) },
                     onStop: { coordinator.stopExecution(for: tab.id) },
-                    onExplain: { variant in coordinator.runExplain(variant: variant) },
+                    onExplain: { variant in coordinator.runExplain(onTab: tab.id, variant: variant) },
                     onFormat: { EditorEventRouter.shared.performFormatSQLForKeyWindow() },
                     onSaveAsFavorite: { coordinator.saveCurrentQueryAsFavorite() },
                     onClearQuery: { coordinator.commandActions?.clearQuery() },
@@ -1301,11 +1301,11 @@ extension MainEditorContentView {
             onCloseTab: {
                 coordinator.commandActions?.closeTab()
             },
-            onExecuteQuery: { coordinator.runQuery(viewport: .firstRow) },
+            onExecuteQuery: { coordinator.runQuery(onTab: tab.id, viewport: .firstRow) },
             onSelectTab: { number in coordinator.commandActions?.selectTab(number: number) },
             onSelectAdjacentTab: { offset in coordinator.commandActions?.selectTab(offsetBy: offset) },
             tabCount: { coordinator.tabManager.visibleTabs.count },
-            onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
+            onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset, onTab: tab.id) },
             isExecuting: isExecuting,
             currentAIAvailability: { coordinator.aiQueryActionAvailability },
             onAIAction: { action, target in coordinator.runAIQueryAction(action, target: target) },

@@ -269,8 +269,9 @@ struct CommandActionsBulkCloseTests {
             tab.content.sourceFileURL = URL(fileURLWithPath: "/tmp/tablepro-mixed.sql")
             tab.content.savedFileContent = "SELECT 1"
             tab.content.query = "SELECT 2"
-            tab.pendingChanges.deletedRowIDs = [.existing(0)]
         }
+        current.coordinator.changeManager(forTab: background.id)
+            .recordRowDeletion(rowID: .existing(0), originalRow: ["1"])
 
         let mixed = try #require(current.coordinator.tabManager.tabs.first)
         #expect(current.coordinator.savability(of: mixed) == .mountedOnly)
@@ -299,9 +300,8 @@ struct CommandActionsBulkCloseTests {
         current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
         current.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
         let background = try #require(current.coordinator.tabManager.tabs.first)
-        current.coordinator.tabManager.mutate(tabId: background.id) { tab in
-            tab.pendingChanges.deletedRowIDs = [.existing(0)]
-        }
+        current.coordinator.changeManager(forTab: background.id)
+            .recordRowDeletion(rowID: .existing(0), originalRow: ["1"])
 
         #expect(current.actions.holdsWorkOnlyItsTabCanSave(among: current.coordinator.tabManager.tabs))
         #expect(await current.actions.saveEveryTabsWork() == false)

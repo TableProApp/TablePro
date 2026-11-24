@@ -10,7 +10,7 @@ import Foundation
 import TableProPluginKit
 import TableProSQLQuoting
 
-struct PostgreSQLSequenceReference: Equatable {
+nonisolated struct PostgreSQLSequenceReference: Equatable {
     /// `regclassout` under a `search_path` of `pg_catalog`: `sales.orders_id_seq`.
     let qualifiedName: String
     /// `regclassout` where the sequence's own schema is on the path: `orders_id_seq`.

@@ -41,7 +41,7 @@ import TableProPluginKit
 ///
 /// An engine this does not name keeps `X''`, which is what the export has always written, so no
 /// engine's output changes except the three measured to have been wrong.
-internal enum SQLExportBinaryLiteral {
+nonisolated internal enum SQLExportBinaryLiteral {
     /// The most binary bytes Oracle can carry in one `HEXTORAW` literal: 4,000 characters of hex,
     /// two per byte. Measured, not inferred.
     internal static let oracleLiteralByteCeiling = 2_000

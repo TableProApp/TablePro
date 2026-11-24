@@ -77,9 +77,13 @@ targets:
       # The socket key a Mac connection stores, so iOS refuses exactly what the Mac driver dials
       # through a socket.
       - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
+      # The expression depth limit and the open's stack both apps open a DuckDB file with.
+      - ../Plugins/DuckDBDriverPlugin/DuckDBExpressionDepth.swift
       - ../Plugins/Shared/PluginQueryTimeout.swift
       # The toolbar glyph rule both apps follow on and before the 26 releases.
       - ../TablePro/Core/Services/Infrastructure/Toolbar/ToolbarSymbols.swift
+      # Animations that follow Reduce Motion, the same in both apps.
+      - ../TablePro/Theme/MotionAccessibility.swift
       # The PostHog client and what it may collect, the same in both apps.
       - ../TablePro/Core/Services/Telemetry/PostHogTelemetryClient.swift
       # The ClickHouse plugin driver runs whole behind PluginBackedDriver, so every file of the plugin is compiled in.
@@ -100,7 +104,7 @@ targets:
           - MongoDBPlugin.swift
           - CLibMongoc/**
       # The column default reading both apps show and the version floor that says which catalog
-      # quotes its defaults. The DDL writers stay on macOS.
+      # quotes its defaults.
       - ../Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
       - ../Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
       - ../Plugins/MySQLDriverPlugin/MySQLServerVersion.swift
@@ -117,8 +121,107 @@ targets:
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
       # libpq COPY handling the iOS PostgreSQL driver shares with the macOS plugin.
       - ../Plugins/PostgreSQLDriverPlugin/LibPQCopyState.swift
+      - ../Plugins/PostgreSQLDriverPlugin/LibPQCopyIn.swift
       # The read-write BEGIN both platforms open a write transaction with.
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTransactionStatement.swift
+      # Data export and import: the format plugins both apps run, without the macOS option panes.
+      - path: ../Plugins/CSVExportPlugin
+        excludes:
+          - Info.plist
+          - "*OptionsView.swift"
+      - path: ../Plugins/JSONExportPlugin
+        excludes:
+          - Info.plist
+          - "*OptionsView.swift"
+      - path: ../Plugins/SQLExportPlugin
+        excludes:
+          - Info.plist
+          - "*OptionsView.swift"
+      - path: ../Plugins/XLSXExportPlugin
+        excludes:
+          - Info.plist
+          - "*OptionsView.swift"
+      - path: ../Plugins/MarkdownExportPlugin
+        excludes:
+          - Info.plist
+          - "*OptionsView.swift"
+      - path: ../Plugins/MQLExportPlugin
+        excludes:
+          - Info.plist
+          - "*OptionsView.swift"
+      - path: ../Plugins/CSVImportPlugin
+        excludes:
+          - Info.plist
+          - "*OptionsView.swift"
+      - path: ../Plugins/JSONImportPlugin
+        excludes:
+          - Info.plist
+          - "*OptionsView.swift"
+      - path: ../Plugins/XLSXImportPlugin
+        excludes:
+          - Info.plist
+          - "*OptionsView.swift"
+      - path: ../Plugins/SQLImportPlugin
+        excludes:
+          - Info.plist
+          - "*OptionsView.swift"
+      # The import write path and script text both apps share.
+      - ../TablePro/Core/Transfer/Shared
+      # Each engine's export catalog, CREATE TABLE writer and binding helpers, shared with the macOS plugin.
+      - ../Plugins/MySQLDriverPlugin/MySQLExportCatalog.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLSessionScopePlan.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLForeignKeyCatalog.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLPrivilegeCatalog.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLCreateTableSQL.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
+      - ../Plugins/SQLiteDriverPlugin/SQLiteCatalogReads.swift
+      - ../Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
+      - ../Plugins/SQLiteDriverPlugin/SQLiteTemporarySchema.swift
+      - ../Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
+      - ../Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
+      - ../Plugins/DuckDBDriverPlugin/DuckDBExportCatalog.swift
+      - ../Plugins/DuckDBDriverPlugin/DuckDBCreateTableSQL.swift
+      - ../Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
+      - ../Plugins/DuckDBDriverPlugin/DuckDBIndexClauses.swift
+      - ../Plugins/DuckDBDriverPlugin/DuckDBLexicalFeatures.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogExport.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCreateTableSQL.swift
+      - ../Plugins/PostgreSQLDriverPlugin/RedshiftCatalogExport.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaQueries.swift
+      - ../Plugins/PostgreSQLDriverPlugin/ColumnQueryShape.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceQueries.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceReference.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTableDDL.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCommentStatements.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLRelationSQL.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLViewDefinition.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLForeignKeyQueries.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLTypeDefinition.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLColumnTypeSpelling.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLSessionScopeSQL.swift
+      - ../Plugins/PostgreSQLDriverPlugin/LibPQCellDecoding.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLPrincipalQueries.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLVersionedStatements.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLColumnClauses.swift
+      - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexClauses.swift
+      - ../Plugins/PostgreSQLDriverPlugin/LibPQParameterBuffers.swift
+      - ../Plugins/PostgreSQLDriverPlugin/RedshiftSchemaQueries.swift
+      - ../Plugins/PostgreSQLDriverPlugin/RedshiftExternalSchemaQueries.swift
+      - ../Plugins/MSSQLDriverPlugin/MSSQLExportCatalog.swift
+      - ../Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
+      - ../Plugins/MSSQLDriverPlugin/MSSQLTableDefinitionSQL.swift
+      - ../Plugins/OracleDriverPlugin/OracleExportCatalog.swift
+      - ../Plugins/OracleDriverPlugin/OracleStatementError.swift
+      - ../Plugins/OracleDriverPlugin/OraclePluginValues.swift
+      - ../Plugins/OracleDriverPlugin/OracleCreateTableSQL.swift
+      - ../Plugins/OracleDriverPlugin/OracleObjectQueries.swift
+      - ../Plugins/OracleDriverPlugin/OracleIndexStatements.swift
+      - ../Plugins/OracleDriverPlugin/OracleTableDDL.swift
+      - ../Plugins/OracleDriverPlugin/OracleTypeCatalog.swift
+      - ../Plugins/OracleDriverPlugin/OracleBindPlaceholders.swift
+      - ../Plugins/OracleDriverPlugin/OracleRowWriter.swift
+      - ../Plugins/OracleDriverPlugin/OracleNationalText.swift
+      - ../Plugins/OracleDriverPlugin/OracleColumnStatements.swift
       # The libssh2 half of the SSH transport, shared with the macOS app by file reference.
       # The C-free half is the TableProSSHTransport package target; these touch libssh2
       # and cannot be, because a manifest cannot express the slice-dependent header path the
@@ -153,10 +256,13 @@ targets:
           - TableProConnectionLibrary
           - TableProCoreTypes
           - TableProDatabase
+          - TableProDuckDBCore
           - TableProGeometry
           - TableProGoogleCloud
+          - TableProGzip
           - TableProHTTP
           - TableProImport
+          - TableProJavaScriptText
           - TableProLogRedaction
           - TableProModels
           - TableProMSSQLCore
@@ -166,6 +272,7 @@ targets:
           - TableProPostgreSQLCore
           - TableProQuery
           - TableProRedisCore
+          - TableProSQLFile
           - TableProSQLGrammar
           - TableProSQLQuoting
           - TableProSQLVocabulary

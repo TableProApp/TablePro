@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 import TableProPostgreSQLCore
 
@@ -23,8 +24,16 @@ final class LibPQDriverCore: @unchecked Sendable {
         connectionLock.withLock { _libpqConnection }
     }
 
-    var currentSchema: String = "public"
-    private var selectedSchema: String?
+    private struct SchemaState {
+        var current = "public"
+        var selected: String?
+    }
+
+    // Read by statement generation on any thread while a connect or a schema switch writes it.
+    private let schemaState = OSAllocatedUnfairLock(initialState: SchemaState())
+
+    var currentSchema: String { schemaState.withLock { $0.current } }
+    private var selectedSchema: String? { schemaState.withLock { $0.selected } }
 
     var onPostConnect: (@Sendable () async throws -> Void)?
 
@@ -115,10 +124,10 @@ final class LibPQDriverCore: @unchecked Sendable {
 
                 switch await probeSchema(pqConn, query: PostgreSQLSchemaQueries.currentSchema) {
                 case .schema(let schema):
-                    currentSchema = schema
+                    schemaState.withLock { $0.current = schema }
                 case .empty:
                     if let fallback = await firstFallbackSchema(pqConn) {
-                        currentSchema = fallback
+                        schemaState.withLock { $0.current = fallback }
                         _ = try? await pqConn.executeQuery(PostgreSQLSchemaQueries.setSearchPath(toSchema: fallback))
                     }
                 case .failed:
@@ -129,7 +138,7 @@ final class LibPQDriverCore: @unchecked Sendable {
                    (try? await pqConn.executeQuery(
                        PostgreSQLSchemaQueries.setSearchPath(toSchema: selectedSchema)
                    )) != nil {
-                    currentSchema = selectedSchema
+                    schemaState.withLock { $0.current = selectedSchema }
                 }
 
                 try await onPostConnect?()
@@ -182,8 +191,10 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     func applySchema(_ schema: String) async throws {
         _ = try await execute(query: PostgreSQLSchemaQueries.setSearchPath(toSchema: schema))
-        selectedSchema = schema
-        currentSchema = schema
+        schemaState.withLock {
+            $0.selected = schema
+            $0.current = schema
+        }
     }
 
     func disconnect() {

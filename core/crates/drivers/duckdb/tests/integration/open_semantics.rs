@@ -1,5 +1,6 @@
-//! What opening a path does: open what is there, create only when asked,
-//! replace atomically, and keep one database per file in the process.
+//! What opening a path does: open what is there, create only where nothing
+//! is, replace atomically when asked, and keep one database per file in the
+//! process.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -28,7 +29,31 @@ async fn a_missing_file_is_not_found_and_not_created() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_new_database_replaces_the_file_and_its_log() {
+async fn a_new_database_keeps_a_database_already_there() {
+    let file = TestFile::new();
+    let old = file.open().await;
+    apply(old.as_ref(), &["CREATE TABLE old_table (a INTEGER)"])
+        .await
+        .unwrap();
+    old.close().await.unwrap();
+    drop(old);
+
+    let created = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable()).await;
+
+    assert_eq!(
+        created.err(),
+        Some(DriverError::FileExists {
+            path: file.path.clone()
+        })
+    );
+    let kept = file.open().await;
+    let tables = query(kept.as_ref(), "SELECT count(*) FROM duckdb_tables()").await;
+    assert_eq!(tables.rows[0][0], Value::Int(1));
+    kept.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_replace_replaces_the_file_and_its_log() {
     let file = TestFile::new();
     let old = file.open().await;
     apply(old.as_ref(), &["CREATE TABLE old_table (a INTEGER)"])
@@ -39,7 +64,7 @@ async fn a_new_database_replaces_the_file_and_its_log() {
     let wal = format!("{}.wal", file.path.display());
     std::fs::write(&wal, b"a log left from the replaced database").unwrap();
 
-    let created = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable())
+    let created = connect(FileEndpoint::replace(file.path.clone()).unwrap(), writable())
         .await
         .unwrap();
 
@@ -129,7 +154,7 @@ async fn an_editor_session_outlives_its_workspace() {
     assert_eq!(editor.state(), EditorSessionState::Lost);
     drop(editor);
 
-    let replaced = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable()).await;
+    let replaced = connect(FileEndpoint::replace(file.path.clone()).unwrap(), writable()).await;
     assert!(replaced.is_ok(), "the file was still held: {:?}", replaced.err());
 }
 
@@ -139,7 +164,7 @@ async fn an_editor_session_outlives_its_workspace() {
 async fn a_new_or_attached_database_stays_readable_by_duckdb_1() {
     let file = TestFile::new();
     let attached = file.path.with_extension("side.duckdb");
-    let created = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable())
+    let created = connect(FileEndpoint::replace(file.path.clone()).unwrap(), writable())
         .await
         .unwrap();
     apply(created.as_ref(), &["CREATE TABLE facts (a INTEGER)"])
@@ -499,7 +524,7 @@ async fn a_file_another_process_has_open_is_not_replaced() {
         );
     }
 
-    let replaced = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable()).await;
+    let replaced = connect(FileEndpoint::replace(file.path.clone()).unwrap(), writable()).await;
 
     drop(holder.stdin.take());
     let _ = std::io::copy(&mut output, &mut std::io::sink());

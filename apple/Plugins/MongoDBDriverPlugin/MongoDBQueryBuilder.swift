@@ -40,12 +40,12 @@ nonisolated struct MongoDBQueryBuilder {
 
     // MARK: - Base Query
 
-    /// Build: db.collection.find({}).sort({}).skip(offset).limit(limit)
+    // A nil limit reads every document, as an export of the browsed collection does.
     func buildBaseQuery(
         collection: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
         columns: [String] = [],
-        limit: Int = 200,
+        limit: Int? = 200,
         offset: Int = 0
     ) -> String {
         decorate(
@@ -59,7 +59,7 @@ nonisolated struct MongoDBQueryBuilder {
         filterDocument: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
         columns: [String] = [],
-        limit: Int = 200,
+        limit: Int? = 200,
         offset: Int = 0
     ) -> String {
         decorate(
@@ -72,7 +72,7 @@ nonisolated struct MongoDBQueryBuilder {
         _ query: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         columns: [String],
-        limit: Int,
+        limit: Int?,
         offset: Int
     ) -> String {
         var result = query
@@ -85,7 +85,9 @@ nonisolated struct MongoDBQueryBuilder {
             result += ".skip(\(offset))"
         }
 
-        result += ".limit(\(limit))"
+        if let limit {
+            result += ".limit(\(limit))"
+        }
         return result
     }
 

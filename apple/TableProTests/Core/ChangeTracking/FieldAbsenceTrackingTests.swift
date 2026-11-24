@@ -105,15 +105,12 @@ struct FieldAbsencePendingChangesTests {
         #expect(pending.insertedRowData[inserted] == ["__DEFAULT__", "Ada", .null])
     }
 
-    @Test("A snapshot carries the fields a deleted row did not have")
-    func snapshotKeepsDeletedRowAbsence() {
+    @Test("A deleted row's change carries the fields it did not have")
+    func deletedRowKeepsItsAbsence() {
         var pending = PendingChanges()
         pending.recordRowDeletion(rowID: row, originalRow: ["1", .null], absentColumns: [1])
 
-        var restored = PendingChanges()
-        restored.restore(from: pending.snapshot(primaryKeyColumns: ["_id"], columns: ["_id", "nick"]))
-
-        #expect(restored.change(forRow: row, type: .delete)?.absentColumns == [1])
+        #expect(pending.change(forRow: row, type: .delete)?.absentColumns == [1])
     }
 }
 

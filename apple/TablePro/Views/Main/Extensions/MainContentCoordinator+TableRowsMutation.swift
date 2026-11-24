@@ -105,7 +105,7 @@ extension MainContentCoordinator {
         guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[tabIdx].display.activeResultSetId != resultSetId else { return }
 
-        confirmDiscardChangesIfNeeded(action: .resultSwitch) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .resultSwitch) { [weak self] confirmed in
             guard confirmed else { return }
             self?.applyResultSetSwitch(to: resultSetId, in: tabId)
             self?.revealStatement(behind: resultSetId, in: tabId)
@@ -169,9 +169,8 @@ extension MainContentCoordinator {
             tab.schemaVersion += 1
         }
         let tab = tabManager.tabs[tabIdx]
-        guard tab.id == tabManager.selectedTabId else { return }
         let rows = tabSessionRegistry.tableRows(for: tab.id)
-        changeManager.configureForTable(
+        changeManager(forTab: tab.id).configureForTable(
             tableName: tab.tableContext.tableName ?? "",
             schemaName: tab.tableContext.schemaName,
             columns: resultSet.resultColumns,
@@ -205,7 +204,7 @@ extension MainContentCoordinator {
 
     // A SQL Server batch result may have no single statement behind it, and re-running with ORDER BY would resend writes, so sort here.
     func sortHeldRows(by state: SortState, tabId: UUID) {
-        confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
+        confirmDiscardChangesIfNeeded(forTab: tabId, action: .sort) { [weak self] confirmed in
             guard let self, confirmed else { return }
             let rows = self.tabSessionRegistry.tableRows(for: tabId)
             let sorted = state.columns.isEmpty

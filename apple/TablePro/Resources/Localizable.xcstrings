@@ -3105,6 +3105,9 @@
         }
       }
     },
+    "%@ cannot take rows from a file." : {
+
+    },
     "%@ cannot take rows from this file, so no table was created." : {
       "localizations" : {
         "fr" : {
@@ -26011,6 +26014,10 @@
         }
       }
     },
+    "Another task needs this connection alone. Try again when it ends." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Answered with %d tools." : {
       "localizations" : {
         "fr" : {
@@ -36205,6 +36212,10 @@
           }
         }
       }
+    },
+    "Cell %1$@ holds more than %2$@ of text, so the workbook was not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Cell selection cleared" : {
       "localizations" : {
@@ -47594,6 +47605,10 @@
           }
         }
       }
+    },
+    "Compressing… %1$@ of %2$@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Compression" : {
       "extractionState" : "manual",
@@ -105243,6 +105258,8 @@
       }
     },
     "Line %@ holds binary data that cannot be read back exactly from a %@ file. Export the dump with --hex-blob, then import it again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -105346,7 +105363,8 @@
       }
     },
     "Line %lld runs COPY FROM STDIN, and this connection cannot load its rows. Run the file with psql, or dump it again with --inserts." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Line %lld runs COPY FROM STDIN, whose rows TablePro cannot send. Run the file with psql, or dump it again with --inserts." : {
 
@@ -158324,6 +158342,10 @@
         }
       }
     },
+    "Rows read together hold more than %1$@ of text by row %2$@, so the workbook was not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Rows sent" : {
       "localizations" : {
         "fr" : {
@@ -191862,6 +191884,9 @@
         }
       }
     },
+    "The connection to %@ was lost while it waited and has been reconnected. This temporary table went with the old session. Create it again in a query tab." : {
+
+    },
     "The connection to %@ was lost while it waited, and the server rolled back its open transaction. It has been reconnected; run the statements again." : {
       "localizations" : {
         "fr" : {
@@ -192395,6 +192420,10 @@
       }
     },
     "The data changed after it was read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The data could not be compressed." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -193216,6 +193245,9 @@
           }
         }
       }
+    },
+    "The edits changed while the save waited for approval. Nothing was saved." : {
+
     },
     "The emulator endpoint must be a local address, such as http://127.0.0.1:9020." : {
       "extractionState" : "manual",
@@ -199396,6 +199428,10 @@
         }
       }
     },
+    "The string or comment that starts on line %lld is longer than the import reads." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The structure of a table in an attached database cannot be changed here." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -201847,6 +201883,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This build of DuckDB does not accept a limit on how deep an expression nests" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This build of DuckDB does not accept a read-only access mode" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -202110,6 +202150,18 @@
       "generatesSymbol" : false
     },
     "This connection cannot load the rows of COPY FROM STDIN." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This connection cannot read its catalog for an export." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This connection cannot send statements with bound values." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This connection cannot stream rows to a file." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -204693,6 +204745,9 @@
           }
         }
       }
+    },
+    "This import format does not produce SQL statements" : {
+
     },
     "This import runs each statement on its own, so nothing can wait for Commit. Turn on Wrap in transaction or turn off Manual Commit." : {
 
@@ -223935,6 +223990,14 @@
           }
         }
       }
+    },
+    "Writing definitions: %1$lld of %2$lld" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Writing the workbook: %1$@ of %2$@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Writing to %@" : {
       "localizations" : {

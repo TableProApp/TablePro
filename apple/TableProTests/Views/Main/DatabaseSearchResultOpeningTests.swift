@@ -22,7 +22,6 @@ struct DatabaseSearchResultOpeningTests {
         MainContentCoordinator(
             connection: TestFixtures.makeConnection(database: "shop"),
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
     }

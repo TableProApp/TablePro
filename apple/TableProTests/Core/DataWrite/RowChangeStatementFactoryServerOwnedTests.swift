@@ -165,13 +165,16 @@ struct RowChangeStatementFactoryServerOwnedTests {
     }
 
     @Test
-    func aRestoredTabKeepsItsColumnTypes() {
+    func aDescribedTabKeepsItsColumnTypes() {
         let manager = DataChangeManager()
-        manager.restoreState(
-            from: TabChangeSnapshot(),
+        manager.describeTable(
             tableName: "Ord",
+            schemaName: nil,
+            columns: ["ID"],
+            primaryKeyColumns: ["ID"],
             databaseType: .oracle,
             generatedColumns: [],
+            rowMatchPolicy: .none,
             columnTypeNames: ["ID": "number"]
         )
         #expect(manager.columnTypeNames == ["ID": "number"])

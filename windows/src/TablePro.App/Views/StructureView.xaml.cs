@@ -59,6 +59,7 @@ public sealed partial class StructureView : UserControl
         StructureGrid.SortedDescendingStatus = Strings.Get("GridSortedDescending");
         // The rows are held here, so a header click sorts them here, as the macOS structure grid sorts.
         StructureGrid.SortRequested += (_, sort) => ShowRows(sort);
+        DisplaySettings.Follow(StructureGrid);
     }
 
     private enum Section
@@ -105,6 +106,9 @@ public sealed partial class StructureView : UserControl
     }
 
     // What was shown before stays under the bar.
+    // The object menu's Show DDL opens the CREATE statement itself.
+    internal void ShowDdl() => DdlItem.IsSelected = true;
+
     internal void ShowFailure(CoreError failure)
     {
         ShowLoading(false);

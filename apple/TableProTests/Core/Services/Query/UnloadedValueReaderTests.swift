@@ -173,6 +173,33 @@ struct UnloadedValueLoadTests {
         #expect(rows.unloadedByteCount(row: 0, column: 1) == 10)
     }
 
+    @Test("A value loaded for a tab in the background completes that tab's staged deletion")
+    func backgroundTabDeletionTakesTheLoadedValue() async {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let driver = BlobAnsweringDriver(connection: connection, rows: [["2", .bytes(Data([7, 7]))]])
+        let fixture = CoordinatorFixture(connection: connection, driver: driver)
+        var tab = QueryTab(title: "files", query: "", tabType: .table, tableName: "files")
+        tab.tableContext.primaryKeyColumns = ["id"]
+        fixture.addTab(tab, rows: TableRows.from(
+            queryRows: [["1", .null], ["2", .null]],
+            columns: ["id", "data"],
+            columnTypes: [.integer(rawType: "INT"), .blob(rawType: "LONGBLOB")],
+            unloadedCells: [0: [1: 10], 1: [1: 20]]
+        ))
+        let edits = fixture.coordinator.changeManager(forTab: tab.id)
+        edits.recordRowDeletion(rowID: .existing(1), originalRow: ["2", .null])
+        let other = fixture.addTab(QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query))
+
+        let loaded = await fixture.coordinator.loadUnloadedValues(
+            tabId: tab.id, rowIDs: [.existing(1)], columns: IndexSet(integer: 1)
+        )
+
+        #expect(loaded)
+        #expect(fixture.tabManager.selectedTabId == other.id)
+        #expect(edits.changes.first?.originalRow == ["2", .bytes(Data([7, 7]))])
+        #expect(fixture.coordinator.existingChangeManager(forTab: other.id)?.hasChanges != true)
+    }
+
     @Test("A row the table no longer holds leaves its cell unloaded and reports it")
     func missingRowStaysUnloaded() async {
         let connection = TestFixtures.makeConnection(type: .mysql)

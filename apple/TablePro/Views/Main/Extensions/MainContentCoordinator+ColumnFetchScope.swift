@@ -71,7 +71,7 @@ extension MainContentCoordinator {
         tab.valueFilter.activeColumns.compactMap { tab.valueFilter.columnName(forColumn: $0) }
     }
 
-    func requeryWithColumnScope(debounced: Bool = false) {
+    func requeryWithColumnScope(forTab tabId: UUID, debounced: Bool = false) {
         columnScopeRequeryTask?.cancel()
         columnScopeRequeryTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -79,19 +79,17 @@ extension MainContentCoordinator {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled else { return }
             }
-            guard await self.rebuildSelectedTableColumnScopedQuery() else { return }
-            self.runQuery(viewport: .keepPlace)
+            guard await self.rebuildColumnScopedQuery(forTab: tabId) else { return }
+            self.runQuery(onTab: tabId, viewport: .keepPlace)
         }
     }
 
-    /// Re-resolves the tab by id after the await. An index taken before it points at whatever tab
-    /// occupies that slot now, which after a close or a reorder is a different tab entirely.
+    // Re-resolves the tab by id after the await: an index taken before it can name another tab after a close or reorder.
     @discardableResult
-    func rebuildSelectedTableColumnScopedQuery() async -> Bool {
-        guard let tab = tabManager.selectedTab,
+    func rebuildColumnScopedQuery(forTab tabId: UUID) async -> Bool {
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }),
               tab.tabType == .table,
               let tableName = tab.tableContext.tableName else { return false }
-        let tabId = tab.id
         await loadSchemaColumns(for: tableName, scope: scope(for: tab))
         guard !Task.isCancelled,
               let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),

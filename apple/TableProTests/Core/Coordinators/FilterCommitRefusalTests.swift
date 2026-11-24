@@ -16,7 +16,6 @@ struct FilterCommitRefusalTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(type: .etcd),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: "(root)", query: "page three", tabType: .table, tableName: "(root)")
@@ -44,7 +43,6 @@ struct FilterCommitRefusalTests {
         let coordinator = MainContentCoordinator(
             connection: TestFixtures.makeConnection(type: .mysql),
             tabManager: tabManager,
-            changeManager: DataChangeManager(),
             toolbarState: ConnectionToolbarState()
         )
         var tab = QueryTab(title: "users", query: "unfiltered", tabType: .table, tableName: "users")

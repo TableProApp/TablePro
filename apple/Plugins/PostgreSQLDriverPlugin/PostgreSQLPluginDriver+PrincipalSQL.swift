@@ -83,38 +83,11 @@ extension PostgreSQLPluginDriver {
     }
 
     func generateGrantSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        grantBuilder(for: changeSet.principal).grantStatements(changeSet.grantsToAdd)
+        PostgreSQLCatalogExport.generateGrantSQL(changeSet: changeSet)
     }
 
     func generateRevokeSQL(changeSet: PluginPrincipalChangeSet) -> [String]? {
-        grantBuilder(for: changeSet.principal).revokeStatements(changeSet.grantsToRemove)
-    }
-
-    private func grantBuilder(for principal: PluginPrincipalRef) -> PluginGrantSQLBuilder {
-        PluginGrantSQLBuilder(
-            grantee: quoteIdentifier(principal.name),
-            quoteIdentifier: { self.quoteIdentifier($0) },
-            target: { self.grantTarget(for: $0) }
-        )
-    }
-
-    private func grantTarget(for scope: PluginPrivilegeScope) -> String? {
-        switch scope {
-        case .server:
-            nil
-        case let .database(name):
-            "DATABASE \(quoteIdentifier(name))"
-        case let .schema(_, schema):
-            "SCHEMA \(quoteIdentifier(schema))"
-        case let .table(_, schema, table), let .column(_, schema, table, _):
-            if let schema {
-                "TABLE \(quoteIdentifier(schema)).\(quoteIdentifier(table))"
-            } else {
-                "TABLE \(quoteIdentifier(table))"
-            }
-        @unknown default:
-            nil
-        }
+        PostgreSQLCatalogExport.generateRevokeSQL(changeSet: changeSet)
     }
 
     private var supportedRoleAttributes: Set<PostgreSQLRoleAttribute> {

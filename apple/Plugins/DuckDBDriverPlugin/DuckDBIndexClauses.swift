@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-enum DuckDBIndexClauses {
+nonisolated enum DuckDBIndexClauses {
     struct KeyParts: Equatable {
         let columns: [String]
         let expressions: [String]

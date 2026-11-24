@@ -7,7 +7,7 @@ import Foundation
 import TableProPluginKit
 import TableProSQLVocabulary
 
-internal enum OracleTypeCatalog {
+nonisolated internal enum OracleTypeCatalog {
     static let columnTypesByCategory: [String: [String]] = Dictionary(
         uniqueKeysWithValues: SQLEngineVocabulary.oracleDataTypeCategories.map { ($0.name, $0.types) }
     )
@@ -85,7 +85,7 @@ internal enum OracleTypeCatalog {
     }
 }
 
-extension PluginQueryResult {
+nonisolated extension PluginQueryResult {
     /// The same result with the Oracle classification hints its columns need, for a result built without them.
     func withOracleClassificationHints() -> PluginQueryResult {
         guard columnMeta == nil,

@@ -54,7 +54,6 @@ struct QueryTab: Identifiable, Equatable {
     var tableContext: TabTableContext
     var display: TabDisplayState
 
-    var pendingChanges: TabChangeSnapshot
     // The grid's selection by row and column identity, carried when the tab moves to another window.
     var selectionSnapshot: GridSelectionSnapshot
 
@@ -146,7 +145,6 @@ struct QueryTab: Identifiable, Equatable {
         self.execution = TabExecutionState()
         self.tableContext = TabTableContext(tableName: tableName, isEditable: tabType == .table)
         self.display = TabDisplayState()
-        self.pendingChanges = TabChangeSnapshot()
         self.selectionSnapshot = .empty
         self.sortState = SortState()
         self.filterState = TabFilterState()
@@ -198,7 +196,6 @@ struct QueryTab: Identifiable, Equatable {
             versionHistorySubject: persisted.versionHistorySubject,
             listingKind: persisted.listingKindRawValue.flatMap(SidebarObjectKind.init(persistenceName:))
         )
-        self.pendingChanges = TabChangeSnapshot()
         self.selectionSnapshot = .empty
         // Seeding the source carries a saved empty sort (the user's Don't Sort) past wantsDefaultSort on the first load.
         self.sortState = (persisted.sortColumns?.isEmpty ?? true) && persisted.sortSource == .user

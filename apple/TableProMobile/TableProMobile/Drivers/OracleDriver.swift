@@ -1,7 +1,9 @@
 import Foundation
+import os
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
+import TableProPluginKit
 
 nonisolated private extension OracleRawResult {
     nonisolated func toQueryResult(executionTime: TimeInterval) -> QueryResult {
@@ -15,13 +17,27 @@ nonisolated private extension OracleRawResult {
             isTruncated: isTruncated
         )
     }
+
+    // Bytes stay bytes, as the Mac's plugin bridges them.
+    nonisolated func toPluginResult(executionTime: TimeInterval) -> PluginQueryResult {
+        PluginQueryResult(
+            columns: columns.map(\.name),
+            columnTypeNames: columns.map(\.typeName),
+            rows: rows.map { $0.map(\.asPluginCell) },
+            rowsAffected: affectedRows,
+            executionTime: executionTime,
+            isTruncated: isTruncated
+        )
+    }
 }
 
 nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
     private let core: OracleCoreConnection
     private let host: String
     let ssl: DriverSSLConfiguration
-    private let fallbackSchema: String
+    let fallbackSchema: String
+    // What an export learned of the account's dictionary access and roles, for the life of the connection, as on the Mac.
+    let principalState = OSAllocatedUnfairLock(initialState: OraclePrincipalState())
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
@@ -114,6 +130,93 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
             return try await core.executeQuery(query).rows
         } catch let error as OracleCoreError {
             throw Self.connectionError(for: error)
+        }
+    }
+
+    // Values bind to `:1` through `:n` in order.
+    func catalogCells(_ query: String, binds: [PluginCellValue] = []) async throws -> PluginQueryResult {
+        let startTime = Date()
+        do {
+            let raw = binds.isEmpty
+                ? try await core.executeQuery(query)
+                : try await core.executeQuery(query, binds: binds.map(\.oracleBindValue))
+            return raw.toPluginResult(executionTime: Date().timeIntervalSince(startTime))
+        } catch let error as OracleCoreError {
+            throw Self.connectionError(for: error)
+        }
+    }
+
+    // The shared catalog's read keeps the server's error, which tells a dictionary view the account cannot read apart.
+    func catalogResult(_ query: String) async throws -> OracleRawResult {
+        do {
+            return try await core.executeQuery(query)
+        } catch OracleCoreError.cancelled {
+            throw CancellationError()
+        }
+    }
+
+    var release: OracleServerRelease? { core.serverRelease }
+
+    func executeParameterized(query: String, parameters: [PluginCellValue], typeNames: [String?]?) async throws
+        -> QueryResult {
+        guard !parameters.isEmpty else { return try await runQuery(query) }
+        let statement = try Self.boundStatement(
+            query, parameters: parameters, typeNames: typeNames, writesBooleans: release?.hasBooleanType ?? false
+        )
+        guard !statement.binds.isEmpty else { return try await runQuery(statement.sql) }
+        let startTime = Date()
+        do {
+            let raw = try await core.executeQuery(statement.sql, binds: statement.binds.map(\.oracleBindValue))
+            return raw.toQueryResult(executionTime: Date().timeIntervalSince(startTime))
+        } catch let error as OracleCoreError {
+            throw Self.connectionError(for: error)
+        }
+    }
+
+    // The Mac's binding: each value written for its column's type, and only bytes and text past the literal limit
+    // bound as `:n`.
+    static func boundStatement(
+        _ query: String,
+        parameters: [PluginCellValue],
+        typeNames: [String?]?,
+        writesBooleans: Bool
+    ) throws -> (sql: String, binds: [PluginCellValue]) {
+        try OracleBindPlaceholders.substituting(
+            query, parameters: parameters, typeNames: typeNames, writesBooleans: writesBooleans
+        )
+    }
+
+    // A batch of rows at a time, as the Mac streams them. A consumer that stops or lets the stream go cancels the read.
+    func exportRows(query: String, readOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let core = self.core
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)) { continuation in
+            // Not a child task, so only this cancel stops oracle-nio once the reader stops.
+            let task = Task {
+                do {
+                    try await core.streamQuery(
+                        query,
+                        batching: OracleRowBatcher(rowsPerBatch: OracleRowBatcher.batchRows),
+                        onElement: { element in
+                            switch element {
+                            case .header(let columns):
+                                _ = await PluginRowStream.deliver(.header(PluginStreamHeader(
+                                    columns: columns.map(\.name), columnTypeNames: columns.map(\.typeName)
+                                )), to: continuation)
+                            case .rows(let batch):
+                                _ = await PluginRowStream.deliver(.rows(batch.map { $0.map(\.asPluginCell) }), to: continuation)
+                            case .affectedRows:
+                                break
+                            }
+                        }
+                    )
+                    continuation.finish()
+                } catch let error as OracleCoreError {
+                    continuation.finish(throwing: Self.connectionError(for: error))
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
         }
     }
 

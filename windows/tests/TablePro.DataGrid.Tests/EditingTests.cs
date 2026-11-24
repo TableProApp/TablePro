@@ -61,6 +61,31 @@ public sealed class EditingTests
     });
 
     [Fact]
+    public Task TheOpenEditorsTextIsReadAndItsChangesHeardWithoutCommittingIt() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await ShowEditableAsync(new SyntheticData());
+        var commits = 0;
+        grid.CellEditCommitting += (_, _) => commits++;
+        grid.SelectCell(4, 1, extend: false);
+        grid.BeginEdit();
+        await SettleAsync(grid);
+        Assert.Null(grid.PendingEdit);
+
+        var changes = 0;
+        grid.PendingEditChanged += (_, _) => changes++;
+
+        grid.Editor!.Text = "typed";
+        await SettleAsync(grid);
+
+        Assert.Equal<(int, int, string)?>((4, 1, "typed"), grid.PendingEdit);
+        Assert.True(changes > 0);
+        Assert.True(grid.IsEditing);
+        Assert.Equal(0, commits);
+        grid.CancelEdit();
+        Assert.Null(grid.PendingEdit);
+    });
+
+    [Fact]
     public Task EnterRaisesCellEditCommittingWithTheTypedText() => WinUiHost.RunAsync(async () =>
     {
         var grid = await ShowEditableAsync(new SyntheticData());

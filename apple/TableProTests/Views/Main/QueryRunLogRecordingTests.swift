@@ -32,7 +32,6 @@ struct QueryRunLogRecordingTests {
             coordinator = MainContentCoordinator(
                 connection: connection,
                 tabManager: tabManager,
-                changeManager: DataChangeManager(),
                 toolbarState: ConnectionToolbarState()
             )
             let tab = QueryTab(title: "Query", query: query, tabType: .query)
@@ -48,7 +47,8 @@ struct QueryRunLogRecordingTests {
         func runStatements(_ script: String) {
             coordinator.queryExecutionCoordinator.executeMultipleStatementsWithParameters(
                 SQLStatementScanner.executableStatements(in: script),
-                parameters: []
+                parameters: [],
+                onTab: tabId
             )
         }
 
@@ -124,7 +124,7 @@ struct QueryRunLogRecordingTests {
         let harness = Harness(driver: Self.failing)
         defer { harness.tearDown() }
 
-        harness.coordinator.executeQueryInternal("SELECT * FROM nope")
+        harness.coordinator.executeQueryInternal("SELECT * FROM nope", onTab: harness.tabId)
         try await harness.settled()
 
         let tab = try #require(harness.tab)
@@ -138,7 +138,7 @@ struct QueryRunLogRecordingTests {
         let harness = Harness(driver: Self.answering)
         defer { harness.tearDown() }
 
-        harness.coordinator.executeQueryInternal("SELECT id FROM users")
+        harness.coordinator.executeQueryInternal("SELECT id FROM users", onTab: harness.tabId)
         try await harness.settled()
 
         let ran = try #require(harness.tab)
@@ -150,6 +150,7 @@ struct QueryRunLogRecordingTests {
 
         harness.coordinator.executeQueryInternal(
             "SELECT id FROM users ORDER BY id",
+            onTab: harness.tabId,
             source: .reread(RereadTarget(
                 tabId: harness.tabId,
                 resultId: firstId,

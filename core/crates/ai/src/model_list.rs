@@ -11,6 +11,12 @@ const LISTING_LIMIT: usize = 4 * 1024 * 1024;
 
 /// The models the provider offers the key, sorted.
 pub async fn list_models(client: &AiClient, endpoint: &Endpoint) -> Result<Vec<String>, AiError> {
+    read_models(client, endpoint)
+        .await
+        .map_err(|error| endpoint.scrub(error))
+}
+
+async fn read_models(client: &AiClient, endpoint: &Endpoint) -> Result<Vec<String>, AiError> {
     let path = match Protocol::of(endpoint.kind()) {
         Protocol::AnthropicMessages => "/models?limit=1000",
         Protocol::ChatCompletions => "/models",

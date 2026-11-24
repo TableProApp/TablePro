@@ -42,6 +42,7 @@ extension MainContentCoordinator {
                 scope: scope,
                 route: services.databaseManager.executionRoute(for: scope),
                 cancellation: .cancellableRead(lease),
+                sessionWork: .statements,
                 body
             )
         }
@@ -62,12 +63,14 @@ extension MainContentCoordinator {
         trigger: TableLoadTrigger,
         traceToken: TableLoadTraceToken?,
         serverOutput: PluginServerOutput = .none,
-        recordsRun: Bool = false
+        historySource: QueryHistorySource? = nil,
+        // The statement as the run log shows it, or nil for a run the log does not describe (a re-read, an auto-load).
+        loggedStatement: String? = nil
     ) {
         guard tabExecution.settle(claim) else {
             // Stop ends the claim before the statement unwinds, so a stopped run reports itself here.
-            if recordsRun {
-                queryExecutionCoordinator.recordStatementCancelled(sql, tabId: tabId, startedAt: claim.startedAt)
+            if let loggedStatement {
+                queryExecutionCoordinator.recordStatementCancelled(loggedStatement, tabId: tabId, startedAt: claim.startedAt)
             }
             reportStopRollback(error, tabId: tabId)
             traceStaleResultDropped(traceToken)
@@ -86,8 +89,8 @@ extension MainContentCoordinator {
             reportEndedExecutions([
                 EndedExecution(tabId: claim.tabId, startedAt: claim.startedAt, reason: .cancelledByUser)
             ])
-            if recordsRun {
-                queryExecutionCoordinator.recordStatementCancelled(sql, tabId: tabId, startedAt: claim.startedAt)
+            if let loggedStatement {
+                queryExecutionCoordinator.recordStatementCancelled(loggedStatement, tabId: tabId, startedAt: claim.startedAt)
             }
             reportStopRollback(error, tabId: tabId)
             return
@@ -96,22 +99,22 @@ extension MainContentCoordinator {
             parkedTableLoad = ParkedTableLoad(tabId: tabId, trigger: trigger)
             return
         }
-        handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput, trigger: trigger)
-        if recordsRun {
-            queryExecutionCoordinator.recordStatementFailure(sql, error: error, tabId: tabId, startedAt: claim.startedAt)
+        handleQueryExecutionError(
+            error, sql: sql, tabId: tabId, connection: conn, serverOutput: serverOutput, trigger: trigger,
+            historySource: historySource
+        )
+        if let loggedStatement {
+            queryExecutionCoordinator.recordStatementFailure(loggedStatement, error: error, tabId: tabId, startedAt: claim.startedAt)
         }
         reportQueryOperation(
             claim: claim, trigger: trigger, outcome: .failed(reason: error.localizedDescription)
         )
     }
 
-    /// The change manager is one per window and holds whichever tab is selected, so a result that
-    /// still owns its own tab may not own the edits on screen. Clearing without the selection check
-    /// throws away another tab's uncommitted cells and its undo history.
+    // Only a result that still owns its tab replaces it, and only that tab's edits go.
     func clearChangesIfCurrent(claim: TabExecutionClaim) {
         guard tabExecution.ownsContent(claim), !Task.isCancelled else { return }
-        guard tabManager.selectedTabId == claim.tabId else { return }
-        changeManager.clearChangesAndUndoHistory()
+        dropEdits(ofReplacedResultIn: claim.tabId)
     }
 
     func resolveRowCap(sql: String, tabType: TabType, bypassLimit: Bool = false) -> Int? {
@@ -283,7 +286,8 @@ extension MainContentCoordinator {
         tabId: UUID,
         connection conn: DatabaseConnection,
         serverOutput: PluginServerOutput = .none,
-        trigger: TableLoadTrigger = .userInitiated
+        trigger: TableLoadTrigger = .userInitiated,
+        historySource: QueryHistorySource? = nil
     ) {
         queryExecutionCoordinator.handleQueryExecutionError(
             error,
@@ -291,7 +295,8 @@ extension MainContentCoordinator {
             tabId: tabId,
             connection: conn,
             serverOutput: serverOutput,
-            trigger: trigger
+            trigger: trigger,
+            historySource: historySource
         )
     }
 }

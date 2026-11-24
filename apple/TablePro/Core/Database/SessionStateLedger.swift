@@ -117,6 +117,15 @@ extension DatabaseManager {
             database, kinds
         )
     }
+
+    static func temporaryTableLostMessage(database: String) -> String {
+        String(
+            format: String(
+                localized: "The connection to %@ was lost while it waited and has been reconnected. This temporary table went with the old session. Create it again in a query tab."
+            ),
+            database
+        )
+    }
 }
 
 extension SQLSessionDialect {
