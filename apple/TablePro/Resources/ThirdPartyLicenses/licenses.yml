@@ -142,17 +142,17 @@
     project ships.
 - id: duckdb
   name: DuckDB
-  version: v2.0.0
+  version: v2.0.1
   spdx: MIT
   copyrights:
   - Copyright 2018-2026 Stichting DuckDB Foundation
   homepageURL: https://duckdb.org
-  licenseTextURL: https://raw.githubusercontent.com/duckdb/duckdb/v2.0.0/LICENSE
+  licenseTextURL: https://raw.githubusercontent.com/duckdb/duckdb/v2.0.1/LICENSE
   textFile: texts/duckdb.txt
   source: sh:DUCKDB_VERSION
   patched: false
   platforms: [macos, ios]
-  notes: 'Built from the v2.0.0 git tag with CMake, linking core_functions, json,
+  notes: 'Built from the v2.0.1 git tag with CMake, linking core_functions, json,
     parquet, icu and autocomplete statically (scripts/duckdb-macos-extensions.cmake). The build compiles
     the whole tree including third_party/, which holds 28 vendored projects (brotli, catch, concurrentqueue,
     fast_float, fastpforlib, fmt, fsst, httplib, hyperloglog, imdb, jaro_winkler, jemalloc, lz4, mbedtls,

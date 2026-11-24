@@ -7518,8 +7518,8 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
-Files: vendor/duckdb-1.20000.1/*
- vendor/libduckdb-sys-1.20000.1/*
+Files: vendor/duckdb-1.20001.0/*
+ vendor/libduckdb-sys-1.20001.0/*
 Copyright: 2021-2026 Stichting DuckDB Foundation
 License: Expat
  Copyright 2021-2026 Stichting DuckDB Foundation
@@ -25365,7 +25365,7 @@ Files: vendor/lexical-write-float-1.0.6/src/compact.rs
 Copyright: Andrea Samoljuk
 License: BSL-1.0
 
-Files: vendor/libduckdb-sys-1.20000.1/duckdb.tar.gz
+Files: vendor/libduckdb-sys-1.20001.0/duckdb.tar.gz
 Copyright: 2021 The fast_float authors
  Daniel Lemire
  The Mbed TLS Contributors

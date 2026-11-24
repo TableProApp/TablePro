@@ -47,11 +47,7 @@ pub(super) fn text(array: &dyn Array, duck: &DuckType, row: usize) -> Option<Str
             Some(format!("{{{}}}", parts.join(", ")))
         }
         DuckType::Union(members) => {
-            let values = array.as_union_opt()?;
-            let tag = values.type_id(row);
-            let (_, member) = members.get(usize::try_from(tag).ok()?)?;
-            let child = values.child(tag);
-            let at = values.value_offset(row);
+            let (child, member, at) = union_member(array, members, row)?;
             match child.is_null(at) || matches!(member, DuckType::Null) {
                 true => Some("NULL".to_owned()),
                 false => whole(child.as_ref(), member, at),
@@ -59,6 +55,17 @@ pub(super) fn text(array: &dyn Array, duck: &DuckType, row: usize) -> Option<Str
         }
         scalar => scalar_text(array, scalar, row),
     }
+}
+
+fn union_member<'a>(
+    array: &'a dyn Array,
+    members: &'a [(String, DuckType)],
+    row: usize,
+) -> Option<(&'a duckdb::arrow::array::ArrayRef, &'a DuckType, usize)> {
+    let values = array.as_union_opt()?;
+    let tag = values.type_id(row);
+    let (_, member) = members.get(usize::try_from(tag).ok()?)?;
+    Some((values.child(tag), member, values.value_offset(row)))
 }
 
 fn list(array: &dyn Array, element: &DuckType, row: usize) -> Option<String> {
@@ -86,13 +93,19 @@ fn part(values: &dyn Array, duck: &DuckType, row: usize) -> Option<String> {
     if values.is_null(row) || matches!(duck, DuckType::Null) {
         return Some("NULL".to_owned());
     }
-    match duck.is_nested() {
-        true => text(values, duck, row),
-        false => Some(escaped(&scalar_text(values, duck, row)?, false)),
+    match duck {
+        // Since DuckDB 2.0.1 a union inside a nested value prints its
+        // member as that member prints there, so a string is escaped.
+        DuckType::Union(members) => {
+            let (child, member, at) = union_member(values, members, row)?;
+            part(child.as_ref(), member, at)
+        }
+        nested if nested.is_nested() => text(values, duck, row),
+        _ => Some(escaped(&scalar_text(values, duck, row)?, false)),
     }
 }
 
-/// A union prints its member's own text, unescaped.
+/// A union at the top of a value prints its member's own text, unescaped.
 fn whole(values: &dyn Array, duck: &DuckType, row: usize) -> Option<String> {
     match duck.is_nested() {
         true => text(values, duck, row),

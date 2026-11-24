@@ -118,4 +118,27 @@ struct TransientConnectionFactoryTests {
         #expect(connection.database == "/path/to/analytics.duckdb")
         #expect(connection.name == "Sales")
     }
+
+    @Test("A quack link opens a Remote DuckDB row on its server, never a Local File named after its alias")
+    func quackLinkOpensRemoteMode() throws {
+        let connection = TransientConnectionFactory.build(from: try parse("quack://quack.example.com:9500/analytics?sslmode=require"))
+
+        #expect(connection.additionalFields["duckdbMode"] == "remote")
+        #expect(connection.additionalFields["duckdbHost"] == "quack.example.com")
+        #expect(connection.additionalFields["duckdbPort"] == "9500")
+        #expect(connection.additionalFields["duckdbAlias"] == "analytics")
+        #expect(connection.additionalFields["duckdbSSLMode"] == "required")
+        #expect(connection.activeServerEndpointFields != nil)
+        #expect(connection.serverEndpoint.host == "quack.example.com")
+        #expect(connection.serverEndpoint.port == 9_500)
+    }
+
+    @Test("A quack link with no port or path dials the default port and attaches the default alias, not an empty database")
+    func bareQuackLinkUsesTheDefaults() throws {
+        let connection = TransientConnectionFactory.build(from: try parse("quack://quack.example.com"))
+
+        #expect(connection.additionalFields["duckdbMode"] == "remote")
+        #expect(connection.additionalFields["duckdbAlias"] == "remotedb")
+        #expect(connection.serverEndpoint.port == 9_494)
+    }
 }

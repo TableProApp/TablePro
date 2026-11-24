@@ -63,8 +63,15 @@ struct ConnectionURLFormatter {
     }
 
     private static func formatDuckDB(_ connection: DatabaseConnection, sshPassword: String?) -> String {
-        if connection.additionalFields["duckdbMode"] == "remote" {
+        let mode = connection.additionalFields["duckdbMode"]
+        if mode == "remote" {
             return formatDuckDBRemote(connection, sshPassword: sshPassword)
+        }
+        // MotherDuck's own connection string, which other DuckDB clients open as is. The token never goes in it.
+        if mode == "motherduck" {
+            let database = (connection.additionalFields["duckdbMotherDuckDatabase"] ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return "md:\(database)"
         }
         let database = connection.additionalFields["duckdbFilePath"].flatMap { $0.isEmpty ? nil : $0 }
             ?? connection.database

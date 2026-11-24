@@ -10,7 +10,12 @@ public enum SQLStateChangingFunctions {
     }
 
     static func isDuckDBCall(_ name: String) -> Bool {
-        duckDBCalls.contains(name.uppercased().lowercased())
+        let lowered = name.uppercased().lowercased()
+        return duckDBCalls.contains(lowered) || duckDBCallFamilies.contains(where: lowered.hasPrefix)
+    }
+
+    static func isDuckDBDestructiveCall(_ name: String) -> Bool {
+        duckDBDestructiveCallFamilies.contains(where: name.uppercased().lowercased().hasPrefix)
     }
 
     // SQLite runs a table-valued pragma named as a table source too, so `SELECT * FROM main.pragma_optimize` runs
@@ -194,4 +199,10 @@ public enum SQLStateChangingFunctions {
         "query", "json_execute_serialized_sql", "postgres_query", "postgres_execute", "mysql_query", "mysql_execute",
         "sqlite_query", "dbgen", "dsdgen"
     ]
+
+    // MotherDuck adds writers between TablePro releases, and a read-only transaction stops none (measured on 1.5.6).
+    static let duckDBCallFamilies: [String] = ["md_", "__md_"]
+
+    // MotherDuck's drop and delete calls remove a database, share or dive on the service.
+    static let duckDBDestructiveCallFamilies: [String] = ["md_drop_", "md_delete_"]
 }

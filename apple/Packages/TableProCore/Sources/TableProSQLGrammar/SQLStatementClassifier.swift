@@ -196,7 +196,7 @@ struct SQLStatementTiering {
         if let dynamic = dynamicSQLClassification(code, grammar: grammar, depth: depth) {
             classification = classification.escalated(with: dynamic)
         }
-        if removesSurrealDefinition(code) {
+        if removesSurrealDefinition(code) || callsDuckDBDestructiveFunction(code, calls: calls) {
             classification = classification.escalated(to: .destructive)
         }
         guard let conditional = Self.conditionalCommentClassification(statement, grammar: grammar) else {

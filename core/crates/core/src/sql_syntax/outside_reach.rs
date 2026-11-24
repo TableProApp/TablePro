@@ -1,7 +1,8 @@
 use crate::sql_syntax::SqlGrammar;
 use crate::sql_syntax::script::{ScriptPlan, ScriptToken};
 use crate::sql_syntax::statement_access::{
-    CLIENT_SPLITS, Code, Kind, code_of, decodes_unicode_names, is, may_be_space, spelled_in_escapes, split_at_blanks,
+    CLIENT_SPLITS, Code, Kind, code_of, declares_columns, decodes_unicode_names, is, may_be_space, spelled_in_escapes,
+    split_at_blanks,
 };
 use crate::unicode_blank::is_blank;
 
@@ -92,6 +93,9 @@ const DUCKDB_FUNCTIONS: &[&str] = &[
     "enable_logging",
     "start_ui",
     "start_ui_server",
+    "get_md_token",
+    "prompt",
+    "embedding",
 ];
 
 const DUCKDB_FAMILIES: &[&str] = &[
@@ -103,6 +107,19 @@ const DUCKDB_FAMILIES: &[&str] = &[
     "sqlite_",
     "postgres_",
     "mysql_",
+    "prompt_",
+    // MotherDuck's md_ calls run on the service with the user's token, md_run_flight runs Python there.
+    "md_",
+    "__md_",
+];
+
+// Not in FILESYSTEM_NAMES: `prompt_query` is a plausible column name on other engines.
+const DUCKDB_PRAGMAS: &[&str] = &[
+    "print_md_token",
+    "md_connect",
+    "__duck_panic",
+    "__reset_user_environment",
+    "prompt_query",
 ];
 
 const CLICKHOUSE_FUNCTIONS: &[&str] = &[
@@ -250,6 +267,7 @@ fn reaches(code: &[Code<'_>], grammar: SqlGrammar) -> bool {
                 || names_filesystem(part)
                 || (0..part.len()).any(|index| calls_outside(part, index, grammar))
                 || (grammar == SqlGrammar::DuckDb && duckdb_reads_a_file_as_a_table(part))
+                || (grammar == SqlGrammar::DuckDb && names_duckdb_pragma(part))
         })
 }
 
@@ -284,6 +302,14 @@ fn names_filesystem(part: &[Code<'_>]) -> bool {
     })
 }
 
+fn names_duckdb_pragma(part: &[Code<'_>]) -> bool {
+    let mut tokens = part.iter().skip_while(|token| token.kind == Kind::Open);
+    tokens.next().is_some_and(|first| first.is_word(&["pragma"]))
+        && tokens
+            .next()
+            .is_some_and(|name| matches!(name.kind, Kind::Word | Kind::Quoted) && is(name.text, DUCKDB_PRAGMAS))
+}
+
 // A name spelled U&"…" may be any of them.
 fn calls_outside(part: &[Code<'_>], index: usize, grammar: SqlGrammar) -> bool {
     let token = &part[index];
@@ -294,12 +320,13 @@ fn calls_outside(part: &[Code<'_>], index: usize, grammar: SqlGrammar) -> bool {
         return true;
     }
     let name = token.text;
-    is(name, FILESYSTEM_FUNCTIONS)
+    let listed = is(name, FILESYSTEM_FUNCTIONS)
         || match grammar {
             SqlGrammar::DuckDb => is(name, DUCKDB_FUNCTIONS) || starts_with_any(name, DUCKDB_FAMILIES),
             SqlGrammar::ClickHouse => is(name, CLICKHOUSE_FUNCTIONS) || starts_with_any(name, CLICKHOUSE_FAMILIES),
             _ => false,
-        }
+        };
+    listed && !declares_columns(part, index)
 }
 
 // UESCAPE '!' may stand between a U&"…" name and its arguments.
@@ -567,9 +594,57 @@ mod tests {
             "PIVOT notes ON year USING sum(salary)",
             "SELECT * FROM generate_series(1, 3) AS t(x), notes",
             "SELECT _from, 'a.csv' FROM notes",
+            "CALL dbgen(sf => 0.01)",
+            "CALL pragma_version()",
         ] {
             assert!(!reaches_on_duckdb(sql), "{sql}");
         }
+    }
+
+    #[test]
+    fn motherduck_token_readers_pragmas_and_model_calls_reach_outside() {
+        for sql in [
+            "FROM get_md_token()",
+            "CALL get_md_token()",
+            "SELECT * FROM \"get_md_token\"()",
+            "PRAGMA print_md_token",
+            "PRAGMA \"print_md_token\"",
+            "pragma MD_CONNECT",
+            "PRAGMA prompt_query('top customers')",
+            "PRAGMA __duck_panic",
+            "SELECT prompt('x')",
+            "SELECT embedding(body) FROM notes",
+            "FROM prompt_sql('x')",
+            "SELECT * FROM md_list_files('s3://bucket')",
+            "CALL md_create_flight('f', 'x')",
+            "CALL md_run_flight('f')",
+            "SELECT * FROM md_list_databases()",
+        ] {
+            assert!(reaches_on_duckdb(sql), "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_column_list_a_cte_or_an_alias_declares_reaches_nothing() {
+        for sql in [
+            "WITH query(n) AS (VALUES (1)) SELECT n FROM query",
+            "WITH glob(n) AS (VALUES (1)) SELECT n FROM glob",
+            "WITH md_drop_report(n) AS (VALUES (1)) SELECT n FROM md_drop_report",
+            "WITH report(n) AS (VALUES (1)) SELECT n FROM report",
+            "SELECT * FROM range(3) AS md_drop(a)",
+            "WITH RECURSIVE md_t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM md_t WHERE n < 3) SELECT * FROM md_t",
+            "WITH md_drop_m(n) AS MATERIALIZED (SELECT 1) SELECT n FROM md_drop_m",
+            "WITH a AS (SELECT 1), md_drop_b(n) AS NOT MATERIALIZED (SELECT 2) SELECT n FROM md_drop_b",
+        ] {
+            assert!(!reaches_on_duckdb(sql), "{sql}");
+        }
+        assert!(reaches_on_duckdb(
+            "WITH md_x(n) AS (SELECT * FROM md_drop_database('p')) SELECT n FROM md_x"
+        ));
+        assert!(reaches_outside_database(
+            "CREATE TABLE t AS remote('127.0.0.1', db.t)",
+            SqlGrammar::ClickHouse
+        ));
     }
 
     #[test]
@@ -625,6 +700,10 @@ mod tests {
             ("SELECT glob('a*', name) FROM t", SqlGrammar::Sqlite),
             ("SELECT * FROM read_text('x')", SqlGrammar::PostgreSql),
             ("SELECT query FROM history", SqlGrammar::DuckDb),
+            ("SELECT prompt_query FROM t", SqlGrammar::PostgreSql),
+            ("SELECT prompt_query, md_total FROM t", SqlGrammar::DuckDb),
+            ("PRAGMA table_info('orders')", SqlGrammar::DuckDb),
+            ("PRAGMA print_md_token", SqlGrammar::Sqlite),
             ("SELECT * FROM orders", SqlGrammar::MySql),
             ("EXPLAIN ANALYZE SELECT * FROM orders", SqlGrammar::PostgreSql),
             ("EXPLAIN (ANALYZE) SELECT copy FROM orders", SqlGrammar::PostgreSql),
@@ -653,6 +732,7 @@ mod tests {
             ("clickhouse_functions", named(CLICKHOUSE_FUNCTIONS)),
             ("duckdb_families", named(DUCKDB_FAMILIES)),
             ("duckdb_functions", named(DUCKDB_FUNCTIONS)),
+            ("duckdb_pragmas", named(DUCKDB_PRAGMAS)),
             ("filesystem_functions", named(FILESYSTEM_FUNCTIONS)),
             ("filesystem_names", named(FILESYSTEM_NAMES)),
             ("filesystem_or_code_keywords", named(FILESYSTEM_OR_CODE_KEYWORDS)),

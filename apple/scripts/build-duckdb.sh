@@ -19,7 +19,7 @@ set -euo pipefail
 # Libs/checksums.sha256 by hand):
 #   scripts/publish-libs.sh libduckdb_arm64.a libduckdb_x86_64.a libduckdb_universal.a libduckdb.a
 
-DUCKDB_VERSION="v2.0.0"
+DUCKDB_VERSION="v2.0.1"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/deployment-target.sh"
 DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-$DEPLOY_TARGET}"
 

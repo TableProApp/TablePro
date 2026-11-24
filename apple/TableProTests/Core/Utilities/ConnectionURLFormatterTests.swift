@@ -988,6 +988,25 @@ struct ConnectionURLFormatterTests {
         #expect(ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil) == "duckdb:///Users/me/analytics.duckdb")
     }
 
+    @Test("A MotherDuck row copies as MotherDuck's own connection string, never its token or its hidden file", arguments: [
+        ("my_db", "md:my_db"), ("", "md:"), ("  sample_data ", "md:sample_data")
+    ])
+    func motherDuckCopiesItsConnectionString(database: String, expected: String) {
+        let conn = DatabaseConnection(
+            name: "", database: "", type: .duckdb,
+            additionalFields: [
+                "duckdbMode": "motherduck",
+                "duckdbMotherDuckDatabase": database,
+                "duckdbMotherDuckToken": "md-token-123",
+                "duckdbFilePath": "/Users/me/analytics.duckdb"
+            ]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pw", sshPassword: nil)
+        #expect(url == expected)
+        #expect(!url.contains("md-token-123"))
+        #expect(!url.contains("analytics"))
+    }
+
     // MARK: - Unix socket
 
     private func socketConnection(

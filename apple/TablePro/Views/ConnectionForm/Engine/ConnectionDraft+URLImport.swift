@@ -201,20 +201,10 @@ extension ConnectionDraft {
             fieldValues["databaseUrl"] = urlString
         case "Cloudflare D1" where !parsed.host.isEmpty:
             fieldValues["cfAccountId"] = parsed.host
-        case "DuckDB":
-            if parsed.host.isEmpty {
-                fieldValues["duckdbMode"] = "local"
-                fieldValues["duckdbFilePath"] = parsed.database
-            } else {
-                fieldValues["duckdbMode"] = "remote"
-                fieldValues["duckdbHost"] = parsed.host
-                if let port = parsed.port {
-                    fieldValues["duckdbPort"] = String(port)
-                }
-                if !parsed.database.isEmpty {
-                    fieldValues["duckdbAlias"] = parsed.database
-                }
-            }
+        // quack:// and md: fields come from the parser, which a link opened outside the form reads too.
+        case "DuckDB" where parsed.namesDatabaseFile:
+            fieldValues["duckdbMode"] = "local"
+            fieldValues["duckdbFilePath"] = parsed.database
         default:
             break
         }

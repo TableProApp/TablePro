@@ -1,10 +1,10 @@
 {
   "crate": "libduckdb-sys",
-  "version": "1.20000.1",
-  "source": "https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa",
+  "version": "1.20001.0",
+  "source": "https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c",
   "files": "duckdb.tar.gz",
   "components": [
-    {"name": "DuckDB", "path": "LICENSE", "file": "duckdb.txt", "id": "MIT", "license": "MIT", "license_name": "MIT License", "provides": "duckdb", "version": "2.0.0"},
+    {"name": "DuckDB", "path": "LICENSE", "file": "duckdb.txt", "id": "MIT", "license": "MIT", "license_name": "MIT License", "provides": "duckdb", "version": "2.0.1"},
     {"name": "Brotli", "path": "third_party/brotli/LICENSE", "file": "brotli.txt", "id": "MIT", "license": "MIT", "license_name": "MIT License", "provides": "brotli", "version": "1.1.0"},
     {"name": "concurrentqueue", "path": "third_party/concurrentqueue/LICENSE", "file": "concurrentqueue.txt", "id": "BSD-2-Clause", "license": "(BSD-2-Clause OR BSL-1.0) AND Zlib", "license_name": "BSD 2-Clause \"Simplified\" License", "provides": "moodycamel-concurrentqueue"},
     {"name": "fast_float", "path": "third_party/fast_float/LICENSE", "file": "fast_float.txt", "id": "MIT", "license": "MIT", "license_name": "MIT License", "copyright": ["2021 The fast_float authors"], "provides": "fast_float"},
