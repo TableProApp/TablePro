@@ -24,10 +24,10 @@ internal struct SessionsTableView: View {
         HStack {
             Label(String(localized: "Active Sessions"), systemImage: "person.2")
                 .font(.headline)
-            Text("(\(viewModel.sessions.count))")
+            Text("(\(viewModel.board.sessions.count))")
                 .foregroundStyle(.secondary)
             Spacer()
-            if let error = viewModel.panelErrors[.activeSessions] {
+            if let error = viewModel.board.panelErrors[.activeSessions] {
                 Label {
                     RevealedTextView(error)
                         .foregroundStyle(.secondary)
@@ -45,7 +45,7 @@ internal struct SessionsTableView: View {
     }
 
     private var sessionActions: some View {
-        let target = SessionGridColumns.actionTarget(selection.ids, in: viewModel.sessions)
+        let target = SessionGridColumns.actionTarget(selection.ids, in: viewModel.board.sessions)
         let cancellable = target.map(viewModel.canCancel) ?? false
         let killable = target.map(viewModel.canKill) ?? false
         return HStack(spacing: 4) {
@@ -83,7 +83,7 @@ internal struct SessionsTableView: View {
     }
 
     private var table: some View {
-        let rows = SessionGridColumns.sorted(viewModel.sessions, by: sortState).map(SessionGridColumns.row(for:))
+        let rows = SessionGridColumns.sorted(viewModel.board.sessions, by: sortState).map(SessionGridColumns.row(for:))
         let selection = selection
         return StructureListGrid(
             model: grid,
