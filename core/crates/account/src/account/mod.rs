@@ -119,6 +119,8 @@ enum Call {
     Register,
     Entitlement,
     License,
+    Keys,
+    Discovery,
     Profile,
     Devices,
     RemoveDevice,
@@ -252,13 +254,10 @@ impl Account {
 
     // Without account.json no one is signed in, so the keyring stays shut: opening it can prompt. The Mac's entitlement
     // from before the core is the one exception.
+    // A company server is discovered when a refresh first needs it, so an unreachable one never holds back what the
+    // account file verifies.
     pub async fn restore(&self) {
         let mut session = self.inner.session.lock().await;
-        if self.current().is_company()
-            && let Err(error) = self.connection(&mut session, false).await
-        {
-            tracing::warn!(%error, "the company server's endpoints are not known yet");
-        }
         let path = &self.inner.settings.account_file;
         let file = match account_file::read(path).await {
             Ok(Some(file)) => file,

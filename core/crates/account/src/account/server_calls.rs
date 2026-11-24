@@ -39,12 +39,14 @@ struct LicenseAnswer {
 impl Account {
     // A company server's endpoints, from this run's discovery, found again when `fresh`. The session must be held, so
     // the server changes under no other call.
-    pub(super) async fn connection(&self, _held: &mut Session, fresh: bool) -> Result<Arc<Server>, AccountError> {
+    pub(super) async fn connection(&self, session: &mut Session, fresh: bool) -> Result<Arc<Server>, AccountError> {
         let server = self.current();
         if !server.is_company() || (server.connection.is_some() && !fresh) {
             return Ok(server);
         }
-        let discovered = server::discover(&self.inner.http, &server.target.origin, loopback_http_allowed()).await?;
+        session.waited(Call::Discovery)?;
+        let found = server::discover(&self.inner.http, &server.target.origin, loopback_http_allowed()).await;
+        let discovered = session.answered(Call::Discovery, found)?;
         let connected = Arc::new(server.discovered(self.inner.settings.client, &self.inner.http, discovered)?);
         self.inner.server.send_replace(connected.clone());
         Ok(connected)
@@ -65,7 +67,11 @@ impl Account {
         }
         let target = server::resolve(policy, chosen.as_deref(), loopback);
         let discovered = match target.kind {
-            ServerKind::Company => Some(server::discover(&self.inner.http, &target.origin, loopback).await?),
+            ServerKind::Company => {
+                session.waited(Call::Discovery)?;
+                let found = server::discover(&self.inner.http, &target.origin, loopback).await;
+                Some(session.answered(Call::Discovery, found)?)
+            }
             ServerKind::Production | ServerKind::Development => None,
         };
         let path = choice_file(&self.inner.settings.account_file);
@@ -123,7 +129,9 @@ impl Account {
             .as_ref()
             .map(|discovered| discovered.jwks_uri.clone())
             .ok_or_else(|| ServerError::NotTablePro(server.target.origin.clone(), "no jwks_uri".to_owned()))?;
-        let jwks = self.jwks(&jwks_uri).await?;
+        session.waited(Call::Keys)?;
+        let fetched = self.jwks(&jwks_uri).await;
+        let jwks = session.answered(Call::Keys, fetched)?;
         let keys = EntitlementKeys::from_jwks(jwks.as_bytes())
             .map_err(|error| ServerError::NotTablePro(server.target.origin.clone(), error.to_string()))?;
         session.licensed = Some(Licensed { license, keys, jwks });
@@ -169,6 +177,16 @@ impl Account {
             .await
             .map_err(AccountError::unreachable)?;
         let status = response.status();
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            return Err(rate_limited(response.headers()));
+        }
+        if status.is_server_error() {
+            return Err(AccountError::Refused {
+                status: status.as_u16(),
+                code: "unavailable".to_owned(),
+                detail: format!("{uri} answered HTTP {}", status.as_u16()),
+            });
+        }
         if !status.is_success() {
             return Err(ServerError::NotTablePro(uri.to_owned(), format!("HTTP {}", status.as_u16())).into());
         }

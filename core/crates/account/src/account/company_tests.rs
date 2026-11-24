@@ -31,7 +31,9 @@ pub(super) fn company(
     let answering: Box<Answer> = Box::new(move |method: &str, path: &str, body: &str| {
         let (status, body) =
             answer(&origin, method, path, body).unwrap_or_else(|| standard(&origin, license_features, method, path));
-        (status, "", body)
+        // tablepro-cloud sends Retry-After with every 429 (api.md, Conventions).
+        let headers = if status == 429 { "retry-after: 60\r\n" } else { "" };
+        (status, headers, body)
     });
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
@@ -735,4 +737,47 @@ async fn a_shared_link_is_read_from_tablepro_app_whatever_company_server_is_sign
 
     assert_eq!(company_api, "https://api.tablepro.app/v2");
     assert_eq!(stack_api, "http://127.0.0.1:1/v2");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_restore_asks_the_company_server_nothing_and_a_429_on_discovery_holds_the_next_try() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let limited = Arc::new(AtomicBool::new(false));
+    let requests = Asked::default();
+    let base = company(&LICENSED, {
+        let (limited, requests) = (limited.clone(), requests.clone());
+        move |_, method, path, _| {
+            if !limited.load(Ordering::SeqCst) {
+                return None;
+            }
+            requests.lock().expect("the requests").push(format!("{method} {path}"));
+            Some((429, String::new()))
+        }
+    });
+    let items = Arc::new(Items::default());
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &items,
+        browser.clone(),
+    );
+    let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), approve(&browser));
+    signed.expect("signed in");
+    limited.store(true, Ordering::SeqCst);
+    let restarted = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &items,
+        Arc::default(),
+    );
+
+    restarted.restore().await;
+    let restored = asked(&requests).len();
+    let first = restarted.refresh_entitlement().await;
+    let second = restarted.refresh_entitlement().await;
+
+    assert_eq!(restored, 0);
+    assert_eq!(restarted.status().borrow().features(Utc::now()), LICENSED);
+    assert!(matches!(first, Err(AccountError::RateLimited { .. })), "{first:?}");
+    assert!(matches!(second, Err(AccountError::RateLimited { .. })), "{second:?}");
+    assert_eq!(asked(&requests).len(), 1, "{:?}", asked(&requests));
 }
