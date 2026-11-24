@@ -1025,3 +1025,33 @@ async fn a_tag_left_stale_by_a_failed_write_costs_a_refresh_not_the_sign_in() {
     assert!(unverified.is_empty(), "{unverified:?}");
     assert_eq!(restarted.status().borrow().features(Utc::now()), LICENSED);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cancel_ends_a_slow_discovery_and_opens_no_page() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let base = company(&LICENSED, |_, _, path, _| {
+        if path.starts_with("/.well-known/") {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+        }
+        None
+    });
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &Arc::new(Items::default()),
+        browser.clone(),
+    );
+    let started = std::time::Instant::now();
+
+    let ended = account
+        .sign_in(tokio::time::sleep(std::time::Duration::from_millis(200)))
+        .await;
+
+    assert!(matches!(ended, Err(AccountError::SignInCanceled)), "{ended:?}");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(browser.opened.lock().expect("the URL").is_none());
+}

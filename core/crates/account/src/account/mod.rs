@@ -382,14 +382,20 @@ impl Account {
     // ends only the wait for the browser: once the code is back, the tokens it brings are stored whatever happens.
     pub async fn sign_in(&self, cancelled: impl Future<Output = ()> + Send) -> Result<(), AccountError> {
         let attempt = self.inner.attempts.fetch_add(1, Ordering::SeqCst) + 1;
-        let server = {
+        let mut cancelled = std::pin::pin!(cancelled);
+        // A slow company server's discovery holds the session, so a cancel ends it too, and no page opens.
+        let discovering = async {
             let mut session = self.inner.session.lock().await;
-            self.connection(&mut session, true).await?
+            self.connection(&mut session, true).await
+        };
+        let server = tokio::select! {
+            connected = discovering => connected?,
+            () = &mut cancelled => return Err(AccountError::SignInCanceled),
         };
         let oauth = &server.connection()?.oauth;
         let tokens = match self.inner.settings.client.redirect {
-            Redirect::Loopback => self.browser_sign_in(oauth, cancelled).await?,
-            Redirect::Scheme(scheme) => self.web_sign_in(oauth, scheme, cancelled).await?,
+            Redirect::Loopback => self.browser_sign_in(oauth, &mut cancelled).await?,
+            Redirect::Scheme(scheme) => self.web_sign_in(oauth, scheme, &mut cancelled).await?,
         };
         self.commit_sign_in(attempt, &server, tokens).await
     }
