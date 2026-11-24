@@ -259,7 +259,8 @@ private struct AccountPlanSection: View {
                 }
             }
 
-            if content.notices.isEmpty, content.plans.isEmpty, !content.isFree {
+            // A company server's license is in the Server section, and its entitlement may name no plan of its own.
+            if content.notices.isEmpty, content.plans.isEmpty, !content.isFree, content.sellsPlans {
                 AccountLoadingRow(label: String(localized: "Checking your plan"))
             }
 
