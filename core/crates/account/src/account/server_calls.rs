@@ -86,6 +86,9 @@ impl Account {
             if let Some(refresh) = session.refresh.clone() {
                 // A run that started offline has not found the previous server's endpoints yet.
                 let revoked = match self.connection(&mut session, false).await {
+                    Ok(previous) if same_issuer(&session, &previous).is_err() => {
+                        Err(ServerError::Mismatch("issuer").into())
+                    }
                     Ok(previous) => match previous.connection() {
                         Ok(connection) => connection.oauth.revoke(&refresh).await,
                         Err(error) => Err(error),
@@ -191,13 +194,9 @@ impl Account {
         String::from_utf8(body).map_err(|_| AccountError::Protocol("the JWKS is not UTF-8".to_owned()))
     }
 
-    // The license and keys a company server gave last time, checked again now: a key revoked since admits nothing,
-    // and keys whose tag this sign-in did not write are not taken.
-    pub(super) fn licensed_from(
-        &self,
-        file: &AccountFile,
-        refresh: &SecretString,
-    ) -> Result<Option<Licensed>, AccountError> {
+    // The license and keys a company server gave last time, checked again now: a key revoked since admits nothing.
+    // The caller has checked the file's tag.
+    pub(super) fn licensed_from(&self, file: &AccountFile) -> Result<Option<Licensed>, AccountError> {
         let server = self.current();
         let Trust::Licensed(keys) = &server.trust else {
             return Ok(None);
@@ -208,20 +207,11 @@ impl Account {
         let license = License::verify(token, keys, &server.target.origin, Utc::now())?;
         let keys = EntitlementKeys::from_jwks(jwks.as_bytes())
             .map_err(|error| ServerError::NotTablePro(server.target.origin.clone(), error.to_string()))?;
-        let licensed = Licensed {
+        Ok(Some(Licensed {
             license: Arc::new(license),
             keys,
             jwks: jwks.to_owned(),
-        };
-        let tagged = file
-            .trust_tag
-            .as_deref()
-            .is_some_and(|tag| trust_tag_matches(tag, refresh, &server.api, &licensed));
-        if !tagged {
-            tracing::warn!("the kept license and keys are not this sign-in's, so the next refresh fetches them");
-            return Ok(None);
-        }
-        Ok(Some(licensed))
+        }))
     }
 
     // A license just verified applies at once to the entitlement held, before the next one comes, and is kept.
@@ -390,22 +380,86 @@ impl Account {
     }
 }
 
-// HMAC-SHA256 keyed with the refresh token, which only the platform's secret store holds, over what the tag binds.
-pub(super) fn trust_tag(refresh: &SecretString, api: &str, licensed: &Licensed) -> String {
+// HMAC-SHA256 keyed with the refresh token, which only the platform's secret store holds, over a company sign-in's
+// issuer, license and keys in the account file.
+pub(super) fn trust_tag(refresh: &SecretString, api: &str, file: &AccountFile) -> String {
     let key = hmac::Key::new(hmac::HMAC_SHA256, refresh.expose_secret().as_bytes());
-    URL_SAFE_NO_PAD.encode(hmac::sign(&key, &tagged(api, licensed)))
+    URL_SAFE_NO_PAD.encode(hmac::sign(&key, &tagged(api, file)))
 }
 
-fn trust_tag_matches(tag: &str, refresh: &SecretString, api: &str, licensed: &Licensed) -> bool {
-    let Ok(tag) = URL_SAFE_NO_PAD.decode(tag) else {
+pub(super) fn tag_matches(file: &AccountFile, refresh: &SecretString, api: &str) -> bool {
+    let Some(Ok(tag)) = file.trust_tag.as_deref().map(|tag| URL_SAFE_NO_PAD.decode(tag)) else {
+        tracing::warn!(
+            "the account file's issuer and license are not this sign-in's, so a new sign-in or refresh replaces them"
+        );
         return false;
     };
     let key = hmac::Key::new(hmac::HMAC_SHA256, refresh.expose_secret().as_bytes());
-    hmac::verify(&key, &tagged(api, licensed), &tag).is_ok()
+    let matches = hmac::verify(&key, &tagged(api, file), &tag).is_ok();
+    if !matches {
+        tracing::warn!(
+            "the account file's issuer and license are not this sign-in's, so a new sign-in or refresh replaces them"
+        );
+    }
+    matches
 }
 
-fn tagged(api: &str, licensed: &Licensed) -> Vec<u8> {
-    [api, licensed.license.token(), &licensed.jwks].join("\0").into_bytes()
+fn tagged(api: &str, file: &AccountFile) -> Vec<u8> {
+    [
+        api,
+        file.issuer.as_deref().unwrap_or_default(),
+        file.license.as_deref().unwrap_or_default(),
+        file.entitlement_keys.as_deref().unwrap_or_default(),
+    ]
+    .join("\0")
+    .into_bytes()
+}
+
+// A company server's refresh token goes only to the issuer that gave it: one whose metadata names another since asks
+// for a new sign-in.
+pub(super) fn same_issuer(session: &Session, server: &Server) -> Result<(), AccountError> {
+    if !server.is_company() {
+        return Ok(());
+    }
+    let discovered = server
+        .connection()?
+        .discovered
+        .as_ref()
+        .map(|discovered| discovered.issuer.as_str());
+    match (session.issuer.as_deref(), discovered) {
+        (Some(pinned), Some(found)) if pinned == found => Ok(()),
+        _ => Err(ServerError::Mismatch("issuer").into()),
+    }
+}
+
+// tablepro-cloud's access tokens name the API they are for in `aud` (its api.md, OAuth). A company server whose
+// metadata names another install's account server would otherwise be handed that install's tokens.
+pub(super) fn audience_check(server: &Server, access: &SecretString) -> Result<(), AccountError> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Audience {
+        One(String),
+        Many(Vec<String>),
+    }
+    #[derive(Deserialize)]
+    struct Claims {
+        aud: Audience,
+    }
+    if !server.is_company() {
+        return Ok(());
+    }
+    let claims = access
+        .expose_secret()
+        .split('.')
+        .nth(1)
+        .and_then(|payload| URL_SAFE_NO_PAD.decode(payload).ok())
+        .and_then(|json| serde_json::from_slice::<Claims>(&json).ok());
+    let origin = server.target.origin.as_str();
+    match claims.map(|claims| claims.aud) {
+        Some(Audience::One(aud)) if aud == origin => Ok(()),
+        Some(Audience::Many(auds)) if auds.iter().any(|aud| aud == origin) => Ok(()),
+        _ => Err(ServerError::Mismatch("access token audience").into()),
+    }
 }
 
 async fn read_legacy(path: &std::path::Path) -> Option<String> {

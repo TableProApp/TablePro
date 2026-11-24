@@ -113,6 +113,8 @@ struct Session {
     held: HashMap<Call, DateTime<Utc>>,
     // A company server's license and keys, once verified.
     licensed: Option<Licensed>,
+    // The OAuth issuer a company server's sign-in came from.
+    issuer: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -308,13 +310,18 @@ impl Account {
     }
 
     fn restore_signed_in(&self, session: &mut Session, file: AccountFile, refresh: SecretString) {
-        let licensed = self.licensed_from(&file, &refresh);
+        let tagged = self.current().is_company() && server_calls::tag_matches(&file, &refresh, &self.current().api);
+        let licensed = match tagged {
+            true => self.licensed_from(&file),
+            false => Ok(None),
+        };
         *session = Session {
             refresh: Some(refresh),
             device_id: file.device_id,
             account_id: file.account_id,
             remembered: true,
             licensed: licensed.as_ref().ok().cloned().flatten(),
+            issuer: file.issuer.filter(|_| tagged),
             ..Session::default()
         };
         let (entitlement, problem) = match (&licensed, file.entitlement.as_deref()) {
@@ -461,7 +468,14 @@ impl Account {
         let Some(refresh) = tokens.refresh.clone().filter(|token| !token.expose_secret().is_empty()) else {
             return Err(AccountError::Protocol("the sign-in gave no refresh token".to_owned()));
         };
-        let oauth = &server.connection()?.oauth;
+        let connection = server.connection()?;
+        let oauth = &connection.oauth;
+        if let Err(error) = server_calls::audience_check(server, &tokens.access) {
+            if let Err(revoked) = oauth.revoke(&refresh).await {
+                tracing::warn!(error = %revoked, "a sign-in for another API was not revoked");
+            }
+            return Err(error);
+        }
         let mut session = self.inner.session.lock().await;
         if self.inner.attempts.load(Ordering::SeqCst) != attempt {
             if let Err(error) = oauth.revoke(&refresh).await {
@@ -469,13 +483,21 @@ impl Account {
             }
             return Err(AccountError::SignInCanceled);
         }
-        // A sign-in over another, such as to switch accounts, ends the first one's token family.
+        // A sign-in over another, such as to switch accounts, ends the first one's token family, at the issuer that
+        // gave it.
         if let Some(previous) = session.refresh.take()
+            && server_calls::same_issuer(&session, server).is_ok()
             && let Err(error) = oauth.revoke(&previous).await
         {
             tracing::warn!(%error, "the previous sign-in was not revoked");
         }
-        *session = Session::default();
+        *session = Session {
+            issuer: connection
+                .discovered
+                .as_ref()
+                .map(|discovered| discovered.issuer.clone()),
+            ..Session::default()
+        };
         self.adopt(&mut session, tokens).await;
         self.write_file(&session, None).await;
         self.publish(&session, None, None);
@@ -490,6 +512,9 @@ impl Account {
         self.inner.attempts.fetch_add(1, Ordering::SeqCst);
         let revoked = match session.refresh.clone() {
             Some(refresh) => match self.connection(&mut session, false).await {
+                Ok(server) if server_calls::same_issuer(&session, &server).is_err() => {
+                    Err(ServerError::Mismatch("issuer").into())
+                }
                 Ok(server) => match server.connection() {
                     Ok(connection) => connection.oauth.revoke(&refresh).await,
                     Err(error) => Err(error),
@@ -719,8 +744,10 @@ impl Account {
         let refresh = session.refresh.clone().ok_or(AccountError::SignedOut)?;
         session.waited(Call::Token)?;
         let server = self.connection(session, false).await?;
+        server_calls::same_issuer(session, &server)?;
         let tokens = server.connection()?.oauth.refresh(&refresh).await;
         let tokens = session.answered(Call::Token, tokens)?;
+        server_calls::audience_check(&server, &tokens.access)?;
         let access = tokens.access.clone();
         self.adopt(session, tokens).await;
         Ok(access)
@@ -743,8 +770,8 @@ impl Account {
             }
         };
         session.refresh = Some(refresh);
-        // The kept license's tag is keyed with the refresh token, so it follows each rotation.
-        if session.licensed.is_some() {
+        // The kept issuer's and license's tag is keyed with the refresh token, so it follows each rotation.
+        if self.current().is_company() {
             let held = self.inner.status.borrow().entitlement().map(|it| it.token().to_owned());
             self.write_file(session, held).await;
         }
@@ -823,11 +850,7 @@ impl Account {
 
     fn file_for(&self, session: &Session, entitlement: Option<String>) -> AccountFile {
         let api = self.current().api.clone();
-        let trust_tag = match (&session.refresh, &session.licensed) {
-            (Some(refresh), Some(licensed)) => Some(server_calls::trust_tag(refresh, &api, licensed)),
-            _ => None,
-        };
-        AccountFile {
+        let mut file = AccountFile {
             device_id: session.device_id.clone(),
             account_id: session.account_id.clone(),
             entitlement,
@@ -837,9 +860,16 @@ impl Account {
                 .as_ref()
                 .map(|licensed| licensed.license.token().to_owned()),
             entitlement_keys: session.licensed.as_ref().map(|licensed| licensed.jwks.clone()),
-            server: Some(api),
-            trust_tag,
+            issuer: session.issuer.clone(),
+            server: Some(api.clone()),
+            trust_tag: None,
+        };
+        if let Some(refresh) = &session.refresh
+            && self.current().is_company()
+        {
+            file.trust_tag = Some(server_calls::trust_tag(refresh, &api, &file));
         }
+        file
     }
 
     // Still checked, at the moment before it expired: what it names says who has paid, as a lapse while the app

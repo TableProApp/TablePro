@@ -27,8 +27,11 @@ pub(crate) struct AccountFile {
     pub license: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entitlement_keys: Option<String>,
-    // Binds the license and keys above to the sign-in whose refresh token keys it, so a JWKS another process wrote in
-    // admits nothing.
+    // The OAuth issuer a company server's sign-in came from, so its refresh token goes to no other.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    // Binds the issuer, license and keys above to the sign-in whose refresh token keys it, so what another process
+    // wrote in is not taken.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust_tag: Option<String>,
 }
@@ -105,6 +108,7 @@ mod tests {
             server: Some("https://api.example.com/v2".to_owned()),
             license: Some("license.payload.signature".to_owned()),
             entitlement_keys: Some(r#"{"keys":[]}"#.to_owned()),
+            issuer: Some("https://account.example.com".to_owned()),
             trust_tag: Some("tag".to_owned()),
         };
 

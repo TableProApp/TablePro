@@ -57,7 +57,7 @@ fn standard(origin: &str, features: &[&str], method: &str, path: &str) -> (u16, 
                 r#"{{"issuer":"{origin}","authorization_endpoint":"{origin}/oauth/authorize","token_endpoint":"{origin}/oauth/token","revocation_endpoint":"{origin}/oauth/revoke"}}"#
             ),
         ),
-        ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
+        ("POST", "/oauth/token") => (200, tokens_for(origin)),
         ("POST", "/oauth/revoke") => (200, String::new()),
         ("POST", "/v2/devices") => (201, device_answer()),
         ("GET", "/v2/license") => (200, license_answer(origin, Utc::now(), TimeDelta::days(365), features)),
@@ -65,6 +65,13 @@ fn standard(origin: &str, features: &[&str], method: &str, path: &str) -> (u16, 
         ("POST", p) if p == format!("/v2/devices/{DEVICE}/entitlement") => (200, entitlement_answer(origin)),
         _ => (404, String::new()),
     }
+}
+
+// A tablepro-cloud install's tokens: its access token names its API origin in `aud`.
+fn tokens_for(origin: &str) -> String {
+    use base64::Engine as _;
+    let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(r#"{{"aud":["{origin}"]}}"#));
+    TOKENS.replace("stub-access", &format!("e30.{claims}.c2ln"))
 }
 
 pub(super) fn license_answer(
@@ -827,4 +834,96 @@ async fn a_verified_license_shows_when_the_entitlement_after_it_fails() {
     assert_eq!(license.claims().features, LICENSED);
     account.sign_out().await.expect("signed out");
     assert!(account.license().is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_server_that_borrows_another_install_s_account_server_never_gets_its_tokens() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let reached = Asked::default();
+    let genuine = company(&LICENSED, |_, _, _, _| None);
+    let borrowed = genuine.clone();
+    let rogue = company(&LICENSED, {
+        let reached = reached.clone();
+        move |origin, method, path, _| {
+            reached.lock().expect("the requests").push(format!("{method} {path}"));
+            match path {
+                "/.well-known/oauth-protected-resource" => Some((
+                    200,
+                    format!(
+                        r#"{{"resource":"{origin}","authorization_servers":["{borrowed}"],"jwks_uri":"{origin}/v2/entitlement-keys"}}"#
+                    ),
+                )),
+                _ => None,
+            }
+        }
+    });
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&rogue, None)),
+        &Arc::new(Items::default()),
+        browser.clone(),
+    );
+
+    let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), approve(&browser));
+
+    assert_eq!(signed.expect_err("refused").code(), "account.server_mismatch");
+    assert_eq!(asked(&reached), ["GET /.well-known/oauth-protected-resource"]);
+    assert!(matches!(*account.status().borrow(), AccountStatus::SignedOut));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refresh_token_goes_to_no_issuer_but_the_one_that_gave_it() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let swapped = Arc::new(AtomicBool::new(false));
+    let stolen = Asked::default();
+    let thief = company(&LICENSED, {
+        let stolen = stolen.clone();
+        move |origin, method, path, body| {
+            stolen
+                .lock()
+                .expect("the requests")
+                .push(format!("{method} {path} {body}"));
+            (!path.starts_with("/.well-known/")).then(|| (200, tokens_for(origin)))
+        }
+    });
+    let base = company(&LICENSED, {
+        let (swapped, thief) = (swapped.clone(), thief.clone());
+        move |origin, _, path, _| {
+            (swapped.load(Ordering::SeqCst) && path == "/.well-known/oauth-protected-resource").then(|| {
+                (
+                    200,
+                    format!(
+                        r#"{{"resource":"{origin}","authorization_servers":["{thief}"],"jwks_uri":"{origin}/v2/entitlement-keys"}}"#
+                    ),
+                )
+            })
+        }
+    });
+    let items = Arc::new(Items::default());
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &items,
+        browser.clone(),
+    );
+    let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), approve(&browser));
+    signed.expect("signed in");
+    swapped.store(true, Ordering::SeqCst);
+    let restarted = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &items,
+        Arc::default(),
+    );
+    restarted.restore().await;
+
+    let refreshed = restarted.refresh_entitlement().await;
+    let signed_out = restarted.sign_out().await;
+
+    assert_eq!(refreshed.expect_err("refused").code(), "account.server_mismatch");
+    assert!(signed_out.is_err(), "{signed_out:?}");
+    assert!(
+        asked(&stolen).iter().all(|request| !request.contains("stub-refresh")),
+        "{:?}",
+        asked(&stolen)
+    );
 }
