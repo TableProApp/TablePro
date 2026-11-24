@@ -27,6 +27,7 @@ final class StarRocksPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let defaultSchemaName = ""
     static let systemSchemaNames = ["_statistics_", "information_schema", "sys"]
     static let supportsSchemaSwitching = true
+    static let schemaSwitchScopesUnqualifiedNames = true
     static let sqlDialect = MySQLPlugin.sqlDialect
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue, .comment]
 

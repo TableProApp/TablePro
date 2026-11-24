@@ -137,15 +137,7 @@ extension DatabaseManager {
                 startupCommands: resolvedConnection.startupCommands,
                 connectionName: connection.name
             )
-
-            if let schemaDriver = driver as? SchemaSwitchable {
-                activeSessions[connection.id]?.browseSchema = schemaDriver.currentSchema
-            }
-            if let reportingDriver = driver as? DatabaseReporting,
-               let openedDatabase = reportingDriver.currentDatabase, !openedDatabase.isEmpty {
-                activeSessions[connection.id]?.browseDatabase = openedDatabase
-                activeSessions[connection.id]?.openedDatabase = openedDatabase
-            }
+            let openedDatabase = adoptReportedPosition(of: driver, for: connection.id)
 
             await executePostConnectActions(
                 for: connection, resolvedConnection: resolvedConnection, driver: driver
@@ -164,7 +156,7 @@ extension DatabaseManager {
             )
             dialedConnections[connection.id] = routedConnection
             session.commitMode = session.connection.commitMode
-            session.driver = driver
+            session.install(driver, openedDatabase: openedDatabase)
             session.status = driver.status
             session.effectiveConnection = effectiveConnection
             session.connectionWarning = openingWarning(driver: driver, startupFailures: startupFailures, for: connection.id)
@@ -276,6 +268,30 @@ extension DatabaseManager {
             )
             throw error
         }
+    }
+
+    // Where the driver says it opened, before any post-connect action moves it. The install records it as opened.
+    private func adoptReportedPosition(of driver: DatabaseDriver, for connectionId: UUID) -> String? {
+        if let schemaDriver = driver as? SchemaSwitchable {
+            activeSessions[connectionId]?.browseSchema = schemaDriver.currentSchema
+        }
+        let openedDatabase = ConnectionSession.openedDatabase(reportedBy: driver)
+        if let openedDatabase {
+            activeSessions[connectionId]?.browseDatabase = openedDatabase
+        }
+        return openedDatabase
+    }
+
+    // A fixed engine's reconnect can open another database than the one browsed, as a project or path resolved again
+    // does. The cursor follows it the way a switch moves it, so the window never shows one database under another's name.
+    internal func followReconnectedDatabase(_ opened: String?, for connectionId: UUID) {
+        guard let opened, let session = activeSessions[connectionId],
+              !pluginManager.supportsDatabaseSwitching(for: session.connection.type),
+              session.resolvedBrowseDatabase != opened
+        else { return }
+        updateSession(connectionId) { $0.browseDatabase = opened }
+        showBrowsedCatalog(connectionId)
+        AppEvents.shared.browseContainerChanged.send(connectionId)
     }
 
     private func prepareConnectingSession(for connection: DatabaseConnection) -> Int {
@@ -480,6 +496,7 @@ extension DatabaseManager {
                         throw DatabaseError.notConnected
                     }
                     try await plugin.switchDatabase(to: database)
+                    noteExecutionDatabase(database, on: current, for: connectionId)
                     let schemaDriver = current as? SchemaSwitchable
                     if grouping == .bySchema, let schemaDriver {
                         await resetSchema(on: schemaDriver, to: pm?.schema.defaultSchemaName)
@@ -1277,6 +1294,7 @@ extension DatabaseManager {
         postDisconnectScripts.fire(for: connectionId)
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         sessionLanes.closeAll(for: connectionId)
+        executionPositions.removeValue(forKey: connectionId)
         monitorPingedDrivers.removeValue(forKey: connectionId)
         sessionDriverGate.drain(connectionId: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)

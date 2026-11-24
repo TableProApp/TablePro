@@ -143,6 +143,9 @@ final class DatabaseManager: ObservableObject {
     /// The connections a session keeps on databases it is not browsing. See `SessionLanes`.
     internal let sessionLanes = SessionLanes()
 
+    // Where a pin last moved each session's driver, which the browse cursor does not follow.
+    internal var executionPositions: [UUID: ExecutionPosition] = [:]
+
     /// Which session connections hold a transaction, recorded after every turn on them.
     internal lazy var sessionTransactions = SessionTransactionTracker { [weak self] key, driver in
         self?.isLiveSessionDriver(driver, for: key) ?? false

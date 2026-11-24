@@ -22,6 +22,7 @@ extension PluginMetadataRegistry {
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: false,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: false,

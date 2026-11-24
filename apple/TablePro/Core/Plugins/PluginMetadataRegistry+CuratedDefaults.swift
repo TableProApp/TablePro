@@ -374,6 +374,7 @@ extension PluginMetadataRegistry {
                 ),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -447,6 +448,7 @@ extension PluginMetadataRegistry {
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -515,6 +517,7 @@ extension PluginMetadataRegistry {
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -588,6 +591,7 @@ extension PluginMetadataRegistry {
                 ),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: false,

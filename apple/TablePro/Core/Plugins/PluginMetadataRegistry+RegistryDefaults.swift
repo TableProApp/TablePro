@@ -318,6 +318,7 @@ extension PluginMetadataRegistry {
                 structureEditing: SchemaEditingSupport(foreignKeyEdit: .alter),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: false,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -524,6 +525,7 @@ extension PluginMetadataRegistry {
                 structureEditing: SchemaEditingSupport(columnReorder: .alter, foreignKeyEdit: .alter),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -586,6 +588,7 @@ extension PluginMetadataRegistry {
                 structureEditing: SchemaEditingSupport(foreignKeyEdit: .alter),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -653,6 +656,7 @@ extension PluginMetadataRegistry {
                 structureEditing: SchemaEditingSupport(columnReorder: .alter, foreignKeyEdit: .unsupported),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
+                    statementsCanSwitchDatabase: false,
                     supportsImport: true,
                     supportsExport: true,
                     supportsSSH: true,
@@ -975,6 +979,7 @@ extension PluginMetadataRegistry {
                 structureEditing: SchemaEditingSupport(columnReorder: .rebuild, foreignKeyEdit: .rebuild),
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
+                    statementsCanSwitchDatabase: false,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: false,

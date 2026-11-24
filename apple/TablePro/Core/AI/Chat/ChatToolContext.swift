@@ -5,6 +5,12 @@
 
 import Foundation
 
+// Where a call runs and the connect it was resolved on: a reconnect after the card makes it a call nobody approved.
+struct ChatRunTarget: Equatable, Sendable {
+    let scope: DatabaseScope
+    let driverGeneration: UUID?
+}
+
 // `connectionId` is the only connection a tool may act on: a tool never reads `connection_id` from the model's input,
 // which once let an approval for one connection run a statement on another. `ChatToolTarget` is the one door.
 struct ChatToolContext: Sendable {
@@ -24,6 +30,10 @@ struct ChatToolContext: Sendable {
     // this statement on this connection. A grant from `aiAlwaysAllowedTools` is consent to the tool, not the statement.
     let approvalWasExplicit: Bool
 
+    // Where this call's card said it runs, resolved when the card was drawn; the call runs there, not wherever the
+    // connection browses by the time the user answers.
+    let shownTarget: ChatRunTarget?
+
     private let policyLookup: PolicyLookup
 
     init(
@@ -33,6 +43,7 @@ struct ChatToolContext: Sendable {
         chatMode: AIChatMode,
         sessionId: UUID? = nil,
         approvalWasExplicit: Bool = false,
+        shownTarget: ChatRunTarget? = nil,
         policyLookup: @escaping PolicyLookup = ChatToolContext.savedPolicy
     ) {
         self.connectionId = connectionId
@@ -41,11 +52,12 @@ struct ChatToolContext: Sendable {
         self.chatMode = chatMode
         self.sessionId = sessionId
         self.approvalWasExplicit = approvalWasExplicit
+        self.shownTarget = shownTarget
         self.policyLookup = policyLookup
     }
 
     // One context serves a round's blocks, some running at once, so each block's approval is bound to a copy.
-    func carrying(approvalWasExplicit: Bool) -> ChatToolContext {
+    func carrying(approvalWasExplicit: Bool, shownTarget: ChatRunTarget? = nil) -> ChatToolContext {
         ChatToolContext(
             connectionId: connectionId,
             bridge: bridge,
@@ -53,6 +65,7 @@ struct ChatToolContext: Sendable {
             chatMode: chatMode,
             sessionId: sessionId,
             approvalWasExplicit: approvalWasExplicit,
+            shownTarget: shownTarget,
             policyLookup: policyLookup
         )
     }

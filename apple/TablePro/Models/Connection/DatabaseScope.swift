@@ -31,6 +31,9 @@ struct DatabaseScope: Hashable, Sendable {
     /// pin, which is what a connection in that state did before it had a scope at all.
     var isServerScoped: Bool { database.isEmpty }
 
+    // A fixed engine whose driver reported no database runs SQL in its own without naming it, schema still honored.
+    var namedDatabase: String? { database.isEmpty ? nil : database }
+
     var qualifiedDescription: String {
         guard let schema else { return database }
         return "\(database).\(schema)"

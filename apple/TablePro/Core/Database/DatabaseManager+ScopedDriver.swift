@@ -37,6 +37,17 @@ private enum TableReadTurn: Sendable {
     case moved(ScopedDriverRoute)
 }
 
+// Throws to refuse work before its lease changes anything on the connection.
+internal typealias ScopedDriverAdmission = @MainActor @Sendable () throws -> Void
+
+// Weak and compared by identity: a reconnect's driver is not the one a pin moved. `moves` is the driver's count of texts
+// that may move its database when the host placed it, so a later one makes the position unknown.
+internal struct ExecutionPosition {
+    weak var driver: AnyObject?
+    let database: String
+    let moves: Int
+}
+
 extension DatabaseManager {
     /// A metadata read needs no transaction, no temp tables and no cancellation handle,
     /// so it takes a pooled connection and leaves the shared driver where it is.
@@ -116,6 +127,8 @@ extension DatabaseManager {
     // `cancellation` decides whether Stop, or a navigation that supersedes a tab, can reach the leased driver. The
     // parameter has no default on purpose: a new call site must state which it is, because getting it wrong silently
     // either makes a query uncancellable or makes a commit killable.
+    // `admit` runs inside the lease, before it takes a lost session's report, opens or closes a connection or pins, so
+    // work it refuses changes nothing on the connection.
     func withScopedDriver<T: Sendable>(
         scope: DatabaseScope,
         route: ScopedDriverRoute,
@@ -123,6 +136,7 @@ extension DatabaseManager {
         cancellation: DriverCancellationPolicy,
         sessionWork: SessionWork = .app,
         readsOnly: Bool = false,
+        admit: ScopedDriverAdmission? = nil,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
         try await Self.unboxed(
@@ -132,7 +146,8 @@ extension DatabaseManager {
                 workload: workload,
                 cancellation: cancellation,
                 sessionWork: sessionWork,
-                readsOnly: readsOnly
+                readsOnly: readsOnly,
+                admit: admit
             ) { driver in
                 try await body(driver)
             }
@@ -147,6 +162,7 @@ extension DatabaseManager {
         cancellation: DriverCancellationPolicy,
         sessionWork: SessionWork,
         readsOnly: Bool,
+        admit: ScopedDriverAdmission? = nil,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> any Sendable
     ) async throws -> any Sendable {
         let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
@@ -154,12 +170,14 @@ extension DatabaseManager {
         case .unavailable(let message):
             throw DatabaseError.queryFailed(message)
         case .pooled:
+            // The pool runs on this actor, so nothing lands between the check and its first suspension.
+            try admit?()
             return try await MetadataConnectionPool.shared.withDriver(
                 scope: scope, workload: workload, leased
             )
         case .sessionDriver:
             return try await withPinnedSessionDriver(
-                scope: scope, sessionWork: sessionWork, readsOnly: readsOnly, leased
+                scope: scope, sessionWork: sessionWork, readsOnly: readsOnly, admit: admit, leased
             )
         }
     }
@@ -448,9 +466,10 @@ extension DatabaseManager {
         scope: DatabaseScope,
         sessionWork: SessionWork,
         readsOnly: Bool,
+        admit: ScopedDriverAdmission?,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        try await withSessionDriverTurn(scope: scope, sessionWork: sessionWork, readsOnly: readsOnly) { driver in
+        try await withSessionDriverTurn(scope: scope, sessionWork: sessionWork, readsOnly: readsOnly, admit: admit) { driver in
             try await tracedPin(driver, to: scope)
             return try await body(driver)
         }
@@ -476,6 +495,7 @@ extension DatabaseManager {
         scope: DatabaseScope,
         sessionWork: SessionWork,
         readsOnly: Bool = false,
+        admit: ScopedDriverAdmission? = nil,
         _ turn: (DatabaseDriver) async throws -> R
     ) async throws -> R {
         let connectionId = scope.connectionId
@@ -511,6 +531,7 @@ extension DatabaseManager {
                 guard isUsable(connectionId), let browsedDriver = activeSessions[connectionId]?.driver else {
                     throw DatabaseError.notConnected
                 }
+                try admit?()
                 guard let lane else {
                     // A driver replaced while it held a transaction or session state, by a reconnect or a Vault lease
                     // rotation.
@@ -808,9 +829,35 @@ extension DatabaseManager {
                 }
             } else if let plugin = driver.plugin {
                 try await plugin.switchDatabase(to: scope.database)
+                noteExecutionDatabase(scope.database, on: driver, for: scope.connectionId)
             }
         }
         guard let schema = scope.schema, let schemaDriver = driver as? SchemaSwitchable else { return }
         try await schemaDriver.switchSchemaIfNeeded(to: schema)
+    }
+
+    // Where the session's driver executes, nil when unknown. A pin moves it without moving the browse cursor; one the
+    // host has not moved is where its connect, restore or switch put it, which is the browse cursor. Once a text it sent
+    // may have moved it, startup SQL included, only a driver that reports its database can say where. So too for a
+    // driver that names its database on each request and was placed in none: the server's default for the user
+    // answers, which another statement or client can change.
+    func executionDatabase(for connectionId: UUID) -> String? {
+        guard let session = activeSessions[connectionId] else { return nil }
+        guard let driver = session.driver else { return session.resolvedBrowseDatabase }
+        let position = executionPositions[connectionId].flatMap { $0.driver === driver ? $0 : nil }
+        let reported = (driver as? DatabaseReporting)?.currentDatabase
+        guard driver.databaseMoves > (position?.moves ?? 0) else {
+            let placed = position?.database ?? session.resolvedBrowseDatabase
+            guard placed.isEmpty, !pluginManager.statementsCanSwitchDatabase(for: session.connection.type) else {
+                return placed
+            }
+            return reported
+        }
+        return reported
+    }
+
+    func noteExecutionDatabase(_ database: String, on driver: DatabaseDriver, for connectionId: UUID) {
+        guard activeSessions[connectionId]?.driver === driver else { return }
+        executionPositions[connectionId] = ExecutionPosition(driver: driver, database: database, moves: driver.databaseMoves)
     }
 }

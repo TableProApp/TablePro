@@ -33,23 +33,26 @@ nonisolated internal enum SQLiteMaintenance {
         PluginMaintenanceOperation(name: integrityCheck, appliesTo: [], scope: .database)
     ]
 
-    /// `schema` names an attached database. Each statement then targets that file: unqualified,
-    /// `VACUUM` and `integrity_check` act on the main one and `ANALYZE` on every one.
+    // A named schema, `main` included, qualifies every form: unqualified, `ANALYZE` and `integrity_check` act on every
+    // attached database and a table name resolves in `temp` first. Unqualified `VACUUM` is main's own.
     internal static func statements(operation: String, table: String?, schema: String? = nil) -> [String]? {
+        let named = schema.flatMap { $0.isEmpty ? nil : sqliteQuoteIdentifier($0) }
         let attached = SQLiteMasterQueries.attachedSchema(schema).map(sqliteQuoteIdentifier)
-        let qualifiedTable = table.map {
-            SQLiteMasterQueries.qualifiedTable($0, schema: schema, quote: sqliteQuoteIdentifier)
+        let qualifiedTable = table.map { name in
+            named.map { "\($0).\(sqliteQuoteIdentifier(name))" } ?? sqliteQuoteIdentifier(name)
         }
         switch operation {
         case vacuum:
             return [attached.map { "\(vacuum) \($0)" } ?? vacuum]
         case analyze:
-            return [(qualifiedTable ?? attached).map { "ANALYZE \($0)" } ?? "ANALYZE"]
+            return [(qualifiedTable ?? named).map { "ANALYZE \($0)" } ?? "ANALYZE"]
         case reindex:
-            // A bare `REINDEX auth` reads `auth` as a collation or a table name, never as a database.
-            return [qualifiedTable.map { "REINDEX \($0)" } ?? "REINDEX"]
+            // No form rebuilds one schema: a bare `REINDEX` rebuilds every attached database, and `REINDEX auth` reads
+            // `auth` as a collation or a table name.
+            if let qualifiedTable { return ["REINDEX \(qualifiedTable)"] }
+            return named == nil ? ["REINDEX"] : nil
         case integrityCheck:
-            return [attached.map { "PRAGMA \($0).integrity_check" } ?? "PRAGMA integrity_check"]
+            return [named.map { "PRAGMA \($0).integrity_check" } ?? "PRAGMA integrity_check"]
         default:
             return nil
         }

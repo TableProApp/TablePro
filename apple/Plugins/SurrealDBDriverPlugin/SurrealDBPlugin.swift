@@ -16,6 +16,8 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "SurrealDB"
     static let iconName = "surrealdb-icon"
     static let defaultPort = 8000
+    // Each HTTP request carries the namespace and database headers, so a `USE` in one query does not outlast it.
+    static let statementsCanSwitchDatabase = false
 
     static let connectionMode: ConnectionMode = .network
     static let isDownloadable = true
@@ -36,6 +38,7 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
+    static let schemaSwitchScopesUnqualifiedNames = true
     static let databaseGroupingStrategy: GroupingStrategy = .bySchema
     static let containerEntityName = "Namespace"
     static let schemaEntityName = "Database"

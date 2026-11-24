@@ -34,6 +34,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         var signInServerVersion: String?
         // Only a yes is kept, so the driver's own code is not asked again on every read.
         var buildsBrowseQueries = false
+        var databaseMoves = 0
     }
 
     let connection: DatabaseConnection
@@ -426,14 +427,38 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     // MARK: - Query Execution
 
+    // Texts this driver sent that may have left its session in another database, counted before each goes out so a
+    // failed or cancelled one counts too. The host compares it with the count where it last placed the driver.
+    var databaseMoves: Int { state.withLock { $0.databaseMoves } }
+
+    // The door every text takes to the plugin: a NUL is refused, and one that may move the database is counted.
+    func admit(_ statement: String) throws {
+        try StatementTextValidator.validate(statement)
+        noteDatabaseMoves([statement])
+    }
+
+    // An engine the classifier has no reading for is not ruled out, unless no statement can move its database at all.
+    func noteDatabaseMoves(_ texts: [String]) {
+        let databaseType = connection.type
+        guard !texts.isEmpty,
+              PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.statementsCanSwitchDatabase ?? true
+        else { return }
+        if let dialect = SQLSessionDialect(TransactionEngineFamily.of(databaseType)) {
+            let grammar = SQLLexicalResolver.readings(for: databaseType, session: pluginDriver.sessionLexicalState).execution
+            guard SQLSessionStateClassifier.mayChangeDatabase(ofStatements: texts, dialect: dialect, grammar: grammar)
+            else { return }
+        }
+        state.withLock { $0.databaseMoves += 1 }
+    }
+
     func execute(query: String) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         let pluginResult = try await pluginDriver.execute(query: query, context: statementContext(query))
         return mapQueryResult(pluginResult)
     }
 
     func executeRead(query: String) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         var context = PluginStatementContext()
         context.readOnly = true
         context.lexicalFeatures = sessionLexicalFeatures
@@ -467,7 +492,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         guard let pluginResult = try await pluginDriver.executeBoundedQuery(query: query, rowCap: rowCap) else {
             return nil
         }
@@ -479,7 +504,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func executeBatch(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryBatchResult? {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         guard let batch = try await pluginDriver.executeBatch(
             query: query,
             rowCap: rowCap,
@@ -515,6 +540,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             items.append(pluginStatement(for: statement))
         }
         guard !items.isEmpty else { return refusal.map { [.failed($0)] } }
+        noteDatabaseMoves(items.map(\.query))
         guard let answered = try await pluginDriver.executeStatements(items) else { return nil }
         var outcomes: [BatchedStatementOutcome] = []
         for answer in answered.prefix(items.count) {
@@ -544,8 +570,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         )
     }
 
+    // The subject itself is read, whatever the driver wraps it in: SQL Server runs a `USE` under SHOWPLAN too.
     func explainPlan(statement: String, variantId: String) async throws -> QueryResult {
-        try StatementTextValidator.validate(statement)
+        try admit(statement)
         return mapQueryResult(try await pluginDriver.explainPlan(statement: statement, variantId: variantId))
     }
 
@@ -706,6 +733,11 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     var checkConstraintRefusal: String? { pluginDriver.checkConstraintRefusal }
 
+    // A raw condition is text the user wrote, which the driver writes into its count.
+    private func noteRawFilterMoves(_ filters: [PluginQueryFilter]) {
+        noteDatabaseMoves(filters.filter { $0.column == TableFilter.rawSQLColumn }.map(\.value))
+    }
+
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
         try await pluginDriver.fetchApproximateRowCount(
             table: table, schema: readSchema(schema)
@@ -717,6 +749,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         let queryFilters = filters
             .filter { $0.isEnabled && !$0.columnName.isEmpty }
             .map(\.asPluginQueryFilter)
+        noteRawFilterMoves(queryFilters)
         return try await pluginDriver.fetchFilteredRowCount(
             table: table,
             queryFilters: queryFilters,
@@ -734,6 +767,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         let queryFilters = filters
             .filter { $0.isEnabled && !$0.columnName.isEmpty }
             .map(\.asPluginQueryFilter)
+        noteRawFilterMoves(queryFilters)
         return try await pluginDriver.fetchExactRowCount(
             table: table,
             schema: readSchema(schema),
@@ -743,7 +777,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchExactRowCount(table: String, schema: String?, browseFilters: [PluginQueryFilter]) async throws -> Int? {
-        try await pluginDriver.fetchExactRowCount(
+        noteRawFilterMoves(browseFilters)
+        return try await pluginDriver.fetchExactRowCount(
             table: table,
             schema: readSchema(schema),
             queryFilters: browseFilters,
@@ -1342,7 +1377,7 @@ private extension PluginDriverAdapter {
 
 extension PluginDriverAdapter {
     func execute(query: String, context: PluginStatementContext) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         try refuseUnenforcedPolicy(context)
         let pluginResult = try await pluginDriver.execute(query: query, context: statementContext(query, approvedAs: context))
         return mapQueryResult(pluginResult)
@@ -1357,7 +1392,7 @@ extension PluginDriverAdapter {
         parameters: [Any?],
         context: PluginStatementContext
     ) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         try refuseUnenforcedPolicy(context)
         let pluginResult = try await pluginDriver.executeParameterized(
             query: query,
@@ -1373,7 +1408,7 @@ extension PluginDriverAdapter {
         parameters: [Any?]?,
         context: PluginStatementContext
     ) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
+        try admit(query)
         try refuseUnenforcedPolicy(context)
         let pluginResult = try await pluginDriver.executeUserQuery(
             query: query,

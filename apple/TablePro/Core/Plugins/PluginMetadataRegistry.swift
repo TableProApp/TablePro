@@ -34,6 +34,9 @@ struct PluginMetadataSnapshot: Sendable {
 
     struct CapabilityFlags: Sendable {
         let supportsSchemaSwitching: Bool
+        var schemaSwitchScopesUnqualifiedNames: Bool = false
+        // False where the database is named per request or per session object, so no statement the driver sends moves it.
+        var statementsCanSwitchDatabase: Bool = true
         let supportsImport: Bool
         let supportsExport: Bool
         let supportsSSH: Bool
@@ -788,6 +791,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             structureEditing: existingSnapshot?.structureEditing ?? SchemaEditingSupport(),
             capabilities: PluginMetadataSnapshot.CapabilityFlags(
                 supportsSchemaSwitching: driverType.supportsSchemaSwitching,
+                schemaSwitchScopesUnqualifiedNames: driverType.schemaSwitchScopesUnqualifiedNames,
+                statementsCanSwitchDatabase: driverType.statementsCanSwitchDatabase,
                 supportsImport: driverType.supportsImport,
                 supportsExport: driverType.supportsExport,
                 supportsSSH: driverType.supportsSSH,

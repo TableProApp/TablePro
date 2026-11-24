@@ -15,6 +15,8 @@ final class FirebasePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Cloud Firestore"
     static let iconName = "firebase-icon"
     static let defaultPort = 0
+    // The database belongs to the session object, which no query can change.
+    static let statementsCanSwitchDatabase = false
     static let isDownloadable = true
 
     static func driverVariant(for databaseTypeId: String) -> String? {
