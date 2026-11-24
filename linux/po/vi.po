@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-11-24 06:42+0000\n"
+"POT-Creation-Date: 2026-11-24 08:42+0000\n"
 "PO-Revision-Date: 2026-11-06 20:33+0700\n"
 "Last-Translator: TablePro Authors <hello@tablepro.app>\n"
 "Language-Team: Vietnamese\n"
@@ -3288,6 +3288,14 @@ msgstr[0] "Dịch vụ tài khoản đang bận. Hãy thử lại sau {n} phút.
 #: crates/app/src/ui/error_text/account.rs
 msgid "The account service is busy. Try again in a few minutes."
 msgstr "Dịch vụ tài khoản đang bận. Hãy thử lại sau vài phút."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "TablePro could not use this account server."
+msgstr "TablePro không dùng được máy chủ tài khoản này."
+
+#: crates/app/src/ui/error_text/account.rs
+msgid "The account server’s TablePro license could not be verified."
+msgstr "Không xác minh được giấy phép TablePro của máy chủ tài khoản."
 
 #: crates/app/src/ui/error_text/account.rs
 #, rust-format
