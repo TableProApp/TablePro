@@ -1,10 +1,347 @@
-<?xml version="1.0" standalone="yes"?>
-<!-- sparkle-sign-warning:
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
--->
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>TablePro</title>
+        <item>
+            <title>0.89.0-beta.1</title>
+            <pubDate>Tue, 24 Nov 2026 06:14:12 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>890001</sparkle:version>
+            <sparkle:shortVersionString>0.89.0-beta.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.89.0-beta.1
+
+### Added
+
+- The connection password can be set to store in the Keychain or ask every time from a menu. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- A connection can carry an Environment label: Production, Staging, Development or Local. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- SurrealDB statement completions in the editor once connected. ([#4399](https://github.com/TableProApp/TablePro/pull/4399))
+- Picking a custom slash command that uses {{body}} puts it in the AI chat composer to finish before sending. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Keyboard shortcut rows have a context menu with Record Shortcut, Remove Shortcut and Reset to Default. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Extensions installs several plugins at once with Install from File…, or by dropping them on the pane. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Manage Themes is its own page in Appearance, and Undo of a theme change still works after going Back. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Each AI provider opens as its own page, with Edit Connection… for its name, Base URL and API key. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings > Account has Devices, Teams, and Offline File and License Key pages, and Sign Out… asks first. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Custom slash commands have their own page in Settings > AI. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- General has Software Update and Command Line Tool pages, and the Software Update row shows a pending update. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings > MCP has Tokens and Approved Connections pages. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings pages keep Back and Forward history, and tablepro://settings links can open a page inside a pane. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- SSH profiles can be duplicated, and SSH passwords, passphrases and TOTP secrets have Show toggles. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Paste a connection URL into Host to fill the connection editor. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Test Connection shows the server version and time, and names the step that failed. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Closing or quitting with unsaved connection edits asks whether to save them. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Copy a connection as a URL, without its passwords, from the connection editor. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Option-click on a close button asks one Review Changes question for every window with unsaved changes. ([#4431](https://github.com/TableProApp/TablePro/pull/4431))
+- SQLite CHECK value lists now also show in completion, Generate Rows and the MCP describe_table tool. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- Each filter row has a play button, and Option-Command-Return, to apply only that row without changing any checkbox. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+
+### Changed
+
+- The macOS connection editor is one scrolling form instead of a sidebar of panes. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- Refine the macOS connection form: tinted engine tiles in the Type row and database chooser, a resizable chooser sheet, and consistent notice, editor and remove-button styles. ([#4398](https://github.com/TableProApp/TablePro/pull/4398))
+- Compare & Sync is now a module in Settings > Extensions: it stays on for existing installs and starts off on new ones. ([#4404](https://github.com/TableProApp/TablePro/pull/4404))
+- The connection editor opens on the core fields, with SSL, tunnels, appearance and advanced options behind disclosures. ([#4410](https://github.com/TableProApp/TablePro/pull/4410))
+- Sync is now iCloud Sync, with What Syncs on the same page and editable while sync is off. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings > Data is regrouped, and Query result limit is one pop-up with a No limit choice. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Linked Folders and Trusted Links moved to Settings > Connections, and Forget All… asks first. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Revoke… for MCP tokens and Forget All… for approved connections ask before they act. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Uninstalling an extension moves it to the Trash. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The Settings window can be minimized, and its size resets once to fit the new layout. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Reassigning a shortcut held by several actions names each one and clears them all in one step. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Clear Saved Changes in Data Rewind works without a license. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- SSH Servers in Settings > Profiles is now SSH Profiles. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Keyboard settings search sits in the toolbar, and Restore Defaults… asks before resetting every shortcut. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings moved to a macOS sidebar layout, with General split into General, Sidebar & Tabs and Connections. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The device limit and offline file notices open the matching page in Settings > Account. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Show line numbers moved under Gutter in Editor settings, and SQL Formatting shows its preview first. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The Default AI policy in Settings > AI and the connection form's AI Policy show while AI features are off. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Lists in Settings have a native add and remove bar inside their border. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The long-running work threshold in Notifications can be changed while notifications are off. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings labels lost their trailing colons, and help moved from tooltips into subtitles. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The Welcome window opens faster, and the tags you filter by show in a bar above the connection list. ([#4415](https://github.com/TableProApp/TablePro/pull/4415))
+- Environment shows on Welcome rows and in the connection switcher, and Production defaults Safe Mode to Alert. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- The connection editor is a window with a sidebar of sections, and New Connection asks for the database type first. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Scrolling a grid with hundreds of columns uses about a third less CPU. ([#4426](https://github.com/TableProApp/TablePro/pull/4426))
+- Switching to or opening a table with hundreds of columns is more than twice as fast. ([#4426](https://github.com/TableProApp/TablePro/pull/4426))
+- TablePro opens faster, most of all when it runs in a language other than English. ([#4430](https://github.com/TableProApp/TablePro/pull/4430))
+- Deleting a connection also deletes its agent sessions and their conversations. ([#4431](https://github.com/TableProApp/TablePro/pull/4431))
+- Open Quickly no longer reloads the database and schema lists after you open a table or run a query. ([#4433](https://github.com/TableProApp/TablePro/pull/4433))
+- The sidebar filter shows each key at once when the list redraws quickly, instead of waiting 150 ms after every key. ([#4433](https://github.com/TableProApp/TablePro/pull/4433))
+- Open Quickly updates its results while you type on catalogs with tens of thousands of tables. ([#4433](https://github.com/TableProApp/TablePro/pull/4433))
+- SQL exports run about ten times faster, and XLSX exports are about a tenth of their old size. ([#4434](https://github.com/TableProApp/TablePro/pull/4434))
+- Exports of very wide rows, and ClickHouse exports, no longer hold the whole result in memory. ([#4434](https://github.com/TableProApp/TablePro/pull/4434))
+- Switching back to a database browsed in the last five minutes shows its objects without reading them again. ([#4445](https://github.com/TableProApp/TablePro/pull/4445))
+- A COMMIT or ROLLBACK of data changes no longer rereads the sidebar; DDL inside the transaction still refreshes it. ([#4445](https://github.com/TableProApp/TablePro/pull/4445))
+- Opening a table and saving a change send fewer queries, and a table's keys no longer wait for its row estimate. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- The first query on a PostgreSQL connection no longer waits for a savepoint check. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- A SELECT in a query tab no longer counts the whole table it reads from. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- The filter bar shows whether its rows are applied, and Clear is now Turn Off. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Filter settings moved from the filter bar to Settings > Data > Filters. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+
+### Removed
+
+- TablePro no longer keeps a table load timing history file, and removes the one older versions left. ([#4435](https://github.com/TableProApp/TablePro/pull/4435))
+
+### Fixed
+
+- The same connect timeout resolved to different values on macOS and iOS. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- Closing the connection editor during a connection test left the test's password in the Keychain. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- Editing a connection deleted on another device opened a blank form that only failed on Save. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- Reveal the connection form’s Advanced section when a field hidden inside it fails validation. ([#4398](https://github.com/TableProApp/TablePro/pull/4398))
+- Copied SQL Server connection URLs started with `sql server://` once the driver had loaded. ([#4399](https://github.com/TableProApp/TablePro/pull/4399))
+- DuckDB: an empty binary value saved or imported into a BLOB column stays empty instead of turning into NULL. ([#4400](https://github.com/TableProApp/TablePro/pull/4400))
+- On iOS, a SQLite table's generated columns were missing from its structure. ([#4405](https://github.com/TableProApp/TablePro/pull/4405))
+- SQLite: a statement given fewer values than it has placeholders ran with NULL in the rest instead of failing. ([#4405](https://github.com/TableProApp/TablePro/pull/4405))
+- SQLite: an empty binary value saved or imported into a BLOB column stays empty instead of turning into NULL. ([#4405](https://github.com/TableProApp/TablePro/pull/4405))
+- On iOS, an Oracle connection waited 30 seconds to sign in, whatever connect timeout it had. ([#4407](https://github.com/TableProApp/TablePro/pull/4407))
+- On iOS, an Oracle table's identity and virtual columns were offered as ordinary values in the new row form. ([#4407](https://github.com/TableProApp/TablePro/pull/4407))
+- After a slash command filled the AI chat composer, typed text landed before the command. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings pop-ups were blank when a stored value, such as a page size or a removed font, was not on the list. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- TablePro notifications stayed silent when Play sound for notifications was on in System Settings. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Saving an SSH profile while the Keychain was locked deleted its stored password, passphrase or TOTP secret. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Clearing Query History or Data Rewind could fail without showing an error. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- A custom slash command typed with text after its name went to the model as plain text. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The query timeout field in the connection form read Global (0) instead of the time it inherits. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- A connection's secrets could be deleted when its SSH or credential profile changed while the editor was open. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- The file panel froze the app while browsing the Documents folder. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Saving a connection reverted a rename, group move or Safe Mode change made elsewhere while the editor was open. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Save stayed disabled by a field that was not on screen. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Test Connection kept showing Connected after the host or password changed. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Port fields accepted 0, 99999 or a port with spaces. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- JSON values over 500,000 characters showed unindented in the inspector, the JSON viewer and Pretty Print. ([#4427](https://github.com/TableProApp/TablePro/pull/4427))
+- The JSON result view counted rows past the 50,000 it shows. ([#4427](https://github.com/TableProApp/TablePro/pull/4427))
+- Stepping through rows with a large JSON value in the inspector took seconds per row. ([#4427](https://github.com/TableProApp/TablePro/pull/4427))
+- Typing, completion and running the statement at the caret got slower as a script grew. ([#4428](https://github.com/TableProApp/TablePro/pull/4428))
+- Opening a long script in a window's first editor took seconds and gigabytes of memory. ([#4428](https://github.com/TableProApp/TablePro/pull/4428))
+- Accessibility apps read a wrong character count from the query editor when the text held emoji. ([#4428](https://github.com/TableProApp/TablePro/pull/4428))
+- Vim commands like x, r, ~ and o added or removed auto-paired brackets and quotes. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Switching query tabs carried the previous tab's caret and scroll position into the new tab. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Approved write tool calls from one AI chat reply could run at the same time and out of order. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Clicking a Redis database replaced the selected tab and its unsaved commands, staged edits or sort. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- A jump host that asks for a code after the key (publickey,keyboard-interactive) could not sign in. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Closing a connection that was still connecting left its SSH tunnel open until quit. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Transfer Tables wrote into the destination session's current schema; it now has a Schema picker. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Typing in a value window popped out of the inspector could change a row in another tab or another record. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Save and Save on close wrote a query result's edits but skipped the tab's unsaved .sql file. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Syncing a settings change from an older Mac reset options a newer build had set, such as Emacs key bindings. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- View ER Diagram was missing from the Favorites menu for a table in a schema named default. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- An ER diagram of a schema named default refreshed and saved against the schema the sidebar moved to. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Clear All in the query parameter panel cleared only the last parameter. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Stop and keep what ran in Compare & Sync reported changes PostgreSQL had rolled back as applied. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Long AI chat conversations with tool calls stopped sending after the transcript was trimmed. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Compare & Sync Apply sent its own BEGIN and COMMIT into a transaction already open on DuckDB or PGlite. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Compare & Sync listed tables, views and routines in two schemas as one-sided instead of pairing them. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Compare showed a timestamptz copied into a column without a time zone as changed after every sync. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Compare & Sync offered to create or drop a table whose counterpart in the other schema could not be read. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Hide Column and Show All Columns did nothing in the Structure tab. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Vim's . repeated an older change instead of the last one, such as dd, J, ~ or text typed in Insert mode. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- A moved column snapped back in a query result that had a hidden column. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- The window's close button closed it without asking about unsaved changes or running work. ([#4431](https://github.com/TableProApp/TablePro/pull/4431))
+- Every closed connection window stayed in memory, about 47 MB each. ([#4431](https://github.com/TableProApp/TablePro/pull/4431))
+- Pressing Return right after typing in the Welcome search could select a connection the search was about to hide. ([#4432](https://github.com/TableProApp/TablePro/pull/4432))
+- Excel repaired an XLSX export holding a value over 32,767 characters; such values are now cut, with a warning. ([#4434](https://github.com/TableProApp/TablePro/pull/4434))
+- View state stayed behind for deleted connections and for every database file or link ever opened. ([#4435](https://github.com/TableProApp/TablePro/pull/4435))
+- A plugin installed from the registry without a build for this Mac's processor failed to load instead of updating. ([#4446](https://github.com/TableProApp/TablePro/pull/4446))
+- A capped PostgreSQL or SQLite query with parameters held its whole result in memory before cutting it to the limit. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- A large table's estimated row total went blank after saving an edit. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- A SQLite CHECK constraint listing numbers offered a value picker with blank entries. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- Share Result and Fetch All quoted the whole table's row count for a query result filtered by a WHERE clause. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- The Query menu's page commands could replace a query tab's SQL with a generated table query. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- Renaming or dropping a column in the Structure tab left filters on the old column. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Down and Return in a filter value could pick from a suggestion list that had already closed. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Search All Rows stopped filtering on the next page, sort or refresh. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Removing a filter row also ran unapplied edits in the other rows. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Hidden columns were missing from the filter column menu. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- The filter bar and status bar said no filter was applied while one still ran. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Filter presets forgot Match all or Match any. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Remove All Filters left an empty filter bar with no way to add a row. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Reopening a table ran its saved filter rows instead of the filter it was showing. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+
+### Security
+
+- An outside MCP server's token must be entered again when its address moves to another scheme, host or port. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- A synced SSH or credential profile deletion could mark an externally edited connections file as trusted. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- MCP explain_query with an actual plan committed its statement under Manual Commit. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- The AI chat's destructive tool ran in the current database while its approval card named another one. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- An AI or MCP call naming another database on SQLite ran in the current database instead of failing. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Publishing to the Team Catalog wrote tunnel commands and startup commands in plain text to the shared folder. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+
+[View release notes](https://github.com/TableProApp/TablePro/releases/tag/v0.89.0-beta.1)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.89.0-beta.1/TablePro-0.89.0-beta.1-arm64.tar.xz" length="29248924" type="application/octet-stream" sparkle:edSignature="mqc2pc4+yiI6NJG1IkNyYNK2RlwTNRiUw8EUx/wm2eHRrnZGkbO92To5AWp66Gy0doZVjWsj5+LU7Hpnm67RCQ=="/>
+        </item>
+        <item>
+            <title>0.89.0-beta.1</title>
+            <pubDate>Tue, 24 Nov 2026 06:14:12 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>890001</sparkle:version>
+            <sparkle:shortVersionString>0.89.0-beta.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.89.0-beta.1
+
+### Added
+
+- The connection password can be set to store in the Keychain or ask every time from a menu. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- A connection can carry an Environment label: Production, Staging, Development or Local. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- SurrealDB statement completions in the editor once connected. ([#4399](https://github.com/TableProApp/TablePro/pull/4399))
+- Picking a custom slash command that uses {{body}} puts it in the AI chat composer to finish before sending. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Keyboard shortcut rows have a context menu with Record Shortcut, Remove Shortcut and Reset to Default. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Extensions installs several plugins at once with Install from File…, or by dropping them on the pane. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Manage Themes is its own page in Appearance, and Undo of a theme change still works after going Back. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Each AI provider opens as its own page, with Edit Connection… for its name, Base URL and API key. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings > Account has Devices, Teams, and Offline File and License Key pages, and Sign Out… asks first. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Custom slash commands have their own page in Settings > AI. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- General has Software Update and Command Line Tool pages, and the Software Update row shows a pending update. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings > MCP has Tokens and Approved Connections pages. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings pages keep Back and Forward history, and tablepro://settings links can open a page inside a pane. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- SSH profiles can be duplicated, and SSH passwords, passphrases and TOTP secrets have Show toggles. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Paste a connection URL into Host to fill the connection editor. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Test Connection shows the server version and time, and names the step that failed. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Closing or quitting with unsaved connection edits asks whether to save them. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Copy a connection as a URL, without its passwords, from the connection editor. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Option-click on a close button asks one Review Changes question for every window with unsaved changes. ([#4431](https://github.com/TableProApp/TablePro/pull/4431))
+- SQLite CHECK value lists now also show in completion, Generate Rows and the MCP describe_table tool. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- Each filter row has a play button, and Option-Command-Return, to apply only that row without changing any checkbox. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+
+### Changed
+
+- The macOS connection editor is one scrolling form instead of a sidebar of panes. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- Refine the macOS connection form: tinted engine tiles in the Type row and database chooser, a resizable chooser sheet, and consistent notice, editor and remove-button styles. ([#4398](https://github.com/TableProApp/TablePro/pull/4398))
+- Compare & Sync is now a module in Settings > Extensions: it stays on for existing installs and starts off on new ones. ([#4404](https://github.com/TableProApp/TablePro/pull/4404))
+- The connection editor opens on the core fields, with SSL, tunnels, appearance and advanced options behind disclosures. ([#4410](https://github.com/TableProApp/TablePro/pull/4410))
+- Sync is now iCloud Sync, with What Syncs on the same page and editable while sync is off. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings > Data is regrouped, and Query result limit is one pop-up with a No limit choice. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Linked Folders and Trusted Links moved to Settings > Connections, and Forget All… asks first. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Revoke… for MCP tokens and Forget All… for approved connections ask before they act. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Uninstalling an extension moves it to the Trash. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The Settings window can be minimized, and its size resets once to fit the new layout. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Reassigning a shortcut held by several actions names each one and clears them all in one step. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Clear Saved Changes in Data Rewind works without a license. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- SSH Servers in Settings > Profiles is now SSH Profiles. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Keyboard settings search sits in the toolbar, and Restore Defaults… asks before resetting every shortcut. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings moved to a macOS sidebar layout, with General split into General, Sidebar & Tabs and Connections. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The device limit and offline file notices open the matching page in Settings > Account. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Show line numbers moved under Gutter in Editor settings, and SQL Formatting shows its preview first. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The Default AI policy in Settings > AI and the connection form's AI Policy show while AI features are off. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Lists in Settings have a native add and remove bar inside their border. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The long-running work threshold in Notifications can be changed while notifications are off. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings labels lost their trailing colons, and help moved from tooltips into subtitles. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The Welcome window opens faster, and the tags you filter by show in a bar above the connection list. ([#4415](https://github.com/TableProApp/TablePro/pull/4415))
+- Environment shows on Welcome rows and in the connection switcher, and Production defaults Safe Mode to Alert. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- The connection editor is a window with a sidebar of sections, and New Connection asks for the database type first. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Scrolling a grid with hundreds of columns uses about a third less CPU. ([#4426](https://github.com/TableProApp/TablePro/pull/4426))
+- Switching to or opening a table with hundreds of columns is more than twice as fast. ([#4426](https://github.com/TableProApp/TablePro/pull/4426))
+- TablePro opens faster, most of all when it runs in a language other than English. ([#4430](https://github.com/TableProApp/TablePro/pull/4430))
+- Deleting a connection also deletes its agent sessions and their conversations. ([#4431](https://github.com/TableProApp/TablePro/pull/4431))
+- Open Quickly no longer reloads the database and schema lists after you open a table or run a query. ([#4433](https://github.com/TableProApp/TablePro/pull/4433))
+- The sidebar filter shows each key at once when the list redraws quickly, instead of waiting 150 ms after every key. ([#4433](https://github.com/TableProApp/TablePro/pull/4433))
+- Open Quickly updates its results while you type on catalogs with tens of thousands of tables. ([#4433](https://github.com/TableProApp/TablePro/pull/4433))
+- SQL exports run about ten times faster, and XLSX exports are about a tenth of their old size. ([#4434](https://github.com/TableProApp/TablePro/pull/4434))
+- Exports of very wide rows, and ClickHouse exports, no longer hold the whole result in memory. ([#4434](https://github.com/TableProApp/TablePro/pull/4434))
+- Switching back to a database browsed in the last five minutes shows its objects without reading them again. ([#4445](https://github.com/TableProApp/TablePro/pull/4445))
+- A COMMIT or ROLLBACK of data changes no longer rereads the sidebar; DDL inside the transaction still refreshes it. ([#4445](https://github.com/TableProApp/TablePro/pull/4445))
+- Opening a table and saving a change send fewer queries, and a table's keys no longer wait for its row estimate. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- The first query on a PostgreSQL connection no longer waits for a savepoint check. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- A SELECT in a query tab no longer counts the whole table it reads from. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- The filter bar shows whether its rows are applied, and Clear is now Turn Off. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Filter settings moved from the filter bar to Settings > Data > Filters. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+
+### Removed
+
+- TablePro no longer keeps a table load timing history file, and removes the one older versions left. ([#4435](https://github.com/TableProApp/TablePro/pull/4435))
+
+### Fixed
+
+- The same connect timeout resolved to different values on macOS and iOS. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- Closing the connection editor during a connection test left the test's password in the Keychain. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- Editing a connection deleted on another device opened a blank form that only failed on Save. ([#4391](https://github.com/TableProApp/TablePro/pull/4391))
+- Reveal the connection form’s Advanced section when a field hidden inside it fails validation. ([#4398](https://github.com/TableProApp/TablePro/pull/4398))
+- Copied SQL Server connection URLs started with `sql server://` once the driver had loaded. ([#4399](https://github.com/TableProApp/TablePro/pull/4399))
+- DuckDB: an empty binary value saved or imported into a BLOB column stays empty instead of turning into NULL. ([#4400](https://github.com/TableProApp/TablePro/pull/4400))
+- On iOS, a SQLite table's generated columns were missing from its structure. ([#4405](https://github.com/TableProApp/TablePro/pull/4405))
+- SQLite: a statement given fewer values than it has placeholders ran with NULL in the rest instead of failing. ([#4405](https://github.com/TableProApp/TablePro/pull/4405))
+- SQLite: an empty binary value saved or imported into a BLOB column stays empty instead of turning into NULL. ([#4405](https://github.com/TableProApp/TablePro/pull/4405))
+- On iOS, an Oracle connection waited 30 seconds to sign in, whatever connect timeout it had. ([#4407](https://github.com/TableProApp/TablePro/pull/4407))
+- On iOS, an Oracle table's identity and virtual columns were offered as ordinary values in the new row form. ([#4407](https://github.com/TableProApp/TablePro/pull/4407))
+- After a slash command filled the AI chat composer, typed text landed before the command. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Settings pop-ups were blank when a stored value, such as a page size or a removed font, was not on the list. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- TablePro notifications stayed silent when Play sound for notifications was on in System Settings. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Saving an SSH profile while the Keychain was locked deleted its stored password, passphrase or TOTP secret. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- Clearing Query History or Data Rewind could fail without showing an error. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- A custom slash command typed with text after its name went to the model as plain text. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- The query timeout field in the connection form read Global (0) instead of the time it inherits. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- A connection's secrets could be deleted when its SSH or credential profile changed while the editor was open. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- The file panel froze the app while browsing the Documents folder. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Saving a connection reverted a rename, group move or Safe Mode change made elsewhere while the editor was open. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Save stayed disabled by a field that was not on screen. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Test Connection kept showing Connected after the host or password changed. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- Port fields accepted 0, 99999 or a port with spaces. ([#4417](https://github.com/TableProApp/TablePro/pull/4417))
+- JSON values over 500,000 characters showed unindented in the inspector, the JSON viewer and Pretty Print. ([#4427](https://github.com/TableProApp/TablePro/pull/4427))
+- The JSON result view counted rows past the 50,000 it shows. ([#4427](https://github.com/TableProApp/TablePro/pull/4427))
+- Stepping through rows with a large JSON value in the inspector took seconds per row. ([#4427](https://github.com/TableProApp/TablePro/pull/4427))
+- Typing, completion and running the statement at the caret got slower as a script grew. ([#4428](https://github.com/TableProApp/TablePro/pull/4428))
+- Opening a long script in a window's first editor took seconds and gigabytes of memory. ([#4428](https://github.com/TableProApp/TablePro/pull/4428))
+- Accessibility apps read a wrong character count from the query editor when the text held emoji. ([#4428](https://github.com/TableProApp/TablePro/pull/4428))
+- Vim commands like x, r, ~ and o added or removed auto-paired brackets and quotes. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Switching query tabs carried the previous tab's caret and scroll position into the new tab. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Approved write tool calls from one AI chat reply could run at the same time and out of order. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Clicking a Redis database replaced the selected tab and its unsaved commands, staged edits or sort. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- A jump host that asks for a code after the key (publickey,keyboard-interactive) could not sign in. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Closing a connection that was still connecting left its SSH tunnel open until quit. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Transfer Tables wrote into the destination session's current schema; it now has a Schema picker. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Typing in a value window popped out of the inspector could change a row in another tab or another record. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Save and Save on close wrote a query result's edits but skipped the tab's unsaved .sql file. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Syncing a settings change from an older Mac reset options a newer build had set, such as Emacs key bindings. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- View ER Diagram was missing from the Favorites menu for a table in a schema named default. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- An ER diagram of a schema named default refreshed and saved against the schema the sidebar moved to. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Clear All in the query parameter panel cleared only the last parameter. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Stop and keep what ran in Compare & Sync reported changes PostgreSQL had rolled back as applied. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Long AI chat conversations with tool calls stopped sending after the transcript was trimmed. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Compare & Sync Apply sent its own BEGIN and COMMIT into a transaction already open on DuckDB or PGlite. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Compare & Sync listed tables, views and routines in two schemas as one-sided instead of pairing them. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Compare showed a timestamptz copied into a column without a time zone as changed after every sync. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Compare & Sync offered to create or drop a table whose counterpart in the other schema could not be read. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Hide Column and Show All Columns did nothing in the Structure tab. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Vim's . repeated an older change instead of the last one, such as dd, J, ~ or text typed in Insert mode. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- A moved column snapped back in a query result that had a hidden column. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- The window's close button closed it without asking about unsaved changes or running work. ([#4431](https://github.com/TableProApp/TablePro/pull/4431))
+- Every closed connection window stayed in memory, about 47 MB each. ([#4431](https://github.com/TableProApp/TablePro/pull/4431))
+- Pressing Return right after typing in the Welcome search could select a connection the search was about to hide. ([#4432](https://github.com/TableProApp/TablePro/pull/4432))
+- Excel repaired an XLSX export holding a value over 32,767 characters; such values are now cut, with a warning. ([#4434](https://github.com/TableProApp/TablePro/pull/4434))
+- View state stayed behind for deleted connections and for every database file or link ever opened. ([#4435](https://github.com/TableProApp/TablePro/pull/4435))
+- A plugin installed from the registry without a build for this Mac's processor failed to load instead of updating. ([#4446](https://github.com/TableProApp/TablePro/pull/4446))
+- A capped PostgreSQL or SQLite query with parameters held its whole result in memory before cutting it to the limit. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- A large table's estimated row total went blank after saving an edit. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- A SQLite CHECK constraint listing numbers offered a value picker with blank entries. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- Share Result and Fetch All quoted the whole table's row count for a query result filtered by a WHERE clause. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- The Query menu's page commands could replace a query tab's SQL with a generated table query. ([#4458](https://github.com/TableProApp/TablePro/pull/4458))
+- Renaming or dropping a column in the Structure tab left filters on the old column. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Down and Return in a filter value could pick from a suggestion list that had already closed. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Search All Rows stopped filtering on the next page, sort or refresh. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Removing a filter row also ran unapplied edits in the other rows. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Hidden columns were missing from the filter column menu. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- The filter bar and status bar said no filter was applied while one still ran. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Filter presets forgot Match all or Match any. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Remove All Filters left an empty filter bar with no way to add a row. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+- Reopening a table ran its saved filter rows instead of the filter it was showing. ([#4460](https://github.com/TableProApp/TablePro/pull/4460))
+
+### Security
+
+- An outside MCP server's token must be entered again when its address moves to another scheme, host or port. ([#4413](https://github.com/TableProApp/TablePro/pull/4413))
+- A synced SSH or credential profile deletion could mark an externally edited connections file as trusted. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- MCP explain_query with an actual plan committed its statement under Manual Commit. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- The AI chat's destructive tool ran in the current database while its approval card named another one. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- An AI or MCP call naming another database on SQLite ran in the current database instead of failing. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+- Publishing to the Team Catalog wrote tunnel commands and startup commands in plain text to the shared folder. ([#4429](https://github.com/TableProApp/TablePro/pull/4429))
+
+[View release notes](https://github.com/TableProApp/TablePro/releases/tag/v0.89.0-beta.1)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.89.0-beta.1/TablePro-0.89.0-beta.1-x86_64.tar.xz" length="34240908" type="application/octet-stream" sparkle:edSignature="snGKYG4qRiuAZ1+wUqTImGi3CtqZ1fs0N2lqUWcxSuKIn4KlNhumj8egQPG6noNAa+kJK4M1TtfCzMdiIKyMCg=="/>
+        </item>
         <item>
             <title>0.88.0</title>
             <pubDate>Tue, 24 Nov 2026 05:00:31 +0000</pubDate>
@@ -239,8 +576,7 @@ Sending feedback from inside the app is no longer available.
             <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.86.0/TablePro-0.86.0.tar.xz" length="54283536" type="application/octet-stream" sparkle:edSignature="e0xxoCXQhapWfQtKxWaOcXeybdwsTXAjWBkVGJAUhuuXOT2WHgLzGim8MDE4B/bwEpxBl+Uh9Uyz336v5vBtAA=="/>
         </item>
     </channel>
-</rss>
-<!-- sparkle-signatures:
-edSignature: x/esvhJB9GCvblm1cPhAWf6VG9AlI9b/+ompZpnqAxS/TuC59fvbDiO6j/0CKrAAdDQb91rRCwTGdWks0IVmDA==
-length: 25961
+</rss><!-- sparkle-signatures:
+edSignature: fIlfLINatZd+ubtfSmOOLgZ0ClTx6YlFRcTqq+JXWaNVRZYsPH9Wdns7+ZUA1gJ1xm0tjQ82SGDIqxJp9qhmBw==
+length: 71593
 -->
