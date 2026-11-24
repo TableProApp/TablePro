@@ -45,19 +45,11 @@ impl AccountStatus {
         let signed_in = match self {
             Self::SignedOut => return FeatureAccess::SignedOut,
             Self::Offline(entitlement) if !entitlement.is_current(now) => return FeatureAccess::Expired,
-            Self::Offline(entitlement) => {
-                return match entitlement.includes(feature) {
-                    true => FeatureAccess::Available,
-                    false => FeatureAccess::NotIncluded,
-                };
-            }
+            Self::Offline(entitlement) => return access(entitlement, feature, now),
             Self::SignedIn(signed_in) => signed_in,
         };
         if let Some(entitlement) = signed_in.entitlement.as_ref().filter(|it| it.is_current(now)) {
-            return match entitlement.includes(feature) {
-                true => FeatureAccess::Available,
-                false => FeatureAccess::NotIncluded,
-            };
+            return access(entitlement, feature, now);
         }
         match (&signed_in.problem, &signed_in.entitlement) {
             (Some(EntitlementProblem::DeviceLimitReached(_)), _) => FeatureAccess::DeviceLimitReached,
@@ -65,6 +57,13 @@ impl AccountStatus {
             (Some(EntitlementProblem::Expired), _) | (None, Some(_)) => FeatureAccess::Expired,
             (None, None) => FeatureAccess::NotIncluded,
         }
+    }
+
+    // The codes that work now: a company server's license cuts them to its own, and past its grace to the Team Library.
+    pub fn features(&self, now: DateTime<Utc>) -> Vec<String> {
+        self.entitlement()
+            .map(|entitlement| entitlement.features_at(now))
+            .unwrap_or_default()
     }
 
     pub fn entitlement(&self) -> Option<&Entitlement> {
@@ -91,18 +90,27 @@ impl AccountStatus {
     }
 }
 
+// A feature a company server's license has, but no longer lets work past its grace, reads as expired.
+fn access(entitlement: &Entitlement, feature: &str, now: DateTime<Utc>) -> FeatureAccess {
+    match (entitlement.includes(feature), entitlement.license_allows(feature, now)) {
+        (false, _) => FeatureAccess::NotIncluded,
+        (true, false) => FeatureAccess::Expired,
+        (true, true) => FeatureAccess::Available,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::TimeDelta;
 
     use super::*;
-    use crate::entitlement::test_tokens::{MACHINE, claims, keys, sign};
+    use crate::entitlement::test_tokens::{ISSUER, MACHINE, claims, keys, sign};
 
     const FEATURE: &str = "env_var_references";
 
     fn entitlement(issued: DateTime<Utc>, features: &[&str]) -> Entitlement {
         let token = sign(&claims(issued, TimeDelta::days(14), features));
-        Entitlement::verify(&token, &keys(), MACHINE, issued).expect("a valid entitlement")
+        Entitlement::verify(&token, &keys(), ISSUER, MACHINE, issued).expect("a valid entitlement")
     }
 
     fn offline() -> AccountError {

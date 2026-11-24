@@ -103,7 +103,7 @@ public sealed class TableProCore : IDisposable
         var native = Mapping.Account(configuration);
         var wake = new AccountWake();
         var service = await CoreCall.RunAsync(
-                () => _core.OpenAccount(native, new AccountBrowserAdapter(browser), wake))
+                () => _core.OpenAccount(native, new AccountBrowserAdapter(browser), null, wake))
             .ConfigureAwait(false);
         return new TableProAccount(service, wake);
     }

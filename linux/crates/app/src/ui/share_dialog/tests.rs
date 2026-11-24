@@ -9,7 +9,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_account::{
     Account, AccountSettings, AccountStatus, AppClient, BrowserLauncher, CallbackPage, DeviceDescription, Endpoints,
-    MachineId, Url, fakes,
+    FixedServer, MachineId, ServerSettings, Url, fakes,
 };
 use tablepro_core::Value;
 use tablepro_core::column::{ColumnType, ResultColumn};
@@ -339,19 +339,23 @@ impl Drop for Harness {
 fn settings(stub: &CloudStub, machine: MachineId, dir: &tempfile::TempDir) -> AccountSettings {
     AccountSettings {
         client: AppClient::LINUX,
-        endpoints: Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints"),
+        server: ServerSettings::Fixed(FixedServer {
+            endpoints: Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints"),
+            keys: fakes::keys().expect("the test key"),
+            issuer: fakes::ISSUER.to_owned(),
+        }),
         device: DeviceDescription {
             name: "Ada's laptop".to_owned(),
             app_version: "0.1.0".to_owned(),
             os_version: "Ubuntu 26.04".to_owned(),
         },
         machine_id: machine,
-        keys: fakes::keys().expect("the test key"),
         account_file: dir.path().join("account.json"),
         callback_page: CallbackPage {
             finished: String::new(),
             unknown: String::new(),
         },
+        legacy_entitlement_file: None,
     }
 }
 

@@ -1,7 +1,9 @@
 use std::time::Duration;
 
 use crate::entitlement::EntitlementError;
+use crate::license::LicenseError;
 use crate::profile::Device;
+use crate::server::ServerError;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AccountError {
@@ -29,6 +31,10 @@ pub enum AccountError {
     RateLimited { retry_after: Option<Duration> },
     #[error(transparent)]
     Entitlement(#[from] EntitlementError),
+    #[error(transparent)]
+    Server(#[from] ServerError),
+    #[error(transparent)]
+    License(#[from] LicenseError),
     #[error("cannot keep the account's state in {path}: {detail}")]
     Storage { path: String, detail: String },
     #[error("unexpected answer from the account service: {0}")]
@@ -72,6 +78,8 @@ impl AccountError {
                 .map_or("account.refused", |(_, worded)| worded),
             Self::RateLimited { .. } => "account.rate_limited",
             Self::Entitlement(_) => "account.entitlement",
+            Self::Server(error) => error.code(),
+            Self::License(error) => error.code(),
             Self::Storage { .. } => "account.storage",
             Self::Protocol(_) => "account.protocol",
         }

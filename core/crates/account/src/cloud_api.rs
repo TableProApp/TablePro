@@ -125,6 +125,14 @@ pub(crate) fn rate_limited(headers: &HeaderMap) -> AccountError {
     AccountError::RateLimited { retry_after }
 }
 
+// A refusal read by hand, for a call the generated client does not make.
+pub(crate) fn refusal(status: u16, body: &[u8]) -> AccountError {
+    match serde_json::from_slice::<v2::types::Problem>(body) {
+        Ok(problem) => problem_error(status, problem),
+        Err(_) => AccountError::Protocol(format!("HTTP {status} without a problem")),
+    }
+}
+
 fn problem_error(status: u16, problem: v2::types::Problem) -> AccountError {
     match problem.code.as_str() {
         "device_revoked" => AccountError::DeviceRevoked,

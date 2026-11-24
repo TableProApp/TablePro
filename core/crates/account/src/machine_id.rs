@@ -27,6 +27,13 @@ impl MachineId {
         decode_machine_id(&groups.concat()).map(|raw| Self::keyed(&raw))
     }
 
+    // An ID the host derived itself, as the Mac's SHA-256 of its hardware UUID, kept so a Mac stays the device the
+    // license system registered: 64 hex characters, written lower case.
+    pub fn from_hex(id: &str) -> Option<Self> {
+        let valid = id.len() == 64 && id.bytes().all(|byte| byte.is_ascii_hexdigit());
+        valid.then(|| Self(id.to_ascii_lowercase()))
+    }
+
     fn keyed(raw: &[u8; 16]) -> Self {
         let tag = hmac::sign(&hmac::Key::new(hmac::HMAC_SHA256, KEY.as_bytes()), raw);
         Self(hex(tag.as_ref()))
@@ -120,6 +127,21 @@ mod tests {
             "00000000000000000000000000000000\n",
         ] {
             assert_eq!(MachineId::derive(text), None, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_host_s_own_id_is_64_hex_characters_kept_lower_case() {
+        let upper = MachineId::from_hex(&EXPECTED.to_uppercase()).expect("a machine ID");
+
+        assert_eq!(upper.as_str(), EXPECTED);
+        for refused in [
+            "",
+            &EXPECTED[1..],
+            &format!("{EXPECTED}0"),
+            &format!("+{}", &EXPECTED[1..]),
+        ] {
+            assert_eq!(MachineId::from_hex(refused), None, "{refused:?}");
         }
     }
 

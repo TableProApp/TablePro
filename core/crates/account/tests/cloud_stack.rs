@@ -14,8 +14,8 @@ use chrono::Utc;
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_account::{
     Account, AccountError, AccountSettings, AccountStatus, BrowserLauncher, CallbackPage, CreatedShare,
-    DeviceDescription, EntitlementKeys, EntitlementProblem, FeatureAccess, MachineId, RefreshTokenVault, Share,
-    ShareExpiry, ShareKind, ShareRequest, SignedIn,
+    DeviceDescription, EntitlementKeys, EntitlementProblem, FeatureAccess, FixedServer, MachineId, RefreshTokenVault,
+    ServerSettings, Share, ShareExpiry, ShareKind, ShareRequest, SignedIn,
 };
 use tablepro_core::column::{ColumnType, ResultColumn};
 use tablepro_core::credentials::SecretError;
@@ -68,21 +68,26 @@ impl Machine {
     }
 
     fn account(&self, stack: &Stack, vault: Arc<dyn RefreshTokenVault>, browser: Arc<Browser>) -> Account {
+        let endpoints = tablepro_account::Endpoints::new(&stack.account_url, &stack.api_url).expect("the endpoints");
         let settings = AccountSettings {
             client: tablepro_account::AppClient::LINUX,
-            endpoints: tablepro_account::Endpoints::new(&stack.account_url, &stack.api_url).expect("the endpoints"),
+            server: ServerSettings::Fixed(FixedServer {
+                issuer: endpoints.api_origin(),
+                endpoints,
+                keys: EntitlementKeys::from_public_keys([stack.entitlement_key.as_str()]).expect("the stack's key"),
+            }),
             device: DeviceDescription {
                 name: self.name.clone(),
                 app_version: "0.1.0-test".to_owned(),
                 os_version: "Ubuntu 26.04".to_owned(),
             },
             machine_id: self.machine_id.clone(),
-            keys: EntitlementKeys::from_public_keys([stack.entitlement_key.as_str()]).expect("the stack's key"),
             account_file: self.account_file(),
             callback_page: CallbackPage {
                 finished: "You can close this tab.".to_owned(),
                 unknown: "This is not TablePro's sign-in.".to_owned(),
             },
+            legacy_entitlement_file: None,
         };
         let status = tokio::sync::watch::Sender::new(AccountStatus::SignedOut);
         Account::new(settings, vault, browser, status).expect("an account")

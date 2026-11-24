@@ -5,10 +5,12 @@ mod host_browser;
 mod machine_guid;
 mod secret_scan;
 pub(crate) mod share;
+mod web_authenticator;
 
 pub use account_info::{
-    AccountStateTag, AccountStatusInfo, DeviceInfo, EntitlementProblemTag, FeatureAccessTag, LicenseInfo,
-    MembershipInfo, ProfileInfo, TeamInfo,
+    AccessTokenInfo, AccountStateTag, AccountStatusInfo, AppClientTag, DeviceInfo, EntitlementProblemTag,
+    FeatureAccessTag, LicenseInfo, LicenseStateTag, MembershipInfo, ProfileInfo, ServerInfo, ServerLicenseInfo,
+    SignOutCauseTag, TeamInfo,
 };
 pub use account_service::{AccountConfig, AccountListener, AccountService};
 pub use host_browser::{HostBrowser, HostBrowserError};
@@ -19,3 +21,4 @@ pub use share::{
     CreatedShareInfo, ShareExpiryTag, ShareInfo, ShareKindTag, ShareLimitsInfo, SharePageInfo, ShareRequestArg,
     ShareTeamInfo, SharedLinkInfo,
 };
+pub use web_authenticator::HostWebAuthenticator;

@@ -41,14 +41,15 @@ public sealed class AccountTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task AKeptSignInAsksTheHostForTheRefreshTokenItem()
+    public async Task AKeptSignInAsksTheHostForItsServersRefreshTokenItem()
     {
         await File.WriteAllTextAsync(Path.Combine(_directory, "account.json"), "{}", TestContext.Current.CancellationToken);
         using var account = await OpenAsync(Unreachable(), new RecordingBrowser());
 
         await FirstChangeAsync(account);
 
-        Assert.Contains(SecretItem.AccountRefreshToken, _secrets.Asked);
+        Assert.Contains(SecretItem.AccountRefreshTokenFor(SignInKey(Unreachable())), _secrets.Asked);
+        Assert.DoesNotContain(SecretItem.AccountRefreshToken, _secrets.Asked);
         Assert.DoesNotContain(SecretItem.McpToken, _secrets.Asked);
         Assert.Equal(AccountState.SignedOut, account.Status.State);
     }
@@ -153,13 +154,13 @@ public sealed class AccountTests : IAsyncDisposable
             Path.Combine(_directory, "account.json"),
             """{"version":1,"device_id":"dev_01"}""",
             TestContext.Current.CancellationToken);
-        _secrets.StoreItem(SecretItem.AccountRefreshToken, "stub-refresh");
         _cloud = Stub.Start(request => (request.Method, request.Path) switch
         {
             ("POST", "/oauth/token") => (200, Tokens),
             ("POST", "/v2/shares") => (201, created),
             _ => (404, Problem(404, "not_found")),
         });
+        _secrets.StoreItem(SecretItem.AccountRefreshTokenFor(SignInKey(_cloud.Base)), "stub-refresh");
         using var account = await OpenAsync(_cloud.Base, new RecordingBrowser());
         await using var database = await SqliteDatabase.CreateAsync();
         using var run = database.Editor.Run(
@@ -248,6 +249,11 @@ public sealed class AccountTests : IAsyncDisposable
 
     // Port 1 is below every system's ephemeral range, so no test's listener takes it and every request is refused.
     private static string Unreachable() => "http://127.0.0.1:1";
+
+    // The core keys a development stack's refresh token by 16 hex characters of SHA-256 over its API and account file.
+    private string SignInKey(string cloud) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+            Encoding.UTF8.GetBytes($"{cloud}/v2\n{Path.Combine(_directory, "account.json")}")))[..16];
 
     private Task<TableProAccount> OpenAsync(string cloud, IAccountBrowser browser) =>
         _core.OpenAccountAsync(Configuration(cloud), browser);

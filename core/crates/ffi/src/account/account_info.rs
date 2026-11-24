@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
+use secrecy::SecretString;
 use tablepro_account::{
-    AccountStatus, Device, EntitlementProblem, FeatureAccess, LicenseClaim, Membership, Profile, TeamClaim,
+    AccessToken, AccountStatus, AppClient, Device, EntitlementProblem, FeatureAccess, License, LicenseClaim,
+    LicenseState, Membership, Profile, SignOutCause, TeamClaim,
 };
 
 // Codes stay strings, as the account crate keeps them: a plan, status or role this build does not know still shows.
@@ -94,6 +96,129 @@ pub struct DeviceInfo {
     pub is_this_machine: bool,
 }
 
+// Which app the account is for: its OAuth client, its device platform and how the sign-in comes back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AppClientTag {
+    Linux,
+    Windows,
+    Macos,
+}
+
+// The server the account signs in to. `api_origin` is what a person or an organization names it by.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ServerInfo {
+    pub api_origin: String,
+    // None until a company server's discovery has run.
+    pub account_origin: Option<String>,
+    pub host: String,
+    pub is_production: bool,
+    // The organization named it, and the person has not picked another.
+    pub is_managed: bool,
+    // False hides tablepro.app and the field for another server.
+    pub others_allowed: bool,
+}
+
+// The license a company server holds, as this app verified it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ServerLicenseInfo {
+    pub id: String,
+    // `trial` or `paid`.
+    pub license_type: String,
+    pub seats: u32,
+    pub features: Vec<String>,
+    // None for a perpetual license.
+    pub expires_at_secs: Option<i64>,
+    pub grace_ends_at_secs: Option<i64>,
+    pub state: LicenseStateTag,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum LicenseStateTag {
+    Active,
+    // Past its end, inside the grace: everything still works.
+    Grace,
+    // Past the grace: only the Team Library's pull and export.
+    Lapsed,
+}
+
+// A bearer for the app's own /v2 client, and the base it goes to.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct AccessTokenInfo {
+    pub token: SecretString,
+    pub api_url: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SignOutCauseTag {
+    Requested,
+    // The server refused the sign-in: its tokens were revoked, or one was replayed.
+    Refused,
+    DeviceRevoked,
+    ServerChanged,
+}
+
+impl From<AppClientTag> for AppClient {
+    fn from(client: AppClientTag) -> Self {
+        match client {
+            AppClientTag::Linux => Self::LINUX,
+            AppClientTag::Windows => Self::WINDOWS,
+            AppClientTag::Macos => Self::MACOS,
+        }
+    }
+}
+
+impl From<tablepro_account::ServerInfo> for ServerInfo {
+    fn from(server: tablepro_account::ServerInfo) -> Self {
+        Self {
+            api_origin: server.api_origin,
+            account_origin: server.account_origin,
+            host: server.host,
+            is_production: server.is_production,
+            is_managed: server.is_managed,
+            others_allowed: server.others_allowed,
+        }
+    }
+}
+
+impl ServerLicenseInfo {
+    pub(crate) fn of(license: &License, now: DateTime<Utc>) -> Self {
+        let claims = license.claims();
+        Self {
+            id: claims.sub.clone(),
+            license_type: claims.license_type.clone(),
+            seats: claims.seats,
+            features: claims.features.clone(),
+            expires_at_secs: license.expires_at().map(seconds),
+            grace_ends_at_secs: license.grace_ends_at().map(seconds),
+            state: match license.state(now) {
+                LicenseState::Active => LicenseStateTag::Active,
+                LicenseState::Grace { .. } => LicenseStateTag::Grace,
+                LicenseState::Lapsed => LicenseStateTag::Lapsed,
+            },
+        }
+    }
+}
+
+impl From<AccessToken> for AccessTokenInfo {
+    fn from(access: AccessToken) -> Self {
+        Self {
+            token: access.token,
+            api_url: access.api,
+        }
+    }
+}
+
+impl From<SignOutCause> for SignOutCauseTag {
+    fn from(cause: SignOutCause) -> Self {
+        match cause {
+            SignOutCause::Requested => Self::Requested,
+            SignOutCause::Refused => Self::Refused,
+            SignOutCause::DeviceRevoked => Self::DeviceRevoked,
+            SignOutCause::ServerChanged => Self::ServerChanged,
+        }
+    }
+}
+
 impl AccountStatusInfo {
     pub(crate) fn of(status: &AccountStatus, machine_id: &str) -> Self {
         let (state, signed_in) = match status {
@@ -109,7 +234,7 @@ impl AccountStatusInfo {
             name: claims
                 .map(|claims| claims.account.name.clone())
                 .filter(|name| !name.trim().is_empty()),
-            features: claims.map(|claims| claims.features.clone()).unwrap_or_default(),
+            features: status.features(Utc::now()),
             licenses: claims
                 .map(|claims| claims.licenses.iter().map(LicenseInfo::from).collect())
                 .unwrap_or_default(),
