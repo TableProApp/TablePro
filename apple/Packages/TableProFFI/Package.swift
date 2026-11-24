@@ -20,7 +20,9 @@ let package = Package(
                 .linkedFramework("CoreFoundation"),
                 .linkedFramework("Security"),
                 .linkedFramework("SystemConfiguration"),
-                .linkedLibrary("iconv")
+                .linkedLibrary("iconv"),
+                // The system's SQLite, the one the app links (core/crates/storage/Cargo.toml).
+                .linkedLibrary("sqlite3")
             ]
         ),
         .testTarget(name: "TableProFFITests", dependencies: ["TableProFFI"])

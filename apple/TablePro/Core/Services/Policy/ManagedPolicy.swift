@@ -5,47 +5,63 @@
 
 import Foundation
 
-/// Settings an administrator can impose through a configuration profile, and that the user cannot
-/// then turn off.
-///
-/// Each policy is one flat, primitive key. The app's own settings are stored as encoded structs
-/// under keys like `com.TablePro.settings.mcp`, which cannot serve as policy: forcing one would mean
-/// an administrator had to reproduce the whole struct, and it would break the moment a field was
-/// added. A profile delivers one key per decision instead.
+// One flat key per decision: forcing an encoded settings struct would make an administrator reproduce all of it, and
+// break when a field is added. Keys added from core ADR 0044 on follow its spelling.
 internal enum ManagedPolicy: String, CaseIterable, Sendable {
-    /// The weakest Safe Mode level a connection may run at. A connection set to something weaker is
-    /// raised to this; a stronger choice is left alone, so the policy is a floor and never a ceiling.
+    // A floor, never a ceiling: a stricter level a connection chose is kept.
     case minimumSafeModeLevel = "com.TablePro.policy.minimumSafeModeLevel"
+    case accountServerURL = "com.TablePro.policy.AccountServerURL"
+    case allowOtherAccountServers = "com.TablePro.policy.AllowOtherAccountServers"
 
     internal var key: String { rawValue }
 }
 
 internal protocol ManagedPolicyReading: Sendable {
     func string(_ policy: ManagedPolicy) -> String?
+    func bool(_ policy: ManagedPolicy) -> Bool?
 }
 
-/// Reads policy out of the standard preferences chain. macOS merges a configuration profile's
-/// values into `UserDefaults` at the highest priority, so the forced value simply wins.
+extension ManagedPolicyReading {
+    func bool(_ policy: ManagedPolicy) -> Bool? { nil }
+}
+
+internal protocol ManagedPreferences {
+    func object(forKey defaultName: String) -> Any?
+    func objectIsForced(forKey key: String) -> Bool
+}
+
+extension UserDefaults: ManagedPreferences {}
+
+// A value counts only when a configuration profile forces it (core ADR 0044, App configuration). The same key written
+// with `defaults write` sits in the same search list and is not policy.
 internal struct ManagedPolicyReader: ManagedPolicyReading, @unchecked Sendable {
     internal static let shared = ManagedPolicyReader()
 
-    private let defaults: UserDefaults
+    private let preferences: any ManagedPreferences
 
-    internal init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+    internal init(preferences: any ManagedPreferences = UserDefaults.standard) {
+        self.preferences = preferences
     }
 
     internal func string(_ policy: ManagedPolicy) -> String? {
-        defaults.string(forKey: policy.key)
+        forcedValue(policy) as? String
+    }
+
+    internal func bool(_ policy: ManagedPolicy) -> Bool? {
+        guard let number = forcedValue(policy) as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+            return nil
+        }
+        return number.boolValue
+    }
+
+    private func forcedValue(_ policy: ManagedPolicy) -> Any? {
+        guard preferences.objectIsForced(forKey: policy.key) else { return nil }
+        return preferences.object(forKey: policy.key)
     }
 }
 
 internal enum ManagedPolicyResolver {
-    /// Raises a connection's Safe Mode level to the managed floor, leaving a stricter choice alone.
-    ///
-    /// An unset or unrecognised policy value means no floor rather than a default one. A profile that
-    /// names a level TablePro does not know must not silently become Read-Only, and must not silently
-    /// become Silent either.
+    // An unknown level is no floor: a profile naming a level this build lacks must become neither Read-Only nor Silent.
     internal static func effectiveSafeModeLevel(
         connectionLevel: SafeModeLevel,
         policy: any ManagedPolicyReading

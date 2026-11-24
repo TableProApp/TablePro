@@ -104,6 +104,15 @@ build_kit() {
 
 echo "Building TableProPluginKit at $base"
 git -C "$root" worktree add --quiet --detach "$work/src" "$base"
+# SwiftPM resolves the core's package before any build, and its binary target is built, not checked in. PluginKit
+# does not link the core, so the one HEAD built stands in for the base's.
+ffi="Packages/TableProFFI"
+if [ -f "$work/src/$base_dir/$ffi/Package.swift" ]; then
+    [ -d "$root/$ffi/Build/TableProFFIC.xcframework" ] || fail "Run scripts/build-core.sh first: the base links the core."
+    ln -s "$root/$ffi/Build" "$work/src/$base_dir/$ffi/Build"
+    mkdir -p "$work/src/$base_dir/$ffi/Sources/TableProFFI"
+    ln -s "$root/$ffi/Sources/TableProFFI/TableProFFI.swift" "$work/src/$base_dir/$ffi/Sources/TableProFFI/TableProFFI.swift"
+fi
 (cd "$work/src/$base_dir" && xcodegen generate --quiet --spec project.yml)
 build_kit "$work/src/$base_dir" base || { tail -30 "$work/base.log"; fail "TableProPluginKit does not build at $base"; }
 

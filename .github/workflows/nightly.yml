@@ -89,7 +89,10 @@ jobs:
 
       - uses: ./.github/actions/setup-xcode
 
+      # Both arches: scripts/release/build.sh with no arch builds the app for each.
       - uses: ./.github/actions/prepare-build
+        with:
+          core-arch: both
 
       - name: Set up Go for the SAP HANA helper
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

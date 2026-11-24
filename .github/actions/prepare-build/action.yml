@@ -1,5 +1,11 @@
 name: Prepare build
-description: Installs XcodeGen, downloads the static libraries, generates apple/TablePro.xcodeproj and restores the Swift package checkouts.
+description: Installs XcodeGen, downloads the static libraries, builds the shared core, generates apple/TablePro.xcodeproj and restores the Swift package checkouts.
+
+inputs:
+  core-arch:
+    description: The architectures apple/scripts/build-core.sh builds the core for, arm64, x86_64 or both. Every build of the project needs the core, since SwiftPM refuses to resolve TableProFFI without its binary target.
+    required: false
+    default: arm64
 
 outputs:
   cache-hit:
@@ -19,6 +25,23 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: apple/scripts/download-libs.sh
+
+    - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      with:
+        toolchain: "1.98"
+        targets: ${{ inputs.core-arch == 'x86_64' && 'x86_64-apple-darwin' || inputs.core-arch == 'both' && 'aarch64-apple-darwin,x86_64-apple-darwin' || 'aarch64-apple-darwin' }}
+
+    # Saved from main only, like core.yml's: a pull request's cache serves that pull request alone.
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        key: apple-core-${{ inputs.core-arch }}
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+
+    - name: Build the shared core
+      shell: bash
+      env:
+        CORE_ARCH: ${{ inputs.core-arch }}
+      run: apple/scripts/build-core.sh "$CORE_ARCH"
 
     - name: Generate the Xcode project
       shell: bash
