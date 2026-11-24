@@ -230,6 +230,8 @@ struct AccountServicesTests {
         fixture.backend.refuseKeychain()
 
         #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .migrated)
+        #expect(fixture.keychain.readStringResult(forKey: StoredLicenseKey.keychainKey) == .found(FakeAccountServer.validKey))
+        await fixture.services.signOut()
         _ = try await fixture.services.useLicenseKey(FakeAccountServer.validKey)
 
         #expect(fixture.access.state.isSignedIn)
@@ -290,21 +292,21 @@ struct AccountServicesTests {
 
     // MARK: - Company server
 
-    @Test("Choosing a company server publishes it and signs out of the server left, with that cause")
+    @Test("A company server is chosen signed out and published; signed in, the choice is refused for Sign Out")
     func chooseCompanyServer() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
-        var events: [AccountEvent] = []
-        let subscription = fixture.services.events.sink { events.append($0) }
-        defer { subscription.cancel() }
+        await #expect(throws: AccountError.signOutFirst) {
+            try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        }
+        #expect(fixture.access.state.server.isProduction)
+        await fixture.services.signOut()
 
         try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
 
-        #expect(!fixture.access.state.isSignedIn)
         #expect(fixture.access.state.server.host == "tablepro.example.com")
         #expect(!fixture.access.state.server.isProduction)
         #expect(fixture.services.portal.accountURL.host == "tablepro.example.com")
-        #expect(events == [.signedOut(.serverChanged)])
     }
 
     @Test("A managed server cannot be changed, and the refusal says the organization manages it")

@@ -7,7 +7,6 @@
 //
 
 import AppKit
-import Combine
 import TableProImport
 
 extension WelcomeViewModel {
@@ -21,7 +20,7 @@ extension WelcomeViewModel {
                 connectionsToPublish,
                 to: destination,
                 through: sync,
-                confirm: { await Self.confirmPublishToTeamLibrary($0, closesOn: sync.sessionEnds(for: destination)) }
+                confirm: Self.confirmPublishToTeamLibrary
             )
             TeamLibraryPublishing.present(outcome) {
                 self.activeSheet = .teamLibraryConflicts
@@ -62,15 +61,11 @@ extension WelcomeViewModel {
         }
     }
 
-    private static func confirmPublishToTeamLibrary(
-        _ connections: [DatabaseConnection],
-        closesOn: AnyPublisher<Void, Never>
-    ) async -> Bool {
+    private static func confirmPublishToTeamLibrary(_ connections: [DatabaseConnection]) async -> Bool {
         await AlertHelper.confirm(
             title: teamLibraryPublishConfirmationTitle(for: connections),
             message: teamLibraryPublishConfirmationMessage,
-            confirmButton: String(localized: "Publish"),
-            closesOn: closesOn
+            confirmButton: String(localized: "Publish")
         )
     }
 

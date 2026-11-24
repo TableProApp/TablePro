@@ -16,17 +16,21 @@ internal struct AccountActionFailure: Equatable, Identifiable {
 }
 
 internal struct AccountSignOutConfirmation: Equatable {
-    let discardsTeamChanges: Bool
+    // The Team Library edits and conflicts not sent yet, which the sign-out deletes.
+    let teamChanges: [String]
     let removesOfflineFile: Bool
 
     var discardsSomething: Bool {
-        discardsTeamChanges || removesOfflineFile
+        !teamChanges.isEmpty || removesOfflineFile
     }
 
     var message: String {
-        var sentences = [String(localized: "Paid features stop on this Mac until you sign in again.")]
-        if discardsTeamChanges {
-            sentences.append(String(localized: "Team library changes that were not sent yet are discarded."))
+        var sentences = [String(localized: "Paid features stop on this Mac until you sign in again, and TablePro restarts.")]
+        if !teamChanges.isEmpty {
+            sentences.append(String(
+                format: String(localized: "These Team Library changes were not sent yet and are deleted: %@."),
+                teamChanges.formatted(.list(type: .and))
+            ))
         }
         if removesOfflineFile {
             sentences.append(String(localized: "The imported offline file is removed."))
@@ -78,7 +82,8 @@ internal final class AccountSettingsModel: ObservableObject {
     private let loader: Loader
     private let now: () -> Date
     private let openURL: @MainActor (URL) -> Void
-    private let hasUnsentTeamChanges: @MainActor () -> Bool
+    private let unsentTeamChanges: @MainActor () -> [String]
+    private let teamLibraryIsOff: @MainActor () -> Bool
     private var stateObserver: AnyCancellable?
     private var loadedSignedIn: Bool?
     // Bumped when the loaded data is dropped, so a load still out for the old account lands nowhere.
@@ -91,13 +96,15 @@ internal final class AccountSettingsModel: ObservableObject {
         loader: Loader? = nil,
         now: @escaping () -> Date = { Date() },
         openURL: @escaping @MainActor (URL) -> Void = { _ = WebPageOpener.open($0, scope: .httpsOrLoopbackHTTP) },
-        hasUnsentTeamChanges: @escaping @MainActor () -> Bool = { TeamLibrarySync.shared.hasUnsentChanges }
+        unsentTeamChanges: @escaping @MainActor () -> [String] = { TeamLibrarySync.shared.unsentChanges },
+        teamLibraryIsOff: @escaping @MainActor () -> Bool = { TeamLibrarySync.shared.isDisabled }
     ) {
         self.services = services
         self.loader = loader ?? .live(services)
         self.now = now
         self.openURL = openURL
-        self.hasUnsentTeamChanges = hasUnsentTeamChanges
+        self.unsentTeamChanges = unsentTeamChanges
+        self.teamLibraryIsOff = teamLibraryIsOff
         stateObserver = services.access.$state
             .dropFirst()
             .sink { [weak self] state in
@@ -225,7 +232,7 @@ internal final class AccountSettingsModel: ObservableObject {
 
     func requestSignOut() {
         signOutConfirmation = AccountSignOutConfirmation(
-            discardsTeamChanges: hasUnsentTeamChanges(),
+            teamChanges: unsentTeamChanges(),
             removesOfflineFile: services.access.state.entitlement?.isOffline == true
         )
     }
@@ -234,11 +241,16 @@ internal final class AccountSettingsModel: ObservableObject {
         signOutConfirmation = nil
     }
 
-    func signOut() async {
+    // The one way to leave a sign-in by choice: the sign-out deletes Team Library data and checks it is gone, and then
+    // TablePro restarts, which the caller does when this says so. A delete that failed leaves the Mac signed out with
+    // Team Library off, and says so itself.
+    @discardableResult
+    func signOut() async -> Bool {
         signOutConfirmation = nil
         activity = .signingOut
         defer { activity = nil }
         await services.signOut()
+        return !teamLibraryIsOff()
     }
 
     func checkNow() async {

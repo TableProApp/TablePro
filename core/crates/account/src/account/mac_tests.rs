@@ -682,17 +682,18 @@ async fn each_sign_in_has_its_own_session_id_which_every_bearer_carries_and_a_si
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_session_id_lasts_across_launches_and_a_file_from_before_them_gets_one_it_keeps() {
+async fn each_launch_restores_the_sign_in_under_a_session_id_of_its_own_that_no_file_keeps() {
     let dir = tempfile::tempdir().expect("a temporary directory");
     keep(dir.path(), Some(super::tests::entitlement(Utc::now()))).await;
     let endpoints = production_stub(Asked::default());
 
     let first = mac(dir.path(), endpoints.clone(), Keyring::holding(Some("refresh")), None);
     first.restore().await;
-    let named = first.session_id().expect("a session id");
     let next = mac(dir.path(), endpoints, Keyring::holding(Some("refresh")), None);
     next.restore().await;
 
-    assert_eq!(stored(dir.path()).await.session_id.as_deref(), Some(named.as_str()));
-    assert_eq!(next.session_id().as_deref(), Some(named.as_str()));
+    let (first, next) = (first.session_id().expect("an id"), next.session_id().expect("an id"));
+    assert_ne!(first, next);
+    let kept = std::fs::read_to_string(dir.path().join("account.json")).expect("the account file");
+    assert!(!kept.contains(&first) && !kept.contains(&next), "{kept}");
 }

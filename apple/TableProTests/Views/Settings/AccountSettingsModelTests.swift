@@ -95,7 +95,7 @@ struct AccountSettingsModelTests {
         #expect(model.devices.value?.contains { $0.id == "dev_air" } == true)
     }
 
-    @Test("Use License Key replaces an interactive session and deletes the stored key it used")
+    @Test("Use License Key is refused while signed in; signed out it signs in and deletes the stored key it used")
     func useStoredLicenseKey() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
@@ -103,6 +103,10 @@ struct AccountSettingsModelTests {
         let model = AccountSettingsModel(services: fixture.services)
         #expect(fixture.services.storedLicenseKey == FakeAccountServer.validKey)
 
+        let refused = await model.useLicenseKey(" \(FakeAccountServer.validKey) ")
+        #expect(refused == AccountError.signOutFirst.licenseKeyDescription)
+        #expect(fixture.hasLegacyLicense)
+        await fixture.services.signOut()
         let failure = await model.useLicenseKey(" \(FakeAccountServer.validKey) ")
 
         #expect(failure == nil)
@@ -111,19 +115,17 @@ struct AccountSettingsModelTests {
         #expect(fixture.access.isAvailable(.iCloudSync))
     }
 
-    @Test("A key the server refuses keeps the session that was there and the key stored on this Mac")
+    @Test("A key the server refuses leaves the Mac signed out and the key stored on it")
     func refusedLicenseKey() async throws {
         let fixture = try AccountFixture()
-        try await fixture.signIn()
         fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
         let model = AccountSettingsModel(services: fixture.services)
 
         let failure = await model.useLicenseKey("ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ")
 
         #expect(failure == AccountError.oauth("invalid_grant", description: nil).licenseKeyDescription)
-        #expect(fixture.access.state.isSignedIn)
+        #expect(!fixture.access.state.isSignedIn)
         #expect(fixture.hasLegacyLicense)
-        #expect(fixture.access.isAvailable(.iCloudSync))
     }
 
     @Test("Signing in past the device limit opens the device limit sheet")
@@ -254,6 +256,42 @@ struct AccountSettingsModelTests {
         #expect(model.content.identity == .signedOut)
     }
 
+    @Test("Sign Out deletes the Team Library, then TablePro restarts; a delete that failed leaves it off and no restart")
+    func signOutDeletesTheLibraryAndRelaunches() async throws {
+        for deleteFails in [false, true] {
+            let fixture = try await TeamLibraryFixture()
+            await fixture.sync.sync()
+            fixture.sync.start()
+            if deleteFails { try Self.lock(fixture.store.directory) }
+            defer { try? Self.unlock(fixture.store.directory) }
+            let sync = fixture.sync
+            let model = AccountSettingsModel(
+                services: fixture.account.services,
+                unsentTeamChanges: { sync.unsentChanges },
+                teamLibraryIsOff: { sync.isDisabled }
+            )
+
+            model.requestSignOut()
+            let relaunches = await model.signOut()
+
+            #expect(relaunches == !deleteFails, "delete fails: \(deleteFails)")
+            #expect(sync.isDisabled == deleteFails)
+            #expect(!fixture.account.access.state.isSignedIn)
+            fixture.sync.stop()
+        }
+    }
+
+    // A folder whose files cannot be deleted.
+    static func lock(_ directory: URL) throws {
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        #expect(!files.isEmpty)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory.path)
+    }
+
+    static func unlock(_ directory: URL) throws {
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
+    }
+
     @Test("Sign Out… asks first and names the team edits a sign-out discards; Cancel keeps the session")
     func signOutConfirmationNamesUnsentTeamChanges() async throws {
         let fixture = try await TeamLibraryFixture()
@@ -266,12 +304,12 @@ struct AccountSettingsModelTests {
         )
         #expect(result == .queued(.server))
         let sync = fixture.sync
-        let model = AccountSettingsModel(services: fixture.account.services, hasUnsentTeamChanges: { sync.hasUnsentChanges })
+        let model = AccountSettingsModel(services: fixture.account.services, unsentTeamChanges: { sync.unsentChanges })
 
         model.requestSignOut()
 
         #expect(model.confirmsSignOut)
-        #expect(model.signOutConfirmation == AccountSignOutConfirmation(discardsTeamChanges: true, removesOfflineFile: false))
+        #expect(model.signOutConfirmation == AccountSignOutConfirmation(teamChanges: ["Orders"], removesOfflineFile: false))
         #expect(model.signOutConfirmation?.discardsSomething == true)
         model.cancelSignOut()
         #expect(!model.confirmsSignOut)

@@ -87,18 +87,14 @@ internal enum TeamLibraryPublishing {
         }
     }
 
-    // What a change of sign-in removed before it reached the team.
+    // A delete of the last sign-in's library failed, so Team Library stays off rather than show or send it.
     @MainActor
-    static func presentDropped(_ names: [String]) {
-        var listed = names.prefix(10).joined(separator: "\n")
-        if names.count > 10 {
-            listed += "\n" + String(format: String(localized: "and %d more"), names.count - 10)
-        }
-        AlertHelper.showInfoSheet(
-            title: String(localized: "Team Library changes not sent"),
+    static func presentDisabled() {
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Team Library is turned off"),
             message: String(
-                localized: "This Mac is no longer signed in to the account these changes were for, so they were removed without reaching your team:"
-            ) + "\n\n" + listed,
+                localized: "TablePro could not delete the Team Library data of the last sign-in, so Team Library stays off. Quit TablePro and open it again to retry."
+            ),
             window: nil
         )
     }

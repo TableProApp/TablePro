@@ -148,7 +148,9 @@ internal final class AccountServices: AccountBackendListener {
         publish()
     }
 
+    // Signed in, another sign-in would switch accounts in this process; that goes through Sign Out instead.
     func signIn(using authenticator: some WebAuthenticating) async throws(AccountError) {
+        guard !isSignedIn else { throw .signOutFirst }
         try await backend.signIn(using: authenticator)
         verifiedAt = now()
         publish()
@@ -170,6 +172,7 @@ internal final class AccountServices: AccountBackendListener {
     // Nil drops the choice, for a configuration profile's default or else tablepro.app. The core signs out of the
     // server it leaves.
     func chooseServer(_ url: URL?) async throws(AccountError) {
+        guard !isSignedIn else { throw .signOutFirst }
         try await backend.chooseServer(url)
         verifiedAt = nil
         publish()
@@ -220,10 +223,10 @@ internal final class AccountServices: AccountBackendListener {
         storedKey.value() != nil && !storedKey.isSetAside()
     }
 
-    // Use License Key…: the key's account replaces any session on this Mac, and a stored key it matches is deleted
-    // once the Keychain holds the sign-in.
+    // Use License Key…, signed out only: a stored key it matches is deleted once the Keychain holds the sign-in.
     @discardableResult
     func useLicenseKey(_ key: String) async throws(AccountError) -> EntitlementRefreshState {
+        guard !isSignedIn else { throw .signOutFirst }
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         try await backend.useLicenseKey(key)
         if key == storedKey.value() {

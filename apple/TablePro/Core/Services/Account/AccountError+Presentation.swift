@@ -26,6 +26,8 @@ extension AccountError {
             return String(localized: "Could not read the server response. Try again in a moment.")
         case .companyServer(let problem):
             return problem.description
+        case .signOutFirst:
+            return String(localized: "Sign out first. Signing out restarts TablePro, then sign in to the other account or server.")
         }
     }
 }

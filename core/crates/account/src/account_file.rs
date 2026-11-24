@@ -34,9 +34,6 @@ pub(crate) struct AccountFile {
     // admit nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust_tag: Option<String>,
-    // Names the sign-in from its start to its end, across launches.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub session_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -113,7 +110,6 @@ mod tests {
             entitlement_keys: Some(r#"{"keys":[]}"#.to_owned()),
             issuer: Some("https://account.example.com".to_owned()),
             trust_tag: Some("tag".to_owned()),
-            session_id: Some("0123456789abcdef0123456789abcdef".to_owned()),
         };
 
         write(&path, &file).await.expect("written");

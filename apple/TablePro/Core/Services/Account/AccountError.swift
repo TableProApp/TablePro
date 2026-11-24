@@ -38,6 +38,8 @@ internal enum AccountError: Error, Equatable {
     case invalidResponse
     case offlineFileRejected(OfflineFileProblem)
     case companyServer(CompanyServerProblem)
+    // Another account or server while signed in: that goes through Sign Out, which restarts TablePro.
+    case signOutFirst
 }
 
 extension AccountError {

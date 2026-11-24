@@ -120,7 +120,7 @@ struct Session {
     licensed: Option<Licensed>,
     // The OAuth issuer a company server's sign-in came from.
     issuer: Option<String>,
-    // Set by a sign-in, kept in account.json, ended by its sign-out: what the app keeps for a sign-in is tied to it.
+    // Set by each sign-in and each restore, in this process only: a bearer says which one it is of.
     id: Option<String>,
 }
 
@@ -249,7 +249,7 @@ impl Account {
         self.inner.license.borrow().as_deref().cloned()
     }
 
-    // The sign-in's id while signed in; a new sign-in, even of the same account, has another.
+    // The sign-in's id in this process while signed in; another sign-in or launch, even of the same account, has another.
     pub fn session_id(&self) -> Option<String> {
         self.inner.session_id.borrow().clone()
     }
@@ -319,15 +319,7 @@ impl Account {
                 return;
             }
         };
-        // A file from before session ids gets one now, written so the next launch reads the same.
-        let unnamed = file.session_id.is_none();
-        let held = file.entitlement.clone();
         self.restore_signed_in(&mut session, file, refresh);
-        if unnamed {
-            session.id = Some(new_session_id());
-            self.write_file(&session, held).await;
-            self.inner.session_id.send_replace(session.id.clone());
-        }
     }
 
     fn restore_signed_in(&self, session: &mut Session, file: AccountFile, refresh: SecretString) {
@@ -345,7 +337,7 @@ impl Account {
             // Kept untagged: a tag left stale by a failed write must not strand the sign-in, and the issuer only
             // narrows where the refresh token may go.
             issuer: file.issuer,
-            id: file.session_id,
+            id: Some(new_session_id()),
             ..Session::default()
         };
         let (entitlement, problem) = match (&licensed, file.entitlement.as_deref()) {
@@ -896,7 +888,6 @@ impl Account {
             issuer: session.issuer.clone(),
             server: Some(api.clone()),
             trust_tag: None,
-            session_id: session.id.clone(),
         };
         if let Some(refresh) = &session.refresh
             && self.current().is_company()

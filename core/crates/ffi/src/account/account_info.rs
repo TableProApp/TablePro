@@ -19,7 +19,7 @@ pub struct AccountStatusInfo {
     pub entitlement_expires_at_secs: Option<i64>,
     // The entitlement came from an offline file. A signed-in machine can import one too, so the state does not say.
     pub offline_file: bool,
-    // The sign-in's id, across launches; a new sign-in, even of the same account, has another. None signed out.
+    // The sign-in's id in this process; another sign-in or launch, even of the same account, has another. None signed out.
     pub session_id: Option<String>,
     pub problem: Option<EntitlementProblemTag>,
     // False when no secret store took the sign-in: the next launch starts signed out.

@@ -19,8 +19,8 @@ final class TeamLibraryFixture {
     let directory: URL
     let clock = ManualClock()
     let store: TeamLibraryStateStore
-    // What each session change showed as dropped.
-    let dropped = DroppedLog()
+    // Each time Team Library turned itself off.
+    let disabled = DisabledLog()
     private(set) var sync: TeamLibrarySync
 
     init(role: String = "owner", hasSeat: Bool = true, seed: (inout FakeTeamLibrary) -> Void = { _ in }) async throws {
@@ -43,7 +43,7 @@ final class TeamLibraryFixture {
             legacyFile: directory.appendingPathComponent("team_library.json"),
             defaults: defaults.defaults
         )
-        sync = TeamLibrarySync(account: account.services, store: store, clock: clock, dropped: dropped.record)
+        sync = TeamLibrarySync(account: account.services, store: store, clock: clock, reportDisabled: disabled.record)
         sync.loadIfNeeded()
     }
 
@@ -58,7 +58,7 @@ final class TeamLibraryFixture {
     // A new launch reading what the last one stored.
     func relaunch() {
         sync.stop()
-        sync = TeamLibrarySync(account: account.services, store: store, clock: clock, dropped: dropped.record)
+        sync = TeamLibrarySync(account: account.services, store: store, clock: clock, reportDisabled: disabled.record)
         sync.loadIfNeeded()
     }
 
@@ -116,10 +116,10 @@ final class TeamLibraryFixture {
 }
 
 @MainActor
-final class DroppedLog {
-    private(set) var shown: [[String]] = []
+final class DisabledLog {
+    private(set) var reports = 0
 
-    func record(_ names: [String]) {
-        shown.append(names)
+    func record() {
+        reports += 1
     }
 }

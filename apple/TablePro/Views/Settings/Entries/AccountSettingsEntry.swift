@@ -112,7 +112,11 @@ private struct AccountPresentations: ViewModifier {
                 presenting: model.signOutConfirmation
             ) { confirmation in
                 Button(String(localized: "Sign Out"), role: confirmation.discardsSomething ? .destructive : nil) {
-                    Task { await model.signOut() }
+                    Task {
+                        if await model.signOut() {
+                            AppRelauncher.shared.relaunch()
+                        }
+                    }
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {}
             } message: { confirmation in

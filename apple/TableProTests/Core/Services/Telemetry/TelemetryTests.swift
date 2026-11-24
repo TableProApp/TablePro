@@ -311,9 +311,9 @@ struct TelemetryTests {
         #expect(fixture.client?.captured.contains("signed_out") == false)
     }
 
-    @Test("Opted out, a sign-out, a refused refresh token, a revoked device or a server change resets only at the next opt-in")
+    @Test("Opted out, a sign-out, a refused refresh token or a revoked device resets only at the next opt-in")
     func optedOutSignOutResetsOnOptIn() async throws {
-        for cause in [AccountSignOutCause.user, .refreshRefused, .deviceRevoked, .serverChanged] {
+        for cause in [AccountSignOutCause.user, .refreshRefused, .deviceRevoked] {
             let fixture = try TelemetryFixture()
             try await fixture.account.signIn()
             fixture.start()
@@ -331,7 +331,7 @@ struct TelemetryTests {
                 await fixture.account.server.set { $0.deviceRevoked = true }
                 await fixture.account.services.refreshEntitlement()
             case .serverChanged:
-                try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+                Issue.record("The app changes the server only signed out")
             }
 
             #expect(!fixture.account.access.state.isSignedIn, "\(cause)")
@@ -371,16 +371,18 @@ struct TelemetryTests {
         #expect(fixture.storage.defaults.string(forKey: Telemetry.Keys.identifiedAccount) == nil)
     }
 
-    @Test("Use License Key with another account's key resets, then identifies as that account")
+    @Test("Another account's key after a sign-out resets, then identifies as that account")
     func licenseKeySwitchesAccount() async throws {
         let fixture = try TelemetryFixture()
         try await fixture.account.signIn()
         fixture.start()
         await fixture.account.server.set { $0.accountID = "acct_other" }
 
+        await fixture.account.services.signOut()
         _ = try await fixture.account.services.useLicenseKey(FakeAccountServer.validKey)
 
         #expect(Array(fixture.client?.calls.dropFirst(2) ?? []) == [
+            .capture("signed_out", [:]),
             .reset,
             .identify("acct_other", TelemetryFixture.person),
             .capture("signed_in", ["method": "license_key"])

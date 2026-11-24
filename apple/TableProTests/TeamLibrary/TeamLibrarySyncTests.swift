@@ -975,90 +975,111 @@ struct TeamLibrarySyncTests {
         #expect(!fixture.sync.hasUnsentChanges)
     }
 
-    @Test("Signing in to another server drops what this Mac read from the one it left")
-    func serverChangeClears() async throws {
-        let fixture = try await TeamLibraryFixture { library in
-            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+    // MARK: - One sign-in's library (TeamLibraryOwner has the rules)
+
+    @Test("A server or account switch while signed in is refused: it goes through Sign Out")
+    func switchingWhileSignedInIsRefused() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await #expect(throws: AccountError.signOutFirst) {
+            try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
         }
-        fixture.sync.start()
-        try await waitUntil { !fixture.sync.content.queries.isEmpty }
-
-        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
-
-        try await waitUntil { fixture.sync.content == .empty }
-        #expect(fixture.store.loadAll().isEmpty)
-        fixture.sync.stop()
-    }
-
-    @Test("A company sign-in the core restores at launch is no server switch: the edits not sent yet stay")
-    func restoredCompanySignInKeepsTheEdits() async throws {
-        let fixture = try await TeamLibraryFixture()
-        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
-        try await fixture.account.signIn()
-        await fixture.sync.sync()
-        await fixture.library { $0.licenseExpired = true }
-        _ = try? await fixture.sync.publishSavedQueries(
-            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: Self.team
-        )
-        #expect(fixture.sync.hasUnsentChanges)
-
-        fixture.account.backend.restoreLater(fixture.account.backend.status())
-        fixture.account.services.loadStoredState()
-        fixture.relaunch()
-        fixture.sync.start()
-        fixture.account.backend.finishRestore()
-
-        try await waitUntil { fixture.account.access.state.isSignedIn }
-        #expect(fixture.sync.hasUnsentChanges)
-        #expect(!fixture.store.loadAll().isEmpty)
-        #expect(fixture.dropped.shown.isEmpty)
-        fixture.sync.stop()
-    }
-
-    @Test("A launch under another sign-in shows the last one's unsent edits, wipes them, and sends them nowhere")
-    func anotherSignInAtLaunchDropsTheEdits() async throws {
-        let fixture = try await TeamLibraryFixture()
-        await fixture.sync.sync()
-        try await Self.leaveUnsent("Orders", in: fixture)
-        let pushesBefore = await fixture.pushes().count
-
-        var another = fixture.account.backend.status()
-        another.sessionID = "another-sign-in"
-        fixture.account.backend.restoreLater(another)
-        fixture.account.services.loadStoredState()
-        fixture.relaunch()
-        fixture.sync.start()
-        fixture.account.backend.finishRestore()
-        try await waitUntil { fixture.account.access.state.isRestored }
-
-        #expect(fixture.dropped.shown == [["Orders"]])
-        #expect(!fixture.sync.hasUnsentChanges)
-        #expect(fixture.store.loadAll().allSatisfy { $0.pending.isEmpty })
-        #expect(await fixture.pushes().count == pushesBefore)
-        fixture.sync.stop()
-    }
-
-    @Test("A sign-out shows the unsent edits it drops")
-    func signOutShowsWhatItDrops() async throws {
-        let fixture = try await TeamLibraryFixture()
-        fixture.sync.start()
-        try await waitUntil {
-            if case .synced = fixture.sync.status { return true }
-            return false
+        await #expect(throws: AccountError.signOutFirst) {
+            _ = try await fixture.account.services.useLicenseKey(FakeAccountServer.validKey)
         }
+        await #expect(throws: AccountError.signOutFirst) { try await fixture.account.signIn() }
+    }
+
+    @Test("Sign Out deletes the library and checks it is gone")
+    func signOutDeletesTheLibrary() async throws {
+        let fixture = try await TeamLibraryFixture()
+        fixture.sync.start()
         try await Self.leaveUnsent("Orders", in: fixture)
 
         await fixture.account.services.signOut()
 
-        #expect(fixture.dropped.shown == [["Orders"]])
         #expect(fixture.store.isEmpty)
+        #expect(fixture.store.owner == nil)
+        #expect(!fixture.sync.isDisabled)
         fixture.sync.stop()
     }
 
-    @Test("Signed out or offline at launch, no library opens, and the last sign-in's is wiped after its edits are shown")
-    func noSignInAtLaunchOpensNothing() async throws {
+    @Test("An involuntary sign-out keeps the library, and the same account's next sign-in resumes its unsent edits")
+    func involuntarySignOutResumesForTheSameAccount() async throws {
+        let fixture = try await TeamLibraryFixture()
+        fixture.sync.start()
+        try await Self.leaveUnsent("Orders", in: fixture, refusingPushes: true)
+
+        try await Self.refuseRefresh(fixture)
+        #expect(fixture.sync.content == .empty)
+        #expect(!fixture.sync.hasUnsentChanges, "Nothing loads while signed out")
+        #expect(!fixture.store.isEmpty)
+
+        try await fixture.account.signIn()
+
+        try await waitUntil { fixture.sync.hasUnsentChanges }
+        #expect(fixture.sync.unsentChanges == ["Orders"])
+        fixture.sync.stop()
+    }
+
+    @Test("After an involuntary sign-out, another account's or server's sign-in deletes the library before anything loads")
+    func involuntarySignOutThenAnotherOwnerDeletes() async throws {
+        for other in ["account", "server"] {
+            let fixture = try await TeamLibraryFixture()
+            fixture.sync.start()
+            try await Self.leaveUnsent("Orders", in: fixture)
+            try await Self.refuseRefresh(fixture)
+
+            if other == "account" {
+                await fixture.server.set { $0.accountID = "acct_other" }
+            } else {
+                try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+            }
+            try await fixture.account.signIn()
+
+            try await waitUntil { fixture.store.owner == TeamLibraryOwner(fixture.account.access.state) }
+            #expect(!fixture.sync.hasUnsentChanges, "\(other)")
+            #expect(fixture.store.loadAll().allSatisfy { $0.pending.isEmpty }, "\(other)")
+            fixture.sync.stop()
+        }
+    }
+
+    @Test("A company sign-in the core restores at launch resumes its library, unsent edits included")
+    func restoredCompanySignInResumes() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.account.services.signOut()
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        try await fixture.account.signIn()
+        await fixture.sync.sync()
+        try await Self.leaveUnsent("Orders", in: fixture)
+
+        try Self.relaunch(fixture, restoring: fixture.account.backend.status())
+
+        try await waitUntil { fixture.account.access.state.isSignedIn }
+        #expect(fixture.sync.unsentChanges == ["Orders"])
+        fixture.sync.stop()
+    }
+
+    @Test("A launch that restores another account deletes the library unseen")
+    func launchUnderAnotherAccountDeletes() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        try await Self.leaveUnsent("Orders", in: fixture)
+        var another = fixture.account.backend.status()
+        another.accountID = "acct_other"
+
+        try Self.relaunch(fixture, restoring: another)
+
+        try await waitUntil { fixture.account.access.state.isRestored }
+        #expect(!fixture.sync.hasUnsentChanges)
+        #expect(fixture.store.owner?.accountID == "acct_other")
+        #expect(fixture.disabled.reports == 0)
+        fixture.sync.stop()
+    }
+
+    @Test("Signed out or offline at launch, nothing loads and the library waits on disk for its owner")
+    func noSignInAtLaunchLoadsNothing() async throws {
         let offline = AccountSnapshot(
-            state: .offline, accountID: "acct_other", email: "grace@example.com", features: ["team_library"],
+            state: .offline, accountID: "acct_test", email: "ada@m16.example", features: ["team_library"],
             expiresAt: Date().addingTimeInterval(86_400), isOfflineFile: true
         )
         for kept in [AccountSnapshot(), offline] {
@@ -1066,19 +1087,34 @@ struct TeamLibrarySyncTests {
             await fixture.sync.sync()
             try await Self.leaveUnsent("Orders", in: fixture)
 
-            fixture.account.backend.restoreLater(kept)
-            fixture.account.services.loadStoredState()
-            fixture.relaunch()
-            fixture.sync.start()
-            fixture.account.backend.finishRestore()
-            try await waitUntil { fixture.account.access.state.isRestored }
+            try Self.relaunch(fixture, restoring: kept)
 
+            try await waitUntil { fixture.account.access.state.isRestored }
             #expect(fixture.sync.content == .empty)
             #expect(fixture.sync.writableTeams.isEmpty)
-            #expect(fixture.dropped.shown == [["Orders"]])
-            #expect(fixture.store.isEmpty)
+            #expect(!fixture.store.isEmpty)
             fixture.sync.stop()
         }
+    }
+
+    @Test("A delete that fails turns Team Library off and loads nothing")
+    func failedDeleteTurnsTeamLibraryOff() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        try await Self.leaveUnsent("Orders", in: fixture)
+        var another = fixture.account.backend.status()
+        another.accountID = "acct_other"
+        try AccountSettingsModelTests.lock(fixture.store.directory)
+        defer { try? AccountSettingsModelTests.unlock(fixture.store.directory) }
+
+        try Self.relaunch(fixture, restoring: another)
+
+        try await waitUntil { fixture.sync.isDisabled }
+        #expect(fixture.disabled.reports == 1)
+        #expect(fixture.sync.content == .empty)
+        #expect(!fixture.sync.hasUnsentChanges)
+        #expect(await fixture.sync.sync() == .skipped)
+        fixture.sync.stop()
     }
 
     @Test("A bearer of another sign-in is refused before anything is sent")
@@ -1087,7 +1123,8 @@ struct TeamLibrarySyncTests {
         await fixture.sync.sync()
         let first = try #require(fixture.account.access.state.sessionID)
         let pinned = fixture.account.services.api(pinnedTo: fixture.account.services.server, session: first)
-        _ = try await fixture.account.services.useLicenseKey(FakeAccountServer.validKey)
+        await fixture.account.services.signOut()
+        try await fixture.account.signIn()
         #expect(fixture.account.access.state.sessionID != first)
         let before = await fixture.server.requests(to: "/me").count
 
@@ -1096,8 +1133,8 @@ struct TeamLibrarySyncTests {
         #expect(await fixture.server.requests(to: "/me").count == before)
     }
 
-    @Test("A publish queued behind a sync is never sent to a server the Mac switches to while it waits")
-    func queuedPublishStaysWithItsServer() async throws {
+    @Test("A publish queued behind a sync is refused when the sign-in ends while it waits")
+    func queuedPublishIsRefusedAfterTheSignInEnds() async throws {
         let gate = AsyncGate()
         let fixture = try await TeamLibraryFixture()
         await fixture.sync.sync()
@@ -1111,33 +1148,13 @@ struct TeamLibrarySyncTests {
         }
         await Task.yield()
 
-        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        await fixture.account.services.signOut()
         try await fixture.account.signIn()
         await gate.open()
         _ = await syncing.value
 
         await #expect(throws: TeamLibraryPublishError.failed(.signedOut)) { try await publishing.value }
         #expect(await fixture.pushes().isEmpty)
-    }
-
-    @Test("A sheet confirming a publish is told to close when its session ends, at once if it already has")
-    func confirmationClosesWithItsSession() async throws {
-        let fixture = try await TeamLibraryFixture()
-        fixture.sync.start()
-        let destination = fixture.sync.destination(Self.team)
-        var closed = 0
-        let watching = fixture.sync.sessionEnds(for: destination).sink { closed += 1 }
-        defer { watching.cancel() }
-        #expect(closed == 0)
-
-        await fixture.account.services.signOut()
-
-        #expect(closed == 1)
-        var closedLate = false
-        let late = fixture.sync.sessionEnds(for: destination).sink { closedLate = true }
-        defer { late.cancel() }
-        #expect(closedLate)
-        fixture.sync.stop()
     }
 
     @Test("The library an earlier build kept stays for the tablepro.app account the core restored with it")
@@ -1151,12 +1168,11 @@ struct TeamLibrarySyncTests {
         fixture.relaunch()
 
         #expect(fixture.sync.content.queries.map(\.name) == ["Orders"])
-        #expect(fixture.store.owner == fixture.account.access.state.sessionID)
-        #expect(fixture.dropped.shown.isEmpty)
+        #expect(fixture.store.owner == TeamLibraryOwner(fixture.account.access.state))
     }
 
-    @Test("The library an earlier build kept is wiped unseen when no tablepro.app account restores with it")
-    func earlierLibraryWithoutItsAccountIsWiped() async throws {
+    @Test("The library an earlier build kept is deleted unseen when no tablepro.app account restores with it")
+    func earlierLibraryWithoutItsAccountIsDeleted() async throws {
         for restored in ["company server", "no entitlement", "signed out"] {
             let fixture = try await TeamLibraryFixture()
             await fixture.sync.sync()
@@ -1172,28 +1188,46 @@ struct TeamLibrarySyncTests {
             default:
                 kept = AccountSnapshot()
             }
-            fixture.account.backend.restoreLater(kept)
-            fixture.account.services.loadStoredState()
-            fixture.relaunch()
-            fixture.sync.start()
-            fixture.account.backend.finishRestore()
-            try await waitUntil { fixture.account.access.state.isRestored }
+            try Self.relaunch(fixture, restoring: kept)
 
-            #expect(fixture.store.isEmpty, "\(restored)")
+            try await waitUntil { fixture.account.access.state.isRestored }
             #expect(fixture.sync.content == .empty, "\(restored)")
-            #expect(fixture.dropped.shown.isEmpty, "\(restored)")
+            #expect(!fixture.sync.hasUnsentChanges, "\(restored)")
+            #expect(fixture.store.loadAll().allSatisfy { $0.pending.isEmpty }, "\(restored)")
             fixture.sync.stop()
         }
     }
 
-    // A publish the server refuses past its license's grace, so the edit stays unsent on this Mac.
-    private static func leaveUnsent(_ name: String, in fixture: TeamLibraryFixture) async throws {
+    // A publish the server refuses past its license's grace, so the edit stays unsent on this Mac; with
+    // `refusingPushes`, a sync the schedule runs later keeps it unsent too.
+    private static func leaveUnsent(
+        _ name: String, in fixture: TeamLibraryFixture, refusingPushes: Bool = false
+    ) async throws {
         await fixture.library { $0.licenseExpired = true }
         _ = try? await fixture.sync.publishSavedQueries(
             favorites: [TeamLibraryFixture.favorite(name: name)], folders: [], to: Self.team
         )
         #expect(fixture.sync.hasUnsentChanges)
-        await fixture.library { $0.licenseExpired = false }
+        if !refusingPushes {
+            await fixture.library { $0.licenseExpired = false }
+        }
+    }
+
+    // The server refuses the refresh token, so the core signs out on its own.
+    private static func refuseRefresh(_ fixture: TeamLibraryFixture) async throws {
+        await fixture.server.set { $0.refusesRefresh = true }
+        await fixture.account.services.refreshEntitlement()
+        try await waitUntil { !fixture.account.access.state.isSignedIn }
+        await fixture.server.set { $0.refusesRefresh = false }
+    }
+
+    // A launch that restores `kept` once the core has read it.
+    private static func relaunch(_ fixture: TeamLibraryFixture, restoring kept: AccountSnapshot) throws {
+        fixture.account.backend.restoreLater(kept)
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        fixture.sync.start()
+        fixture.account.backend.finishRestore()
     }
 
     @Test("A bearer the core could not renew sends nothing, and the edits wait for the next sync instead of being dropped")

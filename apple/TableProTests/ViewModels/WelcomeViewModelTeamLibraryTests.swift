@@ -30,7 +30,7 @@ struct WelcomeViewModelTeamLibraryTests {
         #expect(await fixture.libraryRequests().isEmpty)
     }
 
-    @Test("A switch to another server while the confirmation is open sends that server nothing")
+    @Test("A sign-in that ends while the confirmation is open sends nothing, though the next one has the same team")
     func switchWhileConfirmingPublishesNothing() async throws {
         let fixture = try await TeamLibraryFixture()
         await fixture.sync.sync()
@@ -40,7 +40,7 @@ struct WelcomeViewModelTeamLibraryTests {
             to: TeamLibraryFixture.team,
             through: fixture.sync,
             confirm: { _ in
-                try? await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+                await fixture.account.services.signOut()
                 try? await fixture.account.signIn()
                 await fixture.sync.sync()
                 return true

@@ -130,11 +130,43 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     }
 }
 
+// The sign-in the stored Team Library belongs to. The rules that keep one sign-in's library from another:
+//
+// 1. Switching is a relaunch. Sign Out, a server change and an account change go one way: a confirmation that lists the
+//    unpushed edits, sign-out, delete all Team Library data and check it is gone, relaunch. A server change or a
+//    license key is refused while signed in. If the delete fails, the app stays signed out with Team Library off and an
+//    error shown, and nothing loads.
+// 2. An involuntary sign-out (refresh refused, device removed) stops Team Library and lets the pass that is out end. The
+//    data stays on disk with its owner. Nothing loads until the next sign-in: the same owner resumes, so offline edits
+//    survive; another or an unknown owner is deleted and checked first, or Team Library goes off as in 1.
+// 3. At launch Team Library loads only once the core has restored the sign-in. An owner that is missing or does not
+//    match is deleted without showing. The library builds before the core kept takes the tablepro.app account the
+//    core restores first as its owner; with none, it is deleted.
+// 4. The core's session id lives only in its process, a new one for each sign-in and launch. A bearer of another
+//    session is refused before anything is sent.
+// 5. A publish is bound to the session shown at its confirmation and checked again before it is sent; a changed one
+//    refuses it and says so.
+internal struct TeamLibraryOwner: Codable, Equatable, Sendable {
+    let server: String
+    let accountID: String
+
+    // Signed in with a known account; nil otherwise.
+    init?(_ state: AccountState) {
+        guard state.isSignedIn, let accountID = state.entitlement?.accountID else { return nil }
+        self.init(server: state.server.apiOrigin.absoluteString, accountID: accountID)
+    }
+
+    init(server: String, accountID: String) {
+        self.server = server
+        self.accountID = accountID
+    }
+}
+
 // One JSON file per team under Application Support, plus the cache the /v1 library left behind.
 internal struct TeamLibraryStateStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibraryStateStore")
     static let legacyPullKey = "com.TablePro.teamLibrary.lastPullAt"
-    static let ownerKey = "com.TablePro.teamLibrary.session"
+    static let ownerKey = "com.TablePro.teamLibrary.owner"
 
     let directory: URL
     let legacyFile: URL
@@ -179,18 +211,28 @@ internal struct TeamLibraryStateStore {
         removeLegacy()
     }
 
-    // The core's id of the sign-in this library was read for. Nil in a library builds before the core kept, which
-    // only tablepro.app filled.
-    var owner: String? {
-        defaults.string(forKey: Self.ownerKey)
+    // Nil in a library builds before the core kept, which only tablepro.app filled.
+    var owner: TeamLibraryOwner? {
+        defaults.data(forKey: Self.ownerKey).flatMap { try? JSONDecoder().decode(TeamLibraryOwner.self, from: $0) }
     }
 
-    func setOwner(_ sessionID: String) {
-        defaults.set(sessionID, forKey: Self.ownerKey)
+    func setOwner(_ owner: TeamLibraryOwner) {
+        defaults.set(try? JSONEncoder().encode(owner), forKey: Self.ownerKey)
     }
 
     var isEmpty: Bool {
-        loadAll().isEmpty && !FileManager.default.fileExists(atPath: legacyFile.path)
+        !exists(directory) && !exists(legacyFile)
+    }
+
+    // True only once every team file, the /v1 cache and the owner are gone.
+    func deleteAll() -> Bool {
+        removeAll()
+        defaults.removeObject(forKey: Self.ownerKey)
+        return isEmpty
+    }
+
+    private func exists(_ url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
     }
 
     // What the last /v1 pull cached, keyed by client ID like a /v2 snapshot, so the first one matches it item by item.
