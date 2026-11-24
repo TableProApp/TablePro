@@ -43,14 +43,6 @@ internal struct AccountProfile: Equatable, Sendable {
         )
     }
 
-    static func fetch(api: any APIProtocol) async throws(AccountError) -> AccountProfile {
-        do {
-            return try read(try await api.getMe())
-        } catch {
-            throw AccountError.from(error)
-        }
-    }
-
     static func read(_ output: Operations.GetMe.Output) throws -> AccountProfile {
         switch output {
         case .ok(let answer):

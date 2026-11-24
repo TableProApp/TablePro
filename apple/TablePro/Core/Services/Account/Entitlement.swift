@@ -22,101 +22,50 @@ internal struct EntitlementLicense: Equatable, Sendable {
     let team: Team?
 }
 
+// The entitlement the core verified, for display. Only the core's gate decides what it unlocks.
 internal struct Entitlement: Equatable, Sendable {
-    let token: String
     let accountID: String
-    let deviceID: String
-    let machineID: String
     let features: Set<String>
     let licenses: [EntitlementLicense]
     let email: String
     let name: String?
-    let issuedAt: Date
-    let notBefore: Date
     let expiresAt: Date
     let isOffline: Bool
 
-    func isValid(at now: Date) -> Bool {
-        notBefore <= now.addingTimeInterval(EntitlementVerifier.notBeforeLeeway) && now < expiresAt
-    }
-}
-
-extension Entitlement {
-    struct Claims: Decodable {
-        struct License: Decodable {
-            struct Team: Decodable {
-                let id: String
-                let name: String
-            }
-
-            let id: String
-            let plan: String
-            let cycle: String
-            let source: String
-            let status: String
-            let renewsAt: String?
-            let endsAt: String?
-            let team: Team?
-
-            enum CodingKeys: String, CodingKey {
-                case id, plan, cycle, source, status, team
-                case renewsAt = "renews_at"
-                case endsAt = "ends_at"
-            }
-        }
-
-        struct Account: Decodable {
-            let email: String
-            let name: String?
-        }
-
-        let aud: String
-        let sub: String
-        let iat: Int64
-        let nbf: Int64
-        let exp: Int64
-        let dev: String
-        let mid: String
-        let features: [String]
-        let licenses: [License]?
-        let account: Account?
-        let offline: Bool?
+    init(
+        accountID: String,
+        features: Set<String>,
+        licenses: [EntitlementLicense],
+        email: String,
+        name: String?,
+        expiresAt: Date,
+        isOffline: Bool
+    ) {
+        self.accountID = accountID
+        self.features = features
+        self.licenses = licenses
+        self.email = email
+        self.name = name
+        self.expiresAt = expiresAt
+        self.isOffline = isOffline
     }
 
-    init(token: String, claims: Claims) throws(EntitlementVerifier.Failure) {
-        var licenses: [EntitlementLicense] = []
-        for license in claims.licenses ?? [] {
-            licenses.append(EntitlementLicense(
-                id: license.id,
-                plan: license.plan,
-                cycle: license.cycle,
-                source: license.source,
-                status: license.status,
-                renewsAt: try Self.date(license.renewsAt),
-                endsAt: try Self.date(license.endsAt),
-                team: license.team.map { EntitlementLicense.Team(id: $0.id, name: $0.name) }
-            ))
+    init?(_ snapshot: AccountSnapshot) {
+        guard snapshot.state != .signedOut, let accountID = snapshot.accountID, let expiresAt = snapshot.expiresAt else {
+            return nil
         }
-        let name = claims.account?.name ?? ""
         self.init(
-            token: token,
-            accountID: claims.sub,
-            deviceID: claims.dev,
-            machineID: claims.mid,
-            features: Set(claims.features),
-            licenses: licenses,
-            email: claims.account?.email ?? "",
-            name: name.isEmpty ? nil : name,
-            issuedAt: Date(timeIntervalSince1970: TimeInterval(claims.iat)),
-            notBefore: Date(timeIntervalSince1970: TimeInterval(claims.nbf)),
-            expiresAt: Date(timeIntervalSince1970: TimeInterval(claims.exp)),
-            isOffline: claims.offline ?? false
+            accountID: accountID,
+            features: snapshot.features,
+            licenses: snapshot.licenses,
+            email: snapshot.email ?? "",
+            name: snapshot.name,
+            expiresAt: expiresAt,
+            isOffline: snapshot.state == .offline
         )
     }
 
-    private static func date(_ text: String?) throws(EntitlementVerifier.Failure) -> Date? {
-        guard let text else { return nil }
-        guard let date = try? Date(text, strategy: .iso8601) else { throw .malformed }
-        return date
+    func isValid(at now: Date) -> Bool {
+        now < expiresAt
     }
 }

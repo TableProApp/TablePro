@@ -118,9 +118,7 @@ internal final class AccountSettingsModel: ObservableObject {
             state: services.access.state,
             profile: profile.value,
             devices: devices.value,
-            hasLegacyLicense: services.access.state.legacy != nil,
             machineID: services.machineID,
-            configuration: services.configuration,
             now: now()
         )
     }

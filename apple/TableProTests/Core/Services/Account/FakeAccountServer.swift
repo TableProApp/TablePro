@@ -3,13 +3,13 @@
 //  TableProTests
 //
 
-import CryptoKit
 import Foundation
 @testable import TablePro
 import TableProCloudAPI
 import TableProTestSupport
 
-// Answers /oauth/token, /oauth/revoke and the /v2 device and entitlement calls the way tablepro-cloud does.
+// tablepro-cloud as the tests see it: the /v2 calls the Swift clients make through FakeTransport, and the account
+// state FakeAccountBackend reads the way the core reads its answers.
 actor FakeAccountServer {
     struct Request: Sendable {
         let method: String
@@ -18,6 +18,7 @@ actor FakeAccountServer {
         let json: [String: String]
         let authorization: String?
         var body = Data()
+        var baseURL: URL?
     }
 
     static let machine = MachineDescription(
@@ -30,13 +31,11 @@ actor FakeAccountServer {
     static let validKey = "ABCDE-FGHIJ-KLMNO-PQRST-UVWXY"
     static let otherValidKey = "VWXYZ-QRSTU-LMNOP-GHIJK-ABCDE"
 
-    let signingKey = Curve25519.Signing.PrivateKey()
     var features: [String] = ["icloud_sync", "query_insights"]
     var isOffline = false
     var refusesRefresh = false
     var deviceLimitReached = false
     var deviceRevoked = false
-    var refusesRegistration = false
     var unauthorizedOnce = false
     var entitlementLifetime: TimeInterval = 14 * 24 * 60 * 60
     var licenses: [[String: Any]] = [FakeAccountServer.license()]
@@ -50,16 +49,11 @@ actor FakeAccountServer {
     )]
     // Removing a device that holds a slot frees it, so the next entitlement answers.
     var removalFreesSlot = true
-    var refreshGate: AsyncGate?
-    var entitlementGate: AsyncGate?
     var library = FakeTeamLibrary()
     // Answered, one per GET /me, before anything else; a 429 carries the library's Retry-After.
     var profileFaults: [Int] = []
     private(set) var requests: [Request] = []
-    private(set) var familyBound = false
-    private var familyMethod = "interactive"
-    private var challenges: [String: String] = [:]
-    private var refreshCounter = 0
+    private var authorizations = 0
     private let now: @Sendable () -> Date
 
     init(now: @escaping @Sendable () -> Date = { Date() }) {
@@ -74,78 +68,33 @@ actor FakeAccountServer {
         requests.filter { $0.path == path }
     }
 
-    nonisolated var publicKey: Curve25519.Signing.PublicKey {
-        signingKey.publicKey
-    }
-
     // MARK: - OAuth
 
-    // What the authorize page does: keeps the PKCE challenge under the code it hands back.
+    // What the authorize page does: hands back a code for the sign-in's state.
     func authorize(_ url: URL) -> String {
-        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        let code = "code-\(challenges.count + 1)"
-        if query.first(where: { $0.name == "code_challenge_method" })?.value == "S256" {
-            challenges[code] = query.first { $0.name == "code_challenge" }?.value
-        }
-        return code
+        authorizations += 1
+        return "code-\(authorizations)"
     }
 
-    func oauth(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        let form = Self.parseForm(request.httpBody ?? Data())
-        let path = request.url?.path ?? ""
-        requests.append(Request(method: "POST", path: path, form: form, json: [:], authorization: nil))
-        if isOffline { throw URLError(.notConnectedToInternet) }
-
-        if path == "/oauth/revoke" {
-            return Self.http(request, status: 200, body: [:])
-        }
-        switch form["grant_type"] {
-        case "authorization_code":
-            guard let code = form["code"], let challenge = challenges.removeValue(forKey: code),
-                  let verifier = form["code_verifier"],
-                  Base64URL.encode(Data(SHA256.hash(data: Data(verifier.utf8)))) == challenge
-            else {
-                return Self.http(request, status: 400, body: ["error": "invalid_grant"])
-            }
-            familyBound = false
-            familyMethod = "interactive"
-            return tokens(request, device: false, method: familyMethod)
-        case "refresh_token":
-            refreshCounter += 1
-            if let refreshGate { await refreshGate.wait() }
-            guard !refusesRefresh, form["refresh_token"]?.hasPrefix("refresh-") == true else {
-                return Self.http(request, status: 400, body: ["error": "invalid_grant"])
-            }
-            return tokens(request, device: familyBound, method: familyMethod)
-        case OAuthTokenClient.tokenExchangeGrant:
-            guard let key = form["subject_token"], [Self.validKey, Self.otherValidKey].contains(key) else {
-                return Self.http(request, status: 400, body: ["error": "invalid_grant"])
-            }
-            familyBound = true
-            familyMethod = "license_key"
-            return tokens(request, device: true, method: familyMethod)
-        default:
-            return Self.http(request, status: 400, body: ["error": "unsupported_grant_type"])
-        }
-    }
-
-    var refreshCount: Int { refreshCounter }
-
-    private func tokens(_ request: URLRequest, device: Bool, method: String) -> (Data, URLResponse) {
-        // Unique like the server's: two tokens with equal claims could serialize alike or not, by dictionary order.
-        var claims: [String: Any] = ["sub": accountID, "auth_method": method, "jti": UUID().uuidString]
-        if device { claims["dev"] = Self.deviceID }
-        return Self.http(request, status: 200, body: [
-            "access_token": Self.unsignedJWT(claims),
-            "refresh_token": "refresh-\(UUID().uuidString)",
-            "token_type": "Bearer",
-            "expires_in": 900
-        ])
+    // What the core reads from the server for a sign-in or a refresh.
+    func entitlementAnswer() -> FakeEntitlementAnswer {
+        FakeEntitlementAnswer(
+            isOffline: isOffline,
+            refusesRefresh: refusesRefresh,
+            deviceRevoked: deviceRevoked,
+            deviceLimitReached: deviceLimitReached,
+            limitHolders: limitHolders,
+            accountID: accountID,
+            accountClaim: accountClaim,
+            features: features,
+            licenses: licenses,
+            lifetime: entitlementLifetime
+        )
     }
 
     // MARK: - /v2
 
-    func api(_ request: HTTPRequest, body: HTTPBody?) async throws -> (HTTPResponse, HTTPBody?) {
+    func api(_ request: HTTPRequest, body: HTTPBody?, baseURL: URL? = nil) async throws -> (HTTPResponse, HTTPBody?) {
         var data = Data()
         if let body {
             data = try await Data(collecting: body, upTo: 1_048_576)
@@ -155,7 +104,8 @@ actor FakeAccountServer {
         let path = request.path ?? ""
         let authorization = request.headerFields[.authorization]
         requests.append(Request(
-            method: request.method.rawValue, path: path, form: [:], json: json, authorization: authorization, body: data
+            method: request.method.rawValue, path: path, form: [:], json: json, authorization: authorization, body: data,
+            baseURL: baseURL
         ))
         if isOffline { throw URLError(.notConnectedToInternet) }
         if unauthorizedOnce {
@@ -163,38 +113,7 @@ actor FakeAccountServer {
             return Self.problem(status: 401, code: "invalid_token")
         }
 
-        let claims = authorization.flatMap { Self.claims(ofBearer: $0) } ?? [:]
         switch (request.method, path) {
-        case (.post, "/devices"):
-            if refusesRegistration {
-                return Self.problem(status: 500, code: "internal")
-            }
-            familyBound = true
-            return Self.json(status: .created, [
-                "id": Self.deviceID, "machine_id": json["machine_id"] ?? "", "platform": "macos",
-                "name": json["name"] ?? "", "app_version": json["app_version"] ?? "",
-                "os_version": json["os_version"] ?? "", "created_at": "2026-10-01T09:00:00Z",
-                "last_seen_at": "2026-10-28T09:00:00.123456Z"
-            ])
-        case (.post, "/devices/\(Self.deviceID)/entitlement"):
-            if let entitlementGate { await entitlementGate.wait() }
-            if deviceRevoked {
-                return Self.problem(status: 403, code: "device_revoked")
-            }
-            guard claims["dev"] as? String == Self.deviceID else {
-                return Self.problem(status: 403, code: "forbidden")
-            }
-            if deviceLimitReached {
-                return Self.json(status: .conflict, contentType: "application/problem+json", [
-                    "type": "https://api.tablepro.app/problems/device-limit-reached",
-                    "title": "Device limit reached", "status": 409, "code": "device_limit_reached",
-                    "devices": limitHolders
-                ])
-            }
-            let token = signedEntitlement()
-            return Self.json(status: .ok, [
-                "token": token, "expires_at": "2026-11-10T00:00:00Z", "refresh_after": "2026-10-30T00:00:00Z"
-            ])
         case (.get, "/me"):
             if !profileFaults.isEmpty {
                 return library.fault(profileFaults.removeFirst())
@@ -278,61 +197,10 @@ actor FakeAccountServer {
         ["team": ["id": teamID, "name": name], "role": role, "has_seat": hasSeat]
     }
 
-    func signedEntitlement(machineID: String = FakeAccountServer.machine.machineID, offline: Bool = false) -> String {
-        let issued = Int64(now().timeIntervalSince1970)
-        return Self.sign(claims: [
-            "iss": "https://api.tablepro.app", "aud": "tablepro-app", "sub": accountID,
-            "jti": UUID().uuidString, "iat": issued, "nbf": issued,
-            "exp": issued + Int64(entitlementLifetime), "dev": Self.deviceID, "mid": machineID,
-            "features": features.sorted(),
-            "licenses": licenses,
-            "account": accountClaim,
-            "offline": offline
-        ], key: signingKey)
-    }
-
-    // MARK: - Helpers
-
-    static func sign(
-        claims: [String: Any],
-        key: Curve25519.Signing.PrivateKey,
-        header: [String: Any]? = nil
-    ) -> String {
-        let header = header ?? [
-            "alg": "EdDSA", "kid": EntitlementVerifier.keyID(of: key.publicKey), "typ": "tablepro-entitlement+jwt"
-        ]
-        let head = Base64URL.encode(try! JSONSerialization.data(withJSONObject: header, options: .sortedKeys))
-        let body = Base64URL.encode(try! JSONSerialization.data(withJSONObject: claims, options: .sortedKeys))
-        let signature = try! key.signature(for: Data("\(head).\(body)".utf8))
-        return "\(head).\(body).\(Base64URL.encode(signature))"
-    }
-
     static func unsignedJWT(_ claims: [String: Any]) -> String {
         let head = Base64URL.encode(try! JSONSerialization.data(withJSONObject: ["alg": "EdDSA", "typ": "JWT"]))
         let body = Base64URL.encode(try! JSONSerialization.data(withJSONObject: claims))
         return "\(head).\(body).c2ln"
-    }
-
-    static func parseForm(_ data: Data) -> [String: String] {
-        var form: [String: String] = [:]
-        for pair in String(decoding: data, as: UTF8.self).split(separator: "&") {
-            let parts = pair.split(separator: "=", maxSplits: 1).map { String($0).removingPercentEncoding ?? "" }
-            form[parts[0]] = parts.count > 1 ? parts[1] : ""
-        }
-        return form
-    }
-
-    private static func claims(ofBearer header: String) -> [String: Any]? {
-        let token = header.replacingOccurrences(of: "Bearer ", with: "")
-        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
-        guard parts.count == 3, let payload = Base64URL.decode(parts[1]) else { return nil }
-        return try? JSONSerialization.jsonObject(with: payload) as? [String: Any]
-    }
-
-    private static func http(_ request: URLRequest, status: Int, body: [String: Any]) -> (Data, URLResponse) {
-        let data = (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
-        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
-        return (data, response)
     }
 
     static func json(
@@ -362,7 +230,7 @@ struct FakeTransport: ClientTransport {
         baseURL: URL,
         operationID: String
     ) async throws -> (HTTPResponse, HTTPBody?) {
-        try await server.api(request, body: body)
+        try await server.api(request, body: body, baseURL: baseURL)
     }
 }
 
@@ -381,76 +249,40 @@ struct FakeAuthenticator: WebAuthenticating {
 @MainActor
 struct AccountFixture {
     let server: FakeAccountServer
+    let backend: FakeAccountBackend
     let services: AccountServices
+    // Where an older build kept its license key.
     let keychain: InMemoryKeychain
-    let legacyKeychain: InMemoryKeychain
     let defaults: EphemeralDefaults
-    let entitlementFile: URL
     let access: FeatureAccess
     let clock = ManualClock()
 
-    init(
-        now: @escaping @Sendable () -> Date = { Date() },
-        verifyLegacy: @escaping @Sendable (SignedLicensePayload) throws -> LicensePayloadData = { $0.data }
-    ) throws {
+    init(now: @escaping @Sendable () -> Date = { Date() }) throws {
         let server = FakeAccountServer(now: now)
         let keychain = InMemoryKeychain()
-        let legacyKeychain = InMemoryKeychain()
         let defaults = try EphemeralDefaults()
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("AccountTests-\(UUID().uuidString)", isDirectory: true)
-        let entitlementFile = directory.appendingPathComponent("entitlement.jwt")
         let access = FeatureAccess(now: now)
-        let configuration = AccountConfiguration(
-            accountURL: URL(string: "http://account.localhost:5284")!,
-            apiURL: URL(string: "http://api.localhost:5284")!,
-            entitlementKeys: [server.publicKey]
-        )
+        let backend = FakeAccountBackend(server: server, now: now)
         self.server = server
+        self.backend = backend
         self.keychain = keychain
-        self.legacyKeychain = legacyKeychain
         self.defaults = defaults
-        self.entitlementFile = entitlementFile
         self.access = access
         self.services = AccountServices(
-            configuration: configuration,
-            machine: FakeAccountServer.machine,
+            backend: backend,
             transport: FakeTransport(server: server),
-            send: { request in try await server.oauth(request) },
-            keychain: keychain,
-            entitlementFile: entitlementFile,
-            legacy: LegacyLicenseStore(
-                keychain: legacyKeychain,
-                defaults: defaults.defaults,
-                machineID: FakeAccountServer.machine.machineID,
-                verify: verifyLegacy
-            ),
+            storedKey: StoredLicenseKey(keychain: keychain, defaults: defaults.defaults),
             access: access,
             clock: clock,
             now: now
         )
+        backend.listener = services
     }
 
-    func storeLegacyLicense(key: String?, tier: String = "starter", issuedAt: Date = Date(), expiresAt: Date? = nil) throws {
-        if let key {
-            legacyKeychain.writeString(key, forKey: LegacyLicenseStore.keychainKey)
-        }
-        let formatter = ISO8601DateFormatter()
-        let payload = LicensePayloadData(
-            billingCycle: nil,
-            licenseKey: key ?? FakeAccountServer.validKey,
-            email: "ada@m16.example",
-            status: "active",
-            expiresAt: expiresAt.map { formatter.string(from: $0) },
-            issuedAt: formatter.string(from: issuedAt),
-            tier: tier,
-            machineId: FakeAccountServer.machine.machineID
-        )
-        let cached = License(
-            signedPayload: SignedLicensePayload(data: payload, signature: "sig"),
-            cachedOnMachineId: FakeAccountServer.machine.machineID
-        )
-        defaults.defaults.set(try JSONEncoder().encode(cached), forKey: LegacyLicenseStore.payloadKey)
+    // A key an older build stored, with the signed payload it kept beside it.
+    func storeLegacyLicense(key: String) {
+        keychain.writeString(key, forKey: StoredLicenseKey.keychainKey)
+        defaults.defaults.set(Data("{}".utf8), forKey: StoredLicenseKey.payloadKey)
     }
 
     func signIn() async throws {
@@ -458,7 +290,7 @@ struct AccountFixture {
     }
 
     var hasLegacyLicense: Bool {
-        defaults.defaults.data(forKey: LegacyLicenseStore.payloadKey) != nil
-            || legacyKeychain.readStringResult(forKey: LegacyLicenseStore.keychainKey) != .notFound
+        defaults.defaults.data(forKey: StoredLicenseKey.payloadKey) != nil
+            || keychain.readStringResult(forKey: StoredLicenseKey.keychainKey) != .notFound
     }
 }

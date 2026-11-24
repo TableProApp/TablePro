@@ -8,7 +8,7 @@ import AuthenticationServices
 import Foundation
 
 @MainActor
-internal protocol WebAuthenticating {
+internal protocol WebAuthenticating: Sendable {
     func authenticate(url: URL, callbackScheme: String) async throws(AccountError) -> URL
 }
 

@@ -945,6 +945,50 @@ struct TeamLibrarySyncTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.store.legacyFile.path))
     }
 
+    // MARK: - A company server's license
+
+    @Test("A company server past its license's grace refuses the push: the edits wait on this Mac and go once it takes them")
+    func licenseExpiredKeepsTheEdits() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        await fixture.library { $0.licenseExpired = true }
+
+        await #expect(throws: TeamLibraryPublishError.failed(.licenseExpired)) {
+            try await fixture.sync.publishSavedQueries(
+                favorites: [TeamLibraryFixture.favorite(name: "Orders")],
+                folders: [],
+                to: Self.team
+            )
+        }
+        #expect(fixture.sync.hasUnsentChanges)
+        #expect(fixture.sync.status == .failed(.licenseExpired))
+        await fixture.library {
+            $0.write(Self.team, kind: "query", clientID: "q2", data: TeamLibraryFixture.queryData("Users"))
+        }
+        #expect(await fixture.sync.sync() == .failed(.licenseExpired), "The push is refused again")
+        #expect(fixture.sync.content.queries.map(\.name).contains("Users"), "Pulls go on past the grace")
+
+        await fixture.library { $0.licenseExpired = false }
+        #expect(await fixture.sync.sync() == .synced)
+        #expect(await fixture.server.library.live(Self.team).count == 2)
+        #expect(!fixture.sync.hasUnsentChanges)
+    }
+
+    @Test("Signing in to another server drops what this Mac read from the one it left")
+    func serverChangeClears() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        fixture.sync.start()
+        try await waitUntil { !fixture.sync.content.queries.isEmpty }
+
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+
+        try await waitUntil { fixture.sync.content == .empty }
+        #expect(fixture.store.loadAll().isEmpty)
+        fixture.sync.stop()
+    }
+
     // MARK: - Sign-out while a call is out
 
     @Test("A pull that answers after sign-out brings nothing back")

@@ -7,23 +7,20 @@ import Foundation
 import TableProCloudAPI
 
 internal enum AccountAPI {
-    static func client(
-        configuration: AccountConfiguration,
-        transport: any ClientTransport,
-        session: AccountSession
-    ) -> Client {
+    // The server URL is the bearer middleware's to set, from the server the core signs in to.
+    static func client(backend: any AccountBackend, transport: any ClientTransport) -> Client {
         Client(
-            serverURL: configuration.apiServerURL,
+            serverURL: AccountServer.production.apiBaseURL,
             configuration: Configuration(dateTranscoder: RFC3339DateTranscoder()),
             transport: transport,
-            middlewares: [BearerTokenMiddleware(session: session)]
+            middlewares: [AccountBearerMiddleware(backend: backend)]
         )
     }
 
-    // No bearer: the public share read answers a recipient who may not be signed in.
-    static func publicClient(configuration: AccountConfiguration, transport: any ClientTransport) -> Client {
+    // No bearer, and never the company server: a shared link is a tablepro.app link, opened signed in or not.
+    static func publicClient(serverURL: URL, transport: any ClientTransport) -> Client {
         Client(
-            serverURL: configuration.apiServerURL,
+            serverURL: serverURL,
             configuration: Configuration(dateTranscoder: RFC3339DateTranscoder()),
             transport: transport
         )
@@ -34,9 +31,9 @@ internal enum AccountAPI {
     }
 }
 
-// Sends the session's access token, and on a 401 refreshes once and retries.
-internal struct BearerTokenMiddleware: ClientMiddleware {
-    let session: AccountSession
+// Sends the core's access token to the server it was issued for, and on a 401 tells the core and retries once.
+internal struct AccountBearerMiddleware: ClientMiddleware {
+    let backend: any AccountBackend
 
     func intercept(
         _ request: HTTPRequest,
@@ -45,16 +42,25 @@ internal struct BearerTokenMiddleware: ClientMiddleware {
         operationID: String,
         next: @concurrent @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
-        let token = try await session.accessToken()
+        let (token, server) = try await authorization()
         var request = request
-        request.headerFields[.authorization] = "Bearer \(token.value)"
-        let (response, responseBody) = try await next(request, body, baseURL)
+        request.headerFields[.authorization] = "Bearer \(token)"
+        let (response, responseBody) = try await next(request, body, server)
         guard response.status == .unauthorized else {
             return (response, responseBody)
         }
-        let refreshed = try await session.refresh(replacing: token)
-        request.headerFields[.authorization] = "Bearer \(refreshed.value)"
-        return try await next(request, body, baseURL)
+        await backend.accessTokenRejected(token)
+        let (refreshed, refreshedServer) = try await authorization()
+        request.headerFields[.authorization] = "Bearer \(refreshed)"
+        return try await next(request, body, refreshedServer)
+    }
+
+    // A server switch between the two reads would send one server's token to the other.
+    private func authorization() async throws(AccountError) -> (String, URL) {
+        let server = backend.server()
+        let token = try await backend.accessToken()
+        guard backend.server() == server else { throw .signedOut }
+        return (token, server.apiBaseURL)
     }
 }
 

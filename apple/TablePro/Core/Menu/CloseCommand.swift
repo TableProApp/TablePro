@@ -57,6 +57,7 @@ internal final class CloseCommandMenuDelegate: NSObject, NSMenuDelegate {
 
     internal func menuNeedsUpdate(_ menu: NSMenu) {
         Self.applyResolvedTitle(to: menu)
+        SharingMenuGroup.update(in: menu)
     }
 
     @discardableResult

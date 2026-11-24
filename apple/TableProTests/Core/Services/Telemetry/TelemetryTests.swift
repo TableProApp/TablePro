@@ -208,6 +208,18 @@ struct TelemetryTests {
         #expect(fixture.client?.calls == [.optIn, .identify("acct_test", TelemetryFixture.person)])
     }
 
+    @Test("An account on a company server is that company's record and never a PostHog person")
+    func companyServerAccountIsAnonymous() async throws {
+        let fixture = try TelemetryFixture()
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        fixture.start()
+
+        try await fixture.account.signIn()
+
+        #expect(fixture.client?.calls == [.optIn, .capture("signed_in", ["method": "interactive"])])
+        #expect(fixture.storage.defaults.string(forKey: Telemetry.Keys.identifiedAccount) == nil)
+    }
+
     @Test("app_opened goes once per day with the database types and connection count")
     func appOpenedOncePerDay() async throws {
         let fixture = try TelemetryFixture()
@@ -254,7 +266,7 @@ struct TelemetryTests {
         fixture.start()
         await fixture.account.server.set { $0.refusesRefresh = true }
 
-        _ = try? await fixture.account.services.session.refreshNow()
+        await fixture.account.services.refreshEntitlement()
 
         let client = try #require(fixture.client)
         try await waitUntil { client.calls.last == .reset }
@@ -275,9 +287,9 @@ struct TelemetryTests {
         #expect(fixture.client?.captured.contains("signed_out") == false)
     }
 
-    @Test("Opted out, a sign-out, a refused refresh token or a revoked device resets only at the next opt-in")
+    @Test("Opted out, a sign-out, a refused refresh token, a revoked device or a server change resets only at the next opt-in")
     func optedOutSignOutResetsOnOptIn() async throws {
-        for cause in [AccountEvent.SignOutCause.user, .refreshRefused, .deviceRevoked] {
+        for cause in [AccountSignOutCause.user, .refreshRefused, .deviceRevoked, .serverChanged] {
             let fixture = try TelemetryFixture()
             try await fixture.account.signIn()
             fixture.start()
@@ -289,11 +301,13 @@ struct TelemetryTests {
                 await fixture.account.services.signOut()
             case .refreshRefused:
                 await fixture.account.server.set { $0.refusesRefresh = true }
-                _ = try? await fixture.account.services.session.refreshNow()
+                await fixture.account.services.refreshEntitlement()
                 try await waitUntil { !fixture.account.access.state.isSignedIn }
             case .deviceRevoked:
                 await fixture.account.server.set { $0.deviceRevoked = true }
                 await fixture.account.services.refreshEntitlement()
+            case .serverChanged:
+                try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
             }
 
             #expect(!fixture.account.access.state.isSignedIn, "\(cause)")
@@ -352,7 +366,7 @@ struct TelemetryTests {
     @Test("A stored key's migration sends signed_in as a migration")
     func migrationSignsIn() async throws {
         let fixture = try TelemetryFixture()
-        try fixture.account.storeLegacyLicense(key: FakeAccountServer.validKey)
+        fixture.account.storeLegacyLicense(key: FakeAccountServer.validKey)
         fixture.start()
 
         #expect(await fixture.account.services.migrateLegacyKeyIfNeeded() == .migrated)

@@ -3,7 +3,7 @@
 //  TableProTests
 //
 
-import CryptoKit
+import Combine
 import Foundation
 @testable import TablePro
 import TableProCloudAPI
@@ -12,581 +12,320 @@ import Testing
 
 @MainActor
 struct AccountServicesTests {
-    @Test("Sign-in registers this Mac, refreshes so the token names it, then fetches and stores the entitlement")
-    func signInRegistersRefreshesAndFetches() async throws {
+    @Test("Sign-in through the core publishes the account, its plan and the core's gate for every feature")
+    func signInPublishesTheCoresState() async throws {
         let fixture = try AccountFixture()
 
         try await fixture.signIn()
-
-        let paths = await fixture.server.requests.map { "\($0.method) \($0.path) \($0.form["grant_type"] ?? "")" }
-        #expect(paths == [
-            "POST /oauth/token authorization_code",
-            "POST /devices ",
-            "POST /oauth/token refresh_token",
-            "POST /devices/\(FakeAccountServer.deviceID)/entitlement "
-        ])
-        let registration = try #require(await fixture.server.requests(to: "/devices").first)
-        #expect(registration.json == [
-            "machine_id": FakeAccountServer.machine.machineID, "platform": "macos", "name": "Test Mac",
-            "app_version": "2.0.0", "os_version": "26.1"
-        ])
-        #expect(registration.authorization?.hasPrefix("Bearer ") == true)
-        let entitlementRequest = try #require(
-            await fixture.server.requests(to: "/devices/\(FakeAccountServer.deviceID)/entitlement").first
-        )
-        #expect(entitlementRequest.json == ["app_version": "2.0.0", "os_version": "26.1"])
 
         #expect(fixture.access.state.isSignedIn)
         #expect(fixture.access.isAvailable(.iCloudSync))
         #expect(fixture.access.check(.teamLibrary) == .notIncluded)
         #expect(fixture.access.state.entitlement?.email == "ada@m16.example")
-        #expect(FileManager.default.fileExists(atPath: fixture.entitlementFile.path))
+        #expect(fixture.access.state.entitlement?.licenses.map(\.plan) == ["starter"])
+        #expect(fixture.access.state.server == .production)
+        #expect(fixture.access.state.verifiedAt != nil)
+        if case .succeeded = fixture.access.state.refresh {} else {
+            Issue.record("Expected a succeeded refresh, got \(fixture.access.state.refresh)")
+        }
     }
 
-    @Test("A stored entitlement is read back on launch, offline, and keeps its features until it expires")
-    func storedEntitlementSurvivesRelaunchOffline() async throws {
+    @Test("Closing the browser sheet signs nothing in")
+    func canceledSignIn() async throws {
+        let fixture = try AccountFixture()
+
+        await #expect(throws: AccountError.canceled) {
+            try await fixture.services.signIn(using: CancelingAuthenticator())
+        }
+
+        #expect(!fixture.access.state.isSignedIn)
+        #expect(fixture.access.check(.iCloudSync) == .signedOut)
+    }
+
+    @Test("A failed refresh keeps the entitlement it holds and reports the failure")
+    func failedRefreshKeepsTheEntitlement() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
         await fixture.server.set { $0.isOffline = true }
 
-        let relaunched = FeatureAccess()
-        let state = AccountState(
-            isSignedIn: true,
-            entitlement: EntitlementStore(
-                fileURL: fixture.entitlementFile,
-                verifier: EntitlementVerifier(publicKeys: [fixture.server.publicKey]),
-                machine: FakeAccountServer.machine,
-                now: { Date() }
-            ).load()
-        )
-        relaunched.update(state)
-        #expect(relaunched.isAvailable(.iCloudSync))
-
         let outcome = await fixture.services.refreshEntitlement()
+
         guard case .failed(.network) = outcome else {
             Issue.record("Expected a network failure, got \(outcome)")
             return
         }
-        #expect(fixture.access.isAvailable(.iCloudSync), "A failed refresh never drops a valid token")
-    }
-
-    @Test("Stored state loads from disk and the Keychain with no network call")
-    func storedStateLoadsWithoutNetwork() async throws {
-        let fixture = try AccountFixture()
-        try FileManager.default.createDirectory(at: fixture.entitlementFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data(await fixture.server.signedEntitlement().utf8).write(to: fixture.entitlementFile)
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey, tier: "team")
-
-        fixture.services.loadStoredState()
-
-        #expect(await fixture.server.requests.isEmpty)
-        #expect(fixture.access.state.entitlement?.email == "ada@m16.example")
-        #expect(fixture.access.isAvailable(.iCloudSync))
-        #expect(fixture.access.isAvailable(.teamLibrary), "The legacy Team payload still counts until it is migrated")
-    }
-
-    @Test("A stored entitlement whose signature no longer verifies is dropped")
-    func tamperedEntitlementIsDropped() throws {
-        let fixture = try AccountFixture()
-        let otherKey = Curve25519.Signing.PrivateKey()
-        let forged = FakeAccountServer.sign(claims: [
-            "aud": "tablepro-app", "sub": "acct_test", "iat": 0, "nbf": 0, "exp": 4_000_000_000,
-            "dev": "dev_x", "mid": FakeAccountServer.machine.machineID, "features": ["icloud_sync"]
-        ], key: otherKey, header: [
-            "alg": "EdDSA", "kid": EntitlementVerifier.keyID(of: fixture.server.publicKey), "typ": "tablepro-entitlement+jwt"
-        ])
-        try FileManager.default.createDirectory(at: fixture.entitlementFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data(forged.utf8).write(to: fixture.entitlementFile)
-
-        fixture.services.loadStoredState()
-
-        #expect(fixture.access.state.entitlement == nil)
-        #expect(!FileManager.default.fileExists(atPath: fixture.entitlementFile.path))
-    }
-
-    @Test("A 401 refreshes the access token once and sends the request again with the new one")
-    func unauthorizedRefreshesAndRetries() async throws {
-        let fixture = try AccountFixture()
-        try await fixture.signIn()
-        let before = await fixture.server.requests.count
-        await fixture.server.set { $0.unauthorizedOnce = true }
-
-        let outcome = await fixture.services.refreshEntitlement()
-
-        guard case .succeeded = outcome else {
-            Issue.record("Expected a refreshed entitlement, got \(outcome)")
+        #expect(fixture.access.isAvailable(.iCloudSync), "A failed refresh never drops a valid entitlement")
+        guard case .failed(.network) = fixture.access.state.refresh else {
+            Issue.record("Expected the failure published, got \(fixture.access.state.refresh)")
             return
         }
-        let calls = await Array(fixture.server.requests.dropFirst(before))
-        let entitlementPath = "/devices/\(FakeAccountServer.deviceID)/entitlement"
-        #expect(calls.map { "\($0.method) \($0.path) \($0.form["grant_type"] ?? "")" } == [
-            "POST \(entitlementPath) ",
-            "POST /oauth/token refresh_token",
-            "POST \(entitlementPath) "
-        ])
-        #expect(calls.first?.authorization != calls.last?.authorization)
-        #expect(calls.last?.json == ["app_version": "2.0.0", "os_version": "26.1"])
-    }
-
-    @Test("The schedule refreshes 24 hours after a success and an hour after a failure")
-    func scheduleRefreshes() async throws {
-        let fixture = try AccountFixture()
-        try await fixture.signIn()
-        let entitlementPath = "/devices/\(FakeAccountServer.deviceID)/entitlement"
-        defer { fixture.services.stop() }
-
-        fixture.services.start()
-        await fixture.clock.waitUntilSleeping()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 2)
-
-        fixture.clock.advance(by: AccountServices.refreshInterval - .seconds(1))
-        #expect(fixture.clock.pendingSleeperCount == 1)
-        await fixture.server.set { $0.isOffline = true }
-        fixture.clock.advance(by: .seconds(1))
-        await fixture.clock.waitUntilSleeping()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 3)
-        guard case .failed = fixture.access.state.refresh else {
-            Issue.record("Expected a failed refresh, got \(fixture.access.state.refresh)")
-            return
-        }
-
-        await fixture.server.set { $0.isOffline = false }
-        fixture.clock.advance(by: AccountServices.retryInterval - .seconds(1))
-        #expect(fixture.clock.pendingSleeperCount == 1)
-        fixture.clock.advance(by: .seconds(1))
-        await fixture.clock.waitUntilSleeping()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 4)
-        guard case .succeeded = fixture.access.state.refresh else {
-            Issue.record("Expected a refreshed entitlement, got \(fixture.access.state.refresh)")
-            return
-        }
-    }
-
-    @Test("A Refresh between scheduled ones moves the next to a day after it, or to an hour after it when it fails")
-    func refreshMovesTheSchedule() async throws {
-        let fixture = try AccountFixture()
-        try await fixture.signIn()
-        let entitlementPath = "/devices/\(FakeAccountServer.deviceID)/entitlement"
-        defer { fixture.services.stop() }
-
-        fixture.services.start()
-        await fixture.clock.waitUntilSleeping()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 2)
-
-        fixture.clock.advance(by: .seconds(12 * 60 * 60))
-        #expect(await fixture.services.checkNow())
-        #expect(await fixture.server.requests(to: entitlementPath).count == 3)
-        await fixture.clock.waitUntilSleeping()
-        #expect(fixture.clock.pendingSleeperCount == 1)
-
-        fixture.clock.advance(by: .seconds(12 * 60 * 60))
-        await fixture.clock.waitUntilSleeping()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 3, "A day after launch is no longer due")
-
-        await fixture.server.set { $0.isOffline = true }
-        #expect(await fixture.services.checkNow() == false)
-        #expect(await fixture.server.requests(to: entitlementPath).count == 4)
-        await fixture.server.set { $0.isOffline = false }
-        await fixture.clock.waitUntilSleeping()
-        fixture.clock.advance(by: AccountServices.retryInterval - .seconds(1))
-        await fixture.clock.waitUntilSleeping()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 4)
-        fixture.clock.advance(by: .seconds(1))
-        try await waitUntil { await fixture.server.requests(to: entitlementPath).count == 5 }
-    }
-
-    @Test("Signing in and removing a device move the next scheduled refresh too")
-    func signInAndRemovalMoveTheSchedule() async throws {
-        let fixture = try AccountFixture()
-        let entitlementPath = "/devices/\(FakeAccountServer.deviceID)/entitlement"
-        await fixture.server.set {
-            $0.devices.append(FakeAccountServer.device(id: "dev_old", name: "Old Mac", machineID: String(repeating: "1", count: 64)))
-        }
-        defer { fixture.services.stop() }
-
-        fixture.services.start()
-        await fixture.clock.waitUntilSleeping()
-        fixture.clock.advance(by: .seconds(6 * 60 * 60))
-        try await fixture.signIn()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 1)
-
-        await fixture.clock.waitUntilSleeping()
-        fixture.clock.advance(by: .seconds(18 * 60 * 60))
-        await fixture.clock.waitUntilSleeping()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 1, "A day after launch is no longer due")
-
-        try await fixture.services.removeDevice("dev_old")
-        #expect(await fixture.server.requests(to: entitlementPath).count == 2)
-        await fixture.clock.waitUntilSleeping()
-        fixture.clock.advance(by: .seconds(6 * 60 * 60))
-        await fixture.clock.waitUntilSleeping()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 2, "A day after the sign-in is no longer due")
-
-        fixture.clock.advance(by: .seconds(18 * 60 * 60))
-        try await waitUntil { await fixture.server.requests(to: entitlementPath).count == 3 }
     }
 
     @Test("device_limit_reached leaves the app on the free tier and keeps the devices that hold the slots")
-    func deviceLimitReached() async throws {
+    func deviceLimit() async throws {
         let fixture = try AccountFixture()
         await fixture.server.set { $0.deviceLimitReached = true }
 
         try await fixture.signIn()
 
+        #expect(fixture.access.isPastDeviceLimit)
+        #expect(fixture.access.check(.iCloudSync) == .notIncluded)
         guard case .deviceLimitReached(let holders) = fixture.access.state.refresh else {
-            Issue.record("Expected device_limit_reached, got \(fixture.access.state.refresh)")
+            Issue.record("Expected the device limit, got \(fixture.access.state.refresh)")
             return
         }
-        #expect(holders.map { $0.name } == ["Workstation"])
-        #expect(fixture.access.check(.iCloudSync) == .notIncluded)
+        #expect(holders.map(\.name) == ["Workstation"])
     }
 
-    @Test("A removed device signs this Mac out and keeps its entitlement until it expires")
-    func revokedDeviceSignsOut() async throws {
+    @Test("Sign-out leaves every feature signed out, sends signed out by the person, and sets a stored key aside")
+    func signOut() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
-        await fixture.server.set { $0.deviceRevoked = true }
-
-        await fixture.services.refreshEntitlement()
-
-        #expect(!fixture.access.state.isSignedIn)
-        #expect(fixture.access.isAvailable(.iCloudSync))
-    }
-
-    @Test("Sign-out revokes, forgets the entitlement and leaves every feature signed out")
-    func signOutClearsEverything() async throws {
-        let fixture = try AccountFixture()
-        try await fixture.signIn()
+        fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        var events: [AccountEvent] = []
+        let subscription = fixture.services.events.sink { events.append($0) }
+        defer { subscription.cancel() }
 
         await fixture.services.signOut()
-
-        #expect(await fixture.server.requests(to: "/oauth/revoke").count == 1)
-        #expect(fixture.access.check(.iCloudSync) == .signedOut)
-        #expect(!FileManager.default.fileExists(atPath: fixture.entitlementFile.path))
-    }
-
-    @Test("A refresh that answers after sign-out stores nothing and leaves the features signed out")
-    func signOutDuringRefresh() async throws {
-        let fixture = try AccountFixture()
-        try await fixture.signIn()
-        let gate = AsyncGate()
-        await fixture.server.set { $0.entitlementGate = gate }
-
-        let refresh = Task { await fixture.services.refreshEntitlement() }
-        await gate.arrived(1)
-        await fixture.services.signOut()
-        await gate.open()
-        _ = await refresh.value
 
         #expect(!fixture.access.state.isSignedIn)
         #expect(fixture.access.state.entitlement == nil)
         #expect(fixture.access.check(.iCloudSync) == .signedOut)
-        #expect(!FileManager.default.fileExists(atPath: fixture.entitlementFile.path))
+        #expect(events == [.signedOut(.user)])
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keptAside)
     }
 
-    @Test("An offline file is checked like an online token and works without signing in")
-    func offlineFileImport() async throws {
-        let fixture = try AccountFixture()
-        let directory = fixture.entitlementFile.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let file = directory.appendingPathComponent("tablepro-offline-abababababab.jwt")
-        try Data(await fixture.server.signedEntitlement(offline: true).utf8).write(to: file)
+    @Test("A sign-out the core makes on its own reaches the app with its cause")
+    func signOutCausesFromTheCore() async throws {
+        for (setting, cause) in [(Self.refusesRefresh, AccountSignOutCause.refreshRefused), (Self.revokesDevice, .deviceRevoked)] {
+            let fixture = try AccountFixture()
+            try await fixture.signIn()
+            var events: [AccountEvent] = []
+            let subscription = fixture.services.events.sink { events.append($0) }
+            await fixture.server.set(setting)
 
-        try await fixture.services.importOfflineFile(at: file)
+            await fixture.services.refreshEntitlement()
+            subscription.cancel()
 
-        #expect(fixture.access.isAvailable(.iCloudSync))
-        #expect(fixture.access.state.entitlement?.isOffline == true)
-    }
-
-    @Test("An offline file made for another machine is refused")
-    func offlineFileForAnotherMachine() async throws {
-        let fixture = try AccountFixture()
-        let directory = fixture.entitlementFile.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let file = directory.appendingPathComponent("tablepro-offline-000000000000.jwt")
-        let token = await fixture.server.signedEntitlement(machineID: String(repeating: "0", count: 64), offline: true)
-        try Data(token.utf8).write(to: file)
-
-        await #expect(throws: AccountError.entitlementRejected(.machine)) {
-            try await fixture.services.importOfflineFile(at: file)
+            #expect(!fixture.access.state.isSignedIn, "\(cause)")
+            #expect(events == [.signedOut(cause)], "\(cause)")
         }
-        #expect(fixture.access.check(.iCloudSync) == .signedOut)
     }
 
-    @Test("A stored license key is exchanged, the device registered without a refresh, then the key and payload deleted")
-    func legacyKeyMigrates() async throws {
+    @Test("A key an older build stored is exchanged once through the core, then deleted with its payload")
+    func storedKeyIsExchanged() async throws {
         let fixture = try AccountFixture()
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        var events: [AccountEvent] = []
+        let subscription = fixture.services.events.sink { events.append($0) }
+        defer { subscription.cancel() }
 
-        let outcome = await fixture.services.migrateLegacyKeyIfNeeded()
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .migrated)
 
-        #expect(outcome == .migrated)
-        let paths = await fixture.server.requests.map { "\($0.method) \($0.path) \($0.form["grant_type"] ?? "")" }
-        #expect(paths == [
-            "POST /oauth/token \(OAuthTokenClient.tokenExchangeGrant)",
-            "POST /devices ",
-            "POST /devices/\(FakeAccountServer.deviceID)/entitlement "
-        ])
-        #expect(!fixture.hasLegacyLicense)
         #expect(fixture.access.state.isSignedIn)
-        #expect(fixture.access.isAvailable(.iCloudSync))
-    }
-
-    @Test("The key in the signed payload is exchanged when the Keychain no longer holds one")
-    func legacyKeyFromPayload() async throws {
-        let fixture = try AccountFixture()
-        try fixture.storeLegacyLicense(key: nil)
-
-        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .migrated)
-        let exchange = try #require(await fixture.server.requests(to: "/oauth/token").first)
-        #expect(exchange.form["subject_token"] == FakeAccountServer.validKey)
-    }
-
-    @Test("Without network the old payload keeps working and the key stays for a retry")
-    func legacyKeyOffline() async throws {
-        let fixture = try AccountFixture()
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
-        await fixture.server.set { $0.isOffline = true }
-        fixture.services.loadStoredState()
-
-        let outcome = await fixture.services.migrateLegacyKeyIfNeeded()
-
-        guard case .retryLater = outcome else {
-            Issue.record("Expected a retry, got \(outcome)")
-            return
-        }
-        #expect(fixture.hasLegacyLicense)
-        #expect(fixture.access.isAvailable(.iCloudSync))
-        #expect(fixture.access.check(.teamLibrary) == .notIncluded)
-
-        await fixture.server.set { $0.isOffline = false }
-        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .migrated)
         #expect(!fixture.hasLegacyLicense)
+        #expect(events == [.signedIn(accountID: "acct_test", method: .migration)])
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .nothingToMigrate)
     }
 
-    @Test("A key exchange whose registration failed finishes on the next run without a second exchange")
-    func legacyKeyResumesAfterFailedRegistration() async throws {
+    @Test("A key the server refuses is set aside: offered by Use License Key…, never exchanged on its own again")
+    func refusedKeyIsSetAside() async throws {
         let fixture = try AccountFixture()
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
-        await fixture.server.set { $0.refusesRegistration = true }
+        fixture.storeLegacyLicense(key: "NOT-A-KEY")
 
-        guard case .retryLater = await fixture.services.migrateLegacyKeyIfNeeded() else {
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keyRejected)
+
+        #expect(!fixture.access.state.isSignedIn)
+        #expect(fixture.services.storedLicenseKey == "NOT-A-KEY")
+        #expect(!fixture.services.hasLicenseKeyToExchange)
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keptAside)
+    }
+
+    @Test("Without network a stored key stays for the next check")
+    func offlineKeepsTheKey() async throws {
+        let fixture = try AccountFixture()
+        fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        await fixture.server.set { $0.isOffline = true }
+
+        guard case .retryLater(.network) = await fixture.services.migrateLegacyKeyIfNeeded() else {
             Issue.record("Expected a retry")
             return
         }
         #expect(fixture.hasLegacyLicense)
-
-        await fixture.server.set { $0.refusesRegistration = false }
-        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .migrated)
-        let exchanges = await fixture.server.requests(to: "/oauth/token")
-            .filter { $0.form["grant_type"] == OAuthTokenClient.tokenExchangeGrant }
-        #expect(exchanges.count == 1)
-        #expect(!fixture.hasLegacyLicense)
+        #expect(fixture.services.hasLicenseKeyToExchange)
     }
 
-    @Test("A key stored beside an interactive sign-in is neither exchanged nor deleted")
-    func legacyKeyBesideInteractiveSession() async throws {
+    @Test("A key stored beside a session is neither exchanged nor deleted")
+    func keyBesideSessionIsKept() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        fixture.storeLegacyLicense(key: FakeAccountServer.otherValidKey)
 
         #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keptWhileSignedIn)
-
-        let exchanges = await fixture.server.requests(to: "/oauth/token")
-            .filter { $0.form["grant_type"] == OAuthTokenClient.tokenExchangeGrant }
-        #expect(exchanges.isEmpty)
         #expect(fixture.hasLegacyLicense)
     }
 
-    @Test("A key the server refuses is kept aside: the app is signed out, and the key is offered but not exchanged again")
-    func legacyKeyRejected() async throws {
-        let refused = "ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ"
+    @Test("Use License Key… signs in with the key's account and deletes the stored key it matches")
+    func useLicenseKey() async throws {
         let fixture = try AccountFixture()
-        try fixture.storeLegacyLicense(key: refused)
-        fixture.services.loadStoredState()
-
-        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keyRejected)
-        #expect(fixture.hasLegacyLicense)
-        #expect(fixture.services.storedLicenseKey == refused)
-        #expect(!fixture.services.hasLicenseKeyToExchange)
-        #expect(fixture.access.check(.iCloudSync) == .signedOut)
-
-        // The next launch reads the old payload again, which grants nothing now.
-        fixture.services.loadStoredState()
-        #expect(fixture.access.check(.iCloudSync) == .signedOut)
-        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keptAside)
-        let exchanges = await fixture.server.requests(to: "/oauth/token")
-            .filter { $0.form["grant_type"] == OAuthTokenClient.tokenExchangeGrant }
-        #expect(exchanges.count == 1)
-    }
-
-    @Test("Sign-out keeps a key that was never exchanged, aside; Use License Key… exchanges it and deletes it")
-    func signOutKeepsAStoredKeyAside() async throws {
-        let fixture = try AccountFixture()
-        try await fixture.signIn()
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
-        fixture.services.loadStoredState()
-
+        fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
         await fixture.services.signOut()
 
-        #expect(fixture.hasLegacyLicense)
-        #expect(fixture.services.storedLicenseKey == FakeAccountServer.validKey)
-        #expect(fixture.access.check(.iCloudSync) == .signedOut)
-        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keptAside)
-        #expect(!fixture.access.state.isSignedIn)
+        _ = try await fixture.services.useLicenseKey(" \(FakeAccountServer.validKey)\n")
 
-        _ = try await fixture.services.useLicenseKey(FakeAccountServer.validKey)
-        #expect(!fixture.hasLegacyLicense)
         #expect(fixture.access.state.isSignedIn)
-    }
-
-    @Test("A key stored after another was set aside is exchanged as usual")
-    func aDifferentKeyIsNotSetAside() async throws {
-        let fixture = try AccountFixture()
-        try fixture.storeLegacyLicense(key: "ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ-ZZZZZ")
-        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keyRejected)
-
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
-
-        #expect(fixture.services.hasLicenseKeyToExchange)
-        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .migrated)
         #expect(!fixture.hasLegacyLicense)
-    }
-
-    @Test("A payload whose signature fails grants nothing and is never exchanged")
-    func unverifiedPayloadIsIgnored() async throws {
-        struct Forged: Error {}
-        let fixture = try AccountFixture(verifyLegacy: { _ in throw Forged() })
-        try fixture.storeLegacyLicense(key: nil)
-        fixture.services.loadStoredState()
-
-        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .nothingToMigrate)
-        #expect(fixture.access.check(.iCloudSync) == .signedOut)
-    }
-
-    @Test("Try Again on an expired payload from an older build retries its key exchange, not an entitlement refresh")
-    func checkNowRetriesTheKeyExchange() async throws {
-        let fixture = try AccountFixture()
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey, issuedAt: Date().addingTimeInterval(-40 * 24 * 60 * 60))
-        fixture.services.loadStoredState()
-        #expect(fixture.access.check(.iCloudSync) == .expired)
-
-        #expect(await fixture.services.checkNow())
-
-        let grants = await fixture.server.requests(to: "/oauth/token").map { $0.form["grant_type"] ?? "" }
-        #expect(grants == [OAuthTokenClient.tokenExchangeGrant])
-        #expect(!fixture.hasLegacyLicense)
-        #expect(fixture.access.isAvailable(.iCloudSync))
     }
 
     @Test("A check started while another runs joins it, so a stored key is exchanged once")
-    func checkNowIsSingleFlight() async throws {
+    func concurrentChecksJoin() async throws {
         let fixture = try AccountFixture()
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
-        let gate = AsyncGate()
-        await fixture.server.set { $0.entitlementGate = gate }
+        fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        var events: [AccountEvent] = []
+        let subscription = fixture.services.events.sink { events.append($0) }
+        defer { subscription.cancel() }
 
-        let first = Task { await fixture.services.checkNow() }
-        await gate.arrived(1)
-        let second = Task { await fixture.services.checkNow() }
-        await gate.open()
-        _ = await (first.value, second.value)
+        async let first = fixture.services.checkNow()
+        async let second = fixture.services.checkNow()
+        _ = await (first, second)
 
-        let exchanges = await fixture.server.requests(to: "/oauth/token")
-            .filter { $0.form["grant_type"] == OAuthTokenClient.tokenExchangeGrant }
-        #expect(exchanges.count == 1)
-        #expect(await fixture.server.requests(to: "/devices/\(FakeAccountServer.deviceID)/entitlement").count == 1)
+        #expect(events == [.signedIn(accountID: "acct_test", method: .migration)])
     }
 
-    @Test("A key typed on a signed-out Mac signs it in, registers it without a refresh and fetches the entitlement")
-    func useLicenseKeySignedOut() async throws {
-        let fixture = try AccountFixture()
+    @Test("The gate follows the entitlement's expiry without another call to the core")
+    func gateLapsesAtExpiry() async throws {
+        let clock = TestNow(Date(timeIntervalSince1970: 1_800_000_000))
+        let fixture = try AccountFixture(now: { clock.value })
+        try await fixture.signIn()
+        #expect(fixture.access.isAvailable(.iCloudSync))
 
-        let outcome = try await fixture.services.useLicenseKey(FakeAccountServer.validKey)
+        await fixture.clock.waitUntilSleeping()
+        clock.value = clock.value.addingTimeInterval(15 * 24 * 60 * 60)
+        fixture.clock.advance(by: .seconds(15 * 24 * 60 * 60))
 
-        guard case .succeeded = outcome else {
-            Issue.record("Expected an entitlement, got \(outcome)")
-            return
-        }
-        let paths = await fixture.server.requests.map { "\($0.method) \($0.path) \($0.form["grant_type"] ?? "")" }
-        #expect(paths == [
-            "POST /oauth/token \(OAuthTokenClient.tokenExchangeGrant)",
-            "POST /devices ",
-            "POST /devices/\(FakeAccountServer.deviceID)/entitlement "
-        ])
-        #expect(fixture.access.state.isSignedIn)
+        try await waitUntil { fixture.access.check(.iCloudSync) == .expired }
     }
 
-    @Test(
-        "Another key typed while one is stored signs in with it and leaves the stored key unexchanged",
-        arguments: [false, true]
-    )
-    func useLicenseKeyBesideAnotherStoredKey(signedInFirst: Bool) async throws {
+    // MARK: - Company server
+
+    @Test("Choosing a company server publishes it and signs out of the server left, with that cause")
+    func chooseCompanyServer() async throws {
         let fixture = try AccountFixture()
-        if signedInFirst {
-            try await fixture.signIn()
-        }
-        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        try await fixture.signIn()
+        var events: [AccountEvent] = []
+        let subscription = fixture.services.events.sink { events.append($0) }
+        defer { subscription.cancel() }
+
+        try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+
+        #expect(!fixture.access.state.isSignedIn)
+        #expect(fixture.access.state.server.host == "tablepro.example.com")
+        #expect(!fixture.access.state.server.isProduction)
+        #expect(fixture.services.portal.accountURL.host == "tablepro.example.com")
+        #expect(events == [.signedOut(.serverChanged)])
+    }
+
+    @Test("A managed server cannot be changed, and the refusal says the organization manages it")
+    func managedServerIsLocked() async throws {
+        let fixture = try AccountFixture()
+        let managed = AccountServer(
+            apiOrigin: URL(string: "https://tablepro.corp.example")!,
+            accountOrigin: URL(string: "https://tablepro.corp.example")!,
+            host: "tablepro.corp.example",
+            isProduction: false,
+            isManaged: true,
+            othersAllowed: false
+        )
+        fixture.backend.manage(managed)
         fixture.services.loadStoredState()
 
-        _ = try await fixture.services.useLicenseKey(FakeAccountServer.otherValidKey)
-        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .keptWhileSignedIn)
-        #expect(await fixture.services.checkNow())
-
-        let exchanged = await fixture.server.requests(to: "/oauth/token")
-            .filter { $0.form["grant_type"] == OAuthTokenClient.tokenExchangeGrant }
-            .map { $0.form["subject_token"] }
-        #expect(exchanged == [FakeAccountServer.otherValidKey])
-        #expect(fixture.hasLegacyLicense)
-        #expect(fixture.services.storedLicenseKey == FakeAccountServer.validKey)
-
-        _ = try await fixture.services.useLicenseKey(FakeAccountServer.validKey)
-        #expect(!fixture.hasLegacyLicense)
-    }
-
-    @Test("Past the device limit the schedule checks again within the hour, and on activation")
-    func deviceLimitRechecks() async throws {
-        let fixture = try AccountFixture()
-        await fixture.server.set { $0.deviceLimitReached = true }
-        try await fixture.signIn()
-        let entitlementPath = "/devices/\(FakeAccountServer.deviceID)/entitlement"
-        defer { fixture.services.stop() }
-
-        fixture.services.start()
-        await fixture.clock.waitUntilSleeping()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 2)
-        #expect(fixture.access.isPastDeviceLimit)
-
-        fixture.clock.advance(by: AccountServices.retryInterval)
-        await fixture.clock.waitUntilSleeping()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 3)
-
-        await fixture.server.set { $0.deviceLimitReached = false }
-        fixture.services.applicationDidBecomeActive()
-        try await waitUntil { fixture.access.isAvailable(.iCloudSync) }
-        #expect(await fixture.server.requests(to: entitlementPath).count == 4)
-
-        fixture.services.applicationDidBecomeActive()
-        #expect(await fixture.server.requests(to: entitlementPath).count == 4, "Activation checks only past the limit")
-    }
-
-    @Test("A refresh that answers after a key replaced the session stores nothing from the old session")
-    func refreshDuringKeyExchange() async throws {
-        let fixture = try AccountFixture()
-        try await fixture.signIn()
-        let gate = AsyncGate()
-        await fixture.server.set { $0.entitlementGate = gate }
-
-        let refresh = Task { await fixture.services.refreshEntitlement() }
-        await gate.arrived(1)
-        let exchange = Task { try await fixture.services.useLicenseKey(FakeAccountServer.validKey) }
-        await gate.arrived(2)
-        await gate.open()
-        #expect(await refresh.value == .idle)
-        guard case .succeeded = try await exchange.value else {
-            Issue.record("Expected the key's entitlement")
-            return
+        await #expect(throws: AccountError.companyServer(.managed)) {
+            try await fixture.services.chooseServer(nil)
         }
-        #expect(try await fixture.services.session.accessToken().isFromLicenseKey)
+        #expect(fixture.access.state.server == managed)
+    }
+
+    @Test("A company server's license is published with the server")
+    func companyServerLicense() async throws {
+        let fixture = try AccountFixture()
+        let license = AccountServerLicense(seats: 25, expiresAt: Date(timeIntervalSince1970: 1_900_000_000), isTrial: false, isInGrace: false)
+        fixture.backend.installLicense(license)
+
+        try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+
+        #expect(fixture.access.state.serverLicense == license)
+    }
+
+    // MARK: - The bearer
+
+    @Test("The Swift clients send the core's access token to the server the core signs in to")
+    func clientsUseTheCoresBearerAndServer() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        try await fixture.signIn()
+
+        _ = try await fixture.services.api.getMe()
+
+        let request = try #require(await fixture.server.requests(to: "/me").last)
+        #expect(request.baseURL == URL(string: "https://tablepro.example.com/v2"))
+        let token = try #require(request.authorization?.replacingOccurrences(of: "Bearer ", with: ""))
+        #expect(Self.claims(of: token)["sub"] as? String == "acct_test")
+    }
+
+    @Test("A 401 tells the core its token was refused and sends the request again with a new one")
+    func unauthorizedRetriesOnce() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        await fixture.server.set { $0.unauthorizedOnce = true }
+
+        _ = try await fixture.services.api.getMe()
+
+        let calls = await fixture.server.requests(to: "/me")
+        #expect(calls.count == 2)
+        let refused = try #require(calls.first?.authorization?.replacingOccurrences(of: "Bearer ", with: ""))
+        #expect(fixture.backend.tokensRejected == [refused])
+        #expect(calls.first?.authorization != calls.last?.authorization)
+    }
+
+    @Test("Signed out, the Swift clients send nothing")
+    func signedOutSendsNothing() async throws {
+        let fixture = try AccountFixture()
+
+        await #expect(throws: (any Error).self) {
+            _ = try await fixture.services.api.getMe()
+        }
+        #expect(await fixture.server.requests.isEmpty)
+    }
+
+    // MARK: - Helpers
+
+    private static let refusesRefresh: @Sendable (isolated FakeAccountServer) -> Void = { $0.refusesRefresh = true }
+    private static let revokesDevice: @Sendable (isolated FakeAccountServer) -> Void = { $0.deviceRevoked = true }
+
+    private static func claims(of token: String) -> [String: Any] {
+        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 3, let payload = Base64URL.decode(parts[1]) else { return [:] }
+        return (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] ?? [:]
+    }
+}
+
+@MainActor
+private struct CancelingAuthenticator: WebAuthenticating {
+    func authenticate(url: URL, callbackScheme: String) async throws(AccountError) -> URL {
+        throw .canceled
+    }
+}
+
+private final class TestNow: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+
+    init(_ date: Date) {
+        current = date
+    }
+
+    var value: Date {
+        get { lock.withLock { current } }
+        set { lock.withLock { current = newValue } }
     }
 }

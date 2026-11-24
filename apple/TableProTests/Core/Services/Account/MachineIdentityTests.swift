@@ -30,23 +30,4 @@ struct MachineIdentityTests {
         #expect(MachineDescription.osVersion(OperatingSystemVersion(majorVersion: 26, minorVersion: 1, patchVersion: 0)) == "26.1")
         #expect(MachineDescription.osVersion(OperatingSystemVersion(majorVersion: 26, minorVersion: 1, patchVersion: 2)) == "26.1.2")
     }
-
-    @Test("Release points at production, and a Debug run can point at a local stack")
-    func configuration() throws {
-        let production = AccountConfiguration.production
-        #expect(production.accountURL.absoluteString == "https://account.tablepro.app")
-        #expect(production.apiServerURL.absoluteString == "https://api.tablepro.app/v2")
-        #expect(production.tokenEndpoint.absoluteString == "https://account.tablepro.app/oauth/token")
-        #expect(production.revocationEndpoint.absoluteString == "https://account.tablepro.app/oauth/revoke")
-
-        let local = production.overridden(by: [
-            "TABLEPRO_ACCOUNT_URL": "http://account.localhost:5284",
-            "TABLEPRO_API_URL": "http://api.localhost:5284",
-            "TABLEPRO_ENTITLEMENT_KEYS": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
-        ])
-        #expect(local.tokenEndpoint.absoluteString == "http://account.localhost:5284/oauth/token")
-        #expect(local.apiServerURL.absoluteString == "http://api.localhost:5284/v2")
-        let keyIDs = local.entitlementKeys.map { EntitlementVerifier.keyID(of: $0) }
-        #expect(keyIDs.contains("kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k"))
-    }
 }

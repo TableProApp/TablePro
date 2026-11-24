@@ -210,7 +210,7 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     private func performSync() async -> TeamLibrarySyncOutcome {
-        guard account.session.isSignedIn else { return .skipped }
+        guard account.isSignedIn else { return .skipped }
         guard account.access.isAvailable(.teamLibrary) else {
             // A current entitlement without team_library: the seat or the plan is gone, and with it what this Mac read.
             if account.access.currentEntitlement != nil, !teams.isEmpty || legacy != nil {
@@ -300,7 +300,13 @@ internal final class TeamLibrarySync: ObservableObject {
             pulled = true
         }
         if let state = teams[teamID], state.canWrite, !state.pending.isEmpty {
-            try await push(teamID)
+            do throws(TeamLibraryFailure) {
+                try await push(teamID)
+            } catch .licenseExpired {
+                // Past its license's grace the server still answers pulls; the edits wait for a renewed license.
+                try await pull(teamID)
+                throw .licenseExpired
+            }
             try await pull(teamID)
         } else if !pulled {
             try await pull(teamID)
@@ -669,9 +675,11 @@ internal final class TeamLibrarySync: ObservableObject {
             .removeDuplicates()
             .sink { [weak self] state in
                 guard let self else { return }
-                let hadAccount = previous.isSignedIn || previous.legacy != nil
+                let hadAccount = previous.isSignedIn
+                let changedServer = previous.server != state.server
                 previous = state
-                if hadAccount, !state.isSignedIn, state.legacy == nil {
+                // Another server's teams are not this account's, whatever ids they share.
+                if hadAccount && !state.isSignedIn || changedServer {
                     self.clear()
                 }
                 self.syncSoon()

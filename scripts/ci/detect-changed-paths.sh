@@ -133,7 +133,11 @@ case "$SUITE" in
         PATTERNS=('core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$'
             'scripts/ci/(detect-changed-paths\.sh|start-windows-sshd\.ps1)$'
             'apple/project\.yml$' 'apple/Packages/TableProFFI/' 'apple/scripts/build-core\.sh$'
-            'apple/scripts/lib/(deployment-target|system-sqlite)\.sh$' '\.github/workflows/(ci|core)\.yml$')
+            'apple/scripts/lib/(deployment-target|system-sqlite)\.sh$' '\.github/workflows/(ci|core)\.yml$'
+            # The notices of the crates the macOS app's core links.
+            'apple/scripts/(update-core-licenses\.sh|about/)' 'linux/about\.toml$'
+            'linux/build-aux/about/(fallbacks|third-party\.json)\.hbs$' 'linux/build-aux/packaging/crate_notices\.py$'
+            'apple/TablePro/Resources/ThirdPartyLicenses/texts/tablepro-core-crates\.txt$')
         SKIP='core/.*\.md$' ;;
     windows)
         # The .NET tests run the whole core through its FFI crate, so any core or workspace change runs them.

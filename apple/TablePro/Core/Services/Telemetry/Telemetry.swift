@@ -90,9 +90,11 @@ internal final class Telemetry {
         }
         let state = account.access.state
         let stored = state.entitlement?.accountID ?? defaults.string(forKey: Keys.identifiedAccount)
-        accountID = account.session.isSignedIn ? stored : nil
+        accountID = account.isSignedIn && account.server.isProduction ? stored : nil
         account.events
-            .sink { [weak self] event in self?.handle(event) }
+            .sink { [weak account, weak self] event in
+                self?.handle(event, isProduction: account?.server.isProduction ?? true)
+            }
             .store(in: &subscriptions)
         sharesUsageData
             .removeDuplicates()
@@ -100,10 +102,11 @@ internal final class Telemetry {
             .store(in: &subscriptions)
     }
 
-    private func handle(_ event: AccountEvent) {
+    // An account on a company server is that company's record, never a PostHog person.
+    private func handle(_ event: AccountEvent, isProduction: Bool) {
         switch event {
         case .signedIn(let accountID, let method):
-            self.accountID = accountID
+            self.accountID = isProduction ? accountID : nil
             reconcileIdentity()
             capture("signed_in", ["method": method.rawValue])
         case .signedOut(.user):
