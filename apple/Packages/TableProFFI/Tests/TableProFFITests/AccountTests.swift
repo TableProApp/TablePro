@@ -71,6 +71,8 @@ private final class ClosedSession: HostWebAuthenticator, @unchecked Sendable {
         throw HostBrowserError.Cancelled
     }
 
+    func cancel() {}
+
     var asked: [(url: String, scheme: String)] {
         lock.withLock { pages }
     }

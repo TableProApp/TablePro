@@ -766,6 +766,10 @@ static class _UniFFILib {
         ulong @uniffiHandle,RustBuffer @url,RustBuffer @callbackScheme,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void UniffiCallbackInterfaceHostWebAuthenticatorMethod1(
+        ulong @uniffiHandle,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
+    );
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void UniffiCallbackInterfaceAiReplyListenerMethod0(
         ulong @uniffiHandle,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
@@ -850,6 +854,7 @@ static class _UniFFILib {
         public IntPtr @uniffiFree;
         public IntPtr @uniffiClone;
         public IntPtr @authenticate;
+        public IntPtr @cancel;
     }
     [StructLayout(LayoutKind.Sequential)]
     public struct UniffiVTableCallbackInterfaceAiReplyListener
@@ -903,6 +908,7 @@ static class _UniFFILib {
         public IntPtr @uniffiClone;
         public IntPtr @eventsPending;
     }
+    
     
     
     
@@ -7748,6 +7754,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_hostwebauthenticator_cancel(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_aireplylistener_events_pending(
     );
 
@@ -9314,6 +9331,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostwebauthenticator_authenticate();
             if (checksum != 30636) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostwebauthenticator_authenticate` checksum `30636`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostwebauthenticator_cancel();
+            if (checksum != 29099) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostwebauthenticator_cancel` checksum `29099`, library returned `{checksum}`");
             }
         }
         {
@@ -27947,6 +27970,7 @@ class FfiConverterTypeHostSecrets: FfiConverter<HostSecrets, ulong> {
 internal interface HostWebAuthenticator {
     /// <exception cref="HostBrowserException"></exception>
     string Authenticate(string @url, string @callbackScheme);
+    void Cancel();
 }
 
 class UniffiCallbackInterfaceHostWebAuthenticator {
@@ -27983,6 +28007,25 @@ class UniffiCallbackInterfaceHostWebAuthenticator {
             }
         }
     }
+    static void Cancel(ulong @uniffiHandle,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
+        var handle = @uniffiHandle;
+        try {
+            if (!FfiConverterTypeHostWebAuthenticator.INSTANCE.handleMap.TryGet(handle, out var uniffiObject)) {
+                throw new InternalException($"No callback in handlemap '{handle}'");
+            }
+            uniffiObject.Cancel();
+
+            _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
+        }
+        catch (System.Exception e){
+            _uniffi_out_err.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+            try {
+                _uniffi_out_err.error_buf = FfiConverterString.INSTANCE.Lower(e.Message);
+            }
+            catch {
+            }
+        }
+    }
 
     static void UniffiFree(ulong @handle) {
         FfiConverterTypeHostWebAuthenticator.INSTANCE.handleMap.Remove(@handle);
@@ -27999,6 +28042,7 @@ class UniffiCallbackInterfaceHostWebAuthenticator {
         }
     }
     static _UniFFILib.UniffiCallbackInterfaceHostWebAuthenticatorMethod0 _m0 = new _UniFFILib.UniffiCallbackInterfaceHostWebAuthenticatorMethod0(Authenticate);
+    static _UniFFILib.UniffiCallbackInterfaceHostWebAuthenticatorMethod1 _m1 = new _UniFFILib.UniffiCallbackInterfaceHostWebAuthenticatorMethod1(Cancel);
     static _UniFFILib.UniffiCallbackInterfaceFree _callback_interface_free = new _UniFFILib.UniffiCallbackInterfaceFree(UniffiFree);
     static _UniFFILib.UniffiCallbackInterfaceClone _callback_interface_clone = new _UniFFILib.UniffiCallbackInterfaceClone(UniffiClone);
 
@@ -28008,6 +28052,7 @@ class UniffiCallbackInterfaceHostWebAuthenticator {
         if (_vtablePin.HasValue) return;
         _UniFFILib.UniffiVTableCallbackInterfaceHostWebAuthenticator _vtable = new _UniFFILib.UniffiVTableCallbackInterfaceHostWebAuthenticator {
             @authenticate = Marshal.GetFunctionPointerForDelegate(_m0),
+            @cancel = Marshal.GetFunctionPointerForDelegate(_m1),
             @uniffiFree = Marshal.GetFunctionPointerForDelegate(_callback_interface_free),
             @uniffiClone = Marshal.GetFunctionPointerForDelegate(_callback_interface_clone),
         };

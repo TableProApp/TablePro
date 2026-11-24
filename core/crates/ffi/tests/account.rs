@@ -96,6 +96,8 @@ impl HostWebAuthenticator for WebSession {
             .unwrap();
         Ok(format!("app.tablepro:/oauth/callback?code=mac-code&state={state}"))
     }
+
+    fn cancel(&self) {}
 }
 
 // Keeps the sign-in page's URL for the test to answer.

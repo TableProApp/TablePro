@@ -23,7 +23,7 @@ The account takes the Mac's seams through the FFI, resolves and discovers the se
 | Seam | Mac |
 | --- | --- |
 | `AppClient` | `AppClient::MACOS`: client `tablepro-macos`, platform `macos`, redirect `Redirect::Scheme("app.tablepro")` |
-| Sign-in page | `HostWebAuthenticator::authenticate(url, callback_scheme)`, which returns the callback URL or `HostBrowserError::Cancelled` |
+| Sign-in page | `HostWebAuthenticator::authenticate(url, callback_scheme)`, which returns the callback URL or `HostBrowserError::Cancelled`, and `cancel()`, which closes the session when the core stops waiting |
 | Machine ID | `AccountConfig::machine_id`, the host's 64 hex characters, through `MachineId::from_hex` |
 | Refresh token | tablepro.app's in `SecretItemTag::AccountRefreshToken`, the Keychain item above; any other server's in `AccountRefreshTokenFor { sign_in_key }` |
 | Server policy | `managed_server_url` and `allow_other_servers`, each only when `objectIsForced` says so |

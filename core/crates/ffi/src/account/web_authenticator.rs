@@ -12,6 +12,10 @@ use super::host_browser::HostBrowserError;
 #[uniffi::export(callback_interface)]
 pub trait HostWebAuthenticator: Send + Sync {
     fn authenticate(&self, url: String, callback_scheme: String) -> Result<String, HostBrowserError>;
+
+    // The core stopped waiting, on a cancel or the sign-in's timeout: the host closes the session it opened, so
+    // `authenticate` returns and its thread is freed.
+    fn cancel(&self);
 }
 
 pub(crate) struct HostWebAuthenticatorBridge {
@@ -34,16 +38,38 @@ impl std::fmt::Debug for HostWebAuthenticatorBridge {
     }
 }
 
+// Tells the host to close its session when the wait is dropped before the session answered.
+struct Waiting {
+    host: Arc<dyn HostWebAuthenticator>,
+    tasks: Tasks,
+    answered: bool,
+}
+
+impl Drop for Waiting {
+    fn drop(&mut self) {
+        if !self.answered {
+            let host = self.host.clone();
+            drop(self.tasks.spawn_blocking_task(move || host.cancel()));
+        }
+    }
+}
+
 #[async_trait]
 impl WebAuthenticator for HostWebAuthenticatorBridge {
     async fn authenticate(&self, url: &Url, callback_scheme: &str) -> Result<Url, WebAuthenticationError> {
         let host = self.host.clone();
         let (url, scheme) = (url.to_string(), callback_scheme.to_owned());
+        let mut waiting = Waiting {
+            host: self.host.clone(),
+            tasks: self.tasks.clone(),
+            answered: false,
+        };
         let answered = self
             .tasks
             .spawn_blocking_task(move || host.authenticate(url, scheme))
-            .await
-            .map_err(|failure| WebAuthenticationError::Failed(failure.to_string()))?;
+            .await;
+        waiting.answered = true;
+        let answered = answered.map_err(|failure| WebAuthenticationError::Failed(failure.to_string()))?;
         match answered {
             Ok(callback) => Url::parse(&callback)
                 .map_err(|_| WebAuthenticationError::Failed("the callback is not a URL".to_owned())),
@@ -70,6 +96,27 @@ mod tests {
             self.1.lock().unwrap().push((url, callback_scheme));
             self.0.clone()
         }
+
+        fn cancel(&self) {}
+    }
+
+    // Holds its session open until the core cancels it, as ASWebAuthenticationSession does.
+    struct OpenUntilCancelled(
+        std::sync::mpsc::Sender<()>,
+        Mutex<std::sync::mpsc::Receiver<()>>,
+        Arc<Mutex<bool>>,
+    );
+
+    impl HostWebAuthenticator for OpenUntilCancelled {
+        fn authenticate(&self, _: String, _: String) -> Result<String, HostBrowserError> {
+            let _ = self.1.lock().unwrap().recv();
+            Err(HostBrowserError::Cancelled)
+        }
+
+        fn cancel(&self) {
+            *self.2.lock().unwrap() = true;
+            let _ = self.0.send(());
+        }
     }
 
     fn bridge(answer: Result<String, HostBrowserError>) -> (HostWebAuthenticatorBridge, Asked) {
@@ -79,6 +126,32 @@ mod tests {
             runtime::tasks().unwrap(),
         );
         (bridge, asked)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_wait_the_core_drops_closes_the_host_s_session() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let cancelled = Arc::new(Mutex::new(false));
+        let bridge = HostWebAuthenticatorBridge::new(
+            Box::new(OpenUntilCancelled(sender, Mutex::new(receiver), cancelled.clone())),
+            runtime::tasks().unwrap(),
+        );
+        let page = Url::parse("https://account.tablepro.app/oauth/authorize?state=s").unwrap();
+
+        let waited = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            bridge.authenticate(&page, "app.tablepro"),
+        )
+        .await;
+        for _ in 0..100 {
+            if *cancelled.lock().unwrap() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        assert!(waited.is_err());
+        assert!(*cancelled.lock().unwrap());
     }
 
     #[tokio::test]
