@@ -112,6 +112,21 @@ struct WelcomeViewModelTeamLibraryTests {
         #expect(await fixture.pushes().isEmpty)
     }
 
+    @Test("An editor publishes connections")
+    func editorPublishesConnections() async throws {
+        let fixture = try await TeamLibraryFixture(role: "editor")
+
+        let outcome = await WelcomeViewModel.publishConnections(
+            [DatabaseConnection(name: "Prod")],
+            to: TeamLibraryFixture.team,
+            through: fixture.sync,
+            confirm: { _ in true }
+        )
+
+        #expect(outcome == .finished(.published(1)))
+        #expect(fixture.sync.content.connections.map(\.settings.name) == ["Prod"])
+    }
+
     @Test("The confirmation names one connection and counts several")
     func confirmationTitleNamesOrCounts() {
         let single = WelcomeViewModel.teamLibraryPublishConfirmationTitle(for: [DatabaseConnection(name: "Prod")])

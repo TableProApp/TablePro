@@ -29,7 +29,8 @@ internal struct TeamLibraryDestination: Sendable {
 }
 
 // Pulls each team's library from its cached cursor on launch, every 15 minutes and after each push, and pushes what
-// this Mac publishes in batches. Who reads and who writes comes from GET /v2/me: a seat to read, owner or admin to write.
+// this Mac publishes in batches. Who reads and who writes comes from GET /v2/me: a seat to read, owner, admin or
+// editor to write.
 //
 // One sign-in's library:
 // I1. Unsent edits, the pushes still to go, the conflicts not resolved and the edits the server refused, live only in
@@ -453,7 +454,7 @@ internal final class TeamLibrarySync: ObservableObject {
         return outcome
     }
 
-    // A seat reads, an owner or admin with a seat writes; a team no longer listed is dropped with its edits.
+    // A seat reads, an owner, admin or editor with a seat writes; a team no longer listed is dropped with its edits.
     private func adopt(_ memberships: [AccountMembership], in store: SessionStore) {
         let seated = memberships.filter(\.hasSeat)
         let listed = Set(seated.map(\.teamID))
@@ -464,7 +465,7 @@ internal final class TeamLibrarySync: ObservableObject {
             var state = store.teams[membership.teamID]
                 ?? TeamLibraryTeamState(teamID: membership.teamID, teamName: membership.teamName, canWrite: false)
             state.teamName = membership.teamName
-            state.canWrite = membership.role == "owner" || membership.role == "admin"
+            state.canWrite = membership.writesTeamLibrary
             if !state.canWrite, !state.pending.isEmpty || !state.conflicts.isEmpty {
                 Self.logger.notice(
                     "Refusing \(state.pending.count) unpushed team library edits and \(state.conflicts.count) conflicts: this account only reads the team's library"

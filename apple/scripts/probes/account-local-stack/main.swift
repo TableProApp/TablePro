@@ -17,6 +17,7 @@ private struct LibraryConfig: Decodable {
     let teamUUID: String
     let teamKey: String
     let adminKey: String
+    let editorKey: String
     let memberKey: String
 }
 
@@ -351,7 +352,8 @@ private final class Probe {
     // MARK: - Team library
 
     // An old build publishes over /v1 with the team's license key and caches its pull; the update exchanges the key,
-    // takes that cache over in its first /v2 sync, pushes, a member's second device pulls, and an admin conflicts.
+    // takes that cache over in its first /v2 sync, pushes, a member's second device pulls, an editor publishes, and an
+    // admin conflicts.
     private func teamLibrary() async {
         let connectionID = UUID()
         let folderID = UUID()
@@ -421,6 +423,7 @@ private final class Probe {
         )
 
         let member = await memberPulls(customers: customers.name, teamID: teamID(of: mine), directory: directory)
+        await editorPublishes(teamID: teamID(of: mine), directory: directory)
         guard let admin = await adminConflicts(orders: orders, others: [customers], folder: folder, mine: mine, directory: directory) else {
             return
         }
@@ -466,6 +469,19 @@ private final class Probe {
         let pushes = await log.lines.filter { $0.hasPrefix("POST") && $0.contains("/library/changes") }
         report.expect(pushes.isEmpty && refusal == "notWritable", "a member's publish is refused before anything is pushed", refusal)
         return theirs
+    }
+
+    private func editorPublishes(teamID: String, directory: URL) async {
+        let editor = await keyAccount(library.editorKey, log: CallLog(), machine: "Probe Editor Mac")
+        let theirs = TeamLibrarySync(account: editor, store: store(in: directory.appendingPathComponent("editor", isDirectory: true)))
+        theirs.loadIfNeeded()
+        _ = await theirs.sync()
+        report.expect(theirs.canPublish, "an editor may publish")
+        let query = SQLFavorite(id: UUID(), name: "Editor's", query: "select 'editor'")
+        let published = try? await theirs.publishSavedQueries(favorites: [query], folders: [], to: teamID)
+        report.expect(published == .published(1), "an editor's publish is pushed", "\(String(describing: published))")
+        let row = rows().first { $0.clientID == query.id.uuidString.lowercased() }
+        report.expect(row.map { $0.via == "v2" && !$0.deleted } == true, "the server applies an editor's push", "\(String(describing: row))")
     }
 
     private func adminConflicts(

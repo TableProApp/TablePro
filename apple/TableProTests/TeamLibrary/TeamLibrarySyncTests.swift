@@ -853,7 +853,34 @@ struct TeamLibrarySyncTests {
 
     // MARK: - Who may write
 
-    @Test("A member without the owner or admin role pulls and never pushes")
+    @Test(
+        "Writers are the owner, admins and editors",
+        arguments: [("owner", true), ("admin", true), ("editor", true), ("member", false), ("billing_manager", false)]
+    )
+    func writersByRole(role: String, writes: Bool) async throws {
+        let fixture = try await TeamLibraryFixture(role: role)
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(fixture.sync.canPublish == writes)
+    }
+
+    @Test("An editor's publish is pushed and applied")
+    func editorPublishes() async throws {
+        let fixture = try await TeamLibraryFixture(role: "editor")
+
+        let result = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")],
+            folders: [],
+            to: Self.team
+        )
+
+        #expect(result == .published(1))
+        #expect(await fixture.server.library.live(Self.team).map { $0.data?["name"] as? String } == ["Orders"])
+        #expect(fixture.sync.content.queries.map(\.name) == ["Orders"])
+    }
+
+    @Test("A member pulls and never pushes")
     func pullOnlyMemberNeverPushes() async throws {
         let fixture = try await TeamLibraryFixture(role: "member") { library in
             library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
@@ -898,6 +925,52 @@ struct TeamLibrarySyncTests {
         #expect(await fixture.sync.sync() == .synced)
         #expect(fixture.sync.conflicts.isEmpty)
         #expect(await fixture.server.library.live(Self.team).isEmpty)
+    }
+
+    @Test("An editor made a member keeps nothing to push: its unsent edit is listed as refused")
+    func editorMadeMemberDropsItsEdits() async throws {
+        let fixture = try await unsentEdit(as: "editor", now: "member")
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(await fixture.server.library.live(Self.team).isEmpty)
+        #expect(fixture.sync.unsentChanges == [TeamLibraryUnsentChanges.refused("Mine", because: .writeForbidden)])
+        #expect(fixture.sync.conflicts.isEmpty)
+    }
+
+    @Test("An editor keeps unpushed edits across a sync")
+    func editorKeepsItsEdits() async throws {
+        let fixture = try await unsentEdit(as: "editor", now: "editor")
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(await fixture.server.library.live(Self.team).map { $0.data?["name"] as? String } == ["Mine"])
+        #expect(!fixture.sync.hasUnsentChanges)
+    }
+
+    @Test("An admin made an editor keeps its edits")
+    func adminMadeEditorKeepsItsEdits() async throws {
+        let fixture = try await unsentEdit(as: "admin", now: "editor")
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(await fixture.server.library.live(Self.team).map { $0.data?["name"] as? String } == ["Mine"])
+        #expect(!fixture.sync.hasUnsentChanges)
+    }
+
+    // Published as `role` with the push failing, so the edit waits in memory; then GET /v2/me answers `current`.
+    private func unsentEdit(as role: String, now current: String) async throws -> TeamLibraryFixture {
+        let fixture = try await TeamLibraryFixture(role: role)
+        await fixture.sync.sync()
+        await fixture.library { $0.pushFaults = [503] }
+        _ = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Mine")], folders: [], to: Self.team
+        )
+        #expect(fixture.sync.unsentChanges == ["Mine"])
+        await fixture.server.set {
+            $0.memberships = [FakeAccountServer.membership(teamID: Self.team, name: "Acme", role: current, hasSeat: true)]
+        }
+        return fixture
     }
 
     @Test("A team the account lost its seat in is dropped with what it held")

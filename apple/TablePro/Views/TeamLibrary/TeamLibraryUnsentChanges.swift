@@ -82,7 +82,7 @@ internal enum TeamLibraryUnsentChanges {
         let why: String
         switch reason {
         case .writeForbidden:
-            why = String(localized: "only the team's owner and admins publish")
+            why = String(localized: "only the team's owner, admins and editors publish")
         case .unreadable:
             why = String(localized: "no seat in the team")
         case .offline, .rateLimited, .server:

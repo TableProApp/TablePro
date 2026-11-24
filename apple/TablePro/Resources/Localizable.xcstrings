@@ -144727,8 +144727,48 @@
     "only the team's owner and admins publish" : {
 
     },
-    "Only the team's owner and admins publish to its library." : {
+    "only the team's owner, admins and editors publish" : {
 
+    },
+    "Only the team's owner, admins and editors publish to its library." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seuls le propriétaire, les administrateurs et les éditeurs de l’équipe publient dans sa bibliothèque."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀 소유자, 관리자, 편집자만 팀 라이브러리에 게시할 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Takım kitaplığına yalnızca takımın sahibi, yöneticileri ve editörleri yayınlayabilir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chỉ chủ sở hữu, quản trị viên và biên tập viên của nhóm mới được xuất bản lên thư viện nhóm."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有团队的拥有者、管理员和编辑者可以发布到团队库。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有團隊的擁有者、管理員和編輯者可以發佈到團隊庫。"
+          }
+        }
+      }
     },
     "Only this filter is applied. Click to apply all checked filters." : {
 
@@ -208952,6 +208992,54 @@
     },
     "Team library updated %@" : {
 
+    },
+    "team.role.editor" : {
+      "comment" : "A team role that adds, changes and removes the team's library items",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Editor"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Éditeur"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "편집자"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editör"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biên tập viên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑者"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編輯者"
+          }
+        }
+      }
     },
     "Team's Version" : {
 

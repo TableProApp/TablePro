@@ -38,7 +38,7 @@ internal enum TeamLibraryPublishing {
         case .notWritable:
             return Message(
                 title: String(localized: "Couldn't publish to the team library"),
-                text: String(localized: "Only the team's owner and admins publish to its library."),
+                text: String(localized: "Only the team's owner, admins and editors publish to its library."),
                 isError: true
             )
         case .failed(let failure):
@@ -63,7 +63,7 @@ internal enum TeamLibraryPublishing {
         case .unreadable:
             return String(localized: "Your account no longer has a seat in this team's library.")
         case .writeForbidden:
-            return String(localized: "Only the team's owner and admins publish to its library.")
+            return String(localized: "Only the team's owner, admins and editors publish to its library.")
         case .licenseExpired:
             return String(localized: "The server's TablePro license has expired, so it takes no changes. They stay on this Mac until your administrator renews the license.")
         case .cursorRefused:

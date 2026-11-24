@@ -5,7 +5,7 @@ use tablepro_account::{
     AccountError, AccountStatus, Device, Entitlement, EntitlementProblem, LicenseClaim, Profile, SignedIn,
 };
 
-use crate::i18n::{gettext, gettext_f, ngettext_f};
+use crate::i18n::{gettext, gettext_f, ngettext_f, pgettext};
 use crate::ui::error_text::account_error_message;
 
 // clients.md, Settings > Account: an entitlement this close to its end without a refresh gets a notice.
@@ -359,6 +359,7 @@ pub(crate) fn role_name(code: &str) -> Option<String> {
     match code {
         OWNER => Some(gettext("Owner")),
         "admin" => Some(gettext("Admin")),
+        "editor" => Some(pgettext("team role", "Editor")),
         "member" => Some(gettext("Member")),
         _ => None,
     }
@@ -734,6 +735,7 @@ mod tests {
 
         assert_eq!(plan_name("enterprise"), "License");
         assert_eq!(cycle_name("quarterly"), None);
+        assert_eq!(role_name("editor").as_deref(), Some("Editor"));
         assert_eq!(role_name("billing_manager"), None);
         assert_eq!(license_state(&unknown), None);
         let row = license_row(&unknown, billing(&unknown, &Fetch::Idle));
@@ -884,7 +886,7 @@ mod tests {
     }
 
     #[test]
-    fn a_team_plan_only_its_owner_can_fix_opens_no_billing_for_an_admin_a_member_or_an_unknown_role() {
+    fn a_team_plan_only_its_owner_can_fix_opens_no_billing_for_an_admin_an_editor_a_member_or_an_unknown_role() {
         let now = Utc::now();
         let past_due = license("team", "yearly", "past_due", Some("Acme"));
         let mut ending = license("team", "monthly", "canceling", Some("Acme"));
@@ -897,6 +899,7 @@ mod tests {
         };
 
         let admin = notices_for(vec![past_due.clone()], Some(self::membership("team_01", "admin")));
+        let editor = notices_for(vec![past_due.clone()], Some(self::membership("team_01", "editor")));
         let member = notices_for(vec![ending.clone()], Some(self::membership("team_01", "member")));
         let owns_another = notices_for(vec![past_due.clone()], Some(self::membership("team_02", "owner")));
         let unknown = notices_for(vec![past_due, ending], None);
@@ -908,6 +911,14 @@ mod tests {
                 .ends_with("Only the team’s owner can update the payment method."),
             "{}",
             admin[0].body
+        );
+        assert_eq!(editor[0].action, None);
+        assert!(
+            editor[0]
+                .body
+                .ends_with("Only the team’s owner can update the payment method."),
+            "{}",
+            editor[0].body
         );
         assert_eq!(member[0].action, None);
         assert!(
@@ -1058,6 +1069,7 @@ mod tests {
                     role: "auditor".to_owned(),
                     has_seat: false,
                 },
+                membership("team_03", "editor"),
             ],
         });
 
@@ -1068,6 +1080,7 @@ mod tests {
         assert_eq!(rows[0].subtitle, "Member · Holds a seat");
         assert_eq!(rows[1].subtitle, "No seat");
         assert_eq!(rows[1].path, "/teams/team_02");
+        assert_eq!(rows[2].subtitle, "Editor · Holds a seat");
     }
 
     #[test]
