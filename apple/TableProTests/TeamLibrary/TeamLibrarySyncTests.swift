@@ -844,7 +844,34 @@ struct TeamLibrarySyncTests {
 
     // MARK: - Who may write
 
-    @Test("A member without the owner or admin role pulls and never pushes")
+    @Test(
+        "Writers are the owner, admins and editors",
+        arguments: [("owner", true), ("admin", true), ("editor", true), ("member", false), ("billing_manager", false)]
+    )
+    func writersByRole(role: String, writes: Bool) async throws {
+        let fixture = try await TeamLibraryFixture(role: role)
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(fixture.sync.canPublish == writes)
+    }
+
+    @Test("An editor's publish is pushed and applied")
+    func editorPublishes() async throws {
+        let fixture = try await TeamLibraryFixture(role: "editor")
+
+        let result = try await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")],
+            folders: [],
+            to: Self.team
+        )
+
+        #expect(result == .published(1))
+        #expect(await fixture.server.library.live(Self.team).map { $0.data?["name"] as? String } == ["Orders"])
+        #expect(fixture.sync.content.queries.map(\.name) == ["Orders"])
+    }
+
+    @Test("A member pulls and never pushes")
     func pullOnlyMemberNeverPushes() async throws {
         let fixture = try await TeamLibraryFixture(role: "member") { library in
             library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
@@ -866,20 +893,7 @@ struct TeamLibrarySyncTests {
 
     @Test("Edits and conflicts stored while this account could write are dropped once it only reads")
     func demotedWriterDropsItsEdits() async throws {
-        let fixture = try await TeamLibraryFixture()
-        await fixture.sync.sync()
-        var state = try #require(fixture.store.loadAll().first)
-        state.pending = try TeamLibraryPublishPlan.savedQueries(
-            favorites: [TeamLibraryFixture.favorite(name: "Mine")],
-            folders: [],
-            in: state
-        )
-        state.conflicts = [TeamLibraryConflict(teamID: Self.team, edit: state.pending[0], current: nil)]
-        fixture.store.save(state)
-        await fixture.server.set {
-            $0.memberships = [FakeAccountServer.membership(teamID: Self.team, name: "Acme", role: "member", hasSeat: true)]
-        }
-        fixture.relaunch()
+        let fixture = try await storedEdits(as: "owner", now: "member")
 
         #expect(await fixture.sync.sync() == .synced)
 
@@ -887,6 +901,62 @@ struct TeamLibrarySyncTests {
         #expect(fixture.store.loadAll().first?.pending.isEmpty == true)
         #expect(fixture.store.loadAll().first?.conflicts.isEmpty == true)
         #expect(fixture.sync.conflicts.isEmpty)
+    }
+
+    @Test("An editor made a member drops its edits")
+    func editorMadeMemberDropsItsEdits() async throws {
+        let fixture = try await storedEdits(as: "editor", now: "member")
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(await fixture.pushes().isEmpty)
+        #expect(fixture.store.loadAll().first?.pending.isEmpty == true)
+        #expect(fixture.store.loadAll().first?.conflicts.isEmpty == true)
+        #expect(fixture.sync.conflicts.isEmpty)
+    }
+
+    @Test("An editor keeps unpushed edits across a sync")
+    func editorKeepsItsEdits() async throws {
+        let fixture = try await storedEdits(as: "editor", now: "editor")
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(await fixture.server.library.live(Self.team).map { $0.data?["name"] as? String } == ["Mine"])
+        #expect(fixture.sync.conflicts.count == 1)
+    }
+
+    @Test("An admin made an editor keeps its edits")
+    func adminMadeEditorKeepsItsEdits() async throws {
+        let fixture = try await storedEdits(as: "admin", now: "editor")
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(await fixture.server.library.live(Self.team).map { $0.data?["name"] as? String } == ["Mine"])
+        #expect(fixture.sync.conflicts.count == 1)
+    }
+
+    // Synced as `role` and left an unpushed edit and a conflict here; then GET /v2/me answers `current`.
+    private func storedEdits(as role: String, now current: String) async throws -> TeamLibraryFixture {
+        let fixture = try await TeamLibraryFixture(role: role)
+        await fixture.sync.sync()
+        var state = try #require(fixture.store.loadAll().first)
+        state.pending = try TeamLibraryPublishPlan.savedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Mine")],
+            folders: [],
+            in: state
+        )
+        let conflicted = try TeamLibraryPublishPlan.savedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Conflicted")],
+            folders: [],
+            in: state
+        )
+        state.conflicts = conflicted.map { TeamLibraryConflict(teamID: Self.team, edit: $0, current: nil) }
+        fixture.store.save(state)
+        await fixture.server.set {
+            $0.memberships = [FakeAccountServer.membership(teamID: Self.team, name: "Acme", role: current, hasSeat: true)]
+        }
+        fixture.relaunch()
+        return fixture
     }
 
     @Test("A team the account lost its seat in is dropped with what it held")
