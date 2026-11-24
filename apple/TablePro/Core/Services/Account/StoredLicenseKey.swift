@@ -16,11 +16,30 @@ internal struct StoredLicenseKey: @unchecked Sendable {
 
     let keychain: any KeychainStoring
     let defaults: UserDefaults
+    let machineID: String
 
     func value() -> String? {
-        guard case .found(let key) = keychain.readStringResult(forKey: Self.keychainKey) else { return nil }
-        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        if case .found(let key) = keychain.readStringResult(forKey: Self.keychainKey) {
+            let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return payloadKey()
+    }
+
+    // The payload carries the key too, for a Mac whose Keychain copy another Mac's migration deleted. Only the server
+    // judges a key, so its unchecked signature does not matter for sending it there.
+    private func payloadKey() -> String? {
+        guard let data = defaults.data(forKey: Self.payloadKey),
+              let cached = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              cached["machineId"] as? String == machineID,
+              let payload = (cached["signedPayload"] as? [String: Any])?["data"] as? [String: Any],
+              let key = (payload["license_key"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !key.isEmpty
+        else { return nil }
+        if let bound = payload["machine_id"] as? String, bound != machineID {
+            return nil
+        }
+        return key
     }
 
     // A key the server refused, or whose session was signed out: kept for Use License Key…, never exchanged on its

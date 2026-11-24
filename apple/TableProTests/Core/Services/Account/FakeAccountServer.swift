@@ -271,7 +271,9 @@ struct AccountFixture {
         self.services = AccountServices(
             backend: backend,
             transport: FakeTransport(server: server),
-            storedKey: StoredLicenseKey(keychain: keychain, defaults: defaults.defaults),
+            storedKey: StoredLicenseKey(
+                keychain: keychain, defaults: defaults.defaults, machineID: FakeAccountServer.machine.machineID
+            ),
             access: access,
             clock: clock,
             now: now
@@ -282,7 +284,16 @@ struct AccountFixture {
     // A key an older build stored, with the signed payload it kept beside it.
     func storeLegacyLicense(key: String) {
         keychain.writeString(key, forKey: StoredLicenseKey.keychainKey)
-        defaults.defaults.set(Data("{}".utf8), forKey: StoredLicenseKey.payloadKey)
+        storeLegacyPayload(key: key)
+    }
+
+    // The payload alone, as on a Mac whose Keychain copy another Mac's migration deleted.
+    func storeLegacyPayload(key: String, cachedOn machineID: String = FakeAccountServer.machine.machineID) {
+        let cached: [String: Any] = [
+            "signedPayload": ["data": ["license_key": key, "email": "ada@m16.example", "status": "active"], "signature": "sig"],
+            "machineId": machineID
+        ]
+        defaults.defaults.set(try? JSONSerialization.data(withJSONObject: cached), forKey: StoredLicenseKey.payloadKey)
     }
 
     func signIn() async throws {

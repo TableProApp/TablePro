@@ -13,7 +13,11 @@ extension AccountServices {
         return AccountServices(
             backend: backend,
             transport: AccountAPI.transport(session: liveSession()),
-            storedKey: StoredLicenseKey(keychain: environment.keychain, defaults: environment.defaults),
+            storedKey: StoredLicenseKey(
+                keychain: environment.keychain,
+                defaults: environment.defaults,
+                machineID: MachineIdentity.shared.machineID
+            ),
             access: .shared
         )
     }

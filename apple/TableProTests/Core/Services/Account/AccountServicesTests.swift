@@ -128,6 +128,21 @@ struct AccountServicesTests {
         #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .nothingToMigrate)
     }
 
+    @Test("A key only the cached payload still holds is exchanged; one cached on another Mac is not")
+    func payloadKeyIsExchanged() async throws {
+        let fixture = try AccountFixture()
+        fixture.storeLegacyPayload(key: FakeAccountServer.validKey)
+        #expect(fixture.services.storedLicenseKey == FakeAccountServer.validKey)
+
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .migrated)
+        #expect(!fixture.hasLegacyLicense)
+
+        let other = try AccountFixture()
+        other.storeLegacyPayload(key: FakeAccountServer.validKey, cachedOn: String(repeating: "0", count: 64))
+        #expect(other.services.storedLicenseKey == nil)
+        #expect(await other.services.migrateLegacyKeyIfNeeded() == .nothingToMigrate)
+    }
+
     @Test("A key the server refuses is set aside: offered by Use License Key…, never exchanged on its own again")
     func refusedKeyIsSetAside() async throws {
         let fixture = try AccountFixture()
@@ -285,6 +300,24 @@ struct AccountServicesTests {
         let refused = try #require(calls.first?.authorization?.replacingOccurrences(of: "Bearer ", with: ""))
         #expect(fixture.backend.tokensRejected == [refused])
         #expect(calls.first?.authorization != calls.last?.authorization)
+    }
+
+    @Test("A 401 that comes back after a switch to another server is not sent again, to either server")
+    func unauthorizedAfterServerSwitchIsNotRetried() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        await fixture.server.set { $0.unauthorizedOnce = true }
+        fixture.backend.onTokenRejected = { backend in
+            backend.switchServerKeepingTheSession(to: FakeAccountBackend.companyServer)
+        }
+
+        await #expect(throws: (any Error).self) {
+            _ = try await fixture.services.api.getMe()
+        }
+
+        let calls = await fixture.server.requests(to: "/me")
+        #expect(calls.count == 1)
+        #expect(calls.first?.baseURL == AccountServer.production.apiBaseURL)
     }
 
     @Test("Signed out, the Swift clients send nothing")

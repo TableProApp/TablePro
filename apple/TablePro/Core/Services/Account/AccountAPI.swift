@@ -31,7 +31,8 @@ internal enum AccountAPI {
     }
 }
 
-// Sends the core's access token to the server it was issued for, and on a 401 tells the core and retries once.
+// Sends the core's access token to the server it was issued for, and on a 401 tells the core and retries once, on
+// that server only: a body sent to one server never goes to another.
 internal struct AccountBearerMiddleware: ClientMiddleware {
     let backend: any AccountBackend
 
@@ -45,22 +46,23 @@ internal struct AccountBearerMiddleware: ClientMiddleware {
         let (token, server) = try await authorization()
         var request = request
         request.headerFields[.authorization] = "Bearer \(token)"
-        let (response, responseBody) = try await next(request, body, server)
+        let (response, responseBody) = try await next(request, body, server.apiBaseURL)
         guard response.status == .unauthorized else {
             return (response, responseBody)
         }
         await backend.accessTokenRejected(token)
         let (refreshed, refreshedServer) = try await authorization()
+        guard refreshedServer == server else { throw AccountError.signedOut }
         request.headerFields[.authorization] = "Bearer \(refreshed)"
-        return try await next(request, body, refreshedServer)
+        return try await next(request, body, server.apiBaseURL)
     }
 
     // A server switch between the two reads would send one server's token to the other.
-    private func authorization() async throws(AccountError) -> (String, URL) {
+    private func authorization() async throws(AccountError) -> (String, AccountServer) {
         let server = backend.server()
         let token = try await backend.accessToken()
         guard backend.server() == server else { throw .signedOut }
-        return (token, server.apiBaseURL)
+        return (token, server)
     }
 }
 

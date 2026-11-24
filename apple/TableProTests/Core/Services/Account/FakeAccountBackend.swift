@@ -46,6 +46,8 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     private var rejectedTokens: [String] = []
     private var tokenCount = 0
     private var refreshCalls = 0
+    // Runs as the core is told its token was refused, as if the person changed server at that moment.
+    var onTokenRejected: (@Sendable (FakeAccountBackend) -> Void)?
 
     init(server: FakeAccountServer, now: @escaping @Sendable () -> Date) {
         self.fakeServer = server
@@ -245,6 +247,11 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
 
     func accessTokenRejected(_ token: String) async {
         locked { rejectedTokens.append(token) }
+        onTokenRejected?(self)
+    }
+
+    func switchServerKeepingTheSession(to server: AccountServer) {
+        locked { chosen = server }
     }
 
     // MARK: - Private
