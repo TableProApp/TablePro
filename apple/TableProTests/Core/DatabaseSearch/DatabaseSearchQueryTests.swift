@@ -117,7 +117,7 @@ struct DatabaseSearchQueryTests {
         let exact = try #require(query.match(from: [["0", "1"]]))
         #expect(exact.filterState.filters.map(\.columnName) == ["id"])
         #expect(exact.filterState.filterLogicMode == .or)
-        #expect(exact.filterState.appliedFilters.map(\.columnName) == ["id"])
+        #expect(exact.filterState.applied?.filters == exact.filterState.filters)
 
         let capped = try #require(DatabaseSearchQuery(sql: "", filters: query.filters, rowCap: 1).match(from: [["0", "1"], ["0", "1"]]))
         #expect(capped.filterState.filters.map(\.columnName) == ["email", "id"])

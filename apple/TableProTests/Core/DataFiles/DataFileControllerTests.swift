@@ -12,7 +12,7 @@ import TableProTabularIO
 import Testing
 
 @MainActor
-private enum DataFileFixture {
+enum DataFileFixture {
     static func open(data: Data, fileExtension: String, undoManager: UndoManager) async throws -> (DataFileController, URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("DataFileControllerTests-\(UUID().uuidString)")
@@ -125,7 +125,7 @@ struct DataFileControllerTests {
     func editUnderFilterTargetsTheVisibleRow() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\nC,Paris\n")
         controller.filterState.filters = [TableFilter(columnName: "city", filterOperator: .equal, value: "London")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         #expect(column(controller, 0) == ["B"])
         controller.setCell(pageRow: 0, column: 1, text: "Rome")
@@ -143,16 +143,16 @@ struct DataFileControllerTests {
             TableFilter.rawCondition("id > 5"),
         ]
 
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
 
-        #expect(controller.filterState.commit == nil)
+        #expect(controller.filterState.applied == nil)
         #expect(controller.statusMessage == String(localized: "This file cannot filter rows with these conditions."))
         #expect(column(controller, 0) == ["A", "B"])
 
         controller.filterState.filters = [TableFilter(columnName: "country", value: "VN")]
-        controller.applyAllFilters()
-        #expect(controller.filterState.commit == nil)
+        controller.applyCheckedFilters()
+        #expect(controller.filterState.applied == nil)
     }
 
     // Compared as text, "9" sorts after "50" and would be kept too.
@@ -508,7 +508,7 @@ struct DataFileControllerTests {
     func nullSemantics() async throws {
         let (controller, _) = try await loaded("a\n\nNULL\n")
         controller.filterState.filters = [TableFilter(columnName: "a", filterOperator: .isNull)]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         #expect(controller.visibleRowCount == 0)
     }
@@ -531,7 +531,7 @@ struct DataFileControllerTests {
     func exportFilteredRows() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\nC,Paris\n")
         controller.filterState.filters = [TableFilter(columnName: "city", filterOperator: .equal, value: "Paris")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         controller.updateSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .descending)]))
         await controller.waitForPendingWork()
@@ -753,7 +753,7 @@ struct DataFileControllerTests {
     func undoRenameRestoresFilter() async throws {
         let (controller, _) = try await loaded("amount\n5\n50\n")
         controller.filterState.filters = [TableFilter(columnName: "amount", filterOperator: .greaterThan, value: "10")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         controller.renameColumn(controller.columnNames.ids[0], to: "total")
         #expect(controller.filterState.filters.map(\.columnName) == ["total"])
@@ -768,7 +768,7 @@ struct DataFileControllerTests {
     func sortAfterRenameKeepsFilter() async throws {
         let (controller, _) = try await loaded("amount\n5\n50\n70\n")
         controller.filterState.filters = [TableFilter(columnName: "amount", filterOperator: .greaterThan, value: "10")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
 
         controller.renameColumn(controller.columnNames.ids[0], to: "total")
@@ -782,7 +782,7 @@ struct DataFileControllerTests {
     func deleteColumnOfRunningFilterReruns() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
         controller.filterState.filters = [TableFilter(columnName: "city", value: "London")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         #expect(column(controller, 0) == ["B"])
 
@@ -800,13 +800,13 @@ struct DataFileControllerTests {
     func headerToggleDropsUnresolvableFilters() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
         controller.filterState.filters = [TableFilter(columnName: "city", value: "London")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
 
         controller.setUsesFirstRowAsHeader(false)
         await controller.waitForPendingWork()
 
-        #expect(controller.filterState.commit == nil)
+        #expect(controller.filterState.applied == nil)
         #expect(controller.visibleRowCount == 3)
     }
 
@@ -814,7 +814,7 @@ struct DataFileControllerTests {
     func undoDeleteRestoresFilterAndSort() async throws {
         let (controller, _) = try await loaded("n,tag\n3,a\n1,b\n2,a\n")
         controller.filterState.filters = [TableFilter(columnName: "tag", filterOperator: .equal, value: "a")]
-        controller.applyAllFilters()
+        controller.applyCheckedFilters()
         await controller.waitForPendingWork()
         controller.updateSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .ascending)]))
         await controller.waitForPendingWork()

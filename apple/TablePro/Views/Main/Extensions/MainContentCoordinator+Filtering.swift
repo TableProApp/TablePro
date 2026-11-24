@@ -7,14 +7,6 @@ import Foundation
 import TableProPluginKit
 
 extension MainContentCoordinator {
-    func clearAppliedFiltersAndReload() {
-        filterCoordinator.clearAppliedFiltersAndReload()
-    }
-
-    func removeAllFiltersAndReload() {
-        filterCoordinator.removeAllFiltersAndReload()
-    }
-
     var supportsColumnSort: Bool {
         services.pluginManager.supportsColumnSort(for: connection.type)
     }

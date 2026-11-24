@@ -241,7 +241,7 @@ extension DataFileController {
         } else {
             kindOverrides[id] = nil
         }
-        if sortState.isSorting || !filterState.rerunFilters.filters.isEmpty {
+        if sortState.isSorting || filterState.isFiltering {
             runQuery()
         } else {
             gridModel.summaryRulesDidChange()

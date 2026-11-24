@@ -128,12 +128,7 @@ extension MainContentCoordinator {
         databaseName: String?,
         schemaName: String?
     ) -> EditorTabPayload {
-        let fkFilterState = TabFilterState(
-            filters: [filter],
-            commit: .all,
-            isVisible: true,
-            filterLogicMode: .and
-        )
+        let fkFilterState = TabFilterState.applying([filter], logicMode: .and)
         // Built only when no open tab could take the jump; reusing one would write the FK filter over the user's own filters.
         return EditorTabPayload(
             connectionId: connection.id,
@@ -160,9 +155,9 @@ extension MainContentCoordinator {
             && lhs.value == rhs.value
     }
 
-    // Asks what the rows were fetched with, not appliedFilters, which reads the unapplied draft and claimed a false match.
+    // Asks what the rows were fetched with, never the draft, which claimed a false match.
     private func showsOnlyFKPredicate(_ tab: QueryTab, filter: TableFilter) -> Bool {
-        let applied = tab.filterState.executedFilters
+        let applied = tab.filterState.applied?.filters ?? []
         guard applied.count == 1 else { return false }
         return isSameFKPredicate(applied[0], filter)
     }

@@ -59,7 +59,7 @@ struct DatabaseSearchResultOpeningTests {
         #expect(payload?.schemaName == "sales")
         #expect(payload?.databaseName == "archive")
         #expect(payload?.forcesNewTab == true)
-        #expect(payload?.initialFilterState?.appliedFilters == [email])
+        #expect(payload?.initialFilterState?.applied?.filters == [email])
         #expect(payload?.initialFilterState?.filterLogicMode == .or)
     }
 

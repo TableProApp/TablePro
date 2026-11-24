@@ -765,7 +765,7 @@ struct MainEditorContentView: View {
         inputs.executionRowsAffected = tab.execution.rowsAffected
         inputs.executionTime = tab.execution.executionTime
         inputs.executionStatusMessage = tab.execution.statusMessage
-        inputs.hasAppliedFilters = tab.filterState.hasAppliedFilters
+        inputs.isFiltering = tab.filterState.isFiltering
         inputs.isFilterPanelVisible = tab.filterState.isVisible
         return QueryResultPresentation(inputs: inputs)
     }
@@ -782,7 +782,8 @@ struct MainEditorContentView: View {
                 QueryTabFilterPanel(
                     coordinator: coordinator,
                     tabManager: tabManager,
-                    columns: rows.columns,
+                    // Hidden columns leave the SELECT, not the table, so a row can still filter on one.
+                    columns: coordinator.columnsForVisibilityPicker(for: tab, resultColumns: rows.columns),
                     primaryKeyColumn: changeManager.primaryKeyColumn,
                     databaseType: connection.type,
                     enumValuesByColumn: rows.filterPickerValues

@@ -402,7 +402,7 @@ struct ResultStatusBar: View {
             Label {
                 Text("Filters")
             } icon: {
-                Image(systemName: filterState.hasAppliedFilters
+                Image(systemName: filterState.isFiltering
                     ? "line.3.horizontal.decrease.circle.fill"
                     : "line.3.horizontal.decrease.circle")
                     .statusBarControlIcon(besideTitle: presentation.showsControlTitles)
@@ -429,9 +429,11 @@ struct ResultStatusBar: View {
         return String(format: String(localized: "%d of %d columns visible"), total - columnState.hidden.count, total)
     }
 
+    // Explicit singular and plural keys: `String(localized:)` does not process inflection.
     private var filtersAccessibilityValue: String {
-        guard filterState.hasAppliedFilters else { return String(localized: "No filters applied") }
-        return String(format: String(localized: "%d filters applied"), filterState.appliedFilters.count)
+        guard let applied = filterState.applied else { return String(localized: "No filters applied") }
+        guard applied.filters.count > 1 else { return String(localized: "1 filter applied") }
+        return String(format: String(localized: "%d filters applied"), applied.filters.count)
     }
 }
 

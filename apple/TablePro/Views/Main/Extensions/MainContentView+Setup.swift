@@ -53,7 +53,7 @@ extension MainContentView {
             selectedTab.tableContext.tableName != nil
         {
             coordinator.restoreLastHiddenColumnsForTable()
-            if selectedTab.filterState.appliedFilters.isEmpty {
+            if !selectedTab.filterState.isFiltering {
                 coordinator.restoreFiltersForSelectedTab()
             } else if let tabIndex = tabManager.selectedTabIndex {
                 coordinator.rebuildTableQuery(at: tabIndex)

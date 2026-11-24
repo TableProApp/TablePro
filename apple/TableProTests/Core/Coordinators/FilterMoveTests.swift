@@ -127,17 +127,18 @@ struct FilterMoveTests {
     @Test("Reordering rows does not change which filters are applied")
     func reorderPreservesAppliedFilterSet() throws {
         let filters = makeFilters()
-        var state = TabFilterState()
-        state.filters = filters
-        state.commit = .all
+        let state = TabFilterState.applying(filters, logicMode: .and)
 
-        let move = try #require(
-            TabFilterState.filterMove(in: filters, moving: filters[2].id, onto: filters[0].id)
-        )
         var reordered = state
-        reordered.filters = applying(move, to: filters)
+        reordered.moveFilter(filters[2].id, onto: filters[0].id)
 
-        #expect(Set(reordered.appliedFilters) == Set(state.appliedFilters))
+        #expect(reordered.filters.map(\.columnName) == ["id", "name", "age"])
+        #expect(reordered.applied == state.applied)
+        #expect(!reordered.hasUnappliedChanges)
+        #expect(reordered.status == .applied)
+        let reapplied = try #require(reordered.applyingCheckedRows().applied)
+        let original = try #require(state.applied)
+        #expect(reapplied.selectsSameRows(as: original))
     }
 
     @Test("Reordering rows produces an equivalent WHERE clause under a single logic mode")

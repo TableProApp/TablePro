@@ -52,6 +52,7 @@ final class SettingsScreenshotUITests: UITestCase {
         Location("editor", title: "Editor"),
         Location("editor", page: "sql-formatting", title: "SQL Formatting"),
         Location("data", title: "Data"),
+        Location("data", page: "filters", title: "Filters"),
         Location("data", page: "query-history", title: "Query History"),
         Location("data", page: "data-rewind", title: "Data Rewind"),
     ]

@@ -430,7 +430,7 @@ extension MainContentCoordinator {
     // Retargeting drops the tab's work, filters, sort and pinned results, so both reuse paths ask this first.
     private func selectedTabResistsRetarget(_ tab: QueryTab) -> Bool {
         selectedTabHoldsProtectedContent
-            || selectedTabFilterState.hasAppliedFilters
+            || selectedTabFilterState.isFiltering
             || tab.hasUserActiveSort
             || tab.display.hasPinnedResults
     }

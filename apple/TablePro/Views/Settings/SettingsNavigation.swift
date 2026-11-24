@@ -451,6 +451,13 @@ extension SettingsPage {
                 String(localized: "Join condition"),
                 String(localized: "Align column aliases"),
             ]
+        case .filters:
+            [
+                String(localized: "Default column"),
+                String(localized: "Default operator"),
+                String(localized: "Saved filters"),
+                String(localized: "Always show the filter bar"),
+            ]
         case .queryHistory: [String(localized: "Clear query history")]
         case .dataRewind: [String(localized: "Clear saved changes")]
         case .slashCommands: [String(localized: "Add Command…")]
@@ -468,6 +475,7 @@ extension SettingsPage {
         case .linkedFolders: ["linked folders", "watched folder", "shared connections", "shared folder", "team folder"]
         case .trustedLinks: ["trusted", "links", "url", "deep link", "forget"]
         case .sqlFormatting: ["formatter", "format", "beautify", "pretty print", "indent", "uppercase", "lowercase"]
+        case .filters: ["filter", "filter bar", "where", "restore filters", "default column", "default operator"]
         case .queryHistory: ["history", "cleanup", "retention", "clear history", "max entries"]
         case .dataRewind: ["rewind", "undo", "saved changes", "restore"]
         case .slashCommands: ["slash command", "command", "prompt", "template"]

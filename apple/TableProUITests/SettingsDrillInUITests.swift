@@ -28,6 +28,7 @@ final class SettingsDrillInUITests: UITestCase {
         Drill("connections", "Connections", page: "linked-folders", title: "Linked Folders", leaf: .hittable("linked-folders-add-button")),
         // A new sandbox trusts no link, so Forget All has nothing to forget.
         Drill("connections", "Connections", page: "trusted-links", title: "Trusted Links", leaf: .disabled("trusted-links-forget-all-button")),
+        Drill("data", "Data", page: "filters", title: "Filters"),
         Drill("data", "Data", page: "query-history", title: "Query History"),
         Drill("data", "Data", page: "data-rewind", title: "Data Rewind"),
         Drill("ai", "AI", page: "slash-commands", title: "Slash Commands", leaf: .present("slash-command-add")),

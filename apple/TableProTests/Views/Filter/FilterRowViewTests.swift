@@ -32,7 +32,7 @@ private final class FilterRowHost {
         render()
     }
 
-    /// The panel re-renders its rows whenever the state changes; a test does it by hand.
+    // The panel re-renders its rows whenever the state changes; a test does it by hand.
     func render() {
         let binding = Binding(get: { self.filter }, set: { self.filter = $0 })
         hosting.rootView = AnyView(
@@ -43,7 +43,8 @@ private final class FilterRowHost {
                 onAdd: {},
                 onDuplicate: {},
                 onRemove: {},
-                onApply: {},
+                onApplyAlone: {},
+                onApplyChecked: {},
                 onSubmit: {},
                 onCancel: {},
                 isReorderEnabled: false,

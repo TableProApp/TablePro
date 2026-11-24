@@ -64,7 +64,7 @@ struct ConnectionURLFilterTests {
         let state = ConnectionURLFilter.condition("total > 1000").filterState
         let filter = try #require(state.filters.first)
         #expect(state.filters.count == 1)
-        #expect(state.commit == .all)
+        #expect(state.applied?.filters == [filter])
         #expect(state.isVisible)
         #expect(filter.isRawSQL)
         #expect(filter.value == "total > 1000")
@@ -81,7 +81,7 @@ struct ConnectionURLFilterTests {
             #expect(filter.columnName == "status", "\(operation)")
             #expect(filter.value == "a", "\(operation)")
             #expect(filter.filterOperator == expected, "\(operation)")
-            #expect(state.commit == .all, "\(operation)")
+            #expect(state.applied?.filters == [filter], "\(operation)")
         }
     }
 

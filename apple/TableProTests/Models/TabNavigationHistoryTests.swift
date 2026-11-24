@@ -13,7 +13,7 @@ struct TabNavigationHistoryTests {
         var filterState = TabFilterState()
         if let filterValue {
             filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: filterValue)]
-            filterState.commit = .all
+            filterState.applied = .checkedRows(of: filterState.filters, logicMode: .and)
         }
         return TabNavigationEntry(
             tableName: table,
@@ -68,7 +68,7 @@ struct TabNavigationHistoryTests {
         let returned = history.stepForward(from: makeEntry(table: "orders"))
 
         #expect(returned?.tableName == "customers")
-        #expect(returned?.filterState.appliedFilters.first?.value == "42")
+        #expect(returned?.filterState.applied?.filters.first?.value == "42")
         #expect(history.canGoBack)
         #expect(history.canGoForward == false)
     }

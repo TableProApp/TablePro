@@ -265,13 +265,12 @@ struct SortState: Equatable {
 
 extension QueryTab {
     func rowCountScope(table: String) -> RowCountScope {
-        let rerun = filterState.rerunFilters
-        return RowCountScope(
+        RowCountScope(
             table: table,
             schema: tableContext.schemaName,
             database: tableContext.databaseName,
-            filters: rerun.filters,
-            logicMode: rerun.logicMode,
+            filters: filterState.applied?.filters ?? [],
+            logicMode: filterState.applied?.logicMode ?? .and,
             browseSearch: filterState.browseSearch
         )
     }

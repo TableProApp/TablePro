@@ -100,7 +100,7 @@ extension MainContentCoordinator {
         wantsDefaultSort(for: tab, hint: hint)
             || defersBinaryValues
             || !tab.columnLayout.hiddenColumns.isEmpty
-            || tab.filterState.hasAppliedFilters
+            || tab.filterState.isFiltering
             || tab.pendingRestoredSort != nil
             || tab.restoredPage != nil
     }

@@ -379,103 +379,84 @@ struct RowCountScope: Equatable {
     let browseSearch: BrowseSearchState
 }
 
-/// Stores per-tab filter state (preserves filters when switching tabs)
 struct TabFilterState: Equatable, Hashable, Codable {
+    // The panel's editable draft. Nothing reads it as what the grid shows; that is `applied`.
     var filters: [TableFilter]
-    var commit: FilterCommit?
-    var isVisible: Bool
     var filterLogicMode: FilterLogicMode
+    var applied: AppliedFilters?
+    var isVisible: Bool
     var keyPattern: String
     var keyTypeScope: String?
 
-    /// The filters the rows on screen were actually fetched with.
-    ///
-    /// `filters` is the panel's editable draft, and `appliedFilters` resolves from it, so both
-    /// describe a query that has not run the moment a reader types into a filter row without
-    /// pressing Apply. Anything asking what a tab is *showing*, rather than what its panel says,
-    /// has to read this. It is written wherever a query is built from the filters and is
-    /// deliberately not persisted: a restored tab rebuilds its query on first load, which fills it.
-    var executedFilters: [TableFilter] = []
-
-    /// How `executedFilters` were joined, written beside them. Nil until the tab runs its first
-    /// filtered query, so a tab that restored filters and has not loaded yet reruns those.
-    var executedLogicMode: FilterLogicMode?
-
     init(isVisible: Bool = false) {
         self.filters = []
-        self.commit = nil
-        self.isVisible = isVisible
         self.filterLogicMode = .and
+        self.applied = nil
+        self.isVisible = isVisible
         self.keyPattern = ""
         self.keyTypeScope = nil
     }
 
     enum CodingKeys: String, CodingKey {
-        case filters, commit, isVisible, filterLogicMode, keyPattern, keyTypeScope
+        case filters, applied, isVisible, filterLogicMode, keyPattern, keyTypeScope
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.filters = try container.decodeIfPresent([TableFilter].self, forKey: .filters) ?? []
-        self.commit = try container.decodeIfPresent(FilterCommit.self, forKey: .commit)
+        self.applied = try? container.decodeIfPresent(AppliedFilters.self, forKey: .applied)
         self.isVisible = try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? false
         self.filterLogicMode = try container.decodeIfPresent(FilterLogicMode.self, forKey: .filterLogicMode) ?? .and
         self.keyPattern = try container.decodeIfPresent(String.self, forKey: .keyPattern) ?? ""
         self.keyTypeScope = try container.decodeIfPresent(String.self, forKey: .keyTypeScope)
     }
 
-    var appliedFilters: [TableFilter] {
-        guard let commit else { return [] }
-        return Self.resolve(commit, in: filters)
+    var isFiltering: Bool {
+        applied != nil
     }
 
-    /// What a page turn, sort, refresh or count runs again: the filters the rows on screen were
-    /// fetched with, never the panel's draft. A row edited after Apply, or switched between a raw
-    /// condition and a column with its text kept, runs only once Apply runs it.
-    var rerunFilters: (filters: [TableFilter], logicMode: FilterLogicMode) {
-        guard commit != nil else { return ([], filterLogicMode) }
-        guard let executedLogicMode else { return (appliedFilters, filterLogicMode) }
-        return (executedFilters, executedLogicMode)
+    var aloneFilterID: UUID? {
+        applied?.aloneFilterID
     }
 
-    /// Records the draft's applied filters as the ones running, for a host that has just run them.
-    mutating func adoptAppliedFiltersAsRunning() {
-        executedFilters = appliedFilters
-        executedLogicMode = commit == nil ? nil : filterLogicMode
-    }
-
-    /// What a table's saved filters hold: every valid row with its own enabled flag, the logic mode,
-    /// and whether those rows were running.
-    ///
-    /// Never `appliedFilters`, which is the query's reading of the same rows: `.all` drops unchecked
-    /// rows and `.solo` keeps one row forced on, so saving that loses rows the reader only switched off.
-    ///
-    /// Rows the reader typed but never applied are saved too, with `isApplied` false, so reopening
-    /// the table brings them back without running them. An empty row list still saves nothing, which
-    /// the storage reads as a delete: that is Remove All Filters, the gesture that destroys the
-    /// table's saved state. Under `FilterRestoreBehavior.dontSave` nothing is written at all, in
-    /// either direction, so what is already on disk survives both a save and a delete.
-    var persistedState: PersistedFilterState {
-        PersistedFilterState(
-            filters: filters.filter(\.isValid),
-            logicMode: filterLogicMode,
-            isApplied: commit != nil
-        )
-    }
-
-    static func resolve(_ commit: FilterCommit, in filters: [TableFilter]) -> [TableFilter] {
-        switch commit {
-        case .all:
-            return filters.filter { $0.isEnabled && $0.isValid }
-        case .solo(let id):
-            guard var match = filters.first(where: { $0.id == id }), match.isValid else { return [] }
-            match.isEnabled = true
-            return [match]
+    // What Return runs: the row applied alone stays alone, even emptied, otherwise every checked row.
+    var applicationInCurrentMode: AppliedFilters? {
+        if let aloneFilterID, let row = filters.first(where: { $0.id == aloneFilterID }) {
+            return .alone(row, logicMode: filterLogicMode)
         }
+        return .checkedRows(of: filters, logicMode: filterLogicMode)
     }
 
-    var hasAppliedFilters: Bool {
-        !appliedFilters.isEmpty
+    var hasUnappliedChanges: Bool {
+        guard let applied else { return false }
+        guard let pending = applicationInCurrentMode else { return true }
+        return !pending.selectsSameRows(as: applied)
+    }
+
+    var canApplyCheckedRows: Bool {
+        isFiltering || AppliedFilters.checkedRows(of: filters, logicMode: filterLogicMode) != nil
+    }
+
+    var status: FilterPanelStatus {
+        guard isFiltering else {
+            return filters.contains { $0.isEnabled && $0.isValid } ? .notApplied : .empty
+        }
+        if hasUnappliedChanges { return .changesNotApplied }
+        return aloneFilterID == nil ? .applied : .appliedAlone
+    }
+
+    // Every valid row with its own checkbox, the logic mode, and what the grid was showing. Rows
+    // typed and never applied are saved too, so reopening the table brings them back unapplied. A
+    // running row emptied without Apply is saved as it ran, or the reopened grid would filter by a
+    // condition no row shows.
+    var persistedState: PersistedFilterState {
+        let rows = filters.compactMap { row -> TableFilter? in
+            if row.isValid { return row }
+            guard var ran = applied?.filters.first(where: { $0.id == row.id }) else { return nil }
+            ran.isEnabled = row.isEnabled
+            return ran
+        }
+        return PersistedFilterState(filters: rows, logicMode: filterLogicMode, applied: applied)
     }
 
     var allEnabledState: Bool? {

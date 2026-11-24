@@ -15525,6 +15525,9 @@
     "1 file" : {
 
     },
+    "1 filter applied" : {
+
+    },
     "1 item" : {
       "localizations" : {
         "fr" : {
@@ -22470,6 +22473,9 @@
         }
       }
     },
+    "Add a filter row below this one" : {
+
+    },
     "Add a label at the end" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -28088,6 +28094,9 @@
         }
       }
     },
+    "Always show the filter bar" : {
+
+    },
     "Amazon Keyspaces IAM authentication requires TLS. Enable SSL in the connection's SSL settings." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -30759,6 +30768,9 @@
         }
       }
     },
+    "Apply all checked filters (⌘↩)" : {
+
+    },
     "Apply and Rebuild" : {
       "localizations" : {
         "fr" : {
@@ -30930,6 +30942,9 @@
           }
         }
       }
+    },
+    "Apply only this filter (⌥⌘↩)" : {
+
     },
     "Apply Schema Changes" : {
       "localizations" : {
@@ -41932,6 +41947,9 @@
     "changes may stay" : {
 
     },
+    "Changes not applied" : {
+
+    },
     "Changes Not Saved" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -43079,6 +43097,9 @@
           }
         }
       }
+    },
+    "Check or uncheck all filters" : {
+
     },
     "Check Skipped" : {
 
@@ -62131,6 +62152,9 @@
         }
       }
     },
+    "Could Not Save Presets" : {
+
+    },
     "Could not save the connection. Check disk space and permissions, then try again." : {
       "localizations" : {
         "fr" : {
@@ -70530,6 +70554,9 @@
         }
       }
     },
+    "Default column" : {
+
+    },
     "Default Column" : {
       "localizations" : {
         "fr" : {
@@ -70787,6 +70814,9 @@
           }
         }
       }
+    },
+    "Default operator" : {
+
     },
     "Default Operator" : {
       "localizations" : {
@@ -85251,6 +85281,9 @@
     "Every file in this folder matches the last commit." : {
 
     },
+    "Every filter row for this table is deleted, and the table shows all rows." : {
+
+    },
     "Every geometry in this column is empty or null." : {
       "localizations" : {
         "fr" : {
@@ -93724,6 +93757,9 @@
           }
         }
       }
+    },
+    "Filter on %@" : {
+
     },
     "Filter on a nested field path" : {
       "localizations" : {
@@ -106382,6 +106418,9 @@
           }
         }
       }
+    },
+    "Include this filter when applying all checked filters" : {
+
     },
     "Include this object" : {
       "localizations" : {
@@ -130935,6 +130974,9 @@
         }
       }
     },
+    "New Rows" : {
+
+    },
     "New Seed" : {
 
     },
@@ -132378,6 +132420,9 @@
           }
         }
       }
+    },
+    "No checked filter is complete. Choose a column and enter a value." : {
+
     },
     "No clients connected" : {
       "localizations" : {
@@ -138866,6 +138911,9 @@
         }
       }
     },
+    "Not applied" : {
+
+    },
     "not authorized for this cluster operation" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -144441,6 +144489,9 @@
     "Only Left" : {
 
     },
+    "Only one filter applied" : {
+
+    },
     "Only PL/pgSQL functions and procedures can be debugged." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -144553,6 +144604,9 @@
       "generatesSymbol" : false
     },
     "Only the team's owner and admins publish to its library." : {
+
+    },
+    "Only this filter is applied. Click to apply all checked filters." : {
 
     },
     "Only use the bootstrap address" : {
@@ -166705,6 +166759,9 @@
         }
       }
     },
+    "Remove All" : {
+
+    },
     "Remove All Breakpoints" : {
 
     },
@@ -166747,6 +166804,12 @@
           }
         }
       }
+    },
+    "Remove all filters?" : {
+
+    },
+    "Remove All Filters…" : {
+
     },
     "Remove Attached Database" : {
 
@@ -169111,6 +169174,9 @@
           }
         }
       }
+    },
+    "Reopening a Table" : {
+
     },
     "Reopening a table brings its filter rows back unapplied. Press Apply to run them." : {
       "localizations" : {
@@ -179600,6 +179666,9 @@
         }
       }
     },
+    "Saved filters" : {
+
+    },
     "Saved Filters" : {
       "localizations" : {
         "fr" : {
@@ -188870,6 +188939,9 @@
           }
         }
       }
+    },
+    "Show every row again. The filters stay here." : {
+
     },
     "Show Favorites" : {
       "localizations" : {
@@ -225034,6 +225106,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This database filters rows without SQL." : {
+
+    },
     "This database has an open transaction. Closing it rolls the transaction back and discards its uncommitted changes." : {
       "localizations" : {
         "fr" : {
@@ -234731,6 +234806,9 @@
           }
         }
       }
+    },
+    "Turn Off" : {
+
     },
     "Turn Off iCloud Sync" : {
       "extractionState" : "manual",

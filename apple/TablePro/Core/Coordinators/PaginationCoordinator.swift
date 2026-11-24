@@ -161,7 +161,8 @@ final class PaginationCoordinator: ObservableObject {
         guard let scope = parent.scope(for: tab) else { return }
         let tabId = tab.id
         let schemaName = tab.tableContext.schemaName
-        let (filters, logicMode) = tab.filterState.rerunFilters
+        let filters = tab.filterState.applied?.filters ?? []
+        let logicMode = tab.filterState.applied?.logicMode ?? .and
         // A plugin search replaces the table filters in a narrowed browse, so the count must read it or it counts the whole table.
         let browseFilters = parent.filterCoordinator.activeBrowseSearch(for: tab.filterState)?.pluginQueryFilters
         let isNonSQL = PluginManager.shared.editorLanguage(for: parent.connection.type) != .sql

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-/// The reopen journey end to end: what a table's filter rows do between one tab and the next.
 @MainActor
 struct FilterPersistenceRoundTripTests {
     private let fixtures = CoordinatorFixtures()
@@ -119,8 +118,7 @@ struct FilterPersistenceRoundTripTests {
             }
             #expect(tab.filterState.filters.map(\.id) == [filter.id])
             #expect(tab.filterState.isVisible)
-            #expect(!tab.filterState.hasAppliedFilters)
-            #expect(tab.filterState.executedFilters.isEmpty)
+            #expect(tab.filterState.applied == nil)
             #expect(!tab.content.query.uppercased().contains("WHERE"))
         }
     }
@@ -145,13 +143,42 @@ struct FilterPersistenceRoundTripTests {
                 Issue.record("Expected the tab to exist")
                 return
             }
-            #expect(tab.filterState.hasAppliedFilters)
+            #expect(tab.filterState.isFiltering)
             #expect(tab.content.query.uppercased().contains("WHERE"))
         }
     }
 
-    /// The reporter's second half: rows typed into the panel and never applied used to be dropped,
-    /// because saving an unapplied set wrote an empty one, which the storage reads as a delete.
+    @Test("A row applied alone reopens applied alone, not as the checked rows")
+    func aRowAppliedAloneSurvivesReopen() {
+        let (coordinator, tabManager) = makeCoordinator()
+        defer { clearSaved(table: "users", connectionId: coordinator.connectionId) }
+
+        withRestoreBehavior(.restoreAndApply) {
+            let tabId = addTableTab(to: tabManager, tableName: "users")
+            seedRows(coordinator, for: tabId)
+            guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+                Issue.record("Expected the tab to exist")
+                return
+            }
+            let checked = TestFixtures.makeTableFilter(column: "status", op: .equal, value: "checked-row")
+            let alone = TestFixtures.makeTableFilter(column: "name", op: .equal, value: "alone-row", isEnabled: false)
+            tabManager.tabs[index].filterState.filters = [checked, alone]
+            coordinator.filterCoordinator.applyFilterAlone(alone.id)
+
+            tabManager.tabs[index].filterState = TabFilterState()
+            tabManager.tabs[index].content.query = "SELECT * FROM users"
+            coordinator.restoreFiltersForSelectedTab()
+
+            let restored = tabManager.tabs[index]
+            #expect(restored.filterState.filters.map(\.id) == [checked.id, alone.id])
+            #expect(restored.filterState.filters.map(\.isEnabled) == [true, false])
+            #expect(restored.filterState.aloneFilterID == alone.id)
+            #expect(restored.content.query.contains("alone-row"))
+            #expect(!restored.content.query.contains("checked-row"))
+        }
+    }
+
+    // Saving an unapplied set once wrote an empty one, which the storage reads as a delete.
     @Test("A row typed and never applied comes back on the next open")
     func anUnappliedDraftSurvivesReopen() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -165,7 +192,7 @@ struct FilterPersistenceRoundTripTests {
             }
             let draft = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "5")
             tabManager.tabs[index].filterState.filters = [draft]
-            tabManager.tabs[index].filterState.commit = nil
+            tabManager.tabs[index].filterState.applied = nil
 
             coordinator.saveLastFilters(of: tabManager.tabs[index])
 
@@ -177,11 +204,11 @@ struct FilterPersistenceRoundTripTests {
             coordinator.restoreFiltersForSelectedTab()
 
             #expect(tabManager.tabs[index].filterState.filters.map(\.id) == [draft.id])
-            #expect(!tabManager.tabs[index].filterState.hasAppliedFilters)
+            #expect(!tabManager.tabs[index].filterState.isFiltering)
         }
     }
 
-    /// Closing the tab removes it before the selection moves, so the tab-switch save never sees it.
+    // Closing the tab removes it before the selection moves, so the tab-switch save never sees it.
     @Test("Closing a tab saves the rows left in its filter bar")
     func closingATabSavesItsDraft() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -196,7 +223,7 @@ struct FilterPersistenceRoundTripTests {
             }
             let draft = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "5")
             tabManager.tabs[index].filterState.filters = [draft]
-            tabManager.tabs[index].filterState.commit = nil
+            tabManager.tabs[index].filterState.applied = nil
 
             coordinator.closeTabsByUser(ids: [usersId])
 
@@ -206,8 +233,7 @@ struct FilterPersistenceRoundTripTests {
         }
     }
 
-    /// A restored session hands back several table tabs. Loading only the selected one left the
-    /// others holding an empty set, which the next tab switch saved over their filters.
+    // Loading only the selected tab left the others empty, and the next tab switch saved that over their filters.
     @Test("A tab that is not selected restores its own filters")
     func aBackgroundTabRestoresItsOwnFilters() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -235,12 +261,11 @@ struct FilterPersistenceRoundTripTests {
                 return
             }
             #expect(orders.filterState.filters.map(\.id) == [orderFilter.id])
-            #expect(orders.filterState.hasAppliedFilters)
+            #expect(orders.filterState.isFiltering)
         }
     }
 
-    /// The query a restored tab carries is the last filtered SQL it ran. Bringing the filter back
-    /// unapplied without rebuilding would keep running that WHERE while the panel reported nothing.
+    // A restored tab carries the last filtered SQL it ran, which would keep running while the panel showed nothing.
     @Test("Restoring without applying drops a stale WHERE from the tab's query")
     func restoringWithoutApplyingRebuildsTheQuery() {
         let (coordinator, tabManager) = makeCoordinator()
@@ -267,8 +292,7 @@ struct FilterPersistenceRoundTripTests {
         }
     }
 
-    /// Turning saving off has to leave what is on disk alone, or the option could never be
-    /// turned back on.
+    // Turning saving off has to leave what is on disk alone, or the option could never be turned back on.
     @Test("Don't save neither reads nor deletes the filters already on disk")
     func dontSaveLeavesTheFileAlone() {
         let (coordinator, tabManager) = makeCoordinator()

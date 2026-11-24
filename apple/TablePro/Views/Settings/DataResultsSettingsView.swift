@@ -17,6 +17,7 @@ struct DataResultsSettingsView: View {
             )
 
             Section {
+                SettingsDrillRow(route: SettingsRoute.page(.filters), title: SettingsPage.filters.title)
                 // No value: Keep entries for also bounds query tab versions, so one word would mislead.
                 SettingsDrillRow(route: SettingsRoute.page(.queryHistory), title: SettingsPage.queryHistory.title)
                 DataRewindDrillRow(history: history)

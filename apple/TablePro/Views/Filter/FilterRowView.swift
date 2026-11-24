@@ -18,10 +18,12 @@ struct FilterRowView: View {
     var offersRawFilter = true
     var rawFilterLabel = String(localized: "Raw SQL")
     var reservesElementScope = false
+    var isAppliedAlone = false
     let onAdd: () -> Void
     let onDuplicate: () -> Void
     let onRemove: () -> Void
-    let onApply: () -> Void
+    let onApplyAlone: () -> Void
+    let onApplyChecked: () -> Void
     let onSubmit: () -> Void
     let onCancel: () -> Void
     let isReorderEnabled: Bool
@@ -40,6 +42,7 @@ struct FilterRowView: View {
     static let horizontalInset: CGFloat = 12
 
     private let rowButtonGlyphSize: CGFloat = 14
+    private let rowButtonSize: CGFloat = 18
     private static let columnPickerMaximumWidth: CGFloat = 160
     static let valueFieldMinimumWidth: CGFloat = 28
 
@@ -97,7 +100,6 @@ struct FilterRowView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .filterRowRole(.fill)
             }
-            .opacity(filter.isEnabled ? 1 : 0.5)
 
             rowButtons
         }
@@ -116,6 +118,10 @@ struct FilterRowView: View {
         }
         .contextMenu { rowContextMenu }
         .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(
+            format: String(localized: "Filter on %@"),
+            filter.isRawSQL ? rawFilterLabel : filter.columnName
+        ))
         .accessibilityActions {
             if canMoveUp {
                 Button(String(localized: "Move Filter Up"), action: onMoveUp)
@@ -176,7 +182,7 @@ struct FilterRowView: View {
             .labelsHidden()
             .accessibilityLabel(String(localized: "Enable filter"))
             .accessibilityValue(filter.isEnabled ? String(localized: "Active") : String(localized: "Inactive"))
-            .help(String(localized: "Include this filter when applying"))
+            .help(String(localized: "Include this filter when applying all checked filters"))
     }
 
     // A restored filter can name a path not loaded yet, and a Picker matching no tag renders blank.
@@ -399,7 +405,8 @@ struct FilterRowView: View {
                 completionSource: rawSQLCompletionSource,
                 allowsMultiLine: true,
                 onSubmit: onSubmit,
-                onCancel: onCancel
+                onCancel: onCancel,
+                onApplyAlone: applyAloneFromKeyboard
             )
             .alignmentGuide(.filterRowLine) { _ in FilterValueTextField.singleLineHeight(for: .small) / 2 }
             .accessibilityLabel(String(localized: "WHERE clause"))
@@ -417,7 +424,8 @@ struct FilterRowView: View {
                     placeholder: String(localized: "Value"),
                     completionSource: .staticValues(completions),
                     onSubmit: onSubmit,
-                    onCancel: onCancel
+                    onCancel: onCancel,
+                    onApplyAlone: applyAloneFromKeyboard
                 )
                 .frame(minWidth: Self.valueFieldMinimumWidth)
                 .accessibilityLabel(String(localized: "Filter value"))
@@ -436,7 +444,8 @@ struct FilterRowView: View {
                     placeholder: String(localized: "Value"),
                     completionSource: .staticValues(completions),
                     onSubmit: onSubmit,
-                    onCancel: onCancel
+                    onCancel: onCancel,
+                    onApplyAlone: applyAloneFromKeyboard
                 )
                 .frame(minWidth: Self.valueFieldMinimumWidth)
                 .accessibilityLabel(String(localized: "Second filter value"))
@@ -451,34 +460,72 @@ struct FilterRowView: View {
         )
     }
 
+    // NSRuleEditor's order, remove then add. Borderless, as in an accessory bar, so the busiest row
+    // still fits the narrowest detail pane.
     private var rowButtons: some View {
-        HStack(spacing: 4) {
-            Button(action: onAdd) {
-                Image(systemName: "plus")
-                    .frame(width: rowButtonGlyphSize, height: rowButtonGlyphSize)
-            }
-            .buttonStyle(.bordered)
-            .accessibilityLabel(String(localized: "Add filter"))
-            .help(String(localized: "Add filter row"))
+        HStack(spacing: 2) {
+            appliesAloneToggle
 
             Button(action: onRemove) {
-                Image(systemName: "minus")
-                    .frame(width: rowButtonGlyphSize, height: rowButtonGlyphSize)
+                rowButtonGlyph("minus")
             }
-            .buttonStyle(.bordered)
             .accessibilityLabel(String(localized: "Remove filter"))
             .help(String(localized: "Remove filter row"))
+
+            Button(action: onAdd) {
+                rowButtonGlyph("plus")
+            }
+            .accessibilityLabel(String(localized: "Add filter"))
+            .help(String(localized: "Add a filter row below this one"))
         }
+        .buttonStyle(.borderless)
+    }
+
+    private func rowButtonGlyph(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .frame(width: rowButtonSize, height: rowButtonSize)
+            .contentShape(Rectangle())
+    }
+
+    // A toggle rather than a button: on shows which row runs alone, and turning it off is the way back to all.
+    private var appliesAloneToggle: some View {
+        Toggle(isOn: appliesAloneBinding) {
+            Image(systemName: "play")
+                .symbolVariant(isAppliedAlone ? .fill : .none)
+                .foregroundStyle(isAppliedAlone ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.primary))
+                .frame(width: rowButtonSize, height: rowButtonSize)
+                .contentShape(Rectangle())
+        }
+        .toggleStyle(.button)
+        .disabled(!filter.isValid && !isAppliedAlone)
+        .accessibilityLabel(String(localized: "Apply Only This Filter"))
+        .accessibilityIdentifier("filter-apply-alone")
+        .help(isAppliedAlone
+            ? String(localized: "Only this filter is applied. Click to apply all checked filters.")
+            : String(localized: "Apply only this filter (⌥⌘↩)"))
+    }
+
+    private var appliesAloneBinding: Binding<Bool> {
+        Binding(
+            get: { isAppliedAlone },
+            set: { $0 ? onApplyAlone() : onApplyChecked() }
+        )
+    }
+
+    private func applyAloneFromKeyboard() {
+        guard filter.isValid else {
+            NSSound.beep()
+            return
+        }
+        onApplyAlone()
     }
 
     @ViewBuilder
     private var rowContextMenu: some View {
-        Button {
-            onApply()
-        } label: {
-            Label(String(localized: "Apply Only This Filter"), systemImage: "checkmark.circle")
+        Toggle(isOn: appliesAloneBinding) {
+            Label(String(localized: "Apply Only This Filter"), systemImage: "play")
         }
-        .disabled(!filter.isValid)
+        .disabled(!filter.isValid && !isAppliedAlone)
 
         Divider()
 
@@ -491,24 +538,8 @@ struct FilterRowView: View {
         Button {
             onDuplicate()
         } label: {
-            Label(String(localized: "Duplicate Filter"), systemImage: "doc.on.doc")
+            Label(String(localized: "Duplicate Filter"), systemImage: "plus.square.on.square")
         }
-
-        Divider()
-
-        Button {
-            onMoveUp()
-        } label: {
-            Label(String(localized: "Move Up"), systemImage: "arrow.up")
-        }
-        .disabled(!canMoveUp)
-
-        Button {
-            onMoveDown()
-        } label: {
-            Label(String(localized: "Move Down"), systemImage: "arrow.down")
-        }
-        .disabled(!canMoveDown)
 
         Divider()
 
