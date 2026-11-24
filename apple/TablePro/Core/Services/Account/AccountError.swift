@@ -9,6 +9,8 @@ import TableProCloudAPI
 internal enum AccountError: Error, Equatable {
     enum OfflineFileProblem: Equatable, Sendable {
         case otherMachine
+        // Another account's file, on a Mac signed in to this one.
+        case otherAccount
         case expired
         case notYetValid
         case unreadable

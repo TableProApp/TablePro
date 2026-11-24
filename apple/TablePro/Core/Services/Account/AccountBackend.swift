@@ -58,6 +58,8 @@ internal struct AccountSnapshot: Equatable, Sendable {
     var features: Set<String> = []
     var licenses: [EntitlementLicense] = []
     var expiresAt: Date?
+    // From an offline file, which a signed-in Mac can import too.
+    var isOfflineFile = false
     var problem: Problem?
     // False when the Keychain refused the refresh token: the next launch starts signed out.
     var remembered = false

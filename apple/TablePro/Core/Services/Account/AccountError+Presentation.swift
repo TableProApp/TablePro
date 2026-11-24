@@ -65,6 +65,8 @@ extension AccountError {
         switch self {
         case .offlineFileRejected(.otherMachine):
             return String(localized: "This offline file was made for another machine. Create one for this Mac's machine ID.")
+        case .offlineFileRejected(.otherAccount):
+            return String(localized: "This offline file is for another account. Sign out first, or create one for the account signed in.")
         case .offlineFileRejected(.expired):
             return String(localized: "This offline file has expired. Create a new one in your account.")
         case .offlineFileRejected(.notYetValid):

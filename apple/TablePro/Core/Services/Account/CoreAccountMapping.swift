@@ -25,6 +25,7 @@ internal enum CoreAccountMapping {
             features: Set(status.features),
             licenses: status.licenses.map(license),
             expiresAt: status.entitlementExpiresAtSecs.map(date),
+            isOfflineFile: status.offlineFile,
             problem: status.problem.map(problem),
             remembered: status.remembered
         )
@@ -133,7 +134,9 @@ internal enum CoreAccountMapping {
             return .companyServer(.licenseInvalid)
         case "account.offline_file_unreadable", "account.offline_file_too_large":
             return .offlineFileRejected(.unreadable)
-        case "account.entitlement", "account.other_account":
+        case "account.other_account":
+            return .offlineFileRejected(.otherAccount)
+        case "account.entitlement":
             return operation == .offlineFile ? .offlineFileRejected(offlineProblem(info.message)) : .invalidResponse
         case "account.protocol":
             return .invalidResponse

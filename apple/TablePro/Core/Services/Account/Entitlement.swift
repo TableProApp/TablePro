@@ -61,7 +61,7 @@ internal struct Entitlement: Equatable, Sendable {
             email: snapshot.email ?? "",
             name: snapshot.name,
             expiresAt: expiresAt,
-            isOffline: snapshot.state == .offline
+            isOffline: snapshot.isOfflineFile || snapshot.state == .offline
         )
     }
 

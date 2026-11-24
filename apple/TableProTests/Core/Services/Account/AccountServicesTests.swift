@@ -221,6 +221,27 @@ struct AccountServicesTests {
         try await waitUntil { fixture.access.check(.iCloudSync) == .expired }
     }
 
+    @Test("Past a company license's grace the gate keeps only the Team Library, without another call to the core")
+    func gateFollowsTheLicenseGrace() async throws {
+        let clock = TestNow(Date(timeIntervalSince1970: 1_800_000_000))
+        let fixture = try AccountFixture(now: { clock.value })
+        await fixture.server.set { $0.features = ["icloud_sync", "team_library"] }
+        fixture.backend.installLicense(AccountServerLicense(
+            seats: 25, isTrial: false, expiresAt: clock.value.addingTimeInterval(24 * 60 * 60),
+            graceEndsAt: clock.value.addingTimeInterval(3 * 24 * 60 * 60), state: .active
+        ))
+        try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        try await fixture.signIn()
+        #expect(fixture.access.isAvailable(.iCloudSync))
+
+        await fixture.clock.waitUntilSleeping()
+        clock.value = clock.value.addingTimeInterval(3 * 24 * 60 * 60)
+        fixture.clock.advance(by: .seconds(3 * 24 * 60 * 60))
+
+        try await waitUntil { fixture.access.check(.iCloudSync) == .expired }
+        #expect(fixture.access.isAvailable(.teamLibrary))
+    }
+
     // MARK: - Company server
 
     @Test("Choosing a company server publishes it and signs out of the server left, with that cause")

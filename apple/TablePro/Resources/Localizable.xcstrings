@@ -227939,6 +227939,9 @@
     "This offline file has expired. Create a new one in your account." : {
 
     },
+    "This offline file is for another account. Sign out first, or create one for the account signed in." : {
+
+    },
     "This offline file is not valid yet. Check this Mac's date and time." : {
 
     },

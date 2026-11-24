@@ -318,19 +318,23 @@ internal final class AccountServices: AccountBackendListener {
         if snapshot.state == .signedIn {
             announcedSession = true
         }
+        let license = backend.license()
         access.update(AccountState(
             isSignedIn: snapshot.state == .signedIn,
             entitlement: entitlement,
             refresh: refresh,
             server: backend.server(),
-            serverLicense: backend.license(),
+            serverLicense: license,
             features: features,
             verifiedAt: verifiedAt
         ))
-        scheduleExpiry(entitlement?.expiresAt)
+        let current = now()
+        let boundaries = [entitlement?.expiresAt, license?.expiresAt, license?.graceEndsAt].compactMap { $0 }
+        scheduleExpiry(boundaries.filter { $0 > current }.min())
     }
 
-    // The gate reads what the core answered at the last publish, so one is due when the entitlement lapses.
+    // The gate reads what the core answered at the last publish, so one is due when the entitlement lapses, and
+    // when a company server's license enters its grace or leaves it.
     private func scheduleExpiry(_ expiresAt: Date?) {
         expiryTask?.cancel()
         expiryTask = nil

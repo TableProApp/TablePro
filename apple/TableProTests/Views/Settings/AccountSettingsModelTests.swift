@@ -169,6 +169,22 @@ struct AccountSettingsModelTests {
         #expect(model.content.plans.first?.status == .lifetime)
     }
 
+    @Test("An offline file imported while signed in keeps the sign-in and still reads as a file")
+    func offlineFileImportWhileSignedIn() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        let file = try FakeAccountBackend.offlineFile(
+            in: Self.directory(), machineID: FakeAccountServer.machine.machineID, expiresAt: Date().addingTimeInterval(86_400)
+        )
+        let model = AccountSettingsModel(services: fixture.services)
+
+        await model.importOfflineFile(at: file)
+
+        #expect(model.actionFailure == nil)
+        #expect(fixture.access.state.isSignedIn)
+        #expect(model.content.verification?.isOfflineFile == true)
+    }
+
     @Test("A visit within a minute of the last load reuses it, and a later one loads again")
     func reloadIfStaleSkipsAFreshLoad() async throws {
         let fixture = try AccountFixture()

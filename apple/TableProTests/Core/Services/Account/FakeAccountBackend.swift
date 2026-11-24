@@ -105,6 +105,11 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
             guard current else { return .expired }
             return snapshot.features.contains(feature.rawValue) ? .available : .notIncluded
         case .signedIn:
+            // As the core: past a company license's grace only the Team Library works.
+            if let graceEndsAt = license()?.graceEndsAt, now() >= graceEndsAt, feature != .teamLibrary,
+               snapshot.features.contains(feature.rawValue) {
+                return .expired
+            }
             if current {
                 return snapshot.features.contains(feature.rawValue) ? .available : .notIncluded
             }
@@ -167,8 +172,21 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
         guard file["machine_id"] as? String == machineID else { throw .offlineFileRejected(.otherMachine) }
         let expiresAt = Date(timeIntervalSince1970: file["exp"] as? TimeInterval ?? 0)
         guard expiresAt > now() else { throw .offlineFileRejected(.expired) }
+        let refusal: AccountError? = locked {
+            if !(managed ?? chosen).isProduction { return .companyServer(.unsupported) }
+            if snapshot.state == .signedIn, snapshot.accountID != file["sub"] as? String { return .offlineFileRejected(.otherAccount) }
+            return nil
+        }
+        if let refusal { throw refusal }
         locked {
-            guard snapshot.state != .signedIn else { return }
+            // As the core: a signed-in Mac keeps its sign-in and takes the file's entitlement.
+            if snapshot.state == .signedIn {
+                snapshot.features = Set(file["features"] as? [String] ?? [])
+                snapshot.expiresAt = expiresAt
+                snapshot.isOfflineFile = true
+                snapshot.problem = nil
+                return
+            }
             snapshot = AccountSnapshot(
                 state: .offline,
                 accountID: file["sub"] as? String,
@@ -176,7 +194,8 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
                 name: "Ada",
                 features: Set(file["features"] as? [String] ?? []),
                 licenses: [Self.license(FakeAccountServer.license())],
-                expiresAt: expiresAt
+                expiresAt: expiresAt,
+                isOfflineFile: true
             )
         }
     }
@@ -286,6 +305,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
                     next.features = snapshot.features
                     next.licenses = snapshot.licenses
                     next.expiresAt = snapshot.expiresAt
+                    next.isOfflineFile = snapshot.isOfflineFile
                 }
             } else {
                 next.features = Set(answer.features)

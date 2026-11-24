@@ -69,9 +69,10 @@ struct CoreAccountMappingTests {
         #expect(other == .offlineFileRejected(.otherMachine))
         #expect(expired == .offlineFileRejected(.expired))
         #expect(Self.mapped("account.offline_file_too_large", .offlineFile) == .offlineFileRejected(.unreadable))
+        #expect(Self.mapped("account.other_account", .offlineFile) == .offlineFileRejected(.otherAccount))
     }
 
-    @Test("The core's status maps to the app's snapshot, the device limit's holders included")
+    @Test("The core's status maps to the app's snapshot, an offline file and the device limit's holders included")
     func snapshot() {
         let holder = DeviceInfo(
             id: "dev_1", platform: "linux", name: "Workstation", appVersion: "1.0", osVersion: "Fedora 43",
@@ -79,7 +80,7 @@ struct CoreAccountMappingTests {
         )
         let status = AccountStatusInfo(
             state: .signedIn, accountId: "acct_1", email: "ada@example.com", name: "Ada", features: ["icloud_sync"],
-            licenses: [], entitlementExpiresAtSecs: 1_800_000_000,
+            licenses: [], entitlementExpiresAtSecs: 1_800_000_000, offlineFile: true,
             problem: .deviceLimitReached(devices: [holder]), remembered: true
         )
 
@@ -89,6 +90,7 @@ struct CoreAccountMappingTests {
         #expect(snapshot.accountID == "acct_1")
         #expect(snapshot.features == ["icloud_sync"])
         #expect(snapshot.expiresAt == Date(timeIntervalSince1970: 1_800_000_000))
+        #expect(snapshot.isOfflineFile)
         guard case .deviceLimitReached(let holders) = snapshot.problem else {
             Issue.record("Expected the device limit")
             return
