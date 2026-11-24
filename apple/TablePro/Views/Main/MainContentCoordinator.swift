@@ -403,6 +403,9 @@ final class MainContentCoordinator: ObservableObject {
     // Updated by TabWindowController; read by event handlers such as the sidebar table-selection filter.
     var isKeyWindow = false
 
+    // What the sidebar was last marked with, so becoming key re-marks only when the open tab now shows something else.
+    var lastSidebarMark: Set<DatabaseTreeTableRef>?
+
     var refreshCoalesceTask: Task<Void, Never>?
     var refreshPendingTrailing = false
     let autoRefresh = TableAutoRefreshSchedule()

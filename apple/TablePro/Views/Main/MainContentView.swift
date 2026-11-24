@@ -473,6 +473,10 @@ struct MainContentView: View {
             .onChange(of: tabManager.tabStructureVersion) { _ in
                 handleStructureChange()
             }
+            .onValueChange(of: SidebarMarkSubject(tab: currentTab)) { old, new in
+                guard old.tabId == new.tabId, !coordinator.isTearingDown else { return }
+                coordinator.selectedTabDidRetarget()
+            }
             .onChange(of: currentTab?.schemaVersion) { _ in
                 let columns = currentTab.map { coordinator.tabSessionRegistry.tableRows(for: $0.id).columns }
                 handleColumnsChange(newColumns: columns)
@@ -597,5 +601,24 @@ private struct StructureChangeWatcher: View {
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
             .onChange(of: session.hasChanges) { _ in onChange() }
+    }
+}
+
+// What the sidebar mark is resolved from, for a tab that keeps its id while it shows another table.
+struct SidebarMarkSubject: Equatable {
+    let tabId: UUID?
+    let tabType: TabType?
+    let tableName: String?
+    let databaseName: String?
+    let schemaName: String?
+    let isTemporary: Bool
+
+    init(tab: QueryTab?) {
+        tabId = tab?.id
+        tabType = tab?.tabType
+        tableName = tab?.tableContext.tableName
+        databaseName = tab?.tableContext.databaseName
+        schemaName = tab?.tableContext.schemaName
+        isTemporary = tab?.tableContext.isTemporary ?? false
     }
 }

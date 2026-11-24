@@ -23,7 +23,7 @@ internal final class WorkspacePaneHost: NSViewController {
     private(set) var shown: NSViewController?
 
     override internal func loadView() {
-        view = NSView()
+        view = PaneContainerView()
     }
 
     /// A pane can publish a height, which the editor tab strip does when it wraps onto more rows.
@@ -79,5 +79,16 @@ internal final class WorkspacePaneHost: NSViewController {
     internal func discardIfShowing(_ controller: NSViewController) {
         guard shown === controller else { return }
         show(nil)
+    }
+}
+
+// A window names a pane container its initial first responder (`MainSplitViewController.initialFirstResponderContainer`)
+// so the tab content can take the first focus once SwiftUI builds it. The container refuses focus, and AppKit's
+// first-show pick then walks on to the next key view, the sidebar filter of a window that opens already connected.
+// Naming none until the window is on screen stops that walk; once it is, Tab from the empty window follows the loop.
+private final class PaneContainerView: NSView {
+    override var nextValidKeyView: NSView? {
+        guard window?.isVisible == true else { return nil }
+        return super.nextValidKeyView
     }
 }
