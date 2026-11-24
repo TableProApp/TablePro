@@ -1,3 +1,6 @@
+// Every test here signs in to a local stack, which a release build refuses
+// (`a_release_build_refuses_a_development_server_and_test_keys`).
+#![cfg(debug_assertions)]
 #![expect(
     clippy::unwrap_used,
     reason = "the setup helpers fail a test the way the test functions themselves do"

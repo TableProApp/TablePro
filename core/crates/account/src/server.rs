@@ -229,8 +229,9 @@ fn is_loopback(url: &Url) -> bool {
 }
 
 // Http to a loopback host is for development stacks; a release build never takes it.
+// The crate's own tests run their stub servers in every profile: the Linux packages test with --release.
 pub(crate) fn loopback_http_allowed() -> bool {
-    cfg!(debug_assertions)
+    cfg!(any(debug_assertions, test))
 }
 
 // A company server's endpoints, from RFC 9728 and OpenID Connect discovery.
