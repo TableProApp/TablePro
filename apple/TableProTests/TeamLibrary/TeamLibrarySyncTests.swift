@@ -1163,27 +1163,33 @@ struct TeamLibrarySyncTests {
         fixture.sync.stop()
     }
 
-    @Test("A store development builds wrote with an owner is read only for that owner, and another account's goes unread")
+    @Test("A store development builds wrote with an owner is read only for that owner; another's or a malformed one goes unread")
     func ownedEarlierStoreIsReadOnlyForItsOwner() async throws {
         let production = AccountServer.production.apiOrigin.absoluteString
-        for owner in ["acct_test", "acct_other"] {
+        let owners: [(name: String, owner: Any, reads: Bool)] = [
+            ("this account", ["server": production, "accountID": "acct_test"], true),
+            ("another account", ["server": production, "accountID": "acct_other"], false),
+            ("another server", ["server": "https://api.tablepro.example.com", "accountID": "acct_test"], false),
+            ("no account id", ["server": "https://api.tablepro.example.com", "accountID": NSNull()], false),
+            ("null", NSNull(), false)
+        ]
+        for (name, owner, reads) in owners {
             let fixture = try await TeamLibraryFixture()
             #expect(await fixture.sync.sync() == .synced)
             var state = try #require(fixture.store.loadAll().first)
             state.pending = try TeamLibraryPublishPlan.savedQueries(
                 favorites: [TeamLibraryFixture.favorite(name: "Invoices")], folders: [], in: state
             )
-            try fixture.writeFlat(state, owner: (server: production, accountID: owner))
+            try fixture.writeFlat(state, owner: owner)
 
             fixture.relaunch()
             try await waitUntil { !fixture.sync.hasUnsentChanges }
             #expect(await fixture.sync.sync() == .synced)
 
-            let uploaded = await fixture.server.library.live(Self.team).count
-            #expect(uploaded == (owner == "acct_test" ? 1 : 0), "\(owner)")
-            #expect(!fixture.storage.hasFlat, "\(owner)")
-            #expect(fixture.storage.hasConsideredFlat, "\(owner)")
-            #expect(fixture.notTaken.reports.isEmpty, "\(owner)")
+            #expect(await fixture.server.library.live(Self.team).count == (reads ? 1 : 0), "\(name)")
+            #expect(!fixture.storage.hasFlat, "\(name)")
+            #expect(fixture.storage.hasConsideredFlat, "\(name)")
+            #expect(fixture.notTaken.reports.isEmpty, "\(name)")
         }
     }
 

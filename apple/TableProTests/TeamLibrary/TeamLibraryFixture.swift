@@ -78,15 +78,15 @@ final class TeamLibraryFixture {
     }
 
     // A team file as 0.88 and earlier wrote it, unsent edits and conflicts included, on a Mac that has not read it yet;
-    // with `owner`, as the development builds of the account move wrote it.
-    func writeFlat(_ state: TeamLibraryTeamState, owner: (server: String, accountID: String)? = nil) throws {
+    // with `owner`, the JSON development builds of the account move wrote there.
+    func writeFlat(_ state: TeamLibraryTeamState, owner: Any? = nil) throws {
         let file = storage.flat.directory.appendingPathComponent("\(state.teamID).json")
         try JSONFileStore<TeamLibraryTeamState>(url: file).write(state)
         if let owner {
             guard var json = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any] else {
                 throw CocoaError(.fileReadCorruptFile)
             }
-            json["owner"] = ["server": owner.server, "accountID": owner.accountID]
+            json["owner"] = owner
             try JSONSerialization.data(withJSONObject: json).write(to: file)
         }
         defaults.defaults.removeObject(forKey: TeamLibraryStorage.flatConsideredKey)

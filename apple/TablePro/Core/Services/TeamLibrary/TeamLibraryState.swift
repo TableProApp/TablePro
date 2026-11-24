@@ -205,8 +205,17 @@ internal struct TeamLibraryStorage {
             return []
         }
         let restored = FlatOwnerRecord.Owner(server: server.absoluteString, accountID: accountID)
-        let owners = flatOwners()
-        let kept = flat.loadAll().filter { owners[$0.teamID].map { $0 == restored } ?? true }
+        let files = (try? FileManager.default.contentsOfDirectory(at: flat.directory, includingPropertiesForKeys: nil)) ?? []
+        var kept: [TeamLibraryTeamState] = []
+        // Each file is read once: its owner is checked before its library is decoded from the same bytes.
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let record = try? JSONDecoder().decode(FlatOwnerRecord.self, from: data),
+                  record.owner == nil || record.owner == restored,
+                  let team = try? StoreCoding.plain.decode(TeamLibraryTeamState.self, from: data)
+            else { continue }
+            kept.append(team)
+        }
         let cached = Set(cache.loadAll().map(\.teamID))
         for team in kept where !cached.contains(team.teamID) {
             cache.save(team)
@@ -226,22 +235,17 @@ internal struct TeamLibraryStorage {
             let accountID: String
         }
 
-        let teamID: String
-        let owner: Owner?
-    }
-
-    // Team id to the owner its file names; a file of 0.88 and earlier names none.
-    private func flatOwners() -> [String: FlatOwnerRecord.Owner] {
-        let files = (try? FileManager.default.contentsOfDirectory(at: flat.directory, includingPropertiesForKeys: nil)) ?? []
-        var owners: [String: FlatOwnerRecord.Owner] = [:]
-        for file in files where file.pathExtension == "json" {
-            guard let data = try? Data(contentsOf: file),
-                  let record = try? JSONDecoder().decode(FlatOwnerRecord.self, from: data),
-                  let owner = record.owner
-            else { continue }
-            owners[record.teamID] = owner
+        enum CodingKeys: String, CodingKey {
+            case owner
         }
-        return owners
+
+        // Nil only when the file names no owner, as 0.88 and earlier wrote it; an owner that cannot be read fails.
+        let owner: Owner?
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            owner = container.contains(.owner) ? try container.decode(Owner.self, forKey: .owner) : nil
+        }
     }
 
     // Any sign-in but the restored tablepro.app one, or a company server: the library 0.88 kept is not theirs, and goes
