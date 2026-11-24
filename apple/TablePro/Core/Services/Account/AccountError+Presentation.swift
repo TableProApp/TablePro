@@ -17,8 +17,11 @@ extension AccountError {
             return String(localized: "The server is busy. Try again in a few minutes.")
         case .signedOut:
             return String(localized: "You were signed out. Sign in again.")
-        case .server(let status, _):
+        case .server(let status, _) where status > 0:
             return String(format: String(localized: "Something went wrong (error %d). Try again in a moment."), status)
+        // The core passes a server's refusal on by its code alone.
+        case .server:
+            return String(localized: "The server refused the request. Try again in a moment.")
         case .oauth, .invalidResponse, .offlineFileRejected:
             return String(localized: "Could not read the server response. Try again in a moment.")
         case .companyServer(let problem):
@@ -38,10 +41,10 @@ extension AccountError.CompanyServerProblem {
             return String(localized: "This server has no TablePro license installed. Ask your administrator to install one.")
         case .licenseInvalid:
             return String(localized: "This server's TablePro license is not valid for this server. Ask your administrator.")
-        case .licenseExpired:
-            return String(localized: "This server's TablePro license has expired. Ask your administrator to renew it.")
         case .managed:
             return String(localized: "Your organization manages which server TablePro signs in to.")
+        case .unsupported:
+            return String(localized: "Your organization's server licenses this Mac. A license key or an offline file is not needed.")
         }
     }
 }

@@ -135,7 +135,7 @@ private struct AccountIdentitySection: View {
 
         signInFailure
 
-        if server.isProduction, server.othersAllowed, !server.isManaged {
+        if server.isProduction, server.othersAllowed {
             LabeledContent {
                 Button(String(localized: "Use a Company Server…")) {
                     SignInWindowController.present(entersCompanyServer: true)

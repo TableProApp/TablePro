@@ -24,10 +24,12 @@ internal struct AccountCoreSetup: Equatable, Sendable {
     let allowOtherServers: Bool?
     let developmentStack: DevelopmentStack?
 
+    // The managed values as ManagedPolicyReader read them: only what a configuration profile forces.
     static func make(
         supportDirectory: URL,
         machineID: String,
-        policy: any ManagedPolicyReading,
+        managedServerURL: String?,
+        allowOtherServers: Bool?,
         environment: [String: String],
         isDebugBuild: Bool
     ) -> AccountCoreSetup {
@@ -36,13 +38,15 @@ internal struct AccountCoreSetup: Equatable, Sendable {
             accountFile: folder.appendingPathComponent("account.json"),
             legacyEntitlementFile: folder.appendingPathComponent("entitlement.jwt"),
             machineID: machineID,
-            managedServerURL: policy.string(.accountServerURL),
-            allowOtherServers: policy.bool(.allowOtherAccountServers),
+            managedServerURL: managedServerURL,
+            allowOtherServers: allowOtherServers,
             developmentStack: isDebugBuild ? developmentStack(environment) : nil
         )
     }
 
-    private static func developmentStack(_ environment: [String: String]) -> DevelopmentStack? {
+    // A core built without debug assertions refuses these and the account does not open; build one that takes them
+    // with CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true scripts/build-core.sh.
+    static func developmentStack(_ environment: [String: String]) -> DevelopmentStack? {
         guard let account = environment["TABLEPRO_ACCOUNT_URL"], let api = environment["TABLEPRO_API_URL"] else {
             return nil
         }

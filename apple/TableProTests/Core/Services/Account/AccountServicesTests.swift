@@ -263,7 +263,9 @@ struct AccountServicesTests {
     @Test("A company server's license is published with the server")
     func companyServerLicense() async throws {
         let fixture = try AccountFixture()
-        let license = AccountServerLicense(seats: 25, expiresAt: Date(timeIntervalSince1970: 1_900_000_000), isTrial: false, isInGrace: false)
+        let license = AccountServerLicense(
+            seats: 25, isTrial: false, expiresAt: Date(timeIntervalSince1970: 1_900_000_000), graceEndsAt: nil, state: .active
+        )
         fixture.backend.installLicense(license)
 
         try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)

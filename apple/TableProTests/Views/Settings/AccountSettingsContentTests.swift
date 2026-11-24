@@ -350,7 +350,7 @@ struct AccountSettingsContentTests {
     func devices() throws {
         func device(_ id: String, machineID: String, lastSeen: TimeInterval, offlineUntil: Date? = nil) -> AccountDevice {
             AccountDevice(
-                id: id, machineID: machineID, name: id, platform: "linux", osVersion: "Fedora 43",
+                id: id, isThisMac: machineID == Self.machineID, name: id, platform: "linux", osVersion: "Fedora 43",
                 lastSeenAt: Self.now.addingTimeInterval(lastSeen), holdsLicense: true, offlineUntil: offlineUntil
             )
         }

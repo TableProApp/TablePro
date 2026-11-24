@@ -129,7 +129,7 @@ internal struct AccountSettingsContent: Equatable {
             isFree: showsPlan && !isDeviceLimit && entitlement != nil && plans.isEmpty && state.server.isProduction,
             showsDevices: state.isSignedIn,
             showsTeams: state.isSignedIn,
-            devices: state.isSignedIn ? devices.map { deviceRows($0, machineID: machineID, now: now) } : nil,
+            devices: state.isSignedIn ? devices.map { deviceRows($0, now: now) } : nil,
             teams: state.isSignedIn ? profile.map { teamRows($0, portal: portal) } : nil,
             verification: entitlement.map {
                 Verification(
@@ -273,7 +273,7 @@ internal struct AccountSettingsContent: Equatable {
         }
     }
 
-    private static func deviceRows(_ devices: [AccountDevice], machineID: String, now: Date) -> [DeviceRow] {
+    private static func deviceRows(_ devices: [AccountDevice], now: Date) -> [DeviceRow] {
         devices
             .map { device in
                 DeviceRow(
@@ -281,7 +281,7 @@ internal struct AccountSettingsContent: Equatable {
                     name: device.name,
                     system: AccountCodes.systemName(platform: device.platform, osVersion: device.osVersion),
                     lastSeenAt: device.lastSeenAt,
-                    isThisMac: device.machineID == machineID,
+                    isThisMac: device.isThisMac,
                     offlineUntil: device.offlineFileValid(at: now) ? device.offlineUntil : nil
                 )
             }

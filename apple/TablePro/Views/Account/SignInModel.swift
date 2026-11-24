@@ -42,7 +42,8 @@ internal final class SignInModel: ObservableObject {
         phase == .signingIn
     }
 
-    // A configuration profile that sets the server, or bars the others, leaves nothing to choose.
+    // A configuration profile that bars other servers leaves nothing to choose; one that only names a server makes it
+    // the default the person may leave.
     var offersOtherServers: Bool {
         Self.offersOtherServers(server)
     }
@@ -135,6 +136,6 @@ internal final class SignInModel: ObservableObject {
     }
 
     private static func offersOtherServers(_ server: AccountServer) -> Bool {
-        server.othersAllowed && !server.isManaged
+        server.othersAllowed
     }
 }

@@ -183,7 +183,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
 
     func chooseServer(_ url: URL?) async throws(AccountError) {
         let refusal: AccountError? = locked {
-            if managed != nil { return .companyServer(.managed) }
+            if managed?.othersAllowed == false { return .companyServer(.managed) }
             if let host = url?.host, let problem = refusedAddresses[host] { return .companyServer(problem) }
             return nil
         }
@@ -233,16 +233,17 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
         _ = try await call(.delete, "/devices/\(id)")
     }
 
-    func accessToken() async throws(AccountError) -> String {
+    func accessToken() async throws(AccountError) -> AccountAccessToken {
         let snapshot = status()
         guard snapshot.state == .signedIn, let accountID = snapshot.accountID else { throw .signedOut }
-        let count = locked {
+        let (count, server) = locked {
             tokenCount += 1
-            return tokenCount
+            return (tokenCount, managed ?? chosen)
         }
-        return FakeAccountServer.unsignedJWT([
+        let token = FakeAccountServer.unsignedJWT([
             "sub": accountID, "dev": FakeAccountServer.deviceID, "jti": "token-\(count)"
         ])
+        return AccountAccessToken(token: token, apiBaseURL: server.apiBaseURL)
     }
 
     func accessTokenRejected(_ token: String) async {
@@ -322,7 +323,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     private static func device(_ json: [String: Any]) -> AccountDevice {
         AccountDevice(
             id: json["id"] as? String ?? "",
-            machineID: json["machine_id"] as? String ?? "",
+            isThisMac: json["machine_id"] as? String == FakeAccountServer.machine.machineID,
             name: json["name"] as? String ?? "",
             platform: json["platform"] as? String ?? "",
             osVersion: json["os_version"] as? String ?? "",

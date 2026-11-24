@@ -43,26 +43,18 @@ internal struct AccountBearerMiddleware: ClientMiddleware {
         operationID: String,
         next: @concurrent @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
-        let (token, server) = try await authorization()
+        let access = try await backend.accessToken()
         var request = request
-        request.headerFields[.authorization] = "Bearer \(token)"
-        let (response, responseBody) = try await next(request, body, server.apiBaseURL)
+        request.headerFields[.authorization] = "Bearer \(access.token)"
+        let (response, responseBody) = try await next(request, body, access.apiBaseURL)
         guard response.status == .unauthorized else {
             return (response, responseBody)
         }
-        await backend.accessTokenRejected(token)
-        let (refreshed, refreshedServer) = try await authorization()
-        guard refreshedServer == server else { throw AccountError.signedOut }
-        request.headerFields[.authorization] = "Bearer \(refreshed)"
-        return try await next(request, body, server.apiBaseURL)
-    }
-
-    // A server switch between the two reads would send one server's token to the other.
-    private func authorization() async throws(AccountError) -> (String, AccountServer) {
-        let server = backend.server()
-        let token = try await backend.accessToken()
-        guard backend.server() == server else { throw .signedOut }
-        return (token, server)
+        await backend.accessTokenRejected(access.token)
+        let refreshed = try await backend.accessToken()
+        guard refreshed.apiBaseURL == access.apiBaseURL else { throw AccountError.signedOut }
+        request.headerFields[.authorization] = "Bearer \(refreshed.token)"
+        return try await next(request, body, access.apiBaseURL)
     }
 }
 

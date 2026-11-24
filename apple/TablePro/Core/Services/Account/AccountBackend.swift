@@ -65,11 +65,26 @@ internal struct AccountSnapshot: Equatable, Sendable {
 
 // The license a company server installed, as the core verified it.
 internal struct AccountServerLicense: Equatable, Sendable {
+    enum State: Equatable, Sendable {
+        case active
+        // Past its end and inside the grace: everything still works.
+        case grace
+        // Past the grace: Team Library pulls, and the server takes no pushes.
+        case lapsed
+    }
+
     let seats: Int
-    let expiresAt: Date?
     let isTrial: Bool
-    // Past `expiresAt` and inside the 30 days' grace, the server still takes pushes.
-    let isInGrace: Bool
+    // Nil for a perpetual license.
+    let expiresAt: Date?
+    let graceEndsAt: Date?
+    let state: State
+}
+
+// A bearer with the /v2 base of the server that issued it, read together so neither is another server's.
+internal struct AccountAccessToken: Equatable, Sendable {
+    let token: String
+    let apiBaseURL: URL
 }
 
 @MainActor
@@ -100,7 +115,7 @@ internal protocol AccountBackend: AnyObject, Sendable {
     func devices() async throws(AccountError) -> [AccountDevice]
     func removeDevice(_ id: String) async throws(AccountError)
 
-    // The bearer for the server `server()` names; the Swift Team Library and share clients send it.
-    func accessToken() async throws(AccountError) -> String
+    // The bearer the Swift Team Library and share clients send, and where to.
+    func accessToken() async throws(AccountError) -> AccountAccessToken
     func accessTokenRejected(_ token: String) async
 }

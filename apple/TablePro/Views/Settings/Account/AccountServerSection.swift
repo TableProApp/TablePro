@@ -43,9 +43,9 @@ private struct AccountServerLicenseRow: View {
 
     var body: some View {
         LabeledContent {
-            if license.isInGrace {
+            if license.state != .active {
                 NoticeLabel(status)
-                    .lineLimit(2)
+                    .lineLimit(3)
             } else {
                 Text(status)
                     .foregroundStyle(.secondary)
@@ -68,8 +68,20 @@ private struct AccountServerLicenseRow: View {
     private var status: String {
         guard let expiresAt = license.expiresAt else { return String(localized: "No end date") }
         let date = expiresAt.formatted(date: .abbreviated, time: .omitted)
-        return license.isInGrace
-            ? String(format: String(localized: "Expired on %@. Ask your administrator to renew it."), date)
-            : String(format: String(localized: "Valid until %@"), date)
+        switch license.state {
+        case .active:
+            return String(format: String(localized: "Valid until %@"), date)
+        case .grace:
+            guard let graceEndsAt = license.graceEndsAt else {
+                return String(format: String(localized: "Expired on %@. Ask your administrator to renew it."), date)
+            }
+            return String(
+                format: String(localized: "Expired on %@. Team Library takes changes until %@; ask your administrator to renew it."),
+                date,
+                graceEndsAt.formatted(date: .abbreviated, time: .omitted)
+            )
+        case .lapsed:
+            return String(format: String(localized: "Expired on %@. Team Library takes no changes until your administrator renews it."), date)
+        }
     }
 }

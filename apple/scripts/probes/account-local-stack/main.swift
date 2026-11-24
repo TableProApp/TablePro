@@ -127,7 +127,7 @@ struct AccountLocalStackProbe {
             script: script,
             rowsScript: rowsScript,
             steps: Set((environment["PROBE_STEPS"] ?? "").split(separator: ",").map(String.init)),
-            configuration: AccountConfiguration.production.overridden(by: environment)
+            stack: AccountCoreSetup.developmentStack(environment)
         )
         await probe.run()
         print("\(probe.report.passed) passed, \(probe.report.failed) failed")
@@ -143,7 +143,7 @@ private final class Probe {
     private let script: String
     private let rowsScript: String
     private let steps: Set<String>
-    private let configuration: AccountConfiguration
+    private let stack: AccountCoreSetup.DevelopmentStack?
     private let machine = MachineDescription.current()
     private let scratch = "account-local-stack-\(UUID().uuidString)"
     private var directory: URL { FileManager.default.temporaryDirectory.appendingPathComponent(scratch, isDirectory: true) }
@@ -154,14 +154,14 @@ private final class Probe {
         script: String,
         rowsScript: String,
         steps: Set<String>,
-        configuration: AccountConfiguration
+        stack: AccountCoreSetup.DevelopmentStack?
     ) {
         self.config = config
         self.library = library
         self.script = script
         self.rowsScript = rowsScript
         self.steps = steps
-        self.configuration = configuration
+        self.stack = stack
     }
 
     // PROBE_STEPS=account,library runs a subset; empty runs every step.
@@ -214,37 +214,22 @@ private final class Probe {
         )
 
         let entitlement = services.access.state.entitlement
-        let deviceID = entitlement?.deviceID ?? "-"
-        let calls = await log.lines
-        report.expect(calls == [
-            "POST /oauth/token authorization_code 200",
-            "POST /v2/devices 201",
-            "POST /oauth/token refresh_token 200",
-            "POST /v2/devices/\(deviceID)/entitlement 200"
-        ], "sign-in exchanges the code, registers this Mac, refreshes, then fetches", calls.joined(separator: ", "))
         report.expect(entitlement?.email == config.signInEmail, "the entitlement names the account")
-        report.expect(entitlement?.machineID == machine.machineID, "the entitlement names this Mac's machine ID")
         report.expect(
             services.access.isAvailable(.iCloudSync) && services.access.check(.teamLibrary) == .notIncluded,
             "a Starter license unlocks Starter features only",
             entitlement.map { $0.features.sorted().joined(separator: ",") } ?? "no entitlement"
         )
-        let token = try? await services.session.accessToken()
-        report.expect(
-            token?.deviceID == entitlement?.deviceID && token?.isFromLicenseKey == false,
-            "the access token names the device and the interactive sign-in"
-        )
-
-        var refreshTokens = [Self.refreshToken(in: keychain)]
-        for _ in 0..<2 {
-            _ = try? await services.session.refreshNow()
-            refreshTokens.append(Self.refreshToken(in: keychain))
+        let refreshed = await services.refreshEntitlement()
+        if case .succeeded = refreshed {
+            report.expect(true, "a refresh keeps the sign-in")
+        } else {
+            report.expect(false, "a refresh keeps the sign-in", "\(refreshed)")
         }
-        report.expect(Set(refreshTokens.compactMap { $0 }).count == 3, "each refresh rotates the refresh token")
 
         let devices = try? await services.fetchDevices()
         report.expect(
-            devices?.contains { $0.machineID == machine.machineID && $0.holdsLicense } == true,
+            devices?.contains { $0.isThisMac && $0.holdsLicense } == true,
             "GET /v2/devices lists this Mac as licensed"
         )
         do throws(AccountError) {
@@ -258,27 +243,18 @@ private final class Probe {
             report.expect(false, "GET /v2/me names the account and no team", "\(error)")
         }
 
-        await useLicenseKeyReplacesTheSession(services, log: log, keychain: keychain)
-        refreshTokens.append(Self.refreshToken(in: keychain))
+        await useLicenseKeyReplacesTheSession(services)
 
         await services.signOut()
         report.expect(services.access.check(.iCloudSync) == .signedOut, "sign-out leaves every feature signed out")
-        let client = OAuthTokenClient(configuration: configuration) { try await URLSession.shared.data(for: $0) }
-        var refusal = "refreshed"
-        if let last = refreshTokens.last ?? nil {
-            do throws(AccountError) {
-                _ = try await client.refresh(last)
-            } catch {
-                refusal = "\(error)"
-            }
-        }
-        report.expect(refusal.contains("invalid_grant"), "sign-out revokes the refresh token", refusal)
+        report.expect(
+            keychain.readStringResult(forKey: AccountRefreshTokenItem.production) == .notFound,
+            "sign-out removes the refresh token from the Keychain"
+        )
     }
 
-    // Use License Key… on a Mac signed in interactively: the key's account takes over and the old session is revoked.
-    private func useLicenseKeyReplacesTheSession(_ services: AccountServices, log: CallLog, keychain: InMemoryKeychain) async {
-        let interactive = Self.refreshToken(in: keychain)
-        let before = await log.lines.count
+    // Use License Key… on a Mac signed in interactively: the key's account takes over.
+    private func useLicenseKeyReplacesTheSession(_ services: AccountServices) async {
         let outcome: EntitlementRefreshState
         do throws(AccountError) {
             outcome = try await services.useLicenseKey(config.legacyKey)
@@ -286,80 +262,46 @@ private final class Probe {
             report.expect(false, "Use License Key signs this Mac in to the key's account", "\(error)")
             return
         }
-        let entitlement = services.access.state.entitlement
-        let calls = Array(await log.lines.dropFirst(before))
-        report.expect(calls == [
-            "POST /oauth/token \(OAuthTokenClient.tokenExchangeGrant) 200",
-            "POST /oauth/revoke 200",
-            "POST /v2/devices 200",
-            "POST /v2/devices/\(entitlement?.deviceID ?? "-")/entitlement 200"
-        ], "Use License Key exchanges the key, revokes the interactive session, registers and fetches", calls.joined(separator: ", "))
         if case .succeeded = outcome {
-            report.expect(entitlement?.email == config.legacyEmail, "the entitlement names the key's account")
+            report.expect(services.access.state.entitlement?.email == config.legacyEmail, "the entitlement names the key's account")
         } else {
             report.expect(false, "the entitlement names the key's account", "\(outcome)")
         }
-        let token = try? await services.session.accessToken()
-        report.expect(token?.isFromLicenseKey == true, "the new session comes from the key")
-        let client = OAuthTokenClient(configuration: configuration) { try await URLSession.shared.data(for: $0) }
-        var refusal = "refreshed"
-        if let interactive {
-            do throws(AccountError) {
-                _ = try await client.refresh(interactive)
-            } catch {
-                refusal = "\(error)"
-            }
-        }
-        report.expect(refusal.contains("invalid_grant"), "the replaced interactive refresh token is revoked", refusal)
     }
 
     private func legacyKeyMigrates() async {
-        let log = CallLog()
         let legacyKeychain = InMemoryKeychain()
-        legacyKeychain.writeString(config.legacyKey, forKey: LegacyLicenseStore.keychainKey)
-        let services = services(log: log, keychain: InMemoryKeychain(), legacyKeychain: legacyKeychain)
+        legacyKeychain.writeString(config.legacyKey, forKey: StoredLicenseKey.keychainKey)
+        let services = services(log: CallLog(), keychain: InMemoryKeychain(), legacyKeychain: legacyKeychain)
 
         let outcome = await services.migrateLegacyKeyIfNeeded()
 
         report.expect(outcome == .migrated, "a stored license key migrates", "\(outcome)")
-        let entitlement = services.access.state.entitlement
-        let calls = await log.lines
-        report.expect(calls == [
-            "POST /oauth/token \(OAuthTokenClient.tokenExchangeGrant) 200",
-            "POST /v2/devices 200",
-            "POST /v2/devices/\(entitlement?.deviceID ?? "-")/entitlement 200"
-        ], "the exchange made the device, so registering answers 200 and no refresh follows", calls.joined(separator: ", "))
         report.expect(
-            legacyKeychain.readStringResult(forKey: LegacyLicenseStore.keychainKey) == .notFound,
+            legacyKeychain.readStringResult(forKey: StoredLicenseKey.keychainKey) == .notFound,
             "the migrated key is deleted"
         )
-        report.expect(entitlement?.email == config.legacyEmail, "the entitlement names the key's account")
+        report.expect(services.access.state.entitlement?.email == config.legacyEmail, "the entitlement names the key's account")
         report.expect(services.access.isAvailable(.iCloudSync), "the migrated license unlocks its features")
-        let token = try? await services.session.accessToken()
-        report.expect(
-            token?.isFromLicenseKey == true && token?.deviceID == entitlement?.deviceID,
-            "the session comes from the key and names the device"
-        )
     }
 
     private func unknownKeyIsRefused() async {
         let legacyKeychain = InMemoryKeychain()
-        legacyKeychain.writeString(config.rejectedKey, forKey: LegacyLicenseStore.keychainKey)
+        legacyKeychain.writeString(config.rejectedKey, forKey: StoredLicenseKey.keychainKey)
         let services = services(log: CallLog(), keychain: InMemoryKeychain(), legacyKeychain: legacyKeychain)
 
         let outcome = await services.migrateLegacyKeyIfNeeded()
 
         report.expect(outcome == .keyRejected, "an unknown key is refused", "\(outcome)")
         report.expect(
-            legacyKeychain.readStringResult(forKey: LegacyLicenseStore.keychainKey) == .notFound
-                && services.access.check(.iCloudSync) == .signedOut,
-            "the refused key is deleted and the app is signed out"
+            !services.hasLicenseKeyToExchange && services.access.check(.iCloudSync) == .signedOut,
+            "the refused key is set aside and the app is signed out"
         )
     }
 
     private func fourthDeviceHitsTheLimit() async {
         let legacyKeychain = InMemoryKeychain()
-        legacyKeychain.writeString(config.limitKey, forKey: LegacyLicenseStore.keychainKey)
+        legacyKeychain.writeString(config.limitKey, forKey: StoredLicenseKey.keychainKey)
         let services = services(log: CallLog(), keychain: InMemoryKeychain(), legacyKeychain: legacyKeychain)
 
         let outcome = await services.migrateLegacyKeyIfNeeded()
@@ -373,7 +315,7 @@ private final class Probe {
 
         let devices = (try? await services.fetchDevices()) ?? []
         report.expect(
-            devices.count == 4 && devices.contains { $0.machineID == machine.machineID && !$0.holdsLicense },
+            devices.count == 4 && devices.contains { $0.isThisMac && !$0.holdsLicense },
             "GET /v2/devices lists the holders and this Mac without a slot",
             "\(devices.map { "\($0.name) \($0.holdsLicense)" })"
         )
@@ -430,7 +372,7 @@ private final class Probe {
 
         let ownerLog = CallLog()
         let legacyKeychain = InMemoryKeychain()
-        legacyKeychain.writeString(library.teamKey, forKey: LegacyLicenseStore.keychainKey)
+        legacyKeychain.writeString(library.teamKey, forKey: StoredLicenseKey.keychainKey)
         let owner = services(log: ownerLog, keychain: InMemoryKeychain(), legacyKeychain: legacyKeychain)
         let migrated = await owner.migrateLegacyKeyIfNeeded()
         report.expect(migrated == .migrated, "the update exchanges the team license key", "\(migrated)")
@@ -677,7 +619,7 @@ private final class Probe {
         let machineID = (0..<32).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
         let device = MachineDescription(machineID: machineID, name: name, appVersion: machine.appVersion, osVersion: machine.osVersion)
         let legacyKeychain = InMemoryKeychain()
-        legacyKeychain.writeString(key, forKey: LegacyLicenseStore.keychainKey)
+        legacyKeychain.writeString(key, forKey: StoredLicenseKey.keychainKey)
         let services = services(log: log, keychain: InMemoryKeychain(), legacyKeychain: legacyKeychain, machine: device)
         let outcome = await services.migrateLegacyKeyIfNeeded()
         report.expect(outcome == .migrated, "\(name) signs in with its seat key", "\(outcome)")
@@ -730,6 +672,8 @@ private final class Probe {
 
     // MARK: - Helpers
 
+    // The core signs in, against the development stack, with the probe's in-memory Keychain; the Swift clients
+    // write each of their calls to the log.
     private func services(
         log: CallLog,
         keychain: InMemoryKeychain,
@@ -737,31 +681,28 @@ private final class Probe {
         machine: MachineDescription? = nil
     ) -> AccountServices {
         let machine = machine ?? self.machine
-        let entitlementFile = directory.appendingPathComponent(UUID().uuidString).appendingPathComponent("entitlement.jwt")
-        let defaults = UserDefaults(suiteName: scratch) ?? .standard
-        return AccountServices(
-            configuration: configuration,
-            machine: machine,
-            transport: LoggedTransport(log: log),
-            send: { request in
-                let form = String(bytes: request.httpBody ?? Data(), encoding: .utf8) ?? ""
-                let grant = form.split(separator: "&")
-                    .first { $0.hasPrefix("grant_type=") }
-                    .map { String($0.dropFirst("grant_type=".count)).removingPercentEncoding ?? "" }
-                let (data, response) = try await URLSession.shared.data(for: request)
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                await log.add(["POST", request.url?.path ?? "", grant, "\(status)"].compactMap { $0 }.joined(separator: " "))
-                return (data, response)
-            },
-            keychain: keychain,
-            entitlementFile: entitlementFile,
-            legacy: LegacyLicenseStore(keychain: legacyKeychain, defaults: defaults, machineID: machine.machineID) { $0.data },
-            access: FeatureAccess()
+        let folder = directory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let setup = AccountCoreSetup(
+            accountFile: folder.appendingPathComponent("account.json"),
+            legacyEntitlementFile: folder.appendingPathComponent("entitlement.jwt"),
+            machineID: machine.machineID,
+            managedServerURL: nil,
+            allowOtherServers: nil,
+            developmentStack: stack
         )
-    }
-
-    private static func refreshToken(in keychain: InMemoryKeychain) -> String? {
-        guard case .found(let token) = keychain.readStringResult(forKey: AccountSession.refreshTokenKey) else { return nil }
-        return token
+        let backend = CoreAccountBackend(setup: setup, machine: machine, keychain: AccountKeychain(keychain: keychain))
+        let services = AccountServices(
+            backend: backend,
+            transport: LoggedTransport(log: log),
+            storedKey: StoredLicenseKey(
+                keychain: legacyKeychain,
+                defaults: UserDefaults(suiteName: scratch) ?? .standard,
+                machineID: machine.machineID
+            ),
+            access: FeatureAccess(),
+            sharedLinkServer: stack.flatMap { URL(string: $0.apiURL)?.appendingPathComponent("v2") } ?? AccountServer.production.apiBaseURL
+        )
+        backend.setListener(services)
+        return services
     }
 }

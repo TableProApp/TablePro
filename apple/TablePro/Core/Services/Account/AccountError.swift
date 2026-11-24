@@ -22,9 +22,10 @@ internal enum AccountError: Error, Equatable {
         case licenseMissing
         // The license does not verify with a key this build ships, or names another server.
         case licenseInvalid
-        case licenseExpired
         // A configuration profile sets the server, so the person cannot choose another.
         case managed
+        // A company server takes neither a license key nor an offline file.
+        case unsupported
     }
 
     case signedOut

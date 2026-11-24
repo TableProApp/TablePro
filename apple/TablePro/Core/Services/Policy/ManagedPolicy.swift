@@ -39,7 +39,12 @@ internal struct ManagedPolicyReader: ManagedPolicyReading, @unchecked Sendable {
 
     private let preferences: any ManagedPreferences
 
-    internal init(preferences: any ManagedPreferences = UserDefaults.standard) {
+    // A configuration profile for com.TablePro lands in the standard domain, whatever sandbox a run uses.
+    internal init(defaults: UserDefaults = .standard) {
+        self.preferences = defaults
+    }
+
+    internal init(preferences: any ManagedPreferences) {
         self.preferences = preferences
     }
 
