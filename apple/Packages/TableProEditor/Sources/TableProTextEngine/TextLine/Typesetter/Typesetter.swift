@@ -62,6 +62,49 @@ public final class Typesetter {
         lineFragments.build(from: lines, estimatedLineHeight: maxHeight)
     }
 
+    // All or nothing: a fragment whose width, height or marks would change sends the line back to a typeset.
+    func restyle(
+        range: NSRange,
+        lineLocation: Int,
+        storage: NSTextStorage,
+        displayData: TextLine.DisplayData
+    ) -> [LineFragment]? {
+        var updates: [(fragment: LineFragment, line: CTLine, width: CGFloat, marks: [SpecialCharacterMark])] = []
+        for position in lineFragments.linesInRange(range) {
+            let fragment = position.data
+            let documentRange = position.range.translate(location: lineLocation)
+            guard fragment.contents.count == 1,
+                  case .text = fragment.contents[0].data,
+                  !documentRange.isEmpty,
+                  documentRange.max <= storage.length else {
+                return nil
+            }
+            let display = SpecialCharacterDisplay.make(
+                from: storage.attributedSubstring(from: documentRange),
+                style: displayData.specialCharacterStyle
+            )
+            guard display.marks.count == fragment.specialCharacters.count,
+                  zip(display.marks, fragment.specialCharacters).allSatisfy({
+                      $0.offset == $1.offset && $0.length == $1.length && $0.character == $1.character
+                  }) else {
+                return nil
+            }
+            let typesetter = CTTypesetterCreateWithAttributedString(display.string)
+            let data = typesetLine(typesetter: typesetter, range: NSRange(location: 0, length: display.string.length))
+            guard abs(data.width - fragment.contents[0].width) < 0.001,
+                  abs(data.height - fragment.height) < 0.001,
+                  abs(data.descent - fragment.descent) < 0.001 else {
+                return nil
+            }
+            updates.append((fragment, data.ctLine, data.width, display.marks))
+        }
+        for update in updates {
+            update.fragment.contents = [.init(data: .text(line: update.line), width: update.width)]
+            update.fragment.specialCharacters = SpecialCharacterGeometry.positioned(update.marks, in: update.fragment)
+        }
+        return updates.map(\.fragment)
+    }
+
     private func assignSpecialCharacters(
         _ marks: [SpecialCharacterMark],
         to lines: [TextLineStorage<LineFragment>.BuildItem]
