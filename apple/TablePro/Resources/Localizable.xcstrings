@@ -11008,6 +11008,9 @@
     "%d new" : {
 
     },
+    "%d Not Uploaded" : {
+
+    },
     "%d of %d" : {
       "localizations" : {
         "en" : {
@@ -15577,6 +15580,9 @@
 
     },
     "1 new column" : {
+
+    },
+    "1 Not Uploaded" : {
 
     },
     "1 of %lld conflicts" : {
@@ -75255,6 +75261,12 @@
           }
         }
       }
+    },
+    "Discard and Quit" : {
+
+    },
+    "Discard and Sign Out" : {
+
     },
     "Discard Changes" : {
       "localizations" : {
@@ -192223,6 +192235,9 @@
         }
       }
     },
+    "Sign out first, then sign in to the other account or server." : {
+
+    },
     "Sign out of TablePro on this Mac?" : {
       "localizations" : {
         "fr" : {
@@ -208898,6 +208913,9 @@
         }
       }
     },
+    "Team Library changes were discarded" : {
+
+    },
     "Team library updated %@" : {
 
     },
@@ -222566,6 +222584,9 @@
         }
       }
     },
+    "The upload did not finish. %@" : {
+
+    },
     "The URL matches this connection." : {
 
     },
@@ -223348,6 +223369,9 @@
           }
         }
       }
+    },
+    "These changes are not uploaded yet and are lost if you discard them: %@." : {
+
     },
     "These changes drop %@, the account this connection uses." : {
       "localizations" : {
@@ -239333,6 +239357,18 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Upload and Quit" : {
+
+    },
+    "Upload and Sign Out" : {
+
+    },
+    "Upload Team Library changes before quitting?" : {
+
+    },
+    "Uploaded when the team library answers. Signing out or quitting asks first, since they are not kept on this Mac." : {
+
+    },
     "Upper Bound" : {
 
     },
@@ -249015,6 +249051,9 @@
           }
         }
       }
+    },
+    "You were signed out before these changes were uploaded: %@." : {
+
     },
     "You were signed out. Sign in again." : {
 
