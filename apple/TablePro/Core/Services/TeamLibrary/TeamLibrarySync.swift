@@ -116,6 +116,9 @@ internal final class TeamLibrarySync: ObservableObject {
         hasLoaded = true
         teams = Dictionary(store.loadAll().map { ($0.teamID, $0) }, uniquingKeysWith: { first, _ in first })
         legacy = store.loadLegacy(now: now())
+        // Whose the stored copy is is known once the core has restored the account; it shows only after that.
+        guard account.access.state.isRestored else { return }
+        claim(for: account.access.state)
         publishContent()
     }
 
@@ -220,7 +223,7 @@ internal final class TeamLibrarySync: ObservableObject {
             return .skipped
         }
         guard rateLimitHold == nil else { return .failed(.rateLimited(retryAfter: nil)) }
-        claimForCurrentAccount()
+        claim(for: account.access.state)
         status = .syncing
         let started = generation
         let profile: AccountProfile
@@ -259,10 +262,10 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     // A library another server or account left, as when a configuration profile named another server while the app
-    // was closed, is dropped before anything reads it or pushes its edits.
-    private func claimForCurrentAccount() {
-        guard let accountID = account.access.state.entitlement?.accountID else { return }
-        let current = TeamLibraryOwner(server: account.server.apiOrigin.absoluteString, accountID: accountID)
+    // was closed, is dropped before anything shows it or pushes its edits, an offline file's account included.
+    private func claim(for state: AccountState) {
+        guard state.isRestored, let accountID = state.entitlement?.accountID else { return }
+        let current = TeamLibraryOwner(server: state.server.apiOrigin.absoluteString, accountID: accountID)
         let stored = store.owner()
         let fromAnother = stored.map { $0 != current }
             ?? (current.server != AccountServer.production.apiOrigin.absoluteString)
@@ -701,6 +704,10 @@ internal final class TeamLibrarySync: ObservableObject {
                 // Another server's teams are not this account's, whatever ids they share.
                 if wasRestored, hadAccount && !state.isSignedIn || changedServer {
                     self.clear()
+                }
+                self.claim(for: state)
+                if !wasRestored, state.isRestored {
+                    self.publishContent()
                 }
                 self.syncSoon()
             }

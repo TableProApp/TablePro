@@ -213,13 +213,14 @@ internal final class AccountServices: AccountBackendListener {
         storedKey.value() != nil && !storedKey.isSetAside()
     }
 
-    // Use License Key…: the key's account replaces any session on this Mac, and a stored key it matches is deleted.
+    // Use License Key…: the key's account replaces any session on this Mac, and a stored key it matches is deleted
+    // once the Keychain holds the sign-in.
     @discardableResult
     func useLicenseKey(_ key: String) async throws(AccountError) -> EntitlementRefreshState {
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         try await backend.useLicenseKey(key)
         if key == storedKey.value() {
-            storedKey.clear()
+            clearStoredKeyIfRemembered()
         }
         verifiedAt = now()
         publish()
@@ -246,7 +247,7 @@ internal final class AccountServices: AccountBackendListener {
             publish()
             return .retryLater(error)
         }
-        storedKey.clear()
+        clearStoredKeyIfRemembered()
         verifiedAt = now()
         publish()
         announceSignIn(.migration)
@@ -304,6 +305,16 @@ internal final class AccountServices: AccountBackendListener {
             return false
         }
         return true
+    }
+
+    // A sign-in the Keychain refused ends with this run, and the key is what signs the next one in again. One it kept
+    // comes back on tablepro.app, the only server a key signs in to, with or without account.json.
+    private func clearStoredKeyIfRemembered() {
+        guard backend.status().remembered else {
+            Self.logger.warning("The Keychain did not keep the sign-in; keeping the stored license key")
+            return
+        }
+        storedKey.clear()
     }
 
     // The core never sees a stored key, so its refresh schedule cannot retry the exchange.

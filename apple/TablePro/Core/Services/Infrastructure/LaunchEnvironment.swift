@@ -16,6 +16,8 @@ internal protocol LaunchEnvironment: AnyObject {
     /// Runs `body` on the next pass of the main run loop, in common modes so a tracking or modal
     /// loop cannot hold it back.
     func scheduleNextTurn(_ body: @escaping @MainActor () -> Void)
+    /// Returns once the account the core restores after launch is published, since a connection's gates read it.
+    func accountRestored() async
     func route(_ intent: LaunchIntent) async
     func closeWelcome()
     func dismissWelcomeIfMainWindowVisible()
@@ -70,6 +72,22 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
     internal func scheduleNextTurn(_ body: @escaping @MainActor () -> Void) {
         RunLoop.main.perform(inModes: [.common]) {
             MainActor.assumeIsolated(body)
+        }
+    }
+
+    /// A core that never answers holds launch no longer than the deferred work's backstop.
+    internal func accountRestored() async {
+        let gate = LaunchGate()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            gate.continuation = continuation
+            Task { @MainActor in
+                await AccountServices.shared.waitUntilRestored()
+                gate.open()
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: Self.backstop)
+                gate.open()
+            }
         }
     }
 
@@ -196,5 +214,15 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
         WindowOpener.shared.closeWelcome()
         frontWindow.makeKeyAndOrderFront(nil)
         AppActivationPolicyController.shared.activate()
+    }
+}
+
+@MainActor
+private final class LaunchGate {
+    var continuation: CheckedContinuation<Void, Never>?
+
+    func open() {
+        continuation?.resume()
+        continuation = nil
     }
 }

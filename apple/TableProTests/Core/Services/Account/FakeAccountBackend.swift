@@ -50,6 +50,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     private var rejectedTokens: [String] = []
     private var tokenCount = 0
     private var refreshCalls = 0
+    private var keychainRefuses = false
     // Runs as the core is told its token was refused, as if the person changed server at that moment.
     var onTokenRejected: (@Sendable (FakeAccountBackend) -> Void)?
 
@@ -71,6 +72,11 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
 
     func installLicense(_ license: AccountServerLicense?) {
         locked { serverLicense = license }
+    }
+
+    // As the core when the Keychain refuses the refresh token: signed in for this run only.
+    func refuseKeychain() {
+        locked { keychainRefuses = true }
     }
 
     // A launch on which the core has not opened yet: signed out on tablepro.app, as CoreAccountBackend reads then,
@@ -350,7 +356,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
         let name = (account["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         let expiresAt = now().addingTimeInterval(answer.lifetime)
         locked {
-            var next = AccountSnapshot(state: .signedIn, remembered: true)
+            var next = AccountSnapshot(state: .signedIn, remembered: !keychainRefuses)
             next.accountID = answer.accountID
             next.email = account["email"] as? String
             next.name = name

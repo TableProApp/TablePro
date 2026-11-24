@@ -223,6 +223,19 @@ struct AccountServicesTests {
         #expect(fixture.keychain.readStringResult(forKey: StoredLicenseKey.keychainKey) == .found(FakeAccountServer.validKey))
     }
 
+    @Test("A stored key stays when the Keychain refuses the sign-in it bought, since that sign-in ends with this run")
+    func keyStaysWhileTheSignInIsNotRemembered() async throws {
+        let fixture = try AccountFixture()
+        fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        fixture.backend.refuseKeychain()
+
+        #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .migrated)
+        _ = try await fixture.services.useLicenseKey(FakeAccountServer.validKey)
+
+        #expect(fixture.access.state.isSignedIn)
+        #expect(fixture.keychain.readStringResult(forKey: StoredLicenseKey.keychainKey) == .found(FakeAccountServer.validKey))
+    }
+
     @Test("A stored key the network kept from its exchange is tried again an hour later")
     func migrationRetriesHourly() async throws {
         let fixture = try AccountFixture()

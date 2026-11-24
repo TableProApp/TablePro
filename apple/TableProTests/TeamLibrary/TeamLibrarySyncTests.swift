@@ -1028,13 +1028,42 @@ struct TeamLibrarySyncTests {
         fixture.account.backend.switchServerKeepingTheSession(to: FakeAccountBackend.companyServer)
         fixture.account.services.loadStoredState()
         fixture.relaunch()
-        #expect(fixture.sync.hasUnsentChanges, "The stored library loads before the account says whose it is")
+        #expect(!fixture.sync.hasUnsentChanges, "Dropped as it loads, before it shows")
 
         #expect(await fixture.sync.sync() == .synced)
 
         #expect(!fixture.sync.hasUnsentChanges)
         #expect(await fixture.pushes().count == pushesBefore)
         #expect(fixture.store.owner()?.server == FakeAccountBackend.companyServer.apiOrigin.absoluteString)
+    }
+
+    @Test("Another server's library never shows to an offline file's account after a launch on a new server")
+    func anotherServersLibraryNeverShowsOffline() async throws {
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "query", clientID: "q1", data: TeamLibraryFixture.queryData("Orders"))
+        }
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        try await fixture.account.signIn()
+        #expect(await fixture.sync.sync() == .synced)
+        #expect(fixture.sync.content.queries.map(\.name) == ["Orders"])
+        fixture.sync.stop()
+
+        fixture.account.backend.switchServerKeepingTheSession(to: .production)
+        fixture.account.backend.restoreLater(AccountSnapshot(
+            state: .offline, accountID: "acct_other", email: "grace@example.com", features: ["team_library"],
+            expiresAt: Date().addingTimeInterval(86_400), isOfflineFile: true
+        ))
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        fixture.sync.start()
+        #expect(fixture.sync.content == .empty, "Nothing shows before the core says whose this Mac is")
+
+        fixture.account.backend.finishRestore()
+
+        try await waitUntil { fixture.account.access.state.isRestored }
+        #expect(fixture.sync.content == .empty)
+        #expect(fixture.store.loadAll().isEmpty)
+        fixture.sync.stop()
     }
 
     // MARK: - Sign-out while a call is out

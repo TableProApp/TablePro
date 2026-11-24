@@ -55,6 +55,25 @@ struct AppLaunchCoordinatorTests {
         #expect(environment.completions == 1)
     }
 
+    /// A connection's gates read the account, which the core restores just after launch.
+    @Test
+    func routingWaitsForTheRestoredAccount() async throws {
+        let connectionId = UUID()
+        environment.holdsAccount = true
+        coordinator.deliver([.openConnection(connectionId)])
+        coordinator.didFinishLaunching()
+
+        environment.fireNextTurn()
+        try await waitUntil { self.environment.isWaitingForAccount }
+        #expect(environment.routedConnectionIds.isEmpty)
+        #expect(environment.startupBehaviorRuns == 0)
+
+        environment.restoreAccount()
+
+        try await waitUntil { self.environment.completions == 1 }
+        #expect(environment.routedConnectionIds == [connectionId])
+    }
+
     @Test
     func everyIntentInOneDeliveryIsRoutedInOrder() async throws {
         let ids = [UUID(), UUID(), UUID()]
@@ -191,6 +210,25 @@ private final class RecordingLaunchEnvironment: LaunchEnvironment {
     func scheduleNextTurn(_ body: @escaping @MainActor () -> Void) {
         turns.append(body)
         lastTurn = body
+    }
+
+    /// Set to hold routing until `restoreAccount()`, as a launch whose core has not read the sign-in yet.
+    var holdsAccount = false
+    private var accountGate: CheckedContinuation<Void, Never>?
+    var isWaitingForAccount: Bool { accountGate != nil }
+
+    func accountRestored() async {
+        guard holdsAccount else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            accountGate = continuation
+        }
+    }
+
+    func restoreAccount() {
+        holdsAccount = false
+        let gate = accountGate
+        accountGate = nil
+        gate?.resume()
     }
 
     func route(_ intent: LaunchIntent) async {
