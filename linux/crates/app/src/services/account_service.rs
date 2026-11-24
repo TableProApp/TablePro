@@ -315,6 +315,7 @@ mod tests {
             entitlement: None,
             problem: Some(EntitlementProblem::DeviceLimitReached(Vec::new())),
             remembered: true,
+            session_id: None,
         })));
 
         assert!(!signed_out);

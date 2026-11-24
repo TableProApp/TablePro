@@ -1688,6 +1688,7 @@ mod tests {
                 entitlement: None,
                 problem: Some(problem),
                 remembered: true,
+                session_id: None,
             })));
             harness
                 .page
