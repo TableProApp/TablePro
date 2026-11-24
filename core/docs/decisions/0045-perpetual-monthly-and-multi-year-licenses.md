@@ -1,6 +1,6 @@
 # 0045: A self-hosted license can be perpetual, monthly or prepaid for several years
 
-- **Status**: Accepted; amends 0044
+- **Status**: Accepted; amends 0044; the grace of a monthly file superseded by 0046
 - **Date**: 2026-11-24
 
 ## Context
