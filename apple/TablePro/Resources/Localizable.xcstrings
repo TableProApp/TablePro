@@ -28907,6 +28907,9 @@
         }
       }
     },
+    "and %d more" : {
+
+    },
     "And %lld more" : {
 
     },
@@ -208858,6 +208861,9 @@
         }
       }
     },
+    "Team Library changes not sent" : {
+
+    },
     "Team library changes that were not sent yet are discarded." : {
       "localizations" : {
         "fr" : {
@@ -227772,6 +227778,9 @@
       }
     },
     "This Mac does not support Apple Intelligence." : {
+
+    },
+    "This Mac is no longer signed in to the account these changes were for, so they were removed without reaching your team:" : {
 
     },
     "this Mac needs %@ free to open that database" : {

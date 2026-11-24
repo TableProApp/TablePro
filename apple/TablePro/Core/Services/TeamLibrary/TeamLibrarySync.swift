@@ -22,28 +22,21 @@ internal enum TeamLibraryPublishError: Error, Equatable {
     case failed(TeamLibraryFailure)
 }
 
-// One account on one server, from its restored or new sign-in to a sign-out or a server switch: the folder its library
-// is kept in, and a client that calls only its server and sends nothing once the session has ended.
+// The core's sign-in the library is read for, from its start or restore to its end, with a client that sends a request
+// only under that sign-in's bearer, so nothing kept for one sign-in reaches another account.
 @MainActor
 internal final class TeamLibrarySession {
-    let key: TeamLibrarySessionKey
-    let store: TeamLibraryStateStore
+    let id: String
     let client: TeamLibraryClient
-    private let open = OSAllocatedUnfairLock(initialState: true)
+    private(set) var isOpen = true
 
-    init(key: TeamLibrarySessionKey, store: TeamLibraryStateStore, account: AccountServices, server: AccountServer) {
-        self.key = key
-        self.store = store
-        let open = open
-        client = TeamLibraryClient(api: account.api(pinnedTo: server, while: { open.withLock { $0 } }))
-    }
-
-    var isOpen: Bool {
-        open.withLock { $0 }
+    init(id: String, account: AccountServices, server: AccountServer) {
+        self.id = id
+        client = TeamLibraryClient(api: account.api(pinnedTo: server, session: id))
     }
 
     func close() {
-        open.withLock { $0 = false }
+        isOpen = false
     }
 }
 
@@ -58,7 +51,7 @@ internal struct TeamLibraryDestination: Sendable {
 // to write.
 @MainActor
 internal final class TeamLibrarySync: ObservableObject {
-    static let shared = TeamLibrarySync(account: .shared, storage: .live())
+    static let shared = TeamLibrarySync(account: .shared, store: .live())
 
     static let pullInterval: Duration = .seconds(15 * 60)
     static let firstRetryDelay: Duration = .seconds(30)
@@ -75,12 +68,13 @@ internal final class TeamLibrarySync: ObservableObject {
     @Published private(set) var writableTeams: [TeamLibraryTeam] = []
 
     private let account: AccountServices
-    private let storage: TeamLibraryStorage
+    private let store: TeamLibraryStateStore
     // A session opens at launch or inside the serial queue, never while a pass is out, so a pass reads, writes and calls
-    // one session's library and server. It closes as soon as the account leaves it.
+    // for one sign-in. It closes as soon as the core's sign-in changes.
     private var session: TeamLibrarySession?
     private let sessionEnded = PassthroughSubject<Void, Never>()
-    private var adoptedSingleLocation = false
+    // Shows what a session change drops: edits not pushed yet and conflicts not resolved.
+    private let dropped: @MainActor ([String]) -> Void
     private let clock: any Clock<Duration>
     private let now: @Sendable () -> Date
     private var teams: [String: TeamLibraryTeamState] = [:]
@@ -106,18 +100,16 @@ internal final class TeamLibrarySync: ObservableObject {
 
     init(
         account: AccountServices,
-        storage: TeamLibraryStorage,
+        store: TeamLibraryStateStore,
         clock: any Clock<Duration> = ContinuousClock(),
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        dropped: @escaping @MainActor ([String]) -> Void = TeamLibraryPublishing.presentDropped
     ) {
         self.account = account
-        self.storage = storage
+        self.store = store
         self.clock = clock
         self.now = now
-    }
-
-    private var store: TeamLibraryStateStore? {
-        session?.store
+        self.dropped = dropped
     }
 
     var canPublish: Bool {
@@ -266,7 +258,7 @@ internal final class TeamLibrarySync: ObservableObject {
         teams = [:]
         legacy = nil
         accountEmail = nil
-        store?.removeAll()
+        store.removeAll()
         status = .idle
         publishContent()
     }
@@ -316,7 +308,7 @@ internal final class TeamLibrarySync: ObservableObject {
         guard started == generation else { return .skipped }
         if legacy != nil, teams.values.allSatisfy({ $0.cursor != nil }) {
             legacy = nil
-            store?.removeLegacy()
+            store.removeLegacy()
         }
         publishContent()
         return finish(failure.map { .failed($0) } ?? .synced)
@@ -340,7 +332,7 @@ internal final class TeamLibrarySync: ObservableObject {
         let listed = Set(seated.map(\.teamID))
         for teamID in teams.keys where !listed.contains(teamID) {
             teams[teamID] = nil
-            store?.remove(teamID: teamID)
+            store.remove(teamID: teamID)
         }
         for membership in seated {
             var state = teams[membership.teamID]
@@ -394,7 +386,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 continue
             } catch .unreadable {
                 teams[teamID] = nil
-                store?.remove(teamID: teamID)
+                store.remove(teamID: teamID)
                 throw .unreadable
             }
             guard var state = teams[teamID] else { return }
@@ -451,7 +443,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 throw .refused(nil)
             } catch .unreadable {
                 teams[teamID] = nil
-                store?.remove(teamID: teamID)
+                store.remove(teamID: teamID)
                 throw .unreadable
             }
             guard var current = teams[teamID] else { return }
@@ -659,8 +651,8 @@ internal final class TeamLibrarySync: ObservableObject {
             state.moves.formIntersection(state.pending.map { TeamLibraryKey($0) })
         }
         teams[state.teamID] = state
-        guard let session, session.isOpen else { return }
-        session.store.save(state)
+        guard session?.isOpen == true else { return }
+        store.save(state)
     }
 
     private func publishContent() {
@@ -748,17 +740,14 @@ internal final class TeamLibrarySync: ObservableObject {
             }
     }
 
-    // The account left the open session: it closes now, and a sign-out or a server switch takes its library with it.
-    // The next one opens at once when no session was open, else behind the pass that may still be out.
+    // A change of the core's sign-in closes the session now: what it held is shown if unsent, then wiped. The next one
+    // opens at once when none was open, else behind the pass that may still be out.
     private func follow(_ state: AccountState) {
         guard state.isRestored else { return }
-        let key = Self.sessionKey(state)
         if let current = session, current.isOpen {
-            guard key != current.key else { return }
+            guard state.sessionID != current.id else { return }
             current.close()
-            if !state.isSignedIn || state.server.apiOrigin != current.key.server || key != nil {
-                current.store.removeAll()
-            }
+            drop(Array(teams.values))
             generation += 1
             rateLimitHold?.cancel()
             rateLimitHold = nil
@@ -780,21 +769,35 @@ internal final class TeamLibrarySync: ObservableObject {
     // `state` is the one being published: the subscription sees it before `access.state` holds it.
     private func openSessionIfNeeded(_ state: AccountState) {
         guard state.isRestored, session?.isOpen != true else { return }
-        let key = Self.sessionKey(state)
-        // A sign-in still waiting for its first entitlement does not say whose the earlier build's library is yet.
-        if !adoptedSingleLocation, !state.isSignedIn || key != nil {
-            adoptedSingleLocation = true
-            storage.adoptSingleLocation(into: state.isSignedIn ? key : nil)
+        if let owner = store.owner {
+            if owner != state.sessionID {
+                drop(store.loadAll())
+            }
+        } else if !store.isEmpty {
+            // Builds before the core kept one library, which only tablepro.app filled: it stays for the tablepro.app
+            // account the core restored with it, and goes unseen otherwise.
+            let restoredItsAccount = state.isSignedIn && state.server.isProduction && state.entitlement != nil
+            if !restoredItsAccount || state.sessionID == nil {
+                Self.logger.notice("Deleting the team library an earlier build kept: no tablepro.app account owns it")
+                store.removeAll()
+            }
         }
-        session = key.map { TeamLibrarySession(key: $0, store: storage.store(for: $0), account: account, server: state.server) }
-        if let store = session?.store {
+        session = state.sessionID.map { TeamLibrarySession(id: $0, account: account, server: state.server) }
+        if let session {
+            store.setOwner(session.id)
             teams = Dictionary(store.loadAll().map { ($0.teamID, $0) }, uniquingKeysWith: { first, _ in first })
             legacy = store.loadLegacy(now: now())
         }
         publishContent()
     }
 
-    private static func sessionKey(_ state: AccountState) -> TeamLibrarySessionKey? {
-        state.entitlement.map { TeamLibrarySessionKey(server: state.server.apiOrigin, accountID: $0.accountID) }
+    private func drop(_ held: [TeamLibraryTeamState]) {
+        let names = held.flatMap { state in
+            (state.pending + state.conflicts.map(\.edit)).map { Self.name(of: $0, in: state) }
+        }
+        store.removeAll()
+        if !names.isEmpty {
+            dropped(names)
+        }
     }
 }

@@ -68,7 +68,7 @@ struct CoreAccountMappingTests {
         func status(_ state: AccountStateTag, _ account: String?) -> AccountStatusInfo {
             AccountStatusInfo(
                 state: state, accountId: account, email: nil, name: nil, features: [], licenses: [],
-                entitlementExpiresAtSecs: nil, offlineFile: false, problem: nil, remembered: true
+                entitlementExpiresAtSecs: nil, offlineFile: false, sessionId: nil, problem: nil, remembered: true
             )
         }
         #expect(CoreAccountMapping.keptSignIn(before: status(.signedOut, nil), after: status(.signedIn, nil)))
@@ -120,7 +120,7 @@ struct CoreAccountMappingTests {
         )
         let status = AccountStatusInfo(
             state: .signedIn, accountId: "acct_1", email: "ada@example.com", name: "Ada", features: ["icloud_sync"],
-            licenses: [], entitlementExpiresAtSecs: 1_800_000_000, offlineFile: true,
+            licenses: [], entitlementExpiresAtSecs: 1_800_000_000, offlineFile: true, sessionId: "session-1",
             problem: .deviceLimitReached(devices: [holder]), remembered: true
         )
 
@@ -131,6 +131,7 @@ struct CoreAccountMappingTests {
         #expect(snapshot.features == ["icloud_sync"])
         #expect(snapshot.expiresAt == Date(timeIntervalSince1970: 1_800_000_000))
         #expect(snapshot.isOfflineFile)
+        #expect(snapshot.sessionID == "session-1")
         guard case .deviceLimitReached(let holders) = snapshot.problem else {
             Issue.record("Expected the device limit")
             return

@@ -64,6 +64,7 @@ The account takes the Mac's seams through the FFI, resolves and discovers the se
 
 ## Consequences
 
+- Each sign-in has a session id, random, kept in `account.json` and ended by its sign-out, so a new sign-in of the same account has another. `AccountStatusInfo` carries it, published before the status it goes with, and `AccessTokenInfo` carries it read under the session lock with the token: the Mac ties its Team Library to it, and its bearer middleware sends nothing kept for one session under another's token.
 - `SecretItemTag` gains a variant with a field, so C# reads it as a class hierarchy. The Windows `ISecretStore` takes a `SecretItem` record with the sign-in key, and its tests ask for the keyed item on a development stack.
 - `AccountSettings` takes a `ServerSettings` in place of endpoints and keys; the Linux app passes tablepro.app or its development stack.
 - A release build trusts the two license keys whose private halves are the KMS keys of 0044, Key custody: `Yo4CIBJnxzUMSLPnsLId8ngVVe5xuZgHkOU9Z-Hgo04`, current, and `J5yCP_8iTKHyXvyYQ9y4-D2-Z_U4hbtGDvwkfzv57R0`, next. Test keys reach only a development build.

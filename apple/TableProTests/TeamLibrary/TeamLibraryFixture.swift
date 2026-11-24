@@ -18,7 +18,9 @@ final class TeamLibraryFixture {
     let defaults: EphemeralDefaults
     let directory: URL
     let clock = ManualClock()
-    let storage: TeamLibraryStorage
+    let store: TeamLibraryStateStore
+    // What each session change showed as dropped.
+    let dropped = DroppedLog()
     private(set) var sync: TeamLibrarySync
 
     init(role: String = "owner", hasSeat: Bool = true, seed: (inout FakeTeamLibrary) -> Void = { _ in }) async throws {
@@ -36,18 +38,13 @@ final class TeamLibraryFixture {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TeamLibraryTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        storage = TeamLibraryStorage(
-            root: directory.appendingPathComponent("TeamLibrary", isDirectory: true),
+        store = TeamLibraryStateStore(
+            directory: directory.appendingPathComponent("TeamLibrary", isDirectory: true),
             legacyFile: directory.appendingPathComponent("team_library.json"),
             defaults: defaults.defaults
         )
-        sync = TeamLibrarySync(account: account.services, storage: storage, clock: clock)
+        sync = TeamLibrarySync(account: account.services, store: store, clock: clock, dropped: dropped.record)
         sync.loadIfNeeded()
-    }
-
-    // The library of the account the fixture signs in, on tablepro.app.
-    var store: TeamLibraryStateStore {
-        storage.store(for: TeamLibrarySessionKey(server: AccountServer.production.apiOrigin, accountID: "acct_test"))
     }
 
     deinit {
@@ -61,7 +58,7 @@ final class TeamLibraryFixture {
     // A new launch reading what the last one stored.
     func relaunch() {
         sync.stop()
-        sync = TeamLibrarySync(account: account.services, storage: storage, clock: clock)
+        sync = TeamLibrarySync(account: account.services, store: store, clock: clock, dropped: dropped.record)
         sync.loadIfNeeded()
     }
 
@@ -115,5 +112,14 @@ final class TeamLibraryFixture {
             data["parent_client_id"] = parent
         }
         return data
+    }
+}
+
+@MainActor
+final class DroppedLog {
+    private(set) var shown: [[String]] = []
+
+    func record(_ names: [String]) {
+        shown.append(names)
     }
 }

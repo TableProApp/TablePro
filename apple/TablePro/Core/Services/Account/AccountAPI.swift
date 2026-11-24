@@ -13,13 +13,13 @@ internal enum AccountAPI {
         backend: any AccountBackend,
         transport: any ClientTransport,
         onlyTo: URL? = nil,
-        while isOpen: @escaping @Sendable () -> Bool = { true }
+        session: String? = nil
     ) -> Client {
         Client(
             serverURL: AccountServer.production.apiBaseURL,
             configuration: Configuration(dateTranscoder: RFC3339DateTranscoder()),
             transport: transport,
-            middlewares: [AccountBearerMiddleware(backend: backend, onlyTo: onlyTo, isOpen: isOpen)]
+            middlewares: [AccountBearerMiddleware(backend: backend, onlyTo: onlyTo, session: session)]
         )
     }
 
@@ -43,8 +43,8 @@ internal struct AccountBearerMiddleware: ClientMiddleware {
     let backend: any AccountBackend
     // A sign-in on any other server reads as signed out, and nothing is sent.
     var onlyTo: URL?
-    // False once the caller's session ended: nothing more is sent for it.
-    var isOpen: @Sendable () -> Bool = { true }
+    // The core's sign-in a body was kept for: a bearer of any other is never sent with it.
+    var session: String?
 
     func intercept(
         _ request: HTTPRequest,
@@ -57,7 +57,7 @@ internal struct AccountBearerMiddleware: ClientMiddleware {
         if let onlyTo, access.apiBaseURL != onlyTo {
             throw AccountError.signedOut
         }
-        guard isOpen() else { throw AccountError.signedOut }
+        guard session == nil || access.sessionID == session else { throw AccountError.signedOut }
         var request = request
         request.headerFields[.authorization] = "Bearer \(access.token)"
         let (response, responseBody) = try await next(request, body, access.apiBaseURL)
@@ -66,7 +66,9 @@ internal struct AccountBearerMiddleware: ClientMiddleware {
         }
         await backend.accessTokenRejected(access.token)
         let refreshed = try await backend.accessToken()
-        guard refreshed.apiBaseURL == access.apiBaseURL, isOpen() else { throw AccountError.signedOut }
+        guard refreshed.apiBaseURL == access.apiBaseURL, refreshed.sessionID == access.sessionID else {
+            throw AccountError.signedOut
+        }
         request.headerFields[.authorization] = "Bearer \(refreshed.token)"
         return try await next(request, body, access.apiBaseURL)
     }

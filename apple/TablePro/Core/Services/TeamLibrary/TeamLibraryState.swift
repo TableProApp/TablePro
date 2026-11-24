@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import CryptoKit
 import Foundation
 import os
 import TableProCloudAPI
@@ -131,80 +130,24 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     }
 }
 
-// One account on one server.
-internal struct TeamLibrarySessionKey: Hashable, Sendable {
-    let server: URL
-    let accountID: String
-}
-
-// Each session's library in a folder of its own under TeamLibrary/, named for its server and account, so no session
-// ever reads another's.
-internal struct TeamLibraryStorage: Sendable {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibraryStorage")
-
-    let root: URL
-    // The /v1 cache builds before sessions left beside the root.
-    let legacyFile: URL
-    let defaults: UserDefaults
-
-    static func live() -> TeamLibraryStorage {
-        let environment = AppStorageEnvironment.shared
-        return TeamLibraryStorage(
-            root: environment.supportDirectory.appendingPathComponent("TeamLibrary", isDirectory: true),
-            legacyFile: environment.supportDirectory.appendingPathComponent("team_library.json"),
-            defaults: environment.defaults
-        )
-    }
-
-    func store(for key: TeamLibrarySessionKey) -> TeamLibraryStateStore {
-        let digest = SHA256.hash(data: Data("\(key.server.absoluteString)\n\(key.accountID)".utf8))
-        let folder = root.appendingPathComponent(
-            digest.prefix(16).map { String(format: "%02x", $0) }.joined(), isDirectory: true
-        )
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return TeamLibraryStateStore(
-            directory: folder.appendingPathComponent("teams", isDirectory: true),
-            legacyFile: folder.appendingPathComponent("team_library.json"),
-            defaults: defaults
-        )
-    }
-
-    // Builds before sessions kept one library, team files straight in the root, and only tablepro.app filled it. It
-    // moves once to the tablepro.app account the core restored with it; with no such account, it is deleted.
-    func adoptSingleLocation(into key: TeamLibrarySessionKey?) {
-        let manager = FileManager.default
-        let files = ((try? manager.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isRegularFileKey])) ?? [])
-            .filter { $0.pathExtension == "json" && (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
-        let hasCache = manager.fileExists(atPath: legacyFile.path)
-        guard !files.isEmpty || hasCache else { return }
-        guard let key, key.server == AccountServer.production.apiOrigin else {
-            Self.logger.notice("Deleting the team library an earlier build kept: no tablepro.app account owns it")
-            files.forEach { try? manager.removeItem(at: $0) }
-            try? manager.removeItem(at: legacyFile)
-            defaults.removeObject(forKey: TeamLibraryStateStore.legacyPullKey)
-            return
-        }
-        let target = store(for: key)
-        try? manager.createDirectory(at: target.directory, withIntermediateDirectories: true)
-        // A file that does not move is deleted, so none is left for a later session to take.
-        for file in files {
-            let moved = (try? manager.moveItem(at: file, to: target.directory.appendingPathComponent(file.lastPathComponent))) != nil
-            if !moved { try? manager.removeItem(at: file) }
-        }
-        if hasCache, (try? manager.moveItem(at: legacyFile, to: target.legacyFile)) == nil {
-            try? manager.removeItem(at: legacyFile)
-        }
-    }
-}
-
-// One session's library: a JSON file per team, plus the cache the /v1 library left behind.
+// One JSON file per team under Application Support, plus the cache the /v1 library left behind.
 internal struct TeamLibraryStateStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibraryStateStore")
     static let legacyPullKey = "com.TablePro.teamLibrary.lastPullAt"
+    static let ownerKey = "com.TablePro.teamLibrary.session"
 
     let directory: URL
     let legacyFile: URL
     let defaults: UserDefaults
+
+    static func live() -> TeamLibraryStateStore {
+        let environment = AppStorageEnvironment.shared
+        return TeamLibraryStateStore(
+            directory: environment.supportDirectory.appendingPathComponent("TeamLibrary", isDirectory: true),
+            legacyFile: environment.supportDirectory.appendingPathComponent("team_library.json"),
+            defaults: environment.defaults
+        )
+    }
 
     func loadAll() -> [TeamLibraryTeamState] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
@@ -232,8 +175,22 @@ internal struct TeamLibraryStateStore {
     }
 
     func removeAll() {
-        try? FileManager.default.removeItem(at: directory.deletingLastPathComponent())
-        defaults.removeObject(forKey: Self.legacyPullKey)
+        try? FileManager.default.removeItem(at: directory)
+        removeLegacy()
+    }
+
+    // The core's id of the sign-in this library was read for. Nil in a library builds before the core kept, which
+    // only tablepro.app filled.
+    var owner: String? {
+        defaults.string(forKey: Self.ownerKey)
+    }
+
+    func setOwner(_ sessionID: String) {
+        defaults.set(sessionID, forKey: Self.ownerKey)
+    }
+
+    var isEmpty: Bool {
+        loadAll().isEmpty && !FileManager.default.fileExists(atPath: legacyFile.path)
     }
 
     // What the last /v1 pull cached, keyed by client ID like a /v2 snapshot, so the first one matches it item by item.

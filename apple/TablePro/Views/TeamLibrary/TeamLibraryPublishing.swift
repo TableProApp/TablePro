@@ -87,6 +87,22 @@ internal enum TeamLibraryPublishing {
         }
     }
 
+    // What a change of sign-in removed before it reached the team.
+    @MainActor
+    static func presentDropped(_ names: [String]) {
+        var listed = names.prefix(10).joined(separator: "\n")
+        if names.count > 10 {
+            listed += "\n" + String(format: String(localized: "and %d more"), names.count - 10)
+        }
+        AlertHelper.showInfoSheet(
+            title: String(localized: "Team Library changes not sent"),
+            message: String(
+                localized: "This Mac is no longer signed in to the account these changes were for, so they were removed without reaching your team:"
+            ) + "\n\n" + listed,
+            window: nil
+        )
+    }
+
     @MainActor
     static func present(_ outcome: TeamLibraryPublishOutcome, showConflicts: () -> Void) {
         switch outcome {

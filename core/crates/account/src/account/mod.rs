@@ -77,11 +77,12 @@ pub enum SignOutCause {
     ServerChanged,
 }
 
-// A bearer for an API call the app makes with its own client, and the /v2 base it goes to.
+// A bearer for an API call the app makes with its own client, the /v2 base it goes to, and the sign-in it is of.
 #[derive(Debug, Clone)]
 pub struct AccessToken {
     pub token: SecretString,
     pub api: String,
+    pub session_id: Option<String>,
 }
 
 struct Inner {
@@ -100,6 +101,8 @@ struct Inner {
     sign_outs: broadcast::Sender<SignOutCause>,
     // A company server's verified license, kept apart from the entitlement, which can fail after it.
     license: watch::Sender<Option<Arc<License>>>,
+    // The sign-in's session id, sent before each status that goes with it.
+    session_id: watch::Sender<Option<String>>,
 }
 
 #[derive(Default)]
@@ -117,6 +120,8 @@ struct Session {
     licensed: Option<Licensed>,
     // The OAuth issuer a company server's sign-in came from.
     issuer: Option<String>,
+    // Set by a sign-in, kept in account.json, ended by its sign-out: what the app keeps for a sign-in is tied to it.
+    id: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -222,6 +227,7 @@ impl Account {
                 attempts: AtomicU64::new(0),
                 sign_outs: broadcast::Sender::new(SIGN_OUT_BACKLOG),
                 license: watch::Sender::new(None),
+                session_id: watch::Sender::new(None),
             }),
         })
     }
@@ -241,6 +247,11 @@ impl Account {
     // The company server's license this sign-in verified last, whether or not an entitlement came with it.
     pub fn license(&self) -> Option<License> {
         self.inner.license.borrow().as_deref().cloned()
+    }
+
+    // The sign-in's id while signed in; a new sign-in, even of the same account, has another.
+    pub fn session_id(&self) -> Option<String> {
+        self.inner.session_id.borrow().clone()
     }
 
     pub fn server(&self) -> ServerInfo {
@@ -308,7 +319,15 @@ impl Account {
                 return;
             }
         };
+        // A file from before session ids gets one now, written so the next launch reads the same.
+        let unnamed = file.session_id.is_none();
+        let held = file.entitlement.clone();
         self.restore_signed_in(&mut session, file, refresh);
+        if unnamed {
+            session.id = Some(new_session_id());
+            self.write_file(&session, held).await;
+            self.inner.session_id.send_replace(session.id.clone());
+        }
     }
 
     fn restore_signed_in(&self, session: &mut Session, file: AccountFile, refresh: SecretString) {
@@ -326,6 +345,7 @@ impl Account {
             // Kept untagged: a tag left stale by a failed write must not strand the sign-in, and the issuer only
             // narrows where the refresh token may go.
             issuer: file.issuer,
+            id: file.session_id,
             ..Session::default()
         };
         let (entitlement, problem) = match (&licensed, file.entitlement.as_deref()) {
@@ -500,6 +520,7 @@ impl Account {
                 .discovered
                 .as_ref()
                 .map(|discovered| discovered.issuer.clone()),
+            id: Some(new_session_id()),
             ..Session::default()
         };
         self.adopt(&mut session, tokens).await;
@@ -834,6 +855,7 @@ impl Account {
     fn signed_out(&self, session: &mut Session) {
         *session = Session::default();
         self.inner.license.send_replace(None);
+        self.inner.session_id.send_replace(None);
         self.inner.status.send_replace(AccountStatus::SignedOut);
     }
 
@@ -842,6 +864,7 @@ impl Account {
         self.inner
             .license
             .send_replace(session.licensed.as_ref().map(|licensed| licensed.license.clone()));
+        self.inner.session_id.send_replace(session.id.clone());
         self.inner
             .status
             .send_replace(AccountStatus::SignedIn(Box::new(SignedIn {
@@ -873,6 +896,7 @@ impl Account {
             issuer: session.issuer.clone(),
             server: Some(api.clone()),
             trust_tag: None,
+            session_id: session.id.clone(),
         };
         if let Some(refresh) = &session.refresh
             && self.current().is_company()
@@ -918,6 +942,18 @@ fn code_from(answered: Callback, issuer: &str) -> Result<String, AccountError> {
         Callback::CodeFrom { .. } => Err(ServerError::Mismatch("issuer").into()),
         Callback::Refused { error, description } => Err(AccountError::SignInRefused { error, description }),
     }
+}
+
+// 128 random bits as hex.
+fn new_session_id() -> String {
+    use aws_lc_rs::rand::SecureRandom as _;
+    let mut bytes = [0u8; 16];
+    if aws_lc_rs::rand::SystemRandom::new().fill(&mut bytes).is_err() {
+        // The time and process still tell this sign-in from the last one.
+        let nanos = Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        bytes = ((i128::from(nanos) << 32) | i128::from(std::process::id())).to_be_bytes();
+    }
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn cause_of(error: &AccountError) -> SignOutCause {

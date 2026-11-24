@@ -92,9 +92,10 @@ internal final class AccountServices: AccountBackendListener {
         backend.machineID
     }
 
-    // A client whose calls go to this server only, and only while `isOpen`: any other call reads as signed out.
-    func api(pinnedTo server: AccountServer, while isOpen: @escaping @Sendable () -> Bool = { true }) -> any APIProtocol {
-        AccountAPI.client(backend: backend, transport: transport, onlyTo: server.apiBaseURL, while: isOpen)
+    // A client whose calls go to this server under this sign-in only: under any other, a call reads as signed out and
+    // is never sent.
+    func api(pinnedTo server: AccountServer, session: String) -> any APIProtocol {
+        AccountAPI.client(backend: backend, transport: transport, onlyTo: server.apiBaseURL, session: session)
     }
 
     var server: AccountServer {
@@ -373,7 +374,8 @@ internal final class AccountServices: AccountBackendListener {
             serverLicense: license,
             features: features,
             verifiedAt: verifiedAt,
-            isRestored: backend.isRestored
+            isRestored: backend.isRestored,
+            sessionID: snapshot.sessionID
         ))
         let current = now()
         let boundaries = [entitlement?.expiresAt, license?.expiresAt, license?.graceEndsAt].compactMap { $0 }

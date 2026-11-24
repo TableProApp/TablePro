@@ -19,6 +19,8 @@ pub struct AccountStatusInfo {
     pub entitlement_expires_at_secs: Option<i64>,
     // The entitlement came from an offline file. A signed-in machine can import one too, so the state does not say.
     pub offline_file: bool,
+    // The sign-in's id, across launches; a new sign-in, even of the same account, has another. None signed out.
+    pub session_id: Option<String>,
     pub problem: Option<EntitlementProblemTag>,
     // False when no secret store took the sign-in: the next launch starts signed out.
     pub remembered: bool,
@@ -148,6 +150,8 @@ pub enum LicenseStateTag {
 pub struct AccessTokenInfo {
     pub token: SecretString,
     pub api_url: String,
+    // The sign-in the token is of, so the app sends nothing it kept for another under it.
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -206,6 +210,7 @@ impl From<AccessToken> for AccessTokenInfo {
         Self {
             token: access.token,
             api_url: access.api,
+            session_id: access.session_id,
         }
     }
 }
@@ -222,7 +227,7 @@ impl From<SignOutCause> for SignOutCauseTag {
 }
 
 impl AccountStatusInfo {
-    pub(crate) fn of(status: &AccountStatus, machine_id: &str) -> Self {
+    pub(crate) fn of(status: &AccountStatus, machine_id: &str, session_id: Option<String>) -> Self {
         let (state, signed_in) = match status {
             AccountStatus::SignedOut => (AccountStateTag::SignedOut, None),
             AccountStatus::SignedIn(signed_in) => (AccountStateTag::SignedIn, Some(signed_in)),
@@ -242,6 +247,7 @@ impl AccountStatusInfo {
                 .unwrap_or_default(),
             entitlement_expires_at_secs: status.entitlement().map(|it| it.expires_at().timestamp()),
             offline_file: claims.is_some_and(|claims| claims.offline),
+            session_id: signed_in.and(session_id),
             problem: signed_in
                 .and_then(|signed_in| signed_in.problem.as_ref())
                 .map(|problem| EntitlementProblemTag::of(problem, machine_id)),
@@ -369,12 +375,13 @@ mod tests {
 
     #[test]
     fn signed_out_says_nothing_about_an_account() {
-        let info = AccountStatusInfo::of(&AccountStatus::SignedOut, fakes::MACHINE);
+        let info = AccountStatusInfo::of(&AccountStatus::SignedOut, fakes::MACHINE, Some("stale".to_owned()));
 
         assert_eq!(info.state, AccountStateTag::SignedOut);
         assert_eq!((info.email, info.problem), (None, None));
         assert!(info.features.is_empty());
         assert!(!info.remembered);
+        assert_eq!(info.session_id, None);
     }
 
     #[test]
@@ -390,7 +397,11 @@ mod tests {
             remembered: true,
         }));
 
-        let info = AccountStatusInfo::of(&status, fakes::MACHINE);
+        let info = AccountStatusInfo::of(
+            &status,
+            fakes::MACHINE,
+            Some("0123456789abcdef0123456789abcdef".to_owned()),
+        );
 
         assert_eq!(info.state, AccountStateTag::SignedIn);
         assert_eq!(info.account_id.as_deref(), Some(claims.sub.as_str()));
@@ -398,6 +409,7 @@ mod tests {
         assert_eq!(info.features, ["shared_links"]);
         assert_eq!(info.entitlement_expires_at_secs, Some(claims.exp));
         assert!(!info.offline_file);
+        assert_eq!(info.session_id.as_deref(), Some("0123456789abcdef0123456789abcdef"));
         assert_eq!(
             info.problem,
             Some(EntitlementProblemTag::RefreshFailed {
@@ -417,7 +429,11 @@ mod tests {
             remembered: true,
         }));
 
-        let info = AccountStatusInfo::of(&status, fakes::MACHINE);
+        let info = AccountStatusInfo::of(
+            &status,
+            fakes::MACHINE,
+            Some("0123456789abcdef0123456789abcdef".to_owned()),
+        );
 
         assert_eq!(info.state, AccountStateTag::SignedIn);
         assert!(info.offline_file);
@@ -434,7 +450,11 @@ mod tests {
             remembered: false,
         }));
 
-        let info = AccountStatusInfo::of(&status, fakes::MACHINE);
+        let info = AccountStatusInfo::of(
+            &status,
+            fakes::MACHINE,
+            Some("0123456789abcdef0123456789abcdef".to_owned()),
+        );
 
         let Some(EntitlementProblemTag::DeviceLimitReached { devices }) = info.problem else {
             panic!("not the device limit: {:?}", info.problem);

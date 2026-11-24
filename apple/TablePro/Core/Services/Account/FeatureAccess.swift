@@ -25,6 +25,8 @@ internal struct AccountState: Equatable, Sendable {
     var verifiedAt: Date?
     // False until the core has read the last run's sign-in: a change before then is no sign-in or server change.
     var isRestored = false
+    // The core's id of the sign-in; what the app keeps for a sign-in goes with it.
+    var sessionID: String?
 }
 
 // Whether the person in front of the app has paid, which losing the network cannot undo.
