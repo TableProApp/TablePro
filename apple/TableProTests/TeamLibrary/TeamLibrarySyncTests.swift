@@ -1163,6 +1163,30 @@ struct TeamLibrarySyncTests {
         fixture.sync.stop()
     }
 
+    @Test("A store development builds wrote with an owner is read only for that owner, and another account's goes unread")
+    func ownedEarlierStoreIsReadOnlyForItsOwner() async throws {
+        let production = AccountServer.production.apiOrigin.absoluteString
+        for owner in ["acct_test", "acct_other"] {
+            let fixture = try await TeamLibraryFixture()
+            #expect(await fixture.sync.sync() == .synced)
+            var state = try #require(fixture.store.loadAll().first)
+            state.pending = try TeamLibraryPublishPlan.savedQueries(
+                favorites: [TeamLibraryFixture.favorite(name: "Invoices")], folders: [], in: state
+            )
+            try fixture.writeFlat(state, owner: (server: production, accountID: owner))
+
+            fixture.relaunch()
+            try await waitUntil { !fixture.sync.hasUnsentChanges }
+            #expect(await fixture.sync.sync() == .synced)
+
+            let uploaded = await fixture.server.library.live(Self.team).count
+            #expect(uploaded == (owner == "acct_test" ? 1 : 0), "\(owner)")
+            #expect(!fixture.storage.hasFlat, "\(owner)")
+            #expect(fixture.storage.hasConsideredFlat, "\(owner)")
+            #expect(fixture.notTaken.reports.isEmpty, "\(owner)")
+        }
+    }
+
     @Test("A flag that does not reach the disk reads nothing of the library 0.88 kept, and deletes it")
     func unsavedFlagReadsNothing() async throws {
         let fixture = try await TeamLibraryFixture()

@@ -955,7 +955,7 @@ internal final class TeamLibrarySync: ObservableObject {
         storage.removeFolders(except: folder)
         var kept: [TeamLibraryTeamState] = []
         if next.sessionID == restoredSessionID, next.server.isProduction {
-            kept = storage.takeFlat(into: cache)
+            kept = storage.takeFlat(into: cache, server: next.server.apiOrigin, accountID: next.accountID)
         } else {
             storage.discardFlat()
         }

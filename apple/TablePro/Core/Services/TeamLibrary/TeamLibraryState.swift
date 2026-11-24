@@ -196,14 +196,17 @@ internal struct TeamLibraryStorage {
     }
 
     // One shot: the flag is written and read back before the first read, so no later launch reads it, whoever that
-    // launch restores; a flag that did not stick reads nothing. Its read cache fills in what `cache` lacks, its files
-    // go, and its teams come back with the unsent edits they kept.
-    func takeFlat(into cache: TeamLibraryStateStore) -> [TeamLibraryTeamState] {
+    // launch restores; a flag that did not stick reads nothing. A file that names an owner, as development builds of
+    // the account move wrote, is read only for that owner. Its read cache fills in what `cache` lacks, its files go,
+    // and its teams come back with the unsent edits they kept.
+    func takeFlat(into cache: TeamLibraryStateStore, server: URL, accountID: String) -> [TeamLibraryTeamState] {
         guard !hasConsideredFlat, markFlatConsidered() else {
             removeFlat()
             return []
         }
-        let kept = flat.loadAll()
+        let restored = FlatOwnerRecord.Owner(server: server.absoluteString, accountID: accountID)
+        let owners = flatOwners()
+        let kept = flat.loadAll().filter { owners[$0.teamID].map { $0 == restored } ?? true }
         let cached = Set(cache.loadAll().map(\.teamID))
         for team in kept where !cached.contains(team.teamID) {
             cache.save(team)
@@ -215,6 +218,30 @@ internal struct TeamLibraryStorage {
         }
         removeFlat()
         return kept
+    }
+
+    private struct FlatOwnerRecord: Decodable {
+        struct Owner: Decodable, Equatable {
+            let server: String
+            let accountID: String
+        }
+
+        let teamID: String
+        let owner: Owner?
+    }
+
+    // Team id to the owner its file names; a file of 0.88 and earlier names none.
+    private func flatOwners() -> [String: FlatOwnerRecord.Owner] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: flat.directory, includingPropertiesForKeys: nil)) ?? []
+        var owners: [String: FlatOwnerRecord.Owner] = [:]
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let record = try? JSONDecoder().decode(FlatOwnerRecord.self, from: data),
+                  let owner = record.owner
+            else { continue }
+            owners[record.teamID] = owner
+        }
+        return owners
     }
 
     // Any sign-in but the restored tablepro.app one, or a company server: the library 0.88 kept is not theirs, and goes
