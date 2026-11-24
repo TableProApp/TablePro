@@ -55,4 +55,20 @@ struct VisibleRangeProviderTests {
 
         #expect(rangeProvider.visibleSet == wholeDocument)
     }
+
+    @MainActor
+    @Test func test_oneLongWrappedLineIsQueriedByTheFragmentsInView() {
+        let (scrollView, textView) = Mock.scrollingTextView()
+        textView.wrapLines = true
+        textView.string = String(repeating: "SELECT col_a, col_b FROM t WHERE id = 1 ", count: 5_000)
+        textView.layout()
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: 2_000))
+        scrollView.layoutSubtreeIfNeeded()
+        textView.layout()
+
+        let rangeProvider = VisibleRangeProvider(textView: textView)
+
+        #expect(!rangeProvider.visibleSet.isEmpty)
+        #expect(rangeProvider.visibleSet.count < rangeProvider.documentRange.length / 4)
+    }
 }

@@ -73,6 +73,22 @@ public final class TextLine: Identifiable, Equatable {
         needsLayout = false
     }
 
+    func restyle(
+        range: NSRange,
+        lineLocation: Int,
+        maxWidth: CGFloat,
+        displayData: DisplayData,
+        stringRef: NSTextStorage
+    ) -> [LineFragment]? {
+        guard !needsLayout(maxWidth: maxWidth), lineFragments.count > 1 else { return nil }
+        return typesetter.restyle(
+            range: range,
+            lineLocation: lineLocation,
+            storage: stringRef,
+            displayData: displayData
+        )
+    }
+
     public static func == (lhs: TextLine, rhs: TextLine) -> Bool {
         lhs.id == rhs.id
     }
