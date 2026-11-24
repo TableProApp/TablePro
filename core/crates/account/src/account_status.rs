@@ -20,6 +20,8 @@ pub struct SignedIn {
     pub problem: Option<EntitlementProblem>,
     // False when no keyring took the refresh token: the next launch is signed out.
     pub remembered: bool,
+    // The sign-in's id in this process: each sign-in and each restore has a new one, and no file keeps it.
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -122,6 +124,7 @@ mod tests {
             entitlement,
             problem,
             remembered: true,
+            session_id: None,
         }))
     }
 

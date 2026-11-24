@@ -356,6 +356,8 @@ internal final class AccountServices: AccountBackendListener {
     }
 
     private func publish() {
+        // Read before the snapshot: once the restore is marked, the snapshot read after it holds what it restored.
+        let isRestored = backend.isRestored
         let snapshot = backend.status()
         let entitlement = Entitlement(snapshot)
         var features: [ProFeature: ProFeatureAccess] = [:]
@@ -383,7 +385,7 @@ internal final class AccountServices: AccountBackendListener {
             serverLicense: license,
             features: features,
             verifiedAt: verifiedAt,
-            isRestored: backend.isRestored,
+            isRestored: isRestored,
             sessionID: snapshot.sessionID
         ))
         let current = now()

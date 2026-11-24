@@ -190,24 +190,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task {
             // Team Library edits not uploaded live only in memory, so they are asked about while a Cancel changes nothing.
-            guard await TeamLibraryUnsentChanges.approveQuit() else {
+            let quits = await TeamLibraryUnsentChanges.quit {
+                // Before anything the app could not take back if it stays open.
+                guard await QuitApproval.commitBeforeQuitting(plan) else { return false }
+                RunningWorkRegistry.shared.cancel(plan.work)
+                // While the drivers are open: a debug stop rolls back the routine's transaction.
+                await AppModuleTermination.stopModuleWork()
+                await MCPServerManager.shared.stop()
+                await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
+                // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
+                await VaultDatabaseCredentials.shared.revokeAllLeases()
+                return true
+            }
+            guard quits else {
                 NSApp.reply(toApplicationShouldTerminate: false)
                 AppRelauncher.shared.terminationWasCancelled()
                 return
             }
-            // Before anything the app could not take back if it stays open.
-            guard await QuitApproval.commitBeforeQuitting(plan) else {
-                NSApp.reply(toApplicationShouldTerminate: false)
-                AppRelauncher.shared.terminationWasCancelled()
-                return
-            }
-            RunningWorkRegistry.shared.cancel(plan.work)
-            // While the drivers are open: a debug stop rolls back the routine's transaction.
-            await AppModuleTermination.stopModuleWork()
-            await MCPServerManager.shared.stop()
-            await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
-            // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
-            await VaultDatabaseCredentials.shared.revokeAllLeases()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

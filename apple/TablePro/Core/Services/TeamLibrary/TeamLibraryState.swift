@@ -144,6 +144,8 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
 // Where Team Library keeps what it read, one folder per server and account, and the library 0.88 and earlier kept
 // (TeamLibrarySync has the rules).
 internal struct TeamLibraryStorage {
+    static let flatConsideredKey = "com.TablePro.teamLibrary.earlierLibraryConsidered"
+
     // The library 0.88 and earlier kept: one file per team with its unsent edits, and the /v1 cache.
     let flat: TeamLibraryStateStore
     let cacheRoot: URL
@@ -189,16 +191,26 @@ internal struct TeamLibraryStorage {
         return !teamFiles.isEmpty || FileManager.default.fileExists(atPath: flat.legacyFile.path)
     }
 
-    // The unsent edits 0.88 kept join the teams `cache` holds, and its read cache fills in what `cache` lacks.
-    func adoptFlat(into cache: TeamLibraryStateStore) -> [TeamLibraryTeamState] {
-        var teams = Dictionary(cache.loadAll().map { ($0.teamID, $0.cached) }, uniquingKeysWith: { first, _ in first })
+    var hasConsideredFlat: Bool {
+        defaults.bool(forKey: Self.flatConsideredKey)
+    }
+
+    // One shot: the flag is written before the first read, so no later launch reads it, whoever that launch restores.
+    // The unsent edits it kept join `teams`, its read cache fills in what `cache` lacks, and its files go.
+    func takeFlat(merging teams: [TeamLibraryTeamState], into cache: TeamLibraryStateStore) -> [TeamLibraryTeamState] {
+        guard !hasConsideredFlat else {
+            removeFlat()
+            return teams
+        }
+        markFlatConsidered()
+        var merged = Dictionary(teams.map { ($0.teamID, $0) }, uniquingKeysWith: { first, _ in first })
         for kept in flat.loadAll() {
-            var team = teams[kept.teamID] ?? kept.cached
+            var team = merged[kept.teamID] ?? kept.cached
             team.pending = kept.pending
             team.conflicts = kept.conflicts
             team.moves = kept.moves
             team.declined = kept.declined
-            teams[kept.teamID] = team
+            merged[kept.teamID] = team
             cache.save(team)
         }
         let manager = FileManager.default
@@ -206,19 +218,27 @@ internal struct TeamLibraryStorage {
             try? manager.createDirectory(at: cache.legacyFile.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? manager.copyItem(at: flat.legacyFile, to: cache.legacyFile)
         }
-        return Array(teams.values)
+        removeFlat()
+        return Array(merged.values)
     }
 
-    // One rename takes it out of reach first: a delete that stops halfway leaves a folder no sign-in reads.
-    func removeFlat() {
+    // A sign-in made in this run, or one on a company server: the library 0.88 kept is not theirs, and goes unread.
+    func discardFlat() {
+        markFlatConsidered()
+        removeFlat()
+    }
+
+    // Best-effort: once considered, what is left is never read.
+    private func removeFlat() {
         guard hasFlat else { return }
-        let manager = FileManager.default
-        let discarded = cacheRoot.appendingPathComponent("discarded-\(UUID().uuidString)", isDirectory: true)
-        try? manager.createDirectory(at: discarded, withIntermediateDirectories: true)
-        try? manager.moveItem(at: flat.directory, to: discarded.appendingPathComponent("TeamLibrary", isDirectory: true))
-        try? manager.moveItem(at: flat.legacyFile, to: discarded.appendingPathComponent("team_library.json"))
         flat.removeAll()
-        try? manager.removeItem(at: discarded)
+    }
+
+    private func markFlatConsidered() {
+        guard !hasConsideredFlat else { return }
+        defaults.set(true, forKey: Self.flatConsideredKey)
+        // The flag reaches cfprefsd before the store is read, so a crash after the read cannot let a later launch read it.
+        defaults.synchronize()
     }
 }
 

@@ -12,14 +12,25 @@ internal enum TeamLibraryUnsentChanges {
         case upload
         case discard
         case cancel
+        // Only for the edits 0.88 left: they stay unsent in memory, and quitting or signing out asks again.
+        case later
     }
 
-    // The quit's question. False is Cancel: the app stays open and Team Library syncs on.
-    static func approveQuit(
+    // The quit's question, then the rest of the quit with Team Library held. A Cancel here or a later step that stops
+    // the quit releases the hold, so the app that stays open syncs again.
+    static func quit(
         _ sync: TeamLibrarySync = .shared,
-        ask: @MainActor ([String], TeamLibraryFailure?) async -> Choice = askBeforeQuitting
+        ask: @MainActor ([String], TeamLibraryFailure?) async -> Choice = askBeforeQuitting,
+        then rest: @MainActor () async -> Bool
     ) async -> Bool {
-        var changes = await sync.hold()
+        let hold = await sync.hold()
+        var quits = false
+        defer {
+            if !quits {
+                hold.release()
+            }
+        }
+        var changes = sync.unsentChanges
         var failure: TeamLibraryFailure?
         while !changes.isEmpty {
             switch await ask(changes, failure) {
@@ -27,13 +38,13 @@ internal enum TeamLibraryUnsentChanges {
                 (changes, failure) = await sync.pushHeld()
             case .discard:
                 sync.discardHeld()
-                return true
-            case .cancel:
-                sync.release()
+                changes = []
+            case .cancel, .later:
                 return false
             }
         }
-        return true
+        quits = await rest()
+        return quits
     }
 
     static func askBeforeQuitting(_ changes: [String], failure: TeamLibraryFailure?) async -> Choice {
@@ -66,6 +77,40 @@ internal enum TeamLibraryUnsentChanges {
             changes.formatted(.list(type: .and))
         ))
         return sentences.joined(separator: " ")
+    }
+
+    static func askAboutEarlierEdits(_ changes: [String]) async -> Choice {
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = String(localized: "Upload Team Library changes from before the update?")
+        alert.informativeText = String(
+            format: String(localized: "Not uploaded before TablePro updated: %@. Later keeps them in memory until you quit or sign out, which ask again."),
+            changes.formatted(.list(type: .and))
+        )
+        alert.addButton(withTitle: String(localized: "Upload"))
+        let discard = alert.addButton(withTitle: String(localized: "Discard"))
+        discard.hasDestructiveAction = true
+        alert.addButton(withTitle: String(localized: "Later"))
+        switch await AlertHelper.response(to: alert, in: nil) {
+        case .alertFirstButtonReturn: return .upload
+        case .alertSecondButtonReturn: return .discard
+        default: return .later
+        }
+    }
+
+    // A refused edit as the unsent list names it.
+    nonisolated static func refused(_ name: String, because reason: TeamLibraryFailure) -> String {
+        let why: String
+        switch reason {
+        case .writeForbidden:
+            why = String(localized: "only the team's owner and admins publish")
+        case .unreadable:
+            why = String(localized: "no seat in the team")
+        default:
+            why = String(localized: "the team library refused it")
+        }
+        return String(format: String(localized: "%@ (not sent: %@)"), name, why)
     }
 
     // An involuntary sign-out leaves no one to push for, so its unsent edits go and the person is told which.

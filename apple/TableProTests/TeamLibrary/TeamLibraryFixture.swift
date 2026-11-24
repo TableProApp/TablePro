@@ -23,6 +23,8 @@ final class TeamLibraryFixture {
     let store: TeamLibraryStateStore
     // What each involuntary sign-out discarded.
     let discarded = DiscardedLog()
+    // The question about the edits 0.88 left, and the answer it gets.
+    let earlier = EarlierEditsLog()
     private(set) var sync: TeamLibrarySync
 
     init(role: String = "owner", hasSeat: Bool = true, seed: (inout FakeTeamLibrary) -> Void = { _ in }) async throws {
@@ -50,7 +52,10 @@ final class TeamLibraryFixture {
             defaults: defaults.defaults
         )
         store = storage.cache(in: storage.folder(server: AccountServer.production.apiOrigin, accountID: "acct_test"))
-        sync = TeamLibrarySync(account: account.services, storage: storage, clock: clock, reportDiscarded: discarded.record)
+        sync = TeamLibrarySync(
+            account: account.services, storage: storage, clock: clock,
+            reportDiscarded: discarded.record, askAboutEarlierEdits: earlier.answer
+        )
         sync.loadIfNeeded()
     }
 
@@ -65,14 +70,24 @@ final class TeamLibraryFixture {
     // A new launch reading what the last one stored.
     func relaunch() {
         sync.stop()
-        sync = TeamLibrarySync(account: account.services, storage: storage, clock: clock, reportDiscarded: discarded.record)
+        sync = TeamLibrarySync(
+            account: account.services, storage: storage, clock: clock,
+            reportDiscarded: discarded.record, askAboutEarlierEdits: earlier.answer
+        )
         sync.loadIfNeeded()
     }
 
-    // A team file as 0.88 and earlier wrote it, unsent edits and conflicts included.
+    // A team file as 0.88 and earlier wrote it, unsent edits and conflicts included, on a Mac that has not read it yet.
     func writeFlat(_ state: TeamLibraryTeamState) throws {
         try JSONFileStore<TeamLibraryTeamState>(url: storage.flat.directory.appendingPathComponent("\(state.teamID).json"))
             .write(state)
+        defaults.defaults.removeObject(forKey: TeamLibraryStorage.flatConsideredKey)
+    }
+
+    // The /v1 cache as 0.88 and earlier kept it, on a Mac that has not read it yet.
+    func writeFlatLegacyCache(_ cache: [String: Any]) throws {
+        try JSONSerialization.data(withJSONObject: cache).write(to: storage.flat.legacyFile)
+        defaults.defaults.removeObject(forKey: TeamLibraryStorage.flatConsideredKey)
     }
 
     // The folders of the read cache on disk, one per server and account.
@@ -131,6 +146,17 @@ final class TeamLibraryFixture {
             data["parent_client_id"] = parent
         }
         return data
+    }
+}
+
+@MainActor
+final class EarlierEditsLog {
+    var choice = TeamLibraryUnsentChanges.Choice.later
+    private(set) var asked: [[String]] = []
+
+    func answer(_ changes: [String]) async -> TeamLibraryUnsentChanges.Choice {
+        asked.append(changes)
+        return choice
     }
 }
 

@@ -156,9 +156,7 @@ impl AccountService {
 #[uniffi::export]
 impl AccountService {
     pub fn status(&self) -> AccountStatusInfo {
-        // The session id goes out before the status it belongs to, so it is read first.
-        let session_id = self.account.session_id();
-        AccountStatusInfo::of(&self.status.borrow(), self.account.machine_id().as_str(), session_id)
+        AccountStatusInfo::of(&self.status.borrow(), self.account.machine_id().as_str())
     }
 
     // From the entitlement's feature codes only: the app knows no plan or tier.

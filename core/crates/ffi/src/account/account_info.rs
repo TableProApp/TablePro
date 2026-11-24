@@ -227,7 +227,7 @@ impl From<SignOutCause> for SignOutCauseTag {
 }
 
 impl AccountStatusInfo {
-    pub(crate) fn of(status: &AccountStatus, machine_id: &str, session_id: Option<String>) -> Self {
+    pub(crate) fn of(status: &AccountStatus, machine_id: &str) -> Self {
         let (state, signed_in) = match status {
             AccountStatus::SignedOut => (AccountStateTag::SignedOut, None),
             AccountStatus::SignedIn(signed_in) => (AccountStateTag::SignedIn, Some(signed_in)),
@@ -247,7 +247,7 @@ impl AccountStatusInfo {
                 .unwrap_or_default(),
             entitlement_expires_at_secs: status.entitlement().map(|it| it.expires_at().timestamp()),
             offline_file: claims.is_some_and(|claims| claims.offline),
-            session_id: signed_in.and(session_id),
+            session_id: signed_in.and_then(|signed_in| signed_in.session_id.clone()),
             problem: signed_in
                 .and_then(|signed_in| signed_in.problem.as_ref())
                 .map(|problem| EntitlementProblemTag::of(problem, machine_id)),
@@ -375,7 +375,7 @@ mod tests {
 
     #[test]
     fn signed_out_says_nothing_about_an_account() {
-        let info = AccountStatusInfo::of(&AccountStatus::SignedOut, fakes::MACHINE, Some("stale".to_owned()));
+        let info = AccountStatusInfo::of(&AccountStatus::SignedOut, fakes::MACHINE);
 
         assert_eq!(info.state, AccountStateTag::SignedOut);
         assert_eq!((info.email, info.problem), (None, None));
@@ -395,13 +395,10 @@ mod tests {
                 "offline".to_owned(),
             ))),
             remembered: true,
+            session_id: Some("0123456789abcdef0123456789abcdef".to_owned()),
         }));
 
-        let info = AccountStatusInfo::of(
-            &status,
-            fakes::MACHINE,
-            Some("0123456789abcdef0123456789abcdef".to_owned()),
-        );
+        let info = AccountStatusInfo::of(&status, fakes::MACHINE);
 
         assert_eq!(info.state, AccountStateTag::SignedIn);
         assert_eq!(info.account_id.as_deref(), Some(claims.sub.as_str()));
@@ -427,13 +424,10 @@ mod tests {
             entitlement: Some(fakes::entitlement(&claims).unwrap()),
             problem: None,
             remembered: true,
+            session_id: Some("0123456789abcdef0123456789abcdef".to_owned()),
         }));
 
-        let info = AccountStatusInfo::of(
-            &status,
-            fakes::MACHINE,
-            Some("0123456789abcdef0123456789abcdef".to_owned()),
-        );
+        let info = AccountStatusInfo::of(&status, fakes::MACHINE);
 
         assert_eq!(info.state, AccountStateTag::SignedIn);
         assert!(info.offline_file);
@@ -448,13 +442,10 @@ mod tests {
                 device("another machine"),
             ])),
             remembered: false,
+            session_id: Some("0123456789abcdef0123456789abcdef".to_owned()),
         }));
 
-        let info = AccountStatusInfo::of(
-            &status,
-            fakes::MACHINE,
-            Some("0123456789abcdef0123456789abcdef".to_owned()),
-        );
+        let info = AccountStatusInfo::of(&status, fakes::MACHINE);
 
         let Some(EntitlementProblemTag::DeviceLimitReached { devices }) = info.problem else {
             panic!("not the device limit: {:?}", info.problem);

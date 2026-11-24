@@ -341,7 +341,43 @@ struct AccountSettingsModelTests {
         #expect(await fixture.server.library.live(TeamLibraryFixture.team).isEmpty)
         #expect(!fixture.sync.hasUnsentChanges)
         #expect(fixture.discarded.reports.isEmpty)
+        #expect(!sync.isHeld)
         fixture.sync.stop()
+    }
+
+    @Test("Signed out another way while the dialog asks: the dialog closes and Team Library goes on")
+    func involuntarySignOutClosesTheDialog() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        let sync = fixture.sync
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync })
+        await model.requestSignOut()
+        #expect(sync.isHeld)
+
+        await fixture.server.set { $0.refusesRefresh = true }
+        await fixture.account.services.refreshEntitlement()
+
+        try await waitUntil { !sync.isHeld }
+        #expect(!fixture.account.services.isSignedIn)
+        #expect(!model.confirmsSignOut)
+    }
+
+    @Test("Sign Out with no Team Library session open still lets Team Library go on")
+    func signOutWithoutASessionReleasesTheHold() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.account.services.signOut()
+        await fixture.server.set { $0.deviceLimitReached = true }
+        try await fixture.account.signIn()
+        await fixture.sync.sync()
+        let sync = fixture.sync
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { sync })
+        await model.requestSignOut()
+        #expect(sync.isHeld)
+
+        await model.signOut(uploadingFirst: false)
+
+        #expect(!fixture.account.services.isSignedIn)
+        #expect(!sync.isHeld)
     }
 
     @Test("A closed dialog keeps Team Library waiting: only Cancel lets it go on")

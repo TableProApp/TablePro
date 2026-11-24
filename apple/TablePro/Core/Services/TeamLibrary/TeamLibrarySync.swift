@@ -36,13 +36,13 @@ internal struct TeamLibraryDestination: Sendable {
 //     Nothing about them is written to disk.
 // I2. The read cache sits in a folder named from the server and account (TeamLibraryStorage). Only the open session's
 //     folder is read; every other one is deleted, best-effort, on sign-out, switch and launch.
-// I3. The library 0.88 and earlier kept goes only to the tablepro.app sign-in the core restored at launch: its cache is
-//     copied into that account's folder and its edits pushed with that session's bearer. Its files go once a push
-//     succeeds, or with the session; a failed push keeps them for the next launch. A sign-in made in this run or on a
-//     company server deletes them unread.
+// I3. The library 0.88 and earlier kept is read once, on the launch whose restored sign-in is tablepro.app's: a flag
+//     saying so is written first, its cache is copied into that account's folder and its files deleted, and its unsent
+//     edits are asked about once (upload, discard or later). A sign-in made in this run or on a company server sets the
+//     flag and deletes it unread.
 // I4. A switch or sign-out stays in this process. Sync stops and the pass in flight ends, unsent edits are listed with
 //     push, discard or cancel (an involuntary sign-out can only discard and says what went), then the session's
-//     store goes. The session id lives only in the core's process and a bearer of another session is refused; a
+//     store goes. An edit the server refused stays listed, with why, until it is discarded. The session id lives only in the core's process and a bearer of another session is refused; a
 //     publish is bound to the session shown at its confirmation and checked again before it is sent.
 // I5. Quitting with unsent edits asks push, discard or cancel; while edits wait, Team Library shows them not uploaded.
 // I6. Losing team_library drops the session's store and deletes its folder, best-effort.
@@ -75,13 +75,21 @@ internal final class TeamLibrarySync: ObservableObject {
     private var restoredSessionID: String?
     // Once a session closed, the next one opens behind the pass that may still be out.
     private var hasStopped = false
-    // Set while a sign-out or a quit asks: no pass, publish or resolve runs, so the unsent edits it listed stay the last.
-    private(set) var isHeld = false
+    // Holds taken by a sign-out or a quit asking, or by the question about earlier edits: while any is out, no pass,
+    // publish or resolve runs, so the unsent edits listed stay the last.
+    private var holds = 0
     private var resumesAfterHold = false
     private let reportDiscarded: @MainActor ([String]) -> Void
+    private let askAboutEarlierEdits: @MainActor ([String]) async -> TeamLibraryUnsentChanges.Choice
     private let clock: any Clock<Duration>
     private let now: @Sendable () -> Date
-    private var teams: [String: TeamLibraryTeamState] = [:]
+    private var teams: [String: TeamLibraryTeamState] = [:] {
+        didSet { countNotUploaded() }
+    }
+    // Edits the server refused, with why: unsent until they are discarded.
+    private var refused: [RefusedEdit] = [] {
+        didSet { countNotUploaded() }
+    }
     // The /v1 cache, shown until every team this account reads has a first /v2 snapshot.
     private var legacy: TeamLibraryLegacyLibrary?
     // GET /v2/me's address, the one the /v1 cache names publishers by.
@@ -99,7 +107,7 @@ internal final class TeamLibrarySync: ObservableObject {
     private var rescheduled = false
     // Set by a 429's Retry-After: no pull or push goes out until it ends.
     private var rateLimitHold: Task<Void, Never>?
-    // Bumped when a session closes, so a sync still out at that moment brings no team back.
+    // Bumped when a session opens or closes, so a sync still out at that moment brings no team back.
     private var generation = 0
 
     private struct SessionKey: Equatable {
@@ -122,8 +130,13 @@ internal final class TeamLibrarySync: ObservableObject {
         let key: SessionKey
         let cache: TeamLibraryStateStore
         let client: TeamLibraryClient
-        // Holds the edits of the library 0.88 kept, whose files stay until a push of them succeeds.
-        var usesFlat: Bool
+    }
+
+    private struct RefusedEdit {
+        let teamID: String
+        let key: TeamLibraryKey
+        let name: String
+        let reason: TeamLibraryFailure
     }
 
     init(
@@ -131,13 +144,16 @@ internal final class TeamLibrarySync: ObservableObject {
         storage: TeamLibraryStorage,
         clock: any Clock<Duration> = ContinuousClock(),
         now: @escaping @Sendable () -> Date = { Date() },
-        reportDiscarded: @escaping @MainActor ([String]) -> Void = TeamLibraryUnsentChanges.presentDiscarded
+        reportDiscarded: @escaping @MainActor ([String]) -> Void = TeamLibraryUnsentChanges.presentDiscarded,
+        askAboutEarlierEdits: @escaping @MainActor ([String]) async -> TeamLibraryUnsentChanges.Choice
+            = TeamLibraryUnsentChanges.askAboutEarlierEdits
     ) {
         self.account = account
         self.storage = storage
         self.clock = clock
         self.now = now
         self.reportDiscarded = reportDiscarded
+        self.askAboutEarlierEdits = askAboutEarlierEdits
     }
 
     var canPublish: Bool {
@@ -149,11 +165,15 @@ internal final class TeamLibrarySync: ObservableObject {
         !unsentChanges.isEmpty
     }
 
-    // Their names, as a sign-out or a quit lists them.
+    // Their names, as a sign-out or a quit lists them, and the refused ones with why.
     var unsentChanges: [String] {
         teams.values.sorted { $0.teamName < $1.teamName }.flatMap { state in
             (state.pending + state.conflicts.map(\.edit)).map { Self.name(of: $0, in: state) }
-        }
+        } + refused.map { TeamLibraryUnsentChanges.refused($0.name, because: $0.reason) }
+    }
+
+    var isHeld: Bool {
+        holds > 0
     }
 
     func start() {
@@ -188,23 +208,30 @@ internal final class TeamLibrarySync: ObservableObject {
         follow(account.access.state)
     }
 
-    // Stops the schedule and waits for the pass or publish still out, so what it returns stays final while held.
-    func hold() async -> [String] {
-        if !isHeld {
-            isHeld = true
+    // Stops the schedule and waits for the pass or publish still out, so `unsentChanges` stays final until the release.
+    func hold() async -> TeamLibraryHold {
+        let hold = beginHold()
+        await tail?.value
+        return hold
+    }
+
+    private func beginHold() -> TeamLibraryHold {
+        if holds == 0 {
             resumesAfterHold = scheduleTask != nil
             stopSchedule()
         }
-        await tail?.value
-        return unsentChanges
+        holds += 1
+        return TeamLibraryHold { [weak self] in self?.endHold() }
     }
 
-    // The sign-out or the quit was canceled.
-    func release() {
-        guard isHeld else { return }
-        isHeld = false
+    private func endHold() {
+        holds -= 1
+        guard holds == 0 else { return }
         if resumesAfterHold {
             start()
+        } else if scheduleTask != nil {
+            // A schedule started while held skipped its pass and sleeps.
+            syncSoon()
         }
     }
 
@@ -220,7 +247,7 @@ internal final class TeamLibrarySync: ObservableObject {
         return (unsentChanges, nil)
     }
 
-    // Discard: the unsent edits go, and the library 0.88 kept with them.
+    // Discard: the unsent edits go, refused ones included.
     func discardHeld() {
         guard isHeld else { return }
         for var state in teams.values where !state.pending.isEmpty || !state.conflicts.isEmpty {
@@ -228,10 +255,7 @@ internal final class TeamLibrarySync: ObservableObject {
             state.conflicts = []
             commit(state)
         }
-        if active?.usesFlat == true {
-            storage.removeFlat()
-            active?.usesFlat = false
-        }
+        refused = []
         publishContent()
     }
 
@@ -341,22 +365,19 @@ internal final class TeamLibrarySync: ObservableObject {
         rateLimitHold?.cancel()
         rateLimitHold = nil
         teams = [:]
+        refused = []
         legacy = nil
         accountEmail = nil
-        if let active {
+        if active != nil {
             storage.removeFolders(except: nil)
-            if active.usesFlat {
-                storage.removeFlat()
-                self.active?.usesFlat = false
-            }
         }
         status = .idle
         publishContent()
     }
 
     private func performSync(whileHeld: Bool = false) async -> TeamLibrarySyncOutcome {
-        guard !isHeld || whileHeld else { return .skipped }
         follow(account.access.state, inPass: true)
+        guard !isHeld || whileHeld else { return .skipped }
         guard account.isSignedIn, let client = active?.client else { return .skipped }
         guard account.access.isAvailable(.teamLibrary) else {
             // A current entitlement without team_library: the seat or the plan is gone, and with it what this Mac read.
@@ -400,10 +421,6 @@ internal final class TeamLibrarySync: ObservableObject {
             legacy = nil
             active?.cache.removeLegacy()
         }
-        if failure == nil, active?.usesFlat == true {
-            storage.removeFlat()
-            active?.usesFlat = false
-        }
         publishContent()
         return finish(failure.map { .failed($0) } ?? .synced)
     }
@@ -425,8 +442,7 @@ internal final class TeamLibrarySync: ObservableObject {
         let seated = memberships.filter(\.hasSeat)
         let listed = Set(seated.map(\.teamID))
         for teamID in teams.keys where !listed.contains(teamID) {
-            teams[teamID] = nil
-            active?.cache.remove(teamID: teamID)
+            drop(teamID, because: .unreadable)
         }
         for membership in seated {
             var state = teams[membership.teamID]
@@ -435,8 +451,9 @@ internal final class TeamLibrarySync: ObservableObject {
             state.canWrite = membership.role == "owner" || membership.role == "admin"
             if !state.canWrite, !state.pending.isEmpty || !state.conflicts.isEmpty {
                 Self.logger.notice(
-                    "Dropping \(state.pending.count) unpushed team library edits and \(state.conflicts.count) conflicts: this account only reads the team's library"
+                    "Refusing \(state.pending.count) unpushed team library edits and \(state.conflicts.count) conflicts: this account only reads the team's library"
                 )
+                refuse(state.pending + state.conflicts.map(\.edit), in: state, because: .writeForbidden)
                 state.pending = []
                 state.conflicts = []
             }
@@ -479,8 +496,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 snapshot = [:]
                 continue
             } catch .unreadable {
-                teams[teamID] = nil
-                active?.cache.remove(teamID: teamID)
+                drop(teamID, because: .unreadable)
                 throw .unreadable
             }
             guard var state = teams[teamID] else { return }
@@ -522,6 +538,7 @@ internal final class TeamLibrarySync: ObservableObject {
                 answer = try await client.push(teamID: teamID, edits: batch)
             } catch .writeForbidden {
                 if var current = teams[teamID] {
+                    refuse(current.pending + current.conflicts.map(\.edit), in: current, because: .writeForbidden)
                     current.canWrite = false
                     current.pending = []
                     current.conflicts = []
@@ -531,13 +548,14 @@ internal final class TeamLibrarySync: ObservableObject {
             } catch .refused(_) {
                 Self.logger.error("The team library refused a push of \(batch.count) changes without naming one")
                 if var current = teams[teamID] {
-                    current.pending.removeFirst(min(batch.count, current.pending.count))
+                    let count = min(batch.count, current.pending.count)
+                    refuse(Array(current.pending.prefix(count)), in: current, because: .refused(nil))
+                    current.pending.removeFirst(count)
                     commit(current)
                 }
                 throw .refused(nil)
             } catch .unreadable {
-                teams[teamID] = nil
-                active?.cache.remove(teamID: teamID)
+                drop(teamID, because: .unreadable)
                 throw .unreadable
             }
             guard var current = teams[teamID] else { return }
@@ -547,10 +565,14 @@ internal final class TeamLibrarySync: ObservableObject {
                 Self.logger.error("The team library refused change \(index) of a push of \(batch.count)")
                 if batch.indices.contains(index), current.pending.indices.contains(index),
                    TeamLibraryKey(current.pending[index]) == TeamLibraryKey(batch[index]) {
-                    let edit = current.pending.remove(at: index)
-                    refusal = refusal ?? .refused(Self.name(of: edit, in: current))
+                    let reason = TeamLibraryFailure.refused(Self.name(of: current.pending[index], in: current))
+                    refuse([current.pending[index]], in: current, because: reason)
+                    current.pending.remove(at: index)
+                    refusal = refusal ?? reason
                 } else {
-                    current.pending.removeFirst(min(batch.count, current.pending.count))
+                    let count = min(batch.count, current.pending.count)
+                    refuse(Array(current.pending.prefix(count)), in: current, because: .refused(nil))
+                    current.pending.removeFirst(count)
                     refusal = refusal ?? .refused(nil)
                 }
                 commit(current)
@@ -580,6 +602,7 @@ internal final class TeamLibrarySync: ObservableObject {
         let isMove = state.moves.contains(key)
         switch result.status {
         case "applied":
+            refused.removeAll { $0.teamID == state.teamID && $0.key == key }
             state.conflicts.removeAll { $0.key == key }
             state.items[key] = TeamLibraryChange(
                 clientId: edit.clientId,
@@ -647,14 +670,39 @@ internal final class TeamLibrarySync: ObservableObject {
     // The server refuses a whole push over one item past 256 KiB, so that item stays here.
     private func dropOversizedEdits(_ teamID: String) {
         guard var state = teams[teamID] else { return }
-        let kept = state.pending.filter { edit in
-            guard let data = edit.data?.additionalProperties else { return true }
-            return TeamLibraryPayload.byteCount(of: data) <= Self.maxItemBytes
+        let oversized = { (edit: TeamLibraryEdit) -> Bool in
+            guard let data = edit.data?.additionalProperties else { return false }
+            return TeamLibraryPayload.byteCount(of: data) > Self.maxItemBytes
         }
-        guard kept.count != state.pending.count else { return }
-        Self.logger.error("Not publishing \(state.pending.count - kept.count) team library items larger than 256 KiB")
-        state.pending = kept
+        let dropped = state.pending.filter(oversized)
+        guard !dropped.isEmpty else { return }
+        Self.logger.error("Not publishing \(dropped.count) team library items larger than 256 KiB")
+        refuse(dropped, in: state, because: .refused(nil))
+        state.pending.removeAll(where: oversized)
         commit(state)
+    }
+
+    // An edit that can never be sent as it is: listed with why until the person discards it.
+    private func refuse(_ edits: [TeamLibraryEdit], in state: TeamLibraryTeamState, because reason: TeamLibraryFailure) {
+        refused += edits.map {
+            RefusedEdit(teamID: state.teamID, key: TeamLibraryKey($0), name: Self.name(of: $0, in: state), reason: reason)
+        }
+    }
+
+    // A team this account no longer reads goes, and its unsent edits stay listed as refused.
+    private func drop(_ teamID: String, because reason: TeamLibraryFailure) {
+        if let state = teams[teamID] {
+            refuse(state.pending + state.conflicts.map(\.edit), in: state, because: reason)
+        }
+        teams[teamID] = nil
+        active?.cache.remove(teamID: teamID)
+    }
+
+    private func countNotUploaded() {
+        let count = teams.values.reduce(refused.count) { $0 + $1.pending.count }
+        if count != notUploadedCount {
+            notUploadedCount = count
+        }
     }
 
     // `owns` tells this Mac's own items from someone else's that a publish only moves.
@@ -762,10 +810,6 @@ internal final class TeamLibrarySync: ObservableObject {
         if nextConflicts != conflicts {
             conflicts = nextConflicts
         }
-        let pendingCount = teams.values.reduce(0) { $0 + $1.pending.count }
-        if pendingCount != notUploadedCount {
-            notUploadedCount = pendingCount
-        }
         let writable = teams.values.filter(\.canWrite)
             .map { TeamLibraryTeam(id: $0.teamID, name: $0.teamName) }
             .sorted { ($0.name, $0.id) < ($1.name, $1.id) }
@@ -847,7 +891,7 @@ internal final class TeamLibrarySync: ObservableObject {
             restoredSessionID = state.isSignedIn ? state.sessionID : nil
             // Only tablepro.app's sign-in of 0.88 can be restored, and a company server's core never restores it.
             if !state.server.isProduction {
-                storage.removeFlat()
+                storage.discardFlat()
             }
             if next == nil {
                 storage.removeFolders(except: nil)
@@ -869,34 +913,49 @@ internal final class TeamLibrarySync: ObservableObject {
         guard next != active?.key else { return }
         close()
         guard let next else { return }
+        generation += 1
         let folder = storage.folder(server: next.server.apiOrigin, accountID: next.accountID)
         let cache = storage.cache(in: folder)
         storage.removeFolders(except: folder)
         var loaded = cache.loadAll().map(\.cached)
-        var usesFlat = false
-        if next.sessionID == restoredSessionID, next.server.isProduction, storage.hasFlat {
-            loaded = storage.adoptFlat(into: cache)
-            usesFlat = loaded.contains { !$0.pending.isEmpty || !$0.conflicts.isEmpty }
-            if !usesFlat {
-                storage.removeFlat()
-            }
+        if next.sessionID == restoredSessionID, next.server.isProduction {
+            loaded = storage.takeFlat(merging: loaded, into: cache)
         } else {
-            storage.removeFlat()
+            storage.discardFlat()
         }
         active = ActiveSession(
             key: next,
             cache: cache,
-            client: TeamLibraryClient(api: account.api(pinnedTo: next.server, session: next.sessionID)),
-            usesFlat: usesFlat
+            client: TeamLibraryClient(api: account.api(pinnedTo: next.server, session: next.sessionID))
         )
         teams = Dictionary(loaded.map { ($0.teamID, $0) }, uniquingKeysWith: { first, _ in first })
         legacy = cache.loadLegacy(now: now())
         publishContent()
+        guard hasUnsentChanges else { return }
+        // Only the library 0.88 kept brings unsent edits to a session that just opened: asked about before any pass.
+        let hold = beginHold()
+        let sessionID = next.sessionID
+        _ = serially { [weak self] in
+            defer { hold.release() }
+            await self?.reviewEarlierEdits(of: sessionID)
+        }
+    }
+
+    private func reviewEarlierEdits(of sessionID: String) async {
+        guard active?.key.sessionID == sessionID, hasUnsentChanges else { return }
+        switch await askAboutEarlierEdits(unsentChanges) {
+        case .upload:
+            record(await performSync(whileHeld: true))
+        case .discard:
+            discardHeld()
+        case .later, .cancel:
+            break
+        }
     }
 
     // Drops the session's store and every folder; unsent edits still here at this point had no one to ask.
     private func close() {
-        guard let closing = active else { return }
+        guard active != nil else { return }
         let dropped = unsentChanges
         active = nil
         hasStopped = true
@@ -904,20 +963,32 @@ internal final class TeamLibrarySync: ObservableObject {
         rateLimitHold?.cancel()
         rateLimitHold = nil
         teams = [:]
+        refused = []
         legacy = nil
         accountEmail = nil
         status = .idle
         storage.removeFolders(except: nil)
-        if closing.usesFlat {
-            storage.removeFlat()
-        }
         publishContent()
         if !dropped.isEmpty {
             Self.logger.notice("Discarding \(dropped.count) team library changes the sign-out left unsent")
             reportDiscarded(dropped)
         }
-        if isHeld {
-            release()
-        }
+    }
+}
+
+// One reason Team Library sync is stopped: a sign-out or a quit asking, or the question about earlier edits. Sync goes on
+// once every hold is released; each owner releases its own, with `defer` where it can.
+@MainActor
+internal final class TeamLibraryHold {
+    private var end: (@MainActor () -> Void)?
+
+    init(end: @escaping @MainActor () -> Void) {
+        self.end = end
+    }
+
+    func release() {
+        let end = self.end
+        self.end = nil
+        end?()
     }
 }
