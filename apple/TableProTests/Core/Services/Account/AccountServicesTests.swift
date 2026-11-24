@@ -376,6 +376,23 @@ struct AccountServicesTests {
         #expect(calls.first?.baseURL == AccountServer.production.apiBaseURL)
     }
 
+    @Test("Shared links stay on tablepro.app: signed in to a company server, a share is refused before anything is sent")
+    func sharesNeverReachACompanyServer() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        try await fixture.signIn()
+        let draft = ShareDraft(
+            kind: .query, sql: "SELECT 1", title: "Q", note: nil, dialect: "PostgreSQL", expiry: .sevenDays,
+            hidesSQL: false, allowsDownload: nil, password: "secret", teamID: nil, snapshot: nil
+        )
+
+        await #expect(throws: ShareFailure.signedOut) { try await fixture.services.shares.limits() }
+        await #expect(throws: ShareFailure.signedOut) { try await fixture.services.shares.create(draft) }
+        await #expect(throws: ShareFailure.signedOut) { try await fixture.services.shares.liveLinks(teamID: nil) }
+
+        #expect(await fixture.server.requests.filter { $0.path.hasPrefix("/shares") }.isEmpty)
+    }
+
     @Test("Signed out, the Swift clients send nothing")
     func signedOutSendsNothing() async throws {
         let fixture = try AccountFixture()

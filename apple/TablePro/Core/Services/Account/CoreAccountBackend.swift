@@ -68,7 +68,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
         let stack = setup.developmentStack
         return AccountConfig(
             accountUrl: stack?.accountURL,
-            apiUrl: stack?.apiURL,
+            apiUrl: stack?.apiBase,
             entitlementKeys: stack?.entitlementKeys ?? [],
             deviceName: machine.name,
             appVersion: machine.appVersion,
@@ -122,7 +122,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
         let service = try await awaitService()
         self.authenticator.use(authenticator)
         defer { self.authenticator.use(nil) }
-        try await Self.call(.signIn) { try await service.signIn(cancel: nil) }
+        try await Self.call(.signIn, keepingDeviceLimit: true) { try await service.signIn(cancel: nil) }
     }
 
     func signOut() async throws(AccountError) {
@@ -142,7 +142,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
 
     func useLicenseKey(_ key: String) async throws(AccountError) {
         let service = try await awaitService()
-        try await Self.call(.licenseKey) { try await service.useLicenseKey(key: key) }
+        try await Self.call(.licenseKey, keepingDeviceLimit: true) { try await service.useLicenseKey(key: key) }
     }
 
     func importOfflineFile(at url: URL) async throws(AccountError) {
@@ -190,6 +190,21 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
             return try await body()
         } catch let error as CoreError {
             throw CoreAccountMapping.error(error, during: operation)
+        } catch {
+            throw .network(error.localizedDescription)
+        }
+    }
+
+    private static func call(
+        _ operation: CoreAccountMapping.Operation,
+        keepingDeviceLimit: Bool,
+        _ body: () async throws -> Void
+    ) async throws(AccountError) {
+        do {
+            try await body()
+        } catch let error as CoreError {
+            guard let failure = CoreAccountMapping.signInError(error, during: operation) else { return }
+            throw failure
         } catch {
             throw .network(error.localizedDescription)
         }

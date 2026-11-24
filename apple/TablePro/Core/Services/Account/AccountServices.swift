@@ -73,13 +73,16 @@ internal final class AccountServices: AccountBackendListener {
         self.clock = clock
         self.now = now
         self.api = AccountAPI.client(backend: backend, transport: transport)
+        // Shared links are a tablepro.app service: a share sheet left open across a switch to a company server sends
+        // that server nothing.
+        let sharesServer = AccountServer.production.apiBaseURL
         self.shares = CloudShareService(
-            api: api,
+            api: AccountAPI.client(backend: backend, transport: transport, onlyTo: sharesServer),
             publicAPI: AccountAPI.publicClient(serverURL: sharedLinkServer, transport: transport),
             createRequest: ShareCreateRequest(
-                serverURL: AccountServer.production.apiBaseURL,
+                serverURL: sharesServer,
                 transport: transport,
-                middlewares: [AccountBearerMiddleware(backend: backend)]
+                middlewares: [AccountBearerMiddleware(backend: backend, onlyTo: sharesServer)]
             )
         )
     }
@@ -129,6 +132,12 @@ internal final class AccountServices: AccountBackendListener {
     }
 
     func loadStoredState() {
+        publish()
+    }
+
+    // For launch work a feature gates: it reads what the core restored, published.
+    func waitUntilRestored() async {
+        await backend.waitUntilRestored()
         publish()
     }
 

@@ -7,13 +7,14 @@ import Foundation
 import TableProCloudAPI
 
 internal enum AccountAPI {
-    // The server URL is the bearer middleware's to set, from the server the core signs in to.
-    static func client(backend: any AccountBackend, transport: any ClientTransport) -> Client {
+    // The server URL is the bearer middleware's to set, from the server the core signs in to. `onlyTo` pins a
+    // tablepro.app service to tablepro.app.
+    static func client(backend: any AccountBackend, transport: any ClientTransport, onlyTo: URL? = nil) -> Client {
         Client(
             serverURL: AccountServer.production.apiBaseURL,
             configuration: Configuration(dateTranscoder: RFC3339DateTranscoder()),
             transport: transport,
-            middlewares: [AccountBearerMiddleware(backend: backend)]
+            middlewares: [AccountBearerMiddleware(backend: backend, onlyTo: onlyTo)]
         )
     }
 
@@ -35,6 +36,8 @@ internal enum AccountAPI {
 // that server only: a body sent to one server never goes to another.
 internal struct AccountBearerMiddleware: ClientMiddleware {
     let backend: any AccountBackend
+    // A sign-in on any other server reads as signed out, and nothing is sent.
+    var onlyTo: URL?
 
     func intercept(
         _ request: HTTPRequest,
@@ -44,6 +47,9 @@ internal struct AccountBearerMiddleware: ClientMiddleware {
         next: @concurrent @Sendable (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
     ) async throws -> (HTTPResponse, HTTPBody?) {
         let access = try await backend.accessToken()
+        if let onlyTo, access.apiBaseURL != onlyTo {
+            throw AccountError.signedOut
+        }
         var request = request
         request.headerFields[.authorization] = "Bearer \(access.token)"
         let (response, responseBody) = try await next(request, body, access.apiBaseURL)

@@ -1013,6 +1013,30 @@ struct TeamLibrarySyncTests {
         fixture.sync.stop()
     }
 
+    @Test("A library another server left while the app was closed is dropped, and its unsent edits never reach this one")
+    func anotherServersLibraryIsDropped() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+        await fixture.library { $0.licenseExpired = true }
+        _ = try? await fixture.sync.publishSavedQueries(
+            favorites: [TeamLibraryFixture.favorite(name: "Orders")], folders: [], to: Self.team
+        )
+        #expect(fixture.sync.hasUnsentChanges)
+        await fixture.library { $0.licenseExpired = false }
+        let pushesBefore = await fixture.pushes().count
+
+        fixture.account.backend.switchServerKeepingTheSession(to: FakeAccountBackend.companyServer)
+        fixture.account.services.loadStoredState()
+        fixture.relaunch()
+        #expect(fixture.sync.hasUnsentChanges, "The stored library loads before the account says whose it is")
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(!fixture.sync.hasUnsentChanges)
+        #expect(await fixture.pushes().count == pushesBefore)
+        #expect(fixture.store.owner()?.server == FakeAccountBackend.companyServer.apiOrigin.absoluteString)
+    }
+
     // MARK: - Sign-out while a call is out
 
     @Test("A pull that answers after sign-out brings nothing back")

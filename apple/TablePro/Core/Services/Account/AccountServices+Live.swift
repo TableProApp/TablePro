@@ -32,8 +32,7 @@ extension AccountServices {
                 machineID: machine.machineID
             ),
             access: .shared,
-            sharedLinkServer: setup.developmentStack.flatMap { URL(string: $0.apiURL)?.appendingPathComponent("v2") }
-                ?? AccountServer.production.apiBaseURL
+            sharedLinkServer: setup.developmentStack.flatMap { URL(string: $0.apiBase) } ?? AccountServer.production.apiBaseURL
         )
         backend.setListener(services)
         return services

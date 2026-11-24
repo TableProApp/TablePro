@@ -150,7 +150,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         AccountServices.shared.start()
         SyncCoordinator.shared.start()
-        LinkedFolderWatcher.shared.start()
+        // Its gate reads the sign-in the core restores after launch.
+        Task {
+            await AccountServices.shared.waitUntilRestored()
+            LinkedFolderWatcher.shared.start()
+        }
         TeamLibrarySync.shared.start()
         SupportAskCoordinator.shared.start()
     }

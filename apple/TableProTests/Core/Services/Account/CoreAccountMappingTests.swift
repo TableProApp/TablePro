@@ -50,6 +50,15 @@ struct CoreAccountMappingTests {
         #expect(Self.mapped("account.sign_in_canceled", .signIn) == .canceled)
     }
 
+    @Test("Past the device limit a sign-in or a key's exchange stands, with the limit in the status; other refusals do not")
+    func deviceLimitKeepsTheSignIn() {
+        #expect(CoreAccountMapping.signInError(Self.failure("account.device_limit_reached"), during: .signIn) == nil)
+        #expect(CoreAccountMapping.signInError(Self.failure("account.device_limit_reached"), during: .licenseKey) == nil)
+        #expect(CoreAccountMapping.signInError(.Cancelled, during: .signIn) == .canceled)
+        #expect(CoreAccountMapping.signInError(Self.failure("account.sign_in_refused"), during: .licenseKey)
+            == .oauth("invalid_grant", description: nil))
+    }
+
     @Test("A refusal the core passes on by its server code keeps that code, which the device page words")
     func serverCodesPassThrough() {
         let error = CoreAccountMapping.error(Self.failure("account.refused", server: "offline_file_active"), during: .other)

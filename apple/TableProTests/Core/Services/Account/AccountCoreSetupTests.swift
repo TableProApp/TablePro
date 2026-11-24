@@ -56,6 +56,7 @@ struct AccountCoreSetupTests {
             entitlementKeys: ["key-one", "key-two"],
             licenseKeys: ["license-one"]
         ))
+        #expect(debug.developmentStack?.apiBase == "http://api.localhost:5284/v2")
 
         let release = AccountCoreSetup.make(
             supportDirectory: Self.support, machineID: "mid", managedServerURL: nil, allowOtherServers: nil,

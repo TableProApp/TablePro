@@ -220,6 +220,7 @@ internal final class TeamLibrarySync: ObservableObject {
             return .skipped
         }
         guard rateLimitHold == nil else { return .failed(.rateLimited(retryAfter: nil)) }
+        claimForCurrentAccount()
         status = .syncing
         let started = generation
         let profile: AccountProfile
@@ -255,6 +256,23 @@ internal final class TeamLibrarySync: ObservableObject {
         }
         publishContent()
         return finish(failure.map { .failed($0) } ?? .synced)
+    }
+
+    // A library another server or account left, as when a configuration profile named another server while the app
+    // was closed, is dropped before anything reads it or pushes its edits.
+    private func claimForCurrentAccount() {
+        guard let accountID = account.access.state.entitlement?.accountID else { return }
+        let current = TeamLibraryOwner(server: account.server.apiOrigin.absoluteString, accountID: accountID)
+        let stored = store.owner()
+        let fromAnother = stored.map { $0 != current }
+            ?? (current.server != AccountServer.production.apiOrigin.absoluteString)
+        if fromAnother, !teams.isEmpty || legacy != nil {
+            Self.logger.notice("The stored team library came from another server or account; dropping it")
+            clear()
+        }
+        if stored != current {
+            store.saveOwner(current)
+        }
     }
 
     private func finish(_ outcome: TeamLibrarySyncOutcome) -> TeamLibrarySyncOutcome {

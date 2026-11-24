@@ -172,6 +172,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Row inspector field heights, per column name | UserDefaults, device-local | `InspectorFieldHeightStore` |
 | Favorite tables (iCloud-synced) | UserDefaults | `FavoriteTablesStorage` |
 | Team library, per team: pull cursor, items, unpushed edits, conflicts (synced with tablepro-cloud's `/v2`, never iCloud) | JSON, one file per team | `TeamLibraryStateStore` through `TeamLibrarySync` |
+| The server and account the stored team library came from, so another one's copy is dropped before a sync | UserDefaults `com.TablePro.teamLibrary.owner`, device-local | `TeamLibraryStateStore` through `TeamLibrarySync` |
 | TablePro account: the device, the entitlement, the chosen server, a company server's license and entitlement keys | `Account/account.json` in Application Support, device-local, never synced | the core's `tablepro-account` through `AccountServices` |
 | The account's refresh token: tablepro.app's in the item earlier builds read, each company server's in its own | Keychain `com.TablePro.account.refreshToken`, and one item per company server, device-only | the core through `KeychainHostSecrets` |
 | The entitlement builds before the core kept, read once when `account.json` is missing so the update stays signed in | `Account/entitlement.jwt` in Application Support | the core (`legacy_entitlement_file`) |

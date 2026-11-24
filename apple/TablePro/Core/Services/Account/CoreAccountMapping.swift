@@ -101,6 +101,15 @@ internal enum CoreAccountMapping {
         }
     }
 
+    // Past the device limit the core keeps the sign-in and puts the limit in its status, where the device sheet reads
+    // it, so the sign-in stands.
+    static func signInError(_ error: CoreError, during operation: Operation) -> AccountError? {
+        if case .Failed(let info) = error, info.code == "account.device_limit_reached" {
+            return nil
+        }
+        return self.error(error, during: operation)
+    }
+
     static func error(_ error: CoreError, during operation: Operation) -> AccountError {
         guard case .Failed(let info) = error else { return .canceled }
         switch info.code {

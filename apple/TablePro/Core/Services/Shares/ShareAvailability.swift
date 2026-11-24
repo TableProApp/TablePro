@@ -16,6 +16,11 @@ internal enum ShareAvailability {
     nonisolated static func isAvailable(in state: AccountState) -> Bool {
         state.server.isProduction
     }
+
+    // Signed in where shared links live; a company sign-in is none.
+    nonisolated static func isSignedIn(_ state: AccountState) -> Bool {
+        state.isSignedIn && isAvailable(in: state)
+    }
 }
 
 // File > Share Query…, Share Result… and Manage Shared Links…, with the separator after them.

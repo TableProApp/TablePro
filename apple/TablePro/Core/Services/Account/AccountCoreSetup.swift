@@ -14,6 +14,11 @@ internal struct AccountCoreSetup: Equatable, Sendable {
         let apiURL: String
         let entitlementKeys: [String]
         let licenseKeys: [String]
+
+        // TABLEPRO_API_URL is the API's origin, as for tablepro.app; the core takes the /v2 base.
+        var apiBase: String {
+            (apiURL.hasSuffix("/") ? String(apiURL.dropLast()) : apiURL) + "/v2"
+        }
     }
 
     let accountFile: URL

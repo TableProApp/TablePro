@@ -700,7 +700,7 @@ private final class Probe {
                 machineID: machine.machineID
             ),
             access: FeatureAccess(),
-            sharedLinkServer: stack.flatMap { URL(string: $0.apiURL)?.appendingPathComponent("v2") } ?? AccountServer.production.apiBaseURL
+            sharedLinkServer: stack.flatMap { URL(string: $0.apiBase) } ?? AccountServer.production.apiBaseURL
         )
         backend.setListener(services)
         return services

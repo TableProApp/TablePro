@@ -130,10 +130,17 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     }
 }
 
+// The server and account a stored library came from.
+internal struct TeamLibraryOwner: Equatable, Sendable {
+    let server: String
+    let accountID: String
+}
+
 // One JSON file per team under Application Support, plus the cache the /v1 library left behind.
 internal struct TeamLibraryStateStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibraryStateStore")
     static let legacyPullKey = "com.TablePro.teamLibrary.lastPullAt"
+    static let ownerKey = "com.TablePro.teamLibrary.owner"
 
     let directory: URL
     let legacyFile: URL
@@ -175,7 +182,20 @@ internal struct TeamLibraryStateStore {
 
     func removeAll() {
         try? FileManager.default.removeItem(at: directory)
+        defaults.removeObject(forKey: Self.ownerKey)
         removeLegacy()
+    }
+
+    // Nil for a library an earlier build stored, which only tablepro.app could have filled.
+    func owner() -> TeamLibraryOwner? {
+        guard let stored = defaults.dictionary(forKey: Self.ownerKey) as? [String: String],
+              let server = stored["server"], let accountID = stored["account"]
+        else { return nil }
+        return TeamLibraryOwner(server: server, accountID: accountID)
+    }
+
+    func saveOwner(_ owner: TeamLibraryOwner) {
+        defaults.set(["server": owner.server, "account": owner.accountID], forKey: Self.ownerKey)
     }
 
     // What the last /v1 pull cached, keyed by client ID like a /v2 snapshot, so the first one matches it item by item.
