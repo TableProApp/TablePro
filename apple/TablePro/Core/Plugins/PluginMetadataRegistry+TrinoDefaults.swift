@@ -23,6 +23,7 @@ extension PluginMetadataRegistry {
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: true,
@@ -74,6 +75,7 @@ extension PluginMetadataRegistry {
                 // A variant takes no capability from its plugin, so the ones the Trino plugin declares are restated.
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
+                    schemaSwitchScopesUnqualifiedNames: true,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: true,

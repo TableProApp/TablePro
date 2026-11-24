@@ -9,9 +9,15 @@ import TableProMCP
 internal enum ChatToolTargetError: LocalizedError, Equatable {
     case outsideSession
     case noConnection
+    case targetMoved
 
     internal var errorDescription: String? {
         switch self {
+        case .targetMoved:
+            return String(localized: """
+                The connection moved to another database or schema after this call was approved, so it did not run. \
+                Propose it again to run it where the connection is now.
+                """)
         case .outsideSession:
             return String(localized: """
                 This conversation works on one connection, and that is the only one it can reach. \
@@ -81,6 +87,35 @@ internal enum ChatToolTarget {
             )
         }
         return connectionId
+    }
+}
+
+extension ChatToolTarget {
+    // A call the user approved on its card runs where the card said, so a database or schema switch made before the
+    // click cannot move it, and a reconnect since the card refuses it.
+    internal static func runTarget(
+        context: ChatToolContext,
+        connectionId: UUID,
+        database: String?,
+        schema: String?
+    ) async throws -> ChatRunTarget {
+        guard let shown = context.shownTarget else {
+            let scope = try await context.bridge.resolveStatementScope(
+                connectionId: connectionId, database: database, schema: schema
+            )
+            return ChatRunTarget(scope: scope, driverGeneration: await context.bridge.driverGeneration(of: connectionId))
+        }
+        guard shown.scope.connectionId == connectionId else { throw ChatToolTargetError.outsideSession }
+        let scope = try await context.bridge.resolveStatementScope(
+            connectionId: connectionId,
+            database: shown.scope.database,
+            schema: shown.scope.schema
+        )
+        guard scope == shown.scope else { throw ChatToolTargetError.targetMoved }
+        guard await context.bridge.driverGeneration(of: connectionId) == shown.driverGeneration else {
+            throw DatabaseAccessBridge.connectionChanged
+        }
+        return shown
     }
 }
 

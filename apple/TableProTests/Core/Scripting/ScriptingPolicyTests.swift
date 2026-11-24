@@ -38,6 +38,7 @@ struct ScriptingPolicyTests {
         _ = try await ExternalStatementGate.approve(
             PendingOperation(
                 scope: DatabaseScope(connectionId: connectionId, database: "app", schema: nil),
+                driverGeneration: nil,
                 databaseType: databaseType,
                 statements: [OperationStatement(sql: sql)],
                 kind: OperationKind.from(QueryClassifier.classifyTier(sql, databaseType: databaseType)),

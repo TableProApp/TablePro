@@ -13,6 +13,8 @@ final class Neo4jPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Neo4j"
     static let iconName = "neo4j-icon"
     static let defaultPort = 7_687
+    // Each request names its database, and a Cypher `USE` clause scopes one query.
+    static let statementsCanSwitchDatabase = false
     static let isDownloadable = true
 
     static let connectionMode: ConnectionMode = .network
@@ -47,6 +49,7 @@ final class Neo4jPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
+    static let schemaSwitchScopesUnqualifiedNames = false
     static let databaseGroupingStrategy: GroupingStrategy = .bySchema
     static let defaultGroupName = "neo4j"
     static let defaultSchemaName = Neo4jEntityKind.node.schemaName

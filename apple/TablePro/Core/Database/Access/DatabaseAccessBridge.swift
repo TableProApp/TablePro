@@ -227,43 +227,146 @@ internal actor DatabaseAccessBridge {
         }
     }
 
+    // What runs in a scope decides which parts of it the approval may name.
+    internal enum ScopeUse: Sendable {
+        // A catalog read, or work a pooled connection runs at the database it names.
+        case catalog
+        // SQL the caller wrote, which resolves its unqualified names wherever the session's schema switch puts them.
+        case callerSQL
+        // SQL the app writes with the schema in every name, run on the session's own connection.
+        case appSQL
+    }
+
     internal func resolveScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await resolveScope(connectionId: connectionId, database: database, schema: schema, use: .catalog)
+    }
+
+    internal func resolveStatementScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await resolveScope(connectionId: connectionId, database: database, schema: schema, use: .callerSQL)
+    }
+
+    internal func resolveAppStatementScope(connectionId: UUID, database: String?, schema: String?) async throws -> DatabaseScope {
+        try await resolveScope(connectionId: connectionId, database: database, schema: schema, use: .appSQL)
+    }
+
+    // Creating or dropping a database is server work and names none, except on a fixed engine: it reaches only its own
+    // database, so what it creates or drops lives inside the one its driver reported, and the approval names that. It
+    // connects first like every other scope, so an approval built on it holds the connect the work runs on.
+    internal func resolveServerScope(connectionId: UUID) async throws -> DatabaseScope {
+        try await ensureConnected(connectionId)
+        let manager = await databaseManager
+        let reported = await MainActor.run { () -> String? in
+            guard let session = manager.session(for: connectionId),
+                  !manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)
+            else { return nil }
+            return session.openedDatabase
+        }
+        return DatabaseScope(connectionId: connectionId, database: reported ?? "", schema: nil)
+    }
+
+    private func resolveScope(
+        connectionId: UUID,
+        database: String?,
+        schema: String?,
+        use: ScopeUse
+    ) async throws -> DatabaseScope {
         let manager = await databaseManager
         try await ensureConnected(connectionId)
         return try await MainActor.run {
-            guard let scope = manager.resolvedScope(
-                database: database,
-                schema: schema,
-                for: connectionId
-            ) else {
-                throw DatabaseAccessError.invalidArgument(
-                    String(localized: "No database to run against. Pass a database name.")
-                )
-            }
-            try Self.refuseUnreachable(scope, manager: manager)
-            return scope
+            try Self.scope(database: database, schema: schema, for: connectionId, use: use, manager: manager)
         }
     }
 
-    // Pinning skips a container the engine cannot switch to, so the call would run where the session already is while
-    // the caller, and an approval card, name the other one.
+    // Only the parts execution honors, so an approval built from it never names a part the call does not run in.
     @MainActor
-    private static func refuseUnreachable(_ scope: DatabaseScope, manager: DatabaseManager) throws {
-        guard let session = manager.session(for: scope.connectionId) else { return }
+    internal static func scope(
+        database: String?,
+        schema: String?,
+        for connectionId: UUID,
+        use: ScopeUse,
+        manager: DatabaseManager
+    ) throws -> DatabaseScope {
+        guard let resolved = manager.resolvedScope(database: database, schema: schema, for: connectionId) else {
+            throw DatabaseAccessError.invalidArgument(
+                String(localized: "No database to run against. Pass a database name.")
+            )
+        }
+        if let refusal = databaseRefusal(named: database, for: resolved, manager: manager) {
+            throw DatabaseAccessError.invalidArgument(refusal)
+        }
+        let scope = try executingScope(resolved, manager: manager)
+        guard let session = manager.session(for: connectionId) else { return scope }
         let databaseType = session.connection.type
-        let current = session.resolvedBrowseDatabase
-        if !scope.isServerScoped, scope.database != current,
-           !manager.pluginManager.supportsDatabaseSwitching(for: databaseType) {
+        // A fixed engine reaches only the database its driver reported, for SQL and the catalog alike, whatever the
+        // browse cursor shows, so with no report the call names none.
+        let runsIn = manager.pluginManager.supportsDatabaseSwitching(for: databaseType)
+            ? scope.database
+            : session.openedDatabase ?? ""
+        guard use != .catalog else {
+            return runsIn == scope.database
+                ? scope
+                : DatabaseScope(connectionId: scope.connectionId, database: runsIn, schema: scope.schema)
+        }
+        guard use == .callerSQL, !manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: databaseType) else {
+            return DatabaseScope(connectionId: scope.connectionId, database: runsIn, schema: scope.schema)
+        }
+        // A schema switch here leaves unqualified names where they were, whatever the session's label says, so the
+        // statement runs unqualified and no schema is named for it.
+        if let named = schema, !named.isEmpty {
             throw DatabaseAccessError.invalidArgument(String(
-                format: String(localized: "This connection cannot run against database %1$@, only its own: %2$@. Leave database out or pass %2$@."),
-                scope.database,
-                current
+                format: String(
+                    localized: "Schema %@ cannot scope SQL on this connection: switching schema does not change where names resolve. Leave schema out and qualify names."
+                ),
+                named
             ))
         }
+        return DatabaseScope(connectionId: scope.connectionId, database: runsIn, schema: nil)
+    }
+
+    // With no database browsed, a switching engine's driver still executes wherever a pin last moved it, so a scope
+    // naming none names that database and is pinned to it. Where a statement may have moved it, nothing can be named.
+    @MainActor
+    private static func executingScope(_ scope: DatabaseScope, manager: DatabaseManager) throws -> DatabaseScope {
+        guard scope.isServerScoped, let session = manager.session(for: scope.connectionId),
+              manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)
+        else { return scope }
+        guard let executing = manager.executionDatabase(for: scope.connectionId) else { throw databaseUnknown }
+        guard !executing.isEmpty else { return scope }
+        return DatabaseScope(connectionId: scope.connectionId, database: executing, schema: scope.schema)
+    }
+
+    // A fixed-database engine can neither run SQL in another database nor read its catalog, so the call would answer
+    // for the session's own database while the caller, and an approval, name another. A schema goes to a catalog read
+    // as named; only SQL the caller wrote is held to what a schema switch scopes.
+    @MainActor
+    private static func databaseRefusal(named database: String?, for scope: DatabaseScope, manager: DatabaseManager) -> String? {
+        guard let database, !database.isEmpty, let session = manager.session(for: scope.connectionId),
+              !manager.pluginManager.supportsDatabaseSwitching(for: session.connection.type)
+        else { return nil }
+        // Only the driver's report says where it connected: BigQuery's saved database is not the project it signs in to.
+        guard let opened = session.openedDatabase else {
+            return String(localized: "This connection cannot confirm which database it reached. Leave database out.")
+        }
+        guard database != opened else { return nil }
+        return String(
+            format: String(localized: "This connection cannot run against database %1$@, only its own: %2$@. Leave database out or pass %2$@."),
+            database,
+            opened
+        )
     }
 
     internal func switchDatabase(connectionId: UUID, database: String) async throws {
         let manager = await databaseManager
+        // On such an engine a driver's switch only relabels the cursor, as Oracle's does with its schema, and every later
+        // call would then name a database the connection never reaches.
+        let switches = await MainActor.run {
+            manager.session(for: connectionId).map { manager.pluginManager.supportsDatabaseSwitching(for: $0.connection.type) }
+        }
+        guard switches != false else {
+            throw DatabaseAccessError.invalidArgument(
+                String(localized: "This connection reaches only its own database, so it cannot switch to another.")
+            )
+        }
         try await manager.switchDatabase(to: database, for: connectionId)
     }
 
@@ -441,6 +544,7 @@ internal actor DatabaseAccessBridge {
         do {
             (result, tableEdits, transactionNotice) = try await runRacingTimeout(
                 scope: scope,
+                approvedGeneration: operation.driverGeneration,
                 route: route,
                 policy: policy,
                 owner: owner,
@@ -566,6 +670,7 @@ internal actor DatabaseAccessBridge {
         do {
             (result, tableEdits, transactionNotice) = try await runRacingTimeout(
                 scope: scope,
+                approvedGeneration: operation.driverGeneration,
                 route: route,
                 policy: policy,
                 owner: owner,
@@ -640,8 +745,12 @@ internal actor DatabaseAccessBridge {
             scope: scope,
             route: route,
             cancellation: .protectedWrite,
-            sessionWork: .statements
+            sessionWork: .statements,
+            admit: Self.admission(scope, as: .statement, generation: operation.driverGeneration, manager: manager)
         ) { driver -> (affected: Int, notice: String?) in
+            try await Self.requireApproved(
+                scope, as: .statement, generation: operation.driverGeneration, manager: manager, leased: driver
+            )
             reach.mark()
             // The hold and savepoint execute_query gets, so a Manual Commit insert waits for Commit too.
             let ran = try await agentGuard.running(
@@ -693,7 +802,17 @@ internal actor DatabaseAccessBridge {
         try await ensureConnected(scope.connectionId)
         let manager = await databaseManager
         let schema = scope.schema
-        return try await manager.withMetadataDriver(scope: scope) { driver -> (count: Int?, isApproximate: Bool) in
+        let route = await MainActor.run { manager.metadataRoute(for: scope) }
+        return try await manager.withScopedDriver(
+            scope: scope,
+            route: route,
+            cancellation: .untracked,
+            sessionWork: .independent,
+            admit: Self.admission(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
+        ) { driver -> (count: Int?, isApproximate: Bool) in
+            try await Self.requireApproved(
+                scope, as: .catalog, generation: operation.driverGeneration, manager: manager, leased: driver
+            )
             reach.mark()
             if exact {
                 let value = try await driver.fetchExactRowCount(
@@ -738,8 +857,12 @@ internal actor DatabaseAccessBridge {
             scope: scope,
             route: .sessionDriver,
             cancellation: .protectedWrite,
-            sessionWork: .statements
+            sessionWork: .statements,
+            admit: Self.admission(scope, as: .statement, generation: operation.driverGeneration, manager: manager)
         ) { driver in
+            try await Self.requireApproved(
+                scope, as: .statement, generation: operation.driverGeneration, manager: manager, leased: driver
+            )
             reach.mark()
             switch action {
             case "begin":
@@ -766,6 +889,9 @@ internal actor DatabaseAccessBridge {
         let connectionId = operation.scope.connectionId
         let (driver, _) = try await resolveDriver(connectionId)
         let manager = await databaseManager
+        try await Self.requireApproved(
+            operation.scope, as: .server, generation: operation.driverGeneration, manager: manager, leased: driver
+        )
         try await manager.trackOperation(sessionId: connectionId) {
             try await driver.createDatabase(CreateDatabaseRequest(name: name, values: options))
         }
@@ -776,11 +902,18 @@ internal actor DatabaseAccessBridge {
         guard operation.kind == .destructiveQuery, operation.statements.isEmpty else { throw Self.notApproved }
         let connectionId = operation.scope.connectionId
         let manager = await databaseManager
-        await MainActor.run {
+        try await ensureConnected(connectionId)
+        // Checked on the turn that closes the dropped database's connections, so a stale approval closes none, ends no
+        // transaction open on them, and no reconnect lands between the check and the close.
+        let driver = try await MainActor.run { () throws -> DatabaseDriver in
+            guard let driver = manager.driver(for: connectionId) else { throw DatabaseAccessError.notConnected(connectionId) }
+            try Self.admission(
+                operation.scope, as: .server, generation: operation.driverGeneration, manager: manager, leased: driver
+            )()
             MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: name)
             manager.sessionLanes.close(database: name, for: connectionId)
+            return driver
         }
-        let (driver, _) = try await resolveDriver(connectionId)
         try await manager.trackOperation(sessionId: connectionId) {
             try await driver.dropDatabase(name: name)
         }
@@ -794,7 +927,15 @@ internal actor DatabaseAccessBridge {
         let manager = await databaseManager
         // Pinned to the approved database, so a switch while the dialog was open cannot move the drop.
         let route = await MainActor.run { manager.schemaChangeRoute(for: scope) }
-        try await manager.withScopedDriver(scope: scope, route: route, cancellation: .protectedWrite) { driver in
+        try await manager.withScopedDriver(
+            scope: scope,
+            route: route,
+            cancellation: .protectedWrite,
+            admit: Self.admission(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
+        ) { driver in
+            try await Self.requireApproved(
+                scope, as: .catalog, generation: operation.driverGeneration, manager: manager, leased: driver
+            )
             try await driver.dropSchema(name: name)
         }
         CatalogChangeService.post(
@@ -835,8 +976,12 @@ internal actor DatabaseAccessBridge {
         return try await manager.withScopedDriver(
             scope: scope,
             route: route,
-            cancellation: .protectedWrite
+            cancellation: .protectedWrite,
+            admit: Self.admission(scope, as: .catalog, generation: operation.driverGeneration, manager: manager)
         ) { driver in
+            try await Self.requireApproved(
+                scope, as: .catalog, generation: operation.driverGeneration, manager: manager, leased: driver
+            )
             reach.mark()
             try await before(driver, ownsConnection)
             return try await DataWriteExecutor.run(plan, commitMode: .automatic, on: driver, context: context)
@@ -861,6 +1006,7 @@ internal actor DatabaseAccessBridge {
 
     internal func runRacingTimeout<Output: Sendable>(
         scope: DatabaseScope,
+        approvedGeneration: UUID?,
         route: ScopedDriverRoute,
         policy: DriverCancellationPolicy,
         owner: DriverLeaseOwner,
@@ -870,6 +1016,25 @@ internal actor DatabaseAccessBridge {
     ) async throws -> Output {
         let connectionId = scope.connectionId
         let manager = await databaseManager
+        let approvedSchema = await MainActor.run { () -> String? in
+            guard let session = manager.session(for: connectionId),
+                  manager.pluginManager.schemaSwitchScopesUnqualifiedNames(for: session.connection.type)
+            else { return nil }
+            return scope.schema
+        }
+        // The pin trusts the driver's cached schema, which a SET search_path in the same session leaves stale.
+        // An aborted transaction refuses everything but a rollback, the SET included, and runs no name to misroute.
+        let admit = Self.admission(scope, as: .statement, generation: approvedGeneration, manager: manager)
+        let pinned: @Sendable (DatabaseDriver) async throws -> Output = { driver in
+            try await Self.requireApproved(
+                scope, as: .statement, generation: approvedGeneration, manager: manager, leased: driver
+            )
+            if let approvedSchema, let switchable = driver as? SchemaSwitchable,
+               await driver.sessionTransactionState() != .abortedTransaction {
+                try await switchable.switchSchema(to: approvedSchema)
+            }
+            return try await body(driver)
+        }
         if policy == .protectedWrite {
             return try await Self.awaitProtectedWrite(
                 timeout: .seconds(timeoutSeconds),
@@ -877,10 +1042,10 @@ internal actor DatabaseAccessBridge {
                 onLateCompletion: onLateCompletion
             ) { enterDriver in
                 try await manager.withScopedDriver(
-                    scope: scope, route: route, cancellation: policy, sessionWork: .statements
+                    scope: scope, route: route, cancellation: policy, sessionWork: .statements, admit: admit
                 ) { driver in
                     try enterDriver()
-                    return try await body(driver)
+                    return try await pinned(driver)
                 }
             }
         }
@@ -891,7 +1056,8 @@ internal actor DatabaseAccessBridge {
                     route: route,
                     cancellation: policy,
                     sessionWork: .statements,
-                    body
+                    admit: admit,
+                    pinned
                 )
             }
             group.addTask {

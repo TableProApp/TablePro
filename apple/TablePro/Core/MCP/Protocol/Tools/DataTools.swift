@@ -85,7 +85,7 @@ public struct BrowseTableTool: MCPToolImplementation {
             offset: offset
         )
 
-        let scope = try await MCPScopeArguments.resolve(
+        let scope = try await MCPScopeArguments.resolveForAppStatements(
             arguments,
             connectionId: connectionId,
             services: services
@@ -397,7 +397,7 @@ public struct InsertRowsTool: MCPToolImplementation {
         // Before anything connects: every statement this builds is an INSERT.
         try MCPStatementGate.classify(kind: .writeQuery, meta: meta, allowsDestructive: false, context: context)
 
-        let scope = try await MCPScopeArguments.resolve(
+        let scope = try await MCPScopeArguments.resolveForAppStatements(
             arguments,
             connectionId: connectionId,
             services: services

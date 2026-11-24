@@ -52,6 +52,7 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let brandColorHex = "#336791"
     static let systemDatabaseNames: [String] = PostgreSQLSystemDatabases.postgreSQL
     static let supportsSchemaSwitching = true
+    static let schemaSwitchScopesUnqualifiedNames = true
     static let postConnectActions: [PostConnectAction] = [.selectSchemaFromLastSession]
     static let explainVariants: [ExplainVariant] = [
         ExplainVariant(

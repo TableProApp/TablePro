@@ -65,13 +65,16 @@ internal enum ApprovedOperationFixture {
         databaseType: DatabaseType,
         kind: OperationKind? = nil,
         unit: OperationUnit = .statement,
-        capabilities: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement]
+        capabilities: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement],
+        manager: DatabaseManager? = nil
     ) async throws -> ApprovedOperation {
+        let generation = await DatabaseAccessBridge(manager: manager).driverGeneration(of: scope.connectionId)
         let graded = statements.count == 1 ? statements.first?.sql : nil
         let tier = graded.map { QueryClassifier.classifyTier($0, databaseType: databaseType) } ?? .safe
         return try await ExternalStatementGate.approve(
             PendingOperation(
                 scope: scope,
+                driverGeneration: generation,
                 databaseType: databaseType,
                 statements: statements,
                 kind: kind ?? OperationKind.from(tier),

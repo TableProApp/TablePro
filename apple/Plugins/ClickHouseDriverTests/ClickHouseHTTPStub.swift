@@ -107,14 +107,14 @@ struct ClickHouseStubServer {
     }
 
     /// A driver whose own `connect()` reaches this stub.
-    func unconnectedDriver() -> ClickHousePluginDriver {
+    func unconnectedDriver(database: String = "default") -> ClickHousePluginDriver {
         ClickHousePluginDriver(
             config: DriverConnectionConfig(
                 host: host,
                 port: 8_123,
                 username: "default",
                 password: "",
-                database: "default"
+                database: database
             ),
             sessionConfiguration: Self.stubConfiguration()
         )

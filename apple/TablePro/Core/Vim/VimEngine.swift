@@ -50,6 +50,12 @@ struct VimVisualExtent {
     let lastColumn: Int
 }
 
+// `3iX<Esc>` types X three times; `3oX<Esc>` opens a line for each.
+struct VimInsertRepeat {
+    let count: Int
+    let opensLine: Bool
+}
+
 struct VimVisualChange {
     let extent: VimVisualExtent
     let operatorKeys: [VimChangeKey]
@@ -71,6 +77,12 @@ struct VimChangeDraft {
     // every edit.
     var insertedRange: NSRange?
     var deletedBeforeInsert = 0
+    // Where the last edit left the caret, so a move no edit made shows.
+    var insertCaret = 0
+    var editedSinceCaret = false
+    // Where a caret move left the caret. What is typed next starts a new insert there; until then the insert before
+    // the move is the change.
+    var movedCaret: Int?
     // The selection as the last Visual mode command found it, where that command's keys start and the register it got.
     var visualExtent: VimVisualExtent?
     var visualCommandStart = 0
@@ -96,6 +108,9 @@ final class VimEngine {
 
     private(set) var mode: VimMode = .normal {
         didSet {
+            if oldValue.isInsert, !mode.isInsert {
+                closeInsertUndoStep()
+            }
             if oldValue != mode {
                 onModeChange?(mode)
             }
@@ -127,6 +142,8 @@ final class VimEngine {
     var lastChange: VimChange?
     var changeDraft: VimChangeDraft?
     var isRepeatingChange = false
+    var insertRepeat: VimInsertRepeat?
+    var insertUndoStepOpen = false
     var marks: [Character: Int] = [:]
     var namedRegisters: [Character: VimRegister] = [:]
     var numberedRegisters: [VimRegister] = Array(repeating: VimRegister(), count: 10)
@@ -201,11 +218,14 @@ final class VimEngine {
         editsOnCurrentLine = 0
         lastEditedLine = nil
         changeDraft = nil
+        insertRepeat = nil
+        closeInsertUndoStep()
     }
 
     func reset() {
         cancelPendingCommand()
         changeDraft = nil
+        insertRepeat = nil
         mode = .normal
     }
 

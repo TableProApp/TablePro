@@ -39,6 +39,8 @@ extension TextView: @retroactive TextInterface {
     /// - Parameter mutation: The mutation to apply.
     public func applyMutation(_ mutation: TextMutation) {
         guard !mutation.isEmpty else { return }
+        // A filter's edit skips `replaceCharacters`, so the delegate hears of it here: Vim's marks and `.` track every edit.
+        delegate?.textView(self, willReplaceContentsIn: mutation.range, with: mutation.string)
         editorUndoManager?.registerMutation(mutation)
         textStorage.replaceCharacters(in: mutation.range, with: mutation.string)
         selectionManager.didReplaceCharacters(

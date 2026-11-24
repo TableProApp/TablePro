@@ -307,6 +307,8 @@ internal enum OperationUnit: Sendable, Equatable {
 // What a caller asks `ExternalStatementGate.approve` to let run: the statements in their scope, before anyone said yes.
 internal struct PendingOperation: Sendable {
     internal let scope: DatabaseScope
+    // The session's connect the scope was resolved on; a reconnect before the run refuses it.
+    internal let driverGeneration: UUID?
     internal let databaseType: DatabaseType
     internal let statements: [OperationStatement]
     internal let kind: OperationKind
@@ -321,6 +323,7 @@ internal struct PendingOperation: Sendable {
 
     internal init(
         scope: DatabaseScope,
+        driverGeneration: UUID?,
         databaseType: DatabaseType,
         statements: [OperationStatement],
         kind: OperationKind,
@@ -332,6 +335,7 @@ internal struct PendingOperation: Sendable {
         displayStatements: [String]? = nil
     ) {
         self.scope = scope
+        self.driverGeneration = driverGeneration
         self.databaseType = databaseType
         self.statements = statements
         self.kind = kind
@@ -348,6 +352,7 @@ internal struct PendingOperation: Sendable {
 // An operation Safe Mode approved, exactly as it runs. Only `ExternalStatementGate.approve` makes one.
 internal struct ApprovedOperation: Sendable {
     internal let scope: DatabaseScope
+    internal let driverGeneration: UUID?
     internal let databaseType: DatabaseType
     internal let statements: [OperationStatement]
     internal let kind: OperationKind
@@ -358,6 +363,7 @@ internal struct ApprovedOperation: Sendable {
 
     fileprivate init(_ pending: PendingOperation, receipt: OperationReceipt) {
         scope = pending.scope
+        driverGeneration = pending.driverGeneration
         databaseType = pending.databaseType
         statements = pending.statements
         kind = pending.kind

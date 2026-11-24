@@ -7904,6 +7904,9 @@
         }
       }
     },
+    "%1$@ cannot act on schema %2$@ alone on this connection. Pass 'table'." : {
+
+    },
     "%1$@ cannot be copied to %2$@. Choose a target that speaks SQL." : {
       "localizations" : {
         "fr" : {
@@ -19932,6 +19935,9 @@
     "A statement is still running in the transaction, so it cannot be committed now." : {
 
     },
+    "A statement may have moved this connection to another database. Pass database." : {
+
+    },
     "A statement on '%1$@' matched %2$d rows instead of %3$d, so nothing was saved." : {
       "localizations" : {
         "fr" : {
@@ -26999,6 +27005,9 @@
 
     },
     "Allow %1$@ on '%2$@', database '%3$@'?" : {
+
+    },
+    "Allow %1$@ on '%2$@', schema '%3$@'?" : {
 
     },
     "Allow AI Access" : {
@@ -180358,6 +180367,9 @@
         }
       }
     },
+    "Schema %@ cannot scope SQL on this connection: switching schema does not change where names resolve. Leave schema out and qualify names." : {
+
+    },
     "Schema %lld could not be read from the Schema Registry. %@ Showing the stored bytes." : {
       "localizations" : {
         "en" : {
@@ -181620,6 +181632,9 @@
       }
     },
     "Schema, on engines that have one" : {
+
+    },
+    "Schema: %@" : {
 
     },
     "Schemas" : {
@@ -205844,6 +205859,9 @@
     "TablePro cannot tell whether this connection holds an open transaction, so it stays connected. Try again once its work is done, or disconnect in TablePro." : {
 
     },
+    "TablePro cannot tell which database this connection runs in. Pass database." : {
+
+    },
     "TablePro cannot tell which Redshift cluster or workgroup \"%@\" is. Set Host to the endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or enter that endpoint as the Redshift Endpoint when you connect through a port forward." : {
 
     },
@@ -212683,6 +212701,9 @@
     "The connection “%@” has open transactions. Changes you don’t commit are rolled back." : {
 
     },
+    "The connection changed after this was approved, so nothing ran. Ask again." : {
+
+    },
     "The connection closed." : {
 
     },
@@ -212843,6 +212864,9 @@
       }
     },
     "The connection is reconnecting. Try again once it is back." : {
+
+    },
+    "The connection moved to another database or schema after this call was approved, so it did not run. Propose it again to run it where the connection is now." : {
 
     },
     "The connection names no Schema Registry URL. Add one in the connection's settings." : {
@@ -224137,6 +224161,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection cannot confirm which database it reached. Leave database out." : {
+
+    },
     "This connection cannot load the rows of COPY FROM STDIN." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -224485,6 +224512,9 @@
           }
         }
       }
+    },
+    "This connection reaches only its own database, so it cannot switch to another." : {
+
     },
     "This connection runs SQL every time it connects, using your credentials." : {
       "comment" : "A description of the startup SQL for a database connection.",

@@ -63,7 +63,8 @@ enum MCPStatementGate {
 
     static let confirmToolAlternative = String(localized: "Use confirm_destructive_operation for it.")
 
-    // Elicitation, then Safe Mode, on the statements as they will run in `scope`.
+    // Elicitation, then Safe Mode, on the statements as they will run in `scope`. A call that approves several in turn
+    // passes the `consent(for:)` it got for all of them, so the client is asked once.
     static func approve(
         _ statements: [OperationStatement],
         kind: OperationKind,
@@ -76,9 +77,59 @@ enum MCPStatementGate {
         allowsMultiStatement: Bool = false,
         forcesUserConsent: Bool = false,
         operationLabel: String,
+        consent callConsent: MCPCallConsent? = nil,
         context: MCPRequestContext,
         services: MCPToolServices
     ) async throws -> ApprovedOperation {
+        let generation = await services.connectionBridge.driverGeneration(of: scope.connectionId)
+        let pending = pendingOperation(
+            statements,
+            kind: kind,
+            unit: unit,
+            gradedSQL: gradedSQL,
+            displayStatements: displayStatements,
+            scope: scope,
+            driverGeneration: generation,
+            meta: meta,
+            allowsDestructive: allowsDestructive,
+            allowsMultiStatement: allowsMultiStatement,
+            forcesUserConsent: forcesUserConsent,
+            operationLabel: operationLabel,
+            context: context
+        )
+        let consent: MCPConsentOutcome
+        if let callConsent, callConsent.covers(pending) {
+            consent = callConsent.outcome
+        } else {
+            consent = try consentOutcome(
+                needed: needsConsent(pending, meta: meta, forcesUserConsent: forcesUserConsent),
+                pending: pending,
+                meta: meta,
+                operationLabel: operationLabel,
+                context: context
+            )
+        }
+
+        var approved = pending
+        approved.capabilities.formUnion(consent.capabilities)
+        return try await services.authPolicy.checkSafeModeDialog(principal: context.principal, operation: approved)
+    }
+
+    static func pendingOperation(
+        _ statements: [OperationStatement],
+        kind: OperationKind,
+        unit: OperationUnit = .statement,
+        gradedSQL: String? = nil,
+        displayStatements: [String]? = nil,
+        scope: DatabaseScope,
+        driverGeneration: UUID?,
+        meta: ToolConnectionMetadata,
+        allowsDestructive: Bool,
+        allowsMultiStatement: Bool = false,
+        forcesUserConsent: Bool = false,
+        operationLabel: String,
+        context: MCPRequestContext
+    ) -> PendingOperation {
         var capabilities: CallerCapabilities = [.mayWrite]
         if allowsDestructive {
             capabilities.insert(.mayRunDestructive)
@@ -90,8 +141,9 @@ enum MCPStatementGate {
         if forcesUserConsent {
             capabilities.insert(.confirmsWrites)
         }
-        let pending = PendingOperation(
+        return PendingOperation(
             scope: scope,
+            driverGeneration: driverGeneration,
             databaseType: meta.databaseType,
             statements: statements,
             kind: kind,
@@ -102,24 +154,43 @@ enum MCPStatementGate {
             gradedSQL: gradedSQL,
             displayStatements: displayStatements
         )
+    }
 
-        let needed = forcesUserConsent || ExternalStatementGate.requiresUserConsent(
-            kind: kind,
+    // One elicitation listing every statement a call runs, sealed as one target over each statement's own. Asked one
+    // at a time, the answer for the second restarted the call and asked for the first again, so it never finished.
+    static func consent(
+        for operations: [PendingOperation],
+        meta: ToolConnectionMetadata,
+        forcesUserConsent: Bool = false,
+        operationLabel: String,
+        context: MCPRequestContext
+    ) throws -> MCPCallConsent {
+        let targets = operations.map(MCPToolConsent.target(of:))
+        let needed = operations.contains { needsConsent($0, meta: meta, forcesUserConsent: forcesUserConsent) }
+        // Statements in more than one scope cannot share one message, so each gets the Mac dialog instead.
+        guard needed, let scope = operations.first?.scope, operations.allSatisfy({ $0.scope == scope }) else {
+            return MCPCallConsent(outcome: .nativeAlert, targets: targets)
+        }
+        guard let detail = preview(of: operations.flatMap(\.displayStatements).joined(separator: "\n\n")) else {
+            return MCPCallConsent(outcome: .nativeAlert, targets: targets)
+        }
+        let outcome = try MCPToolConsent.resolve(
+            key: "approve_statement",
+            message: consentMessage(operationLabel: operationLabel, connectionName: meta.connectionName, scope: scope),
+            detail: detail.isEmpty ? nil : detail,
+            target: MCPToolConsent.target(covering: targets),
+            context: context
+        )
+        return MCPCallConsent(outcome: outcome, targets: targets)
+    }
+
+    private static func needsConsent(_ pending: PendingOperation, meta: ToolConnectionMetadata, forcesUserConsent: Bool) -> Bool {
+        forcesUserConsent || ExternalStatementGate.requiresUserConsent(
+            kind: pending.kind,
             sql: pending.gradedSQL,
             databaseType: meta.databaseType,
             safeModeLevel: meta.safeModeLevel
         )
-        let consent = try consentOutcome(
-            needed: needed,
-            pending: pending,
-            meta: meta,
-            operationLabel: operationLabel,
-            context: context
-        )
-
-        var approved = pending
-        approved.capabilities.formUnion(consent.capabilities)
-        return try await services.authPolicy.checkSafeModeDialog(principal: context.principal, operation: approved)
     }
 
     static let readOnlyRefusal = String(localized: "This request is read only, and the statement is not a read.")
@@ -178,29 +249,39 @@ enum MCPStatementGate {
             key: "approve_statement",
             message: consentMessage(operationLabel: operationLabel, connectionName: meta.connectionName, scope: pending.scope),
             detail: detail.isEmpty ? nil : detail,
+            target: MCPToolConsent.target(of: pending),
             context: context
         )
     }
 
+    // Each part execution honors is named on its own: a schema with no database named still runs there.
     static func consentMessage(operationLabel: String, connectionName: String, scope: DatabaseScope) -> String {
-        guard !scope.isServerScoped else {
+        switch (scope.namedDatabase, scope.schema) {
+        case (nil, nil):
             return String(format: String(localized: "Allow %@ on '%@'?"), operationLabel, connectionName)
-        }
-        guard let schema = scope.schema else {
+        case (let database?, nil):
             return String(
                 format: String(localized: "Allow %1$@ on '%2$@', database '%3$@'?"),
                 operationLabel,
                 connectionName,
-                scope.database
+                database
+            )
+        case (nil, let schema?):
+            return String(
+                format: String(localized: "Allow %1$@ on '%2$@', schema '%3$@'?"),
+                operationLabel,
+                connectionName,
+                schema
+            )
+        case (let database?, let schema?):
+            return String(
+                format: String(localized: "Allow %1$@ on '%2$@', database '%3$@', schema '%4$@'?"),
+                operationLabel,
+                connectionName,
+                database,
+                schema
             )
         }
-        return String(
-            format: String(localized: "Allow %1$@ on '%2$@', database '%3$@', schema '%4$@'?"),
-            operationLabel,
-            connectionName,
-            scope.database,
-            schema
-        )
     }
 
     // The only text the client shows beside its Approve control, so it keeps its line breaks. The cap is sized for
@@ -211,5 +292,20 @@ enum MCPStatementGate {
         let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (trimmed as NSString).length <= previewCharacterLimit else { return nil }
         return trimmed
+    }
+}
+
+// The answer a call's one elicitation got, good only for the statements it listed.
+struct MCPCallConsent: Sendable {
+    let outcome: MCPConsentOutcome
+    private let targets: Set<String>
+
+    fileprivate init(outcome: MCPConsentOutcome, targets: [String]) {
+        self.outcome = outcome
+        self.targets = Set(targets)
+    }
+
+    func covers(_ operation: PendingOperation) -> Bool {
+        targets.contains(MCPToolConsent.target(of: operation))
     }
 }

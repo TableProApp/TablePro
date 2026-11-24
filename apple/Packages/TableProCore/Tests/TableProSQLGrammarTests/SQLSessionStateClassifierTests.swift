@@ -406,4 +406,135 @@ struct SQLSessionStateClassifierTests {
     func quickCheckKeepsEveryRule(sql: String, dialect: SQLSessionDialect) {
         #expect(SQLSessionStateQuickCheck.mayChangeSession(sql, dialect: dialect))
     }
+
+    // MARK: - Current database
+
+    private func movesDatabase(_ sql: String, _ dialect: SQLSessionDialect) -> Bool {
+        SQLSessionStateClassifier.mayChangeDatabase(
+            ofStatements: [sql], dialect: dialect, grammar: Self.grammar(Self.engines[dialect] ?? "")
+        )
+    }
+
+    @Test("USE moves a MySQL or SQL Server session to another database, in any spelling the server reads", arguments: [
+        ("USE production", SQLSessionDialect.mySQL),
+        ("use `production`;", .mySQL),
+        ("SELECT 1; USE production", .mySQL),
+        ("/*!40000 USE production */", .mySQL),
+        ("\\u production", .mySQL),
+        ("USE [production]", .sqlServer),
+        ("SELECT 1\nUSE production", .sqlServer),
+    ])
+    func useMovesTheDatabase(sql: String, dialect: SQLSessionDialect) {
+        #expect(movesDatabase(sql, dialect))
+    }
+
+    // Past the reader's version limit it reads nothing, and the text as written blanks every executable comment.
+    @Test("A USE behind more executable-comment versions than the reader takes is not ruled out")
+    func useBehindTooManyVersionsMoves() {
+        let versions = (10_000...10_032).map { "/*!\($0) */" }.joined(separator: " ")
+        #expect(movesDatabase("/*! USE production */ \(versions)", .mySQL))
+    }
+
+    @Test("Code the reader cannot see into may switch the database too", arguments: [
+        ("EXECUTE IMMEDIATE 'USE production'", SQLSessionDialect.mySQL),
+        ("PREPARE s FROM 'SELECT 1'; EXECUTE s", .mySQL),
+        ("CALL archive_orders()", .mySQL),
+        ("BEGIN NOT ATOMIC USE production; END", .mySQL),
+        ("outer: BEGIN NOT ATOMIC SELECT 1; END", .mySQL),
+        ("EXEC('USE production')", .sqlServer),
+        ("EXECUTE sp_executesql N'USE production'", .sqlServer),
+        ("sp_executesql N'USE production'", .sqlServer),
+        ("EXEC dbo.archive_orders", .sqlServer),
+    ])
+    func opaqueCodeMovesTheDatabase(sql: String, dialect: SQLSessionDialect) {
+        #expect(movesDatabase(sql, dialect))
+    }
+
+    @Test("Only a statement known to stay is ruled out: a wrapped USE, HANDLER, DO, LOAD or an unknown word may move", arguments: [
+        ("SET STATEMENT max_statement_time=1 FOR USE production", SQLSessionDialect.mySQL),
+        ("HANDLER orders OPEN", .mySQL),
+        ("DO SLEEP(0)", .mySQL),
+        ("LOAD DATA INFILE 'rows.csv' INTO TABLE orders", .mySQL),
+        ("FROBNICATE production", .mySQL),
+        ("EXPLAIN USE production", .mySQL),
+        ("archive_orders 1", .sqlServer),
+    ])
+    func unknownOrWrappedStatementsMove(sql: String, dialect: SQLSessionDialect) {
+        #expect(movesDatabase(sql, dialect))
+    }
+
+    @Test("A statement on the stay list moves nothing, alone or among others", arguments: [
+        "SELECT 1", "WITH a AS (SELECT 1) SELECT * FROM a", "INSERT INTO t VALUES (1)", "REPLACE INTO t VALUES (1)",
+        "UPDATE t SET a = 1", "DELETE FROM t", "SHOW TABLES", "DESCRIBE orders", "DESC orders", "EXPLAIN SELECT 1",
+        "EXPLAIN FORMAT=JSON SELECT 1", "CREATE TABLE t (a INT)", "ALTER TABLE t ADD b INT", "DROP TABLE t",
+        "TRUNCATE TABLE t", "RENAME TABLE a TO b", "SET @x = 1", "SET NAMES utf8mb4", "START TRANSACTION", "BEGIN",
+        "COMMIT", "ROLLBACK", "SAVEPOINT s", "RELEASE SAVEPOINT s", "LOCK TABLES t READ", "UNLOCK TABLES",
+        "ANALYZE TABLE t", "OPTIMIZE TABLE t", "CHECK TABLE t", "REPAIR TABLE t", "GRANT SELECT ON app.* TO reader",
+        "REVOKE SELECT ON app.* FROM reader", "SELECT 1; UPDATE t SET a = 1; COMMIT",
+    ])
+    func stayListMovesNothing(sql: String) {
+        #expect(!movesDatabase(sql, .mySQL))
+    }
+
+    @Test("A T-SQL batch of statements that stay moves nothing, temporary tables included")
+    func tsqlStayBatchMovesNothing() {
+        #expect(!movesDatabase("SELECT * FROM #orders\nDECLARE @n int = 1\nIF @n > 0 PRINT 'x'", .sqlServer))
+    }
+
+    @Test("A T-SQL move word in a literal, a quoted name or a comment moves nothing", arguments: [
+        "SELECT N'use'", "SELECT [exec]", "-- use x", "SELECT \"execute\" FROM t /* sp_executesql */",
+    ])
+    func tsqlMoveWordOutsideCodeMovesNothing(sql: String) {
+        #expect(!movesDatabase(sql, .sqlServer))
+    }
+
+    @Test("A T-SQL move word read as code moves, and one behind a literal or comment that never closes is not ruled out", arguments: [
+        "USE x", "EXEC p", "SELECT 1 EXEC p", "SELECT 'unclosed USE x", "SELECT 1 /* USE x",
+    ])
+    func tsqlMoveWordAsCodeMoves(sql: String) {
+        #expect(movesDatabase(sql, .sqlServer))
+    }
+
+    @Test("T-SQL reads a move word glued to a number on its own, so the batch moves", arguments: [
+        "SELECT 1USE production", "SELECT 1e1USE x", "SELECT $1USE x", "SELECT 0x1USE x",
+    ])
+    func tsqlMoveWordGluedToANumberMoves(sql: String) {
+        #expect(movesDatabase(sql, .sqlServer))
+    }
+
+    // MySQL needs a `;` before a second statement, so the glued word is a name or a syntax error inside one SELECT.
+    @Test("MySQL reads a word glued to a number inside one SELECT, which moves nothing", arguments: [
+        "SELECT 1USE production", "SELECT 1e1USE x", "SELECT $1USE x", "SELECT 0x1USE x",
+    ])
+    func mySQLWordGluedToANumberMovesNothing(sql: String) {
+        #expect(!movesDatabase(sql, .mySQL))
+    }
+
+    @Test("A MySQL first word that runs on into a digit or `$` is no stay word", arguments: [
+        "SELECT1USE production", "DELETE$x FROM t",
+    ])
+    func mySQLHeadRunningOnIsUnknown(sql: String) {
+        #expect(movesDatabase(sql, .mySQL))
+    }
+
+    @Test("A transaction's BEGIN, or a word that only contains a trigger, moves nothing", arguments: [
+        ("BEGIN", SQLSessionDialect.mySQL),
+        ("SELECT executed_at, CASE WHEN id > 1 THEN 1 END FROM users", .mySQL),
+        ("SELECT * FROM t FOR UPDATE", .mySQL),
+        ("SELECT executor FROM jobs", .sqlServer),
+    ])
+    func lookalikesMoveNothing(sql: String, dialect: SQLSessionDialect) {
+        #expect(!movesDatabase(sql, dialect))
+    }
+
+    @Test("A statement that only names a database, or an engine whose session cannot move, moves nothing", arguments: [
+        ("SELECT * FROM production.orders", SQLSessionDialect.mySQL),
+        ("SELECT 'use production'", .mySQL),
+        ("DELETE FROM orders WHERE user_id = 1", .mySQL),
+        ("USE production", .postgres),
+        ("USE production", .sqlite),
+    ])
+    func otherStatementsMoveNothing(sql: String, dialect: SQLSessionDialect) {
+        #expect(!movesDatabase(sql, dialect))
+    }
 }

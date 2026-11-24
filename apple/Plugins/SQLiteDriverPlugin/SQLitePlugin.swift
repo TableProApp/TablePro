@@ -135,6 +135,8 @@ nonisolated final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sen
     var connectionWarning: String? { attachmentWarning.withLock { $0 } }
 
     var currentSchema: String? { nil }
+    // The file it opened, as the connection names it, so the host can tell a caller naming it from one naming another.
+    var currentDatabase: String? { config.database }
     var serverVersion: String? { backend.resolvedServerVersion }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }

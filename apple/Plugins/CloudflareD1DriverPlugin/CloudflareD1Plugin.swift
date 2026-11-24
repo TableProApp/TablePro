@@ -23,6 +23,8 @@ nonisolated final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlug
     static let databaseDisplayName = "Cloudflare D1"
     static let iconName = "cloudflare-d1-icon"
     static let defaultPort = 0
+    // Each API request names its database, and D1's SQL has no statement that switches it.
+    static let statementsCanSwitchDatabase = false
 
     // MARK: - UI/Capability Metadata
 

@@ -90,6 +90,14 @@ final class ChatToolRegistry {
         return tool.mode == .readOnly
     }
 
+    // A built-in that takes a database runs in a scope its approval card can name.
+    func runsInScope(toolName: String) -> Bool {
+        guard let tool = tools[toolName], !(tool is MCPRemoteToolAdapter),
+              case .object(let schema) = tool.inputSchema, case .object(let properties)? = schema["properties"]
+        else { return false }
+        return properties["database"] != nil
+    }
+
     func requiresApproval(toolName: String) -> Bool {
         guard let tool = tools[toolName] else { return true }
         return tool.mode.requiresApproval

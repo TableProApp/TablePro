@@ -485,6 +485,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     // The query timeout the session was opened with, nil when the driver was given none.
     var sessionQueryTimeoutSeconds: Int? { get }
 
+    // Texts sent that may have moved the session to another database; the host compares it with where it placed it.
+    var databaseMoves: Int { get }
+
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]?
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String?
 
@@ -649,6 +652,8 @@ extension DatabaseDriver {
     }
 
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { nil }
+
+    var databaseMoves: Int { 0 }
 
     var rowWritingPluginDriver: (any PluginDatabaseDriver)? { queryBuildingPluginDriver }
 

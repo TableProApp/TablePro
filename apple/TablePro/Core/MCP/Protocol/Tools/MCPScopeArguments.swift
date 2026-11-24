@@ -25,6 +25,32 @@ enum MCPScopeArguments {
         )
     }
 
+    // For a tool that runs SQL the caller wrote, or SQL it builds without naming the schema.
+    static func resolveForStatements(
+        _ arguments: JsonValue,
+        connectionId: UUID,
+        services: MCPToolServices
+    ) async throws -> DatabaseScope {
+        try await services.connectionBridge.resolveStatementScope(
+            connectionId: connectionId,
+            database: try MCPArgumentDecoder.optionalString(arguments, key: "database"),
+            schema: try namedSchema(arguments)
+        )
+    }
+
+    // For SQL the app writes with the schema in each name, approved and then run on the session's connection.
+    static func resolveForAppStatements(
+        _ arguments: JsonValue,
+        connectionId: UUID,
+        services: MCPToolServices
+    ) async throws -> DatabaseScope {
+        try await services.connectionBridge.resolveAppStatementScope(
+            connectionId: connectionId,
+            database: try MCPArgumentDecoder.optionalString(arguments, key: "database"),
+            schema: try namedSchema(arguments)
+        )
+    }
+
     static func namedSchema(_ arguments: JsonValue) throws -> String? {
         guard let schema = try MCPArgumentDecoder.optionalString(arguments, key: "schema"), !schema.isEmpty else {
             return nil
