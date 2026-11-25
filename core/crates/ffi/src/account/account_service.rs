@@ -5,8 +5,10 @@ use chrono::Utc;
 use secrecy::SecretString;
 use tablepro_account::{
     Account, AccountHosts, AccountSettings, AccountStatus, CallbackPage, DeviceDescription, Endpoints, EntitlementKeys,
-    FixedServer, LicenseKeys, MachineId, OfflineFileError, ServerPolicy, ServerSettings, read_offline_file_blocking,
+    FixedServer, LicenseKeys, MachineId, ManagedPolicy, OfflineFileError, ServerPolicy, ServerSettings,
+    read_offline_file_blocking,
 };
+use tablepro_ai::ModelCatalog;
 use tablepro_session::runtime::Tasks;
 use tokio::sync::{broadcast, watch};
 use tokio_util::task::AbortOnDropHandle;
@@ -16,6 +18,7 @@ use super::account_info::{
     ServerLicenseInfo, SignOutCauseTag,
 };
 use super::host_browser::{HostBrowser, HostBrowserBridge};
+use super::managed_policy::ManagedPolicyArg;
 use super::web_authenticator::{HostWebAuthenticator, HostWebAuthenticatorBridge};
 use crate::cancel_token::{CancelToken, token};
 use crate::core_handle::Core;
@@ -44,9 +47,8 @@ pub struct AccountConfig {
     pub client: AppClientTag,
     // A 64-hex ID the host derived itself: the Mac's SHA-256 of its hardware UUID.
     pub machine_id: Option<String>,
-    // AccountServerURL and AllowOtherAccountServers as the host read them, each only when the OS marks it managed.
-    pub managed_server_url: Option<String>,
-    pub allow_other_servers: Option<bool>,
+    // The managed values the host read at launch, which pick the server (core ADR 0055).
+    pub policy: ManagedPolicyArg,
     // The Mac's Account/entitlement.jwt, adopted once while `account_file` is missing.
     pub legacy_entitlement_file: Option<String>,
     // The x of each license key a development build trusts; empty for the release keys.
@@ -69,6 +71,8 @@ pub struct AccountService {
     pub(crate) account: Account,
     status: watch::Receiver<AccountStatus>,
     pub(crate) tasks: Tasks,
+    // The core's AI model catalog, which refreshes from tablepro.app only while the values allow it.
+    ai_catalog: ModelCatalog,
     _running: AbortOnDropHandle<()>,
 }
 
@@ -85,6 +89,7 @@ impl Core {
     ) -> Result<Arc<AccountService>, CoreError> {
         let vaults = self.refresh_tokens();
         let tasks = self.tasks.clone();
+        let ai_catalog = self.ai_catalog.clone();
         let browser = Arc::new(HostBrowserBridge::new(browser, tasks.clone()));
         let web_authenticator = web_authenticator.map(|host| {
             Arc::new(HostWebAuthenticatorBridge::new(host, tasks.clone()))
@@ -92,6 +97,7 @@ impl Core {
         });
         let listener: Arc<dyn AccountListener> = Arc::from(listener);
         on_runtime(&self.tasks, async move {
+            let policy: ManagedPolicy = config.policy.clone().into();
             // Reading the registry, the server choice and the system's certificates can block.
             let account = tasks
                 .spawn_blocking_task(move || {
@@ -106,14 +112,17 @@ impl Core {
                 })
                 .await
                 .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??;
-            Ok(Arc::new(AccountService::start(account, listener, tasks)))
+            // A development stack's server takes no values at launch, so they come here.
+            ai_catalog.allow_refresh(policy.allows_tablepro_requests());
+            account.apply_policy(policy);
+            Ok(Arc::new(AccountService::start(account, listener, tasks, ai_catalog)))
         })
         .await
     }
 }
 
 impl AccountService {
-    fn start(account: Account, listener: Arc<dyn AccountListener>, tasks: Tasks) -> Self {
+    fn start(account: Account, listener: Arc<dyn AccountListener>, tasks: Tasks, ai_catalog: ModelCatalog) -> Self {
         let status = account.status();
         let mut changes = account.status();
         let mut sign_outs = account.sign_outs();
@@ -144,6 +153,7 @@ impl AccountService {
             account,
             status,
             tasks,
+            ai_catalog,
             _running: running,
         }
     }
@@ -166,6 +176,24 @@ impl AccountService {
 
     pub fn server(&self) -> ServerInfo {
         self.account.server().into()
+    }
+
+    // Share-link reads and the AI catalog refresh, wherever the host still makes them itself, ask this before any
+    // request to tablepro.app.
+    pub fn allows_tablepro_requests(&self) -> bool {
+        self.account.allows_tablepro_requests()
+    }
+
+    // The managed values read again, at a change the OS reported. They apply before this returns; when they no
+    // longer allow the server signed in to, the account calls it no more until the next launch, and its status says so
+    // once no call holds it.
+    pub fn apply_policy(&self, policy: ManagedPolicyArg) {
+        let policy: ManagedPolicy = policy.into();
+        self.ai_catalog.allow_refresh(policy.allows_tablepro_requests());
+        if self.account.apply_policy(policy) {
+            let account = self.account.clone();
+            drop(self.tasks.spawn_task(async move { account.report_stop().await }));
+        }
     }
 
     // A company server's license, once this app verified it.
@@ -347,8 +375,7 @@ fn settings(config: AccountConfig, development: bool) -> Result<AccountSettings,
             ));
         }
         (None, None) => ServerSettings::Resolved(ServerPolicy {
-            managed_url: config.managed_server_url,
-            allow_other_servers: config.allow_other_servers,
+            managed: config.policy.into(),
             license_keys,
         }),
         (Some(account), Some(api)) => {
@@ -419,6 +446,7 @@ mod tests {
     use tablepro_account::{AppClient, ServerSettings};
 
     use super::*;
+    use crate::account::managed_policy::ManagedPolicyValues;
 
     fn config() -> AccountConfig {
         AccountConfig {
@@ -434,8 +462,9 @@ mod tests {
             machine_guid: Some("d3b07384-d113-4ec6-a2f1-6a3f0c2e9b7a".to_owned()),
             client: AppClientTag::Windows,
             machine_id: None,
-            managed_server_url: None,
-            allow_other_servers: None,
+            policy: ManagedPolicyArg::Read {
+                values: ManagedPolicyValues::default(),
+            },
             legacy_entitlement_file: None,
             license_keys: Vec::new(),
         }
@@ -532,8 +561,14 @@ mod tests {
                 client: AppClientTag::Macos,
                 machine_guid: None,
                 machine_id: Some("E4338B8603DE2523305FDFCB87319BE2033974658AD97F0C975834D209715658".to_owned()),
-                managed_server_url: Some("https://tablepro.corp.example".to_owned()),
-                allow_other_servers: Some(false),
+                policy: ManagedPolicyArg::Read {
+                    values: ManagedPolicyValues {
+                        account_server_url: Some("https://tablepro.corp.example".to_owned()),
+                        allow_other_account_servers: Some(false),
+                        personal_sync_provider: Some(vec!["tablepro-sync".to_owned()]),
+                        ..ManagedPolicyValues::default()
+                    },
+                },
                 legacy_entitlement_file: Some(
                     "/Users/a/Library/Application Support/TablePro/Account/entitlement.jwt".to_owned(),
                 ),
@@ -555,8 +590,16 @@ mod tests {
         let ServerSettings::Resolved(policy) = mac.server else {
             panic!("not resolved");
         };
-        assert_eq!(policy.managed_url.as_deref(), Some("https://tablepro.corp.example"));
-        assert_eq!(policy.allow_other_servers, Some(false));
+        let values = policy.managed.values().expect("values");
+        assert_eq!(
+            values.account_server_url.as_deref(),
+            Some("https://tablepro.corp.example")
+        );
+        assert_eq!(values.allow_other_account_servers, Some(false));
+        assert_eq!(
+            values.personal_sync_provider.as_deref(),
+            Some(["tablepro-sync".to_owned()].as_slice())
+        );
         assert!(mac.legacy_entitlement_file.is_some());
         assert_eq!(short.unwrap_err().code(), "account.no_machine_id");
     }

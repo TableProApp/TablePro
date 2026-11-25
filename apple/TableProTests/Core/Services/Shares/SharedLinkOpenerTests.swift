@@ -119,6 +119,16 @@ struct SharedLinkOpenerTests {
         #expect(recorder.events == ["progress", "hide", "tell", "welcome"])
     }
 
+    @Test("A link the organization keeps the Mac from reading says so, then falls back to Welcome")
+    func managedByOrganization() async {
+        let service = FakeShareService()
+        service.fetchResults = [.failure(.managedByOrganization)]
+        let recorder = Recorder()
+        await makeOpener(service, recorder).open(token: Self.token)
+        #expect(recorder.messages == [String(localized: "Your organization doesn't allow links from tablepro.app on this Mac.")])
+        #expect(recorder.events == ["progress", "hide", "tell", "welcome"])
+    }
+
     @Test("Cancel in the progress window stops the read and falls back to Welcome without a message")
     func cancelProgress() async throws {
         let service = FakeShareService()

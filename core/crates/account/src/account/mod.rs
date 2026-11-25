@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::num::NonZeroU64;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use chrono::{DateTime, TimeDelta, Utc};
@@ -20,6 +20,7 @@ use crate::license::{License, LicenseError};
 use crate::loopback::{ExpectedIssuer, Loopback, callback};
 use crate::machine_id::MachineId;
 use crate::oauth::{OAuth, Tokens};
+use crate::policy::ManagedPolicy;
 use crate::profile::{Device, Profile};
 use crate::server::{ServerError, ServerInfo, ServerSettings};
 use crate::token_vault::{RefreshTokenVault, RefreshTokenVaults, SingleVault};
@@ -101,6 +102,13 @@ struct Inner {
     sign_outs: broadcast::Sender<SignOutCause>,
     // A company server's verified license, kept apart from the entitlement, which can fail after it.
     license: watch::Sender<Option<Arc<License>>>,
+    // The managed values the host passed last (core ADR 0055).
+    policy: watch::Sender<ManagedPolicy>,
+    // Set once those values stop allowing the server, which only a launch changes: from then on the account calls it
+    // no more.
+    held: AtomicBool,
+    // Held, never across an await, while the values or the server change, so each change sees the other's result.
+    switching: std::sync::Mutex<()>,
 }
 
 #[derive(Default)]
@@ -211,6 +219,16 @@ impl Account {
             .build()
             .map_err(|error| AccountError::Protocol(http_text(error)))?;
         let server = Server::initial(&settings, &http, hosts.vaults.as_ref())?;
+        let policy = match &settings.server {
+            ServerSettings::Resolved(policy) => policy.managed.clone(),
+            ServerSettings::Fixed(_) => ManagedPolicy::default(),
+        };
+        let held = !policy.allows_server(&server.target.origin);
+        if held {
+            tracing::warn!(
+                "the organization's policy does not allow the account server, so the account makes no call to it"
+            );
+        }
         Ok(Self {
             inner: Arc::new(Inner {
                 settings,
@@ -225,6 +243,9 @@ impl Account {
                 attempts: AtomicU64::new(0),
                 sign_outs: broadcast::Sender::new(SIGN_OUT_BACKLOG),
                 license: watch::Sender::new(None),
+                policy: watch::Sender::new(policy),
+                held: AtomicBool::new(held),
+                switching: std::sync::Mutex::new(()),
             }),
         })
     }
@@ -252,6 +273,68 @@ impl Account {
 
     fn current(&self) -> Arc<Server> {
         self.inner.server.borrow().clone()
+    }
+
+    pub fn policy(&self) -> ManagedPolicy {
+        self.inner.policy.borrow().clone()
+    }
+
+    // Share-link reads and the AI model catalog refresh ask this before any request (core ADR 0055).
+    pub fn allows_tablepro_requests(&self) -> bool {
+        self.inner.policy.borrow().allows_tablepro_requests()
+    }
+
+    // Values the host read again. They apply at once, but the server changes only at a launch: when they no longer
+    // allow it, the account stops calling it until then, and a call already sent has its answer dropped. True when
+    // they stopped it now; `report_stop` then says so in the status, which waits for a call in flight.
+    pub fn apply_policy(&self, policy: ManagedPolicy) -> bool {
+        let _switching = self.switching();
+        let changed = self.inner.policy.send_if_modified(|held| {
+            let changed = *held != policy;
+            *held = policy.clone();
+            changed
+        });
+        let stopped = changed && !self.is_held() && !policy.allows_server(&self.current().target.origin);
+        if stopped {
+            self.hold();
+        }
+        stopped
+    }
+
+    pub async fn report_stop(&self) {
+        let session = self.inner.session.lock().await;
+        if self.is_held() && session.refresh.is_some() {
+            let kept = self.inner.status.borrow().entitlement().cloned();
+            let problem = EntitlementProblem::RefreshFailed(ServerError::Managed.into());
+            self.publish(&session, kept, Some(problem));
+        }
+    }
+
+    fn is_held(&self) -> bool {
+        self.inner.held.load(Ordering::SeqCst)
+    }
+
+    fn hold(&self) {
+        if !self.inner.held.swap(true, Ordering::SeqCst) {
+            tracing::warn!(
+                "the organization's policy no longer allows the account server, so the account stops calling it"
+            );
+        }
+    }
+
+    fn switching(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.inner
+            .switching
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    // Before every request to the server signed in to, and again before an answer is kept.
+    fn reachable(&self) -> Result<(), AccountError> {
+        match self.is_held() {
+            true => Err(ServerError::Managed.into()),
+            false => Ok(()),
+        }
     }
 
     pub async fn run(&self) {
@@ -426,6 +509,8 @@ impl Account {
             () = cancelled => return Err(AccountError::SignInCanceled),
         };
         let code = callback.map_err(|_| AccountError::SignInTimedOut)?.code_for(issuer)?;
+        // The browser can come back after the organization's values stopped the account.
+        self.reachable()?;
         oauth.exchange_code(code, authorization).await
     }
 
@@ -463,12 +548,15 @@ impl Account {
         let answered = callback(url.query().unwrap_or_default(), authorization.state.secret())
             .ok_or_else(|| AccountError::Protocol("the sign-in came back for another request".to_owned()))?;
         let code = answered.code_for(issuer)?;
+        // The browser can come back after the organization's values stopped the account.
+        self.reachable()?;
         oauth.exchange_code(code, authorization).await
     }
 
     // Only the latest sign-in, sign-out or server change counts: tokens that come back for an attempt a later one
     // superseded are revoked, never adopted. Nothing replaces a working sign-in until the new one has a refresh token.
     async fn commit_sign_in(&self, attempt: u64, server: &Server, tokens: Tokens) -> Result<(), AccountError> {
+        self.reachable()?;
         let Some(refresh) = tokens.refresh.clone().filter(|token| !token.expose_secret().is_empty()) else {
             return Err(AccountError::Protocol("the sign-in gave no refresh token".to_owned()));
         };
@@ -481,6 +569,8 @@ impl Account {
             return Err(error);
         }
         let mut session = self.inner.session.lock().await;
+        // The values may have stopped the server while another call held the session.
+        self.reachable()?;
         if self.inner.attempts.load(Ordering::SeqCst) != attempt {
             if let Err(error) = oauth.revoke(&refresh).await {
                 tracing::warn!(%error, "a superseded sign-in was not revoked");
@@ -643,6 +733,7 @@ impl Account {
             Err(error) => Err(answer_error(error).await),
         };
         let answer = session.answered(Call::Entitlement, answer)?;
+        self.reachable()?;
         let entitlement = self.verify(session, &answer.token, Utc::now())?;
         session.account_id = Some(entitlement.claims().sub.clone());
         self.write_file(session, Some(entitlement.token().to_owned())).await;
@@ -678,6 +769,7 @@ impl Account {
         let mut devices = Vec::new();
         let mut cursor = None;
         for _ in 0..DEVICE_PAGES {
+            self.reachable()?;
             let page = match api.list_devices(cursor.as_deref(), Some(DEVICE_PAGE)).await {
                 Ok(answer) => answer.into_inner(),
                 Err(error) => return session.answered(Call::Devices, Err(answer_error(error).await)),
@@ -742,6 +834,7 @@ impl Account {
     }
 
     async fn access(&self, session: &mut Session, renew: bool) -> Result<SecretString, AccountError> {
+        self.reachable()?;
         if !renew
             && let Some((access, until)) = &session.access
             && *until > Utc::now() + ACCESS_TOKEN_MARGIN
@@ -756,7 +849,9 @@ impl Account {
         let tokens = session.answered(Call::Token, tokens)?;
         server_calls::audience_check(&server, &tokens.access)?;
         let access = tokens.access.clone();
+        // A rotated refresh token is kept whatever happened meanwhile, or the sign-in would be lost.
         self.adopt(session, tokens).await;
+        self.reachable()?;
         Ok(access)
     }
 

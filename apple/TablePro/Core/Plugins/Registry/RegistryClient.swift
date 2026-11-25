@@ -37,6 +37,10 @@ internal final class RegistryClient: ObservableObject {
     private let verifier: RegistryManifestVerifier
 
     private var inFlight: InFlightFetch?
+    // PluginCatalogAllowed=false fetches no manifest, so nothing installs or updates from the registry
+    // (core/docs/decisions/0055-managed-policies-for-the-sync-provider-and-tablepro-app-traffic.md).
+    internal private(set) var allowsCatalog = true
+    private var catalogPolicy: AnyCancellable?
 
     private struct InFlightFetch {
         let policy: RegistryFetchPolicy
@@ -53,7 +57,10 @@ internal final class RegistryClient: ObservableObject {
         manifestURL: URL = RegistryClient.defaultManifestURL,
         session: URLSession = RegistryClient.makeDefaultSession(),
         publicKey: Curve25519.Signing.PublicKey = RegistryClient.bundledPublicKey,
-        defaults: UserDefaults = AppStorageEnvironment.shared.defaults
+        defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
+        catalogAllowed: AnyPublisher<Bool, Never> = ManagedPolicyCenter.shared.$snapshot
+            .map(\.allowsPluginCatalog)
+            .eraseToAnyPublisher()
     ) {
         let verifier = RegistryManifestVerifier(publicKey: publicKey, defaults: defaults)
         self.manifestURL = manifestURL
@@ -61,6 +68,18 @@ internal final class RegistryClient: ObservableObject {
         self.verifier = verifier
         updatePassSession = Self.makeUpdatePassSession(from: session)
         manifest = Self.cachedManifest(at: manifestURL, in: session.configuration.urlCache, verifier: verifier)
+        catalogPolicy = catalogAllowed
+            .removeDuplicates()
+            .sink { [weak self] allowed in self?.allowCatalog(allowed) }
+    }
+
+    // A manifest kept from before lists downloads too, so it goes with the permission.
+    private func allowCatalog(_ allowed: Bool) {
+        allowsCatalog = allowed
+        guard !allowed else { return }
+        Self.logger.info("The organization's policy turns the plugin registry off")
+        manifest = nil
+        isManifestCurrent = false
     }
 
     nonisolated internal static func signatureURL(for manifestURL: URL) -> URL {
@@ -122,6 +141,7 @@ internal final class RegistryClient: ObservableObject {
     // The result is this fetch's own; isManifestCurrent also reflects the update pass's fetch.
     @discardableResult
     internal func fetch(policy: RegistryFetchPolicy) async -> RegistryManifest? {
+        guard allowsCatalog else { return nil }
         while let current = inFlight {
             let result = await current.task.value
             if policy == .ifStale || current.policy == .mustBeCurrent { return result }
@@ -136,7 +156,8 @@ internal final class RegistryClient: ObservableObject {
 
     // Never coalesced with fetch(policy:), so an interactive caller never waits for the network with the pass.
     internal func fetchWaitingForConnectivity() async -> RegistryManifest? {
-        await load(policy: .mustBeCurrent, from: updatePassSession)
+        guard allowsCatalog else { return nil }
+        return await load(policy: .mustBeCurrent, from: updatePassSession)
     }
 
     internal func makeRequest(policy: RegistryFetchPolicy) -> URLRequest {
@@ -155,12 +176,16 @@ internal final class RegistryClient: ObservableObject {
     }
 
     private func load(policy: RegistryFetchPolicy, from session: URLSession) async -> RegistryManifest? {
+        // A caller that waited on another fetch may find the registry turned off since.
+        guard allowsCatalog else { return nil }
         var outcome = await loadVerified(policy: policy, from: session, bypassingCDNCache: nil)
-        if case .refused = outcome {
+        if case .refused = outcome, allowsCatalog {
             // The manifest and its signature are cached apart, so a deploy between them leaves a pair that disagrees.
             Self.logger.info("Fetching the plugin manifest and its signature again from the server")
             outcome = await loadVerified(policy: .mustBeCurrent, from: session, bypassingCDNCache: UUID().uuidString)
         }
+        // A policy that arrived during the fetch drops its answer.
+        guard allowsCatalog else { return nil }
         switch outcome {
         case .verified(let decoded):
             manifest = decoded

@@ -17,7 +17,8 @@ struct SyncStatusTests {
         DisableReason.licenseRequired,
         DisableReason.licenseExpired,
         DisableReason.licenseUnverified,
-        DisableReason.userDisabled
+        DisableReason.userDisabled,
+        DisableReason.managedPolicy
     ])
     func disabledIsNotEnabled(_ reason: DisableReason) {
         #expect(!SyncStatus.disabled(reason).isEnabled)

@@ -11,6 +11,8 @@ internal enum DriverUnavailability: Equatable, Sendable {
     case failedToLoad(pluginId: String?, pluginName: String, reason: String?)
     case outdated(reason: String)
     case notInstalled
+    // A registry driver not installed while PluginCatalogAllowed=false keeps the registry off.
+    case installManagedByOrganization
 }
 
 extension PluginManager {
@@ -20,7 +22,8 @@ extension PluginManager {
 
     func driverUnavailability(
         for databaseType: DatabaseType,
-        registryManifest: RegistryManifest? = RegistryClient.shared.manifest
+        registryManifest: RegistryManifest? = RegistryClient.shared.manifest,
+        catalogAllowed: Bool = RegistryClient.shared.allowsCatalog
     ) -> DriverUnavailability {
         let typeId = databaseType.pluginTypeId
         if let entry = installedEntry(servingTypeId: typeId), !entry.serves(databaseType.rawValue) {
@@ -41,7 +44,7 @@ extension PluginManager {
             return .failedToLoad(pluginId: rejection.bundleId, pluginName: rejection.name, reason: rejection.reason)
         }
         if databaseType.isDownloadablePlugin || Self.registryPlugin(forTypeId: typeId, in: registryManifest) != nil {
-            return .notInstalled
+            return catalogAllowed ? .notInstalled : .installManagedByOrganization
         }
         guard PluginMetadataRegistry.shared.snapshot(for: databaseType) != nil else {
             return .unknownType
@@ -63,6 +66,8 @@ extension PluginManager {
             return .pluginUpdateUnavailable(reason: reason)
         case .notInstalled:
             return .pluginNotInstalled(Self.registryDisplayName(of: databaseType))
+        case .installManagedByOrganization:
+            return .pluginInstallManaged(Self.registryDisplayName(of: databaseType))
         }
     }
 }

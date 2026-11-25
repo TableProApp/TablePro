@@ -27,9 +27,16 @@ actor PluginInstaller: RegistryPluginInstalling {
     static let logger = Logger(subsystem: "com.TablePro", category: "PluginInstaller")
 
     private let session: @Sendable () async -> URLSession
+    // Asked before each download, so a retry or an update pass that holds a manifest from before PluginCatalogAllowed
+    // turned the registry off downloads nothing.
+    private let catalogAllowed: @Sendable () async -> Bool
 
-    init(session: @escaping @Sendable () async -> URLSession = { await MainActor.run { RegistryClient.shared.session } }) {
+    init(
+        session: @escaping @Sendable () async -> URLSession = { await MainActor.run { RegistryClient.shared.session } },
+        catalogAllowed: @escaping @Sendable () async -> Bool = { await MainActor.run { RegistryClient.shared.allowsCatalog } }
+    ) {
         self.session = session
+        self.catalogAllowed = catalogAllowed
     }
 
     func install(
@@ -100,6 +107,8 @@ actor PluginInstaller: RegistryPluginInstalling {
 
         do {
             let urlSession = await self.session()
+            // Asked last, right before the request, since every await before it can outlast a policy change.
+            guard await catalogAllowed() else { throw PluginError.pluginInstallManaged(registryPlugin.name) }
             let (tempDownloadURL, response) = try await Self.download(downloadURL, with: urlSession, progress: progress)
             let zipURL = workingDir.appendingPathComponent("\(registryPlugin.id).zip")
             try FileManager.default.moveItem(at: tempDownloadURL, to: zipURL)
