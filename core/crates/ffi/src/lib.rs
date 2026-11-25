@@ -30,6 +30,7 @@ mod import;
 mod key_read;
 mod keymap;
 mod library;
+mod library_details;
 mod masking;
 mod mcp;
 mod prompter;
@@ -45,6 +46,7 @@ mod statement_at;
 mod structure;
 mod sync;
 mod syntax;
+mod table_folders;
 #[cfg(test)]
 mod test_session;
 pub mod window_abi;
@@ -108,6 +110,12 @@ pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
     LibrarySnapshot, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,
 };
+pub use library_details::{
+    CloudSqlAuthTag, CloudSqlProxyRecord, CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord,
+    CredentialPasswordRecord, CredentialProfileRecord, CredentialReferenceRecord, DeviceSettingsRecord,
+    LocalPasswordSourceRecord, SocksProxyRecord, SshProfileRecord, SshRouteHopRecord, SshRouteRecord,
+    SshRouteTargetRecord, TunnelCommandMethodTag, TunnelCommandRecord, VaultAuthRecord,
+};
 pub use masking::{
     MaskReason, MaskStyleTag, MaskSuggestionInfo, PersonalDataHitInfo, SensitiveKindTag, ShareColumnChoice,
     ShareColumnMasking, ShareRefusal, ShareSummary,
@@ -143,6 +151,7 @@ pub use sync::{
     SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
 };
 pub use syntax::SqlGrammarTag;
+pub use table_folders::{TableFolderItemRecord, TableFolderRecord, TableFolderStore, TableRefRecord};
 
 use secrecy::{ExposeSecret, SecretString};
 

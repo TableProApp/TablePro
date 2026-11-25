@@ -3,8 +3,9 @@ use tablepro_core::{ClientIdentity, NetworkOptions, TlsConfig};
 use tablepro_storage::query_history::Entry;
 use tablepro_storage::saved_queries::SavedQuery;
 use tablepro_storage::{
-    ConnectionGroup, ConnectionTag, FavouriteDatabase, FavouriteTable, SavedConnection, SavedQueryFolder, SavedSshAuth,
-    SavedSshConfig,
+    ConnectionDetails, ConnectionGroup, ConnectionTag, CredentialPassword, CredentialProfile, DeviceOnly,
+    FavouriteDatabase, FavouriteTable, SavedConnection, SavedQueryFolder, SavedSshAuth, SavedSshConfig, SshProfile,
+    TableFolder, TableFolderItem, TableRef, TableScope,
 };
 
 use super::model::{MODELS, Target, model};
@@ -153,7 +154,31 @@ fn exhaustive_connection(connection: SavedConnection) {
         tags: _,
         icon: _,
         options,
+        details,
+        device,
+        unknown: _,
     } = connection;
+    let ConnectionDetails {
+        startup_sql: _,
+        ai_rules: _,
+        ai_allowed_tools: _,
+        ssh_profile_id: _,
+        ssh_route: _,
+        credential_profile_id: _,
+        credential_reference: _,
+        redis_database: _,
+        additional_fields: _,
+    } = details;
+    let DeviceOnly {
+        local_only: _,
+        is_sample: _,
+        origin: _,
+        password_source: _,
+        cloudflare_tunnel: _,
+        cloud_sql_proxy: _,
+        socks_proxy: _,
+        tunnel_command: _,
+    } = device;
     let TlsConfig {
         mode: _,
         ca_file: _,
@@ -230,6 +255,126 @@ fn the_connection_table_names_every_member_the_store_holds() {
             "options.replica_set",
             "options.more_hosts",
             "options.channel_binding",
+            "details.startup_sql",
+            "details.ai_rules",
+            "details.ai_allowed_tools",
+            "details.ssh_profile_id",
+            "details.ssh_route",
+            "details.credential_profile_id",
+            "details.credential_reference",
+            "details.redis_database",
+            "details.additional_fields",
+            "device.local_only",
+            "device.is_sample",
+            "device.origin",
+            "device.password_source",
+            "device.cloudflare_tunnel",
+            "device.cloud_sql_proxy",
+            "device.socks_proxy",
+            "device.tunnel_command",
+            "unknown",
+        ])
+    );
+}
+
+#[test]
+fn the_profile_and_table_folder_tables_name_every_member_the_store_holds() {
+    let exhaustive = |ssh: SshProfile, credential: CredentialProfile, folder: TableFolder, item: TableFolderItem| {
+        let SshProfile {
+            id: _,
+            name: _,
+            ssh: _,
+            unknown: _,
+        } = ssh;
+        let CredentialProfile {
+            id: _,
+            name: _,
+            username: _,
+            password,
+            secure_field_ids: _,
+            order: _,
+            unknown: _,
+        } = credential;
+        match password {
+            CredentialPassword::Stored
+            | CredentialPassword::Prompt
+            | CredentialPassword::Pgpass
+            | CredentialPassword::Reference { reference: _ }
+            | CredentialPassword::Local { source: _ } => {}
+        }
+        let TableFolder {
+            id: _,
+            scope:
+                TableScope {
+                    connection_id: _,
+                    database: _,
+                    schema: _,
+                },
+            name: _,
+            created_at_ms: _,
+            updated_at_ms: _,
+        } = folder;
+        let TableFolderItem {
+            table:
+                TableRef {
+                    connection_id: _,
+                    database: _,
+                    schema: _,
+                    name: _,
+                },
+            folder_id: _,
+        } = item;
+    };
+    let _ = exhaustive;
+    assert_eq!(
+        members("SshProfile"),
+        sorted(vec![
+            "id",
+            "name",
+            "ssh.host",
+            "ssh.port",
+            "ssh.username",
+            "ssh.jump_hosts",
+            "ssh.auth.kind",
+            "ssh.auth.path",
+            "ssh.auth.has_passphrase",
+            "unknown",
+        ])
+    );
+    assert_eq!(
+        members("CredentialProfile"),
+        sorted(vec![
+            "id",
+            "name",
+            "username",
+            "password.mode",
+            "password.reference",
+            "password.source",
+            "secure_field_ids",
+            "order",
+            "unknown",
+        ])
+    );
+    assert_eq!(
+        members("TableFolder"),
+        sorted(vec![
+            "id",
+            "scope.connection_id",
+            "scope.database",
+            "scope.schema",
+            "name",
+            "created_at_ms",
+            "updated_at_ms",
+        ])
+    );
+    assert_eq!(
+        members("TableFolderItem"),
+        sorted(vec![
+            "table.connection_id",
+            "table.database",
+            "table.schema",
+            "table.name",
+            "folder_id",
         ])
     );
 }

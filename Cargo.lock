@@ -8214,9 +8214,11 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "hex",
  "secrecy",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "tablepro-core",
  "tempfile",
