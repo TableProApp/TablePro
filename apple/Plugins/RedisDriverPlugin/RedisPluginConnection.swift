@@ -80,6 +80,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     private var _isConnected: Bool = false
     private var _isShuttingDown: Bool = false
     private var _cachedServerVersion: String?
+    private var _connectServerInfo: String?
     private var _database: RedisSessionDatabase
     private var _footprint = RedisSessionFootprint()
     private var connectWatchdogGeneration = 0
@@ -153,15 +154,17 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
             logger.debug("Connecting to Redis at \(self.host):\(self.port)")
             let deadline = RedisConnectDeadline(timeout: connectTimeout)
             do {
-                try openContextSync(
+                let serverInfo = try openContextSync(
                     selectDatabase: database,
                     deadline: deadline,
-                    reportingStage: report
+                    reportingStage: report,
+                    readsServerInfo: true
                 )
-                let versionString = try fetchServerVersionSync()
+                let versionString = serverInfo.flatMap(RedisServerInfo.version(from:))
 
                 stateLock.lock()
                 _cachedServerVersion = versionString
+                _connectServerInfo = serverInfo
                 _isConnected = true
                 _database = RedisSessionDatabase(database)
                 stateLock.unlock()
@@ -198,6 +201,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         #endif
         _isConnected = false
         _cachedServerVersion = nil
+        _connectServerInfo = nil
         _database = RedisSessionDatabase(database)
         _footprint = RedisSessionFootprint()
         stateLock.unlock()
@@ -231,6 +235,12 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         stateLock.lock()
         defer { stateLock.unlock() }
         return _cachedServerVersion
+    }
+
+    var connectServerInfo: String? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _connectServerInfo
     }
 
     func currentDatabase() -> Int {
@@ -508,11 +518,15 @@ private extension RedisPluginConnection {
         }
     }
 
+    // Answers the `INFO server` text when asked for it: it goes out with the `SELECT`, after `AUTH` has answered, so
+    // a refused sign-in still stops everything after it and the rest costs one round trip, not two.
+    @discardableResult
     func openContextSync(
         selectDatabase dbIndex: Int,
         deadline: RedisConnectDeadline,
-        reportingStage report: ConnectionStageReporter = { _ in }
-    ) throws {
+        reportingStage report: ConnectionStageReporter = { _ in },
+        readsServerInfo: Bool = false
+    ) throws -> String? {
         activeConnectDeadline = deadline
         connectTransportFailed = false
         let budget: timeval
@@ -557,13 +571,21 @@ private extension RedisPluginConnection {
                 try applyConnectDeadline(deadline, to: ctx)
                 try probeSessionSync()
             }
+            var commands: [[Data]] = []
             if dbIndex != 0 {
-                try applyConnectDeadline(deadline, to: ctx)
-                let reply = try executeCommandSync(["SELECT", String(dbIndex)])
-                if case .error(let msg) = reply {
-                    throw RedisPluginError(code: 2, message: "SELECT \(dbIndex) failed: \(msg)")
-                }
+                commands.append([Data("SELECT".utf8), Data(String(dbIndex).utf8)])
             }
+            if readsServerInfo {
+                commands.append([Data("INFO".utf8), Data("server".utf8)])
+            }
+            guard !commands.isEmpty else { return nil }
+            try applyConnectDeadline(deadline, to: ctx)
+            let replies = try executePipelineSync(commands)
+            if dbIndex != 0, case .error(let msg) = replies.first {
+                throw RedisPluginError(code: 2, message: "SELECT \(dbIndex) failed: \(msg)")
+            }
+            guard readsServerInfo, case .string(let info) = replies.last else { return nil }
+            return info
         } catch {
             freeContextSync()
             throw error
@@ -913,20 +935,6 @@ private extension RedisPluginConnection {
             }
         }
         #endif
-    }
-
-    func fetchServerVersionSync() throws -> String? {
-        stateLock.lock()
-        guard context != nil else {
-            stateLock.unlock()
-            return nil
-        }
-        stateLock.unlock()
-        let reply = try executeCommandSync(["INFO", "server"])
-        if case .string(let info) = reply {
-            return RedisServerInfo.version(from: info)
-        }
-        return nil
     }
 }
 #endif

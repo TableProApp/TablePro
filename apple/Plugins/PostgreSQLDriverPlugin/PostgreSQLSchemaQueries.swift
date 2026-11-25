@@ -222,6 +222,16 @@ nonisolated enum PostgreSQLSchemaQueries {
         "SET search_path TO \(quotedSchemaIdentifier(schema))"
     }
 
+    // As `setSearchPath`, unless the session's current schema already is the one named, so a path that names more
+    // schemas than the first keeps them, as a host's `switchSchemaIfNeeded` keeps them. `false` makes it last the
+    // session, as a plain `SET` does.
+    static func setSearchPathUnlessCurrent(toSchema schema: String) -> String {
+        let path = PostgreSQLObjectQueries.quoteLiteral(quotedSchemaIdentifier(schema))
+        let name = PostgreSQLObjectQueries.quoteLiteral(schema)
+        return "SELECT pg_catalog.set_config('search_path', \(path), false) "
+            + "WHERE pg_catalog.current_schema() IS DISTINCT FROM \(name)"
+    }
+
     private static func quotedSchemaIdentifier(_ schema: String) -> String {
         SQLQuoting.identifier(schema)
     }

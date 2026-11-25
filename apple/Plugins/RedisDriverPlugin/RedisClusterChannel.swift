@@ -189,6 +189,11 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
         servedDatabaseCount
     }
 
+    // The count is known without asking, and the keyspace is one read per primary.
+    func databaseCountAndKeyCounts() async throws -> (reported: Int?, keyCounts: [Int: Int]?) {
+        (servedDatabaseCount, try await keyCountsByDatabase())
+    }
+
     /// `INFO keyspace` describes the node that answers it, so each primary's is read and added up.
     func keyCountsByDatabase() async throws -> [Int: Int]? {
         guard supportsDatabaseSelection else { return try await databaseZeroKeyCounts() }

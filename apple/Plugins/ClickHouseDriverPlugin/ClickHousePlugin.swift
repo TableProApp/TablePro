@@ -312,10 +312,16 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
         }
 
+        // The first request opens the connection and reads where a request naming no database lands, so the start
+        // costs one request fewer. Parallel requests would not save it: each opens its own HTTP/1.1 connection.
         let versionText: String?
+        let reportedDatabase: String?
         do {
-            let result = try await executeRaw("SELECT version()", requestTimeout: deadline.remainingSeconds())
+            let result = try await executeRaw(
+                ClickHouseServerProfile.openingQuery, requestTimeout: deadline.remainingSeconds()
+            )
             versionText = result.rows.first?.first?.asText
+            reportedDatabase = result.rows.first?[safe: 1]?.asText
         } catch {
             lock.withLock {
                 session?.invalidateAndCancel()
@@ -327,7 +333,6 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
         report(.preparingSession)
         let profile: ClickHouseServerProfile
-        let startingDatabase: String?
         do {
             let settings = try await probe(ClickHouseServerProfile.settingsProbeQuery, deadline: deadline)
             let catalog = try await probe(ClickHouseServerProfile.catalogProbeQuery, deadline: deadline)
@@ -336,20 +341,17 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 settings: settings.map { (columns: $0.columns, rows: $0.rows) },
                 catalogRow: catalog?.rows.first
             )
-            // A request naming no database runs in the user's default, which `ALTER USER ... DEFAULT DATABASE` moves,
-            // so the connect names the one it starts in on every request after it. Unread, nothing is reported.
-            startingDatabase = lock.withLock({ _currentDatabase.isEmpty })
-                ? try await probe("SELECT currentDatabase()", deadline: deadline)?.rows.first?.first?.asText
-                : nil
         } catch {
             disconnect()
             throw error
         }
+        // A request naming no database runs in the user's default, which `ALTER USER ... DEFAULT DATABASE` moves,
+        // so the connect names the one it starts in on every request after it. Unread, nothing is reported.
         lock.withLock {
             _serverVersion = versionText
             _serverProfile = profile
-            if let startingDatabase, !startingDatabase.isEmpty, _currentDatabase.isEmpty {
-                _currentDatabase = startingDatabase
+            if let reportedDatabase, !reportedDatabase.isEmpty, _currentDatabase.isEmpty {
+                _currentDatabase = reportedDatabase
             }
         }
 
