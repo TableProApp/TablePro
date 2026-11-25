@@ -28,7 +28,7 @@ pub struct SavedQueryInfo {
     pub connection_id: Option<String>,
     // None at the top, outside every folder; a folder the snapshot does not hold reads as the top too.
     pub folder_id: Option<String>,
-    // Dense from 0 within its folder.
+    // Its place in its folder, lowest first; a query with no connection shares the numbers of every connection's.
     pub order: i64,
     pub updated_at_ms: i64,
 }

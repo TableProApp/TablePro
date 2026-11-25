@@ -19,8 +19,9 @@ pub(super) async fn query_place(
     .await?)
 }
 
-// SQLite turns an integer that overflows into a REAL, so the next position is counted here. A pulled order at
-// the end of the range renumbers the place from 0 first.
+// The end of the list a record shows in; one with no connection shows in every connection's, so it goes after
+// all of them. SQLite turns an integer that overflows into a REAL, so the next position is counted here, and a
+// pulled order at the end of the range renumbers the place from 0 first.
 pub(super) async fn next_query_order(
     database: &mut SqliteConnection,
     owner: Option<&str>,
@@ -28,7 +29,7 @@ pub(super) async fn next_query_order(
 ) -> Result<i64, StorageError> {
     let highest: Option<i64> = sqlx::query_scalar(
         "SELECT MAX(sort_order) FROM saved_queries \
-         WHERE (connection_id IS ?1 OR connection_id IS NULL) AND folder_record_id IS ?2",
+         WHERE (?1 IS NULL OR connection_id = ?1 OR connection_id IS NULL) AND folder_record_id IS ?2",
     )
     .bind(owner)
     .bind(folder)
@@ -88,7 +89,7 @@ pub(super) async fn next_folder_order(
 ) -> Result<i64, StorageError> {
     let highest: Option<i64> = sqlx::query_scalar(
         "SELECT MAX(sort_order) FROM saved_query_folders \
-         WHERE (connection_id IS ?1 OR connection_id IS NULL) AND parent_record_id IS ?2",
+         WHERE (?1 IS NULL OR connection_id = ?1 OR connection_id IS NULL) AND parent_record_id IS ?2",
     )
     .bind(owner)
     .bind(parent)

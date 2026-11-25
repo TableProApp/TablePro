@@ -14,9 +14,17 @@ use crate::name_rules;
 use crate::unix_time::to_unix_millis;
 
 use super::folders::{SavedQueryFolder, name_key};
-use super::{MAX_QUERY_BYTES, SavedQuery, keyword_key};
+use super::{MAX_NAME_CHARS, MAX_QUERY_BYTES, SavedQuery, keyword_form, keyword_key};
 
 const IDS_PER_STATEMENT: usize = 500;
+
+// Deeper than this a pulled folder sits at the top instead: every app draws the whole chain above a folder.
+const MAX_FOLDER_DEPTH: usize = 64;
+
+// A name past the length a local write takes keeps its first characters.
+fn capped(name: &str) -> String {
+    name.chars().take(MAX_NAME_CHARS).collect()
+}
 
 // The record created first keeps the place: the earliest `created_at`, then the lowest id compared as
 // bytes, which orders the upper-case text the wire carries the same way.
@@ -90,16 +98,26 @@ pub(super) async fn put_queries(
     }
     for query in &incoming {
         let rowid = world.get(&query.id).and_then(|held| held.rowid);
+        let name = capped(&query.name);
+        // The unique indexes compare the stored text, so a keyword is stored as `set_keyword` keeps it.
+        let (keyword, cleared) = match query.keyword.as_deref().map(keyword_form) {
+            None => (None, false),
+            Some(Ok(keyword)) => {
+                let changed = keyword.as_deref().is_some_and(|kept| Some(kept) != query.keyword.as_deref());
+                (keyword, changed)
+            }
+            Some(Err(_)) => (None, true),
+        };
         world.insert(
             query.id,
             Query {
                 rowid,
                 id: query.id,
                 owner: query.connection_id.map(|id| id.to_string()),
-                name: query.name.clone(),
-                keyword: query.keyword.clone().filter(|word| !word.trim().is_empty()),
+                settled: name != query.name || cleared,
+                name,
+                keyword,
                 created_at: to_unix_millis(query.created_at),
-                settled: false,
             },
         );
     }
@@ -190,14 +208,18 @@ fn settle_query_names(world: &mut BTreeMap<Uuid, Query>) {
 
 // In the order the rule gives, a record keeps its keyword unless one that meets it kept it first.
 fn settle_keywords(world: &mut BTreeMap<Uuid, Query>, touched: &HashSet<String>) {
-    let mut keys: Vec<&String> = touched.iter().collect();
-    keys.sort();
-    for key in keys {
-        let mut holders: Vec<(i64, Uuid, Option<String>)> = world
-            .values()
-            .filter(|query| query.keyword.as_deref().map(keyword_key).as_ref() == Some(key))
-            .map(|query| (query.created_at, query.id, query.owner.clone()))
-            .collect();
+    let mut holders_of: BTreeMap<String, Vec<(i64, Uuid, Option<String>)>> = BTreeMap::new();
+    for query in world.values() {
+        if let Some(key) = query.keyword.as_deref().map(keyword_key)
+            && touched.contains(&key)
+        {
+            holders_of
+                .entry(key)
+                .or_default()
+                .push((query.created_at, query.id, query.owner.clone()));
+        }
+    }
+    for mut holders in holders_of.into_values() {
         holders.sort_by(|left, right| holds_first((left.0, left.1), (right.0, right.1)));
         let mut kept: Vec<Option<String>> = Vec::new();
         for (_, id, owner) in holders {
@@ -229,10 +251,12 @@ pub(super) async fn put_folders(
     now: SystemTime,
 ) -> Result<Vec<Uuid>, StorageError> {
     let incoming = latest_versions(incoming, |folder| folder.id);
-    if incoming
+    // A name is stored in the form the list shows, which the sibling index then compares as the store does.
+    let names: Vec<String> = incoming
         .iter()
-        .any(|folder| name_rules::shown(&folder.name).is_empty())
-    {
+        .map(|folder| capped(&name_rules::cleaned(&folder.name)))
+        .collect();
+    if names.iter().any(String::is_empty) {
         return Err(StorageError::EmptyName);
     }
     let stored: Vec<(i64, String, Option<String>, Option<String>, String, i64)> = sqlx::query_as(
@@ -259,7 +283,7 @@ pub(super) async fn put_folders(
             },
         );
     }
-    for folder in &incoming {
+    for (folder, name) in incoming.iter().zip(names) {
         let rowid = world.get(&folder.id).and_then(|held| held.rowid);
         world.insert(
             folder.id,
@@ -268,15 +292,15 @@ pub(super) async fn put_folders(
                 id: folder.id,
                 owner: folder.connection_id.map(|id| id.to_string()),
                 parent: folder.parent_id,
-                name: folder.name.clone(),
+                settled: name != folder.name,
+                name,
                 created_at: to_unix_millis(folder.created_at),
-                settled: false,
             },
         );
     }
-    if let Some(id) = incoming.iter().map(|folder| folder.id).find(|id| on_cycle(&world, *id)) {
-        return Err(StorageError::FolderCycle { id });
-    }
+    let ids: Vec<Uuid> = incoming.iter().map(|folder| folder.id).collect();
+    break_cycles(&mut world, &ids);
+    lift_deep_folders(&mut world, &ids);
     settle_folder_names(&mut world);
 
     let incoming_ids: HashSet<Uuid> = incoming.iter().map(|folder| folder.id).collect();
@@ -287,8 +311,9 @@ pub(super) async fn put_folders(
     delete_rows(database, "saved_query_folders", &replaced).await?;
     let stamp = to_unix_millis(now);
     for folder in world.values().filter(|folder| folder.settled && !incoming_ids.contains(&folder.id)) {
-        sqlx::query("UPDATE saved_query_folders SET name = ?, updated_at = ? WHERE id = ?")
+        sqlx::query("UPDATE saved_query_folders SET name = ?, parent_record_id = ?, updated_at = ? WHERE id = ?")
             .bind(&folder.name)
+            .bind(folder.parent.map(|id| id.to_string()))
             .bind(stamp)
             .bind(folder.rowid)
             .execute(&mut *database)
@@ -310,7 +335,7 @@ pub(super) async fn put_folders(
         .bind(folder.id.to_string())
         .bind(&settled.owner)
         .bind(&settled.name)
-        .bind(folder.parent_id.map(|id| id.to_string()))
+        .bind(settled.parent.map(|id| id.to_string()))
         .bind(folder.order)
         .bind(settled.created_at)
         .bind(updated_at)
@@ -324,17 +349,58 @@ pub(super) async fn put_folders(
         .collect())
 }
 
-// A parent this store does not hold ends the walk, as it reads as the top level.
-fn on_cycle(world: &BTreeMap<Uuid, Folder>, start: Uuid) -> bool {
-    let mut visited = HashSet::from([start]);
+// The folders on the cycle above `start`, if its parents lead back into one. A parent this store does not hold
+// ends the walk, as it reads as the top level.
+fn cycle_above(world: &BTreeMap<Uuid, Folder>, start: Uuid) -> Option<Vec<Uuid>> {
+    let mut path: Vec<Uuid> = vec![start];
     let mut above = world.get(&start).and_then(|folder| folder.parent);
     while let Some(id) = above {
-        if !visited.insert(id) {
-            return true;
+        if let Some(at) = path.iter().position(|seen| *seen == id) {
+            return Some(path.split_off(at));
         }
+        path.push(id);
         above = world.get(&id).and_then(|folder| folder.parent);
     }
-    false
+    None
+}
+
+// Two moves on two devices can close a cycle no single write made, and refusing it would refuse every later
+// pull of those records. The folder on it created last goes to the top, on every device alike.
+fn break_cycles(world: &mut BTreeMap<Uuid, Folder>, incoming: &[Uuid]) {
+    for start in incoming {
+        while let Some(cycle) = cycle_above(world, *start) {
+            let newest = cycle
+                .iter()
+                .filter_map(|id| world.get(id).map(|folder| (folder.created_at, folder.id)))
+                .max_by(|left, right| holds_first(*left, *right));
+            let Some(folder) = newest.and_then(|(_, id)| world.get_mut(&id)) else {
+                break;
+            };
+            folder.parent = None;
+            folder.settled = true;
+        }
+    }
+}
+
+fn depth(world: &BTreeMap<Uuid, Folder>, start: Uuid) -> usize {
+    let mut levels = 0;
+    let mut above = world.get(&start).and_then(|folder| folder.parent);
+    while let Some(id) = above.filter(|id| world.contains_key(id)) {
+        levels += 1;
+        above = world.get(&id).and_then(|folder| folder.parent);
+    }
+    levels
+}
+
+fn lift_deep_folders(world: &mut BTreeMap<Uuid, Folder>, incoming: &[Uuid]) {
+    for id in incoming {
+        if depth(world, *id) >= MAX_FOLDER_DEPTH
+            && let Some(folder) = world.get_mut(id)
+        {
+            folder.parent = None;
+            folder.settled = true;
+        }
+    }
 }
 
 type FolderPlace = (Option<String>, Option<Uuid>);

@@ -678,6 +678,7 @@ async fn trim_copy(copy: &Path, live: &str, first: &[CopyDelete]) -> Result<(), 
         }
     }
     if has_folders {
+        backup_folders::repair_folders(&mut transaction).await?;
         backup_folders::repair_queries(&mut transaction).await?;
     }
     if sqlx::query("PRAGMA main.foreign_key_check")

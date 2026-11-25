@@ -288,30 +288,27 @@ async fn pulled_folders_settle_names_in_their_place_in_any_case() {
     assert_eq!(name(nested.id), "reports", "another parent is another place");
 }
 
+// Two devices moving two folders into each other close a cycle no single write made.
 #[tokio::test]
-async fn a_pulled_folder_cycle_is_refused_and_a_missing_parent_is_kept() {
+async fn a_pulled_cycle_lifts_the_folder_created_last_and_a_missing_parent_is_kept() {
     let root = tempfile::tempdir().expect("tempdir");
     let folders = history(&root).await.saved_query_folders();
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
     let missing = Uuid::new_v4();
 
-    assert!(matches!(
-        folders
-            .put(&[
-                pulled_folder(a, "A", Some(b), at(1)),
-                pulled_folder(b, "B", Some(a), at(2))
-            ])
-            .await,
-        Err(StorageError::FolderCycle { .. })
-    ));
-    folders
-        .put(&[pulled_folder(a, "A", Some(missing), at(1))])
+    let settled = folders
+        .put(&[
+            pulled_folder(a, "A", Some(b), at(1)),
+            pulled_folder(b, "B", Some(a), at(2)),
+            pulled_folder(Uuid::new_v4(), "C", Some(missing), at(3)),
+        ])
         .await
-        .expect("a parent that has not arrived");
-    assert_eq!(
-        folders.list(Uuid::new_v4()).await.expect("list")[0].parent_id,
-        Some(missing)
-    );
+        .expect("put");
+
+    assert_eq!(settled, [b]);
+    let shown = folders.list(Uuid::new_v4()).await.expect("list");
+    let parent = |name: &str| shown.iter().find(|folder| folder.name == name).expect("folder").parent_id;
+    assert_eq!((parent("A"), parent("B"), parent("C")), (Some(b), None, Some(missing)));
 }
 
 #[tokio::test]
@@ -486,4 +483,100 @@ async fn a_pulled_order_at_the_end_of_the_range_leaves_room_for_the_next_save() 
     assert_eq!(orders, [(last.id, 0), (saved.id, 1)]);
     let orders: Vec<(Uuid, i64)> = shown.folders.iter().map(|folder| (folder.id, folder.order)).collect();
     assert_eq!(orders, [(last_folder.id, 0), (folder, 1)]);
+}
+
+// The sibling and keyword indexes compare stored text in ASCII case only, so a pulled name is stored in the
+// form the store compares: `J` with a caron has no composed capital, while its small letter composes.
+#[tokio::test]
+async fn pulled_names_and_keywords_are_stored_in_the_form_the_indexes_compare() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let history = history(&root).await;
+    let (store, folders) = (history.saved_queries(), history.saved_query_folders());
+    let connection = Some(Uuid::new_v4());
+    let named = [
+        pulled_folder(Uuid::new_v4(), "J\u{30C}", None, at(1)),
+        pulled_folder(Uuid::new_v4(), "j\u{30C}", None, at(2)),
+        pulled_folder(Uuid::new_v4(), "x\u{0}a", None, at(3)),
+        pulled_folder(Uuid::new_v4(), "x\u{0}b", None, at(4)),
+    ];
+    let settled = folders.put(&named).await.expect("put folders");
+    let mut keyed = Vec::new();
+    for (name, keyword) in [("one", "J\u{30C}"), ("two", "j\u{30C}"), ("three", "two words")] {
+        let mut query = pulled(Uuid::new_v4(), name, connection, at(1));
+        query.keyword = Some(keyword.to_owned());
+        keyed.push(query);
+    }
+    let cleared = store.put(&keyed).await.expect("put queries");
+
+    let mut names: Vec<String> = folders
+        .list(Uuid::new_v4())
+        .await
+        .expect("list")
+        .into_iter()
+        .map(|folder| folder.name)
+        .collect();
+    names.sort();
+    assert_eq!(names, ["J\u{30C}", "x a", "x b", "\u{1F0}"]);
+    let mut expected = vec![named[1].id, named[2].id, named[3].id];
+    expected.sort();
+    assert_eq!(settled, expected, "a name stored in another form is this device's edit");
+    let mut changed = vec![keyed[1].id, keyed[2].id];
+    changed.sort();
+    assert_eq!(cleared, changed);
+    let keyword = |id| {
+        let store = store.clone();
+        async move { store.get(id).await.expect("get").expect("query").keyword }
+    };
+    assert_eq!(keyword(keyed[0].id).await.as_deref(), Some("J\u{30C}"));
+    assert_eq!(keyword(keyed[1].id).await.as_deref(), Some("\u{1F0}"));
+    assert_eq!(keyword(keyed[2].id).await, None, "a keyword a local save refuses is cleared");
+}
+
+#[tokio::test]
+async fn a_pulled_name_past_the_cap_is_cut_and_a_chain_past_the_depth_cap_is_lifted() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let history = history(&root).await;
+    let (store, folders) = (history.saved_queries(), history.saved_query_folders());
+    let long = pulled(Uuid::new_v4(), &"q".repeat(300), None, at(1));
+    assert_eq!(store.put(&[long.clone()]).await.expect("put"), [long.id]);
+    assert_eq!(store.get(long.id).await.expect("get").expect("query").name, "q".repeat(200));
+
+    let ids: Vec<Uuid> = (0..70).map(|_| Uuid::new_v4()).collect();
+    let chain: Vec<SavedQueryFolder> = ids
+        .iter()
+        .enumerate()
+        .map(|(level, id)| pulled_folder(*id, &format!("Level {level}"), level.checked_sub(1).map(|above| ids[above]), at(1)))
+        .collect();
+    let settled = folders.put(&chain).await.expect("put chain");
+
+    assert_eq!(settled, [ids[64]]);
+    let shown = folders.list(Uuid::new_v4()).await.expect("list");
+    let parent = |id: Uuid| shown.iter().find(|folder| folder.id == id).expect("folder").parent_id;
+    assert_eq!(parent(ids[63]), Some(ids[62]));
+    assert_eq!(parent(ids[64]), None);
+    assert_eq!(parent(ids[65]), Some(ids[64]));
+}
+
+// It shows in every connection's list, so it goes after all of them.
+#[tokio::test]
+async fn a_new_query_with_no_connection_goes_to_the_end_of_every_list() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let store = history(&root).await.saved_queries();
+    let (first, second) = (Uuid::new_v4(), Uuid::new_v4());
+    let new = |name: &str, connection| NewSavedQuery {
+        name: name.to_owned(),
+        query: "SELECT 1".to_owned(),
+        connection_id: connection,
+        connection_name: String::new(),
+    };
+    for name in ["a", "b"] {
+        store.save(new(name, Some(first))).await.expect("save");
+    }
+    store.save(new("c", Some(second))).await.expect("save");
+    let shared = store.save(new("shared", None)).await.expect("save").id;
+
+    for connection in [first, second] {
+        let shown = store.snapshot(connection).await.expect("snapshot").queries;
+        assert_eq!(shown.last().map(|query| query.id), Some(shared));
+    }
 }

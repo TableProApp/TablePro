@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 
 use sqlx::SqliteConnection;
 
@@ -84,6 +85,51 @@ async fn unique_legacy_names(database: &mut SqliteConnection) -> Result<(), Stor
             .bind(id)
             .execute(&mut *database)
             .await?;
+    }
+    Ok(())
+}
+
+// The deletes that follow the rebuild can take a folder another connection's folder sits under. That folder goes
+// to the top under a name free there, so the copy's foreign key and sibling index both still hold.
+pub(super) async fn repair_folders(database: &mut SqliteConnection) -> Result<(), StorageError> {
+    let orphans: Vec<(i64, String, String)> = sqlx::query_as(
+        "SELECT id, connection_id, name FROM main.saved_query_folders child \
+         WHERE parent_id IS NOT NULL \
+           AND NOT EXISTS (SELECT 1 FROM main.saved_query_folders parent WHERE parent.id = child.parent_id) \
+         ORDER BY id",
+    )
+    .fetch_all(&mut *database)
+    .await?;
+    let mut taken: HashMap<String, HashSet<String>> = HashMap::new();
+    for (id, owner, name) in orphans {
+        let held = match taken.entry(owner.clone()) {
+            Entry::Occupied(held) => held.into_mut(),
+            Entry::Vacant(vacant) => {
+                let names: Vec<String> = sqlx::query_scalar(
+                    "SELECT name FROM main.saved_query_folders WHERE connection_id = ? AND parent_id IS NULL",
+                )
+                .bind(&owner)
+                .fetch_all(&mut *database)
+                .await?;
+                vacant.insert(names.iter().map(|name| name.to_ascii_lowercase()).collect())
+            }
+        };
+        let name = match held.contains(&name.to_ascii_lowercase()) {
+            true => crate::saved_queries::free_name(&name, |candidate| held.contains(&candidate.to_ascii_lowercase())),
+            false => name,
+        };
+        held.insert(name.to_ascii_lowercase());
+        sqlx::query(
+            "UPDATE main.saved_query_folders SET parent_id = NULL, name = ?, \
+             sort_order = (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM main.saved_query_folders \
+                           WHERE connection_id = ? AND parent_id IS NULL) \
+             WHERE id = ?",
+        )
+        .bind(name)
+        .bind(&owner)
+        .bind(id)
+        .execute(&mut *database)
+        .await?;
     }
     Ok(())
 }
@@ -555,6 +601,82 @@ mod tests {
             assert_eq!(left, 0, "{}", copy.display());
             database.close().await.expect("close copy");
         }
+    }
+
+    // A pull can file another connection's folder under one of this connection's.
+    #[tokio::test]
+    async fn a_beta_copy_lifts_a_folder_whose_parent_went_with_a_deleted_connection() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let other = Uuid::new_v4();
+        let (paths, pool) = old_database(&root, BETA_5).await;
+        beta_folders(&pool, &[(1, "Reports", None)]).await;
+        sqlx::query(
+            "INSERT INTO saved_query_folders (id, connection_id, name, parent_id, sort_order, created_at, updated_at) \
+             VALUES (2, ?, 'Reports', NULL, 0, 21, 22), (3, ?, 'Nested', NULL, 0, 21, 22)",
+        )
+        .bind(other.to_string())
+        .bind(other.to_string())
+        .execute(&pool)
+        .await
+        .expect("another connection's folders");
+        pool.close().await;
+        let history = QueryHistory::open(&paths).await.expect("upgrade");
+        let copy = crate::upgrade_copies::copies_blocking(&history.path).expect("copies")[0].path.clone();
+        let folders = history.saved_query_folders();
+        let going = record_id(&history, "saved_query_folders", 1).await;
+        let reports = record_id(&history, "saved_query_folders", 2).await;
+        let nested = record_id(&history, "saved_query_folders", 3).await;
+        for id in [reports, nested] {
+            let mut pulled = folders
+                .list(other)
+                .await
+                .expect("list")
+                .into_iter()
+                .find(|folder| folder.id == id)
+                .expect("the folder");
+            pulled.parent_id = Some(going);
+            folders.put(&[pulled]).await.expect("filed under the other connection's folder");
+        }
+
+        history
+            .saved_queries()
+            .delete_for_connection(Uuid::nil())
+            .await
+            .expect("delete the connection");
+
+        assert!(copy.exists(), "a valid copy was deleted");
+        let mut database = copy_database(&copy).await;
+        let stored: Vec<(i64, String, Option<i64>)> =
+            sqlx::query_as("SELECT id, name, parent_id FROM saved_query_folders ORDER BY id")
+                .fetch_all(&mut database)
+                .await
+                .expect("folders");
+        assert_eq!(
+            stored,
+            vec![(2, "Reports".to_owned(), None), (3, "Nested".to_owned(), None)]
+        );
+        database.close().await.expect("close copy");
+    }
+
+    #[tokio::test]
+    async fn a_copy_keeps_a_query_a_pull_moved_out_of_the_deleted_connection() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (history, copy) = upgraded_beta(&root, &[], &[(10, "kept", None, 0)]).await;
+        let store = history.saved_queries();
+        let id = record_id(&history, "saved_queries", 10).await;
+        let mut pulled = store.get(id).await.expect("get").expect("the query");
+        pulled.connection_id = Some(Uuid::new_v4());
+        store.put(&[pulled]).await.expect("moved by a pull");
+
+        store.delete_for_connection(Uuid::nil()).await.expect("delete the connection");
+
+        let mut database = copy_database(&copy).await;
+        let kept: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM saved_queries WHERE id = 10")
+            .fetch_one(&mut database)
+            .await
+            .expect("count");
+        assert_eq!(kept, 1);
+        database.close().await.expect("close copy");
     }
 
     #[tokio::test]

@@ -68,8 +68,6 @@ pub(super) async fn delete_connection(
     let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
     let owner = connection.to_string();
     let mut copies: Vec<CopyDelete> = [
-        "saved_queries",
-        "saved_query_folders",
         "favourite_tables",
         "favourite_databases",
         "table_folders",
@@ -81,8 +79,8 @@ pub(super) async fn delete_connection(
         binds: vec![Bind::Text(owner.clone())],
     })
     .into();
-    // A pull can move a query or a folder to this connection after a copy was made, so the copy names it
-    // under the one it had then; its rowid is the same in both.
+    // A pull can move a query or a folder between connections after a copy was made, so the copy may name it
+    // under another; its rowid is the same in both. What the live database no longer holds leaves in the sweep.
     for table in ["saved_queries", "saved_query_folders"] {
         let rows: Vec<i64> = sqlx::query_scalar(AssertSqlSafe(format!("SELECT id FROM {table} WHERE connection_id = ?")))
             .bind(&owner)

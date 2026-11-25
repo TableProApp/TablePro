@@ -269,18 +269,10 @@ impl SavedQueries {
     }
 
     pub async fn set_keyword(&self, id: Uuid, keyword: Option<&str>) -> Result<(), StorageError> {
-        let keyword: Option<String> = keyword
-            .map(str::trim)
-            .filter(|word| !word.is_empty())
-            .map(|word| word.nfc().collect());
-        if let Some(word) = &keyword
-            && (word.chars().count() > MAX_KEYWORD_CHARS
-                || word.chars().any(|c| {
-                    c.is_whitespace() || c.is_control() || tablepro_core::unicode_blank::is_default_ignorable(c)
-                }))
-        {
-            return Err(StorageError::KeywordInvalid { max: MAX_KEYWORD_CHARS });
-        }
+        let keyword = match keyword {
+            Some(word) => keyword_form(word)?,
+            None => None,
+        };
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         let row = sqlx::query("SELECT id, connection_id, keyword FROM saved_queries WHERE record_id = ?")
@@ -506,6 +498,22 @@ async fn insert(
 // Two keywords are one when they read the same in any case.
 pub(crate) fn keyword_key(word: &str) -> String {
     word.nfc().collect::<String>().to_lowercase()
+}
+
+// Trimmed and composed, one word of at most 64 characters; None for a blank one.
+fn keyword_form(word: &str) -> Result<Option<String>, StorageError> {
+    let word: String = word.trim().nfc().collect();
+    if word.is_empty() {
+        return Ok(None);
+    }
+    if word.chars().count() > MAX_KEYWORD_CHARS
+        || word
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || tablepro_core::unicode_blank::is_default_ignorable(c))
+    {
+        return Err(StorageError::KeywordInvalid { max: MAX_KEYWORD_CHARS });
+    }
+    Ok(Some(word))
 }
 
 fn checked_name(name: &str) -> Result<&str, StorageError> {
