@@ -106,6 +106,20 @@ struct RedisClusterDispatchTests {
         #expect(cluster.second.sentCommands == [["DEL", "a"]])
         #expect(cluster.first.sentCommands == [["DEL", "b"]])
     }
+
+    @Test("A pipeline over both primaries sends each node one part and answers in the order it was sent")
+    func pipelinePartsKeepOrder() async throws {
+        let cluster = try await StubRedisCluster.connect(
+            first: [.success(.status("hash")), .success(.status("list"))],
+            second: [.success(.status("string"))]
+        )
+        let replies = try await cluster.channel.executePipeline(
+            [["TYPE", "a"], ["TYPE", "b"], ["TYPE", "c"]].map { $0.map { Data($0.utf8) } }, scope: .outsideBlock
+        )
+        #expect(replies == [.status("string"), .status("hash"), .status("list")])
+        #expect(cluster.first.pipelineSizes == [2])
+        #expect(cluster.second.pipelineSizes == [1])
+    }
 }
 
 struct RedisClusterPartialWriteTests {
