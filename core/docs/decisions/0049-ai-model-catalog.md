@@ -1,6 +1,6 @@
 # 0049: A provider's model list merges with one model catalog
 
-- **Status**: Accepted
+- **Status**: Accepted; the catalog refresh under `AllowOtherAccountServers` amended by 0055
 - **Date**: 2026-11-24
 
 ## Context
