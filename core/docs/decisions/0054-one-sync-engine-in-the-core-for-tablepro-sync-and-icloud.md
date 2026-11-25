@@ -155,7 +155,7 @@ pub enum CloudKitFailure {
   - `<state>` is `StoragePaths::state`. Only hex digits reach the path, so an account id a server chose cannot name another file. The identity itself is kept inside the file.
 - **Format.** SQLite through sqlx in WAL mode, with migrations of its own. It is created with mode 0600 where the platform has modes. An upgrade copies it first, as [0012](0012-copies-before-a-format-upgrade.md) says.
 - **Bound to its identity.** The file records the provider, server, account and device it was made for, and the engine refuses it for any other. Another account opens another file, so no base, cursor or queued change crosses accounts.
-- **The key holder's state.** The TablePro Sync file of an account is the state file 0053 gives that device's key holder, and holds its key tables. iCloud files have none. What each key table holds, and its rules, are 0053's. Their names, encoding and freshness are set here.
+- **The key holder's state.** The TablePro Sync file of an account is the state file 0053 gives that device's key holder, and holds its key tables. iCloud files have none. 0053 sets what each key table holds and its rules. This ADR holds the one column list, the encoding and the freshness.
 
 | Table | Holds |
 | --- | --- |
@@ -169,51 +169,60 @@ pub enum CloudKitFailure {
 | `outbox` | The batch in flight: scope, idempotency key, request digest and age |
 | `approvals` | Pulled values waiting for the person, and rejections kept as device-local overrides |
 | `conflicts` | Team records whose field both sides changed: base, mine and theirs |
-| `key_statements` | Every statement of each log the holder follows |
-| `key_heads` | Each log's head |
-| `key_pins` | The holder's own identity head, and per team the team head and the confirmed members |
-| `key_comparisons` | Comparisons opened and not yet finished |
-| `key_floors` | Each key's floor, the highest version seen on any branch, and rotations pending |
-| `envelope_counters` | Per envelope, the highest counter accepted and the hash of that ciphertext |
-| `deleted_history` | History entry ids this device saw deleted |
 | `legacy_mirror` | What the downgrade mirror last wrote |
+
+The key tables, in digest order. Columns are listed in order, the primary key first:
+
+| Table | Columns | Holds |
+| --- | --- | --- |
+| `key_statements` | `scope`, `kind`, `record_id`; `seq`, `hash`, `bytes`, `applied` | Each key object kept verbatim, under its 0052 record id: the statements of the followed logs, the newest blob's ciphertext, and key objects not yet pushed. `seq` is null outside a log. `applied` is set once the server answers `applied` |
+| `key_heads` | `scope`, `log`; `seq`, `hash` | Each followed log's head. A holder's own statement moves it only once applied |
+| `key_pins` | `scope`, `subject`; `seq`, `hash`, `ik`, `how` | The account heads it compared or verified under IK, and per team the team head and each confirmed member's IK and bundle head. `how` is `compared`, `verified` or `uncompared` |
+| `key_comparisons` | `session`; `role`, `peer`, `view`, `expires_at` | Open comparison sessions, with the view this side fixed |
+| `key_floors` | `scope`; `floor`, `seen`, `rotation_pending` | `floor` is the lowest key version it may write. `seen` is the highest version seen on any branch, a dropped one included, so a new version comes above it. `rotation_pending` marks a rotation the scope waits for |
+| `envelope_counters` | `scope`, `envelope_id`; `kv`, `n`, `hash` | Per envelope, the highest (`kv`, `n`) accepted and that ciphertext's hash |
+| `deleted_history` | `record_id` | The ids of history entries with a `user` tombstone |
+
+`scope` is the scope id. `log` is `identity`, `device`, `team`, or `member:` with the member's account id. `subject` is a `log` value, or `ik:` with a member's account id.
 
 ### Integrity and freshness
 
 - **Integrity.** The file carries 0053's state MAC, `HMAC-SHA256(key, LP("tablepro/v1/state") || LP(origin) || LP(account) || state)`, keyed from the device store.
   - `state` is `LP(file id) || LP(counter) || LP(digest)`, with the counter as 8 bytes big-endian.
-  - The digest is SHA-256 over the key tables in the order the table above lists them. Each table is `LP(name) || LP(row count)`, then its rows in the byte order of their primary keys, each row the `LP` of each column's bytes in column order. iCloud files have no key tables, so their digest covers none.
+  - The digest is SHA-256 over the key tables in the order the column list gives. Each table is `LP(name) || LP(row count)`, then its rows in the byte order of their encoded primary keys. A row is its values in column order. A value is one byte, 0 for null and 1 otherwise, then for a present value `LP` of its bytes: text as UTF-8, an integer or flag as 8 bytes big-endian, bytes as they are. iCloud files have no key tables, so their digest covers none.
   - The digest is computed again when a key table changes, and the MAC on every commit. A file whose MAC does not verify is refused.
   - One MAC covers the whole snapshot, so rows from two copies of the file cannot be mixed.
 - **Freshness.** A MAC proves the file is this device's, not that it is the latest. Sealed state needs a monotonic counter kept apart from what it seals; this follows ROTE (Matetic et al., "ROTE: Rollback Protection for Trusted Execution", USENIX Security 2017), with the device store in place of a trusted counter.
-  - Every commit raises the counter by one. The file's **anchor**, an item in the device store, holds the file id and a current entry. A new file writes its anchor first.
-  - **An entry** holds the counter, the MAC, the key tables' digest and the **checkpoint**:
-    - each followed log's head (`seq` and hash), as read from the server or confirmed by an `applied` answer. A statement this holder signed that is not applied yet stays in the file alone, so a refused or lost push never leaves an anchored head that no server log extends;
-    - each key's floor: the highest version seen on any branch, a dropped branch's included. 0053 allocates the next version above every branch's and burns a dropped branch's versions, so a floor never has to move back after a fork ends;
-    - each envelope's highest counter, with the hash of that ciphertext.
+  - Every commit raises the counter by one. The file's **anchor** in the device store is a small root item and the checkpoint items it names. A new file writes its anchor first.
+  - **The root** holds the file id, a current entry and at most one pending entry. An entry holds the counter, the MAC, the key tables' digest and the digest of its checkpoint.
+  - **The checkpoint** holds what only moves forward:
+    - each `key_heads` row, from heads the server has applied. A statement this holder signed that is not applied yet stays in the file alone, so a refused or lost push never leaves an anchored head that no server log extends;
+    - each `key_floors` row. Since `seen` counts every branch and 0053 allocates a new version above it, burning a dropped branch's versions, a floor never has to move back after a fork ends;
+    - each `envelope_counters` row.
 
-    Each only moves forward. The one exception is a head on a branch that a fork resolution drops: once 0053 has verified the resolution, and the dropped branch's statements chain from the fork point it names to that head, the head moves to the kept branch, as 0053's stored-head rule allows. The deleted history ids stay in the file alone.
-  - **A commit writes its anchor in two steps.** Before the commit, the engine adds a pending entry to the anchor with the next counter, its MAC and its digest. After the commit, the pending entry becomes the current one. A commit starts only when no pending entry is left; while one cannot be settled, the engine stops.
-  - **Apple platforms:** a Keychain item in the data protection keychain, `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` and not synchronizable. Apple Platform Security, "Keychain data protection", says items of that class don't sync to iCloud Keychain, aren't backed up and aren't in escrow keybags. Other ThisDeviceOnly classes do not serve: "Keybags for Data Protection" (Backup keybag) has them restored to the device they were backed up from. The anchor reads only while the device is unlocked, so a pass that starts locked waits. A device with no passcode uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and falls under the limit below.
-  - **Windows:** Credential Manager items with local machine persistence. An entry past one item's 2,560-byte blob is split over numbered items, written before the item that names them. **Linux:** a Secret Service item.
+    An anchored head moves to another branch only through a fork resolution 0053 verifies, when the dropped branch's statements chain from the fork point it names to that head, as 0053's stored-head rule allows. `deleted_history` stays in the file alone.
+  - **Size.** A checkpoint is written to items of its own only when it changes, before the entry that names it, and items no entry names are deleted once the entry settles. Each commit rewrites only the root. A checkpoint grows with the logs followed and the envelopes held, about 60 bytes an envelope.
+  - **A commit writes its anchor in two steps.** Before the commit, the engine writes the new checkpoint when it changed, then adds a pending entry to the root with the next counter, its MAC and its digests. After the commit, the pending entry becomes the current one. A commit starts only when no pending entry is left; while one cannot be settled, the engine stops.
+  - **Apple platforms:** Keychain items in the data protection keychain, `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` and not synchronizable. Apple Platform Security, "Keychain data protection", says items of that class don't sync to iCloud Keychain, aren't backed up and aren't in escrow keybags. Other ThisDeviceOnly classes do not serve: "Keybags for Data Protection" (Backup keybag) has them restored to the device they were backed up from. The anchor reads only while the device is unlocked, so a pass that starts locked waits. Turning the passcode off deletes every item of that class (Apple's `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` documentation), so the device then has a file with no anchor and pins again. A device with no passcode keeps its anchor in `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, which a backup restores to the same device, and falls under the limit below.
+  - **Windows:** Credential Manager items with local machine persistence. A checkpoint is split over numbered items, since one item's blob holds at most 2,560 bytes. **Linux:** Secret Service items.
   - **On open,** with the anchor's file id:
     - a file that matches the current entry, with no pending entry, is fresh;
     - a file that matches the pending entry is fresh, since the commit landed and only the anchor's second step was lost. The engine finishes that step;
-    - a file that matches the current entry while a pending entry remains may be a commit that never landed, or a commit that landed and a restore of the copy before it. Its sync tables refill. Its key tables stay trusted only when the pending digest equals the current one, so the commit in flight changed no key table; otherwise they are stale;
+    - a file that matches the current entry while a pending entry remains may be a commit that never landed, or a commit that landed and a restore of the copy before it. Its sync tables refill. Its key tables stay trusted only when the pending entry's key-table digest equals the current one's, so the commit in flight changed no key table; otherwise they are stale;
     - anything else is stale: an older counter, another file id, a file with no anchor, or an anchor with no file.
 - **A stale file** is trusted for nothing.
   - Its sync tables go into refill, as a restored store does: the pull wins, records the provider has never seen go up as creates, then the diff runs again.
   - Its key tables are not trusted, and the holder keys stay, so it is the same holder. It rebuilds the key tables from the logs the server holds, accepting only what extends the anchor's checkpoint, the pending entry's when one is left:
-    - a log must hold each anchored head at its `seq` with the same hash. Otherwise a fork resolution 0053 verifies must drop the branch that head is on, and the dropped branch's statements must chain from the hash the resolution names at the fork point to the anchored `seq` and hash, each checked as 0053 checks a log. A missing or substituted link keeps the holder blocked;
+    - a log extends an anchored head when it contains that head at its `seq` with the same hash. Otherwise a fork resolution 0053 verifies must drop the branch that head is on, and the dropped branch's statements must chain from the hash the resolution names at the fork point to the anchored `seq` and hash, each checked as 0053 checks a log. A missing or substituted link keeps the holder blocked;
     - no key version below an anchored floor, and no envelope counter below an anchored one.
 
-    Until a log extends the anchored heads, it accepts no wrap or envelope and writes no secret. A comparison never pins a head older than the anchor's, so a holder that missed a removal cannot hand the device its older view.
+    Until every followed log extends its anchored head, it accepts no wrap or envelope and writes no secret. A comparison never pins a head older than the anchor's, so a holder that missed a removal cannot hand the device its older view.
   - An anchor with no file, as after a reinstall that kept the device store, rebuilds the same way.
   - A file with no anchor has no checkpoint. Its holder pins again through a comparison with another holder of the account or with S, as 0053's device approval does, and falls under the limit below.
 - **The limit.** Nothing on the device then proves a newer head than the one it holds:
   - a restore that brings back the file and its anchor together goes unseen. On Linux a restore of the home folder brings back the keyring, and on Windows a restore of the user profile brings back Credential Manager;
   - a file with no anchor pins what its comparison partner holds, so a partner that missed a newer head gives it that older view, as for a new device;
-  - a stale file forgets the history ids it saw deleted, so the server can show such an entry again.
+  - a stale file loses `deleted_history`, so the server can show again a history entry the person deleted.
 
   Until its next comparison with a holder that saw the newer head, such a device faces what 0053's threat model calls a rollback for a device that never saw it. The Mac and iOS lanes check that a Time Machine restore and a device backup restore do not bring the anchor back; where one does, that platform falls under this limit too.
 
