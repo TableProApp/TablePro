@@ -8,7 +8,7 @@ import TableProFFI
 
 // The core's account records and errors in the app's terms. Codes are the core's stable `code()` strings
 // (core/crates/account/src/{account_error,server,license}.rs).
-internal enum CoreAccountMapping {
+nonisolated internal enum CoreAccountMapping {
     enum Operation {
         case signIn
         case licenseKey
@@ -74,7 +74,7 @@ internal enum CoreAccountMapping {
     static func device(_ info: DeviceInfo) -> AccountDevice {
         AccountDevice(
             id: info.id,
-            isThisMac: info.isThisMachine,
+            isThisDevice: info.isThisMachine,
             name: info.name,
             platform: info.platform,
             osVersion: info.osVersion,

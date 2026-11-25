@@ -7,7 +7,7 @@ import Foundation
 
 // The server the account signs in to, as the core resolved it: a managed value, else the person's choice, else
 // tablepro.app (core/docs/decisions/0044-sync-through-one-service-run-by-us-or-on-premises.md, App configuration).
-internal struct AccountServer: Equatable, Sendable {
+nonisolated internal struct AccountServer: Equatable, Sendable {
     let apiOrigin: URL
     let accountOrigin: URL
     let host: String
@@ -29,7 +29,7 @@ internal struct AccountServer: Equatable, Sendable {
     }
 }
 
-internal enum AccountSignOutCause: Equatable, Sendable {
+nonisolated internal enum AccountSignOutCause: Equatable, Sendable {
     case user
     case refreshRefused
     case deviceRevoked
@@ -37,7 +37,7 @@ internal enum AccountSignOutCause: Equatable, Sendable {
 }
 
 // What the core holds about the account, read on its listener's thread and published on the main actor.
-internal struct AccountSnapshot: Equatable, Sendable {
+nonisolated internal struct AccountSnapshot: Equatable, Sendable {
     enum State: Equatable, Sendable {
         case signedOut
         case signedIn
@@ -68,7 +68,7 @@ internal struct AccountSnapshot: Equatable, Sendable {
 }
 
 // The license a company server installed, as the core verified it.
-internal struct AccountServerLicense: Equatable, Sendable {
+nonisolated internal struct AccountServerLicense: Equatable, Sendable {
     enum State: Equatable, Sendable {
         case active
         // Past its end and inside the grace: everything still works.
@@ -85,8 +85,17 @@ internal struct AccountServerLicense: Equatable, Sendable {
     let state: State
 }
 
+// The core's gate for one feature code.
+nonisolated internal enum ProFeatureAccess: Equatable, Sendable {
+    case available
+    case signedOut
+    case notIncluded
+    case expired
+    case refreshFailed
+}
+
 // A bearer with the /v2 base of the server that issued it, read together so neither is another server's.
-internal struct AccountAccessToken: Equatable, Sendable {
+nonisolated internal struct AccountAccessToken: Equatable, Sendable {
     let token: String
     let apiBaseURL: URL
     // The core's sign-in the token is of.
@@ -98,16 +107,17 @@ internal protocol AccountBackendListener: AnyObject {
     func accountStatusChanged(signedOutBy cause: AccountSignOutCause?)
 }
 
-// The core's AccountService seen from Swift, so the app and its tests share one adapter: TableProFFI in the app,
-// a fake over FakeAccountServer in the tests.
-internal protocol AccountBackend: AnyObject, Sendable {
+// The core's AccountService seen from Swift, so both apps and their tests share one adapter: TableProFFI in the
+// apps, a fake in the tests.
+nonisolated internal protocol AccountBackend: AnyObject, Sendable {
     var machineID: String { get }
     // False until the account has read what the last run kept; until then it reads as signed out.
     var isRestored: Bool { get }
     func waitUntilRestored() async
 
     func status() -> AccountSnapshot
-    func featureAccess(_ feature: ProFeature) -> ProFeatureAccess
+    // By the entitlement's feature code, ProFeature's raw value on the Mac.
+    func featureAccess(code: String) -> ProFeatureAccess
     func server() -> AccountServer
     func license() -> AccountServerLicense?
 

@@ -43,6 +43,7 @@ final class AppState {
     let catalogChanges = CatalogChangeBoard()
     let sessionModels = ConnectionSessionModels()
     let syncCoordinator: IOSSyncCoordinator
+    let account: AccountModel
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?
     @ObservationIgnored private var pastedSSHKeysAwaitingKeychain: [UUID: String] = [:]
@@ -71,7 +72,8 @@ final class AppState {
         localDatabaseFiles: LocalDatabaseFileLocator = .live,
         bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
         libraryPublisher: ConnectionLibraryPublisher? = nil,
-        driverFactory injectedDriverFactory: (any DriverFactory)? = nil
+        driverFactory injectedDriverFactory: (any DriverFactory)? = nil,
+        account injectedAccount: AccountModel? = nil
     ) {
         self.sampleInstaller = sampleInstaller
         self.libraryPublisher = libraryPublisher ?? .live(defaults: defaults)
@@ -80,6 +82,7 @@ final class AppState {
         onboarding = OnboardingPreferences(defaults: defaults)
         libraryPreferences = ConnectionLibraryPreferences(defaults: defaults)
         syncCoordinator = injectedSyncCoordinator ?? IOSSyncCoordinator()
+        account = injectedAccount ?? .live(configuration: onboarding.managed)
         storage = ConnectionPersistence(directory: libraryDirectory)
         queryHistory = QueryHistoryStorage(directory: libraryDirectory)
         savedQueries = SavedQueryLibrary(directory: libraryDirectory, syncCoordinator: syncCoordinator)
@@ -117,6 +120,9 @@ final class AppState {
         }
 
         guard !TestRuntime.isActive else { return }
+
+        account.openIfNeeded()
+        observeManagedConfiguration()
 
         if loadStatus == .ready {
             removeWhatDeletedConnectionsLeft()
@@ -707,6 +713,8 @@ final class AppState {
             hasSeenWelcome: onboarding.hasSeenWelcome,
             syncChoice: onboarding.syncChoice,
             usageDataChoice: onboarding.usageDataChoice,
+            iCloudSyncAllowed: onboarding.managed.allowsICloudSync,
+            usageDataAllowed: onboarding.managed.allowsUsageData,
             lastSeenVersion: onboarding.lastSeenVersion,
             currentVersion: version,
             hasHighlightsForCurrentVersion: FeatureHighlights.release(version) != nil
@@ -726,7 +734,9 @@ final class AppState {
         if pages.contains(.welcome) {
             onboarding.markWelcomeSeen()
         }
-        if pages.contains(.iCloud), onboarding.syncChoice == nil {
+        // A welcome the organization's configuration kept the iCloud question out of records no consent either, or the
+        // next launch would take the finished welcome for a build from before the question and turn sync on.
+        if pages.contains(.iCloud) || pages.contains(.welcome), onboarding.syncChoice == nil {
             setCloudSyncEnabled(false)
         }
         if pages.contains(.usageData), onboarding.usageDataChoice == nil {
@@ -741,6 +751,26 @@ final class AppState {
 
     func setUsageDataEnabled(_ enabled: Bool) {
         onboarding.setUsageDataChoice(enabled)
+    }
+
+    // ADR 0055: iCloud sync stops at once when the organization turns it off, with no last pass, and comes back with
+    // the person's own choice when it lets go.
+    func refreshManagedConfiguration() {
+        let wasAllowed = onboarding.managed.allowsICloudSync
+        onboarding.refreshManagedConfiguration()
+        account.apply(onboarding.managed)
+        let allowed = onboarding.managed.allowsICloudSync
+        guard allowed != wasAllowed, onboarding.syncChoice == true else { return }
+        syncCoordinator.setEnabled(allowed)
+    }
+
+    // An MDM's new values post a defaults change, as any write to the domain does (Apple's managed app configuration).
+    private func observeManagedConfiguration() {
+        Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(named: UserDefaults.didChangeNotification) {
+                self?.refreshManagedConfiguration()
+            }
+        }
     }
 
     // MARK: - Sample Database

@@ -79,4 +79,34 @@ struct OnboardingPreferencesTests {
 
         #expect(OnboardingPreferences(defaults: defaults).lastSeenVersion == "1.10")
     }
+
+    @Test("The organization's managed configuration turns iCloud sync and usage data off over the person's choice")
+    func managedConfigurationWins() {
+        defaults.set(true, forKey: AppPreferences.cloudSyncEnabledKey)
+        defaults.set(true, forKey: AppPreferences.usageDataKey)
+        defaults.set(
+            ["ICloudSyncAllowed": false, "UsageDataAllowed": false],
+            forKey: ManagedAppConfiguration.defaultsKey
+        )
+
+        let preferences = OnboardingPreferences(defaults: defaults)
+
+        #expect(preferences.syncChoice == true)
+        #expect(preferences.usageDataChoice == true)
+        #expect(!preferences.isCloudSyncEnabled)
+        #expect(!preferences.isUsageDataEnabled)
+    }
+
+    @Test("A configuration the MDM changes while the app runs is read again, and the person's choice comes back")
+    func managedConfigurationRefreshes() {
+        defaults.set(true, forKey: AppPreferences.cloudSyncEnabledKey)
+        defaults.set(["ICloudSyncAllowed": false], forKey: ManagedAppConfiguration.defaultsKey)
+        let preferences = OnboardingPreferences(defaults: defaults)
+
+        defaults.removeObject(forKey: ManagedAppConfiguration.defaultsKey)
+        preferences.refreshManagedConfiguration()
+
+        #expect(preferences.managed == .unmanaged)
+        #expect(preferences.isCloudSyncEnabled)
+    }
 }

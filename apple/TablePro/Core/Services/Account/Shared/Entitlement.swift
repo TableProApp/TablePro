@@ -5,7 +5,7 @@
 
 import Foundation
 
-internal struct EntitlementLicense: Equatable, Sendable {
+nonisolated internal struct EntitlementLicense: Equatable, Sendable {
     struct Team: Equatable, Sendable {
         let id: String
         let name: String
@@ -23,7 +23,7 @@ internal struct EntitlementLicense: Equatable, Sendable {
 }
 
 // The entitlement the core verified, for display. Only the core's gate decides what it unlocks.
-internal struct Entitlement: Equatable, Sendable {
+nonisolated internal struct Entitlement: Equatable, Sendable {
     let accountID: String
     let features: Set<String>
     let licenses: [EntitlementLicense]

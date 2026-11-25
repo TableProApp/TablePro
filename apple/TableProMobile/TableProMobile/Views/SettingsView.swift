@@ -18,6 +18,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            AccountSection(account: appState.account, managed: appState.onboarding.managed)
             biometricSection
             iCloudSection
             defaultsSection
@@ -55,6 +56,7 @@ struct SettingsView: View {
     private var iCloudSection: some View {
         Section {
             Toggle(String(localized: "iCloud Sync"), isOn: cloudSyncBinding)
+                .disabled(!appState.onboarding.managed.allowsICloudSync)
             if appState.onboarding.isCloudSyncEnabled {
                 LabeledContent(String(localized: "Last Sync")) {
                     lastSyncLabel
@@ -67,7 +69,9 @@ struct SettingsView: View {
         } header: {
             Text("iCloud")
         } footer: {
-            if appState.onboarding.isCloudSyncEnabled {
+            if !appState.onboarding.managed.allowsICloudSync {
+                Text("Your organization turned off iCloud sync for TablePro.")
+            } else if appState.onboarding.isCloudSyncEnabled {
                 Text("Passwords sync through iCloud Keychain, which is end-to-end encrypted. Turning it on affects new saves only, so re-save a password to sync it.")
             } else {
                 Text("When off, nothing is sent to iCloud and nothing already there is deleted. Changes you make meanwhile sync once you turn it back on.")
@@ -146,11 +150,20 @@ struct SettingsView: View {
     private var usageDataSection: some View {
         Section {
             Toggle(String(localized: "Share Usage Data"), isOn: usageDataBinding)
+                .disabled(!appState.onboarding.managed.allowsUsageData)
         } header: {
             Text("Privacy")
         } footer: {
-            Text("Off until you turn it on. Sent to PostHog with a random ID: app and iOS versions, device model, screen size, language, time zone, network type, database types, connection count, and first connection and query. PostHog derives an approximate location from your IP address. Never hostnames, credentials, queries, or rows.")
+            if !appState.onboarding.managed.allowsUsageData {
+                Text("Your organization turned off usage data for TablePro.")
+            } else {
+                usageDataExplanation
+            }
         }
+    }
+
+    private var usageDataExplanation: some View {
+        Text("Off until you turn it on. Sent to PostHog with a random ID: app and iOS versions, device model, screen size, language, time zone, network type, database types, connection count, and first connection and query. PostHog derives an approximate location from your IP address. Never hostnames, credentials, queries, or rows.")
     }
 
     private var liveActivitySection: some View {

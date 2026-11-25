@@ -20,14 +20,14 @@ The `tablepro-macos` client redirects to `app.tablepro:/oauth/callback`, which `
 
 The account takes the Mac's seams through the FFI, resolves and discovers the server itself, and verifies a company server's license before any of its entitlements.
 
-| Seam | Mac |
-| --- | --- |
-| `AppClient` | `AppClient::MACOS`: client `tablepro-macos`, platform `macos`, redirect `Redirect::Scheme("app.tablepro")` |
-| Sign-in page | `HostWebAuthenticator::authenticate(url, callback_scheme)`, which returns the callback URL or `HostBrowserError::Cancelled`, and `cancel()`, which closes the session when the core stops waiting |
-| Machine ID | `AccountConfig::machine_id`, the host's 64 hex characters, through `MachineId::from_hex` |
-| Refresh token | tablepro.app's in `SecretItemTag::AccountRefreshToken`, the Keychain item above; any other server's in `AccountRefreshTokenFor { sign_in_key }` |
-| Server policy | `managed_server_url` and `allow_other_servers`, each only when `objectIsForced` says so |
-| Old entitlement | `legacy_entitlement_file`, the path of `Account/entitlement.jwt` |
+| Seam | Mac | iOS |
+| --- | --- | --- |
+| `AppClient` | `AppClient::MACOS`: client `tablepro-macos`, platform `macos`, redirect `Redirect::Scheme("app.tablepro")` | `AppClient::IOS`: client `tablepro-ios`, platform `ios`, the same redirect |
+| Sign-in page | `HostWebAuthenticator::authenticate(url, callback_scheme)`, which returns the callback URL or `HostBrowserError::Cancelled`, and `cancel()`, which closes the session when the core stops waiting | The same, over the window of the scene in front |
+| Machine ID | `AccountConfig::machine_id`, the host's 64 hex characters, through `MachineId::from_hex` | 32 random bytes made once and kept in a Keychain item of this device only, so a backup restored onto another device gets an ID of its own |
+| Refresh token | tablepro.app's in `SecretItemTag::AccountRefreshToken`, the Keychain item above; any other server's in `AccountRefreshTokenFor { sign_in_key }` | The same items, readable after the first unlock, in the app's own access group and never the widget's |
+| Server policy | `managed_server_url` and `allow_other_servers`, each only when `objectIsForced` says so | The same values from managed app configuration ([0055](0055-managed-policies-for-the-sync-provider-and-tablepro-app-traffic.md)) |
+| Old entitlement | `legacy_entitlement_file`, the path of `Account/entitlement.jwt` | None: no build before the core had an account |
 
 ### The server
 
@@ -69,7 +69,7 @@ The account takes the Mac's seams through the FFI, resolves and discovers the se
 - `AccountSettings` takes a `ServerSettings` in place of endpoints and keys; the Linux app passes tablepro.app or its development stack.
 - A release build trusts the two license keys whose private halves are the KMS keys of 0044, Key custody: `Yo4CIBJnxzUMSLPnsLId8ngVVe5xuZgHkOU9Z-Hgo04`, current, and `J5yCP_8iTKHyXvyYQ9y4-D2-Z_U4hbtGDvwkfzv57R0`, next. Test keys reach only a development build.
 - RFC 9207's `iss` is compared whenever an authorization response carries it, and a code from another issuer is never exchanged. tablepro-cloud does not send it yet, so the preview does not require it; 0044 keeps requiring it as a release gate.
-- The iOS app takes the same seams once it has an account.
+- The iOS app signs in through the same adapter as the Mac, with the seams above, and gates nothing on the entitlement. It reports `ios`, which a server takes from the release after the one that added `tablepro-ios`.
 
 ## Alternatives considered
 

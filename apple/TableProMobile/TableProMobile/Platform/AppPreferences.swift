@@ -13,7 +13,7 @@ nonisolated enum AppPreferences {
     static let pageSizeOptions: [Int] = [50, 100, 200, 500]
 
     static var isCloudSyncEnabled: Bool {
-        UserDefaults.standard.bool(forKey: cloudSyncEnabledKey)
+        UserDefaults.standard.bool(forKey: cloudSyncEnabledKey) && ManagedAppConfiguration.current().allowsICloudSync
     }
 
     static var syncsPasswords: Bool {

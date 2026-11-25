@@ -235,13 +235,14 @@
             "type": "string"
           },
           "platform": {
-            "description": "Extensible enum: macos, linux, windows",
+            "description": "Extensible enum: macos, linux, windows, ios",
             "example": "macos",
             "type": "string",
             "x-extensible-enum": [
               "macos",
               "linux",
-              "windows"
+              "windows",
+              "ios"
             ]
           }
         },
@@ -922,13 +923,14 @@
             "type": "string"
           },
           "platform": {
-            "description": "Extensible enum: macos, linux, windows",
+            "description": "Extensible enum: macos, linux, windows, ios",
             "example": "macos",
             "type": "string",
             "x-extensible-enum": [
               "macos",
               "linux",
-              "windows"
+              "windows",
+              "ios"
             ]
           }
         },
@@ -1227,7 +1229,8 @@
         "enum": [
           "macos",
           "linux",
-          "windows"
+          "windows",
+          "ios"
         ],
         "type": "string"
       },

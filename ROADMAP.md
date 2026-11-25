@@ -592,7 +592,7 @@ Phase 7 runs now as its own lane, ahead of [Order](#order) (D-06). macOS ships f
   - [ ] iOS
 - **T-09** iOS account: sign-in through `tablepro-account` via TableProFFI, the `tablepro-ios` OAuth client and the `ios` device platform
   - [ ] server
-  - [ ] iOS
+  - [x] iOS
 
 ## Phase 8: Beyond the market
 

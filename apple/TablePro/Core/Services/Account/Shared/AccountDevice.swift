@@ -6,10 +6,10 @@
 import Foundation
 
 // A device of the account as the core lists it, or names it in a device_limit_reached answer.
-internal struct AccountDevice: Equatable, Sendable, Identifiable {
+nonisolated internal struct AccountDevice: Equatable, Sendable, Identifiable {
     let id: String
-    // The core tells this Mac apart by its machine ID, which it does not hand out for other devices.
-    let isThisMac: Bool
+    // The core tells this device apart by its machine ID, which it does not hand out for other devices.
+    let isThisDevice: Bool
     let name: String
     let platform: String
     let osVersion: String

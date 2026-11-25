@@ -362,7 +362,7 @@ internal final class AccountServices: AccountBackendListener {
         let entitlement = Entitlement(snapshot)
         var features: [ProFeature: ProFeatureAccess] = [:]
         for feature in ProFeature.allCases {
-            features[feature] = backend.featureAccess(feature)
+            features[feature] = backend.featureAccess(code: feature.rawValue)
         }
         let refresh: EntitlementRefreshState
         switch snapshot.problem {

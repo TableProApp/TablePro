@@ -560,4 +560,25 @@ mod tests {
         assert!(mac.legacy_entitlement_file.is_some());
         assert_eq!(short.unwrap_err().code(), "account.no_machine_id");
     }
+
+    #[test]
+    fn an_iphone_passes_its_client_and_the_device_id_it_keeps() {
+        let device_id = "5f".repeat(32);
+        let iphone = settings(
+            AccountConfig {
+                client: AppClientTag::Ios,
+                machine_guid: None,
+                machine_id: Some(device_id.clone()),
+                os_version: "iOS 26.1".to_owned(),
+                ..config()
+            },
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(iphone.client, AppClient::IOS);
+        assert_eq!(iphone.machine_id.as_str(), device_id);
+        assert_eq!(iphone.device.os_version, "iOS 26.1");
+        assert!(iphone.legacy_entitlement_file.is_none());
+    }
 }

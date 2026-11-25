@@ -138,7 +138,7 @@ struct CoreAccountMappingTests {
         }
         #expect(holders.map(\.name) == ["Workstation"])
         #expect(holders.first?.holdsLicense == true)
-        #expect(holders.first?.isThisMac == false)
+        #expect(holders.first?.isThisDevice == false)
     }
 
     @Test("A company server and its license read as the core verified them")

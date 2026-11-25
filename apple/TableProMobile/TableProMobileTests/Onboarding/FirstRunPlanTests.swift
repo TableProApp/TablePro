@@ -8,6 +8,8 @@ struct FirstRunPlanTests {
         hasSeenWelcome: Bool = false,
         syncChoice: Bool? = nil,
         usageDataChoice: Bool? = nil,
+        iCloudSyncAllowed: Bool = true,
+        usageDataAllowed: Bool = true,
         lastSeenVersion: String? = nil,
         currentVersion: String = "1.1",
         hasHighlights: Bool = true
@@ -16,6 +18,8 @@ struct FirstRunPlanTests {
             hasSeenWelcome: hasSeenWelcome,
             syncChoice: syncChoice,
             usageDataChoice: usageDataChoice,
+            iCloudSyncAllowed: iCloudSyncAllowed,
+            usageDataAllowed: usageDataAllowed,
             lastSeenVersion: lastSeenVersion,
             currentVersion: currentVersion,
             hasHighlightsForCurrentVersion: hasHighlights
@@ -25,6 +29,13 @@ struct FirstRunPlanTests {
     @Test("A fresh install asks every question, welcome first")
     func freshInstall() {
         #expect(plan() == .firstRun([.welcome, .iCloud, .usageData]))
+    }
+
+    @Test("A question the organization's managed configuration answers is not asked")
+    func managedQuestionsAreSkipped() {
+        #expect(plan(iCloudSyncAllowed: false) == .firstRun([.welcome, .usageData]))
+        #expect(plan(usageDataAllowed: false) == .firstRun([.welcome, .iCloud]))
+        #expect(plan(hasSeenWelcome: true, syncChoice: true, usageDataAllowed: false) == .none)
     }
 
     @Test("A fresh install never shows What's New")

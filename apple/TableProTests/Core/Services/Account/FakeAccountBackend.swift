@@ -153,7 +153,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
         locked { snapshot }
     }
 
-    func featureAccess(_ feature: ProFeature) -> ProFeatureAccess {
+    func featureAccess(code: String) -> ProFeatureAccess {
         let snapshot = status()
         let current = snapshot.expiresAt.map { now() < $0 } ?? false
         switch snapshot.state {
@@ -161,15 +161,15 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
             return .signedOut
         case .offline:
             guard current else { return .expired }
-            return snapshot.features.contains(feature.rawValue) ? .available : .notIncluded
+            return snapshot.features.contains(code) ? .available : .notIncluded
         case .signedIn:
             // As the core: past a company license's grace only the Team Library works.
-            if let graceEndsAt = license()?.graceEndsAt, now() >= graceEndsAt, feature != .teamLibrary,
-               snapshot.features.contains(feature.rawValue) {
+            if let graceEndsAt = license()?.graceEndsAt, now() >= graceEndsAt, code != ProFeature.teamLibrary.rawValue,
+               snapshot.features.contains(code) {
                 return .expired
             }
             if current {
-                return snapshot.features.contains(feature.rawValue) ? .available : .notIncluded
+                return snapshot.features.contains(code) ? .available : .notIncluded
             }
             switch snapshot.problem {
             case .deviceLimitReached: return .notIncluded
@@ -413,7 +413,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     private static func device(_ json: [String: Any]) -> AccountDevice {
         AccountDevice(
             id: json["id"] as? String ?? "",
-            isThisMac: json["machine_id"] as? String == FakeAccountServer.machine.machineID,
+            isThisDevice: json["machine_id"] as? String == FakeAccountServer.machine.machineID,
             name: json["name"] as? String ?? "",
             platform: json["platform"] as? String ?? "",
             osVersion: json["os_version"] as? String ?? "",

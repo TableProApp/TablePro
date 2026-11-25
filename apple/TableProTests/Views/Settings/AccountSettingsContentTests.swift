@@ -367,7 +367,7 @@ struct AccountSettingsContentTests {
     func devices() throws {
         func device(_ id: String, machineID: String, lastSeen: TimeInterval, offlineUntil: Date? = nil) -> AccountDevice {
             AccountDevice(
-                id: id, isThisMac: machineID == Self.machineID, name: id, platform: "linux", osVersion: "Fedora 43",
+                id: id, isThisDevice: machineID == Self.machineID, name: id, platform: "linux", osVersion: "Fedora 43",
                 lastSeenAt: Self.now.addingTimeInterval(lastSeen), holdsLicense: true, offlineUntil: offlineUntil
             )
         }
@@ -465,10 +465,10 @@ struct AccountSettingsContentTests {
     @Test("This Mac's row says so and reads as seen now; another device keeps its last check")
     func deviceDetail() {
         let lastSeen = Date().addingTimeInterval(-3 * Self.day)
-        let thisMac = AccountDeviceText.detail(system: "macOS 27.0", lastSeenAt: lastSeen, isThisMac: true)
+        let thisMac = AccountDeviceText.detail(system: "macOS 27.0", lastSeenAt: lastSeen, isThisDevice: true)
         #expect(thisMac == AccountDeviceText.detail(system: "This Mac · macOS 27.0", lastSeenAt: Date()))
 
-        let other = AccountDeviceText.detail(system: "macOS 15.1", lastSeenAt: lastSeen, isThisMac: false)
+        let other = AccountDeviceText.detail(system: "macOS 15.1", lastSeenAt: lastSeen, isThisDevice: false)
         #expect(other == AccountDeviceText.detail(system: "macOS 15.1", lastSeenAt: lastSeen))
     }
 

@@ -19,8 +19,8 @@ extension AccountServices {
             isDebugBuild: isDebugBuild
         )
         let backend = CoreAccountBackend(
-            setup: setup,
-            machine: machine,
+            config: setup.accountConfig(machine: machine),
+            appVersion: machine.appVersion,
             keychain: AccountKeychain(keychain: environment.deviceOnlyKeychain)
         )
         let services = AccountServices(

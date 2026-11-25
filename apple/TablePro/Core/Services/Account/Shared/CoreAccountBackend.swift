@@ -6,11 +6,12 @@
 import Foundation
 import os
 import TableProFFI
+import TableProLogRedaction
 
 // The core's AccountService (core/docs/decisions/0047-the-apple-apps-sign-in-through-the-core.md). It opens on a task
 // at launch and restores the last run's sign-in after that; until then the account reads as signed out, and a call
 // waits for the open.
-internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
+nonisolated internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CoreAccountBackend")
 
     let machineID: String
@@ -21,16 +22,16 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
     private let opened = OSAllocatedUnfairLock<AccountService?>(initialState: nil)
     private let opening: Task<AccountService?, Never>
 
-    init(setup: AccountCoreSetup, machine: MachineDescription, keychain: AccountKeychain) {
-        machineID = setup.machineID
-        isDevelopmentStack = setup.developmentStack != nil
+    // Each app's own config: its client, machine ID, files and managed values.
+    init(config: AccountConfig, appVersion: String, keychain: any AccountTokenKeychain) {
+        machineID = config.machineId ?? ""
+        isDevelopmentStack = config.apiUrl != nil
         listenerBridge = CoreAccountListener(restored: restored)
-        let config = Self.config(setup, machine: machine)
         let (authenticator, listener, opened, restored) = (authenticator, listenerBridge, opened, restored)
         opening = Task.detached(priority: .userInitiated) {
             do {
                 let core = try Core(
-                    config: HostConfig(clientVersion: machine.appVersion, storageDir: nil),
+                    config: HostConfig(clientVersion: appVersion, storageDir: nil),
                     secrets: KeychainHostSecrets(keychain: keychain)
                 )
                 let service = try await core.openAccount(
@@ -44,7 +45,9 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
                 await listener.notify(signedOutBy: nil)
                 return service
             } catch {
-                Self.logger.error("The account did not open: \(error.publicLogShape, privacy: .public)")
+                Self.logger.error(
+                    "The account did not open: \(LogRedaction.publicDescription(of: error), privacy: .public)"
+                )
                 restored.mark(.opened)
                 restored.mark(.restored)
                 await listener.notify(signedOutBy: nil)
@@ -66,28 +69,6 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
         listenerBridge.target = listener
     }
 
-    private static func config(_ setup: AccountCoreSetup, machine: MachineDescription) -> AccountConfig {
-        let stack = setup.developmentStack
-        return AccountConfig(
-            accountUrl: stack?.accountURL,
-            apiUrl: stack?.apiBase,
-            entitlementKeys: stack?.entitlementKeys ?? [],
-            deviceName: machine.name,
-            appVersion: machine.appVersion,
-            osVersion: machine.osVersion,
-            accountFile: setup.accountFile.path,
-            callbackFinished: "",
-            callbackUnknown: "",
-            machineGuid: nil,
-            client: .macos,
-            machineId: setup.machineID,
-            managedServerUrl: setup.managedServerURL,
-            allowOtherServers: setup.allowOtherServers,
-            legacyEntitlementFile: setup.legacyEntitlementFile.path,
-            licenseKeys: stack?.licenseKeys ?? []
-        )
-    }
-
     private var service: AccountService? {
         opened.withLock { $0 }
     }
@@ -104,9 +85,9 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
         return CoreAccountMapping.snapshot(service.status())
     }
 
-    func featureAccess(_ feature: ProFeature) -> ProFeatureAccess {
+    func featureAccess(code: String) -> ProFeatureAccess {
         guard let service else { return .signedOut }
-        return CoreAccountMapping.access(service.featureAccess(feature: feature.rawValue))
+        return CoreAccountMapping.access(service.featureAccess(feature: code))
     }
 
     func server() -> AccountServer {
@@ -210,7 +191,9 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
         } catch let error as CoreError {
             guard let failure = CoreAccountMapping.signInError(error, during: operation) else { return }
             if CoreAccountMapping.keptSignIn(before: before, after: service.status()) {
-                logger.notice("Signed in; what followed failed: \(failure.publicLogShape, privacy: .public)")
+                logger.notice(
+                    "Signed in; what followed failed: \(LogRedaction.publicDescription(of: failure), privacy: .public)"
+                )
                 return
             }
             throw failure
@@ -223,7 +206,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
 // The core calls the callbacks below on threads it lets block; each hops to the main actor and waits there.
 
 // Shows the sign-in page in the window that asked for it, and returns the app.tablepro: redirect.
-private final class CoreWebAuthenticator: HostWebAuthenticator, @unchecked Sendable {
+nonisolated private final class CoreWebAuthenticator: HostWebAuthenticator, @unchecked Sendable {
     private let current = OSAllocatedUnfairLock<(any WebAuthenticating)?>(initialState: nil)
 
     func use(_ authenticator: (any WebAuthenticating)?) {
@@ -260,14 +243,15 @@ private final class CoreWebAuthenticator: HostWebAuthenticator, @unchecked Senda
     }
 }
 
-// The Mac signs in through its web authenticator; the core asks the loopback browser only of a client that has none.
-private final class NoLoopbackBrowser: HostBrowser, @unchecked Sendable {
+// The Apple apps sign in through their web authenticator; the core asks the loopback browser only of a client that has
+// none.
+nonisolated private final class NoLoopbackBrowser: HostBrowser, @unchecked Sendable {
     func openUrl(url: String) throws {
-        throw HostBrowserError.Failed(detail: "the Mac signs in through its web authenticator")
+        throw HostBrowserError.Failed(detail: "the app signs in through its web authenticator")
     }
 }
 
-private final class CoreAccountListener: AccountListener, @unchecked Sendable {
+nonisolated private final class CoreAccountListener: AccountListener, @unchecked Sendable {
     // Set once at launch and read only in notify, both on the main actor.
     nonisolated(unsafe) weak var target: (any AccountBackendListener)?
     private let restored: RestoredLatch
@@ -295,7 +279,7 @@ private final class CoreAccountListener: AccountListener, @unchecked Sendable {
 }
 
 // The core can publish the restored status before openAccount returns the service that reads it, so both count.
-private final class RestoredLatch: Sendable {
+nonisolated private final class RestoredLatch: Sendable {
     enum Step {
         case opened
         case restored
@@ -340,7 +324,7 @@ private final class RestoredLatch: Sendable {
     }
 }
 
-private final class BlockingResult<Value: Sendable>: @unchecked Sendable {
+nonisolated private final class BlockingResult<Value: Sendable>: @unchecked Sendable {
     private let semaphore = DispatchSemaphore(value: 0)
     private let value = OSAllocatedUnfairLock<Value?>(initialState: nil)
 
