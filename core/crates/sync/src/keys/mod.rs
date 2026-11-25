@@ -7,6 +7,8 @@ mod account;
 mod account_flows;
 pub mod personal;
 pub mod pins;
+mod restore;
+mod stop;
 
 use std::any::Any;
 use std::collections::HashMap;
