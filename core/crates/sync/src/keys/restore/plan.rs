@@ -156,20 +156,25 @@ fn plan_personal(inputs: &Inputs<'_>) -> Option<Vec<PlannedSet>> {
             inputs
                 .server
                 .judged(ScopeName::Personal, &id)
-                .then(|| account_set(&objects, account, av))
+                .then(|| account_set(&objects, account, av, av == inputs.newest_av))
                 .flatten()
         })
         .collect()
 }
 
-// The account change set at `av` as the device holds it: the certificate, the blob, the device certificates and
+// The account change set at `av` as the device holds it: the certificate, the newest blob, the device certificates and
 // `account` wraps of the devices it kept, and the personal and history versions signed at it with their rings and
 // wraps. An approval's objects at that `av` (the device it certified has a `trust` wrap) are not among them: a lost
 // approval is done again with a new key device.
-fn account_set(objects: &Objects<'_>, account: AccountId, av: Version) -> Option<PlannedSet> {
+fn account_set(objects: &Objects<'_>, account: AccountId, av: Version, newest: bool) -> Option<PlannedSet> {
     let certificate = objects.get(&KeyRecordId::Account { account, av })?;
     let mut set = vec![certificate.clone()];
-    set.extend(objects.get(&KeyRecordId::Recovery { account, av }).cloned());
+    // Only the newest blob goes back: the server deletes each older one once a newer certificate applies, so an
+    // older blob meets that deletion whenever another device put the newer certificate back first (0051, After a
+    // restore: "Older recovery blobs ... are not among them").
+    if newest {
+        set.extend(objects.get(&KeyRecordId::Recovery { account, av }).cloned());
+    }
     let approved_at_av: HashSet<KeyDeviceId> = objects
         .wraps()
         .filter(|(_, wrap)| wrap.target.purpose == WrapPurpose::Trust && wrap.target.version == av)

@@ -19,8 +19,8 @@ pub(crate) struct Bases {
     rows: HashMap<(ScopeName, String, String), BaseRow>,
 }
 
-// A scope whose key objects have no base at all gives no view of the server: every object would read as lost, and an
-// account set the server holds would go back with a recovery blob it deleted, which it refuses for good.
+// A personal scope whose key objects have no base at all gives no view of the server: every account set would read as
+// lost and go back. A team needs no such guard: a team object read as lacking goes back as `applied`, or stops the team.
 pub(crate) fn has_view(bases: &Bases, scope: ScopeName) -> bool {
     bases.rows.keys().any(|(of, ..)| *of == scope)
 }

@@ -133,6 +133,14 @@ fn a_restore_to_before_genesis_puts_back_every_account_set_in_ascending_av() {
         personal.genesis[0].object.id.to_wire()
     );
     assert!(matches!(plan.sets[1].objects[0].object.id, KeyRecordId::Account { av, .. } if av == v(2)));
+    let blobs = |set: usize| {
+        plan.sets[set]
+            .objects
+            .iter()
+            .filter(|held| matches!(held.object.id, KeyRecordId::Recovery { .. }))
+            .count()
+    };
+    assert_eq!((blobs(0), blobs(1)), (0, 1), "only the newest blob goes back");
 }
 
 #[test]

@@ -8,6 +8,8 @@ use tablepro_keys::cert::{AccountCertificate, CertKind};
 use tablepro_keys::encoding::{Origin, Version};
 use tablepro_keys::keys::Ed25519Public;
 
+use crate::api::state::KeyPinRow;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Chain {
     Matches,
@@ -52,10 +54,16 @@ pub(crate) fn same_holder(
 
 // The newest `av` the device knows for an account: its pin's, or a certificate it holds, whichever is higher. The
 // certificates are the ones that verify under their own IK, an unendorsed one included, so a wrap signed under an
-// older `av` after a reset never advances.
-pub(crate) fn newest_known(
-    certificates: &BTreeMap<Version, AccountCertificate>,
-    pinned: Option<Version>,
-) -> Option<Version> {
-    certificates.keys().next_back().copied().max(pinned)
+// older `av` after a reset never advances. One under an IK the pin saw replaced never counts as the newest (0056,
+// Rollback): an old recovery key cannot raise the bar.
+pub(crate) fn newest_known(certificates: &BTreeMap<Version, AccountCertificate>, pin: &KeyPinRow) -> Version {
+    newest_current(certificates, pin).map_or(pin.av, |held| held.max(pin.av))
+}
+
+pub(crate) fn newest_current(certificates: &BTreeMap<Version, AccountCertificate>, pin: &KeyPinRow) -> Option<Version> {
+    certificates
+        .iter()
+        .rev()
+        .find(|(_, certificate)| !pin.replaced.contains(&certificate.ik))
+        .map(|(av, _)| *av)
 }

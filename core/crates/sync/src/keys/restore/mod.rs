@@ -100,8 +100,10 @@ impl RestoreFlows for KeyService {
             return Ok(PushBackVerdict::Continue);
         }
         let _serial = self.serialized().await;
+        // The server's current epoch, which a push in another epoch would have met as `epoch_changed`. None when the
+        // server cannot be asked now: the refusal is recorded all the same.
+        let epoch = self.current_epoch().await;
         let mut txn = self.begin().await?;
-        let epoch = self.refused_in(&mut *txn, set.scope).await;
         match refusal {
             Refusal::AccountEnds => {
                 for purpose in [KeyPurpose::Personal, KeyPurpose::History] {
@@ -221,12 +223,11 @@ fn push_back_change(held: &HeldObject) -> Result<Change, SyncError> {
 }
 
 impl KeyService {
-    // The epoch a refused push-back set went in: the server's current one, which a push in another epoch would have
-    // met as `epoch_changed`. The refusal is recorded even when the server cannot be asked, with the scope's epoch.
-    async fn refused_in(&self, txn: &mut dyn StateTxn, scope: ScopeName) -> Option<EpochId> {
-        match self.scopes_body().await {
-            Ok(body) => Some(body.epoch),
-            Err(_) => self.scope_epoch(txn, scope).await.ok(),
+    // The body names the epoch with or without a proof, so asking for it needs no device keys.
+    async fn current_epoch(&self) -> Option<EpochId> {
+        match self.transport().scopes(None, Proof::None).await {
+            Ok(ScopesAnswer::Body { body, .. }) => Some(body.epoch),
+            _ => None,
         }
     }
 
@@ -258,9 +259,6 @@ impl KeyService {
                 continue;
             }
             bases.load(txn, info.scope).await?;
-            if !server::has_view(&bases, info.scope) {
-                continue;
-            }
             // This body is read now, so it counts as read after the team's pull caught up when that pull has.
             let caught_up =
                 matches!(txn.get(&RowKey::Scope(info.scope)).await?, Some(Row::Scope(scope)) if scope.caught_up);

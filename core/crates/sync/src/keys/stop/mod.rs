@@ -14,9 +14,10 @@ use async_trait::async_trait;
 use tablepro_keys::KeysError;
 use tablepro_keys::cert::AccountCertificate;
 use tablepro_keys::check::check_signed_under_newest;
+use tablepro_keys::encoding::WrapPurpose;
 use tablepro_keys::encoding::{AccountId, KeyPurpose, TeamId, Version};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
-use tablepro_keys::wrap::Wrapper;
+use tablepro_keys::wrap::{Recipient, Wrap, Wrapper};
 
 pub(crate) use self::holders::{Chain, same_holder};
 use super::KeyService;
@@ -255,7 +256,7 @@ impl KeyService {
             return Ok(Reconfirmation::Held);
         }
         let certificates = self.member_certificates(txn, team, wrapper.account).await?;
-        let newest = holders::newest_known(&certificates, Some(pin.av)).unwrap_or(pin.av);
+        let newest = holders::newest_known(&certificates, &pin);
         check_signed_under_newest(wrapper.av, newest)?;
         let Some(signed_under) = certificates.get(&wrapper.av) else {
             return Ok(Reconfirmation::Held);
@@ -282,20 +283,29 @@ impl KeyService {
     }
 
     // A re-confirmation applied: the team moves to the new version in the caller's commit, and the report it sent is
-    // withdrawn from the same commit on (0054, `key_pending`). The wrap that carried the version is checked again, so
-    // no other path clears a catch-up stop.
+    // withdrawn from the same commit on (0054, `key_pending`). `wrap` is the wrap of that version to this account that
+    // the caller verified and opened; its signer is checked again here, so a catch-up stop clears no other way.
     pub async fn clear_catch_up_stop(
         &self,
         txn: &mut dyn StateTxn,
         row: KeyVersionRow,
-        wrapper: &Wrapper,
+        wrap: &Wrap,
     ) -> Result<(), SyncError> {
         let ScopeName::Team(team) = row.scope else {
             return Err(SyncError::NotAllowed {
                 what: "clear a catch-up stop outside a team",
             });
         };
-        if self.reconfirmation(txn, team, row.version, wrapper).await? != Reconfirmation::Taken {
+        let to_this_account = wrap.target.owner == team.0
+            && wrap.target.purpose == WrapPurpose::Key(KeyPurpose::Team)
+            && wrap.target.version == row.version
+            && wrap.target.recipient == Recipient::Account(self.account());
+        if !to_this_account {
+            return Err(SyncError::NotAllowed {
+                what: "clear a catch-up stop with a wrap of another version or to another account",
+            });
+        }
+        if self.reconfirmation(txn, team, row.version, &wrap.wrapper).await? != Reconfirmation::Taken {
             return Err(SyncError::NotAllowed {
                 what: "clear a catch-up stop before its re-confirmation is taken",
             });
@@ -355,11 +365,11 @@ impl KeyService {
             if pairs.is_empty() {
                 continue;
             }
-            if pin_of(txn, member.account).await?.is_none_or(|pin| pin.alert) {
+            let Some(pin) = pin_of(txn, member.account).await?.filter(|pin| !pin.alert) else {
                 return Ok(true);
-            }
+            };
             let certificates = self.member_certificates(txn, team, member.account).await?;
-            let Some(newest) = certificates.keys().next_back().copied() else {
+            let Some(newest) = holders::newest_current(&certificates, &pin) else {
                 return Ok(true);
             };
             if pairs

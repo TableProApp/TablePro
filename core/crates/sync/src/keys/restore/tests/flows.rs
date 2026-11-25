@@ -54,6 +54,10 @@ fn row(scope: ScopeName, purpose: KeyPurpose, version: u32) -> Row {
     })
 }
 
+fn serving(rig: &Rig, epoch: crate::api::ids::EpochId) {
+    *rig.transport.body.lock().unwrap() = Some(super::fakes::scopes(epoch, Vec::new()));
+}
+
 fn scope_row(scope: ScopeName) -> Row {
     Row::Scope(ScopeRow {
         epoch: Some(epoch(2)),
@@ -98,6 +102,7 @@ async fn a_completed_reset_the_restore_lost_cannot_go_back_and_the_account_s_dev
         row(ScopeName::Personal, KeyPurpose::History, 2),
     ])
     .await;
+    serving(&rig, epoch(2));
     let reset = world.records_labelled(RESET_LOST, "P's reset proposal");
     let mut outcomes = vec![rejected(RejectedCode::ChangeSet); reset.len()];
     outcomes[0] = rejected(RejectedCode::BadStatement);
@@ -132,6 +137,7 @@ async fn a_refused_version_of_its_own_ends_the_team_for_good_and_withdraws_its_r
     let team = ScopeName::Team(world.team);
     let rig = Rig::new(&world.origin, world.account("A"));
     rig.put([scope_row(team), row(team, KeyPurpose::Team, 7)]).await;
+    serving(&rig, epoch(5));
     let objects = [world.team_version(7, "A", 2, Start::Next), world.team_ring(7)];
 
     let verdict = rig
@@ -147,14 +153,14 @@ async fn a_refused_version_of_its_own_ends_the_team_for_good_and_withdraws_its_r
     let ended = version_row(&rig, team, KeyPurpose::Team).await;
     assert_eq!(
         (ended.state, ended.stopped_cause, ended.epoch),
-        (KeyVersionState::Ended, None, Some(epoch(2)))
+        (KeyVersionState::Ended, None, Some(epoch(5)))
     );
     assert!(
         rig.get(&RowKey::KeyPending(PendingFlow::StopWithdrawal { team: world.team }))
             .await
             .is_some()
     );
-    assert_eq!(rig.hooks.without_notices(), [Hook::End(team, Some(epoch(2)))]);
+    assert_eq!(rig.hooks.without_notices(), [Hook::End(team, Some(epoch(5)))]);
 }
 
 #[tokio::test]
@@ -181,7 +187,7 @@ async fn a_refused_key_member_alone_ends_nothing() {
 }
 
 #[tokio::test]
-async fn a_refusal_records_the_server_s_current_epoch_and_survives_a_scope_with_none() {
+async fn a_refusal_the_server_cannot_name_an_epoch_for_is_still_recorded() {
     let world = World::load();
     let team = ScopeName::Team(world.team);
     let rig = Rig::new(&world.origin, world.account("A"));
@@ -344,7 +350,7 @@ async fn push_back_refuses_to_judge_a_personal_scope_the_engine_kept_no_bases_fo
 }
 
 #[tokio::test]
-async fn a_team_with_no_bases_for_its_key_objects_is_left_out_of_push_back() {
+async fn a_team_with_no_bases_still_plans_its_objects_as_lacking() {
     let world = World::load();
     let team = ScopeName::Team(world.team);
     let rig = Rig::new(&world.origin, world.account("A"));
@@ -353,12 +359,9 @@ async fn a_team_with_no_bases_for_its_key_objects_is_left_out_of_push_back() {
     let body = super::fakes::scopes(epoch(2), vec![info(team)]);
     let mut txn = rig.service.begin().await.unwrap();
 
-    let blind = rig.service.gather(&mut *txn, &body).await.unwrap();
-    txn.put(base_row(team, &member)).await.unwrap();
-    let seen = rig.service.gather(&mut *txn, &body).await.unwrap();
+    let gathered = rig.service.gather(&mut *txn, &body).await.unwrap();
 
-    assert!(blind.teams.is_empty());
-    assert_eq!(seen.teams.len(), 1);
+    assert_eq!(gathered.teams.len(), 1);
 }
 
 fn gathered(team: TeamId, row: KeyVersionRow) -> crate::keys::restore::Gathered {
