@@ -154,7 +154,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 - A device refuses an older certificate, version record or identity key as current, and an envelope below the copy it holds; older objects still verify history. At an anchored scope key version it takes only the record the anchor names.
 - In a pull, which serves changes in revision order, a new or changed envelope counts only under the scope's newest version at its place in that order, the rule the honest server writes by. An offline device catches up on writes made before a rotation and refuses ones slipped in after it.
 - A restored state file cannot forget a newer version or an alert while its anchor survives.
-- A device approved by another starts from that device's pins, open alerts and versions, and keeps what it already held when that is newer.
+- A device approved by another starts from that device's pins, open alerts and versions for what it does not hold yet, and keeps what it already held when that is newer. A team key version it holds moves only through its own checks, never through an approver's view.
 
 **What does not hold.**
 
