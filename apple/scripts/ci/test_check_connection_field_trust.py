@@ -58,7 +58,7 @@ REPORTED = '''enum QdrantFields {
 
 
 class CheckConnectionFieldTrustTests(unittest.TestCase):
-    def run_check(self, catalog, sources):
+    def run_check(self, catalog, sources, core=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             catalog_path = root / "ConnectionFieldTrust.swift"
@@ -67,14 +67,17 @@ class CheckConnectionFieldTrustTests(unittest.TestCase):
             plugins.mkdir()
             for name, source in sources.items():
                 (plugins / name).write_text(source, encoding="utf-8")
-            saved = check.CATALOG, check.DECLARATION_ROOTS
-            check.CATALOG, check.DECLARATION_ROOTS = catalog_path, [plugins]
+            core_path = root / "field_trust.rs"
+            if core is not None:
+                core_path.write_text(core, encoding="utf-8")
+            saved = check.CATALOG, check.DECLARATION_ROOTS, check.CORE_CATALOG
+            check.CATALOG, check.DECLARATION_ROOTS, check.CORE_CATALOG = catalog_path, [plugins], core_path
             output = io.StringIO()
             try:
                 with contextlib.redirect_stdout(output):
                     status = check.main([str(plugins)])
             finally:
-                check.CATALOG, check.DECLARATION_ROOTS = saved
+                check.CATALOG, check.DECLARATION_ROOTS, check.CORE_CATALOG = saved
             return status, output.getvalue()
 
     def test_classified_literals_and_constants_pass(self):
@@ -103,6 +106,30 @@ class CheckConnectionFieldTrustTests(unittest.TestCase):
         )
         self.assertEqual(status, 1)
         self.assertIn("MSSQLKey.authMethod is declared with more than one value", output)
+
+    def test_a_core_table_that_differs_fails(self):
+        core = '''const TRUST_BY_KEY: &[(&str, FieldTrust)] = &[
+    ("esApiKey", FieldTrust::Secret),
+    ("esHosts", FieldTrust::Setting),
+    ("mssqlAuthMethod", local_credential(&["sql", "windows"])),
+];
+'''
+        status, output = self.run_check(CATALOG, {"KafkaFields.swift": PLUGIN}, core=core)
+        self.assertEqual(status, 1)
+        self.assertIn("esHosts is ('setting', None) here but ('destination', None)", output)
+        self.assertIn("kafkaBootstrapServers is missing", output)
+        self.assertIn("mssqlAuthMethod is ('localCredential', ('sql', 'windows')) here", output)
+
+    def test_a_core_table_that_matches_passes(self):
+        core = '''const TRUST_BY_KEY: &[(&str, FieldTrust)] = &[
+    ("esApiKey", FieldTrust::Secret),
+    ("esHosts", FieldTrust::Destination),
+    ("kafkaBootstrapServers", FieldTrust::Destination),
+    ("mssqlAuthMethod", local_credential(&["sql"])),
+];
+'''
+        status, output = self.run_check(CATALOG, {"KafkaFields.swift": PLUGIN}, core=core)
+        self.assertEqual(status, 0, output)
 
     def test_the_tree_passes(self):
         output = io.StringIO()

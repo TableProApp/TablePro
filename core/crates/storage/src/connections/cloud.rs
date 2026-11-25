@@ -23,7 +23,7 @@ impl ConnectionStore {
             let order = pull.favorites_order.as_deref().unwrap_or(&list.favorites);
             let laid = cloudkit::layout(&list, &merged, order);
             document.groups = laid.groups.to_vec();
-            document.connections = laid.connections.to_vec();
+            *document.connections = laid.connections.to_vec();
             document.favorites = laid.favorites.to_vec();
             Ok(())
         })
