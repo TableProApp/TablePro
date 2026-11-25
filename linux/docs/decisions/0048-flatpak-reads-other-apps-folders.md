@@ -28,7 +28,7 @@ Both manifests grant, read-only, each `~/.var/app/<id>` the importers search:
 ## Consequences
 
 - A new importer, or a new Flatpak id of a known app, adds a grant to both manifests in the same change, or the packaging test fails.
-- The Flathub linter has no rule on `~/.var/app` grants, so no lint exception is added. A Flathub reviewer may still ask for the reason, which this ADR gives.
+- The Flathub linter refuses each grant as `finish-args-flatpak-appdata-folder-<id>-ro-access`. `build-aux/flatpak/lint-exceptions.json` lists the four for both IDs, and the request to Flathub before the first submission asks for them with this ADR's reason.
 
 ## Alternatives considered
 
