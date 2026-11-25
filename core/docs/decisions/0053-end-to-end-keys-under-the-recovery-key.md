@@ -24,6 +24,8 @@ On 2026-11-25 the maintainer decided:
 - **Linux without a keyring** gets team records only.
 - **Review.** No external audit now. Whether to commission one is decided before end-to-end encryption leaves beta.
 - **Past grace,** key-object writes and `leave` stay allowed.
+- **Signers, refined later that day.** Adding a signer needs the same k approvals as removing one, so a lone signer still adds the first co-signer. A team's only signer that lost its keys, reset or removed itself counts as gone, which opens D15's visible re-root. Owners' apps warn while a team has one signer.
+- **Sign Out** never removes the devices it approved. Removing a device with S catches a planted one.
 - **Consequences accepted the same day:** team secrets need the recovery key; an account with no holder and no recovery key left resets after the server deletes its personal and history records; changing the API origin loses the history written under the old one.
 
 The threat model is [`core/docs/security/sync-threat-model.md`](../security/sync-threat-model.md). The formal model is in `core/docs/security/models/`.
@@ -268,29 +270,31 @@ Each statement carries `by`: the signer's `acct`, its `holder`, and its `ih` and
 | `op` | Members | Rule |
 |---|---|---|
 | `genesis` | `root`: `acct`, `ik` | The first signer, an owner or admin in the server's roles. The root counts as confirmed |
-| `signer_add` | `who`: `acct`, `ik` | The account is a confirmed member with that IK |
+| `signer_add` | `who`: `acct`, `ik` | The account is a confirmed member with that IK. It opens a proposal named by its own hash, and takes effect under the same k as a removal |
 | `signer_remove` | `target` | Takes effect at once when `target` is `by.acct`. Otherwise it opens a proposal named by its own hash |
-| `approve` | `proposal` | A removal takes effect at the statement where the distinct signers other than the target, counting the proposer, reach `k = min(2, n - 1)`, with n the signers at that statement. A `resolve` takes effect at k approvals by signers of the common prefix |
+| `approve` | `proposal` | A removal takes effect at the statement where the distinct signers other than the target, counting the proposer, reach `k = min(2, n - 1)`, with n the signers at that statement. An addition takes effect when the distinct signers, counting the proposer, reach the same k, so a lone signer adds the first co-signer alone. A `resolve` takes effect at k approvals by signers of the common prefix. Only signers that are not gone count |
 | `confirm` | `member`: `acct`, `ik`, `ih`, `dh` | After a comparison (below). Confirming a member again after a reset is allowed |
 | `remove_member` | `acct` | Refused while the account is a signer. A signer leaves the signer set first, under k |
 | `revoke_sk` | `acct`, `sk_v` | After a server hint that the person's device was removed, or a reset |
 | `key` | `tk_v`, `kid`, `recipients`: a list of (`acct`, `sk_v`, `ih`) | `tk_v` is the previous plus 1. Each recipient is a confirmed member, `sk_v` is the SK in force at `ih` of that member's identity log, and the signer has verified that log to `ih` and seen no later SK |
 | `grant` | `tk_v`, `recipients` | Adds recipients to an existing version under the same rules |
-| `reroot` | `root`: `acct`, `ik` | Only when the signer set is empty at that point. Every member's app shows it, and trusts nothing after it until that member confirms again with the new root |
+| `reroot` | `root`: `acct`, `ik` | Only when no signer is left at that point: every signer has left the set or is gone. Every member's app shows it, and trusts nothing after it until that member confirms again with the new root. No TablePro staff tool writes one |
 | `resolve` | `seq`, `kept`, `dropped` | A proposal that ends a fork (Rollback and forks) |
 
 **Rules over the team log.**
 
-- **The signer set** starts as the root and changes only through `signer_add`, a removal that takes effect, and `reroot`.
+- **The signer set** starts as the root and changes only through a `signer_add` or a removal that takes effect, and `reroot`.
+- **A gone signer** is one whose own logs, as its member bundle carries them, show that it can no longer sign: it removed itself, its identity log shows an activated `reset` (suspended, below), or its device set is empty. A server's hint never makes a signer gone. Gone signers do not count toward k or n. When every signer is gone, `reroot` opens (D15).
+- **One signer.** While a team has one signer that is not gone, the apps of its owners warn them to add a second, since losing that signer leaves only a re-root.
 - **Confirmed members** come from `confirm`, less those named by `remove_member`.
-- **After a reset.** A member whose identity log shows an activated `reset` is unconfirmed until a new `confirm` names the new IK. If it is a signer, it is suspended: its statements made under the new IK have no effect until another signer signs `signer_add` for the new IK after a comparison. A suspended signer still counts in the signer set, so a reset never opens a `reroot`.
+- **After a reset.** A member whose identity log shows an activated `reset` is unconfirmed until a new `confirm` names the new IK. If it is a signer, it is suspended: its statements made under the new IK have no effect until other signers add the new IK through `signer_add` after a comparison. A suspended signer is gone. While another signer is left, the team carries on. When it was the last one, `reroot` opens.
 - **A revoked SK** is one that `revoke_sk` names or that the member's own `rotate`, `replace` or `reset` replaced.
 - **Voided statements.** A team statement signed by a holder that a `rotate` of the signer's account later names, or that descends from one it names, has no effect.
   - Clients replay the team log skipping voided statements. A statement that is not valid on the replayed state has no effect either.
   - Voided statements keep their place for the chain and for version numbering.
   - A TK version that a voided `key` introduced counts as known to the attacker, so the team enters rotation pending.
   - The app shows which confirmations and signer additions fell away, and those members are confirmed again.
-- **What a signer can do.** One signer can confirm members and add signers, and k only limits removals. A signer that adds two accounts of its own can then remove the other signers. A malicious signer is therefore trusted with the team, and every statement it signs shows in every member's app. The threat model covers this.
+- **What a signer can do.** One signer can confirm members, seal team keys to them and remove members. With three signers or more, it can neither add nor remove a signer alone. With two, either one can add a third or remove the other, since k is 1, as D15 sets. A malicious signer is therefore trusted with the team's secrets, and every statement it signs shows in every member's app. The threat model covers this.
 
 **Member bundle.** Kind `key.member` in the team scope, writer-bound to the member's account, one record per statement.
 
@@ -725,7 +729,8 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
     - a statement by a signer after its own reset, before a new `signer_add`;
     - a `confirm` and a `key` by a holder a later `rotate` names, which must be voided;
     - a `key` sealed to a revoked SK, and one naming a stale `ih` for a member;
-    - removing a signer with fewer than k approvals, `remove_member` of a signer, and `reroot` while a signer is left, suspended ones included.
+    - adding or removing a signer with fewer than k approvals, counting a gone signer, `remove_member` of a signer, and `reroot` while a signer that is not gone is left;
+    - a `reroot` once the last signer reset, removed itself or has an empty device set, which must be taken.
   - **Keys:** a swapped SK, and a `kid` mismatch after unwrap.
   - **Recovery:** a blob with the wrong origin, account or `rk_v`, and a recovery key with a bad checksum or the wrong length.
   - **Comparisons:** an `r_I` that does not open its commitment, a commitment over another `m_I`, and words that do not match.
@@ -767,6 +772,7 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 - that no holder a removed holder approved, directly or not, receives a later key version;
 - that no account a removed holder confirmed, and no signer it added, receives a later TK version;
 - that no reset takes effect without S, or without the full delay with no cancel;
+- that no signer is added or removed with fewer than k approvals, and no re-root takes effect while a signer that is not gone is left;
 - that an old S after a `replace` can extend no log;
 - that a removed holder cannot pin an envelope counter past the next version.
 
@@ -805,6 +811,7 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 - **Recovery with S on a new device removes every other device,** which then joins again by approval.
 - **A reset takes 7 days,** and any of the person's devices or S can cancel it. A replace takes effect at once, since S signs it.
 - **Losing every holder and the recovery key loses the personal and history scopes on the server** (decided). The account starts again with a reset, which deletes those records when it takes effect, 7 days on.
+- **A team whose last signer is gone** is re-rooted by an owner, visibly, and every member confirms the new root. Owners' apps warn while a team has one signer.
 - **Team secrets wait during rotation pending** until a signer's app opens. Members keep reading under the versions they hold.
 - **The server reads more than versions.** It reads the key-object fields its table lists, DPoP proofs, `kv` and `n`, and verifies the account and team logs. It reads no secret and no history.
 - **An install that changes its API origin** (decided) is a new server for keys too, as it already is for tokens and the license (0047). People enroll again and devices seal the secrets they hold again. History written under the old origin is not readable there.
@@ -826,7 +833,8 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 - **A sigchain signed by devices, with no identity key** (Keybase, Tailnet Lock). It is heavier, and needs signature weights to settle forks.
 - **An account-wide signing key held by every device.** A removal cannot tell which statements the removed device signed, so a stolen signer's device could leave a confirmed puppet behind.
 - **A reset that takes effect at once.** A stolen device alone would take the identity and lock out the person and their recovery key.
-- **Sign Out removing the devices it approved.** An honest sign-out of an old laptop would drop the new laptop it approved. It would still not revoke the shared SK, which D7 keeps from rotating at sign-out. Removal with S takes them out instead.
+- **Sign Out removing the devices it approved.** The maintainer chose against it on 2026-11-25. An honest sign-out of an old laptop would drop the new laptop it approved, and it would still not revoke the shared SK, which D7 keeps from rotating at sign-out. Removal with S takes a planted device out instead.
+- **One signer adding signers alone.** One signer could then add two accounts of its own and remove every other signer. The maintainer chose the same k for additions as for removals.
 - **Replace Recovery Key keeping IK.** The old S would stay a master key wherever the old blob survives.
 - **Signing `(enc, ct)` on each wrap** (SYN C2). Checking the unwrapped key against a signed commitment gives the same protection, and the recipient list stays in the `key` statement.
 - **Five or eight words with no commitment** (0044, SYN C8). A server that controls both views finds matching words by a birthday search: 2^32 work at 64 bits and 2^52 at 103 bits.

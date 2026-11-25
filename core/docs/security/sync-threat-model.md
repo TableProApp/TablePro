@@ -48,7 +48,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | A stolen device working with the server | Taking over the identity: IK is not on the device, a reset waits 7 days that any other device or S can cancel, and following it needs a comparison | Reading new data until the person removes the device; an older view shown to a holder that pins again with S; a new team key sealed by a signer from whom the server withheld the member's `rotate` |
 | A removed member | Team key versions after the rotation. The floor stops writers on old keys | Secrets they could already read, which is why "Credentials to rotate" exists |
 | A malicious current member, with the server's help | Other people's personal scopes | Writing a team secret under a valid writer signature |
-| A malicious signer | Other people's personal scopes | Every team secret. Confirming puppet accounts and sealing keys to them. Adding signers, then removing the others with them. All of it shows in every member's app |
+| A malicious signer | Other people's personal scopes | Every team secret. Confirming puppet accounts and sealing keys to them. With two signers, adding a third or removing the other, as D15 sets. All of it shows in every member's app |
 | Self-hosted customer IT as operator, IdP admin, install admin and endpoint manager | Secrets against dumps, backups and database staff | Anything on endpoints it controls. It can install software, read device memory or sign in as anyone through its IdP. End-to-end encryption does not protect against the organization itself |
 
 ## A malicious server operator
@@ -96,7 +96,7 @@ This is the case the end-to-end design exists for.
 | Make up a reset, or have a stolen device reset the identity | A reset waits 7 days, and any of the person's devices or S cancels it. Own devices follow a reset only through a comparison, and teammates confirm again | Logs, Identity log; Flows, Reset |
 | Reset an account with no holder left and delete its data | The reset needs a step-up at the IdP and waits 7 days with notice. S cancels it, and nothing is deleted before it takes effect | Flows, No holder left |
 | Make up a team genesis before the real owner | Nothing stops the first one: it is trust on first use. The real owner's app sees a log it did not write. A member's comparison checks that both sides see one team log, and shows its root and signers, but it cannot prove the root is the right person | Team log; Comparing keys |
-| Re-root a team through staff tools | No staff tool writes one. A re-root is visible, every member must confirm again, and a suspended signer keeps it from happening | Team log, `reroot` |
+| Re-root a team through staff tools, or make a signer look gone | No staff tool writes one. A signer counts as gone only through its own logs, never a server hint. A re-root is visible, and every member must confirm again | Team log, `reroot` |
 | Fake a revocation or a removal hint | Only denies service, and it shows. A holder that gets `device_removed` locks and erases nothing. Signers stop sealing to that SK, and the person's next device asks for the recovery key | Flows, Admin removal |
 | Ignore an admin's portal removal | Signer apps show members the team log confirms but the roster no longer lists, and the portal shows the removal pending until the team log has it | Flows, Removing a member |
 | Squat a log position, a wrap or a ring through a phished session | Key-object writes need a DPoP proof from an approved holder. The server verifies team statements as it does account statements. A wrap or ring can be replaced by its writer | Key objects as records |
@@ -176,10 +176,11 @@ It cannot take over the identity:
 - **A member who is not confirmed yet** reads team plaintext records and no team secret.
 - **A malicious signer** is trusted with the team:
   - it can confirm puppet accounts and seal the team key to them;
-  - it can add signers, since `signer_add` needs one signer;
-  - after adding two accounts of its own, it can remove every other signer, since k counts them.
+  - with three signers or more, it can neither add nor remove a signer alone, since both need k = min(2, n-1) approvals;
+  - with two signers, either can add a third or remove the other alone, as D15 sets, and owners' apps warn while one signer is left.
 
-  k = min(2, n-1) only stops one signer from removing another in a single step. Every statement it signs is in the team log, which every member's app verifies and shows.
+  Every statement it signs is in the team log, which every member's app verifies and shows.
+- **A team whose last signer is gone,** having reset, removed itself or lost every device, can be re-rooted by an owner the server lists. Every member's app shows it, and every member confirms the new root before trusting it. A thief who resets the last signer's identity waits 7 days first, and any of that signer's devices or its recovery key can cancel.
 - **A removed member** keeps what they read. The next team key version is sealed only to the members left, and the envelopes their holders wrote are sealed again. Until a signer's app rotates the key, the honest server's floor holds new team secret writes back, and clients refuse to write under old versions.
 - **Collusion with the server.** No signer seals a new team key version to an SK it has verified as revoked, and the formal model verifies that claim. A server that withholds a member's `rotate` from a signer can still get the next version sealed to the member's old SK, which a stolen device of that member opens. The honest server refuses such a `key`. The member's own app refuses it, writes nothing under it, raises an alarm and publishes its `rotate` again, so the withholding shows.
 
@@ -244,11 +245,12 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 4. **A confirmed member** can write a team secret with the server's help.
 5. **A signer from whom the server withholds a member's `rotate`** seals the next team key to that member's old SK, which a stolen device of the member opens, until the member's app sees the `key` and raises its alarm.
 6. **History paged back on a new device** can show an entry a removed holder backdated with the server's help, marked as written on a removed device.
-7. **A malicious signer** can grant the team key to accounts of its choice, and with two signers of its own remove the others.
-8. **A person who confirms a comparison without reading it** approves whatever is on the other screen.
-9. **Plaintext records and metadata** are readable by the operator.
-10. **The organization running a self-hosted install** controls its endpoints and its IdP, which end-to-end encryption does not cover.
-11. **P-256 and Ed25519 are not post-quantum.** Someone who archives `tp1` wraps today could open them on a future quantum computer, and with them every envelope and history entry written under those key versions, however strong AES-256 is. Moving to `tp2` issues new keys that reach anyone only through hybrid wraps, so it protects what is written after the move, not what was written before (0053, Suite).
+7. **A malicious signer** can grant the team key to accounts of its choice. With two signers, either can add a third or remove the other alone (D15).
+8. **A re-root after the last signer is gone** trusts the owner the server lists, as at a team's genesis, until members confirm it.
+9. **A person who confirms a comparison without reading it** approves whatever is on the other screen.
+10. **Plaintext records and metadata** are readable by the operator.
+11. **The organization running a self-hosted install** controls its endpoints and its IdP, which end-to-end encryption does not cover.
+12. **P-256 and Ed25519 are not post-quantum.** Someone who archives `tp1` wraps today could open them on a future quantum computer, and with them every envelope and history entry written under those key versions, however strong AES-256 is. Moving to `tp2` issues new keys that reach anyone only through hybrid wraps, so it protects what is written after the move, not what was written before (0053, Suite).
 
 ## Out of scope
 
