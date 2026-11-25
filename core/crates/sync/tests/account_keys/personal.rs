@@ -280,6 +280,7 @@ async fn nothing_is_written_under_a_stopped_key_or_without_keys() {
     device
         .put(vec![Row::KeyVersion(tablepro_sync::api::state::KeyVersionRow {
             state: KeyVersionState::Stopped,
+            stopped_cause: Some(tablepro_sync::api::state::StoppedCause::CatchUp),
             ..row
         })])
         .await;

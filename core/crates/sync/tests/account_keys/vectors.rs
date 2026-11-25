@@ -280,6 +280,7 @@ async fn the_device_a_rotation_keeps_adopts_its_keys_from_the_compared_device_s_
             record: pk1.version_record().unwrap().digest(&origin()).unwrap(),
             holders: Vec::new(),
             state: KeyVersionState::Ok,
+            stopped_cause: None,
             epoch: None,
         }),
     ])
@@ -367,6 +368,7 @@ async fn holding_personal_2(server: &Arc<FakeServer>, row: &str) -> (Device, Sco
             record: record.digest(&origin()).unwrap(),
             holders: Vec::new(),
             state: KeyVersionState::Ok,
+            stopped_cause: None,
             epoch: None,
         }),
     ])

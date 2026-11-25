@@ -435,6 +435,7 @@ impl KeyService {
                 record: record.digest(&self.origin)?,
                 holders: Vec::new(),
                 state: KeyVersionState::Ok,
+                stopped_cause: None,
                 epoch: None,
             }))
             .await?;

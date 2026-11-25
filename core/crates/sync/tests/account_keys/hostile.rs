@@ -14,8 +14,8 @@ use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::scope_key::{KeyRef, Start, VersionRecord};
 use tablepro_keys::wrap::{Wrap, Wrapper, device_target, scope_key_target};
 use tablepro_sync::api::ids::ScopeName;
-use tablepro_sync::api::key_flows::{AccountFlows, ArrivalOrder, KeyNoticeKind, KeyState, LockCause, StopCause};
-use tablepro_sync::api::state::{KeyVersionState, Row, RowKey};
+use tablepro_sync::api::key_flows::{AccountFlows, ArrivalOrder, KeyNoticeKind, KeyState, LockCause};
+use tablepro_sync::api::state::{KeyVersionState, Row, RowKey, StoppedCause};
 use tablepro_sync_testing::FakeServer;
 use tablepro_sync_testing::key_flows::HookCall;
 
@@ -196,7 +196,10 @@ async fn a_personal_version_under_a_removed_device_s_account_key_stops_the_key_t
     else {
         panic!()
     };
-    assert_eq!((row.version, row.state), (av(2), KeyVersionState::Stopped));
+    assert_eq!(
+        (row.version, row.state, row.stopped_cause),
+        (av(2), KeyVersionState::Stopped, Some(StoppedCause::CatchUp))
+    );
     assert_eq!(
         device.key_state().await,
         KeyState::Locked {
@@ -204,7 +207,7 @@ async fn a_personal_version_under_a_removed_device_s_account_key_stops_the_key_t
         }
     );
     let calls = device.hooks.calls();
-    assert!(calls.contains(&HookCall::Stop(ScopeName::Personal, StopCause::CatchUp)));
+    assert!(calls.contains(&HookCall::Stop(ScopeName::Personal, StoppedCause::CatchUp)));
     assert!(calls.contains(&HookCall::Lock(LockCause::PersonalStopped)));
     let id = EnvelopeId::new(
         ParentKind::Connection,

@@ -16,8 +16,8 @@ use tablepro_keys::wrap::{Recipient, Wrap, device_target};
 use super::KeyService;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
-use crate::api::key_flows::{KeyApplied, KeyArrival, KeyNoticeKind, LockCause, RefusedObject, StopCause};
-use crate::api::state::{KeyPinRow, KeyVersionRow, KeyVersionState, Row, RowKey, StateTxn};
+use crate::api::key_flows::{KeyApplied, KeyArrival, KeyNoticeKind, LockCause, RefusedObject};
+use crate::api::state::{KeyPinRow, KeyVersionRow, KeyVersionState, Row, RowKey, StateTxn, StoppedCause};
 use crate::api::transport::PulledRecord;
 
 const ACCOUNT_KINDS: [&str; 6] = [
@@ -315,17 +315,14 @@ impl KeyService {
                 break;
             }
             if record.signer_av < level {
-                if let Some(held) = self.personal_row(txn, purpose).await? {
-                    txn.put(Row::KeyVersion(KeyVersionRow {
-                        state: KeyVersionState::Stopped,
-                        ..held
-                    }))
-                    .await?;
+                if let Some(mut held) = self.personal_row(txn, purpose).await? {
+                    held.stop(StoppedCause::CatchUp);
+                    txn.put(Row::KeyVersion(held)).await?;
                     let scope = personal_scope(purpose);
-                    self.hooks.stop_scope(scope, StopCause::CatchUp);
+                    self.hooks.stop_scope(scope, StoppedCause::CatchUp);
                     self.raise_notice(KeyNoticeKind::ScopeStopped {
                         scope,
-                        cause: StopCause::CatchUp,
+                        cause: StoppedCause::CatchUp,
                     })?;
                     self.locked(LockCause::PersonalStopped)?;
                 }
@@ -338,6 +335,7 @@ impl KeyService {
                 record: record.digest(&self.origin)?,
                 holders: Vec::new(),
                 state: KeyVersionState::Ok,
+                stopped_cause: None,
                 epoch: None,
             }))
             .await?;
