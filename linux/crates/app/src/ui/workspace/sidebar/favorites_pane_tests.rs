@@ -179,7 +179,7 @@ fn the_keyboard_opens_the_selected_favorites_context_menu() {
         assert!(pane.menu.is_visible());
         let model = pane.menu.menu_model().expect("context menu");
         let target = target(&model, 2);
-        assert_eq!(target.get::<String>(), Some(Key::Query(id(2)).target()));
+        assert_eq!(target.get::<String>(), Some(super::index::Key::Query(id(2)).target()));
         pane.menu.popdown();
     }
     assert!(actions.borrow().is_empty());
