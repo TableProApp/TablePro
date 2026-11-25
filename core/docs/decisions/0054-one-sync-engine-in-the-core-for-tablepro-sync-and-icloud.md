@@ -1,6 +1,6 @@
 # 0054: One sync engine in the core for TablePro Sync and iCloud
 
-- **Status**: Accepted; amends 0010 and 0044
+- **Status**: Accepted; amends 0010 and 0044; the change journal, what a store is and the restore path amended by 0060
 - **Date**: 2026-11-25
 
 ## Context
