@@ -612,6 +612,7 @@ fn every_row_menu_item_has_an_access_key_of_its_own() {
     let entry = |pinned: bool| {
         HistoryEntryObject::new(tablepro_storage::query_history::Entry {
             id: 1,
+            record_id: Uuid::new_v4(),
             query: "SELECT 1".to_owned(),
             driver_id: "sqlite".to_owned(),
             connection_id: Uuid::new_v4(),

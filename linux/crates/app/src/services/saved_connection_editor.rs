@@ -272,7 +272,7 @@ impl SavedConnectionEditor {
         let mut gone: Vec<Uuid> = applied
             .queries
             .iter()
-            .map(|query| query.query.connection_id)
+            .filter_map(|query| query.query.connection_id)
             .filter(|id| !list.iter().any(|saved| saved.id == *id))
             .collect();
         gone.sort_unstable();

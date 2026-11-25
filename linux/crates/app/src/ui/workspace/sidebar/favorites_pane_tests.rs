@@ -460,7 +460,7 @@ fn share_on_a_favorite_asks_to_share_its_query() {
 
     assert!(matches!(
         actions.borrow().last(),
-        Some(FavoriteAction::Share(query)) if query.id == 2 && query.name == "Two"
+        Some(FavoriteAction::Share(query)) if query.id == id(2) && query.name == "Two"
     ));
     assert_eq!(
         shares_at(&menu_of(Key::Folder(id(1)))),

@@ -413,10 +413,11 @@ mod tests {
 
     #[test]
     fn a_destination_never_converts_an_invalid_selection_into_the_root() {
-        let choices = vec![(42, "/No Folder".to_owned()), (7, "/Reports/Monthly".to_owned())];
+        let (first, second) = (Uuid::from_u128(42), Uuid::from_u128(7));
+        let choices = vec![(first, "/No Folder".to_owned()), (second, "/Reports/Monthly".to_owned())];
         assert_eq!(destination(&choices, 0), Some(None));
-        assert_eq!(destination(&choices, 1), Some(Some(42)));
-        assert_eq!(destination(&choices, 2), Some(Some(7)));
+        assert_eq!(destination(&choices, 1), Some(Some(first)));
+        assert_eq!(destination(&choices, 2), Some(Some(second)));
         assert_eq!(destination(&choices, 3), None);
         assert_eq!(destination(&choices, gtk::INVALID_LIST_POSITION), None);
     }
