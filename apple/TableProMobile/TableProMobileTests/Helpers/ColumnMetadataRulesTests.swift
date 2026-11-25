@@ -42,6 +42,13 @@ struct ColumnMetadataRulesTests {
         #expect(!ColumnMetadataRules.postgresIsGenerated(isGenerated: nil))
     }
 
+    @Test("PostgreSQL refuses a written value only for a GENERATED ALWAYS identity")
+    func postgresRejectsWrittenValues() {
+        #expect(ColumnMetadataRules.postgresRejectsWrittenValues(identityGeneration: "ALWAYS"))
+        #expect(!ColumnMetadataRules.postgresRejectsWrittenValues(identityGeneration: "BY DEFAULT"))
+        #expect(!ColumnMetadataRules.postgresRejectsWrittenValues(identityGeneration: nil))
+    }
+
     @Test("SQLite reports pk as a rank, so every member of a composite key is a primary key")
     func sqlitePrimaryKeyRank() {
         #expect(ColumnMetadataRules.sqliteIsPrimaryKey(pk: "1"))

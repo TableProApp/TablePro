@@ -209,7 +209,7 @@ struct PostgreSQLCatalogQueryTests {
                 includesMaterializedViews: true
             )
         )
-        let identity = includesIdentityColumns ? ["is_identity", "is_generated"] : []
+        let identity = includesIdentityColumns ? ["is_identity", "is_generated", "identity_generation"] : []
         let result = ["column_name", "data_type", "is_nullable", "column_default", "character_maximum_length", "is_pk"]
             + identity
 
@@ -256,6 +256,19 @@ struct PostgreSQLCatalogQueryTests {
         #expect(columns.map(\.isNullable) == [true, false, true])
         #expect(columns.map(\.characterMaxLength) == [nil, nil, 50])
         #expect(columns.allSatisfy { !$0.isPrimaryKey && !$0.isAutoIncrement && !$0.isGenerated })
+    }
+
+    @Test("a GENERATED ALWAYS identity is server-owned; a BY DEFAULT one stays writable")
+    func identityGeneration() {
+        let columns = PostgreSQLDriver.columns(fromRows: [
+            ["id", "integer", "NO", nil, nil, "YES", "YES", "NEVER", "ALWAYS"],
+            ["seq", "integer", "NO", nil, nil, "NO", "YES", "NEVER", "BY DEFAULT"],
+            ["note", "text", "YES", nil, nil, "NO", "NO", "NEVER", nil]
+        ])
+
+        #expect(columns.map(\.isAutoIncrement) == [true, true, false])
+        #expect(columns.map(\.rejectsWrittenValues) == [true, false, false])
+        #expect(columns.map(\.isServerOwned) == [true, false, false])
     }
 
     @Test("Redshift routes to the PostgreSQL driver with its own type")

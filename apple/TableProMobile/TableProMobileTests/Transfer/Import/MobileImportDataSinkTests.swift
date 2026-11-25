@@ -353,6 +353,19 @@ struct MobileImportDataSinkTests {
         #expect(!ImportTargetValues.writesNumericBooleans(.redshift))
     }
 
+    @Test("An Oracle row of only defaults names an always identity, never a virtual column")
+    func defaultsRowNamesTheIdentity() {
+        let values = ImportTargetValues(
+            columns: [
+                ColumnInfo(name: "TOTAL", typeName: "NUMBER", isGenerated: true),
+                ColumnInfo(name: "ID", typeName: "NUMBER", isAutoIncrement: true, rejectsWrittenValues: true)
+            ],
+            databaseType: .oracle,
+            binaryText: nil
+        )
+        #expect(values.firstWritableColumn == "ID")
+    }
+
     @Test("A CSV value in a binary column is read as bytes, and text that only starts like hex is refused")
     func binaryColumnReadsPrefixedHex() throws {
         let values = ImportTargetValues(

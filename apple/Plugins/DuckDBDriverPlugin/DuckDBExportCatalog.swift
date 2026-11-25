@@ -254,7 +254,7 @@ nonisolated enum DuckDBExportCatalog {
 
     // DuckDB spells an ENUM column's type with its members, so they need no second read.
     private static func enumValues(dataType: String) -> [String]? {
-        EnumValueParser.parseMySQLEnumOrSet(from: dataType)
+        DuckDBEnumLabels.labels(inType: dataType)
     }
 }
 

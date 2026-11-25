@@ -36,6 +36,8 @@ internal struct SQLRowToStatementConverter {
     internal let databaseType: DatabaseType
     private let schemaName: String?
     private let unwritableColumns: Set<String>
+    // An identity takes DEFAULT even where it refuses a value, so a row of only defaults can name it.
+    private let identityColumns: Set<String>
     private let rowMatchPolicy: RowMatchPolicy
     private let settableColumns: [String]?
     private let quoteIdentifierFn: (String) -> String
@@ -53,6 +55,7 @@ internal struct SQLRowToStatementConverter {
         primaryKeyColumns: [String],
         databaseType: DatabaseType,
         unwritableColumns: Set<String> = [],
+        identityColumns: Set<String> = [],
         rowMatchPolicy: RowMatchPolicy = .none,
         settableColumns: [String]? = nil,
         dialect: SQLDialectDescriptor? = nil,
@@ -70,6 +73,7 @@ internal struct SQLRowToStatementConverter {
         self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
         self.unwritableColumns = unwritableColumns
+        self.identityColumns = identityColumns
         self.rowMatchPolicy = rowMatchPolicy
         self.settableColumns = settableColumns
 
@@ -106,7 +110,8 @@ internal struct SQLRowToStatementConverter {
             !unwritableColumns.contains(cell.0) && !row.defaultedColumns.contains(index)
         }
         guard !written.isEmpty else {
-            let firstWritable = columns.first { !unwritableColumns.contains($0) }.map(quoteIdentifierFn)
+            let firstWritable = columns.first { !unwritableColumns.contains($0) || identityColumns.contains($0) }
+                .map(quoteIdentifierFn)
             return AllDefaultsInsert.sql(
                 into: qualifiedTable, databaseTypeId: databaseType.rawValue, firstWritableColumn: firstWritable
             ).map { "\($0);" }

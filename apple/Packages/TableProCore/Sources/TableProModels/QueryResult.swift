@@ -40,13 +40,11 @@ public struct ColumnInfo: Sendable, Identifiable {
     public let ordinalPosition: Int
     public let isAutoIncrement: Bool
     public let isGenerated: Bool
-    /// The server refuses any value written to it, beyond what `isGenerated` says: SQL Server `IDENTITY`, which
-    /// fails an UPDATE with Msg 8102, unlike a MySQL `AUTO_INCREMENT` that takes one.
+    // An identity the server always assigns (SQL Server IDENTITY, GENERATED ALWAYS), unlike a MySQL AUTO_INCREMENT.
     public let rejectsWrittenValues: Bool
     // The labels of an enum column, where the driver read them apart from the type name.
     public let allowedValues: [String]?
 
-    /// Whether the app may send a value for the column at all.
     public var isServerOwned: Bool {
         isGenerated || rejectsWrittenValues
     }
@@ -306,6 +304,14 @@ public extension TableInfo {
             type: kind,
             rowCount: plugin.rowCount
         )
+    }
+}
+
+public extension Array where Element == ColumnInfo {
+    // An engine with no DEFAULT VALUES names one column with DEFAULT. An identity takes it, even an always one; a
+    // computed column may not.
+    var defaultsRowColumn: String? {
+        first { !$0.isGenerated }?.name
     }
 }
 

@@ -258,6 +258,22 @@ struct RowInsertPlannerTests {
         #expect(statements == [#"INSERT INTO "people" ("id") VALUES (DEFAULT)"#])
     }
 
+    @Test("an Oracle row of only defaults names an always identity when no other column takes DEFAULT")
+    func allDefaultsOnOracleIdentityOnly() throws {
+        let columns = [
+            ColumnInfo(name: "TOTAL", typeName: "NUMBER", ordinalPosition: 0, isGenerated: true),
+            ColumnInfo(
+                name: "ID", typeName: "NUMBER", isPrimaryKey: true, isNullable: false, ordinalPosition: 1,
+                isAutoIncrement: true, rejectsWrittenValues: true
+            )
+        ]
+        let statements = try RowInsertPlanner.statements(
+            table: "T", schema: nil, type: .oracle, driver: ansiDriver(), columns: columns,
+            rows: [PayloadRow(values: [:])], allowAllDefaults: true, dropsEmptyPrimaryKey: false
+        )
+        #expect(statements == [#"INSERT INTO "T" ("ID") VALUES (DEFAULT)"#])
+    }
+
     @Test("a caller that distinguishes omission writes an explicitly empty primary key")
     func keepsExplicitEmptyPrimaryKey() throws {
         let row = PayloadRow(values: ["id": .text(""), "name": .text("Ada")])
