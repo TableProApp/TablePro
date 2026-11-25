@@ -25,7 +25,7 @@ pub(super) fn holds_first(left: (i64, Uuid), right: (i64, Uuid)) -> Ordering {
 }
 
 // `<name> (2)`, `<name> (3)` and on, the first that nobody in the place holds.
-pub(super) fn free_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
+pub(crate) fn free_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
     let mut number: u64 = 2;
     loop {
         let candidate = format!("{name} ({number})");

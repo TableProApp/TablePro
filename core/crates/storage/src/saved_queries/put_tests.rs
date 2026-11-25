@@ -417,3 +417,38 @@ async fn deleting_a_connection_keeps_what_has_no_connection_and_unfiles_it() {
     assert_eq!(kept.folder_id, None);
     assert!(folders.list(connection).await.expect("list").is_empty());
 }
+
+#[tokio::test]
+async fn a_shared_folder_lifted_out_of_a_deleted_connection_takes_a_free_name() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let folders = history(&root).await.saved_query_folders();
+    let connection = Uuid::new_v4();
+    let going = folders.create(Some(connection), "Going", None).await.expect("folder");
+    let also = folders.create(Some(connection), "Also going", None).await.expect("folder");
+    folders.create(None, "Reports", None).await.expect("a shared folder");
+    let inside = [
+        pulled_folder(Uuid::new_v4(), "Reports", Some(going), at(1)),
+        pulled_folder(Uuid::new_v4(), "reports", Some(also), at(2)),
+    ];
+    assert!(
+        folders.put(&inside).await.expect("pulled into the going folders").is_empty(),
+        "two parents are two places"
+    );
+
+    history(&root)
+        .await
+        .saved_queries()
+        .delete_for_connection(connection)
+        .await
+        .expect("delete");
+
+    let mut names: Vec<String> = folders
+        .list(Uuid::new_v4())
+        .await
+        .expect("list")
+        .into_iter()
+        .map(|folder| folder.name)
+        .collect();
+    names.sort();
+    assert_eq!(names, ["Reports", "Reports (2)", "reports (3)"], "in the order their parents were made");
+}

@@ -376,27 +376,27 @@ fn folder_and_query_menus_use_distinct_ids_and_hidden_targets_do_nothing() {
     pane.show(nested_snapshot("Query"));
     pane.selection.set_selected(0);
     assert!(press(&pane, gtk::gdk::Key::F2, gtk::gdk::ModifierType::empty()));
-    assert!(matches!(actions.borrow().last(), Some(FavoriteAction::RenameFolder(folder)) if folder.id == 1));
+    assert!(matches!(actions.borrow().last(), Some(FavoriteAction::RenameFolder(folder)) if folder.id == id(1)));
     let list = list(&pane);
     let menu = menu_of(Key::Folder(id(1)));
     crate::test_support::assert_access_keys(&menu);
     list.activate_action("favorite.new-folder", Some(&target(&menu, 0)))
         .expect("new subfolder");
-    assert!(matches!(actions.borrow().last(), Some(FavoriteAction::NewFolder(Some(folder))) if folder.id == 1));
+    assert!(matches!(actions.borrow().last(), Some(FavoriteAction::NewFolder(Some(folder))) if folder.id == id(1)));
     list.activate_action("favorite.delete", Some(&target(&menu, 2)))
         .expect("delete folder");
-    assert!(matches!(actions.borrow().last(), Some(FavoriteAction::DeleteFolder(folder)) if folder.id == 1));
+    assert!(matches!(actions.borrow().last(), Some(FavoriteAction::DeleteFolder(folder)) if folder.id == id(1)));
     let query_menu = menu_of(Key::Query(id(1)));
     let before = actions.borrow().len();
     list.activate_action("favorite.move", Some(&target(&query_menu, 1)))
         .expect("hidden action routed");
     assert_eq!(actions.borrow().len(), before);
-    for id in [1, 2, 3] {
-        tree_row(&pane, Key::Folder(id)).set_expanded(true);
+    for number in [1, 2, 3] {
+        tree_row(&pane, Key::Folder(id(number))).set_expanded(true);
     }
     list.activate_action("favorite.move", Some(&target(&query_menu, 1)))
         .expect("move query");
-    assert!(matches!(actions.borrow().last(), Some(FavoriteAction::MoveTo(query)) if query.id == 1));
+    assert!(matches!(actions.borrow().last(), Some(FavoriteAction::MoveTo(query)) if query.id == id(1)));
     crate::test_support::wait_until(WAIT, || {
         find_row(&list, Key::Folder(id(1))).is_some_and(|row| row.height() > 0)
     })

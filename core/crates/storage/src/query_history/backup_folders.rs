@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use sqlx::SqliteConnection;
 
 use crate::StorageError;
@@ -45,6 +47,7 @@ pub(super) async fn reconcile(database: &mut SqliteConnection) -> Result<bool, S
     )
     .execute(&mut *database)
     .await?;
+    unique_legacy_names(database).await?;
     sqlx::query("DELETE FROM main.saved_query_folders")
         .execute(&mut *database)
         .await?;
@@ -58,6 +61,31 @@ pub(super) async fn reconcile(database: &mut SqliteConnection) -> Result<bool, S
         .execute(&mut *database)
         .await?;
     Ok(true)
+}
+
+// A folder whose parent the copy's format cannot hold sits at its top, where another can hold its name, and the
+// format's sibling index compares names in ASCII case only. The lower rowid keeps the name; each other takes
+// the first free `<name> (2)` on, as the store settles a pulled collision.
+async fn unique_legacy_names(database: &mut SqliteConnection) -> Result<(), StorageError> {
+    let folders: Vec<(i64, String, String, Option<i64>)> =
+        sqlx::query_as("SELECT id, connection_id, name, parent_id FROM temp.recovery_folders ORDER BY id")
+            .fetch_all(&mut *database)
+            .await?;
+    let mut taken: HashSet<(String, Option<i64>, String)> = HashSet::new();
+    for (id, owner, name, parent) in folders {
+        let key = |name: &str| (owner.clone(), parent, name.to_ascii_lowercase());
+        if taken.insert(key(&name)) {
+            continue;
+        }
+        let renamed = crate::saved_queries::free_name(&name, |candidate| taken.contains(&key(candidate)));
+        taken.insert(key(&renamed));
+        sqlx::query("UPDATE temp.recovery_folders SET name = ? WHERE id = ?")
+            .bind(renamed)
+            .bind(id)
+            .execute(&mut *database)
+            .await?;
+    }
+    Ok(())
 }
 
 pub(super) async fn repair_queries(database: &mut SqliteConnection) -> Result<(), StorageError> {
@@ -366,6 +394,59 @@ mod tests {
                 .await
                 .expect("folders");
         assert_eq!(stored, vec![(1, "Reports".to_owned(), None)]);
+        database.close().await.expect("close copy");
+    }
+
+    #[tokio::test]
+    async fn a_beta_copy_gives_folders_its_format_lifts_to_one_place_their_own_names() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (history, copy) = upgraded_beta(
+            &root,
+            &[(1, "A", None), (2, "B", None), (3, "X", Some(1)), (4, "x", Some(2))],
+            &[],
+        )
+        .await;
+        let folders = history.saved_query_folders();
+        let shared: Vec<Uuid> = (0..2).map(|_| Uuid::new_v4()).collect();
+        let pulled: Vec<crate::saved_queries::SavedQueryFolder> = shared
+            .iter()
+            .zip(["S1", "S2"])
+            .map(|(id, name)| crate::saved_queries::SavedQueryFolder {
+                id: *id,
+                connection_id: None,
+                name: name.to_owned(),
+                parent_id: None,
+                order: 0,
+                created_at: std::time::SystemTime::UNIX_EPOCH,
+                updated_at: std::time::SystemTime::UNIX_EPOCH,
+            })
+            .collect();
+        folders.put(&pulled).await.expect("shared folders");
+        for (rowid, parent) in [(3, shared[0]), (4, shared[1])] {
+            let id = record_id(&history, "saved_query_folders", rowid).await;
+            folders.move_to(id, Some(parent)).await.expect("into a shared folder");
+        }
+
+        trim_copy(&copy, history.path.to_str().expect("UTF-8 path"), &[])
+            .await
+            .expect("trim copy");
+
+        assert!(copy.exists(), "a valid copy was deleted");
+        let mut database = copy_database(&copy).await;
+        let stored: Vec<(i64, String, Option<i64>)> =
+            sqlx::query_as("SELECT id, name, parent_id FROM saved_query_folders ORDER BY id")
+                .fetch_all(&mut database)
+                .await
+                .expect("folders");
+        assert_eq!(
+            stored,
+            vec![
+                (1, "A".to_owned(), None),
+                (2, "B".to_owned(), None),
+                (3, "X".to_owned(), None),
+                (4, "x (2)".to_owned(), None),
+            ]
+        );
         database.close().await.expect("close copy");
     }
 

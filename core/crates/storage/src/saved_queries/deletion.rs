@@ -1,3 +1,5 @@
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -9,7 +11,9 @@ use crate::journal::RecordKind;
 use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
 use crate::unix_time::to_unix_millis;
 
+use super::folders::name_key;
 use super::ordering;
+use super::put::free_name;
 
 const IDS_PER_STATEMENT: usize = 500;
 
@@ -106,8 +110,8 @@ pub(super) async fn delete_connection(
     if !filed.is_empty() && queries == 0 {
         changed.push(RecordKind::SavedQuery);
     }
-    let nested: Vec<(i64, Option<String>)> = sqlx::query_as(
-        "SELECT child.id, child.connection_id FROM saved_query_folders child \
+    let nested: Vec<(i64, Option<String>, String)> = sqlx::query_as(
+        "SELECT child.id, child.connection_id, child.name FROM saved_query_folders child \
          JOIN saved_query_folders parent ON parent.record_id = child.parent_record_id \
          WHERE parent.connection_id = ? AND child.connection_id IS NOT ? \
          ORDER BY parent.id, child.sort_order, child.name COLLATE NOCASE, child.id",
@@ -116,14 +120,37 @@ pub(super) async fn delete_connection(
     .bind(&owner)
     .fetch_all(&mut *transaction)
     .await?;
-    for (id, scope) in &nested {
+    // Each takes the first free name at the top of its own connection, or of none.
+    let mut taken: HashMap<Option<String>, HashSet<String>> = HashMap::new();
+    for (id, scope, name) in &nested {
+        let held = match taken.entry(scope.clone()) {
+            Entry::Occupied(held) => held.into_mut(),
+            Entry::Vacant(vacant) => {
+                let names: Vec<String> = sqlx::query_scalar(
+                    "SELECT name FROM saved_query_folders WHERE connection_id IS ? AND parent_record_id IS NULL",
+                )
+                .bind(scope)
+                .fetch_all(&mut *transaction)
+                .await?;
+                vacant.insert(names.iter().map(|name| name_key(name)).collect())
+            }
+        };
+        let name = match held.contains(&name_key(name)) {
+            true => free_name(name, |candidate| held.contains(&name_key(candidate))),
+            false => name.clone(),
+        };
+        held.insert(name_key(&name));
         let order = ordering::next_folder_order(&mut transaction, scope.as_deref(), None).await?;
-        sqlx::query("UPDATE saved_query_folders SET parent_record_id = NULL, sort_order = ?, updated_at = ? WHERE id = ?")
-            .bind(order)
-            .bind(to_unix_millis(SystemTime::now()))
-            .bind(id)
-            .execute(&mut *transaction)
-            .await?;
+        sqlx::query(
+            "UPDATE saved_query_folders SET parent_record_id = NULL, name = ?, sort_order = ?, updated_at = ? \
+             WHERE id = ?",
+        )
+        .bind(name)
+        .bind(order)
+        .bind(to_unix_millis(SystemTime::now()))
+        .bind(id)
+        .execute(&mut *transaction)
+        .await?;
     }
     delete_folder_rows(&mut transaction, &folders).await?;
     for (statement, kind) in [

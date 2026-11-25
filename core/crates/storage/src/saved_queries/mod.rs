@@ -35,6 +35,7 @@ use crate::stored_id::{optional_uuid_column, uuid_column};
 use crate::unix_time::{from_unix_millis, to_unix_millis};
 
 pub use folders::{SavedQueryFolder, SavedQueryFolders};
+pub(crate) use put::free_name;
 pub use new_saved_query::NewSavedQuery;
 pub use saved_query::SavedQuery;
 
