@@ -195,7 +195,8 @@ mod tests {
         adw::init().expect("libadwaita initialises under the test backend");
         register_test_resources();
 
-        let builder = gtk4::Builder::from_resource(&format!("{}/shortcuts-dialog.ui", config::RESOURCE_BASE_PATH));
+        let builder =
+            gtk4::Builder::from_resource(&format!("{}/builder/shortcuts-dialog.ui", config::RESOURCE_BASE_PATH));
         let dialog = builder
             .object::<adw::ShortcutsDialog>("shortcuts_dialog")
             .expect("shortcuts_dialog is an AdwShortcutsDialog");

@@ -332,6 +332,12 @@ targets:
       # The MCP client catalog, one file the Linux app reads too.
       - path: ../core/crates/mcp/clients.json
         buildPhase: resources
+      # The sample database every app ships, one copy in the core.
+      - path: ../core/resources/Chinook.sqlite
+        buildPhase: resources
+      # The shortcut presets, one file the Linux and Windows apps read through the core.
+      - path: ../core/crates/core/keymaps.json
+        buildPhase: resources
       - path: TablePro/CLI/tablepro
         buildPhase:
           copyFiles:

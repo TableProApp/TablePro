@@ -13794,3 +13794,162 @@ msgstr "Ngữ cảnh: {context}"
 
 msgid "This database cannot take the rows of COPY FROM STDIN."
 msgstr "Cơ sở dữ liệu này không nhận được các dòng của COPY FROM STDIN."
+
+msgid "_Wrap Text"
+msgstr "_Xuống dòng"
+
+msgid "A file is already at {path}, so it was left as it is. Use Choose… to open it, or New Database… to replace it."
+msgstr "Đã có một tệp ở {path} nên tệp được giữ nguyên. Dùng Chọn… để mở tệp, hoặc Cơ sở dữ liệu mới… để thay thế."
+
+msgid "Other Apps Could Not Be Looked For"
+msgstr "Không tìm được các ứng dụng khác"
+
+msgid "Found, but its files are in a form TablePro does not know"
+msgstr "Đã tìm thấy, nhưng tệp có định dạng TablePro chưa đọc được"
+
+msgid "Chinook (Sample)"
+msgstr "Chinook (Mẫu)"
+
+msgid "_Done"
+msgstr "_Xong"
+
+msgid "Wrap text in data grids"
+msgstr "Xuống dòng trong lưới dữ liệu"
+
+msgid "Show long values on several lines in a data grid, up to 10 lines per row. Applies to tabs opened afterwards."
+msgstr "Hiện giá trị dài trên nhiều dòng trong lưới dữ liệu, tối đa 10 dòng mỗi hàng. Áp dụng cho các tab mở sau đó."
+
+msgid "Whose keyboard shortcuts TablePro follows: its own, or those of another database app. A key the preset moves leaves the command it displaces with no key; keys GNOME and GTK own stay as they are."
+msgstr "Bộ phím tắt TablePro dùng: của TablePro, hoặc của một ứng dụng cơ sở dữ liệu khác. Khi preset chuyển một phím, lệnh vốn dùng phím đó không còn phím tắt; các phím do GNOME và GTK quản lý được giữ nguyên."
+
+msgid "Setup guide seen"
+msgstr "Đã xem hướng dẫn thiết lập"
+
+msgid "Whether the setup guide has ended once, by its last step, Skip or leaving it. While false, the first window of a launch opens it over a library with no saved connection."
+msgstr "Hướng dẫn thiết lập đã kết thúc ít nhất một lần chưa, qua bước cuối, Bỏ qua hoặc rời khỏi nó. Khi còn false, cửa sổ đầu tiên của mỗi lần mở ứng dụng sẽ mở hướng dẫn nếu chưa có kết nối nào được lưu."
+
+msgid "_Setup Guide"
+msgstr "_Hướng dẫn thiết lập"
+
+msgid "Wrap Text"
+msgstr "Xuống dòng"
+
+msgid "New tabs show long values on up to 10 lines"
+msgstr "Tab mới hiện giá trị dài trên tối đa 10 dòng"
+
+msgid "Use the keys of an app you know"
+msgstr "Dùng phím tắt của ứng dụng bạn đã quen"
+
+msgid "Where are the connections you use now?"
+msgstr "Các kết nối bạn đang dùng nằm ở đâu?"
+
+msgid "Add a connection, or look around a sample database"
+msgstr "Thêm kết nối, hoặc xem thử một cơ sở dữ liệu mẫu"
+
+msgid "Each app you tick is read and reviewed in turn. Nothing is changed in its files."
+msgstr "Mỗi ứng dụng bạn chọn được đọc và xem lại lần lượt. Tệp của ứng dụng đó không bị thay đổi."
+
+msgid "The search stopped before it finished. Continue to add a connection instead."
+msgstr "Việc tìm kiếm đã dừng trước khi xong. Hãy tiếp tục để thêm kết nối."
+
+msgid "It opens when you finish."
+msgstr "Nó sẽ mở khi bạn hoàn tất."
+
+msgid "Enter a server’s address or a connection URL, or open a database file"
+msgstr "Nhập địa chỉ máy chủ hoặc URL kết nối, hoặc mở tệp cơ sở dữ liệu"
+
+msgid "A small music store to look around in"
+msgstr "Một cửa hàng nhạc nhỏ để xem thử"
+
+msgid "Duplicate Rows"
+msgstr "Nhân bản hàng"
+
+msgid "Commit Transaction"
+msgstr "Commit giao dịch"
+
+msgid "The search stopped before it finished. Close this and try again."
+msgstr "Việc tìm kiếm đã dừng trước khi xong. Hãy đóng và thử lại."
+
+msgid "Importing Connections"
+msgstr "Đang nhập kết nối"
+
+msgid "Importing connections from {app}…"
+msgstr "Đang nhập kết nối từ {app}…"
+
+msgid "Found, but its files could not be read"
+msgstr "Đã tìm thấy, nhưng không đọc được tệp"
+
+msgid "Found, but its connections could not be counted"
+msgstr "Đã tìm thấy, nhưng không đếm được kết nối"
+
+msgid "The import did not finish."
+msgstr "Việc nhập chưa hoàn tất."
+
+msgid "The sample database could not be set up."
+msgstr "Không thiết lập được cơ sở dữ liệu mẫu."
+
+msgid "_Open Connection"
+msgstr "_Mở kết nối"
+
+msgid "_Show Connections"
+msgstr "_Hiện kết nối"
+
+msgid "_Add Connection"
+msgstr "_Thêm kết nối"
+
+msgid "_Open Sample"
+msgstr "_Mở mẫu"
+
+msgid "Tab Name"
+msgstr "Tên tab"
+
+msgid "_Rename Tab…"
+msgstr "Đổi _tên tab…"
+
+msgid "Keyboard shortcut preset"
+msgstr "Bộ phím tắt"
+
+msgid "Rename Tab"
+msgstr "Đổi tên tab"
+
+msgid "Shortcuts"
+msgstr "Phím tắt"
+
+msgid "View Options"
+msgstr "Tùy chọn hiển thị"
+
+msgid "Set Up TablePro"
+msgstr "Thiết lập TablePro"
+
+msgid "_Skip"
+msgstr "_Bỏ qua"
+
+msgid "In Another App"
+msgstr "Trong ứng dụng khác"
+
+msgid "Bring them over from a database app on this computer"
+msgstr "Chuyển chúng từ một ứng dụng cơ sở dữ liệu trên máy này"
+
+msgid "In a TablePro File"
+msgstr "Trong tệp TablePro"
+
+msgid "Import connections someone exported from TablePro"
+msgstr "Nhập các kết nối đã được xuất từ TablePro"
+
+msgid "Nowhere Yet"
+msgstr "Chưa ở đâu cả"
+
+msgid "No Other Apps Found"
+msgstr "Không tìm thấy ứng dụng nào khác"
+
+msgid "Continue to add a connection or open the sample database."
+msgstr "Tiếp tục để thêm kết nối hoặc mở cơ sở dữ liệu mẫu."
+
+msgid "First Connection"
+msgstr "Kết nối đầu tiên"
+
+msgid "Sample Database"
+msgstr "Cơ sở dữ liệu mẫu"
+
+msgid "Set Up…"
+msgstr "Thiết lập…"

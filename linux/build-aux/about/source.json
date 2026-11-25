@@ -885,5 +885,16 @@
       ]
     }
   ],
-  "files": []
+  "files": [
+    {
+      "files": [
+        "core/resources/Chinook.sqlite"
+      ],
+      "license": "MIT",
+      "copyright": [],
+      "texts": [
+        "core/resources/Chinook.LICENSE"
+      ]
+    }
+  ]
 }

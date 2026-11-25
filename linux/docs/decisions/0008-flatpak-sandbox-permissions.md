@@ -1,6 +1,6 @@
 # 0008: Flatpak sandbox permissions
 
-- **Status**: Accepted; the Flathub submission deferred by 0018; local sockets amended by 0035; Flathub permission review amended by [0041](0041-beta-repositories-and-release-packages.md#context)
+- **Status**: Accepted; the Flathub submission deferred by 0018; local sockets amended by 0035; Flathub permission review amended by [0041](0041-beta-repositories-and-release-packages.md#context); other apps' folders under `~/.var/app` amended by [0048](0048-flatpak-reads-other-apps-folders.md)
 - **Date**: 2026-10-14
 
 ## Context

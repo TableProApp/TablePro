@@ -120,12 +120,24 @@ struct TablePlusImporterTests {
         #expect(imp.installedAppURL() == URL(fileURLWithPath: "/Applications/Setapp/TablePlus.app"))
     }
 
-    @Test("isAvailable returns false when no edition is installed")
+    @Test("isAvailable returns false when no edition is installed and no data is left")
     func testIsAvailable_whenNoEditionInstalled_returnsFalse() {
-        var imp = TablePlusImporter()
+        var imp = importer
         imp.resolveAppURL = { _ in nil }
         #expect(imp.isAvailable() == false)
         #expect(imp.installedAppURL() == nil)
+        #expect(!imp.hasDataAtDefaultLocation())
+    }
+
+    @Test("Connections left behind by a deleted TablePlus are still available, and the probe sees them")
+    func testIsAvailable_whenOnlyDataIsLeft_returnsTrue() throws {
+        try writeConnections([makeConnection(name: "Left", id: "c1")])
+        var imp = importer
+        imp.resolveAppURL = { _ in nil }
+
+        #expect(imp.hasDataAtDefaultLocation())
+        #expect(imp.isAvailable())
+        #expect(try imp.inventory().connections == 1)
     }
 
     @Test("installedAppURL prefers the standalone edition when both are installed")
@@ -161,14 +173,68 @@ struct TablePlusImporterTests {
         ))
     }
 
-    @Test("connectionsFileURL falls back to the standalone edition when none is installed")
+    @Test("connectionsFileURL falls back to the standalone edition when none is installed and none left data")
     func testConnectionsFileURL_fallsBackToStandalone() {
         var imp = TablePlusImporter()
+        imp.homeDirectory = tempDir
         imp.readViewSetting = { _ in nil }
         imp.resolveAppURL = { _ in nil }
         #expect(imp.connectionsFileURL.path.hasSuffix(
             "Library/Application Support/com.tinyapp.TablePlus/Data/Connections.plist"
         ))
+    }
+
+    private static let standalone = "com.tinyapp.TablePlus"
+    private static let setapp = "com.tinyapp.TablePlus-setapp"
+
+    private func writeEdition(_ bundleIdentifier: String, home: URL, connectionName: String) throws {
+        let folder = TablePlusImporter.dataDirectory(forBundleIdentifier: bundleIdentifier, home: home)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try PropertyListSerialization.data(
+            fromPropertyList: [makeConnection(name: connectionName, id: bundleIdentifier)],
+            format: .xml,
+            options: 0
+        ).write(to: folder.appendingPathComponent("Connections.plist"))
+    }
+
+    // Only the Setapp domain moves the favorites, so a favorite found proves which preferences were read.
+    private func editionImporter(home: URL, installed: String?) throws -> TablePlusImporter {
+        let queries = tempDir.appendingPathComponent("SetappQueries", isDirectory: true)
+        try ForeignFixture.write("SELECT 1;", to: queries.appendingPathComponent("Favorite/report.sql"))
+        var imp = TablePlusImporter()
+        imp.homeDirectory = home
+        imp.resolveAppURL = { $0 == installed ? URL(fileURLWithPath: "/Applications/TablePlus.app") : nil }
+        imp.readViewSetting = { domain -> [String: Any]? in
+            domain == Self.setapp ? ["SharedQueryPath": queries.path] : nil
+        }
+        return imp
+    }
+
+    @Test("Connections a deleted Setapp edition left behind are read with that edition's preferences")
+    func testLeftoverSetappDataIsRead() throws {
+        let home = tempDir.appendingPathComponent("Home", isDirectory: true)
+        try writeEdition(Self.setapp, home: home, connectionName: "Setapp DB")
+        let imp = try editionImporter(home: home, installed: nil)
+
+        #expect(imp.installedAppURL() == nil)
+        #expect(imp.isAvailable())
+        let inventory = try imp.inventory()
+        #expect(inventory.connections == 1)
+        #expect(inventory.savedQueries == 1)
+        #expect(try imp.collect(.connectionsOnly).connections.map { $0.name } == ["Setapp DB"])
+    }
+
+    @Test("With both editions' data left, the installed edition's data and preferences are read")
+    func testInstalledEditionWinsOverLeftoverData() throws {
+        let home = tempDir.appendingPathComponent("Home", isDirectory: true)
+        try writeEdition(Self.standalone, home: home, connectionName: "Standalone DB")
+        try writeEdition(Self.setapp, home: home, connectionName: "Setapp DB")
+        let imp = try editionImporter(home: home, installed: Self.setapp)
+
+        let inventory = try imp.inventory()
+        #expect(inventory.connections == 1)
+        #expect(inventory.savedQueries == 1)
+        #expect(try imp.collect(.connectionsOnly).connections.map { $0.name } == ["Setapp DB"])
     }
 
     // MARK: - inventory
@@ -180,7 +246,7 @@ struct TablePlusImporterTests {
             makeConnection(name: "DB2", id: "c2"),
             makeConnection(name: "DB3", id: "c3")
         ])
-        #expect(importer.inventory() == ForeignAppInventory(connections: 3, savedQueries: 0))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 3, savedQueries: 0, keychainPrompts: 9))
     }
 
     @Test("inventory counts only the connections collect reads")
@@ -190,13 +256,39 @@ struct TablePlusImporterTests {
             ["Driver": "MySQL", "DatabaseHost": "localhost", "ID": "nameless"]
         ])
 
-        #expect(importer.inventory().connections == 1)
+        #expect(try importer.inventory().connections == 1)
         #expect(try importer.collect(.connectionsOnly).connections.count == 1)
     }
 
     @Test("inventory is empty when the file is missing")
-    func testInventory_fileMissing_returnsZero() {
-        #expect(importer.inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
+    func testInventory_fileMissing_returnsZero() throws {
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
+    }
+
+    @Test("A Connections.plist that is there but cannot be read is unreadable, never zero")
+    func testInventory_unreadableFile_throws() throws {
+        try Data("not a property list".utf8).write(to: importer.connectionsFileURL)
+
+        #expect(throws: ForeignAppImportError.self) {
+            try importer.inventory()
+        }
+    }
+
+    @Test("The Keychain prompt count is the number of items a read with passwords asks for")
+    func testInventory_keychainPromptsMatchTheReads() throws {
+        try writeConnections([
+            makeConnection(name: "Both stored", id: "c1", isOverSSH: true, sshHost: "bastion"),
+            makeConnection(name: "Asks", id: "c2", databasePasswordMode: 1),
+            makeConnection(name: "No password", id: "c3", databasePasswordMode: 2, serverPasswordMode: 2)
+        ])
+        let spy = KeychainSpy()
+        var imp = importer
+        imp.readKeychain = spy.read
+
+        _ = try imp.collect(.withPasswords)
+
+        #expect(try imp.inventory().keychainPrompts == spy.calls.count)
+        #expect(spy.calls.count == 6)
     }
 
     // MARK: - collect
@@ -1220,9 +1312,9 @@ struct TablePlusImporterTests {
         let shared = tempDir.appendingPathComponent("tp_shared", isDirectory: true)
         try ForeignFixture.write("SELECT 8;", to: shared.appendingPathComponent("shared.sql"))
 
-        let inventory = configuredImporter(viewSetting: [:], sharedFolders: [shared]).inventory()
+        let inventory = try configuredImporter(viewSetting: [:], sharedFolders: [shared]).inventory()
 
-        #expect(inventory == ForeignAppInventory(connections: 1, savedQueries: 7))
+        #expect(inventory == ForeignAppInventory(connections: 1, savedQueries: 7, keychainPrompts: 3))
     }
 }
 

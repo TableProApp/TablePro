@@ -3,6 +3,7 @@ import SwiftUI
 
 struct FirstRunSheet: View {
     let pages: [FirstRunPage]
+    let onStart: (LibraryStartAction) -> Void
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -19,10 +20,13 @@ struct FirstRunSheet: View {
     @ViewBuilder
     private func page(_ page: FirstRunPage) -> some View {
         switch page {
-        case .welcome:
-            WelcomePage(isAdvancing: isAdvancing) {
-                advance(from: .welcome)
-            }
+        case .origin:
+            OriginPage(
+                offersICloud: !appState.onboarding.isCloudSyncEnabled,
+                isAdvancing: isAdvancing,
+                onChoose: choose,
+                onSkip: { advance(from: .origin) }
+            )
             .toolbar(.hidden, for: .navigationBar)
         case .iCloud:
             ICloudPage(
@@ -51,6 +55,16 @@ struct FirstRunSheet: View {
         }
     }
 
+    // Sync is the iCloud page's own question, so the row answers it here and that page is skipped.
+    private func choose(_ action: LibraryStartAction) {
+        guard !isAdvancing else { return }
+        if action == .turnOnICloud {
+            appState.setCloudSyncEnabled(true)
+        }
+        onStart(action)
+        advance(from: .origin)
+    }
+
     private func advance(from current: FirstRunPage) {
         guard !isAdvancing else { return }
         isAdvancing = true
@@ -67,6 +81,9 @@ struct FirstRunSheet: View {
     private func nextPage(after current: FirstRunPage) async -> FirstRunPage? {
         guard let index = pages.firstIndex(of: current) else { return nil }
         for candidate in pages.dropFirst(index + 1) {
+            if candidate == .iCloud, appState.onboarding.syncChoice != nil {
+                continue
+            }
             if candidate == .iCloud, await !isICloudAvailable() {
                 continue
             }
@@ -80,24 +97,69 @@ struct FirstRunSheet: View {
     }
 }
 
-private struct WelcomePage: View {
+private struct OriginPage: View {
+    let offersICloud: Bool
     let isAdvancing: Bool
-    let onContinue: () -> Void
+    let onChoose: (LibraryStartAction) -> Void
+    let onSkip: () -> Void
 
     var body: some View {
-        OnboardingPageLayout {
-            OnboardingHeader(title: "Welcome to TablePro", message: nil, image: .appIcon)
-        } content: {
-            FeatureHighlightList(highlights: FeatureHighlights.welcome)
-        } actions: {
-            Button(action: onContinue) {
-                Text("Continue")
-                    .frame(maxWidth: .infinity)
+        List {
+            Section {
+                OnboardingHeader(
+                    title: "Welcome to TablePro",
+                    message: "Bring your connections, or start with a new one.",
+                    image: .appIcon
+                )
+                .padding(.vertical, 8)
+                .listRowBackground(Color.clear)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isAdvancing)
-            .accessibilityIdentifier("first-run-continue")
+            Section {
+                if offersICloud {
+                    row(.turnOnICloud, detail: "Connections from TablePro on your Mac appear here.")
+                }
+                row(.importConnections, detail: "A .tablepro file from AirDrop, Files, or Mail.")
+            } header: {
+                Text("Bring Your Connections")
+            } footer: {
+                Text("Using another app? Import its connections in TablePro on your Mac, then sync them here with iCloud.")
+            }
+            Section("Start Fresh") {
+                row(.addConnection, detail: "Enter the server details yourself.")
+                row(.openSample, detail: "Explore a music store database without connecting to a server.")
+            }
         }
+        .listStyle(.insetGrouped)
+        .disabled(isAdvancing)
+        .bottomSafeAreaBar(spacing: nil) {
+            Button("Skip", action: onSkip)
+                .buttonStyle(.borderless)
+                .controlSize(.large)
+                .disabled(isAdvancing)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("first-run-origin-skip")
+        }
+    }
+
+    private func row(_ action: LibraryStartAction, detail: LocalizedStringResource) -> some View {
+        Button {
+            onChoose(action)
+        } label: {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(action.title)
+                        .foregroundStyle(.primary)
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: action.systemImage)
+                    .foregroundStyle(.tint)
+            }
+        }
+        .accessibilityIdentifier("first-run-origin-\(action.accessibilityIdentifier)")
     }
 }
 

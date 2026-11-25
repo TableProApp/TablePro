@@ -55,8 +55,7 @@ final class WelcomeViewModelTests {
     }
 
     private func makeViewModel(
-        importableAppDetector: @escaping @MainActor () -> Bool = { false },
-        isUITestSandbox: Bool = false,
+        importableAppDetector: @escaping @MainActor () async -> Bool = { false },
         pluginManager: PluginManager = AppServices.live.pluginManager
     ) -> WelcomeViewModel {
         WelcomeViewModel(
@@ -64,8 +63,7 @@ final class WelcomeViewModelTests {
             importableAppDetector: importableAppDetector,
             groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults),
             recentConnections: recents,
-            listPreferences: preferences,
-            isUITestSandbox: isUITestSandbox
+            listPreferences: preferences
         )
     }
 
@@ -410,75 +408,208 @@ final class WelcomeViewModelTests {
         #expect(viewModel.listState == .firstRun)
     }
 
-    @Test func testTheImportOfferFollowsTheInstalledAppDetector() {
+    @Test func testTheImportOfferFollowsTheLaunchProbe() async {
         let offering = makeViewModel(importableAppDetector: { true })
 
         offering.setUp()
+        await offering.refreshImportableApp().value
+        await viewModel.refreshImportableApp().value
 
         #expect(offering.hasImportableApp)
         #expect(!viewModel.hasImportableApp)
     }
 
-    @Test func testRefreshingTheImportOfferPicksUpANewlyInstalledApp() {
+    @Test func testRefreshingTheImportOfferPicksUpANewlyInstalledApp() async {
         let installed = InstalledAppFlag()
         let offering = makeViewModel(importableAppDetector: { installed.value })
-        offering.refreshImportableApp()
+        await offering.refreshImportableApp().value
         #expect(!offering.hasImportableApp)
 
         installed.value = true
-        offering.refreshImportableApp()
+        await offering.refreshImportableApp().value
 
         #expect(offering.hasImportableApp)
     }
 
-    // MARK: - Welcome Sheet
+    @Test("The launch probe offers an app with data at its default location, and never a file-picked one")
+    func testTheLaunchProbeFindsDataWithoutTheApp() async throws {
+        let root = try ForeignFixture.makeTempDirectory("WelcomeLaunchProbe")
+        defer { try? FileManager.default.removeItem(at: root) }
+        var tablePlus = TablePlusImporter()
+        tablePlus.dataDirectoryOverride = root
+        tablePlus.resolveAppURL = { _ in nil }
 
-    @Test func testAFirstLaunchPresentsTheWelcomeSheetOnce() {
+        #expect(await ForeignSourceScanner.probe([tablePlus, NavicatImporter()]).isEmpty)
+
+        try ForeignFixture.write("<plist version=\"1.0\"><array/></plist>", to: root.appendingPathComponent("Connections.plist"))
+
+        #expect(await ForeignSourceScanner.probe([tablePlus, NavicatImporter()]) == ["tableplus"])
+    }
+
+    // MARK: - Import Handoff
+
+    @Test("One connection imported from another app or AWS opens; nothing else is shown")
+    func testOneImportedConnectionOpens() {
+        let id = UUID()
+        let added = ImportOutcome(connectionIds: [id], connectionsAdded: 1)
+        let replaced = ImportOutcome(connectionIds: [id], connectionsReplaced: 1, savedQueriesAdded: 2)
+
+        #expect(WelcomeViewModel.importEnding(for: added, from: .ownMachineOrAccount) == .open(id))
+        #expect(WelcomeViewModel.importEnding(for: replaced, from: .ownMachineOrAccount) == .open(id))
+    }
+
+    @Test("One connection imported from a file or a link is selected, never opened")
+    func testOneConnectionFromAFileOrLinkIsSelected() {
+        let id = UUID()
+        let added = ImportOutcome(connectionIds: [id], connectionsAdded: 1)
+        let replaced = ImportOutcome(connectionIds: [id], connectionsReplaced: 1, savedQueriesAdded: 2)
+
+        #expect(WelcomeViewModel.importEnding(for: added, from: .fileOrLink) == .select([id]))
+        #expect(WelcomeViewModel.importEnding(for: replaced, from: .fileOrLink) == .select([id]))
+    }
+
+    @Test("A connections file of one connection selects it in the list once the sheet closes, with no report")
+    func testAFileImportOfOneConnectionSelectsIt() throws {
+        let group = ConnectionGroup(name: "Shared")
+        try groupStorage.addGroup(group)
+        var connection = DatabaseConnection(name: "Their Server", type: .postgresql)
+        connection.groupId = group.id
+        save([connection])
         viewModel.setUp()
-        #expect(viewModel.presentsWelcomeSheet)
+        viewModel.expandedGroupIds = []
+        viewModel.searchText = "nothing matches this"
 
-        viewModel.presentsWelcomeSheet = false
-        viewModel.welcomeSheetDidDismiss()
-        let relaunched = makeViewModel()
-        relaunched.setUp()
+        viewModel.finishImport(ImportOutcome(connectionIds: [connection.id], connectionsAdded: 1), from: .fileOrLink)
+        viewModel.importSheetDidDismiss()
 
-        #expect(!relaunched.presentsWelcomeSheet, "The sheet must not come back on its own")
+        #expect(viewModel.finishedImport == nil)
+        #expect(viewModel.importOutcome == nil)
+        #expect(viewModel.searchText.isEmpty)
+        #expect(viewModel.expandedGroupIds.contains(group.id))
+        #expect(viewModel.selection == [.connection(connection.id, section: .connections)])
     }
 
-    @Test func testAUITestSandboxSkipsTheFirstLaunchSheet() {
-        let sandboxed = makeViewModel(isUITestSandbox: true)
-        sandboxed.setUp()
+    @Test("An import with something not kept reports it and selects what it wrote, never opens")
+    func testAnIncompleteImportReportsAndSelects() {
+        let id = UUID()
+        let refused = ImportOutcome(connectionIds: [id], connectionsAdded: 1, passwordsNotKept: 1)
+        let skipped = ImportOutcome(connectionIds: [id], connectionsAdded: 1, savedQueriesNotImported: 2)
+        let failed = ImportOutcome(connectionIds: [id], connectionsAdded: 1, failure: .savedQueriesNotSaved)
+        let nothing = ImportOutcome(failure: .connectionsNotSaved)
+        let queriesOnly = ImportOutcome(savedQueriesAdded: 3)
 
-        #expect(!sandboxed.presentsWelcomeSheet)
+        for origin in [ImportOrigin.ownMachineOrAccount, .fileOrLink] {
+            #expect(WelcomeViewModel.importEnding(for: refused, from: origin) == .report(refused, selecting: [id]))
+            #expect(WelcomeViewModel.importEnding(for: skipped, from: origin) == .report(skipped, selecting: [id]))
+            #expect(WelcomeViewModel.importEnding(for: failed, from: origin) == .report(failed, selecting: [id]))
+            #expect(WelcomeViewModel.importEnding(for: nothing, from: origin) == .report(nothing, selecting: []))
+            #expect(WelcomeViewModel.importEnding(for: queriesOnly, from: origin) == .report(queriesOnly, selecting: []))
+        }
     }
 
-    @Test func testARoutedSheetWinsOverTheWelcomeSheet() {
-        welcomeRouter.route(.importFromApp)
-
+    @Test("Several imported connections are selected in the list, inside the groups that hold them")
+    func testSeveralImportedConnectionsAreSelected() throws {
+        let group = ConnectionGroup(name: "Imported")
+        try groupStorage.addGroup(group)
+        let first = DatabaseConnection(name: "Orders", type: .mysql)
+        var second = DatabaseConnection(name: "Billing", type: .postgresql)
+        second.groupId = group.id
+        save([first, second])
         viewModel.setUp()
+        viewModel.expandedGroupIds = []
+        viewModel.searchText = "nothing matches this"
 
-        #expect(!viewModel.presentsWelcomeSheet)
-        #expect(viewModel.activeSheet != nil)
+        viewModel.finishImport(ImportOutcome(connectionIds: [first.id, second.id], connectionsAdded: 2), from: .ownMachineOrAccount)
+        viewModel.importSheetDidDismiss()
+
+        #expect(viewModel.activeSheet == nil)
+        #expect(viewModel.importOutcome == nil)
+        #expect(viewModel.searchText.isEmpty)
+        #expect(viewModel.expandedGroupIds.contains(group.id))
+        #expect(viewModel.selection == [
+            .connection(first.id, section: .connections),
+            .connection(second.id, section: .connections),
+        ])
     }
 
-    @Test func testTheHelpMenuRequestShowsTheSheetAgain() {
-        AppSettingsStorage(userDefaults: defaults).markWelcomeSheetSeen()
+    @Test("A report waits for the sheet to close, then shows with the written rows selected")
+    func testAReportShowsAfterTheSheetCloses() {
+        let connection = DatabaseConnection(name: "Orders", type: .mysql)
+        save([connection])
         viewModel.setUp()
-        #expect(!viewModel.presentsWelcomeSheet)
+        let outcome = ImportOutcome(connectionIds: [connection.id], connectionsAdded: 1, passwordsNotKept: 1)
 
-        viewModel.handle(.showWelcomeSheet)
+        viewModel.finishImport(outcome, from: .ownMachineOrAccount)
+        #expect(viewModel.importOutcome == nil)
 
-        #expect(viewModel.presentsWelcomeSheet)
+        viewModel.importSheetDidDismiss()
+
+        #expect(viewModel.importOutcome == outcome)
+        #expect(viewModel.finishedImport == nil)
+        #expect(viewModel.selection == [.connection(connection.id, section: .connections)])
     }
 
-    @Test func testTheHelpMenuRequestLeavesAnOpenSheetAlone() {
-        AppSettingsStorage(userDefaults: defaults).markWelcomeSheetSeen()
+    @Test("A sheet closed without an import shows nothing")
+    func testACancelledImportShowsNothing() {
         viewModel.setUp()
         viewModel.activeSheet = .importFromApp
 
-        viewModel.handle(.showWelcomeSheet)
+        viewModel.activeSheet = nil
+        viewModel.importSheetDidDismiss()
 
-        #expect(!viewModel.presentsWelcomeSheet, "A second sheet can never stack, so the request must not wait stuck")
+        #expect(viewModel.importOutcome == nil)
+        #expect(viewModel.selection.isEmpty)
+    }
+
+    // MARK: - Setup Guide
+
+    @Test("A plain first launch leaves Welcome free, so the setup guide can open in front of it")
+    func testAPlainLaunchHasNoRoutedPresentation() {
+        viewModel.setUp()
+
+        #expect(!viewModel.hasRoutedPresentation)
+        #expect(!welcomeRouter.hasPendingWork)
+    }
+
+    @Test("A routed request opens its sheet, and counts as routed work the guide stays out of")
+    func testARoutedRequestCountsAsRoutedWork() {
+        welcomeRouter.route(.importFromApp)
+        #expect(welcomeRouter.hasPendingWork)
+
+        viewModel.setUp()
+
+        #expect(viewModel.activeSheet != nil)
+        #expect(viewModel.hasRoutedPresentation)
+        #expect(!welcomeRouter.hasPendingWork)
+    }
+
+    @Test("The guide's handoff of several connections selects them in the list, with no report")
+    func testTheGuideHandoffSelectsSeveral() {
+        let first = DatabaseConnection(name: "Orders", type: .mysql)
+        let second = DatabaseConnection(name: "Billing", type: .postgresql)
+        save([first, second])
+        viewModel.setUp()
+        viewModel.searchText = "nothing matches this"
+
+        viewModel.handle(.importHandoff(.select([first.id, second.id])))
+
+        #expect(viewModel.searchText.isEmpty)
+        #expect(viewModel.selection == [
+            .connection(first.id, section: .connections),
+            .connection(second.id, section: .connections),
+        ])
+        #expect(viewModel.importOutcome == nil)
+    }
+
+    @Test("A handoff that stays leaves the list as it was")
+    func testAStayHandoffChangesNothing() {
+        save([DatabaseConnection(name: "Orders", type: .mysql)])
+        viewModel.setUp()
+
+        viewModel.handle(.importHandoff(.stay))
+
+        #expect(viewModel.selection.isEmpty)
+        #expect(!viewModel.hasRoutedPresentation)
     }
 
     // MARK: - Favorites, Recent, Tags and Groups

@@ -10,6 +10,87 @@ namespace TablePro.Editor;
 public sealed partial class SqlEditor
 {
     private char _pendingHighSurrogate;
+    private EditorKeymap _keymap = EditorKeymap.Default;
+
+    // The host lays a shortcut preset over the editor's own keys; caret and text box keys never move.
+    public EditorKeymap Keymap
+    {
+        get => _keymap;
+        set
+        {
+            _keymap = value ?? EditorKeymap.Default;
+            SyncFindBar();
+        }
+    }
+
+    // The command's key as the context menu and the find bar show it, empty when it has none.
+    public string KeyLabel(EditorCommand command) => _keymap.Label(command, KeyWord);
+
+    internal static string KeyWord(string id) => HostStrings.Get("Key_" + id);
+
+    // The Edit menu and the context menu run a command, never the key that runs it now.
+    public bool Run(EditorCommand command)
+    {
+        switch (command)
+        {
+            case EditorCommand.Undo:
+                Edit(_model.Undo);
+                break;
+            case EditorCommand.Redo:
+                Edit(_model.Redo);
+                break;
+            case EditorCommand.Cut:
+                Cut();
+                break;
+            case EditorCommand.Copy:
+                Copy();
+                break;
+            case EditorCommand.Paste:
+                _ = PasteAsync();
+                break;
+            case EditorCommand.SelectAll:
+                _model.SelectAll();
+                break;
+            case EditorCommand.Find:
+                OpenFind();
+                SyncFindBar();
+                break;
+            case EditorCommand.Replace:
+                OpenReplace();
+                SyncFindBar();
+                break;
+            case EditorCommand.FormatQuery:
+                _ = FormatAsync();
+                break;
+            case EditorCommand.ToggleComment:
+                Edit(_model.ToggleLineComment);
+                break;
+            case EditorCommand.DeleteLine:
+                Edit(_model.DeleteLines);
+                break;
+            case EditorCommand.NextOccurrence:
+                Edit(_model.SelectNextOccurrence);
+                break;
+            case EditorCommand.Fold:
+                FoldAtCaret();
+                break;
+            case EditorCommand.Unfold:
+                UnfoldAtCaret();
+                break;
+            default:
+                return false;
+        }
+        return true;
+    }
+
+    // The bar is made on first use, so it learns the keys then and whenever they change.
+    private void SyncFindBar()
+    {
+        if (_findBar is { } bar && !ReferenceEquals(bar.Keymap, _keymap))
+        {
+            bar.Keymap = _keymap;
+        }
+    }
 
     // Keys as Windows text boxes and VS Code have them; the map is in 0002-sql-editor-control.md.
     protected override void OnKeyDown(KeyRoutedEventArgs e)
@@ -48,6 +129,11 @@ public sealed partial class SqlEditor
     // Also for tests that drive the editor without input.
     public bool HandleKey(VirtualKey key, bool control, bool shift, bool alt)
     {
+        // EditorKeymap.IsBuiltIn picks the keys that reach the switches below, so the app refuses a preset on those.
+        if (EditorKey.FromVirtualKey((int)key, control, alt, shift) is { } pressed && !EditorKeymap.IsBuiltIn(pressed))
+        {
+            return _keymap.CommandFor(pressed) is { } command && Run(command);
+        }
         var page = Math.Max(1, VisibleLineCount - 1);
         switch (key)
         {
@@ -125,6 +211,7 @@ public sealed partial class SqlEditor
                 return true;
             case VirtualKey.F3:
                 FindNext(backward: shift);
+                SyncFindBar();
                 return true;
         }
         if (!control || alt)
@@ -133,59 +220,13 @@ public sealed partial class SqlEditor
         }
         switch (key)
         {
-            case VirtualKey.A:
-                _model.SelectAll();
-                return true;
-            case VirtualKey.C:
-                Copy();
-                return true;
-            case VirtualKey.X:
-                Cut();
-                return true;
-            case VirtualKey.V:
-                _ = PasteAsync();
-                return true;
-            case VirtualKey.Z when shift:
-            case VirtualKey.Y:
-                Edit(_model.Redo);
-                return true;
-            case VirtualKey.Z:
-                Edit(_model.Undo);
-                return true;
-            case VirtualKey.D:
-                Edit(_model.SelectNextOccurrence);
-                return true;
-            // As on Linux. Query > Filter rows has the same keys only in a table tab, which holds no editor.
-            case VirtualKey.F when shift:
-                _ = FormatAsync();
-                return true;
-            case VirtualKey.F:
-                OpenFind();
-                return true;
             case VirtualKey.Space when !shift:
                 ShowCompletion();
                 return true;
-            // Ctrl+Shift+H is the app's Show Connections.
-            case VirtualKey.H when !shift:
-                OpenReplace();
-                return true;
-            case VirtualKey.K when shift:
-                Edit(_model.DeleteLines);
-                return true;
-            case (VirtualKey)191:
-                Edit(_model.ToggleLineComment);
-                return true;
-            // VS Code's Fold and Unfold.
-            case (VirtualKey)219 when shift:
-                FoldAtCaret();
-                return true;
-            case (VirtualKey)221 when shift:
-                UnfoldAtCaret();
-                return true;
-            case (VirtualKey)221:
+            case (VirtualKey)221 when !shift:
                 Edit(_model.Indent);
                 return true;
-            case (VirtualKey)219:
+            case (VirtualKey)219 when !shift:
                 Edit(_model.Outdent);
                 return true;
             case (VirtualKey)187 or VirtualKey.Add:

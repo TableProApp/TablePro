@@ -1,6 +1,6 @@
 # 0002: TablePro's own SQL editor control
 
-- **Status**: Accepted
+- **Status**: Accepted; the key table amended by [0025](0025-setup-guide-and-shortcut-presets.md), which makes it the TablePro preset
 - **Date**: 2026-11-02
 
 ## Context

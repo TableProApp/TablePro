@@ -16,6 +16,15 @@ final class ConnectionImportReviewUITests: UITestCase {
           "database": "orders",
           "username": "app",
           "type": "MySQL"
+        },
+        {
+          "ref": "c2",
+          "name": "Review Billing",
+          "host": "127.0.0.1",
+          "port": 3306,
+          "database": "billing",
+          "username": "app",
+          "type": "MySQL"
         }
       ],
       "savedQueries": [
@@ -25,7 +34,7 @@ final class ConnectionImportReviewUITests: UITestCase {
     }
     """
 
-    func testImportReportsConnectionsAndSavedQueries() throws {
+    func testImportSelectsTheConnectionsItWrote() throws {
         let app = try launchWithConnectionShare(named: "Review Orders.tablepro", contents: Data(Self.share.utf8))
         let welcome = welcomeWindow(in: app)
         XCTAssertTrue(welcome.waitToExist(timeout: 15), "Opening a connection file must show the welcome window")
@@ -69,22 +78,17 @@ final class ConnectionImportReviewUITests: UITestCase {
         XCTAssertTrue(waitUntilHittable(importButton, timeout: 10))
         importButton.click()
 
-        let message = app.staticTexts
-            .matching(Self.text("1 connection was imported. 1 saved query was added."))
-            .firstMatch
-        XCTAssertTrue(
-            message.waitToExist(timeout: 15),
-            "The result must count the connection and only the query still checked"
-        )
-        // The alert is a sheet on the welcome window; an app-wide query also matches its Touch Bar copy.
-        let ok = welcome.sheets.buttons["OK"].firstMatch
-        XCTAssertTrue(waitUntilHittable(ok, timeout: 5), "The result alert must offer OK")
-        ok.click()
-
         let list = welcomeConnectionList(in: welcome)
+        let orders = welcomeConnectionRow(named: "Review Orders", in: list)
+        let billing = welcomeConnectionRow(named: "Review Billing", in: list)
+        XCTAssertTrue(orders.waitToExist(timeout: 15), "The imported connections must be listed")
         XCTAssertTrue(
-            welcomeConnectionRow(named: "Review Orders", in: list).waitToExist(timeout: 10),
-            "The imported connection must be listed"
+            waitForPredicate(timeout: 10) { orders.isSelected && billing.isSelected },
+            "Several imported connections must end selected in the list"
+        )
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { !welcome.sheets.firstMatch.exists },
+            "An import that kept everything must not end in an alert"
         )
     }
 

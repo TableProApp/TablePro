@@ -71,7 +71,7 @@ public sealed partial class ShellTests
     public void ThePrimaryKeepsADropTargetWhenItsOnlyTabMovesOut(string theme)
     {
         using var app = AppSession.Relaunch(AppSession.NewDataFolder(theme), theme, maximize: false);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.TypeInto("Query 1", "SELECT 42;");
         app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Move tab to new window") is not null);
         app.FindMenuItem("Move tab to new window").Patterns.Invoke.Pattern.Invoke();
@@ -181,7 +181,7 @@ public sealed partial class ShellTests
     public void ClosingATabWindowOrExitingAsksBeforeRollingBack(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "BEGIN; UPDATE Track SET Name = 'Pending' WHERE TrackId = 1;");
         app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
@@ -276,7 +276,7 @@ public sealed partial class ShellTests
 
     private static void OpenTrack(AppSession app)
     {
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         var track = app.FindByName("Track", app.Find("ObjectTree"));
         app.Click(track, () => app.TryFind("TableStatus") is not null);
         AppSession.WaitForText(app.Find("TableStatus"), text => text.Contains(" of 3,503", StringComparison.Ordinal));

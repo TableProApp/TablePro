@@ -6,7 +6,8 @@
     <file compressed="true" preprocess="xml-stripblanks">metainfo.xml</file>
     <!-- Written by build-aux/update-third-party-licenses.sh. -->
     <file compressed="true" alias="licenses/third-party.json">../licenses/third-party.json</file>
-    <file compressed="true" preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
+    <!-- Away from shortcuts-dialog.ui at the base path, which AdwApplication would show by itself; app.shortcuts fills in the keys in force. -->
+    <file compressed="true" preprocess="xml-stripblanks">builder/shortcuts-dialog.ui</file>
     <!-- GtkApplication reads the menus from here at startup. -->
     <file compressed="true" preprocess="xml-stripblanks">gtk/menus.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/assistant-pane.ui</file>
@@ -42,6 +43,7 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/saved-queries-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/saved-query-row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/session-window.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/setup-guide.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/sql-editor.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/database-file-row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/ssh-section.ui</file>

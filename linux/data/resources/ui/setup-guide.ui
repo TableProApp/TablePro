@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProSetupGuide" parent="AdwBin">
+    <property name="child">
+      <object class="AdwToastOverlay" id="toasts">
+        <property name="child">
+          <object class="AdwNavigationView" id="navigation">
+            <child>
+              <object class="AdwNavigationPage">
+                <property name="tag">setup-origin</property>
+                <property name="title" translatable="yes">Set Up TablePro</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar">
+                        <child type="end">
+                          <object class="GtkButton" id="origin_skip">
+                            <property name="label" translatable="yes">_Skip</property>
+                            <property name="use-underline">true</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <property name="content">
+                      <object class="AdwPreferencesPage">
+                        <property name="description" translatable="yes">Where are the connections you use now?</property>
+                        <child>
+                          <object class="AdwPreferencesGroup">
+                            <child>
+                              <object class="AdwActionRow" id="from_app_row">
+                                <property name="title" translatable="yes">In Another App</property>
+                                <property name="subtitle" translatable="yes">Bring them over from a database app on this computer</property>
+                                <property name="activatable">true</property>
+                                <child type="suffix">
+                                  <object class="GtkImage">
+                                    <property name="icon-name">go-next-symbolic</property>
+                                    <property name="accessible-role">presentation</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwActionRow" id="from_file_row">
+                                <property name="title" translatable="yes">In a TablePro File</property>
+                                <property name="subtitle" translatable="yes">Import connections someone exported from TablePro</property>
+                                <property name="activatable">true</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwActionRow" id="start_row">
+                                <property name="title" translatable="yes">Nowhere Yet</property>
+                                <property name="subtitle" translatable="yes">Add a connection, or look around a sample database</property>
+                                <property name="activatable">true</property>
+                                <child type="suffix">
+                                  <object class="GtkImage">
+                                    <property name="icon-name">go-next-symbolic</property>
+                                    <property name="accessible-role">presentation</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwNavigationPage">
+                <property name="tag">setup-import</property>
+                <property name="title" translatable="yes">Import Connections</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar">
+                        <child type="end">
+                          <object class="GtkButton" id="import_continue">
+                            <property name="label" translatable="yes">_Continue</property>
+                            <property name="use-underline">true</property>
+                            <style>
+                              <class name="suggested-action"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child type="end">
+                          <object class="GtkButton" id="import_skip">
+                            <property name="label" translatable="yes">_Skip</property>
+                            <property name="use-underline">true</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <property name="content">
+                      <object class="GtkStack" id="import_stack">
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">loading</property>
+                            <property name="child">
+                              <object class="AdwSpinner">
+                                <property name="halign">center</property>
+                                <property name="valign">center</property>
+                                <property name="width-request">32</property>
+                                <property name="height-request">32</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">sources</property>
+                            <property name="child">
+                              <object class="AdwPreferencesPage">
+                                <child>
+                                  <object class="AdwPreferencesGroup" id="import_apps_group">
+                                    <property name="title" translatable="yes">Apps</property>
+                                    <property name="description" translatable="yes">Each app you tick is read and reviewed in turn. Nothing is changed in its files.</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">empty</property>
+                            <property name="child">
+                              <object class="AdwStatusPage">
+                                <property name="icon-name">system-search-symbolic</property>
+                                <property name="title" translatable="yes">No Other Apps Found</property>
+                                <property name="description" translatable="yes">Continue to add a connection or open the sample database.</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">failed</property>
+                            <property name="child">
+                              <object class="AdwStatusPage">
+                                <property name="icon-name">dialog-warning-symbolic</property>
+                                <property name="title" translatable="yes">Other Apps Could Not Be Looked For</property>
+                                <property name="description" translatable="yes">The search stopped before it finished. Continue to add a connection instead.</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwNavigationPage">
+                <property name="tag">setup-first-connection</property>
+                <property name="title" translatable="yes">First Connection</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar">
+                        <child type="end">
+                          <object class="GtkButton" id="first_continue">
+                            <property name="label" translatable="yes">_Continue</property>
+                            <property name="use-underline">true</property>
+                            <style>
+                              <class name="suggested-action"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child type="end">
+                          <object class="GtkButton" id="first_skip">
+                            <property name="label" translatable="yes">_Skip</property>
+                            <property name="use-underline">true</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <property name="content">
+                      <object class="AdwPreferencesPage">
+                        <child>
+                          <object class="AdwPreferencesGroup">
+                            <property name="description" translatable="yes">It opens when you finish.</property>
+                            <child>
+                              <object class="AdwActionRow" id="new_connection_row">
+                                <property name="title" translatable="yes">New Connection</property>
+                                <property name="subtitle" translatable="yes">Enter a server’s address or a connection URL, or open a database file</property>
+                                <property name="activatable-widget">new_connection_check</property>
+                                <child type="prefix">
+                                  <object class="GtkCheckButton" id="new_connection_check">
+                                    <property name="valign">center</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwActionRow" id="sample_row">
+                                <property name="title" translatable="yes">Sample Database</property>
+                                <property name="subtitle" translatable="yes">A small music store to look around in</property>
+                                <property name="activatable-widget">sample_check</property>
+                                <child type="prefix">
+                                  <object class="GtkCheckButton" id="sample_check">
+                                    <property name="valign">center</property>
+                                    <property name="group">new_connection_check</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwNavigationPage">
+                <property name="tag">setup-options</property>
+                <property name="title" translatable="yes">Editor</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar">
+                        <child type="end">
+                          <object class="GtkButton" id="finish_button">
+                            <property name="label" translatable="yes">_Done</property>
+                            <property name="use-underline">true</property>
+                            <style>
+                              <class name="suggested-action"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child type="end">
+                          <object class="GtkButton" id="options_skip">
+                            <property name="label" translatable="yes">_Skip</property>
+                            <property name="use-underline">true</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <property name="content">
+                      <object class="AdwPreferencesPage">
+                        <child>
+                          <object class="AdwPreferencesGroup">
+                            <property name="title" translatable="yes">Keyboard</property>
+                            <child>
+                              <object class="AdwComboRow" id="shortcuts_row">
+                                <property name="title" translatable="yes">Shortcuts</property>
+                                <property name="subtitle" translatable="yes">Use the keys of an app you know</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwSwitchRow" id="vim_row">
+                                <property name="title" translatable="yes">Vim Keybindings</property>
+                                <property name="subtitle" translatable="yes">Normal, insert and visual modes, and commands such as :w and :q</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwPreferencesGroup">
+                            <property name="title" translatable="yes">Style Scheme</property>
+                            <child>
+                              <object class="AdwSwitchRow" id="system_style_row">
+                                <property name="title" translatable="yes">Follow System Style</property>
+                                <property name="subtitle" translatable="yes">Use Adwaita in the desktop’s light or dark style</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkFlowBox" id="style_scheme_box">
+                                <property name="selection-mode">none</property>
+                                <property name="homogeneous">true</property>
+                                <property name="column-spacing">12</property>
+                                <property name="row-spacing">12</property>
+                                <property name="max-children-per-line">3</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

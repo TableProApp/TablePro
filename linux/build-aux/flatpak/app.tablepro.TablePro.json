@@ -23,6 +23,10 @@
         "--filesystem=/run/.heim_org.h5l.kcm-socket",
         "--filesystem=/run/postgresql:ro",
         "--filesystem=/run/mysqld:ro",
+        "--filesystem=~/.var/app/io.dbeaver.DBeaverCommunity:ro",
+        "--filesystem=~/.var/app/com.jetbrains.DataGrip:ro",
+        "--filesystem=~/.var/app/io.beekeeperstudio.Studio:ro",
+        "--filesystem=~/.var/app/io.beekeeperstudio.desktop:ro",
         "--env=KRB5_CONFIG=/app/etc/krb5.conf"
     ],
     "build-options": {

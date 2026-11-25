@@ -5,6 +5,9 @@ use gtk4::{gdk, gio};
 // GtkPopover slides a menu along the screen edge only when it opens to a side. Opened above or
 // below, a menu taller than the room on either side of the pointer is shrunk and scrolls.
 pub(crate) fn context_menu(model: Option<&impl IsA<gio::MenuModel>>) -> gtk::PopoverMenu {
+    if let Some(keyed) = model.and_then(|model| model.upcast_ref::<gio::MenuModel>().downcast_ref::<gio::Menu>()) {
+        crate::application::keymap::follow_menu(keyed);
+    }
     let menu = gtk::PopoverMenu::from_model(model);
     menu.set_has_arrow(false);
     menu.set_position(trailing_side(menu.direction()));

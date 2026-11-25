@@ -15,7 +15,7 @@ public sealed partial class ShellTests
     public void ACellsValueFiltersTheTableAndTheTableOpensAgainWithIt(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         var tree = app.Find("ObjectTree");
         app.Click(app.FindByName("Genre", tree), () => app.TryFind("TableStatus") is not null);
         Assert.True(ShowsRows(app.Find("TableStatus"), 25));
@@ -47,7 +47,7 @@ public sealed partial class ShellTests
     public void ATableIsEmptiedAndDroppedAfterAQuestionShowingItsStatement(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         var tree = app.Find("ObjectTree");
 
         // Track's foreign key points at Genre, so emptying it is refused before anything is asked.
@@ -86,7 +86,7 @@ public sealed partial class ShellTests
     public void AQueryResultExportsAsSqlInsert(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "SELECT GenreId, Name FROM Genre");
         app.Chord(

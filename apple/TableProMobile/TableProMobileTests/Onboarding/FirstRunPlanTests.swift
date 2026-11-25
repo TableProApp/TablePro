@@ -4,53 +4,103 @@ import Testing
 
 @Suite("First run plan")
 struct FirstRunPlanTests {
+    private func firstRunPlan(
+        hasSeenOrigin: Bool = false,
+        hasConnections: Bool? = false,
+        syncChoice: Bool? = nil,
+        usageDataChoice: Bool? = nil,
+        lastSeenVersion: String? = nil,
+        currentVersion: String = "1.1",
+        hasHighlights: Bool = true
+    ) -> FirstRunPlan {
+        FirstRunPlan(
+            hasSeenOrigin: hasSeenOrigin,
+            hasConnections: hasConnections,
+            syncChoice: syncChoice,
+            usageDataChoice: usageDataChoice,
+            lastSeenVersion: lastSeenVersion,
+            currentVersion: currentVersion,
+            hasHighlightsForCurrentVersion: hasHighlights
+        )
+    }
+
     private func plan(
-        hasSeenWelcome: Bool = false,
+        hasSeenOrigin: Bool = false,
+        hasConnections: Bool? = false,
         syncChoice: Bool? = nil,
         usageDataChoice: Bool? = nil,
         lastSeenVersion: String? = nil,
         currentVersion: String = "1.1",
         hasHighlights: Bool = true
     ) -> LaunchPresentation {
-        FirstRunPlan(
-            hasSeenWelcome: hasSeenWelcome,
+        firstRunPlan(
+            hasSeenOrigin: hasSeenOrigin,
+            hasConnections: hasConnections,
             syncChoice: syncChoice,
             usageDataChoice: usageDataChoice,
             lastSeenVersion: lastSeenVersion,
             currentVersion: currentVersion,
-            hasHighlightsForCurrentVersion: hasHighlights
+            hasHighlights: hasHighlights
         ).presentation
     }
 
-    @Test("A fresh install asks every question, welcome first")
+    // Changed on purpose: the origin page replaces the welcome page.
+    @Test("A fresh install asks every question, the origin first")
     func freshInstall() {
-        #expect(plan() == .firstRun([.welcome, .iCloud, .usageData]))
+        #expect(plan() == .firstRun([.origin, .iCloud, .usageData]))
     }
 
     @Test("A fresh install never shows What's New")
     func freshInstallSkipsWhatsNew() {
-        #expect(plan(lastSeenVersion: nil) == .firstRun([.welcome, .iCloud, .usageData]))
+        #expect(plan(lastSeenVersion: nil) == .firstRun([.origin, .iCloud, .usageData]))
     }
 
     @Test("A TestFlight user who finished the old onboarding is asked about usage data only")
     func legacyUserAskedOnce() {
-        #expect(plan(hasSeenWelcome: true, syncChoice: true, usageDataChoice: nil) == .firstRun([.usageData]))
+        #expect(plan(hasSeenOrigin: true, syncChoice: true, usageDataChoice: nil) == .firstRun([.usageData]))
     }
 
-    @Test("The iCloud page belongs to the welcome and is never shown on its own later")
-    func iCloudOnlyWithWelcome() {
-        #expect(plan(hasSeenWelcome: true, syncChoice: nil, usageDataChoice: false) == .none)
+    @Test("The iCloud page belongs to the first run and is never shown on its own later")
+    func iCloudOnlyWithFirstRun() {
+        #expect(plan(hasSeenOrigin: true, syncChoice: nil, usageDataChoice: false) == .none)
     }
 
-    @Test("A sync choice already made keeps the iCloud page out of the welcome")
+    @Test("A sync choice already made keeps the iCloud page out")
     func answeredSyncSkipsPage() {
-        #expect(plan(syncChoice: false, usageDataChoice: true) == .firstRun([.welcome]))
+        #expect(plan(syncChoice: false, usageDataChoice: true) == .firstRun([.origin]))
+    }
+
+    @Test("A library that already holds connections leaves the origin out and still asks the questions")
+    func connectionsLeaveOutOrigin() {
+        #expect(plan(hasConnections: true) == .firstRun([.iCloud, .usageData]))
+        #expect(firstRunPlan(hasConnections: true).leavesOutOriginForConnections)
+    }
+
+    @Test("A library that did not load leaves the origin out without answering it")
+    func unloadedLibraryLeavesOutOrigin() {
+        #expect(plan(hasConnections: nil) == .firstRun([.iCloud, .usageData]))
+        #expect(!firstRunPlan(hasConnections: nil).leavesOutOriginForConnections)
+    }
+
+    @Test("An empty library shows the origin, which only closing the sheet answers")
+    func emptyLibraryShowsOrigin() {
+        #expect(!firstRunPlan(hasConnections: false).leavesOutOriginForConnections)
+    }
+
+    @Test("A seen origin is never left out on account of connections")
+    func seenOriginIsNotGated() {
+        #expect(!firstRunPlan(hasSeenOrigin: true, hasConnections: true).leavesOutOriginForConnections)
+    }
+
+    @Test("Someone who saw the old welcome and has no connections gets the origin once, without the iCloud page")
+    func oldWelcomeWithEmptyLibrary() {
+        #expect(plan(syncChoice: true, usageDataChoice: false) == .firstRun([.origin]))
     }
 
     @Test("An upgrade with highlights shows What's New once everything is answered")
     func upgradeShowsWhatsNew() {
         let presentation = plan(
-            hasSeenWelcome: true,
+            hasSeenOrigin: true,
             syncChoice: false,
             usageDataChoice: false,
             lastSeenVersion: "1.0",
@@ -62,7 +112,7 @@ struct FirstRunPlanTests {
     @Test("An upgrade without highlights shows nothing")
     func upgradeWithoutHighlights() {
         let presentation = plan(
-            hasSeenWelcome: true,
+            hasSeenOrigin: true,
             syncChoice: true,
             usageDataChoice: true,
             lastSeenVersion: "1.0",
@@ -74,7 +124,7 @@ struct FirstRunPlanTests {
     @Test("A relaunch of the same version shows nothing")
     func sameVersion() {
         let presentation = plan(
-            hasSeenWelcome: true,
+            hasSeenOrigin: true,
             syncChoice: true,
             usageDataChoice: false,
             lastSeenVersion: "1.1",
@@ -85,14 +135,14 @@ struct FirstRunPlanTests {
 
     @Test("A pending question wins over What's New")
     func questionBeatsWhatsNew() {
-        let presentation = plan(hasSeenWelcome: true, syncChoice: true, lastSeenVersion: "1.0")
+        let presentation = plan(hasSeenOrigin: true, syncChoice: true, lastSeenVersion: "1.0")
         #expect(presentation == .firstRun([.usageData]))
     }
 
     @Test("An older version shows nothing")
     func olderVersionShowsNothing() {
         let presentation = plan(
-            hasSeenWelcome: true,
+            hasSeenOrigin: true,
             syncChoice: true,
             usageDataChoice: false,
             lastSeenVersion: "1.1",
@@ -104,7 +154,7 @@ struct FirstRunPlanTests {
     @Test("Versions compare as numbers, not as text")
     func versionsCompareAsNumbers() {
         let presentation = plan(
-            hasSeenWelcome: true,
+            hasSeenOrigin: true,
             syncChoice: true,
             usageDataChoice: false,
             lastSeenVersion: "1.9",

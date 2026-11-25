@@ -34,10 +34,11 @@ case "$SUITE" in
             'apple/scripts/localization\.py$' 'scripts/ci/detect-changed-paths\.sh$'
             'apple/scripts/check-pluginkit-abi\.sh$' 'apple/scripts/release/notes\.py$'
             '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$'
-            # The app bundles the MCP client catalog the Linux app compiles in.
-            'core/crates/mcp/clients\.json$'
-            # The app's tests run the script corpus the core's tests run.
-            'core/crates/core/tests/fixtures/sql_script_corpus\.json$') ;;
+            # The app bundles the MCP client catalog, the shortcut presets and the sample database the core holds.
+            'core/crates/mcp/clients\.json$' 'core/crates/core/keymaps\.json$' 'core/resources/Chinook\.sqlite$'
+            # The app's tests run the script corpus and the source list cases the core's tests run.
+            'core/crates/core/tests/fixtures/sql_script_corpus\.json$'
+            'core/crates/foreign-import/tests/fixtures/source_list\.json$') ;;
     plugins)
         # Registry plugins link the TableProCore and TableProOracle products.
         PATTERNS=('apple/Plugins/' 'apple/Packages/TableProCore/' 'apple/Packages/TableProOracle/' 'apple/Native/'
@@ -57,7 +58,9 @@ case "$SUITE" in
             'scripts/ci/detect-changed-paths\.sh$'
             '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/(ci|ios-tests)\.yml$'
             # The TableProCore package tests read the function names and the script corpus the Linux app shares.
-            'core/crates/core/tests/fixtures/(state_changing_functions|sql_script_corpus)\.json$')
+            'core/crates/core/tests/fixtures/(state_changing_functions|sql_script_corpus)\.json$'
+            # The app bundles the sample database the core holds; the spec scan below reads only apple/ paths.
+            'core/resources/Chinook\.sqlite$')
         # The iOS project compiles files from Plugins/, Packages/ and TablePro/, so every path its
         # spec reaches outside TableProMobile/ is read from the spec instead of copied here.
         SHARED="$(grep -oE '\.\./(Configs|Packages|Plugins|TablePro)/[^"[:space:]]*' apple/TableProMobile/project.yml \
@@ -82,7 +85,7 @@ case "$SUITE" in
             'apple/scripts/release/dmg\.DS_Store$' 'apple/scripts/release/(notes|registry|version)\.py$'
             'apple/scripts/ci/verify-plugin-loads\.sh$' 'scripts/ci/detect-changed-paths\.sh$'
             '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|nightly)\.yml$'
-            'core/crates/mcp/clients\.json$')
+            'core/crates/mcp/clients\.json$' 'core/crates/core/keymaps\.json$' 'core/resources/Chinook\.sqlite$')
         SKIP='apple/Plugins/[^/]+Tests/|apple/Packages/[^/]+/Tests/'
         # shipped is what an X.Y.0 may not change after its newest beta: the release build minus its CI.
         if [ "$SUITE" = shipped ]; then

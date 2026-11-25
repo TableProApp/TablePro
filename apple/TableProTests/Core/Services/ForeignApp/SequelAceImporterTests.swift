@@ -126,7 +126,7 @@ struct SequelAceImporterTests {
             ])
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
-        #expect(importer.inventory() == ForeignAppInventory(connections: 3, savedQueries: 0))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 3, savedQueries: 0, keychainPrompts: 3))
     }
 
     @Test("inventory counts what collect reads: a connection without a host or numeric id, and a group's children")
@@ -143,12 +143,40 @@ struct SequelAceImporterTests {
 
         let collected = try importer.collect(.connectionsOnly).connections.count
         #expect(collected == 3)
-        #expect(importer.inventory().connections == collected)
+        #expect(try importer.inventory().connections == collected)
     }
 
     @Test("inventory is empty when the files are missing")
-    func testInventory_fileMissing_returnsZero() {
-        #expect(importer.inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
+    func testInventory_fileMissing_returnsZero() throws {
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
+    }
+
+    @Test("A favorites file that is there but cannot be read is unreadable, never zero")
+    func testInventory_unreadableFile_throws() throws {
+        try Data("not a property list".utf8).write(to: importer.favoritesFileURL)
+
+        #expect(throws: ForeignAppImportError.self) {
+            try importer.inventory()
+        }
+    }
+
+    @Test("A connection over SSH counts two Keychain items, one without it counts one")
+    func testInventory_keychainPrompts() throws {
+        try writeFavorites(makeFavoritesRoot(children: [
+            makeConnection(name: "Direct", id: 1),
+            makeGroup(name: "Tunnels", children: [
+                makeConnection(name: "Tunnel", type: 2, id: 2, sshHost: "bastion", sshUser: "deploy")
+            ])
+        ]))
+
+        #expect(try importer.inventory().keychainPrompts == 3)
+    }
+
+    @Test("The launch probe never looks in Sequel Ace's container")
+    func testProbeLeavesTheContainerAlone() throws {
+        try writeFavorites(makeFavoritesRoot(children: [makeConnection(name: "DB", id: 1)]))
+
+        #expect(!importer.hasDataAtDefaultLocation())
     }
 
     // MARK: - collect
@@ -561,6 +589,6 @@ struct SequelAceImporterTests {
             ["name": "Blank", "query": ""]
         ])
 
-        #expect(importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 2))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 2, keychainPrompts: 1))
     }
 }

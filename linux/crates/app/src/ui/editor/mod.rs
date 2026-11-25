@@ -879,6 +879,9 @@ impl SqlEditor {
             }
         });
         imp.menu_button.set_icon_name(crate::ui::icons::VIEW_MORE);
+        if let Some(menu) = imp.menu_button.menu_model().and_downcast::<gtk4::gio::Menu>() {
+            crate::application::keymap::follow_menu(&menu);
+        }
     }
 
     /// Each result's page, built when its line is first shown.

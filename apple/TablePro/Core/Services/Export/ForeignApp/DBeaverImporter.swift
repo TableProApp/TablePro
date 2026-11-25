@@ -50,64 +50,73 @@ struct DBeaverImporter: ForeignAppImporter {
         return nil
     }
 
-    func isAvailable() -> Bool {
-        installedAppURL() != nil || findProject() != nil
+    func hasDataAtDefaultLocation() -> Bool {
+        !findProjects().isEmpty
     }
 
-    func inventory() -> ForeignAppInventory {
-        guard let project = findProject() else {
-            return ForeignAppInventory(connections: 0, savedQueries: 0)
-        }
-        let connections = project.configs.reduce(0) { total, config in
-            total + ((loadJSON(from: config.url)?["connections"] as? [String: Any])?.count ?? 0)
+    func inventory() throws -> ForeignAppInventory {
+        let read = try readable(findProjects()) { project in
+            var count = 0
+            for config in project.configs {
+                do {
+                    count += try connectionEntries(in: configJSON(config), config: config).count
+                } catch {
+                    // Collect reads past a broken extra file too, so only the main file makes the project unreadable.
+                    guard config.isDefault else { continue }
+                    throw ForeignAppImportError.unreadableFile(config.url)
+                }
+            }
+            return count
         }
         return ForeignAppInventory(
-            connections: connections,
-            savedQueries: DBeaverScriptReader.count(projectURL: project.url)
+            connections: read.reduce(0) { $0 + $1.value },
+            savedQueries: read.reduce(0) { $0 + DBeaverScriptReader.count(projectURL: $1.project.url) }
         )
     }
 
     func collect(_ request: ForeignImportRequest) throws -> CollectedImport {
-        guard let project = findProject() else {
+        let projects = findProjects()
+        guard !projects.isEmpty else {
             throw ForeignAppImportError.fileNotFound(displayName)
         }
-        let sources = try readDataSources(project)
-        let folders = Self.folderDescriptions(sources)
-
         var records: [ForeignConnectionRecord] = []
-        for source in sources {
-            for (connId, connDict) in source.connections {
-                try Task.checkCancellation()
-                let entry = source.credentials[connId]
-                var notes: [String] = []
-                let settings = parseConnection(
-                    connId,
-                    dict: connDict,
-                    credentialUsername: (entry?["#connection"] as? [String: Any])?["user"] as? String,
-                    tunnelUsername: entry.flatMap { Self.tunnelField($0, "user") },
-                    notes: &notes
+        var savedQueries: [ForeignSavedQuery] = []
+        for (project, sources) in try readable(projects, { try readDataSources($0) }) {
+            // DBeaver keeps one folder tree per project.
+            let folders = Self.folderDescriptions(sources)
+            for source in sources {
+                for (connId, connDict) in source.connections {
+                    try Task.checkCancellation()
+                    let entry = source.credentials[connId]
+                    var notes: [String] = []
+                    let settings = parseConnection(
+                        connId,
+                        dict: connDict,
+                        credentialUsername: (entry?["#connection"] as? [String: Any])?["user"] as? String,
+                        tunnelUsername: entry.flatMap { Self.tunnelField($0, "user") },
+                        notes: &notes
+                    )
+                    let credentials = request.includePasswords
+                        ? entry.flatMap { extractCredentials(from: $0, settings: settings) }
+                        : nil
+                    records.append(ForeignConnectionRecord(
+                        sourceId: Self.sourceId(connId, projectURL: project.url),
+                        settings: settings,
+                        groupPath: Self.groupPath(connDict["folder"] as? String, descriptions: folders),
+                        credentials: credentials,
+                        notes: notes
+                    ))
+                }
+            }
+            if request.includeSavedQueries {
+                savedQueries += try DBeaverScriptReader.savedQueries(
+                    projectURL: project.url,
+                    limit: SavedQuerySize.maximumSyncableByteCount
                 )
-                let credentials = request.includePasswords
-                    ? entry.flatMap { extractCredentials(from: $0, settings: settings) }
-                    : nil
-                records.append(ForeignConnectionRecord(
-                    sourceId: connId,
-                    settings: settings,
-                    groupPath: Self.groupPath(connDict["folder"] as? String, descriptions: folders),
-                    credentials: credentials,
-                    notes: notes
-                ))
             }
         }
         // The JSON object has no order once parsed, so sort for a stable review list.
         records.sort { ($0.settings.name, $0.sourceId ?? "") < ($1.settings.name, $1.sourceId ?? "") }
-
-        let savedQueries = request.includeSavedQueries
-            ? try DBeaverScriptReader.savedQueries(
-                projectURL: project.url,
-                limit: SavedQuerySize.maximumSyncableByteCount
-            )
-            : []
 
         return try ForeignBundleAssembly.collect(
             appName: displayName,
@@ -115,6 +124,32 @@ struct DBeaverImporter: ForeignAppImporter {
             savedQueries: savedQueries,
             credentialsAborted: false
         )
+    }
+
+    // A project whose main file is broken leaves the others importable; nothing readable throws the first failure.
+    private func readable<Value>(
+        _ projects: [Project],
+        _ read: (Project) throws -> Value
+    ) throws -> [(project: Project, value: Value)] {
+        var values: [(project: Project, value: Value)] = []
+        var firstFailure: (any Error)?
+        for project in projects {
+            do {
+                values.append((project, try read(project)))
+            } catch {
+                Self.logger.warning("Skipped a DBeaver project whose data sources could not be read")
+                firstFailure = firstFailure ?? error
+            }
+        }
+        if values.isEmpty, let firstFailure {
+            throw firstFailure
+        }
+        return values
+    }
+
+    // A data source id is unique only inside its project, and a copied project keeps the ids it was copied with.
+    static func sourceId(_ dataSourceId: String, projectURL: URL) -> String {
+        "\(projectURL.lastPathComponent)/\(dataSourceId)"
     }
 
     // MARK: - File Discovery
@@ -142,22 +177,23 @@ struct DBeaverImporter: ForeignAppImporter {
     private static let credentialsPrefix = "credentials-config"
     private static let jsonExtension = ".json"
 
-    // Sorted, so the pick never depends on the order the file system lists folders in.
-    private func findProject() -> Project? {
+    // Every project of the newest workspace that has one, in name order, whatever order the file system lists them in.
+    private func findProjects() -> [Project] {
         let fm = FileManager.default
-        guard let workspaceNames = try? fm.contentsOfDirectory(atPath: dbeaverDataRoot.path) else { return nil }
+        guard let workspaceNames = try? fm.contentsOfDirectory(atPath: dbeaverDataRoot.path) else { return [] }
         for workspaceName in workspaceNames.filter({ $0.hasPrefix("workspace") }).sorted(by: >) {
             let workspace = dbeaverDataRoot.appendingPathComponent(workspaceName, isDirectory: true)
             guard let projectNames = try? fm.contentsOfDirectory(atPath: workspace.path) else { continue }
-            for projectName in projectNames.sorted() {
+            let projects = projectNames.sorted().compactMap { projectName -> Project? in
                 let projectURL = workspace.appendingPathComponent(projectName, isDirectory: true)
                 let configs = Self.configFiles(in: projectURL.appendingPathComponent(".dbeaver", isDirectory: true))
-                if !configs.isEmpty {
-                    return Project(url: projectURL, configs: configs)
-                }
+                return configs.isEmpty ? nil : Project(url: projectURL, configs: configs)
+            }
+            if !projects.isEmpty {
+                return projects
             }
         }
-        return nil
+        return []
     }
 
     private static func configFiles(in metadataFolder: URL) -> [ConfigFile] {
@@ -194,17 +230,26 @@ struct DBeaverImporter: ForeignAppImporter {
     }
 
     private func readConfig(_ config: ConfigFile) throws -> DataSources {
-        guard let json = loadJSON(from: config.url) else {
-            throw ForeignAppImportError.parseError("Could not parse \(config.name)")
-        }
-        guard let connections = json["connections"] as? [String: [String: Any]] else {
-            throw ForeignAppImportError.unsupportedFormat("Missing connections key in \(config.name)")
-        }
+        let json = try configJSON(config)
         return DataSources(
-            connections: connections,
+            connections: try connectionEntries(in: json, config: config),
             folders: json["folders"] as? [String: [String: Any]] ?? [:],
             credentials: loadCredentials(from: config.credentialsURL)
         )
+    }
+
+    private func configJSON(_ config: ConfigFile) throws -> [String: Any] {
+        guard let json = loadJSON(from: config.url) else {
+            throw ForeignAppImportError.parseError("Could not parse \(config.name)")
+        }
+        return json
+    }
+
+    private func connectionEntries(in json: [String: Any], config: ConfigFile) throws -> [String: [String: Any]] {
+        guard let connections = json["connections"] as? [String: [String: Any]] else {
+            throw ForeignAppImportError.unsupportedFormat("Missing connections key in \(config.name)")
+        }
+        return connections
     }
 
     private func loadJSON(from url: URL) -> [String: Any]? {

@@ -180,6 +180,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | A module's default on this Mac, for one that was core before: on when an earlier build ran here, written once at the first launch that knows the module, restored by Reset All Settings | UserDefaults `com.TablePro.modules.<id>.default`, device-local, never synced | `AppModule.recordDefaults`, called first in `applicationWillFinishLaunching` |
 | Routine debugger start options, per connection and field | UserDefaults, device-local | `RoutineDebugOptionStore` |
 | Whether the toolbar arrangement already carries the debug items | UserDefaults, device-local | `MainWindowToolbar` |
+| Whether the setup guide ended on this Mac (Finish, Skip or closing it). The older `com.TablePro.settings.hasCompletedOnboarding` is read only by `hasLaunchedBefore()` | UserDefaults `com.TablePro.settings.setupGuideSeen`, device-local, never synced | `AppSettingsStorage`, written by `SetupGuidePresenter.guideDidClose()` |
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Reopen the last session once after Relaunch to Update | UserDefaults, device-local, never synced, cleared by the next launch | `AppRelauncher` |
 | Highest plugin manifest `serial` accepted, so an older signed manifest is refused | UserDefaults, device-local, never synced | `RegistryManifestVerifier` through `RegistryClient` |

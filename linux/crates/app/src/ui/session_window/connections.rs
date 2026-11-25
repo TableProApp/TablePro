@@ -25,6 +25,7 @@ use crate::services::library_outline::LibraryMove;
 use crate::services::saved_connection_editor::GroupChoice;
 use crate::services::saved_connection_error::SavedConnectionError;
 use crate::services::secret_save_report::SecretSaveOutcome;
+use crate::services::setup_guide::{ImportSource, SetupEnding, handoff};
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectDialogMode, ConnectPrefill, FormField};
 use crate::ui::delete_connection_dialog::{self, DeleteConnectionDialog};
 use crate::ui::file_read::{FileReadError, read_capped_file};
@@ -859,35 +860,41 @@ impl SessionWindow {
     }
 
     fn apply_import(&self, preview: tablepro_storage::ImportPreview) {
-        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+        let Some(state) = self.state() else {
             return;
         };
         let connections = state.services.storage.connections().clone();
         let tasks = state.services.tasks.clone();
-        crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
-            let imported = tasks
+        let hold = state.services.hold().acquire();
+        let window = self.downgrade();
+        let applying = async move {
+            match tasks
                 .spawn_blocking_task(move || connections.apply_import_blocking(&preview))
-                .await;
-            let message = match imported {
-                Ok(Ok(report)) => crate::i18n::ngettext_f(
-                    "Imported {n} connection.",
-                    "Imported {n} connections.",
-                    report.total(),
-                    &[("n", &report.total().to_string())],
-                ),
-                Ok(Err(tablepro_storage::StorageError::ImportOutdated)) => crate::i18n::gettext(
-                    "The saved connections changed while you were deciding. Import the file again.",
-                ),
-                Ok(Err(error)) => {
-                    tracing::warn!(%error, "could not import the connections");
-                    crate::ui::error_text::saved_connection_error_message(&SavedConnectionError::Storage(error))
-                }
+                .await
+            {
+                Ok(imported) => applied_import(imported),
                 Err(error) => {
                     tracing::warn!(%error, "the import task did not finish");
-                    crate::i18n::gettext("The connections could not be imported.")
+                    (
+                        crate::i18n::gettext("The connections could not be imported."),
+                        SetupEnding::Stay,
+                    )
                 }
-            };
-            input.deliver(SessionWindowInput::ShowToast(message));
+            }
+        };
+        crate::runtime::spawn_and_deliver(&state.services.tasks, applying, move |outcome| {
+            let (message, ending) = outcome.unwrap_or_else(|failure| {
+                tracing::warn!(%failure, "the import task did not finish");
+                (
+                    crate::i18n::gettext("The connections could not be imported."),
+                    SetupEnding::Stay,
+                )
+            });
+            if let Some(window) = window.upgrade() {
+                window.send(SessionWindowInput::ShowToast(message));
+                window.hand_off_import(ending);
+            }
+            drop(hold);
         });
     }
 
@@ -1041,6 +1048,34 @@ fn import_failure_message(error: tablepro_storage::StorageError, file: &std::pat
     }
 }
 
+// The toast and how the import ends (core ADR 0049): a file anyone could have sent only shows what it wrote.
+fn applied_import(
+    imported: Result<tablepro_storage::ImportReport, tablepro_storage::StorageError>,
+) -> (String, SetupEnding) {
+    match imported {
+        Ok(report) => (
+            crate::i18n::ngettext_f(
+                "Imported {n} connection.",
+                "Imported {n} connections.",
+                report.total(),
+                &[("n", &report.total().to_string())],
+            ),
+            handoff(&report.connection_ids, ImportSource::FileOrLink),
+        ),
+        Err(tablepro_storage::StorageError::ImportOutdated) => (
+            crate::i18n::gettext("The saved connections changed while you were deciding. Import the file again."),
+            SetupEnding::Stay,
+        ),
+        Err(error) => {
+            tracing::warn!(%error, "could not import the connections");
+            (
+                crate::ui::error_text::saved_connection_error_message(&SavedConnectionError::Storage(error)),
+                SetupEnding::Stay,
+            )
+        }
+    }
+}
+
 /// An export holds names, hosts and options, never secrets, so even
 /// thousands of connections come to well under this.
 const MAX_CONNECTIONS_FILE_BYTES: usize = 8 * 1024 * 1024;
@@ -1158,6 +1193,48 @@ mod tests {
         assert_eq!(
             disk_full,
             "Could not write /home/u/.local/share/tablepro/connections.json: the disk is full."
+        );
+    }
+
+    #[test]
+    fn a_written_import_shows_the_ids_it_wrote_and_a_refused_one_none() {
+        use tablepro_storage::{ImportReport, StorageError};
+
+        let ids = vec![Uuid::new_v4(), Uuid::new_v4()];
+        let written = ImportReport {
+            added: 1,
+            updated: 1,
+            connection_ids: ids.clone(),
+        };
+
+        assert_eq!(
+            applied_import(Ok(written)),
+            ("Imported 2 connections.".to_owned(), SetupEnding::Select(ids))
+        );
+        assert_eq!(applied_import(Ok(ImportReport::default())).1, SetupEnding::Stay);
+        let (outdated, none) = applied_import(Err(StorageError::ImportOutdated));
+        assert_eq!(
+            outdated,
+            "The saved connections changed while you were deciding. Import the file again."
+        );
+        assert_eq!(none, SetupEnding::Stay);
+        assert_eq!(applied_import(Err(StorageError::NotInitialised)).1, SetupEnding::Stay);
+    }
+
+    #[test]
+    fn a_connections_file_of_one_connection_shows_it_and_never_opens_it() {
+        use tablepro_storage::ImportReport;
+
+        let id = Uuid::new_v4();
+        let one = ImportReport {
+            added: 1,
+            updated: 0,
+            connection_ids: vec![id],
+        };
+
+        assert_eq!(
+            applied_import(Ok(one)),
+            ("Imported 1 connection.".to_owned(), SetupEnding::Select(vec![id]))
         );
     }
 
@@ -1324,6 +1401,17 @@ mod tests {
 
         respond(&alert, crate::ui::import_preview::IMPORT);
         wait_until(WAIT, || listed(&test, lookalike.id)).expect("the import to land");
+        wait_until(WAIT, || {
+            test.window
+                .imp()
+                .toasts
+                .borrow()
+                .iter()
+                .any(|toast| toast.title().as_deref() == Some("Imported 1 connection."))
+        })
+        .expect("the import's toast");
+        drain_main_context();
+        assert_eq!(test.window.page_name(), "picker", "the imported connection was opened");
     }
 
     #[gtk4::test]

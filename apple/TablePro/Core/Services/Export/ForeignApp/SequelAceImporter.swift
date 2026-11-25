@@ -14,6 +14,7 @@ struct SequelAceImporter: ForeignAppImporter {
     let symbolName = "cylinder.split.1x2"
     let appBundleIdentifier = "com.sequel-ace.sequel-ace"
     let readsPasswordsFromKeychain = true
+    let readsGuardedLocations = true
 
     private static let socketType = 1
     private static let awsIAMType = 3
@@ -40,11 +41,22 @@ struct SequelAceImporter: ForeignAppImporter {
         resolveAppURL(appBundleIdentifier)
     }
 
-    func inventory() -> ForeignAppInventory {
-        let children = (loadRootDict()?["Favorites Root"] as? [String: Any])?["Children"] as? [[String: Any]]
+    // Its data sits in another app's container, which macOS guards with a prompt the launch probe must not raise.
+    func hasDataAtDefaultLocation() -> Bool {
+        false
+    }
+
+    func inventory() throws -> ForeignAppInventory {
+        guard let data = try ForeignAppStoredFile.data(at: favoritesFileURL) else { return .empty }
+        guard let root = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any],
+              let children = (root["Favorites Root"] as? [String: Any])?["Children"] as? [[String: Any]] else {
+            throw ForeignAppImportError.unreadableFile(favoritesFileURL)
+        }
+        let leaves = connectionEntries(in: children)
         return ForeignAppInventory(
-            connections: children.map { countConnections(in: $0) } ?? 0,
-            savedQueries: SequelAceQueryFavoritesReader.count(preferencesURL: queryFavoritesFileURL)
+            connections: leaves.count,
+            savedQueries: SequelAceQueryFavoritesReader.count(preferencesURL: queryFavoritesFileURL),
+            keychainPrompts: leaves.reduce(0) { $0 + Self.keychainReads(for: $1) }
         )
     }
 
@@ -97,10 +109,15 @@ struct SequelAceImporter: ForeignAppImporter {
     }
 
     // The rule parseChildren reads by, so the count says what an import brings.
-    private func countConnections(in children: [[String: Any]]) -> Int {
-        children.reduce(0) { total, child in
-            total + ((child["Children"] as? [[String: Any]]).map { countConnections(in: $0) } ?? 1)
+    private func connectionEntries(in children: [[String: Any]]) -> [[String: Any]] {
+        children.flatMap { child in
+            (child["Children"] as? [[String: Any]]).map { connectionEntries(in: $0) } ?? [child]
         }
+    }
+
+    // What readCredentials asks for: the database item, plus the tunnel's for an SSH connection.
+    private static func keychainReads(for entry: [String: Any]) -> Int {
+        (entry["type"] as? Int ?? 0) == 2 ? 2 : 1
     }
 
     private func parseChildren(

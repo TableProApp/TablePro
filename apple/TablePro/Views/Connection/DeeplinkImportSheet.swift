@@ -9,16 +9,17 @@ import TableProImport
 
 struct DeeplinkImportSheet: View {
     let bundle: ConnectionBundle
+    let onCancel: () -> Void
     let onFinished: (ImportOutcome) -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @State private var editableName: String
     @State private var analyzedRow: ConnectionRow?
     @State private var libraryError: String?
     @State private var isImporting = false
 
-    init(bundle: ConnectionBundle, onFinished: @escaping (ImportOutcome) -> Void) {
+    init(bundle: ConnectionBundle, onCancel: @escaping () -> Void, onFinished: @escaping (ImportOutcome) -> Void) {
         self.bundle = bundle
+        self.onCancel = onCancel
         self.onFinished = onFinished
         _editableName = State(initialValue: bundle.connections.first?.settings.name ?? "")
     }
@@ -40,7 +41,7 @@ struct DeeplinkImportSheet: View {
             Divider()
 
             DialogFooter {
-                Button(String(localized: "Cancel")) { dismiss() }
+                Button(String(localized: "Cancel")) { onCancel() }
                     .keyboardShortcut(.cancelAction)
                     .disabled(isImporting)
                 Button(analyzedRow?.duplicate == nil ? String(localized: "Add Connection") : String(localized: "Add as Copy")) {

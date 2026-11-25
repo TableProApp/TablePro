@@ -225,6 +225,21 @@
       <description>Whether the SQL editor takes Vim's modes and commands. The editor's own Ctrl shortcuts keep working in every mode.</description>
     </key>
 
+    <key name="shortcut-preset" type="s">
+      <choices>
+        <choice value="tablepro"/>
+        <choice value="tableplus"/>
+        <choice value="dbeaver"/>
+        <choice value="datagrip"/>
+        <choice value="beekeeperstudio"/>
+        <choice value="navicat"/>
+        <choice value="dbx"/>
+      </choices>
+      <default>'tablepro'</default>
+      <summary>Keyboard shortcut preset</summary>
+      <description>Whose keyboard shortcuts TablePro follows: its own, or those of another database app. A key the preset moves leaves the command it displaces with no key; keys GNOME and GTK own stay as they are.</description>
+    </key>
+
     <key name="restore-session" type="b">
       <default>true</default>
       <summary>Restore session</summary>
@@ -235,6 +250,12 @@
       <default>''</default>
       <summary>Newest version launched</summary>
       <description>The newest TablePro release that has run, so the first launch of a later one can point to its release notes. Empty before the first launch.</description>
+    </key>
+
+    <key name="setup-guide-seen" type="b">
+      <default>false</default>
+      <summary>Setup guide seen</summary>
+      <description>Whether the setup guide has ended once, by its last step, Skip or leaving it. While false, the first window of a launch opens it over a library with no saved connection.</description>
     </key>
 
     <key name="share-usage-data" type="b">

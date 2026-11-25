@@ -8,6 +8,7 @@ crates/app/src/application/app_services.rs
 crates/app/src/application/app_window_host.rs
 crates/app/src/application/debug_info.rs
 crates/app/src/application/imp.rs
+crates/app/src/application/keymap.rs
 crates/app/src/application/launch_notice.rs
 crates/app/src/application/legal_section.rs
 crates/app/src/application/license_ask_prompt.rs
@@ -120,6 +121,7 @@ crates/app/src/services/mcp_service.rs
 crates/app/src/services/mcp_status.rs
 crates/app/src/services/mod.rs
 crates/app/src/services/pending_structure.rs
+crates/app/src/services/sample_database.rs
 crates/app/src/services/save_batch.rs
 crates/app/src/services/saved_connection_editor.rs
 crates/app/src/services/saved_connection_error.rs
@@ -132,6 +134,7 @@ crates/app/src/services/secret_changes.rs
 crates/app/src/services/secret_labels.rs
 crates/app/src/services/secret_save_report.rs
 crates/app/src/services/session_context.rs
+crates/app/src/services/setup_guide.rs
 crates/app/src/services/share_link.rs
 crates/app/src/services/share_subject.rs
 crates/app/src/services/share_table.rs
@@ -492,6 +495,7 @@ crates/app/src/ui/import_dialog/preview_text.rs
 crates/app/src/ui/import_dialog/tests.rs
 crates/app/src/ui/import_from_app/imp.rs
 crates/app/src/ui/import_from_app/mod.rs
+crates/app/src/ui/import_from_app/pages.rs
 crates/app/src/ui/import_from_app/tests.rs
 crates/app/src/ui/import_from_app/wording.rs
 crates/app/src/ui/import_preview.rs
@@ -579,6 +583,9 @@ crates/app/src/ui/session_window/tests/other_databases.rs
 crates/app/src/ui/session_window/tests/sessions.rs
 crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/session_window/work_notifier.rs
+crates/app/src/ui/setup_guide/imp.rs
+crates/app/src/ui/setup_guide/mod.rs
+crates/app/src/ui/setup_guide/tests.rs
 crates/app/src/ui/share_dialog/form.rs
 crates/app/src/ui/share_dialog/imp.rs
 crates/app/src/ui/share_dialog/masking_text.rs
@@ -797,8 +804,8 @@ crates/app/src/workspace/writes_in_flight.rs
 data/app.tablepro.TablePro.desktop.in.in
 data/app.tablepro.TablePro.gschema.xml.in
 data/app.tablepro.TablePro.metainfo.xml.in.in
+data/resources/builder/shortcuts-dialog.ui
 data/resources/gtk/menus.ui
-data/resources/shortcuts-dialog.ui
 data/resources/ui/assistant-pane.ui
 data/resources/ui/browse-tab.ui
 data/resources/ui/column-chooser.ui
@@ -833,6 +840,7 @@ data/resources/ui/row-detail-pane.ui
 data/resources/ui/saved-queries-dialog.ui
 data/resources/ui/saved-query-row.ui
 data/resources/ui/session-window.ui
+data/resources/ui/setup-guide.ui
 data/resources/ui/sql-editor.ui
 data/resources/ui/ssh-section.ui
 data/resources/ui/structure-tab.ui

@@ -97,15 +97,16 @@ struct NavicatImporterTests {
 
     // MARK: - inventory
 
-    @Test("inventory is empty without a file")
-    func connectionCountZeroWithoutFile() {
-        #expect(NavicatImporter().inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
+    @Test("inventory is empty without a file, and the probe never counts Navicat")
+    func connectionCountZeroWithoutFile() throws {
+        #expect(try NavicatImporter().inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
+        #expect(!NavicatImporter().hasDataAtDefaultLocation())
     }
 
     @Test("inventory counts the file's connections and never any saved queries")
     func connectionCountReflectsFile() throws {
         try writeNCX([conn(name: "A"), conn(name: "B")])
-        #expect(importer.inventory() == ForeignAppInventory(connections: 2, savedQueries: 0))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 2, savedQueries: 0))
     }
 
     // MARK: - Saved queries

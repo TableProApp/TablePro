@@ -12,15 +12,17 @@ public sealed partial class ShellTests
 
     [Theory]
     [MemberData(nameof(Themes))]
-    public void FirstRunShowsGetStartedAndNoRail(string theme)
+    // Changed on purpose: the setup guide holds importing and the sample, so the empty page keeps two cards (core 0049).
+    public void AnEmptyLibraryAfterTheGuideShowsNewConnectionAndSetUpAndNoRail(string theme)
     {
         using var app = AppSession.Launch(theme);
 
-        foreach (var card in new[] { "NewConnectionCard", "OpenFileCard", "ImportCard", "SampleCard" })
+        foreach (var card in new[] { "NewConnectionCard", "SetupGuideCard" })
         {
             Assert.True(app.Find(card).IsEnabled, card);
         }
 
+        Assert.True(app.TryFind("SetupTitle") is null or { IsOffscreen: true });
         Assert.True(app.TryFind("ConnectionTree") is null or { IsOffscreen: true });
         Assert.True(app.TryFind("HomeItem") is null or { IsOffscreen: true });
         Assert.True(app.Find("FileMenu").IsEnabled);
@@ -154,7 +156,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.Find("HomeItem").AsListBoxItem().Select();
         var tree = app.Find("ConnectionTree");
