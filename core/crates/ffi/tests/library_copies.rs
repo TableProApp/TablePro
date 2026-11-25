@@ -264,7 +264,7 @@ async fn an_imported_file_names_each_connection_it_wrote_in_file_order() {
         .await
         .unwrap();
     let file = dir.path().join("connections.json");
-    library.export_file(file.display().to_string()).await.unwrap();
+    library.export_file(file.display().to_string(), None).await.unwrap();
     let elsewhere = core(&dir.path().join("two"), MemorySecrets::default())
         .library()
         .unwrap();

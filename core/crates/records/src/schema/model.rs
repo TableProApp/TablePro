@@ -55,6 +55,7 @@ const SAVED_CONNECTION: &[(&str, Target)] = &[
     ("last_opened_at", DeviceOnly),
     ("color", Wire("color")),
     ("group_id", Wire("group_id")),
+    ("project_id", Wire("project_id")),
     ("order", Wire("sort_order")),
     ("tags", Wire("tag_ids")),
     ("icon", Wire("icon_name")),
@@ -69,6 +70,15 @@ const CONNECTION_GROUP: &[(&str, Target)] = &[
     ("id", Id),
     ("name", Wire("name")),
     ("parent_id", Wire("parent_id")),
+    ("project_id", Wire("project_id")),
+    ("order", Wire("sort_order")),
+    ("color", Wire("color")),
+    ("icon", Wire("icon_name")),
+];
+
+const CONNECTION_PROJECT: &[(&str, Target)] = &[
+    ("id", Id),
+    ("name", Wire("name")),
     ("order", Wire("sort_order")),
     ("color", Wire("color")),
     ("icon", Wire("icon_name")),
@@ -139,6 +149,11 @@ pub const MODELS: &[Model] = &[
         name: "ConnectionGroup",
         kind: Kind::Group,
         members: CONNECTION_GROUP,
+    },
+    Model {
+        name: "ConnectionProject",
+        kind: Kind::ConnectionProject,
+        members: CONNECTION_PROJECT,
     },
     Model {
         name: "ConnectionTag",

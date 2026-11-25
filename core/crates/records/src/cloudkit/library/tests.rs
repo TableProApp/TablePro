@@ -842,7 +842,7 @@ fn two_devices_editing_apart_converge_and_then_send_nothing() {
 
 #[test]
 fn a_pull_keeps_the_project_a_group_and_a_connection_are_in() {
-    use crate::{ConnectionProject, ConnectionProjectName};
+    use tablepro_storage::{ConnectionProject, ConnectionProjectName};
 
     let (loose, filed) = (Uuid::new_v4(), Uuid::new_v4());
     let mut device = Device::new(&[saved(loose, "loose"), saved(filed, "filed")]);
@@ -885,7 +885,7 @@ fn a_pull_keeps_the_project_a_group_and_a_connection_are_in() {
 
 #[test]
 fn a_pull_that_deletes_a_group_leaves_its_members_in_the_groups_project() {
-    use crate::{ConnectionProject, ConnectionProjectName};
+    use tablepro_storage::{ConnectionProject, ConnectionProjectName};
 
     let (filed, nested) = (Uuid::new_v4(), Uuid::new_v4());
     let mut device = Device::new(&[saved(filed, "filed"), saved(nested, "nested")]);

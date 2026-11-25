@@ -3,8 +3,8 @@ use tablepro_core::{ClientIdentity, NetworkOptions, TlsConfig};
 use tablepro_storage::query_history::Entry;
 use tablepro_storage::saved_queries::SavedQuery;
 use tablepro_storage::{
-    ConnectionGroup, ConnectionTag, FavouriteDatabase, FavouriteTable, SavedConnection, SavedQueryFolder, SavedSshAuth,
-    SavedSshConfig,
+    ConnectionGroup, ConnectionProject, ConnectionTag, FavouriteDatabase, FavouriteTable, SavedConnection,
+    SavedQueryFolder, SavedSshAuth, SavedSshConfig,
 };
 
 use super::model::{MODELS, Target, model};
@@ -149,6 +149,7 @@ fn exhaustive_connection(connection: SavedConnection) {
         last_opened_at: _,
         color: _,
         group_id: _,
+        project_id: _,
         order: _,
         tags: _,
         icon: _,
@@ -222,6 +223,7 @@ fn the_connection_table_names_every_member_the_store_holds() {
             "last_opened_at",
             "color",
             "group_id",
+            "project_id",
             "order",
             "tags",
             "icon",
@@ -241,6 +243,7 @@ fn the_group_and_tag_tables_name_every_member_the_store_holds() {
             id: _,
             name: _,
             parent_id: _,
+            project_id: _,
             order: _,
             color: _,
             icon: _,
@@ -249,7 +252,22 @@ fn the_group_and_tag_tables_name_every_member_the_store_holds() {
     let _ = exhaustive_group;
     assert_eq!(
         members("ConnectionGroup"),
-        sorted(vec!["id", "name", "parent_id", "order", "color", "icon"])
+        sorted(vec!["id", "name", "parent_id", "project_id", "order", "color", "icon"])
+    );
+
+    let exhaustive_project = |project: ConnectionProject| {
+        let ConnectionProject {
+            id: _,
+            name: _,
+            order: _,
+            color: _,
+            icon: _,
+        } = project;
+    };
+    let _ = exhaustive_project;
+    assert_eq!(
+        members("ConnectionProject"),
+        sorted(vec!["id", "name", "order", "color", "icon"])
     );
 
     let exhaustive_tag = |tag: ConnectionTag| {
