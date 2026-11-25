@@ -1,6 +1,6 @@
 # 0051: Sync protocol and record rules
 
-- **Status**: Accepted; amends 0044, 0047, 0048 and 0055
+- **Status**: Accepted; amends 0044, 0047, 0048 and 0055; the JSON depth count, the personal wire names and which settings kinds sync amended by 0061
 - **Date**: 2026-11-25
 
 ## Context
