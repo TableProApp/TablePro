@@ -309,6 +309,22 @@ struct ClipboardExporterFidelityTests {
         #expect(onlyOwned == "INSERT INTO \"orders\" DEFAULT VALUES;")
     }
 
+    @Test("An Oracle row of only an always identity and a virtual column names the identity with DEFAULT")
+    func oracleRowOfOnlyDefaults() {
+        let catalog = [
+            ColumnInfo(name: "TOTAL", typeName: "NUMBER", ordinalPosition: 0, isGenerated: true),
+            ColumnInfo(
+                name: "ID", typeName: "NUMBER", isPrimaryKey: true, ordinalPosition: 1,
+                isAutoIncrement: true, rejectsWrittenValues: true
+            )
+        ]
+        let text = ClipboardExporter.exportRow(
+            columns: catalog, row: ["2", "1"], format: .sqlInsert, tableName: "T",
+            databaseType: .oracle, driver: nil, columnDetails: catalog
+        )
+        #expect(text == "INSERT INTO \"T\" (\"ID\") VALUES (DEFAULT);")
+    }
+
     @Test("SQL Server copy as INSERT keeps Unicode and backslash line endings without a driver")
     func sqlServerLiteral() {
         #expect(insert(["1", "日本\\\n", nil], .mssql)

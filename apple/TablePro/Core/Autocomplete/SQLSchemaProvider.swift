@@ -893,7 +893,7 @@ actor SQLSchemaProvider {
                 continue
             }
             if let match = columns.first(where: { $0.name.lowercased() == name }),
-               let values = match.allowedValues, !values.isEmpty {
+               let values = SQLCompletionValueLabels.values(match.allowedValues, ofColumnType: match.dataType) {
                 return values
             }
         }

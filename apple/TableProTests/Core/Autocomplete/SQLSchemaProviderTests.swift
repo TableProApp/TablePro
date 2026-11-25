@@ -1210,6 +1210,28 @@ struct SQLSchemaProviderTests {
 
         #expect(values == ["open", "closed"])
     }
+
+    @Test("a list column's element labels are not offered as its values")
+    func listColumnOffersNoValues() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
+        driver.columnsToReturn = [
+            "orders": [
+                ColumnInfo(name: "moods", dataType: "ENUM[]", isNullable: true, isPrimaryKey: false, allowedValues: ["sad", "ok"]),
+                ColumnInfo(name: "mood", dataType: "ENUM", isNullable: true, isPrimaryKey: false, allowedValues: ["sad", "ok"])
+            ]
+        ]
+        let provider = SQLSchemaProvider.reading(from: driver)
+        await provider.resetForDatabase(
+            "db", tables: [TestFixtures.makeTableInfo(name: "orders", schema: "public")], driver: driver
+        )
+        await provider.waitForEagerColumnLoad()
+        _ = await provider.getColumns(for: "orders", schema: "public")
+        let orders = [TableReference(tableName: "orders", alias: nil, schema: "public")]
+
+        #expect(await provider.allowedValues(forColumn: "moods", in: orders).isEmpty)
+        #expect(await provider.allowedValues(forColumn: "mood", in: orders) == ["sad", "ok"])
+    }
 }
 
 /// Holds each bulk column read until the test releases it, and answers it by call order.

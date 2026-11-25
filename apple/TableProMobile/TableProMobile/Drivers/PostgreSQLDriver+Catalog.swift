@@ -149,7 +149,7 @@ nonisolated extension PostgreSQLDriver {
     static func columnsQuery(schema: String, table: String, shape: PostgreSQLColumnReadShape) -> String {
         let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
         let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
-        let identityColumns = shape.includesIdentityColumns ? ["is_identity", "is_generated"] : []
+        let identityColumns = shape.includesIdentityColumns ? ["is_identity", "is_generated", "identity_generation"] : []
         let identityProjection = identityColumns.map { ",\n    c.\($0) AS \($0)" }.joined()
         var arms = [
             """
@@ -199,7 +199,7 @@ nonisolated extension PostgreSQLDriver {
     ) -> String {
         let source = PostgreSQLMaterializedViewColumnSource.self
         let identityProjection = shape.includesIdentityColumns
-            ? ",\n    'NO' AS is_identity,\n    'NEVER' AS is_generated"
+            ? ",\n    'NO' AS is_identity,\n    'NEVER' AS is_generated,\n    NULL::text AS identity_generation"
             : ""
         return """
             SELECT
@@ -231,6 +231,9 @@ nonisolated extension PostgreSQLDriver {
                 ),
                 isGenerated: ColumnMetadataRules.postgresIsGenerated(
                     isGenerated: row.count > 7 ? row[7] : nil
+                ),
+                rejectsWrittenValues: ColumnMetadataRules.postgresRejectsWrittenValues(
+                    identityGeneration: row.count > 8 ? row[8] : nil
                 )
             )
         }

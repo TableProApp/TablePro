@@ -154,7 +154,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 - A device refuses an older certificate, version record or identity key as current, and an envelope below the copy it holds; older objects still verify history. At an anchored scope key version it takes only the record the anchor names.
 - In a pull, which serves changes in revision order, a new or changed envelope counts only under the scope's newest version at its place in that order, the rule the honest server writes by. An offline device catches up on writes made before a rotation and refuses ones slipped in after it.
 - A restored state file cannot forget a newer version or an alert while its anchor survives.
-- A device approved by another starts from that device's pins, open alerts and versions, and keeps what it already held when that is newer.
+- A device approved by another starts from that device's pins, open alerts and versions for what it does not hold yet. A team key version it holds moves only through its own checks, never through an approver's view, and its current personal and history keys are the versions signed under the account's current key version, so a higher one signed under an older account key never comes back through an approval.
 
 **What does not hold.**
 
@@ -196,7 +196,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 On 2026-11-25 the maintainer accepted risks 2, 3, 5, 6 and 9, which the vault model leaves open as 1Password and Bitwarden do. No step waits for every member to acknowledge a removal; the honest server's `rotation_due` holds team envelopes only until the next team version. The same day he accepted, under risk 2, that a member a stolen admin device confirmed can still be shown to other teammates.
 
 1. **Trust on first use** at a genesis, for a team's creator, for each member an admin confirms without comparing, for teammates on a device recovered with the recovery key, and for a re-confirmation after a reset.
-2. **Withholding and split views** go undetected until devices or people compare. A server that withholds a member's rotation from a teammate gets the next team key wrapped to the member's old key, which a stolen device of that member opens. The member's app raises an alarm if that wrap reaches it, which does not stop the split. The same server can keep showing teammates a member that a stolen device confirmed and the person removed.
+2. **Withholding and split views** go undetected until devices or people compare. A server that withholds a member's rotation from a teammate gets the next team key wrapped to the member's old key, which a stolen device of that member opens. The member's app raises an alarm if that wrap reaches it, which does not stop the split. The same server can keep showing teammates a member that a stolen device confirmed and the person removed. Its own-account form: before any approval, a device of the person that the server keeps on the old account key version writes personal secrets and history under keys the removed device holds.
 3. **A removed member with the server's help** can sign a new team key version, since it holds the previous one, and show it to members whose view missed the removal.
 4. **A stolen device before the recovery key is typed** can be given new data by a compromised server.
 5. **A confirmed member with the server's help** can replace a team secret's value.
