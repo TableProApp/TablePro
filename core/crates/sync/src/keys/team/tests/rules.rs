@@ -772,3 +772,75 @@ async fn a_rotation_wraps_to_holders_on_the_roster_less_alerts_and_removals_and_
     let missing = roster::rotation_recipients(&origin(), &mut t.facts, &on_roster, &held, t.me.id, &[]).await;
     assert_eq!(missing.unwrap_err().code(), "sync.not_allowed");
 }
+
+#[tokio::test]
+async fn a_team_due_after_a_members_own_account_rotation_is_left_to_that_member_and_any_other_cause_to_anyone() {
+    let mut t = five();
+    let six = key();
+    let mut team = book(
+        &t.me,
+        Some(row(
+            6,
+            &[t.a.holder(1), t.m.holder(1), t.me.holder(1)],
+            KeyVersionState::Ok,
+        )),
+    );
+    insert_all(
+        &mut team,
+        &version(
+            6,
+            Start::Next,
+            &six,
+            Some(&key()),
+            (&t.a, 1),
+            &[(&t.a, 1), (&t.m, 1), (&t.me, 1)],
+        ),
+    );
+    let on_roster = members(&[(&t.a, Role::Admin), (&t.m, Role::Member), (&t.me, Role::Editor)]);
+
+    assert!(
+        !roster::rotation_left_to_a_member(&team, &mut t.facts, &on_roster, t.me.id)
+            .await
+            .unwrap()
+    );
+
+    // M removed a lost device: a rotation at `av` 2 under the same IK, which M's review rotates the team after.
+    t.m.keys
+        .insert(2, tablepro_keys::keys::AccountKeys::generate().unwrap());
+    t.m.sign_rotation(2);
+    t.facts.know(&t.m, 2);
+    assert!(
+        roster::rotation_left_to_a_member(&team, &mut t.facts, &on_roster, t.me.id)
+            .await
+            .unwrap()
+    );
+    // This device's own rotation is its own pending flow's, never a reason to wait on itself.
+    assert!(
+        !roster::rotation_left_to_a_member(&team, &mut t.facts, &on_roster, t.m.id)
+            .await
+            .unwrap()
+    );
+
+    // A replaced the recovery key instead: any holder rotates.
+    let mut replaced = five();
+    replaced.a.change_ik(2, true);
+    replaced.facts.know(&replaced.a, 2);
+    let mut team = book(&replaced.me, Some(row(6, &[replaced.a.holder(1)], KeyVersionState::Ok)));
+    insert_all(
+        &mut team,
+        &version(
+            6,
+            Start::Next,
+            &six,
+            Some(&key()),
+            (&replaced.a, 1),
+            &[(&replaced.a, 1)],
+        ),
+    );
+    let on_roster = members(&[(&replaced.a, Role::Admin), (&replaced.me, Role::Editor)]);
+    assert!(
+        !roster::rotation_left_to_a_member(&team, &mut replaced.facts, &on_roster, replaced.me.id)
+            .await
+            .unwrap()
+    );
+}
