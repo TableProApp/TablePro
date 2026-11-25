@@ -93,12 +93,14 @@ final class LegacyLibraryMirror {
         return nil
     }
 
-    // False when connections.json was not written; the defaults it writes after it cannot fail.
+    // False when connections.json was not written; the defaults it writes after it cannot fail. `connectionsWritten`
+    // runs between the two, so a record can name the half-written stores this build left.
     func write(
         _ contents: Contents,
         byUser: Bool,
         removingSecrets: Bool,
-        removingUnreadable removedIds: Set<UUID>
+        removingUnreadable removedIds: Set<UUID>,
+        connectionsWritten: () -> Void
     ) -> Bool {
         guard file.save(
             contents.connections.map { StoredConnection(from: $0) },
@@ -108,6 +110,7 @@ final class LegacyLibraryMirror {
         ) else {
             return false
         }
+        connectionsWritten()
         do {
             defaults.set(try encoder.encode(contents.groups), forKey: Self.groupsKey)
             defaults.set(try encoder.encode(contents.tags), forKey: Self.tagsKey)

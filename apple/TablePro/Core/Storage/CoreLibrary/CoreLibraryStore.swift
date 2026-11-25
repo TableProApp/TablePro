@@ -119,6 +119,12 @@ final class CoreLibraryStore {
             forgetCoreState()
         }
         // Copies set aside still hold what a save that moves secrets out takes out of the store.
+        defer {
+            // A write that did not land put the file back; what this store forgot about it is read again.
+            if rebuilds, image != next {
+                image = nil
+            }
+        }
         if removingSecrets, !removeSetAsideCopies(keeping: setAside) {
             restore(setAside)
             return false
@@ -142,6 +148,7 @@ final class CoreLibraryStore {
             return false
         }
         writeCount += 1
+        mirror.record = mirrorRecord(legacy: mirror.digest(), core: try? Data(contentsOf: coreFileURL), legacyBehind: true)
         let written = settleWrite(of: library, stamping: rebuilds || isTrusted)
         if removingSecrets, let setAside {
             try? FileManager.default.removeItem(at: setAside)
@@ -159,6 +166,7 @@ final class CoreLibraryStore {
         guard let library = openedLibrary() else { return failLoad() }
         let legacy = mirror.read()
         let legacyDigest = mirror.digest()
+        integrityKeyAnswered = integrity.hasKey
         guard let coreBytes = try? Data(contentsOf: coreFileURL) else {
             guard let legacy else {
                 Self.logger.error("connections.json could not be read and the core holds no library yet")
@@ -484,7 +492,10 @@ final class CoreLibraryStore {
             contents,
             byUser: byUser && isTrusted,
             removingSecrets: removingSecrets,
-            removingUnreadable: removedIds
+            removingUnreadable: removedIds,
+            connectionsWritten: { [self] in
+                mirror.record = mirrorRecord(legacy: mirror.digest(), core: coreBytes, legacyBehind: true)
+            }
         ) else {
             Self.logger.error("The previous stable's stores were not updated; the core's store has this write")
             return
