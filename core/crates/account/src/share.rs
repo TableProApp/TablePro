@@ -1,10 +1,8 @@
 use chrono::{DateTime, Utc};
 use secrecy::SecretString;
-use serde::{Deserialize, Serialize};
-use serde_json::value::RawValue;
+use tablepro_cloud_api::v2::types;
+use tablepro_cloud_api::{SnapshotBody, SnapshotColumnBody};
 use tablepro_core::export::Snapshot;
-
-use crate::cloud_api::v2::types;
 
 // The server's caps on a snapshot's columns: more columns or a longer name is refused, so the rest are left out.
 pub const MAX_SHARE_COLUMNS: usize = 100;
@@ -191,70 +189,34 @@ pub struct SharedLink {
     pub truncated: Option<bool>,
 }
 
-// The document's SnapshotBody, which build.rs puts in place of the generated one: its rows go out as the raw JSON
-// tokens the core wrote, where the generated `serde_json::Value` would round a big number.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SnapshotBody {
-    pub columns: Vec<SnapshotColumnBody>,
-    pub rows: Vec<Vec<Box<RawValue>>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub row_count: Option<i64>,
-    // Rows exist beyond those sent and nobody counted them; the viewer then says so rather than read the rows as
-    // the whole result.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub more_rows: Option<bool>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SnapshotColumnBody {
-    pub name: String,
-    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
-    pub type_name: Option<String>,
-    // The document's ShareMaskStyle: how the app masked the column's values before they left it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub masked: Option<String>,
-}
-
 // The document's maxLength for a column's type.
 const COLUMN_TYPE_CHARACTERS: usize = 256;
 
 // Only the first `MAX_SHARE_COLUMNS` columns, and each row's cells for them.
-impl From<Snapshot> for SnapshotBody {
-    fn from(snapshot: Snapshot) -> Self {
-        Self {
-            columns: snapshot
-                .columns
-                .into_iter()
-                .take(MAX_SHARE_COLUMNS)
-                .map(|column| SnapshotColumnBody {
-                    name: column.name.chars().take(COLUMN_NAME_CHARACTERS).collect(),
-                    type_name: Some(column.type_name.chars().take(COLUMN_TYPE_CHARACTERS).collect())
-                        .filter(|type_name: &String| !type_name.is_empty()),
-                    masked: column.masked.map(|style| style.code().to_owned()),
-                })
-                .collect(),
-            rows: snapshot
-                .rows
-                .into_iter()
-                .map(|mut row| {
-                    row.truncate(MAX_SHARE_COLUMNS);
-                    row
-                })
-                .collect(),
-            row_count: snapshot.row_count.map(|count| i64::try_from(count).unwrap_or(i64::MAX)),
-            more_rows: snapshot.more_rows.then_some(true),
-        }
+pub(crate) fn snapshot_body(snapshot: Snapshot) -> SnapshotBody {
+    SnapshotBody {
+        columns: snapshot
+            .columns
+            .into_iter()
+            .take(MAX_SHARE_COLUMNS)
+            .map(|column| SnapshotColumnBody {
+                name: column.name.chars().take(COLUMN_NAME_CHARACTERS).collect(),
+                type_name: Some(column.type_name.chars().take(COLUMN_TYPE_CHARACTERS).collect())
+                    .filter(|type_name: &String| !type_name.is_empty()),
+                masked: column.masked.map(|style| style.code().to_owned()),
+            })
+            .collect(),
+        rows: snapshot
+            .rows
+            .into_iter()
+            .map(|mut row| {
+                row.truncate(MAX_SHARE_COLUMNS);
+                row
+            })
+            .collect(),
+        row_count: snapshot.row_count.map(|count| i64::try_from(count).unwrap_or(i64::MAX)),
+        more_rows: snapshot.more_rows.then_some(true),
     }
-}
-
-// The document's PublicSnapshot, which build.rs puts in place of the generated one. Only the counts are read: the
-// app opens a link's SQL, so its rows are skipped rather than parsed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PublicSnapshot {
-    // None for a result cut with no count.
-    #[serde(default)]
-    pub row_count: Option<i64>,
-    pub truncated: bool,
 }
 
 impl From<types::ShareLimits> for ShareLimits {
@@ -380,8 +342,7 @@ mod tests {
         columns[0].name = "n".repeat(300);
         let row: Vec<Value> = (0..=MAX_SHARE_COLUMNS).map(|index| Value::Int(index as i64)).collect();
 
-        let body =
-            SnapshotBody::from(build_snapshot(&columns, [row], ResultExtent::complete(1), 10).expect("a snapshot"));
+        let body = snapshot_body(build_snapshot(&columns, [row], ResultExtent::complete(1), 10).expect("a snapshot"));
 
         assert_eq!(body.columns.len(), MAX_SHARE_COLUMNS);
         assert_eq!(body.columns[0].name.chars().count(), 256);
@@ -417,7 +378,7 @@ mod tests {
         .expect("a snapshot");
         snapshot.columns[0].masked = Some(MaskingStyle::LastFour);
 
-        let json = serde_json::to_string(&SnapshotBody::from(snapshot)).expect("JSON");
+        let json = serde_json::to_string(&snapshot_body(snapshot)).expect("JSON");
 
         assert!(
             json.contains(r#"{"name":"email","type":"text","masked":"lastFour"}"#),
@@ -454,11 +415,11 @@ mod tests {
         let rows = [vec![Value::Int(1)]];
         let uncounted = ResultExtent::finished(1, None, tablepro_core::Truncation::ReadPastLimit);
 
-        let cut = serde_json::to_string(&SnapshotBody::from(
+        let cut = serde_json::to_string(&snapshot_body(
             build_snapshot(&columns, rows.clone(), uncounted, 10).expect("a snapshot"),
         ))
         .expect("JSON");
-        let whole = serde_json::to_string(&SnapshotBody::from(
+        let whole = serde_json::to_string(&snapshot_body(
             build_snapshot(&columns, rows, ResultExtent::complete(1), 10).expect("a snapshot"),
         ))
         .expect("JSON");

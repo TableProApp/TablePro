@@ -1,69 +1,14 @@
 use std::time::Duration;
 
-use progenitor_client::{ClientHooks, Error, OperationInfo};
+use progenitor_client::Error;
 use reqwest::StatusCode;
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue, RETRY_AFTER};
-use secrecy::{ExposeSecret, SecretString};
+use reqwest::header::{HeaderMap, RETRY_AFTER};
 
-use crate::account_error::{AccountError, http_text};
+use crate::api_error::{ApiError, http_text};
+use crate::http::read_capped;
+use crate::v2;
 
-#[expect(
-    clippy::unwrap_used,
-    reason = "progenitor's client unwraps its own reqwest builder and the document's fixed patterns"
-)]
-pub mod v2 {
-    include!(concat!(env!("OUT_DIR"), "/v2.rs"));
-}
-
-// What each request of a client carries: the access token, none for a public call such as reading a shared link,
-// and a timeout of its own for a call that takes longer than the client's, such as an upload.
-#[derive(Clone, Debug)]
-pub struct Bearer {
-    token: Option<SecretString>,
-    timeout: Option<Duration>,
-}
-
-impl Bearer {
-    pub(crate) fn token(token: SecretString) -> Self {
-        Self {
-            token: Some(token),
-            timeout: None,
-        }
-    }
-
-    pub(crate) fn public() -> Self {
-        Self {
-            token: None,
-            timeout: None,
-        }
-    }
-
-    pub(crate) fn lasting(self, timeout: Duration) -> Self {
-        Self {
-            timeout: Some(timeout),
-            ..self
-        }
-    }
-}
-
-impl ClientHooks<Bearer> for v2::Client {
-    async fn pre<E>(&self, request: &mut reqwest::Request, _: &OperationInfo) -> Result<(), Error<E>> {
-        use progenitor_client::ClientInfo as _;
-        if let Some(timeout) = self.inner().timeout {
-            *request.timeout_mut() = Some(timeout);
-        }
-        let Some(token) = &self.inner().token else {
-            return Ok(());
-        };
-        let mut value = HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))
-            .map_err(|_| Error::InvalidRequest("the access token is not a header value".to_owned()))?;
-        value.set_sensitive(true);
-        request.headers_mut().insert(AUTHORIZATION, value);
-        Ok(())
-    }
-}
-
-pub(crate) async fn answer_error(error: Error<v2::types::Problem>) -> AccountError {
+pub async fn answer_error(error: Error<v2::types::Problem>) -> ApiError {
     match error {
         Error::ErrorResponse(answer) if answer.status() == StatusCode::TOO_MANY_REQUESTS => {
             rate_limited(answer.headers())
@@ -71,45 +16,35 @@ pub(crate) async fn answer_error(error: Error<v2::types::Problem>) -> AccountErr
         Error::UnexpectedResponse(response) if response.status() == StatusCode::TOO_MANY_REQUESTS => {
             rate_limited(response.headers())
         }
-        // The framework's or the proxy's, with no problem code of ours: only a share's snapshot gets that large.
-        Error::ErrorResponse(answer) if answer.status().as_u16() == TOO_LARGE => too_large(),
-        Error::UnexpectedResponse(response) if response.status().as_u16() == TOO_LARGE => too_large(),
+        Error::ErrorResponse(answer) if answer.status() == StatusCode::PAYLOAD_TOO_LARGE => ApiError::TooLarge,
+        Error::UnexpectedResponse(response) if response.status() == StatusCode::PAYLOAD_TOO_LARGE => ApiError::TooLarge,
         Error::ErrorResponse(answer) => problem_error(answer.status().as_u16(), answer.into_inner()),
         // A status the document does not list, such as a proxy's.
         Error::UnexpectedResponse(response) => {
             let status = response.status().as_u16();
-            let body = match crate::server::read_capped(response, PROBLEM_LIMIT).await {
+            let body = match read_capped(response, PROBLEM_LIMIT).await {
                 Ok(body) => body,
                 Err(error) => return error,
             };
             match serde_json::from_slice::<v2::types::Problem>(&body) {
                 Ok(problem) => problem_error(status, problem),
-                Err(_) => AccountError::Protocol(format!("HTTP {status} without a problem")),
+                Err(_) => ApiError::Protocol(format!("HTTP {status} without a problem")),
             }
         }
-        Error::CommunicationError(error) | Error::ResponseBodyError(error) => AccountError::unreachable(error),
-        Error::InvalidUpgrade(error) => AccountError::Protocol(http_text(error)),
+        Error::CommunicationError(error) | Error::ResponseBodyError(error) => ApiError::unreachable(error),
+        Error::InvalidUpgrade(error) => ApiError::Protocol(http_text(error)),
         // Its text carries the whole answer, an entitlement or the account's details among them.
-        Error::InvalidResponsePayload(_, error) => AccountError::Protocol(schema_mismatch(&error)),
-        other => AccountError::Protocol(other.to_string()),
+        Error::InvalidResponsePayload(_, error) => ApiError::Protocol(schema_mismatch(&error)),
+        other => ApiError::Protocol(other.to_string()),
     }
 }
 
-const TOO_LARGE: u16 = 413;
 const LONGEST_RETRY_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
 // A problem is a few hundred bytes; a proxy's page is cut off rather than read whole.
 const PROBLEM_LIMIT: usize = 64 * 1024;
 
-fn too_large() -> AccountError {
-    AccountError::Refused {
-        status: TOO_LARGE,
-        code: "snapshot_too_large".to_owned(),
-        detail: "the request is larger than the server takes".to_owned(),
-    }
-}
-
 // Where the answer stopped matching, without any of its values.
-pub(crate) fn schema_mismatch(error: &serde_json::Error) -> String {
+pub fn schema_mismatch(error: &serde_json::Error) -> String {
     format!(
         "the answer does not match the /v2 document ({:?} at line {}, column {})",
         error.classify(),
@@ -120,30 +55,30 @@ pub(crate) fn schema_mismatch(error: &serde_json::Error) -> String {
 
 // api.md, Conventions: every 429 carries Retry-After in seconds. A wait past a day is read as a day, so no server can
 // push a deadline past what the clocks hold.
-pub(crate) fn rate_limited(headers: &HeaderMap) -> AccountError {
+pub fn rate_limited(headers: &HeaderMap) -> ApiError {
     let retry_after = headers
         .get(RETRY_AFTER)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.trim().parse::<u64>().ok())
         .map(|seconds| Duration::from_secs(seconds).min(LONGEST_RETRY_AFTER));
-    AccountError::RateLimited { retry_after }
+    ApiError::RateLimited { retry_after }
 }
 
 // A refusal read by hand, for a call the generated client does not make.
-pub(crate) fn refusal(status: u16, body: &[u8]) -> AccountError {
+pub fn refusal(status: u16, body: &[u8]) -> ApiError {
     match serde_json::from_slice::<v2::types::Problem>(body) {
         Ok(problem) => problem_error(status, problem),
-        Err(_) => AccountError::Protocol(format!("HTTP {status} without a problem")),
+        Err(_) => ApiError::Protocol(format!("HTTP {status} without a problem")),
     }
 }
 
-fn problem_error(status: u16, problem: v2::types::Problem) -> AccountError {
+fn problem_error(status: u16, problem: v2::types::Problem) -> ApiError {
     match problem.code.as_str() {
-        "device_revoked" => AccountError::DeviceRevoked,
-        "device_limit_reached" => AccountError::DeviceLimitReached {
-            devices: problem.devices.into_iter().map(Into::into).collect(),
+        "device_revoked" => ApiError::DeviceRevoked,
+        "device_limit_reached" => ApiError::DeviceLimitReached {
+            devices: problem.devices,
         },
-        _ => AccountError::Refused {
+        _ => ApiError::Refused {
             status,
             code: problem.code,
             detail: problem.detail.unwrap_or(problem.title),
@@ -153,6 +88,8 @@ fn problem_error(status: u16, problem: v2::types::Problem) -> AccountError {
 
 #[cfg(test)]
 mod tests {
+    use reqwest::header::HeaderValue;
+
     use super::*;
 
     fn problem(json: &str) -> v2::types::Problem {
@@ -174,7 +111,7 @@ mod tests {
             ),
         );
 
-        let AccountError::DeviceLimitReached { devices } = refused else {
+        let ApiError::DeviceLimitReached { devices } = refused else {
             panic!("not the device limit: {refused:?}");
         };
         assert_eq!(devices.len(), 2);
@@ -182,7 +119,7 @@ mod tests {
             (devices[0].name.as_str(), devices[0].platform.as_str()),
             ("Lab", "windows")
         );
-        assert!(devices[0].licensed_at.is_some());
+        assert_eq!(devices[0].licensed_at.to_rfc3339(), "2026-10-01T08:00:00+00:00");
         assert_eq!(devices[0].offline_until, None);
         assert_eq!(
             devices[1].offline_until.map(|until| until.to_rfc3339()).as_deref(),
@@ -203,9 +140,9 @@ mod tests {
             ),
         );
 
-        assert!(matches!(revoked, AccountError::DeviceRevoked), "{revoked:?}");
+        assert!(matches!(revoked, ApiError::DeviceRevoked), "{revoked:?}");
         assert!(
-            matches!(&other, AccountError::Refused { status: 403, code, detail } if code == "account_locked" && detail == "Account locked"),
+            matches!(&other, ApiError::Refused { status: 403, code, detail } if code == "account_locked" && detail == "Account locked"),
             "{other:?}"
         );
     }
@@ -218,40 +155,23 @@ mod tests {
         let mismatch = answer_error(Error::InvalidResponsePayload(bytes::Bytes::from_static(body), error)).await;
 
         let text = mismatch.to_string();
-        assert!(matches!(mismatch, AccountError::Protocol(_)), "{mismatch:?}");
+        assert!(matches!(mismatch, ApiError::Protocol(_)), "{mismatch:?}");
         assert!(
             !text.contains("secret-entitlement-token") && !text.contains("ada@example.com"),
             "{text}"
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn a_request_s_own_timeout_overrides_the_client_s() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
-        let base = format!("http://{}/v2", listener.local_addr().expect("its address"));
-        // Takes the request and never answers it.
-        std::thread::spawn(move || {
-            for stream in listener.incoming().flatten() {
-                std::thread::sleep(Duration::from_secs(3));
-                drop(stream);
-            }
-        });
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .expect("a client");
-        let api = v2::Client::new_with_client(&base, http, Bearer::public().lasting(Duration::from_millis(200)));
-        let started = std::time::Instant::now();
+    #[tokio::test]
+    async fn a_413_with_no_problem_of_the_server_s_is_too_large() {
+        let page = http::Response::builder()
+            .status(413)
+            .body("<html>Request Entity Too Large</html>")
+            .expect("an answer");
 
-        let sent = api
-            .get_shared("Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4zAb7dEf0hIjK", None)
-            .await;
+        let answered = answer_error(Error::UnexpectedResponse(reqwest::Response::from(page))).await;
 
-        assert!(
-            matches!(&sent, Err(Error::CommunicationError(error)) if error.is_timeout()),
-            "{sent:?}"
-        );
-        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+        assert!(matches!(answered, ApiError::TooLarge), "{answered:?}");
     }
 
     #[test]
@@ -262,7 +182,7 @@ mod tests {
         let limited = rate_limited(&headers);
 
         assert!(
-            matches!(limited, AccountError::RateLimited { retry_after: Some(wait) } if wait == LONGEST_RETRY_AFTER),
+            matches!(limited, ApiError::RateLimited { retry_after: Some(wait) } if wait == LONGEST_RETRY_AFTER),
             "{limited:?}"
         );
     }
@@ -276,17 +196,17 @@ mod tests {
         };
 
         assert!(
-            matches!(answer("42"), AccountError::RateLimited { retry_after: Some(wait) } if wait == Duration::from_secs(42)),
+            matches!(answer("42"), ApiError::RateLimited { retry_after: Some(wait) } if wait == Duration::from_secs(42)),
             "{:?}",
             answer("42")
         );
         assert!(matches!(
             answer("Wed, 21 Oct 2026 07:28:00 GMT"),
-            AccountError::RateLimited { retry_after: None }
+            ApiError::RateLimited { retry_after: None }
         ));
         assert!(matches!(
             rate_limited(&HeaderMap::new()),
-            AccountError::RateLimited { retry_after: None }
+            ApiError::RateLimited { retry_after: None }
         ));
     }
 }

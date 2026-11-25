@@ -6,7 +6,6 @@ mod account_file;
 mod account_settings;
 mod account_status;
 mod browser;
-mod cloud_api;
 mod entitlement;
 mod entitlement_keys;
 #[cfg(any(test, feature = "fakes"))]
@@ -30,7 +29,6 @@ pub use account_settings::{
 };
 pub use account_status::{AccountStatus, EntitlementProblem, FeatureAccess, SignedIn};
 pub use browser::{BrowserLauncher, WebAuthenticationError, WebAuthenticator};
-pub use cloud_api::v2;
 pub use entitlement::{
     AccountClaim, Entitlement, EntitlementClaims, EntitlementError, LicenseClaim, NOT_BEFORE_LEEWAY, TOKEN_TYPE,
     TeamClaim,
@@ -44,7 +42,7 @@ pub use profile::{Device, Membership, Profile};
 pub use server::{FixedServer, ServerError, ServerInfo, ServerPolicy, ServerSettings};
 pub use share::{
     CreatedShare, MAX_SHARE_COLUMNS, MAX_SHARE_SQL_BYTES, Share, ShareExpiry, ShareKind, ShareLimits, SharePage,
-    ShareRequest, ShareTeam, SharedLink, SnapshotBody, SnapshotColumnBody, sent_share_password,
+    ShareRequest, ShareTeam, SharedLink, sent_share_password,
 };
 pub use share_link::{is_share_token, share_token_from_link};
 pub use token_vault::{RefreshTokenVault, RefreshTokenVaults, SingleVault};

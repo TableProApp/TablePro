@@ -9,13 +9,12 @@ use oauth2::{
     TokenResponse, TokenUrl,
 };
 use secrecy::{ExposeSecret, SecretString};
+use tablepro_cloud_api::{rate_limited, read_capped, schema_mismatch};
 use url::Url;
 
 use crate::account_error::AccountError;
 use crate::account_settings::{AppClient, DeviceDescription, Endpoints};
-use crate::cloud_api::rate_limited;
 use crate::machine_id::MachineId;
-use crate::server::read_capped;
 
 const SCOPES: [&str; 4] = ["openid", "email", "offline_access", "app"];
 // The server's access token lifetime, for an answer without expires_in.
@@ -137,7 +136,7 @@ impl OAuth {
             .map_err(AccountError::unreachable)?;
         let status = response.status();
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            return Err(rate_limited(response.headers()));
+            return Err(rate_limited(response.headers()).into());
         }
         let body = read_capped(response, TOKEN_ANSWER_LIMIT).await?;
         match status.is_success() {
@@ -201,7 +200,7 @@ async fn execute(
         .await
         .map_err(Box::new)?;
     if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        drop(limited.set(rate_limited(response.headers())));
+        drop(limited.set(rate_limited(response.headers()).into()));
     }
     let mut answer = http::Response::builder().status(response.status());
     if let Some(headers) = answer.headers_mut() {
@@ -234,8 +233,8 @@ struct ExchangeRefusal {
 }
 
 fn exchanged(body: &[u8]) -> Result<Tokens, AccountError> {
-    let answer: ExchangeAnswer = serde_json::from_slice(body)
-        .map_err(|error| AccountError::Protocol(crate::cloud_api::schema_mismatch(&error)))?;
+    let answer: ExchangeAnswer =
+        serde_json::from_slice(body).map_err(|error| AccountError::Protocol(schema_mismatch(&error)))?;
     if answer.access_token.is_empty() {
         return Err(AccountError::Protocol("the exchange gave no access token".to_owned()));
     }

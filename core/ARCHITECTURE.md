@@ -16,6 +16,7 @@ core/crates/
 ├── foreign-import/                connections and saved queries read from other apps' files, and their review
 ├── ai/                            the AI assistant's providers, prompts and replies
 ├── account/                       the TablePro account: sign-in, device, entitlement and the feature gate
+├── cloud-api/                     tablepro-cloud's /v2 client, generated from the vendored document
 ├── mcp/                           the MCP server: transport, token and tools
 ├── cli/                           the tablepro command line: parsing, the MCP client and the output formats
 ├── ffi/                           the library C# and Swift load: one UniFFI API and the grid's C ABI
@@ -48,7 +49,8 @@ core/crates/
 | `mcp` | `core`, `session`, `storage`; `net` on Windows |
 | `cli` | no workspace crate |
 | `ai` | `core`, `net` |
-| `account` | `core`, `storage` |
+| `cloud-api` | no workspace crate |
+| `account` | `cloud-api`, `core`, `storage` |
 | `ffi` | `account`, `ai`, `cli`, `core`, `mcp`, `net`, `session`, `ssh`, `storage`, and every driver behind its default `engines` feature |
 | An app, such as `linux/crates/app` | every crate above, and its platform crate |
 
@@ -62,7 +64,8 @@ Rules, enforced by review:
 - `mcp` depends on `core`, `session` and `storage`, on `net` on Windows for a peer's user, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
 - `cli` depends on no workspace crate: it speaks to the app's MCP server over HTTP and reaches the port, the token and the app's state through the `Host` trait the app implements ([0018](docs/decisions/0018-command-line.md)).
 - `ai` depends on `core` and `net`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
-- `account` depends on `core` and `storage`. It reaches the browser, the keyring and the machine ID through what the app passes in ([0016](docs/decisions/0016-tablepro-accounts.md)).
+- `cloud-api` depends on no workspace crate. It holds the `/v2` client `build.rs` generates from `openapi/v2.openapi-3.0.json`, what a call's problem or 429 answer means, and the one HTTP client a TablePro server is called through; the caller brings the token. `core/scripts/update-cloud-api.sh` refreshes the document.
+- `account` depends on `cloud-api`, `core` and `storage`. It reaches the browser, the keyring and the machine ID through what the app passes in ([0016](docs/decisions/0016-tablepro-accounts.md)).
 - `ffi` stands in for an app outside Rust: it names every driver and passes the host's services in. No other core crate depends on it.
 - No core crate depends on a GUI toolkit or on a platform crate. An app, or `ffi` for one outside Rust, is the only crate that names every driver.
 - `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only an app's dev-dependencies turn on.
