@@ -458,7 +458,18 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
         }
         "ed25519_verify" => {
             let sig = Signature(input.hex("sig_hex").try_into().expect("signature"));
-            Ed25519Public(input.hex32("public_hex")).verify(&input.hex("message_hex"), &sig)?;
+            let public = input.hex32("public_hex");
+            let message = input.hex("message_hex");
+            // A forgery case says whether the library alone takes it, so a verifier that drops the
+            // pre-checks fails it.
+            if let Some(JsonValue::Bool(takes)) = input.optional("library_takes_it") {
+                assert_eq!(
+                    crypto::forgery::library_accepts(&public, &message, &sig.0),
+                    *takes,
+                    "library_takes_it"
+                );
+            }
+            Ed25519Public(public).verify(&message, &sig)?;
             ok()
         }
         "kid" => {
@@ -557,8 +568,13 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                 .iter()
                 .map(|object| object.version_record().expect("version record"))
                 .collect();
+            let signer = Ed25519Public(input.hex32("signer_ask_hex"));
+            for record in &records {
+                record.verify(&origin, &signer)?;
+            }
             records.last().expect("newest").check_key(&current)?;
             let mut keys = vec![h(current.expose())];
+            let mut frames = Vec::new();
             for ring_object in rings.iter().rev() {
                 let (KeyRecordId::Ring(key_ref), KeyBody::Ring(ring)) = (&ring_object.id, &ring_object.body) else {
                     panic!("a ring");
@@ -567,10 +583,20 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                     .iter()
                     .find(|record| Some(record.key.version) == key_ref.version.previous())
                     .expect("below");
+                let newer = current.clone();
                 current = ring.open(&origin, *key_ref, &current, below)?;
+                frames.push(super::gen_objects::ring_frame(*key_ref, &newer, &current));
                 keys.push(h(current.expose()));
             }
-            vec![("keys_hex", arr(keys))]
+            let messages = records
+                .iter()
+                .map(|record| record.message(&origin).map(|message| h(&message)))
+                .collect::<Result<_, _>>()?;
+            vec![
+                ("keys_hex", arr(keys)),
+                ("version_messages_hex", arr(messages)),
+                ("ring_frames", arr(frames)),
+            ]
         }
         "open_ring" => {
             let origin = input.origin();
@@ -759,7 +785,12 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             let nonce: [u8; 12] = input.hex("nonce_hex").try_into().expect("nonce");
             let sealed =
                 crate::envelope::seal_history_plaintext(&key, &origin, account, id, kv, plaintext.as_bytes(), nonce)?;
-            open_history(&key, &origin, account, id, &sealed)?;
+            let opened = open_history(&key, &origin, account, id, &sealed)?;
+            let sent = crate::envelope::parse_history_plaintext(plaintext.as_bytes())?;
+            assert!(
+                opened.expose().same_as(sent.expose()),
+                "the opened entry is the one sealed"
+            );
             let mut info = Frame::new(Label::HistoryKey);
             info.origin(&origin)
                 .scope(Scope::History(account))
@@ -865,6 +896,14 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             let other = sas_view(&mut other);
             let base_words = base.transcript.words(&base.n, &base.r_n, &base.a, &base.r_a)?;
             let other_words = other.transcript.words(&other.n, &other.r_n, &other.a, &other.r_a)?;
+            let JsonValue::Array(listed) = input.value("other_words") else {
+                panic!("other_words")
+            };
+            let listed: Vec<&str> = listed
+                .iter()
+                .map(|word| crate::json::as_str(word).expect("word"))
+                .collect();
+            assert_eq!(other_words, listed, "the other view's words");
             if base_words == other_words {
                 ok()
             } else {

@@ -279,6 +279,109 @@ pub(crate) fn hpke_open(
         .map_err(|_| KeysError::Open)
 }
 
+// Signatures a cofactorless verifier takes under a key of small order, for the vectors and tests that
+// must show the small-order refusal is what stops them. Test-only arithmetic: SHA-512 and a reduction
+// mod L.
+#[cfg(test)]
+pub(crate) mod forgery {
+    use aws_lc_rs::digest::{SHA512, digest};
+
+    use super::{GROUP_L, SMALL_ORDER, ed25519_public};
+
+    // The eight points of small order, then x = 0 with the sign bit set at y = 1 and y = p - 1, with
+    // each one's order.
+    pub(crate) fn encodings() -> Vec<([u8; 32], u8)> {
+        let orders = [1, 2, 4, 4, 8, 8, 8, 8];
+        let mut all: Vec<([u8; 32], u8)> = SMALL_ORDER.iter().copied().zip(orders).collect();
+        for (index, order) in [(0, 1), (1, 2)] {
+            let mut negative_zero = SMALL_ORDER[index];
+            negative_zero[31] |= 0x80;
+            all.push((negative_zero, order));
+        }
+        all
+    }
+
+    fn geq(a: &[u8; 32], b: &[u8; 32]) -> bool {
+        for index in (0..32).rev() {
+            if a[index] != b[index] {
+                return a[index] > b[index];
+            }
+        }
+        true
+    }
+
+    fn sub(a: &mut [u8; 32], b: &[u8; 32]) {
+        let mut borrow = 0_i16;
+        for index in 0..32 {
+            let difference = i16::from(a[index]) - i16::from(b[index]) - borrow;
+            borrow = i16::from(difference < 0);
+            a[index] = (difference + 256 * borrow) as u8;
+        }
+    }
+
+    // A little-endian integer mod L, a bit at a time from the top.
+    pub(crate) fn reduce(bytes: &[u8]) -> [u8; 32] {
+        let mut acc = [0_u8; 32];
+        for byte in bytes.iter().rev() {
+            for bit in (0..8).rev() {
+                let mut carry = (byte >> bit) & 1;
+                for limb in &mut acc {
+                    let doubled = (u16::from(*limb) << 1) | u16::from(carry);
+                    *limb = (doubled & 0xff) as u8;
+                    carry = (doubled >> 8) as u8;
+                }
+                if geq(&acc, &GROUP_L) {
+                    sub(&mut acc, &GROUP_L);
+                }
+            }
+        }
+        acc
+    }
+
+    // RFC 8032 section 5.1.5: the secret scalar of a seed.
+    fn scalar(seed: &[u8; 32]) -> [u8; 32] {
+        let hash = digest(&SHA512, seed);
+        let mut a = [0_u8; 32];
+        a.copy_from_slice(&hash.as_ref()[..32]);
+        a[0] &= 248;
+        a[31] &= 127;
+        a[31] |= 64;
+        reduce(&a)
+    }
+
+    pub(crate) fn challenge(r: &[u8; 32], public: &[u8; 32], message: &[u8]) -> [u8; 32] {
+        let mut input = r.to_vec();
+        input.extend_from_slice(public);
+        input.extend_from_slice(message);
+        reduce(digest(&SHA512, &input).as_ref())
+    }
+
+    // R = [r]B and S = r, over a message whose challenge k is a multiple of the key's order, so
+    // [S]B = R + [k]A holds for an A of small order.
+    pub(crate) fn forge(public: &[u8; 32], order: u8, label: &str) -> ([u8; 64], Vec<u8>) {
+        let seed: [u8; 32] = super::sha256(format!("tablepro-keys forgery/{label}").as_bytes());
+        let r_point = ed25519_public(&seed).expect("public");
+        let s = scalar(&seed);
+        let mut counter = 0_u32;
+        loop {
+            let message = format!("tablepro-keys small-order forgery {label} {counter}").into_bytes();
+            if challenge(&r_point, public, &message)[0] % order == 0 {
+                let mut signature = [0_u8; 64];
+                signature[..32].copy_from_slice(&r_point);
+                signature[32..].copy_from_slice(&s);
+                return (signature, message);
+            }
+            counter += 1;
+        }
+    }
+
+    pub(crate) fn library_accepts(public: &[u8; 32], message: &[u8], signature: &[u8; 64]) -> bool {
+        aws_lc_rs::signature::UnparsedPublicKey::new(&aws_lc_rs::signature::ED25519, public)
+            .verify(message, signature)
+            .is_ok()
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::{
@@ -313,12 +416,21 @@ pub(crate) mod tests {
         bad_r[..32].copy_from_slice(&FIELD_P);
         assert_eq!(ed25519_verify(&public, b"m", &bad_r), Err(KeysError::Signature));
 
-        for small in SMALL_ORDER {
-            assert_eq!(ed25519_verify(&small, b"m", &signature), Err(KeysError::Signature));
-            let mut flipped = small;
-            flipped[31] ^= 0x80;
-            assert_eq!(ed25519_verify(&flipped, b"m", &signature), Err(KeysError::Signature));
+        // Real forgeries: the library alone takes the ones it can decode, so only the small-order
+        // refusal stops them, and dropping it fails this test.
+        let mut taken_by_the_library = 0;
+        for (index, (small, order)) in super::forgery::encodings().into_iter().enumerate() {
+            let (forged, message) = super::forgery::forge(&small, order, &format!("unit {index}"));
+            if super::forgery::library_accepts(&small, &message, &forged) {
+                taken_by_the_library += 1;
+            }
+            assert_eq!(
+                ed25519_verify(&small, &message, &forged),
+                Err(KeysError::Signature),
+                "encoding {index}"
+            );
         }
+        assert_eq!(taken_by_the_library, 8, "every canonical point of small order");
         let mut negative_zero_r = signature;
         negative_zero_r[..32].copy_from_slice(&SMALL_ORDER[0]);
         negative_zero_r[31] |= 0x80;

@@ -273,7 +273,10 @@ impl World<'_> {
             self.team,
             &KeyRecordId::Ring(key),
             &KeyBody::Ring(ring),
-            vec![],
+            vec![
+                ("newer_key_hex", h(team_key(version).expose())),
+                ("below_kid_hex", h(&team_key(version - 1).kid().expect("kid").0)),
+            ],
         )
     }
 
@@ -310,6 +313,8 @@ impl World<'_> {
             vec![
                 ("signer_hex", h(&signing.public().expect("public").0)),
                 ("pk_r_hex", h(&recipient.at(to_av).aek.public().expect("public").0)),
+                ("recipient_secret_hex", h(recipient.at(to_av).aek.expose())),
+                ("kid_hex", h(&scope_key.kid().expect("kid").0)),
             ],
         )
     }
@@ -363,16 +368,26 @@ impl World<'_> {
             key_device: from.key_device,
         };
         let wrap = self.cache.wrap(target, &to.dek, plaintext, wrapper, signing);
+        let mut verify = vec![
+            ("signer_hex", h(&signing.public().expect("public").0)),
+            ("pk_r_hex", h(&to.dek.public().expect("public").0)),
+            ("recipient_secret_hex", h(to.dek.expose())),
+        ];
+        if purpose == WrapPurpose::Account {
+            let keys = AccountKeys::from_plaintext(plaintext)
+                .expect("account keys")
+                .public()
+                .expect("public");
+            verify.push(("certificate_ask_hex", h(&keys.ask.0)));
+            verify.push(("certificate_aek_hex", h(&keys.aek.0)));
+        }
         rec(
             label,
             None,
             person.id.0,
             &KeyRecordId::Wrap(target),
             &KeyBody::Wrap(WrapBody::of(&wrap)),
-            vec![
-                ("signer_hex", h(&signing.public().expect("public").0)),
-                ("pk_r_hex", h(&to.dek.public().expect("public").0)),
-            ],
+            verify,
         )
     }
 
@@ -433,7 +448,7 @@ impl World<'_> {
                 av: v(av),
             },
             &KeyBody::Recovery(blob),
-            vec![],
+            blob_verify(&person.r, person.at(av)),
         )
     }
 
@@ -558,7 +573,7 @@ impl World<'_> {
                     av: v(av),
                 },
                 &KeyBody::Recovery(blob),
-                vec![],
+                blob_verify(&new_r, person.at(av)),
             ),
             self.device_cert(&format!("{proposal}: the proposed device certificate"), who, av, device),
         ];
@@ -574,13 +589,36 @@ impl World<'_> {
             .expect("ik")
     }
 
-    fn request(&self, label: &str, who: &str, request: RequestId, device: &DeviceKeys) -> JsonValue {
+    // N's view: the account's IK, its own keys and r_N, which its reveal opens the commitment with.
+    fn sas_view(
+        &self,
+        who: &str,
+        request: RequestId,
+        device: &DeviceKeys,
+    ) -> (crate::sas::Transcript, crate::sas::SasDevice, [u8; 32]) {
         let person = self.person(who);
-        let body = RequestBody {
+        let transcript = crate::sas::Transcript {
+            origin: origin(),
+            account: person.id,
+            request,
+            ik: person.ik.public().expect("public"),
+        };
+        let n = crate::sas::SasDevice {
             key_device: device.key_device,
             dek: device.dek.public().expect("public"),
             dsk: device.dsk.public().expect("public"),
-            commit: draw(&format!("flows/{label}/commit")),
+        };
+        (transcript, n, draw(&format!("flows/request {}/r_N", request.to_wire())))
+    }
+
+    fn request(&self, label: &str, who: &str, request: RequestId, device: &DeviceKeys) -> JsonValue {
+        let person = self.person(who);
+        let (transcript, n, r_n) = self.sas_view(who, request, device);
+        let body = RequestBody {
+            key_device: n.key_device,
+            dek: n.dek,
+            dsk: n.dsk,
+            commit: transcript.commitment(&n, &r_n).expect("commit"),
         };
         rec(
             label,
@@ -588,7 +626,7 @@ impl World<'_> {
             person.id.0,
             &KeyRecordId::Request { request },
             &KeyBody::Request(body),
-            vec![],
+            vec![("ik_hex", h(&transcript.ik.0)), ("r_n_hex", h(&r_n))],
         )
     }
 
@@ -612,7 +650,9 @@ impl World<'_> {
         )
     }
 
-    fn reveal(&self, label: &str, who: &str, request: RequestId) -> JsonValue {
+    // N's reveal of the r_N its request committed to.
+    fn reveal(&self, label: &str, who: &str, request: RequestId, device: &DeviceKeys) -> JsonValue {
+        let (transcript, n, r_n) = self.sas_view(who, request, device);
         rec(
             label,
             None,
@@ -621,10 +661,14 @@ impl World<'_> {
                 request,
                 step: SasStep::Reveal,
             },
-            &KeyBody::Sas(SasBody::Reveal {
-                r: draw(&format!("flows/{label}/r")),
-            }),
-            vec![],
+            &KeyBody::Sas(SasBody::Reveal { r: r_n }),
+            vec![
+                ("ik_hex", h(&transcript.ik.0)),
+                ("commit_hex", h(&transcript.commitment(&n, &r_n).expect("commit"))),
+                ("n_key_device", s(&n.key_device.to_wire())),
+                ("n_dek_hex", h(&n.dek.0)),
+                ("n_dsk_hex", h(&n.dsk.0)),
+            ],
         )
     }
 
@@ -678,7 +722,10 @@ impl World<'_> {
                 reset,
             },
             &KeyBody::Reset(Box::new(body)),
-            vec![("ik_hex", h(&new_ik.public().expect("public").0))],
+            vec![
+                ("ik_hex", h(&new_ik.public().expect("public").0)),
+                ("r_hex", h(new_r.expose())),
+            ],
         )
     }
 
@@ -695,7 +742,11 @@ impl World<'_> {
         let sig =
             with_r.then(|| sign_cancel(&origin(), person.id, v(reset_av), proposed_ik, &person.ik).expect("cancel"));
         let verify = if with_r {
-            vec![("ik_hex", h(&person.ik.public().expect("public").0))]
+            vec![
+                ("ik_hex", h(&person.ik.public().expect("public").0)),
+                ("reset_av", n(u64::from(reset_av))),
+                ("proposed_ik_hex", h(&proposed_ik.0)),
+            ]
         } else {
             Vec::new()
         };
@@ -1134,7 +1185,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         server: "request_closed",
         layer: &["flow", "server"],
         given: obj(vec![("session", s("open"))]),
-        steps: vec![step("N", "push", vec![w.reveal("N's reveal before any nonce", "P", request)], "keys.session", "request_closed")],
+        steps: vec![step("N", "push", vec![w.reveal("N's reveal before any nonce", "P", request, &dev_n)], "keys.session", "request_closed")],
     }));
 
     rows.push(scenario(
@@ -1831,6 +1882,16 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
     )
 }
 
+// What opens a blob and what its keys must give: the recovery key and the certificate's public keys.
+fn blob_verify(r: &RecoveryKey, keys: &AccountKeys) -> Vec<(&'static str, JsonValue)> {
+    let public = keys.public().expect("public");
+    vec![
+        ("r_hex", h(r.expose())),
+        ("certificate_ask_hex", h(&public.ask.0)),
+        ("certificate_aek_hex", h(&public.aek.0)),
+    ]
+}
+
 fn personal_ring(key: KeyRef, who: &str, label: &str) -> JsonValue {
     let name = if key.purpose == KeyPurpose::History {
         format!("{who} history")
@@ -1847,7 +1908,10 @@ fn personal_ring(key: KeyRef, who: &str, label: &str) -> JsonValue {
         key.owner,
         &KeyRecordId::Ring(key),
         &KeyBody::Ring(ring),
-        vec![],
+        vec![
+            ("newer_key_hex", h(newer.expose())),
+            ("below_kid_hex", h(&older.kid().expect("kid").0)),
+        ],
     )
 }
 
@@ -2279,6 +2343,19 @@ fn labelled_version(w: &World<'_>, label: &str) -> (JsonValue, [u8; 32]) {
     (record, digest)
 }
 
+// Every device a scenario names, under its fixture name; its keys are drawn from the name.
+const DEVICES: [&str; 9] = [
+    "A device 1",
+    "A lost device",
+    "M device 1",
+    "O device 1",
+    "P device B",
+    "P device C",
+    "P device C again",
+    "P device N",
+    "P device N approved again",
+];
+
 fn world_json(w: &World<'_>) -> JsonValue {
     let person = |p: &Person| {
         obj(vec![
@@ -2322,13 +2399,33 @@ fn world_json(w: &World<'_>) -> JsonValue {
                 person(&w.e),
                 person(&w.o),
                 person(&w.p),
+                person(&w.p_other),
             ]),
+        ),
+        (
+            "devices",
+            arr(DEVICES
+                .iter()
+                .map(|name| {
+                    let keys = device(name);
+                    obj(vec![
+                        ("name", s(name)),
+                        ("key_device", s(&keys.key_device.to_wire())),
+                        ("dek_secret_hex", h(keys.dek.expose())),
+                        ("dek_hex", h(&keys.dek.public().expect("public").0)),
+                        ("dsk_seed_hex", h(keys.dsk.expose())),
+                        ("dsk_hex", h(&keys.dsk.public().expect("public").0)),
+                    ])
+                })
+                .collect()),
         ),
         ("team", s(&uuid_to_wire(w.team))),
         ("team_keys", team_keys),
         (
             "roles",
-            s("A admin, O owner, M member, E editor, P member; B, C and N are P's devices"),
+            s(
+                "A admin, O owner, M member, E editor, P member; B, C and N are P's devices. \"P from C\" is P's account as device C's own genesis made it, with its own R, IK and keys",
+            ),
         ),
         (
             "version_records",
@@ -2340,26 +2437,36 @@ fn world_json(w: &World<'_>) -> JsonValue {
     ])
 }
 
-// Checks every record of a scenario: it parses, and the signature the record's `verify` names holds.
-pub(super) fn check(file: &str, case: &JsonValue) {
+// Checks every record of a scenario, in its steps and in `given`: it parses, every signature its
+// `verify` names holds, and every ring, blob and wrap opens to what it should. The outcomes the
+// rows declare are the flows' and the server's to check.
+pub(super) fn check(_file: &str, case: &JsonValue) {
     let mut members = Members::of(case).expect("case");
     let name = members.string("name").expect("name").to_owned();
-    let JsonValue::Array(steps) = members.required("steps").expect("steps") else {
-        panic!("{file}: {name}: steps")
-    };
-    for step in steps {
-        let JsonValue::Object(fields) = step else {
-            panic!("{name}: step")
-        };
-        let Some((_, JsonValue::Array(records))) = fields.iter().find(|(member, _)| member == "records") else {
-            panic!("{name}: records")
-        };
-        for record in records {
-            check_record(&name, record);
-        }
+    let mut records = Vec::new();
+    collect_records(members.required("steps").expect("steps"), &mut records);
+    collect_records(members.required("given").expect("given"), &mut records);
+    for record in records {
+        check_record(&name, record);
     }
 }
 
+fn collect_records<'a>(value: &'a JsonValue, out: &mut Vec<&'a JsonValue>) {
+    match value {
+        JsonValue::Object(members) => {
+            let has = |name: &str| members.iter().any(|(member, _)| member == name);
+            if has("kind") && has("id") && has("fields") && has("verify") {
+                out.push(value);
+            } else {
+                members.iter().for_each(|(_, member)| collect_records(member, out));
+            }
+        }
+        JsonValue::Array(items) => items.iter().for_each(|item| collect_records(item, out)),
+        _ => {}
+    }
+}
+
+#[expect(clippy::too_many_lines, reason = "one arm per key kind")]
 fn check_record(name: &str, record: &JsonValue) {
     let mut input = In::of(record);
     let label = input.str("label").to_owned();
@@ -2369,15 +2476,27 @@ fn check_record(name: &str, record: &JsonValue) {
     let object =
         KeyObject::parse(&kind, &id, fields.as_bytes()).unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
     let mut verify = input.sub("verify");
-    let valid = !matches!(verify_value(&mut verify, "valid"), Some(JsonValue::Bool(false)));
+    let valid = !matches!(verify.optional("valid"), Some(JsonValue::Bool(false)));
     let o = origin();
-    let result = match (&object.id, &object.body) {
+    let certificate_keys = |verify: &mut In<'_>| crate::keys::AccountPublicKeys {
+        ask: Ed25519Public(verify.hex32("certificate_ask_hex")),
+        aek: X25519Public(verify.hex32("certificate_aek_hex")),
+    };
+    let result: Result<(), crate::KeysError> = match (&object.id, &object.body) {
         (
             KeyRecordId::Account { account, av } | KeyRecordId::Member { account, av },
             KeyBody::Account(body) | KeyBody::Member(body),
         ) => {
             let certificate = body.certificate(*account, *av);
-            certificate.verify(&o)
+            certificate.verify(&o).and_then(|()| {
+                if verify.has("previous_ik_hex") {
+                    certificate
+                        .ik_change(&o, &Ed25519Public(verify.hex32("previous_ik_hex")))
+                        .map(|_| ())
+                } else {
+                    Ok(())
+                }
+            })
         }
         (
             KeyRecordId::Device {
@@ -2388,31 +2507,124 @@ fn check_record(name: &str, record: &JsonValue) {
             KeyBody::Device(body),
         ) => body
             .certificate(*account, *key_device, *av)
-            .verify(&o, &Ed25519Public(hex32(&mut verify, "signer_hex"))),
+            .verify(&o, &Ed25519Public(verify.hex32("signer_hex"))),
         (KeyRecordId::Version(_), KeyBody::Version(_)) => {
             let record = object.version_record().expect("version");
-            let signed = record.verify(&o, &Ed25519Public(hex32(&mut verify, "signer_hex")));
+            let signed = record.verify(&o, &Ed25519Public(verify.hex32("signer_hex")));
             if signed.is_ok() {
                 assert_eq!(
                     record.digest(&o).expect("digest"),
-                    hex32(&mut verify, "digest_hex"),
+                    verify.hex32("digest_hex"),
                     "{name}: {label}"
                 );
             }
             signed
         }
-        (KeyRecordId::Wrap(_), KeyBody::Wrap(_)) => {
+        (KeyRecordId::Wrap(target), KeyBody::Wrap(_)) => {
             let wrap = object.wrap().expect("wrap");
-            wrap.verify(
+            let pk_r = X25519Public(verify.hex32("pk_r_hex"));
+            let signer = Ed25519Public(verify.hex32("signer_hex"));
+            let secret = X25519Secret::from_bytes(verify.hex32("recipient_secret_hex"));
+            wrap.verify(&o, &pk_r, &signer).and_then(|()| match target.purpose {
+                WrapPurpose::Account => wrap
+                    .open_account(&o, &secret, &pk_r, &signer, &certificate_keys(&mut verify))
+                    .map(|_| ()),
+                WrapPurpose::Trust => wrap.open_trust(&o, &secret, &pk_r, &signer).map(|_| ()),
+                WrapPurpose::Key(purpose) => {
+                    let key = KeyRef {
+                        owner: target.owner,
+                        purpose,
+                        version: target.version,
+                    };
+                    let record = kid_record(key, verify.hex32("kid_hex"));
+                    wrap.open_scope_key(&o, &secret, &pk_r, &signer, &record).map(|_| ())
+                }
+            })
+        }
+        (KeyRecordId::Ring(key), KeyBody::Ring(ring)) => {
+            let below = KeyRef {
+                version: key.version.previous().expect("below"),
+                ..*key
+            };
+            ring.open(
                 &o,
-                &X25519Public(hex32(&mut verify, "pk_r_hex")),
-                &Ed25519Public(hex32(&mut verify, "signer_hex")),
+                *key,
+                &ScopeKey::from_bytes(verify.hex32("newer_key_hex")),
+                &kid_record(below, verify.hex32("below_kid_hex")),
             )
+            .map(|_| ())
+        }
+        (KeyRecordId::Recovery { account, av }, KeyBody::Recovery(blob)) => {
+            let r = RecoveryKey::from_bytes(verify.hex32("r_hex"));
+            let keys = certificate_keys(&mut verify);
+            r.open_blob(&o, *account, *av, blob)
+                .and_then(|opened| opened.check_against(&keys.ask, &keys.aek))
         }
         (KeyRecordId::Reset { account, .. }, KeyBody::Reset(reset)) => {
-            reset.account.certificate(*account, reset.av).verify(&o)
+            let certificate = reset.account.certificate(*account, reset.av);
+            let r = RecoveryKey::from_bytes(verify.hex32("r_hex"));
+            certificate
+                .verify(&o)
+                .and_then(|()| {
+                    let ik = r.identity_seed(&o, *account)?.public()?;
+                    if ik == certificate.ik {
+                        Ok(())
+                    } else {
+                        Err(crate::KeysError::Signature)
+                    }
+                })
+                .and_then(|()| {
+                    reset
+                        .device
+                        .certificate(*account, reset.key_device, reset.av)
+                        .verify(&o, &certificate.ask)
+                })
+                .and_then(|()| r.open_blob(&o, *account, reset.av, &reset.recovery))
+                .and_then(|opened| opened.check_against(&certificate.ask, &certificate.aek))
         }
-        _ => Ok(()),
+        (KeyRecordId::Cancel { account, .. }, KeyBody::Cancel { sig }) => match sig {
+            Some(sig) => crate::cert::verify_cancel(
+                &o,
+                *account,
+                verify.version("reset_av"),
+                &Ed25519Public(verify.hex32("proposed_ik_hex")),
+                sig,
+                &Ed25519Public(verify.hex32("ik_hex")),
+            ),
+            // A device's own cancel carries no signature; the server checks who sends it.
+            None => Ok(()),
+        },
+        (KeyRecordId::Request { request }, KeyBody::Request(body)) => {
+            let transcript = crate::sas::Transcript {
+                origin: o.clone(),
+                account: AccountId(input_owner(record)),
+                request: *request,
+                ik: Ed25519Public(verify.hex32("ik_hex")),
+            };
+            let n = crate::sas::SasDevice {
+                key_device: body.key_device,
+                dek: body.dek,
+                dsk: body.dsk,
+            };
+            transcript.check_commitment(&n, &verify.hex32("r_n_hex"), &body.commit)
+        }
+        (KeyRecordId::Sas { request, .. }, KeyBody::Sas(SasBody::Reveal { r })) => {
+            let transcript = crate::sas::Transcript {
+                origin: o.clone(),
+                account: AccountId(input_owner(record)),
+                request: *request,
+                ik: Ed25519Public(verify.hex32("ik_hex")),
+            };
+            let n = crate::sas::SasDevice {
+                key_device: crate::encoding::KeyDeviceId::from_wire(verify.str("n_key_device")).expect("id"),
+                dek: X25519Public(verify.hex32("n_dek_hex")),
+                dsk: Ed25519Public(verify.hex32("n_dsk_hex")),
+            };
+            transcript.check_commitment(&n, r, &verify.hex32("commit_hex"))
+        }
+        // A `nonce` step's r_A and a `cancel` step's reason have nothing to check but their form.
+        (KeyRecordId::Sas { .. }, KeyBody::Sas(_)) => Ok(()),
+        _ => panic!("{name}: {label}: a kind the checker does not know"),
     };
     if valid {
         result.unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
@@ -2421,10 +2633,21 @@ fn check_record(name: &str, record: &JsonValue) {
     }
 }
 
-fn verify_value<'a>(verify: &mut In<'a>, name: &str) -> Option<&'a JsonValue> {
-    verify.optional(name)
+// A record's owner, from its scope.
+fn input_owner(record: &JsonValue) -> uuid::Uuid {
+    let mut input = In::of(record);
+    let mut scope = input.sub("scope");
+    uuid_from_wire(scope.str("owner")).expect("owner")
 }
 
-fn hex32(input: &mut In<'_>, name: &str) -> [u8; 32] {
-    input.hex32(name)
+// A version record standing in for the one a key is checked against: only its key and `kid` count.
+fn kid_record(key: KeyRef, kid: [u8; 32]) -> VersionRecord {
+    VersionRecord {
+        key,
+        start: Start::Next,
+        kid: crate::keys::Kid(kid),
+        signer: AccountId(uuid::Uuid::nil()),
+        signer_av: v(1),
+        sig: crate::keys::Signature([0; 64]),
+    }
 }

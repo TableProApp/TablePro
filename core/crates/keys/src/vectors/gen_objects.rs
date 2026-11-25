@@ -356,44 +356,61 @@ fn ed25519_negatives() -> Vec<JsonValue> {
         input(&public.0, &sig.0),
         vec![("ok", super::out::b(true))],
     )];
-    let small = hex::decode("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a").unwrap();
-    cases.push(negative(
-        "A of small order (order 8)",
-        "ed25519_verify",
-        row,
-        input(&small, &sig.0),
-        "keys.signature",
-        BAD_STATEMENT,
-    ));
-    let identity = hex::decode("0100000000000000000000000000000000000000000000000000000000000000").unwrap();
-    cases.push(negative(
-        "A the identity",
-        "ed25519_verify",
-        row,
-        input(&identity, &sig.0),
-        "keys.signature",
-        BAD_STATEMENT,
-    ));
-    // y = p + 1, which reduces to the identity's y.
+    // Real forgeries, R = [r]B and S = r over a message whose challenge the key's order divides: the
+    // cofactorless equation holds, so only the refusal of small-order A (and, for the encodings with
+    // x = 0 and the sign bit set, of a non-canonical A) stops them.
+    for (index, (small, order)) in crate::crypto::forgery::encodings().into_iter().enumerate() {
+        let (forged, message) = crate::crypto::forgery::forge(&small, order, &format!("vector {index}"));
+        let sign_bit = if small[31] & 0x80 == 0 { "" } else { ", sign bit set" };
+        cases.push(negative(
+            &format!(
+                "a forgery under A of order {order} ({}{sign_bit})",
+                hex::encode(&small[..4])
+            ),
+            "ed25519_verify",
+            row,
+            vec![
+                ("public_hex", h(&small)),
+                ("message_hex", h(&message)),
+                ("sig_hex", h(&forged)),
+                ("cofactorless_equation_holds", super::out::b(true)),
+                (
+                    "library_takes_it",
+                    super::out::b(crate::crypto::forgery::library_accepts(&small, &message, &forged)),
+                ),
+            ],
+            "keys.signature",
+            BAD_STATEMENT,
+        ));
+    }
+    // y = p + 1, which reduces to the identity's y: a decoder that takes non-canonical y reads the
+    // identity, under which any message forges.
     let non_canonical = hex::decode("eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f").unwrap();
+    let non_canonical: [u8; 32] = non_canonical.try_into().unwrap();
+    let (forged, message) = crate::crypto::forgery::forge(&non_canonical, 1, "vector non-canonical");
     cases.push(negative(
-        "a non-canonical A",
+        "a forgery under a non-canonical A, y = p + 1",
         "ed25519_verify",
         row,
-        input(&non_canonical, &sig.0),
+        vec![
+            ("public_hex", h(&non_canonical)),
+            ("message_hex", h(&message)),
+            ("sig_hex", h(&forged)),
+            ("cofactorless_equation_holds", super::out::b(true)),
+            (
+                "library_takes_it",
+                super::out::b(crate::crypto::forgery::library_accepts(
+                    &non_canonical,
+                    &message,
+                    &forged,
+                )),
+            ),
+        ],
         "keys.signature",
         BAD_STATEMENT,
     ));
     // x = 0 with the sign bit set, which RFC 8032 refuses and lenient decoders read as the identity.
     let negative_zero = hex::decode("0100000000000000000000000000000000000000000000000000000000000080").unwrap();
-    cases.push(negative(
-        "A the identity with the sign bit set",
-        "ed25519_verify",
-        row,
-        input(&negative_zero, &sig.0),
-        "keys.signature",
-        BAD_STATEMENT,
-    ));
     let mut negative_zero_r = sig.0;
     negative_zero_r[..32].copy_from_slice(&negative_zero);
     cases.push(negative(
@@ -555,13 +572,30 @@ pub(super) fn scope_keys() -> JsonValue {
         vec![
             ("origin", s(ORIGIN)),
             ("newest_hex", h(keys[3].expose())),
+            ("signer_ask_hex", h(&a.ask(1).0)),
             ("versions", arr(records.iter().map(version_record_json).collect())),
             (
                 "rings",
                 arr((1..4).map(|index| ring_json(refs[index], &rings[index - 1])).collect()),
             ),
         ],
-        vec![("keys_hex", arr(keys.iter().rev().map(|key| h(key.expose())).collect()))],
+        vec![
+            ("keys_hex", arr(keys.iter().rev().map(|key| h(key.expose())).collect())),
+            (
+                "version_messages_hex",
+                arr(records
+                    .iter()
+                    .map(|record| h(&record.message(&origin()).unwrap()))
+                    .collect()),
+            ),
+            (
+                "ring_frames",
+                arr((1..4)
+                    .rev()
+                    .map(|index| ring_frame(refs[index], &keys[index], &keys[index - 1]))
+                    .collect()),
+            ),
+        ],
     );
 
     // Version 4's ring holding version 2's key: its entry is not the version below.
@@ -674,6 +708,27 @@ pub(super) fn scope_keys() -> JsonValue {
             ("digests", arr(digests)),
         ],
     )
+}
+
+// One step of a walk: version v's ring key input, the subkey, the AAD and the plaintext it holds.
+pub(super) fn ring_frame(key: KeyRef, newer: &ScopeKey, older: &ScopeKey) -> JsonValue {
+    let mut key_info = Frame::new(Label::RingKey);
+    key_info
+        .origin(&origin())
+        .scope(key.scope())
+        .lp(key.purpose.name().as_bytes())
+        .u32(key.version.get());
+    let below = key.version.get() - 1;
+    obj(vec![
+        ("version", n(u64::from(key.version.get()))),
+        ("key_info_hex", h(&key_info.finish().unwrap())),
+        ("subkey_hex", h(&*ring_subkey(key, newer))),
+        ("aad_hex", h(&ring_aad(&origin(), key).unwrap())),
+        (
+            "plaintext_hex",
+            h(&[below.to_be_bytes().as_slice(), older.expose()].concat()),
+        ),
+    ])
 }
 
 fn ring_subkey(key: KeyRef, newer: &ScopeKey) -> zeroize::Zeroizing<[u8; 32]> {
