@@ -35,11 +35,13 @@ Brief note on each alternative and why it lost.
 
 Context, Decision and Consequences are always there. Rationale and Alternatives considered are there when other options were weighed. A section an ADR needs beyond these, such as a matrix or a dated note, comes after them.
 
-The Status is `Accepted`, `Superseded by 000M` or `Deprecated`. A decision for every platform is in `core/docs/decisions/`, and a Status names one of those as `core 000M`. An accepted ADR that a later one changed in part reads `Accepted; <part> superseded by 000M` (replaced) or `amended by 000M` (extended). The `amended <date>` statuses below predate this rule.
+The Status is `Proposed`, `Accepted`, `Superseded by 000M` or `Deprecated`, as in Nygard's original. A Proposed ADR keeps the rest of its Status, such as `Proposed; amends 000M`. A decision for every platform is in `core/docs/decisions/`, and a Status names one of those as `core 000M`. An accepted ADR that a later one changed in part reads `Accepted; <part> superseded by 000M` (replaced) or `amended by 000M` (extended). The `amended <date>` statuses below predate this rule.
 
 ADRs are short on purpose. If yours is more than a page, you are probably arguing instead of recording.
 
 ## Changing a decision
+
+An ADR under a review gate, with no code built on it yet, is `Proposed`, and is amended in place as the review asks. When the gate passes it becomes `Accepted`, and from then on the rule below holds: its only edit is its Status line.
 
 A new ADR supersedes the old one, as in Michael Nygard's [Documenting Architecture Decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions). The new ADR says what it replaces and why. The old ADR's only edit is its Status line, naming the new one, plus the same change to its row in the index. Do not rewrite an old ADR's body to match the current system.
 

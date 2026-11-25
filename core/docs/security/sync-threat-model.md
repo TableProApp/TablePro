@@ -111,7 +111,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 
 - Team plaintext records, as far as the account's seat and role allow.
 - **Genesis** on an account with no keys yet is trust on first use. An attacker who gets there first owns that identity. The person's own genesis fails, and the account comes back through a reset.
-- **A reset.** An attacker who also passes the step-up, a passkey the server holds or on the SaaS a code it emails, can start one. The honest server holds it 7 days, every device and the portal show it, the SaaS emails, and any certified device or the recovery key cancels it. If nobody cancels it in that time, it applies, whether or not the person still has the recovery key: the person's other devices are removed, and teammates see an alert. A kind 3 reset, which runs whatever device rows remain, also deletes the personal and history records.
+- **A reset.** An attacker who also passes the step-up, a passkey the server holds or on the SaaS a code it emails, can start one. The honest server holds it 7 days, every device and the portal show it, the SaaS emails, and any certified device or the recovery key cancels it. If nobody cancels it in that time, its proposing device can activate it within the next 7 days, whether or not the person still has the recovery key. Once activated, the person's other devices are removed, and teammates see an alert. A kind 3 reset, which runs whatever device rows remain, also deletes the personal and history records.
 
 ## A lost or stolen device
 
@@ -202,7 +202,7 @@ On 2026-11-25 the maintainer accepted risks 2, 3, 5, 6 and 9, which the vault mo
 5. **A confirmed member with the server's help** can replace a team secret's value.
 6. **Rollback within a version,** and records a removed device with the server's help plants under a version it held: in a snapshot, which the server can force, and in history.
 7. **Full rollback** for a state file restored with its anchor. A restored state file, with its anchor or without it, can also bring back history the person deleted, since deleted history ids live in the file and not in the anchor (0054). These are limits of local state, not among the risks accepted above.
-8. **A reset** by someone who passes the person's sign-in and step-up succeeds if nobody cancels it for 7 days. Teammates see an alert.
+8. **A reset** by someone who passes the person's sign-in and step-up can be activated by its proposing device if nobody cancels it for 7 days. Teammates see an alert.
 9. **An exposed recovery key after a replace.** With the server's help, its holder can keep a device or a teammate that never saw the replace on the old identity, a split view.
 10. **A person who confirms without reading** approves whatever is on the other screen.
 11. **Plaintext records and metadata** are readable by the operator.
