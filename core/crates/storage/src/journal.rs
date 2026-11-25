@@ -71,12 +71,7 @@ impl fmt::Display for RecordKind {
     }
 }
 
-/// What every store's write path tells once a write has landed (core ADRs 0054 and 0060).
-///
-/// It names each kind the commit changed with the records it wrote and deleted, and asks for a pass
-/// soon. The sync diff, not the journal, decides what goes up, so a missed call delays a push and
-/// loses nothing. A store calls it once per commit, after the commit, outside every lock it holds,
-/// from the thread that wrote; it must return at once.
+// Once per commit, outside the store's locks; the diff decides what goes up, so a missed call loses nothing (0060).
 pub trait ChangeJournal: Send + Sync {
     fn changed(&self, entries: &[JournalEntry]);
 }

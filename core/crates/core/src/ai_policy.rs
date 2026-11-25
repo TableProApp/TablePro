@@ -16,8 +16,7 @@ pub enum AiPolicy {
     /// Nothing from the connection goes into a prompt: not its schema,
     /// its rows, its editor text or a question asked beside it.
     Never,
-    /// The app's own default decides, as a macOS connection that never
-    /// picked one follows the AI settings. An app with no default asks.
+    // As a Mac connection that never picked one follows the AI settings; an app with no default asks.
     AppDefault,
 }
 
@@ -33,7 +32,6 @@ impl AiPolicy {
         }
     }
 
-    /// The policy in force, with `app_default` standing for the app's own setting.
     pub fn or_app_default(self, app_default: AiPolicy) -> AiPolicy {
         match (self, app_default) {
             (Self::AppDefault, Self::AppDefault) => Self::Ask,

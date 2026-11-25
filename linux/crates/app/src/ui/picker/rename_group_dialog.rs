@@ -13,8 +13,8 @@ pub(super) async fn ask_group_rename(
     outline: &LibraryOutline,
     group: &ConnectionGroup,
 ) -> Option<ConnectionGroupName> {
-    let parent = outline.parent_of(LibraryItem::Group(group.id)).flatten();
-    let (dialog, entry) = rename_group_dialog(&group.name, outline.sibling_names(parent, Some(group.id)));
+    let filed_under = outline.parent_of(LibraryItem::Group(group.id)).flatten();
+    let (dialog, entry) = rename_group_dialog(&group.name, outline.sibling_names(filed_under, Some(group.id)));
     if crate::workspace::respond(&dialog, parent).await != RENAME {
         return None;
     }

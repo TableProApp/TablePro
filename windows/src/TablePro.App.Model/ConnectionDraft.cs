@@ -223,16 +223,16 @@ public sealed class ConnectionDraft
     {
         ArgumentNullException.ThrowIfNull(engine);
         var start = engine.NewConnectionTls(ParsePort(Port));
-        var offered = engine.SupportedTlsModes.Contains(TlsMode);
-        if (!TlsModeChosen || (!offered && TlsModes.Strictness(start) >= TlsModes.Strictness(TlsMode)))
+        if (!TlsModeChosen)
         {
             TlsMode = start;
-            TlsModeChosen = false;
         }
-        else if (!offered)
+        else if (!engine.SupportedTlsModes.Contains(TlsMode))
         {
-            // A mode this engine does not offer, such as Verify CA from a Mac, rounds up, never to a weaker default.
-            TlsMode = TlsModes.AtLeastIn(TlsMode, engine.SupportedTlsModes);
+            // Verify CA from a Mac, say: never weaker, and still chosen so a port change cannot weaken it.
+            TlsMode = TlsModes.Strictness(start) >= TlsModes.Strictness(TlsMode)
+                ? start
+                : TlsModes.AtLeastIn(TlsMode, engine.SupportedTlsModes);
         }
     }
 

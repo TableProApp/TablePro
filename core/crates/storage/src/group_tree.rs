@@ -5,8 +5,7 @@ use uuid::Uuid;
 use crate::ConnectionGroup;
 use crate::error::StorageError;
 
-// A parent the list lacks, the group itself or a cycle reads as the top level, as macOS reads one, while the group
-// keeps the parent it was stored with: a pull can bring a group before its parent.
+// A missing parent or a cycle reads as the top level, as macOS reads one; a pull can bring a group before its parent.
 #[derive(Debug, Clone)]
 pub struct GroupTree<'a> {
     groups: &'a [ConnectionGroup],

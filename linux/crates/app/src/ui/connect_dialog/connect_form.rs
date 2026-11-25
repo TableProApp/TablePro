@@ -235,14 +235,14 @@ impl ConnectForm {
             return;
         };
         let default = caps.new_connection_tls(self.port, &self.options);
-        if !self.tls.mode_chosen
-            || (!tls.modes.contains(&self.tls.mode) && default.strictness() >= self.tls.mode.strictness())
-        {
+        if !self.tls.mode_chosen {
             self.tls.mode = default;
-            self.tls.mode_chosen = false;
         } else if !tls.modes.contains(&self.tls.mode) {
-            // A mode this engine does not offer, such as Verify CA from a Mac, rounds up, never to a weaker default.
-            self.tls.mode = self.tls.mode.at_least_in(tls.modes);
+            // Verify CA from a Mac, say: never weaker, and still chosen so a port change cannot weaken it.
+            self.tls.mode = match default.strictness() >= self.tls.mode.strictness() {
+                true => default,
+                false => self.tls.mode.at_least_in(tls.modes),
+            };
         }
     }
 
@@ -941,7 +941,10 @@ mod tests {
         form.tls.mode = TlsMode::Prefer;
         form.switch_driver("mssql", mssql());
         assert_eq!(form.tls.mode, TlsMode::VerifyFull, "a mode SQL Server lacks was kept");
-        assert!(!form.tls.mode_chosen);
+        assert!(
+            form.tls.mode_chosen,
+            "the default taken for a chosen mode can be weakened by a port change"
+        );
     }
 
     #[test]

@@ -7,8 +7,6 @@ use super::{ConnectionList, ConnectionStore, ConnectionsDocument, RemoveOutcome,
 use crate::error::StorageError;
 use crate::{ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionTag, GroupTree, LibraryIcon};
 
-/// The whole library as another app's store holds it, written over the one on disk by
-/// [`ConnectionStore::replace_library_blocking`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LibraryWrite {
     pub connections: Vec<SavedConnection>,
@@ -23,9 +21,7 @@ impl ConnectionStore {
         Ok(self.ensure_loaded(&mut state)?.list())
     }
 
-    // One commit and one journal call. Every id and value is kept as given, so a library moving in from another app's
-    // store reads back the same; nothing is checked or cleaned, which an edit does. An entry this build cannot read
-    // stays unless the write names its id. The profiles are left as they are.
+    // Another app's library moving in reads back the same, so nothing is checked or cleaned as an edit does.
     pub fn replace_library_blocking(&self, write: LibraryWrite) -> Result<(), StorageError> {
         let LibraryWrite {
             connections,
@@ -117,9 +113,12 @@ impl ConnectionStore {
                     .map_or(Ok(()), |&id| Err(StorageError::GroupNotFound { id }));
             }
             let ordered = document.check_group_move(&moving, parent, before)?;
+            // Only the moved groups take the parent: a sibling whose parent has not arrived keeps it.
             for (rank, id) in ordered.iter().enumerate() {
                 if let Some(group) = document.groups.iter_mut().find(|group| group.id == *id) {
-                    group.parent_id = parent;
+                    if moving.contains(id) {
+                        group.parent_id = parent;
+                    }
                     group.order = rank_of(rank);
                 }
             }
@@ -155,10 +154,11 @@ impl ConnectionStore {
                 })
                 .collect();
             freed.sort();
+            let moving: HashSet<Uuid> = freed.iter().map(|(_, _, id)| *id).collect();
             let mut ordered = document.connection_ids_in(None);
             ordered.extend(freed.into_iter().map(|(_, _, id)| id));
             document.groups.retain(|group| !removed.contains(&group.id));
-            document.place_connections(None, &ordered);
+            document.place_connections(None, &ordered, &moving);
             Ok(RemoveOutcome::Removed)
         })
     }
@@ -175,7 +175,7 @@ impl ConnectionStore {
             }
             let moving = document.saved_ids(ids)?;
             let ordered = placed(&document.connection_ids_in(group), &moving, before);
-            document.place_connections(group, &ordered);
+            document.place_connections(group, &ordered, &moving.iter().copied().collect());
             Ok(())
         })
     }
@@ -203,8 +203,9 @@ impl ConnectionStore {
             };
             let mut ordered = document.connection_ids_in(Some(group.id));
             let staying: HashSet<Uuid> = ordered.iter().copied().collect();
+            let arriving: HashSet<Uuid> = moving.iter().copied().collect();
             ordered.extend(moving.into_iter().filter(|id| !staying.contains(id)));
-            document.place_connections(Some(group.id), &ordered);
+            document.place_connections(Some(group.id), &ordered, &arriving);
             Ok(group)
         })
     }
@@ -308,11 +309,14 @@ impl ConnectionsDocument {
         members.into_iter().map(|(_, id)| id).collect()
     }
 
-    fn place_connections(&mut self, group: Option<Uuid>, ordered: &[Uuid]) {
+    // Only `moving` changes group: an entry filed under a group that has not arrived keeps it.
+    fn place_connections(&mut self, group: Option<Uuid>, ordered: &[Uuid], moving: &HashSet<Uuid>) {
         let ranks: HashMap<Uuid, usize> = ordered.iter().enumerate().map(|(rank, id)| (*id, rank)).collect();
         for connection in &mut self.connections {
             if let Some(rank) = ranks.get(&connection.id) {
-                connection.group_id = group;
+                if moving.contains(&connection.id) {
+                    connection.group_id = group;
+                }
                 connection.order = rank_of(*rank);
             }
         }
@@ -396,6 +400,7 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
     same
 }
 
+// By names as they show: a stored name is kept as written, a file's is cleaned.
 #[derive(Default)]
 struct SiblingNames {
     exact: HashMap<(Option<Uuid>, String), Uuid>,
@@ -406,7 +411,7 @@ impl SiblingNames {
     fn add(&mut self, group: &ConnectionGroup) {
         self.add_exact(group);
         self.folded
-            .entry((group.parent_id, group.name.as_str().to_lowercase()))
+            .entry((group.parent_id, group.name.shown().to_lowercase()))
             .or_default()
             .push(group.id);
     }
@@ -414,36 +419,36 @@ impl SiblingNames {
     // An added group stays out of the any-case match, so a file's own `Work` and `work` stay two groups.
     fn add_exact(&mut self, group: &ConnectionGroup) {
         self.exact
-            .entry((group.parent_id, group.name.as_str().to_owned()))
+            .entry((group.parent_id, group.name.shown()))
             .or_insert(group.id);
     }
 
     fn remove(&mut self, group: &ConnectionGroup) {
-        let exact = (group.parent_id, group.name.as_str().to_owned());
+        let exact = (group.parent_id, group.name.shown());
         if self.exact.get(&exact) == Some(&group.id) {
             self.exact.remove(&exact);
         }
         if let Some(ids) = self
             .folded
-            .get_mut(&(group.parent_id, group.name.as_str().to_lowercase()))
+            .get_mut(&(group.parent_id, group.name.shown().to_lowercase()))
         {
             ids.retain(|id| *id != group.id);
         }
     }
 
     fn exactly(&self, parent: Option<Uuid>, name: &ConnectionGroupName) -> Option<Uuid> {
-        self.exact.get(&(parent, name.as_str().to_owned())).copied()
+        self.exact.get(&(parent, name.shown())).copied()
     }
 
     fn in_any_case(&self, parent: Option<Uuid>, name: &ConnectionGroupName) -> Option<Uuid> {
         self.folded
-            .get(&(parent, name.as_str().to_lowercase()))
+            .get(&(parent, name.shown().to_lowercase()))
             .and_then(|ids| ids.first().copied())
     }
 
     fn taken_by_another(&self, parent: Option<Uuid>, name: &ConnectionGroupName, except: Uuid) -> bool {
         self.folded
-            .get(&(parent, name.as_str().to_lowercase()))
+            .get(&(parent, name.shown().to_lowercase()))
             .is_some_and(|ids| ids.iter().any(|id| *id != except))
     }
 }

@@ -439,10 +439,14 @@ impl TreeInner {
 
     fn saved_name(&self, key: &SessionKey) -> Option<String> {
         match key {
-            SessionKey::Saved(id) => self.saved.get(*id).map(|saved| saved.name),
-            SessionKey::SavedIn { id, database } => {
-                self.saved.get(*id).map(|saved| sibling_title(&saved.name, database))
-            }
+            SessionKey::Saved(id) => self
+                .saved
+                .get(*id)
+                .map(|saved| tablepro_storage::shown_name(&saved.name)),
+            SessionKey::SavedIn { id, database } => self
+                .saved
+                .get(*id)
+                .map(|saved| sibling_title(&tablepro_storage::shown_name(&saved.name), database)),
             SessionKey::File(_) => None,
         }
     }

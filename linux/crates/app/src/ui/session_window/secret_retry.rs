@@ -47,7 +47,10 @@ pub(super) fn refused_secret(error: &ConnectError, saved: &SavedConnection) -> O
             SavedSshAuth::PrivateKey {
                 has_passphrase: true, ..
             } => Some(SecretKind::SshPassphrase),
-            SavedSshAuth::PrivateKey { .. } | SavedSshAuth::Agent | SavedSshAuth::KeyboardInteractive => None,
+            SavedSshAuth::PrivateKey { .. }
+            | SavedSshAuth::Agent
+            | SavedSshAuth::KeyboardInteractive
+            | SavedSshAuth::None => None,
         },
         _ => None,
     }

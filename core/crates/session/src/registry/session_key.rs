@@ -33,8 +33,11 @@ impl SessionKey {
     /// its stored credentials.
     pub fn for_file(identity: &FileIdentity, saved: &[SavedConnection], is_file_driver: impl Fn(&str) -> bool) -> Self {
         if let Some(canonical) = identity.canonical_path.as_deref() {
+            // A file on the SSH host only shares the path with the one opened here.
             let matched = saved.iter().find(|connection| {
-                is_file_driver(&connection.driver_id) && resolves_to(&connection.database, canonical)
+                is_file_driver(&connection.driver_id)
+                    && !connection.ssh.as_ref().is_some_and(|ssh| ssh.opens_remote_file())
+                    && resolves_to(&connection.database, canonical)
             });
             if let Some(connection) = matched {
                 return Self::Saved(connection.id);

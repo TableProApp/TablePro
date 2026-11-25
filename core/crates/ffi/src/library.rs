@@ -60,8 +60,7 @@ impl From<TlsModeTag> for TlsMode {
     }
 }
 
-// The macOS levels, weakest first. An app that offers fewer shows each as the one a session runs,
-// `safe_mode_enforced` gives it.
+// The macOS levels, weakest first; an app that offers fewer shows the one `safe_mode_enforced` gives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum SafeModeTag {
     Silent,
@@ -624,9 +623,13 @@ impl ConnectionLibrary {
                 });
             }
             // As the list shows them: names cleaned, and a group the list lacks read as the top.
+            let known: std::collections::HashSet<Uuid> = list.groups.iter().map(|group| group.id).collect();
             let listed = |saved: &SavedConnection| ConnectionRecord {
                 name: shown_name(&saved.name),
-                group_id: list.group_of(saved).map(|id| id.to_string()),
+                group_id: saved
+                    .group_id
+                    .filter(|id| known.contains(id))
+                    .map(|id| id.to_string()),
                 ..ConnectionRecord::from(saved)
             };
             let by_group = list.connections_by_group();

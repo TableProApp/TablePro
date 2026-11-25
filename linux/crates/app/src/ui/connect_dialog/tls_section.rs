@@ -189,7 +189,8 @@ impl TlsSection {
             false if caps.default_mode.strictness() >= state.mode.strictness() => caps.default_mode,
             false => state.mode.at_least_in(caps.modes),
         };
-        imp.mode_chosen.set(state.mode_chosen && mode == state.mode);
+        // A chosen mode rounded up is still the person's choice, so a later port change cannot drop it to a weaker one.
+        imp.mode_chosen.set(state.mode_chosen);
         let index = caps.modes.iter().position(|candidate| *candidate == mode).unwrap_or(0);
         imp.encryption_row.set_selected(index as u32);
         imp.ca_file.replace(state.ca_file.clone());

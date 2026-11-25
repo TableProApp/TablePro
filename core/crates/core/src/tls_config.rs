@@ -16,7 +16,7 @@ pub struct TlsConfig {
     pub client_identity: Option<ClientIdentity>,
     #[serde(default)]
     pub server_name: Option<String>,
-    /// Keys a newer build wrote, kept as they were and written back.
+    // Keys a newer build wrote, kept and written back.
     #[serde(flatten)]
     pub unknown: BTreeMap<String, Value>,
 }

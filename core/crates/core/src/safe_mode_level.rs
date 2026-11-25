@@ -2,11 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::sql_syntax::StatementAccess;
 
-/// What stands between a statement and the server on one connection: the macOS levels.
-///
-/// It is persisted with the connection, so a variant is never renamed: the stored spelling is the
-/// serde name. The three levels every app had first keep the names a build before the six levels
-/// wrote and reads.
+// The macOS levels. A variant is never renamed, and the three every app had first keep the names earlier builds read.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SafeModeLevel {
     #[default]
@@ -55,12 +51,11 @@ impl SafeModeLevel {
             .unwrap_or(Self::ALL.len())
     }
 
-    /// The level a session runs, rounded up to one in [`Self::ENFORCED`] and never down.
     pub fn enforced(self) -> Self {
         self.at_least_in(&Self::ENFORCED)
     }
 
-    /// The weakest of `offered` that stops at least what this level stops; Read-Only when none does.
+    // Read-Only when none of `offered` stops as much.
     pub fn at_least_in(self, offered: &[Self]) -> Self {
         offered
             .iter()

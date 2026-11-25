@@ -386,33 +386,44 @@ fn a_version_1_list_rewritten_keeps_the_spellings_earlier_builds_read() -> TestR
     let written: serde_json::Value = serde_json::from_slice(&std::fs::read(paths.connections_file())?)?;
     let fixture: serde_json::Value = serde_json::from_slice(CONNECTIONS_V1)?;
 
-    let field = |file: &serde_json::Value, path: &[&str]| -> Vec<serde_json::Value> {
+    let field = |file: &serde_json::Value, name: &str| -> Vec<serde_json::Value> {
         file["connections"]
             .as_array()
             .map(|connections| {
                 connections
                     .iter()
-                    .map(|connection| path.iter().fold(connection.clone(), |value, key| value[*key].clone()))
+                    .map(|connection| written_form(&connection[name]))
                     .collect()
             })
             .unwrap_or_default()
     };
-    for path in [
-        &["name"][..],
-        &["safe_mode"],
-        &["ai_policy"],
-        &["icon"],
-        &["tls", "mode"],
-        &["ssh", "enabled"],
-        &["ssh", "jump_hosts"],
-        &["ssh", "auth", "kind"],
-        &["ssh", "auth", "path"],
-    ] {
-        assert_eq!(field(&written, path), field(&fixture, path), "{path:?}");
+    for name in ["name", "safe_mode", "ai_policy", "icon", "tls", "ssh"] {
+        assert_eq!(field(&written, name), field(&fixture, name), "{name}");
     }
     assert_eq!(written["groups"], fixture["groups"]);
     assert_eq!(written["tags"], fixture["tags"]);
     Ok(())
+}
+
+// A value as both builds read it: an absent key, a null one and a false passphrase flag mean the same.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "two documents' values are compared; their key order means nothing here"
+)]
+fn written_form(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(_) => {
+            let mut kept = value.clone();
+            if let Some(fields) = kept.as_object_mut() {
+                fields.retain(|key, field| !field.is_null() && !(key == "has_passphrase" && field == &false));
+                for field in fields.values_mut() {
+                    *field = written_form(field);
+                }
+            }
+            kept
+        }
+        other => other.clone(),
+    }
 }
 
 #[test]

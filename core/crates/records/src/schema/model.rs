@@ -104,8 +104,7 @@ const SAVED_CONNECTION: &[(&str, Target)] = &[
     ("unknown", Kept),
 ];
 
-// `tablepro_storage::SshProfile`. Whether a key's passphrase is kept is this device's to know. A profile is never
-// switched off and opens no remote file, so those stay unsent.
+// `tablepro_storage::SshProfile`. A kept passphrase is this device's to know; a profile is never off and opens no file.
 const SSH_PROFILE: &[(&str, Target)] = &[
     ("id", Id),
     ("name", Wire("name")),

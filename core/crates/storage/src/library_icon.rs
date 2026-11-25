@@ -2,18 +2,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::ConnectionIcon;
 
-/// The icon a group or a connection shows in place of its default one.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LibraryIcon {
     Named(ConnectionIcon),
-    /// Kept so a macOS library round-trips. Only the Apple apps can draw
-    /// it; the others draw the default icon.
+    // Only the Apple apps draw it; the others draw the default icon.
     Symbol(SymbolName),
 }
 
-// A connection stored its icon as the named icon's id before it could hold a symbol, and a build
-// that reads only that form still reads a named icon.
+// A named icon stays its id string, the only form an earlier build reads.
 pub(crate) mod connection_field {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

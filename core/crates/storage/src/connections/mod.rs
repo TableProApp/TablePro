@@ -252,9 +252,7 @@ fn is_empty_list<T>(list: &Lenient<T>) -> bool {
 }
 
 impl ConnectionsDocument {
-    // Each id names one entry and a connection names a tag once, whatever a hand-edited or crafted file says. Every
-    // value is kept as stored: a reference nothing answers to reads as the top level or as no tag, so a pull that brings
-    // a connection before its group or tag loses neither.
+    // Values stay as stored, so a pull that brings a connection before its group or tag loses neither link.
     fn tidy(&mut self) {
         let mut seen = HashSet::with_capacity(self.tags.len());
         self.tags.retain(|tag| seen.insert(tag.id));
@@ -1157,7 +1155,6 @@ fn decode(path: &Path, bytes: Option<&[u8]>) -> Result<ConnectionsDocument, Docu
     Ok(document)
 }
 
-// A held entry and a readable one of the same id differ, so a record a build could not read and now can is a write.
 // Maps rather than scans: a crafted file of many entries must not make every write hold the store.
 fn lenient_changes<T: Identified + PartialEq>(
     kind: RecordKind,

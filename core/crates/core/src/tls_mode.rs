@@ -9,11 +9,7 @@ pub enum TlsMode {
     /// `PREFERRED`.
     Prefer,
     Require,
-    /// The certificate chains to a trusted root or the CA file, and the
-    /// server's name is not checked: libpq's `verify-ca` and the mysql
-    /// client's `VERIFY_CA`. No engine offers it until its driver checks
-    /// the chain without the name, so a connection saved with it is
-    /// refused at connect.
+    // libpq's verify-ca: the chain is checked and the name is not. No engine offers it yet, so a connect refuses it.
     VerifyCa,
     VerifyFull,
     /// TLS before the first protocol byte, as SQL Server's TDS 8.0 strict
@@ -29,7 +25,6 @@ impl TlsMode {
         matches!(self, Self::VerifyCa | Self::VerifyFull | Self::Strict)
     }
 
-    /// Whether the certificate must also carry the server's name.
     pub fn verifies_host_name(self) -> bool {
         matches!(self, Self::VerifyFull | Self::Strict)
     }
@@ -62,8 +57,7 @@ impl TlsMode {
             .unwrap_or(Self::BY_STRICTNESS.len())
     }
 
-    // The mode a form that offers only `offered` shows for this one: never a weaker one while a mode at least as strict is
-    // offered, and the strictest offered when none is.
+    // Never weaker while an offered mode is at least as strict; the strictest offered when none is.
     pub fn at_least_in(self, offered: &[TlsMode]) -> TlsMode {
         offered
             .iter()
