@@ -1,6 +1,6 @@
 # 0051: Sync protocol and record rules
 
-- **Status**: Accepted; amends 0044, 0047 and 0055
+- **Status**: Accepted; amends 0044 and 0047
 - **Date**: 2026-11-25
 
 ## Context
