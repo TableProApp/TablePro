@@ -75,23 +75,24 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
 ### Key objects
 
 - A key object's id is its parts joined by `/`, in the order below. A part is a UUID in the form above, a decimal version with no leading zero, or a name of lower-case ASCII letters, digits and `-` that starts with a letter.
-- 0056 (What the server stores and checks) says what each part means and who writes each kind, and 0051 which kinds are create-only and which writer each is bound to. Here is how the parts are written.
+- 0056 (What the server stores and checks) says what each part means and who writes each kind, and 0051 which writer each is bound to and what each body holds. Every key kind is create-only. Here is how the parts are written.
 
 | Kind | Id | Example |
 |---|---|---|
 | `key.account` | `<account>/<av>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1` for the genesis; `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/4` |
-| `key.device` | `<account>/<device>/<av>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/4` |
+| `key.device` | `<account>/<key device>/<av>`, the key device id the device drew with its device keys, not its device row's id | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/4` |
 | `key.recovery` | `<account>/<av>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/4` |
-| `key.cancel` | `<account>/<av>`, the `av` of the reset it cancels | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/5` |
+| `key.reset` | `<account>/<reset id>`, a random UUIDv4 per attempt | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/8A41C3E2-5B6D-4F7A-9C10-2E3D4B5A6F78` |
+| `key.cancel` | `<account>/<reset id>`, the reset it cancels | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/8A41C3E2-5B6D-4F7A-9C10-2E3D4B5A6F78` |
 | `key.request` | `<request id>` | `5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357` |
-| `key.sas` | `<request id>/<step>`, the step `nonce` or `reveal` | `5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357/nonce` |
+| `key.sas` | `<request id>/<step>`, the step `nonce`, `reveal` or `cancel` | `5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357/nonce` |
 | `key.version` | `<owner>/<purpose>/<version>`, the owner the account for the purposes `personal` and `history` and the team for `team` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/history/2`; `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/5` |
-| `key.wrap` | `<owner>/<purpose>/<version>/<recipient type>/<recipient id>/<recipient version>`. The purpose `account` or `trust`, with the version the `av` and the recipient a `device` at that `av`; or `personal`, `history` or `team`, with the recipient an `account` at its `av` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/account/4/device/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/4`; `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/5/account/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2` |
+| `key.wrap` | `<owner>/<purpose>/<version>/<recipient type>/<recipient id>/<recipient version>`. The purpose `account` or `trust`, with the version the `av` and the recipient a `device`, named by its key device id, at that `av`; or `personal`, `history` or `team`, with the recipient an `account` at its `av` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/account/4/device/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/4`; `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/5/account/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2` |
 | `key.ring` | `<owner>/<purpose>/<version>` | `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/5` |
 | `key.member` | `<account>/<av>` | `019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2` |
 
-- One id per version, recipient or step, so two writers of one meet on one id: the create-only rule ([0051](0051-sync-protocol-and-record-rules.md)) keeps the first, only its writer replaces a wrap or a ring, and each cancel replaces the one before it.
-- Where the bound writer is an account the id names, the server compares that part as bytes with the caller's account id in upper case: the account of `key.account`, `key.device`, `key.recovery`, `key.cancel` and `key.member`, and the owner of a personal `key.version`, `key.wrap` or `key.ring`. A mismatch is refused with `writer_bound`.
+- One id per version, recipient, step or reset, so two writers of one meet on one id, and the create-only rule ([0051](0051-sync-protocol-and-record-rules.md)) keeps the first. A device that signs in again after Sign Out draws a new key device id, so its certificate never meets the old one's id at the same `av`.
+- Where the bound writer is an account the id names, the server compares that part as bytes with the caller's account id in upper case: the account of `key.account`, `key.device`, `key.recovery`, `key.reset`, `key.cancel` and `key.member`, and the owner of a personal `key.version`, `key.wrap` or `key.ring`. A mismatch is refused with `writer_bound`.
 - A key kind added later writes its parts the same way.
 
 ### Team scope
