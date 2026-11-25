@@ -216,7 +216,7 @@ The server also leaves out holders whose device row an admin removed, and the ho
 
 - A device statement's `ih` never goes back, and is at or after every `rotate` or `reset` whose `dh.seq` is below the statement's `seq`.
 - An `add` by approval verifies under the signing key of its `by` holder, which is in the device set at `seq - 1`. A thief holding a stolen device can therefore approve holders only in the stolen holder's name.
-- A `rotate` takes out the holders it names together with every holder they approved, directly or not, and the rule above makes it name them. Holders added by `genesis` or `recovery` are signed by IK and descend from nobody. An honest device that a stolen device approved before the theft joins again by approval or with S.
+- A `rotate` takes out the holders it names together with every holder they approved, directly or not, and the identity log's rules make it name them. Holders added by `genesis` or `recovery` are signed by IK and descend from nobody. An honest device that a stolen device approved before the theft joins again by approval or with S.
 - A holder id is never added twice.
 - The server takes `rotate`, `recovery` and `reset` only with `dh` equal to the current device head, and device statements only with `ih` equal to the current identity head. That is compare-and-set both ways, and a client whose append is refused pulls, then signs again.
 
