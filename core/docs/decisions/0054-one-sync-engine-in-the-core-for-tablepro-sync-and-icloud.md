@@ -177,7 +177,7 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
 | --- | --- | --- |
 | `key_statements` | `scope`, `kind`, `record_id`; `seq`, `hash`, `bytes`, `applied` | Each key object kept verbatim, under its 0052 record id: the statements of the followed logs, the newest blob's ciphertext, and key objects not yet pushed. `seq` is null outside a log. `applied` is set once the server answers `applied` |
 | `key_heads` | `scope`, `log`; `seq`, `hash` | Each followed log's head. A holder's own statement moves it only once applied |
-| `key_pins` | `scope`, `subject`; `seq`, `hash`, `ik`, `how` | The account heads it compared or verified under IK, and per team the team head and each confirmed member's IK and bundle head. `how` is `compared`, `verified` or `uncompared` |
+| `key_pins` | `scope`, `subject`; `seq`, `hash`, `ik`, `how` | The account heads it compared or verified under IK, and per team the team head and each confirmed member's IK and two chain heads, identity and device. `how` is `compared`, `verified` or `uncompared` |
 | `key_comparisons` | `session`; `role`, `peer`, `view`, `expires_at` | Open comparison sessions, with the view this side fixed |
 | `key_floors` | `scope`; `floor`, `seen`, `rotation_pending` | `floor` is the lowest key version it may write. `seen` is the highest version seen on any branch, a dropped one included, so a new version comes above it. `rotation_pending` marks a rotation the scope waits for |
 | `envelope_counters` | `scope`, `envelope_id`; `kv`, `n`, `hash` | Per envelope, the highest (`kv`, `n`) accepted and that ciphertext's hash |
@@ -200,7 +200,11 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
     - each `key_floors` row. Since `seen` counts every branch and 0053 allocates a new version above it, burning a dropped branch's versions, a floor never has to move back after a fork ends;
     - each `envelope_counters` row.
 
-    An anchored head moves to another branch only through a fork resolution 0053 verifies, when the dropped branch's statements chain from the fork point it names to that head, as 0053's stored-head rule allows. `deleted_history` stays in the file alone.
+    **The one exception** is a **fork ending** 0053 verifies, which moves an anchored head from the dropped branch to the kept one:
+    - a `rotate` or `resolve` that names the fork point;
+    - for a fork that ends only by comparison, a fork re-pin: the device approval comparison whose context carries both branches' heads at the fork point, with words that match.
+
+    Either way, the dropped branch's statements must chain from the fork point to the anchored head, each checked as 0053 checks a log, and a missing or substituted link moves nothing. No other statement or comparison moves an anchored head back. `deleted_history` stays in the file alone.
   - **Size.** A checkpoint is written to items of its own only when it changes, before the entry that names it, and items no entry names are deleted once the entry settles. Each commit rewrites only the root. A checkpoint grows with the logs followed and the envelopes held, about 60 bytes an envelope.
   - **A commit writes its anchor in two steps.** Before the commit, the engine writes the new checkpoint when it changed, then adds a pending entry to the root with the next counter, its MAC and its digests. After the commit, the pending entry becomes the current one. A commit starts only when no pending entry is left; while one cannot be settled, the engine stops.
   - **Apple platforms:** Keychain items in the data protection keychain, `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` and not synchronizable. Apple Platform Security, "Keychain data protection", says items of that class don't sync to iCloud Keychain, aren't backed up and aren't in escrow keybags. Other ThisDeviceOnly classes do not serve: "Keybags for Data Protection" (Backup keybag) has them restored to the device they were backed up from. The anchor reads only while the device is unlocked, so a pass that starts locked waits. Turning the passcode off deletes every item of that class (Apple's `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` documentation), so the device then has a file with no anchor and pins again. A device with no passcode keeps its anchor in `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, which a backup restores to the same device, and falls under the limit below.
@@ -213,10 +217,10 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
 - **A stale file** is trusted for nothing.
   - Its sync tables go into refill, as a restored store does: the pull wins, records the provider has never seen go up as creates, then the diff runs again.
   - Its key tables are not trusted, and the holder keys stay, so it is the same holder. It rebuilds the key tables from the logs the server holds, accepting only what extends the anchor's checkpoint, the pending entry's when one is left:
-    - a log extends an anchored head when it contains that head at its `seq` with the same hash. Otherwise a fork resolution 0053 verifies must drop the branch that head is on, and the dropped branch's statements must chain from the hash the resolution names at the fork point to the anchored `seq` and hash, each checked as 0053 checks a log. A missing or substituted link keeps the holder blocked;
+    - a log extends an anchored head when it contains that head at its `seq` with the same hash. Otherwise a fork ending, as the exception above defines it, must drop the branch that head is on, with the dropped branch's statements chained from the fork point to the anchored `seq` and hash. A missing or substituted link keeps the holder blocked;
     - no key version below an anchored floor, and no envelope counter below an anchored one.
 
-    Until every followed log extends its anchored head, it accepts no wrap or envelope and writes no secret. A comparison never pins a head older than the anchor's, so a holder that missed a removal cannot hand the device its older view.
+    Until every followed log extends its anchored head, it accepts no wrap or envelope and writes no secret. A comparison never pins a head older than the anchor's, so a holder that missed a removal cannot hand the device its older view. A fork re-pin is the one comparison that may, under the exception above.
   - An anchor with no file, as after a reinstall that kept the device store, rebuilds the same way.
   - A file with no anchor has no checkpoint. Its holder pins again through a comparison with another holder of the account or with S, as 0053's device approval does, and falls under the limit below.
 - **The limit.** Nothing on the device then proves a newer head than the one it holds:
@@ -266,7 +270,7 @@ A copy whose content changed after the move is kept, since a content edit wins. 
 
 **Back to iCloud.**
 1. A last service pull.
-2. For each service tombstone whose id has a CloudKit base, the engine fetches the CloudKit copy and deletes it when its content fields still equal the base's. A copy whose content another device changed on iCloud is kept, as above. CloudKit deletes without a change tag, so an edit another device saves between that fetch and the deletion is lost, as it is for any iCloud deletion today. The fetch keeps that window to one round trip.
+2. For each service tombstone with `deleted_reason` `user` whose id has a CloudKit base, the engine fetches the CloudKit copy and deletes it when its content fields still equal the base's. A `policy` tombstone never deletes on iCloud, since a device keeps its copy of what a policy removed (0051). Before it deletes anything, the move-back sheet says how many iCloud records the move deletes and the person confirms, since a server can write `user` tombstones for any record it holds. A copy whose content another device changed on iCloud is kept, as above. CloudKit deletes without a change tag, so an edit another device saves between that fetch and the deletion is lost, as it is for any iCloud deletion today. The fetch keeps that window to one round trip.
 3. iCloud turns on as it does today.
 
 **Mixed devices.** A device that moves stops syncing with devices still on iCloud, and the move sheet says so.
@@ -339,14 +343,14 @@ A copy whose content changed after the move is kept, since a content edit wins. 
   - an older copy of a state file with a valid MAC, its anchor intact, opens stale: its sync tables refill, and its key tables rebuild from logs that extend the anchored checkpoint, with no comparison;
   - a crash at each step of a commit and its anchor opens as the rules say. A restore of the copy before a commit whose anchor did not settle leaves the key tables untrusted when that commit changed them, and rebuilds them on the pending checkpoint;
   - an anchor with no file rebuilds from logs that extend its checkpoint; a file with no anchor needs a comparison before any log is trusted;
-  - a comparison never pins a head older than an anchored one: a partner that missed a removal the anchor recorded ends the session as a mismatch;
-  - a fork resolution moves an anchored head off the dropped branch, also when the head sits several statements past the fork point, and the next key version comes above every version either branch reached. A missing or substituted link between the fork point and the anchored head keeps the holder blocked;
+  - a comparison never pins a head older than an anchored one: a partner that missed a removal the anchor recorded ends the session as a mismatch. A fork re-pin is the exception: an own device whose anchor sits on a dropped `replace` branch pins again on the kept branch, and the same re-pin with a broken chain from the fork point moves nothing;
+  - a `rotate` or `resolve` that ends a fork moves an anchored head off the dropped branch, also when the head sits several statements past the fork point, and the next key version comes above every version either branch reached. A missing or substituted link between the fork point and the anchored head keeps the holder blocked;
   - a statement the holder signed whose push was refused never enters the anchored checkpoint, so a rebuild after it still completes;
   - a log, floor or envelope counter below the anchored checkpoint is refused after a restore, from the server or a partner, and a member's identity chain and device chain are each held to their own anchored head;
   - digest vectors cover a value of 65,535 bytes, one of 65,536, and a key object at the record limit;
   - a key table row copied from another copy of the file fails the MAC;
   - the first run keeps every consent decision and refusal, and leaves an unapproved synced connection unapproved;
-  - the moves with three devices on two fake transports: a deletion on iCloud after another device moved, with and without a later content edit or reorder on the service; an edit on iCloud after another device moved; a record created on the service after the move; and the move back.
+  - the moves with three devices on two fake transports: a deletion on iCloud after another device moved, with and without a later content edit or reorder on the service; an edit on iCloud after another device moved; a record created on the service after the move; and the move back, where a `policy` tombstone deletes nothing on iCloud and nothing is deleted before the person confirms the count.
 - **Bindings:** Swift tests over a Swift fake transport.
 - **Apps:**
   - the import from fixtures, and the import again after a downgrade and an upgrade;
