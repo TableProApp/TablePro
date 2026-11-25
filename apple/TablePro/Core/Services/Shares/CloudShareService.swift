@@ -14,6 +14,9 @@ internal struct CloudShareService: ShareService {
     let api: any APIProtocol
     let publicAPI: any APIProtocol
     let createRequest: ShareCreateRequest
+    // The core's answer, asked before each read: false while the organization holds the app to its own server
+    // (core/docs/decisions/0055-managed-policies-for-the-sync-provider-and-tablepro-app-traffic.md).
+    var allowsReading: @Sendable () async -> Bool = { true }
 
     func limits() async throws(ShareFailure) -> ShareLimits {
         do {
@@ -116,6 +119,7 @@ internal struct CloudShareService: ShareService {
     }
 
     func fetchShared(token: String, password: String?) async throws(ShareFailure) -> SharedQuery {
+        guard await allowsReading() else { throw ShareFailure.managedByOrganization }
         do {
             switch try await publicAPI.getShared(path: .init(token: token), headers: .init(xSharePassword: password)) {
             case .ok(let answer):

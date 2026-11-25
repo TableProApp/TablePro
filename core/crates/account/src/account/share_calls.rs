@@ -8,6 +8,7 @@ use tablepro_cloud_api::{Bearer, answer_error, v2};
 
 use super::{Account, Call, Session};
 use crate::account_error::AccountError;
+use crate::server::ServerError;
 use crate::share::{
     CreatedShare, MAX_SHARE_COLUMNS, MAX_SHARE_SQL_BYTES, Share, ShareExpiry, ShareLimits, SharePage, ShareRequest,
     SharedLink, sent_share_password, snapshot_body,
@@ -49,6 +50,8 @@ impl Account {
             let bearer = self.ended_by(&mut session, taken).await?;
             (bearer, self.current(), self.inner.attempts.load(Ordering::SeqCst))
         };
+        // A policy that stopped the account while the token was taken stops the upload too.
+        self.reachable()?;
         let api = v2::Client::new_with_client(&server.api, self.inner.http.clone(), bearer.lasting(UPLOAD_TIMEOUT));
         let sent = answer(api.create_share(&body).await).await;
         let mut session = self.inner.session.lock().await;
@@ -114,7 +117,11 @@ impl Account {
     }
 
     // Public: no session and no token, so anyone with a link reads it, signed in or not.
+    // Refused before any request while the organization holds the app to its own server (core ADR 0055).
     pub async fn fetch_shared(&self, token: &str, password: Option<&SecretString>) -> Result<SharedLink, AccountError> {
+        if !self.allows_tablepro_requests() {
+            return Err(ServerError::Managed.into());
+        }
         if !is_share_token(token) {
             return Err(not_found("not a share token"));
         }
@@ -645,6 +652,28 @@ mod tests {
         );
         assert_eq!(sent(&log, "PATCH /v2/shares/shr_01")[0].body, r#"{"expiry":"30d"}"#);
         assert_eq!(sent(&log, "DELETE /v2/shares/shr_01").len(), 1);
+    }
+
+    // The organization holds the app to its own server: no link is read from tablepro.app and nothing is uploaded.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_held_company_server_stops_share_reads_and_uploads_before_any_request() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let (endpoints, log) = cloud(|_| (200, "", TOKENS.to_owned()));
+        let account = signed_in(dir.path(), endpoints).await;
+
+        account.apply_policy(crate::policy::ManagedPolicy::Values(crate::policy::PolicyValues {
+            account_server_url: Some("https://tablepro.corp.example".to_owned()),
+            allow_other_account_servers: Some(false),
+            ..Default::default()
+        }));
+        let read = account.fetch_shared(TOKEN, None).await;
+        let created = account.create_share(query("Orders")).await;
+        let limits = account.share_limits().await;
+
+        assert_eq!(read.expect_err("refused").code(), "account.server_managed");
+        assert_eq!(created.expect_err("refused").code(), "account.server_managed");
+        assert_eq!(limits.expect_err("refused").code(), "account.server_managed");
+        assert!(log.lock().expect("the log").is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

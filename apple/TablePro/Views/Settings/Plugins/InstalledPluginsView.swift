@@ -11,6 +11,7 @@ struct InstalledPluginsView: View {
     @ObservedObject private var filter: SettingsPaneFilter
     @ObservedObject private var reveal: SettingsPluginReveal
     @ObservedObject private var visit: SettingsPaneVisit
+    @ObservedObject private var policy = ManagedPolicyCenter.shared
     @State private var isDropTargeted = false
     @State private var isImporting = false
 
@@ -52,6 +53,13 @@ struct InstalledPluginsView: View {
 
     private func form(_ content: ExtensionsFilteredContent) -> some View {
         Form {
+            if !policy.snapshot.allowsPluginCatalog {
+                Section {
+                    Text("Your organization manages plugins, so none are downloaded or updated here. Installed plugins keep working.")
+                        .accessibilityIdentifier("extensions-catalog-managed")
+                }
+            }
+
             ExtensionsAttentionSection(snapshot: model.snapshot, context: context, tracker: model.manager.installTracker)
 
             if !content.rejected.isEmpty {

@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 @testable import TablePro
 import TableProSyncTransport
+import TableProTestSupport
 import TableProTheme
 import Testing
 
@@ -91,4 +92,26 @@ struct AppSettingsSyncSideEffectsTests {
         #expect(recorder.calls.isEmpty)
         #expect(flagDefaults.bool(forKey: KeychainHelper.passwordSyncEnabledKey))
     }
+
+    @Test("A profile that forces iCloud turns the switch on, and turns it on again after Reset All Settings")
+    func forcedICloudSurvivesAReset() async throws {
+        let recorder = SyncSwitchRecorder()
+        let root = Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manager = try makeManager(flagDefaults: try pool.make().defaults, recorder: recorder, root: root)
+        let policy = SyncProviderPolicy()
+
+        policy.start(center: ManagedPolicyCenter(reader: ForcedICloud()), settings: manager)
+        try await waitUntil { manager.sync.enabled }
+        manager.sync = .default
+        try await waitUntil { recorder.calls.count == 3 }
+
+        #expect(manager.sync.enabled)
+        #expect(recorder.calls == [true, false, true])
+    }
+}
+
+private struct ForcedICloud: ManagedPolicyReading {
+    func string(_ policy: ManagedPolicy) -> String? { nil }
+    func strings(_ policy: ManagedPolicy) -> [String]? { policy == .personalSyncProvider ? ["icloud"] : nil }
 }

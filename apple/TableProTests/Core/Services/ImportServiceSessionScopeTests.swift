@@ -345,7 +345,7 @@ struct ImportCommittedTransactionErrorTests {
         #expect(statement == "INSERT INTO courses VALUES ('0000-00-00')")
         #expect(line == 8_264)
         #expect(underlying.localizedDescription == "[1292] Incorrect date value\n" + ImportCommittedTransactionError.note)
-        let text = TransferResultAlert.importFailureText(for: noted)
+        let text = TransferResults.importFailureText(for: noted)
         #expect(text.hasPrefix("Failed at line 8264. [1292] Incorrect date value"))
         #expect(text.contains(ImportCommittedTransactionError.note))
     }

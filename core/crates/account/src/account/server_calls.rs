@@ -40,6 +40,7 @@ impl Account {
     // A company server's endpoints, from this run's discovery, found again when `fresh`. The session must be held, so
     // the server changes under no other call.
     pub(super) async fn connection(&self, session: &mut Session, fresh: bool) -> Result<Arc<Server>, AccountError> {
+        self.reachable()?;
         let server = self.current();
         if !server.is_company() || (server.connection.is_some() && !fresh) {
             return Ok(server);
@@ -47,6 +48,7 @@ impl Account {
         session.waited(Call::Discovery)?;
         let found = server::discover(&self.inner.http, &server.target.origin, loopback_http_allowed()).await;
         let discovered = session.answered(Call::Discovery, found)?;
+        self.reachable()?;
         let connected = Arc::new(server.discovered(self.inner.settings.client, &self.inner.http, discovered)?);
         self.inner.server.send_replace(connected.clone());
         Ok(connected)
@@ -55,22 +57,33 @@ impl Account {
     // The person's pick: a company server's API origin, or None for the organization's server or tablepro.app. A
     // server other than the one signed in to signs out of that one first; the same one keeps the sign-in.
     pub async fn choose_server(&self, url: Option<&str>) -> Result<(), AccountError> {
-        let ServerSettings::Resolved(policy) = &self.inner.settings.server else {
+        if !matches!(self.inner.settings.server, ServerSettings::Resolved(_)) {
             return Err(ServerError::Managed.into());
-        };
+        }
+        self.reachable()?;
         let loopback = loopback_http_allowed();
         let chosen = url.map(|text| parse_origin(text, loopback)).transpose()?;
         let mut session = self.inner.session.lock().await;
         let current = self.current();
-        if !current.target.others_allowed {
+        // The values the host passed last, so a profile installed since the launch holds the person to its server.
+        let policy = self.policy();
+        if !current.target.others_allowed || !server::resolve(&policy, None, loopback).others_allowed {
             return Err(ServerError::Managed.into());
         }
-        let target = server::resolve(policy, chosen.as_deref(), loopback);
+        let target = server::resolve(&policy, chosen.as_deref(), loopback);
+        // Checked again under the session, before the candidate hears anything: a refused source names no server.
+        if self.is_held() || !policy.allows_server(&target.origin) {
+            return Err(ServerError::Managed.into());
+        }
         let discovered = match target.kind {
             // A candidate's 429 is the person's to see; it holds back nothing the current server does.
             ServerKind::Company => Some(server::discover(&self.inner.http, &target.origin, loopback).await?),
             ServerKind::Production | ServerKind::Development => None,
         };
+        // Values read during the discovery may hold the person elsewhere by now.
+        if self.is_held() || !self.policy().allows_server(&target.origin) {
+            return Err(ServerError::Managed.into());
+        }
         let path = choice_file(&self.inner.settings.account_file);
         write_choice(&path, &Choice { chosen: chosen.clone() }).await?;
         let next = Server::build(
@@ -105,7 +118,15 @@ impl Account {
             production = next.target.kind == ServerKind::Production,
             "chose the account server"
         );
-        self.inner.server.send_replace(Arc::new(next));
+        {
+            // The choice is written and the old sign-in gone, so a server values read since then refuse still takes
+            // over, and the account calls it no more until the next launch.
+            let _switching = self.switching();
+            if !self.policy().allows_server(&next.target.origin) {
+                self.hold();
+            }
+            self.inner.server.send_replace(Arc::new(next));
+        }
         self.inner.status.send_modify(|_| {});
         Ok(())
     }
@@ -130,6 +151,7 @@ impl Account {
             .as_ref()
             .map(|discovered| discovered.jwks_uri.clone())
             .ok_or_else(|| ServerError::NotTablePro(server.target.origin.clone(), "no jwks_uri".to_owned()))?;
+        self.reachable()?;
         session.waited(Call::Keys)?;
         let fetched = self.jwks(&jwks_uri).await;
         let jwks = session.answered(Call::Keys, fetched)?;

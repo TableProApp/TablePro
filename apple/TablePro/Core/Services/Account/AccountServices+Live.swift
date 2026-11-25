@@ -13,8 +13,7 @@ extension AccountServices {
         let setup = AccountCoreSetup.make(
             supportDirectory: environment.supportDirectory,
             machineID: machine.machineID,
-            managedServerURL: ManagedPolicyReader.shared.string(.accountServerURL),
-            allowOtherServers: ManagedPolicyReader.shared.bool(.allowOtherAccountServers),
+            policy: ManagedPolicyCenter.shared.snapshot,
             environment: ProcessInfo.processInfo.environment,
             isDebugBuild: isDebugBuild
         )

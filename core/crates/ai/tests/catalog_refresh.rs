@@ -212,3 +212,22 @@ async fn an_unreachable_host_changes_nothing() {
     assert!(!dir.path().join("ai-models").exists());
     assert!(catalog.default_model(tablepro_core::AiProvider::Anthropic).is_some());
 }
+
+// An organization that holds the app to its own server keeps it off tablepro.app hosts: the kept copy serves.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refresh_that_is_not_allowed_asks_nothing_and_the_kept_copy_serves() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let host = Host::start(catalog_text("2999-01-01T00:00:00Z")).await;
+    ModelCatalog::refreshed_from(dir.path().to_path_buf(), &host.url)
+        .refresh(&client())
+        .await;
+    let held = ModelCatalog::refreshed_from(dir.path().to_path_buf(), &host.url);
+
+    held.allow_refresh(false);
+    held.refresh(&client()).await;
+    held.allow_refresh(true);
+    held.refresh(&client()).await;
+
+    assert_eq!(held.current().generated(), "2999-01-01T00:00:00Z");
+    assert_eq!(host.seen().len(), 2);
+}

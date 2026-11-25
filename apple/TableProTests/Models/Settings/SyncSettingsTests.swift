@@ -54,9 +54,40 @@ struct SyncPaneLayoutTests {
     private static func layout(
         enabled: Bool,
         isLicensed: Bool,
-        status: SyncStatus = .idle
+        status: SyncStatus = .idle,
+        isManaged: Bool = false,
+        allowsICloud: Bool = true
     ) -> SyncPaneLayout {
-        SyncPaneLayout(enabled: enabled, isLicensed: isLicensed, presentation: SyncStatusPresentation(status: status))
+        SyncPaneLayout(
+            enabled: enabled,
+            isLicensed: isLicensed,
+            presentation: SyncStatusPresentation(status: status),
+            isManaged: isManaged,
+            allowsICloud: allowsICloud
+        )
+    }
+
+    @Test("iCloud taken away by the organization: the switch is locked off, with no license gate, status or categories")
+    func managedOff() {
+        let layout = Self.layout(
+            enabled: false, isLicensed: true, status: .disabled(.managedPolicy), isManaged: true, allowsICloud: false
+        )
+        #expect(layout.isToggleDisabled)
+        #expect(layout.showsManagedNote)
+        #expect(!layout.showsLicenseGate)
+        #expect(!layout.showsStatus)
+        #expect(!layout.showsLastSynced)
+        #expect(!layout.showsCategories)
+    }
+
+    @Test("iCloud required by the organization: the switch is locked on and the license gate still shows without a license")
+    func managedOn() {
+        let licensed = Self.layout(enabled: true, isLicensed: true, isManaged: true)
+        let unlicensed = Self.layout(enabled: true, isLicensed: false, status: .disabled(.licenseRequired), isManaged: true)
+
+        #expect(licensed.isToggleDisabled && licensed.showsManagedNote)
+        #expect(licensed.showsStatus && licensed.showsCategories)
+        #expect(unlicensed.isToggleDisabled && unlicensed.showsLicenseGate)
     }
 
     @Test("Unlicensed and off: the switch is disabled and only the license gate shows")

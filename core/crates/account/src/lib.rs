@@ -16,6 +16,7 @@ mod loopback;
 mod machine_id;
 mod oauth;
 mod offline_file;
+mod policy;
 mod profile;
 mod server;
 mod share;
@@ -38,6 +39,7 @@ pub use license::{KEPT_PAST_GRACE, LICENSE_ISSUER, License, LicenseClaims, Licen
 pub use license_keys::LicenseKeys;
 pub use machine_id::MachineId;
 pub use offline_file::{OfflineFileError, read_offline_file_blocking};
+pub use policy::{ManagedPolicy, PolicyValues, SyncChoices, SyncProvider};
 pub use profile::{Device, Membership, Profile};
 pub use server::{FixedServer, ServerError, ServerInfo, ServerPolicy, ServerSettings};
 pub use share::{

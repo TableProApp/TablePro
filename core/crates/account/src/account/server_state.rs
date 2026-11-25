@@ -109,7 +109,7 @@ impl Server {
             ServerSettings::Resolved(policy) => {
                 let choice = crate::server::read_choice_blocking(&crate::server::choice_file(&settings.account_file));
                 let loopback = crate::server::loopback_http_allowed();
-                let target = crate::server::resolve(policy, choice.chosen.as_deref(), loopback);
+                let target = crate::server::resolve(&policy.managed, choice.chosen.as_deref(), loopback);
                 Self::build(settings, http, vaults, target, choice.chosen, None)
             }
         }

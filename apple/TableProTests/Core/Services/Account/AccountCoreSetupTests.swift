@@ -19,7 +19,7 @@ struct AccountCoreSetupTests {
     @Test("The core takes over the entitlement file earlier builds kept, beside its own account file")
     func filesSitWhereEarlierBuildsKeptThem() {
         let setup = AccountCoreSetup.make(
-            supportDirectory: Self.support, machineID: "mid", managedServerURL: nil, allowOtherServers: nil,
+            supportDirectory: Self.support, machineID: "mid", policy: ManagedPolicySnapshot(),
             environment: [:], isDebugBuild: false
         )
         #expect(setup.legacyEntitlementFile.path == "/Users/ada/Library/Application Support/TablePro/Account/entitlement.jwt")
@@ -29,25 +29,28 @@ struct AccountCoreSetupTests {
 
     @Test("The managed values go to the core as the profile set them, and nothing when it set none")
     func managedValues() {
-        let managed = AccountCoreSetup.make(
-            supportDirectory: Self.support, machineID: "mid",
-            managedServerURL: "https://tablepro.example.com", allowOtherServers: false, environment: [:], isDebugBuild: false
+        let values = ManagedPolicySnapshot(
+            accountServerURL: "https://tablepro.example.com",
+            allowOtherAccountServers: false,
+            personalSyncProvider: ["icloud"],
+            usageDataAllowed: false
         )
-        #expect(managed.managedServerURL == "https://tablepro.example.com")
-        #expect(managed.allowOtherServers == false)
+        let managed = AccountCoreSetup.make(
+            supportDirectory: Self.support, machineID: "mid", policy: values, environment: [:], isDebugBuild: false
+        )
+        #expect(managed.policy == values)
 
         let unmanaged = AccountCoreSetup.make(
-            supportDirectory: Self.support, machineID: "mid", managedServerURL: nil, allowOtherServers: nil,
+            supportDirectory: Self.support, machineID: "mid", policy: ManagedPolicySnapshot(),
             environment: [:], isDebugBuild: false
         )
-        #expect(unmanaged.managedServerURL == nil)
-        #expect(unmanaged.allowOtherServers == nil)
+        #expect(unmanaged.policy == ManagedPolicySnapshot())
     }
 
     @Test("Only a Debug build names a development stack, and only when both of its addresses are set")
     func developmentStackIsDebugOnly() {
         let debug = AccountCoreSetup.make(
-            supportDirectory: Self.support, machineID: "mid", managedServerURL: nil, allowOtherServers: nil,
+            supportDirectory: Self.support, machineID: "mid", policy: ManagedPolicySnapshot(),
             environment: Self.stack, isDebugBuild: true
         )
         #expect(debug.developmentStack == .init(
@@ -59,7 +62,7 @@ struct AccountCoreSetupTests {
         #expect(debug.developmentStack?.apiBase == "http://api.localhost:5284/v2")
 
         let release = AccountCoreSetup.make(
-            supportDirectory: Self.support, machineID: "mid", managedServerURL: nil, allowOtherServers: nil,
+            supportDirectory: Self.support, machineID: "mid", policy: ManagedPolicySnapshot(),
             environment: Self.stack, isDebugBuild: false
         )
         #expect(release.developmentStack == nil)
@@ -67,7 +70,7 @@ struct AccountCoreSetupTests {
         var half = Self.stack
         half["TABLEPRO_API_URL"] = nil
         let partial = AccountCoreSetup.make(
-            supportDirectory: Self.support, machineID: "mid", managedServerURL: nil, allowOtherServers: nil,
+            supportDirectory: Self.support, machineID: "mid", policy: ManagedPolicySnapshot(),
             environment: half, isDebugBuild: true
         )
         #expect(partial.developmentStack == nil)

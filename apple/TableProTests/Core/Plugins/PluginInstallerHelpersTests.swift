@@ -350,6 +350,37 @@ struct PluginInstallerHelpersTests {
         #expect(try stagingLeftovers(for: pluginsDir).isEmpty)
     }
 
+    @Test("With the registry off by policy, an install or update from a manifest held from before downloads nothing")
+    func managedCatalogDownloadsNothing() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ChunkedDownloadProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+        let installer = PluginInstaller(session: { session }, catalogAllowed: { false })
+        let (plugin, release) = makeRegistryPlugin()
+
+        for stage in [false, true] {
+            do {
+                if stage {
+                    _ = try await installer.stage(
+                        plugin, release: release, pluginId: plugin.id, bundleName: "Driver.tableplugin", into: pluginsDir
+                    ) { _ in }
+                } else {
+                    _ = try await installer.install(plugin, release: release, into: pluginsDir) { _ in }
+                }
+                Issue.record("Expected the registry to be off")
+            } catch PluginError.pluginInstallManaged(let name) {
+                #expect(name == plugin.name)
+            } catch {
+                Issue.record("Expected pluginInstallManaged, got \(error)")
+            }
+        }
+        #expect(try stagingLeftovers(for: pluginsDir).isEmpty)
+    }
+
     // Main actor, so the task cannot start before the box holds it. An unsized archive reports only the
     // final 1, after the download has returned.
     @Test("A download cancelled as it finishes stops before installing and leaves nothing behind")

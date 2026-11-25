@@ -18,8 +18,14 @@ internal static partial class Mapping
         configuration.MachineGuid,
         Native.AppClientTag.Windows,
         MachineId: null,
-        ManagedServerUrl: null,
-        AllowOtherServers: null,
+        Policy: new Native.ManagedPolicyArg.Read(new Native.ManagedPolicyValues(
+            AccountServerUrl: null,
+            AllowOtherAccountServers: null,
+            PersonalSyncProvider: null,
+            UsageDataAllowed: null,
+            PluginCatalogAllowed: null,
+            UpdateChecksAllowed: null,
+            IcloudSyncAllowed: null)),
         LegacyEntitlementFile: null,
         LicenseKeys: []);
 

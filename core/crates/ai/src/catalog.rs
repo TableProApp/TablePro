@@ -265,6 +265,8 @@ struct State {
     cache_read: bool,
     etag: Option<String>,
     last_refresh: Option<Instant>,
+    // Off while the organization holds the app to its own account server (core ADR 0055).
+    refresh_allowed: bool,
 }
 
 impl ModelCatalog {
@@ -301,6 +303,7 @@ impl ModelCatalog {
                     cache_read: false,
                     etag: None,
                     last_refresh: None,
+                    refresh_allowed: true,
                 }),
             }),
         }
@@ -367,6 +370,14 @@ impl ModelCatalog {
         }
     }
 
+    /// Whether [`Self::refresh`] may fetch. Without it, the newer of the
+    /// bundled copy and the one an earlier run kept serves.
+    pub fn allow_refresh(&self, allowed: bool) {
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.refresh_allowed = allowed;
+        }
+    }
+
     /// Fetch a newer copy, at most once an hour. A failure leaves the
     /// catalog as it was and is only logged.
     pub async fn refresh(&self, client: &AiClient) {
@@ -397,9 +408,13 @@ impl ModelCatalog {
         drop(runtime.spawn(async move { catalog.refresh(&client).await }));
     }
 
-    /// The ETag to send, or `None` when a refresh ran within the hour.
+    /// The ETag to send, or `None` when a refresh ran within the hour or
+    /// may not run.
     fn claim_refresh(&self) -> Option<Option<String>> {
         let mut state = self.inner.state.lock().ok()?;
+        if !state.refresh_allowed {
+            return None;
+        }
         if state.last_refresh.is_some_and(|last| last.elapsed() < REFRESH_EVERY) {
             return None;
         }

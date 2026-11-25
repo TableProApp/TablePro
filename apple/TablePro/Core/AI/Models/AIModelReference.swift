@@ -190,7 +190,8 @@ final class AIModelReference: @unchecked Sendable {
     static let shared = AIModelReference(
         bundle: .main,
         session: makeDefaultSession(),
-        savedURL: directory.appendingPathComponent("models-v1.json")
+        savedURL: directory.appendingPathComponent("models-v1.json"),
+        refreshAllowed: { await AccountServices.shared.allowsTableProRequests() }
     )
 
     private static var directory: URL {
@@ -215,14 +216,28 @@ final class AIModelReference: @unchecked Sendable {
     private let session: URLSession?
     // The last copy accepted, kept apart from the HTTP cache, which a rejected answer can overwrite.
     private let savedURL: URL?
+    // The core's answer: false while the organization holds the app to its own server, and the copy on hand serves
+    // (core/docs/decisions/0055-managed-policies-for-the-sync-provider-and-tablepro-app-traffic.md).
+    private let refreshAllowed: @Sendable () async -> Bool
 
-    init(file: AIModelReferenceFile?, session: URLSession? = nil, savedURL: URL? = nil) {
+    init(
+        file: AIModelReferenceFile?,
+        session: URLSession? = nil,
+        savedURL: URL? = nil,
+        refreshAllowed: @escaping @Sendable () async -> Bool = { true }
+    ) {
         self.file = file
         self.session = session
         self.savedURL = savedURL
+        self.refreshAllowed = refreshAllowed
     }
 
-    convenience init(bundle: Bundle, session: URLSession, savedURL: URL) {
+    convenience init(
+        bundle: Bundle,
+        session: URLSession,
+        savedURL: URL,
+        refreshAllowed: @escaping @Sendable () async -> Bool = { true }
+    ) {
         var bundled: AIModelReferenceFile?
         if let url = bundle.url(forResource: "ai-models", withExtension: "json") {
             do {
@@ -234,7 +249,7 @@ final class AIModelReference: @unchecked Sendable {
             Self.logger.error("The app bundle has no ai-models.json")
         }
         let saved = (try? Data(contentsOf: savedURL)).flatMap { try? AIModelReferenceFile.decode($0) }
-        self.init(file: Self.newer(bundled, saved), session: session, savedURL: savedURL)
+        self.init(file: Self.newer(bundled, saved), session: session, savedURL: savedURL, refreshAllowed: refreshAllowed)
     }
 
     static func makeDefaultSession() -> URLSession {
@@ -278,7 +293,7 @@ final class AIModelReference: @unchecked Sendable {
 
     // At most once an hour, revalidated with the ETag; concurrent callers share one request.
     func refresh(now: Date = Date()) async {
-        guard let session else { return }
+        guard let session, await refreshAllowed() else { return }
         let task: Task<Void, Never>? = lock.withLock {
             if let running = refreshTask { return running }
             if let lastAttempt, now.timeIntervalSince(lastAttempt) < Self.refreshInterval { return nil }
