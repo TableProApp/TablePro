@@ -3,6 +3,7 @@
 // key flows and the control surface the FFI wraps.
 
 pub mod api;
+pub mod cloudkit;
 pub mod keys;
 
 pub use api::SyncError;
