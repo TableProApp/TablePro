@@ -186,10 +186,11 @@ pub enum CloudKitFailure {
   - The digest is computed again when a key table changes, and the MAC on every commit. A file whose MAC does not verify is refused.
   - One MAC covers the whole snapshot, so rows from two copies of the file cannot be mixed.
 - **Freshness.** A MAC proves the file is this device's, not that it is the latest. Sealed state needs a monotonic counter kept apart from what it seals; this follows ROTE (Matetic et al., "ROTE: Rollback Protection for Trusted Execution", USENIX Security 2017), with the device store in place of a trusted counter.
-  - Every commit raises the counter by one. The file's **anchor**, an item in the device store, holds the file id and a current entry: the counter, the MAC and the key tables' digest. A new file writes its anchor first.
+  - Every commit raises the counter by one. The file's **anchor**, an item in the device store, holds the file id and a current entry. A new file writes its anchor first.
+  - **An entry** holds the counter, the MAC, the key tables' digest and the **checkpoint**: each followed log's head (`seq` and hash), each key version floor, and each envelope's highest counter with the hash of that ciphertext. Each of them only moves forward. The deleted history ids stay in the file alone.
   - **A commit writes its anchor in two steps.** Before the commit, the engine adds a pending entry to the anchor with the next counter, its MAC and its digest. After the commit, the pending entry becomes the current one. A commit starts only when no pending entry is left; while one cannot be settled, the engine stops.
   - **Apple platforms:** a Keychain item in the data protection keychain, `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` and not synchronizable. Apple Platform Security, "Keychain data protection", says items of that class don't sync to iCloud Keychain, aren't backed up and aren't in escrow keybags. Other ThisDeviceOnly classes do not serve: "Keybags for Data Protection" (Backup keybag) has them restored to the device they were backed up from. The anchor reads only while the device is unlocked, so a pass that starts locked waits. A device with no passcode uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and falls under the limit below.
-  - **Windows:** a Credential Manager item with local machine persistence. **Linux:** a Secret Service item.
+  - **Windows:** Credential Manager items with local machine persistence. An entry past one item's 2,560-byte blob is split over numbered items, written before the item that names them. **Linux:** a Secret Service item.
   - **On open,** with the anchor's file id:
     - a file that matches the current entry, with no pending entry, is fresh;
     - a file that matches the pending entry is fresh, since the commit landed and only the anchor's second step was lost. The engine finishes that step;
@@ -197,9 +198,15 @@ pub enum CloudKitFailure {
     - anything else is stale: an older counter, another file id, a file with no anchor, or an anchor with no file.
 - **A stale file** is trusted for nothing.
   - Its sync tables go into refill, as a restored store does: the pull wins, records the provider has never seen go up as creates, then the diff runs again.
-  - Its key tables are not trusted. The holder accepts no log, wrap or envelope and writes no secret until it pins again through a comparison with another holder of the account or with S, as 0053's device approval does. Its holder keys stay, so it is the same holder.
-  - An anchor with no file, as after a reinstall that kept the device store, is handled the same way.
-- **The limit.** A restore that brings back the file and its anchor together goes unseen on this device. On Linux a restore of the home folder brings back the keyring, and on Windows a restore of the user profile brings back Credential Manager. Such a device holds an older checkpoint, and until its next comparison with another holder the server can show it what 0053's threat model calls a rollback for a device that never saw the newer head. The Mac and iOS lanes check that a Time Machine restore and a device backup restore do not bring the anchor back; where one does, that platform falls under this limit too.
+  - Its key tables are not trusted, and the holder keys stay, so it is the same holder. It rebuilds the key tables from the logs the server holds, accepting only what extends the anchor's checkpoint, the pending entry's when one is left: a log that holds each anchored head at its `seq` with the same hash, no key version below an anchored floor, and no envelope counter below an anchored one. Until a log extends the anchored heads, it accepts no wrap or envelope and writes no secret. A comparison never pins a head older than the anchor's, so a holder that missed a removal cannot hand the device its older view.
+  - An anchor with no file, as after a reinstall that kept the device store, rebuilds the same way.
+  - A file with no anchor has no checkpoint. Its holder pins again through a comparison with another holder of the account or with S, as 0053's device approval does, and falls under the limit below.
+- **The limit.** Nothing on the device then proves a newer head than the one it holds:
+  - a restore that brings back the file and its anchor together goes unseen. On Linux a restore of the home folder brings back the keyring, and on Windows a restore of the user profile brings back Credential Manager;
+  - a file with no anchor pins what its comparison partner holds, so a partner that missed a newer head gives it that older view, as for a new device;
+  - a stale file forgets the history ids it saw deleted, so the server can show such an entry again.
+
+  Until its next comparison with a holder that saw the newer head, such a device faces what 0053's threat model calls a rollback for a device that never saw it. The Mac and iOS lanes check that a Time Machine restore and a device backup restore do not bring the anchor back; where one does, that platform falls under this limit too.
 
 ### Providers
 
@@ -313,7 +320,9 @@ A copy whose content changed after the move is kept, since a content edit wins. 
   - an iCloud account change between `account_status` and `modify`, and while a fetch completes, saves nothing to either account;
   - an older copy of a state file with a valid MAC opens stale: its sync tables refill, and its key tables are trusted only after a comparison;
   - a crash at each step of a commit and its anchor opens as the rules say. A restore of the copy before a commit whose anchor did not settle leaves the key tables untrusted when that commit changed them;
-  - a file with no anchor, and an anchor with no file, both need a comparison before any log is trusted;
+  - an anchor with no file rebuilds from logs that extend its checkpoint; a file with no anchor needs a comparison before any log is trusted;
+  - a stale file whose only comparison partner missed a removal its anchor recorded keeps secret writes blocked and does not pin the older head;
+  - a log, floor or envelope counter below the anchored checkpoint is refused after a restore, from the server or a partner;
   - a key table row copied from another copy of the file fails the MAC;
   - the first run keeps every consent decision and refusal, and leaves an unapproved synced connection unapproved;
   - the moves with three devices on two fake transports: a deletion on iCloud after another device moved, with and without a later content edit or reorder on the service; an edit on iCloud after another device moved; a record created on the service after the move; and the move back.
