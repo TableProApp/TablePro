@@ -50,7 +50,6 @@ tablepro-driver-postgres = { path = "core/crates/drivers/postgres" }
 tablepro-driver-redis = { path = "core/crates/drivers/redis" }
 tablepro-driver-sqlite = { path = "core/crates/drivers/sqlite" }
 tablepro-foreign-import = { path = "core/crates/foreign-import" }
-tablepro-keys = { path = "core/crates/keys" }
 tablepro-mcp = { path = "core/crates/mcp" }
 tablepro-net = { path = "core/crates/net" }
 tablepro-linux-platform = { path = "linux/crates/platform" }

@@ -1,0 +1,3 @@
+# Read byte for byte: the pinned word list by its SHA-256, the vectors against what the generator writes.
+src/words/eff_large_wordlist.txt -text
+vectors/** text eol=lf
