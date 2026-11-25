@@ -297,6 +297,18 @@ impl Rig {
     }
 }
 
+pub(crate) fn scopes(epoch: EpochId, scopes: Vec<crate::api::scopes::ScopeInfo>) -> ScopesBody {
+    ScopesBody {
+        epoch,
+        scopes,
+        limits: crate::api::scopes::ServerLimits::ADR_0051,
+        server_version: "test".to_owned(),
+        capabilities: Vec::new(),
+        idempotency_retention_secs: 86_400,
+        poll_interval_secs: 60,
+    }
+}
+
 pub(crate) fn epoch(n: u128) -> EpochId {
     EpochId(Uuid::from_u128(n))
 }
@@ -322,5 +334,25 @@ impl ServerView for Holds {
     fn holds(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
         self.0
             .contains(&(scope, format!("{}:{}", id.kind().name(), id.to_wire())))
+    }
+
+    fn judged(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
+        let _ = (scope, id);
+        true
+    }
+}
+
+// A server the device has no bases for at all.
+pub(crate) struct Unjudged;
+
+impl ServerView for Unjudged {
+    fn holds(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
+        let _ = (scope, id);
+        false
+    }
+
+    fn judged(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
+        let _ = (scope, id);
+        false
     }
 }

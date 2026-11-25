@@ -50,18 +50,12 @@ pub(crate) fn same_holder(
     Chain::Matches
 }
 
-// The newest `av` the device knows for an account: its pin's, or a certificate it holds that its own IK signed,
-// whichever is higher. An unendorsed certificate counts, so a wrap signed under an older `av` after a reset never
-// advances.
+// The newest `av` the device knows for an account: its pin's, or a certificate it holds, whichever is higher. The
+// certificates are the ones that verify under their own IK, an unendorsed one included, so a wrap signed under an
+// older `av` after a reset never advances.
 pub(crate) fn newest_known(
-    origin: &Origin,
     certificates: &BTreeMap<Version, AccountCertificate>,
     pinned: Option<Version>,
 ) -> Option<Version> {
-    let held = certificates
-        .iter()
-        .rev()
-        .find(|(_, certificate)| certificate.verify(origin).is_ok())
-        .map(|(av, _)| *av);
-    held.max(pinned)
+    certificates.keys().next_back().copied().max(pinned)
 }

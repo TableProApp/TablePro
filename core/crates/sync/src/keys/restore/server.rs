@@ -19,6 +19,12 @@ pub(crate) struct Bases {
     rows: HashMap<(ScopeName, String, String), BaseRow>,
 }
 
+// A scope whose key objects have no base at all gives no view of the server: every object would read as lost, and an
+// account set the server holds would go back with a recovery blob it deleted, which it refuses for good.
+pub(crate) fn has_view(bases: &Bases, scope: ScopeName) -> bool {
+    bases.rows.keys().any(|(of, ..)| *of == scope)
+}
+
 impl Bases {
     pub(crate) async fn load(&mut self, txn: &mut dyn StateTxn, scope: ScopeName) -> Result<(), SyncError> {
         for row in txn.scan(&RowRange::Scope(Table::Bases, scope)).await? {
@@ -59,6 +65,14 @@ impl ServerView for BaseView<'_> {
             return false;
         };
         survives(base, lineage)
+    }
+
+    fn judged(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
+        self.lineages.contains_key(&scope)
+            && self
+                .bases
+                .get(scope, id)
+                .is_some_and(|base| base.epoch.is_some() && base.revision.is_some())
     }
 }
 

@@ -25,7 +25,8 @@ use crate::api::ids::{EpochId, ScopeName};
 use crate::api::key_flows::{StopAction, StopFlows};
 use crate::api::scopes::TeamMember;
 use crate::api::state::{
-    KeyPendingRow, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn, StoppedCause, Table,
+    Holder, KeyPendingRow, KeyPinRow, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn,
+    StoppedCause, Table,
 };
 
 pub(crate) fn kind(row: &KeyVersionRow) -> Option<StoppedCause> {
@@ -42,11 +43,11 @@ pub(crate) fn resumed(mut row: KeyVersionRow) -> KeyVersionRow {
     row
 }
 
-pub(crate) fn ended(row: KeyVersionRow, epoch: EpochId) -> KeyVersionRow {
+pub(crate) fn ended(row: KeyVersionRow, epoch: Option<EpochId>) -> KeyVersionRow {
     KeyVersionRow {
         state: KeyVersionState::Ended,
         stopped_cause: None,
-        epoch: Some(epoch),
+        epoch,
         ..row
     }
 }
@@ -89,6 +90,13 @@ async fn team_rows(txn: &mut dyn StateTxn) -> Result<Vec<KeyVersionRow>, SyncErr
         .collect())
 }
 
+async fn pin_of(txn: &mut dyn StateTxn, account: AccountId) -> Result<Option<KeyPinRow>, SyncError> {
+    match txn.get(&RowKey::KeyPin(account)).await? {
+        Some(Row::KeyPin(pin)) => Ok(Some(pin)),
+        _ => Ok(None),
+    }
+}
+
 async fn team_row(txn: &mut dyn StateTxn, team: TeamId) -> Result<Option<KeyVersionRow>, SyncError> {
     match txn
         .get(&RowKey::KeyVersion(ScopeName::Team(team), KeyPurpose::Team))
@@ -123,7 +131,7 @@ impl StopFlows for KeyService {
                 continue;
             };
             if !self.a_manager_held(&mut *txn, team, &row, &roster.members).await? {
-                let epoch = self.scope_epoch(&mut *txn, row.scope).await?;
+                let epoch = self.scope_epoch(&mut *txn, row.scope).await.ok();
                 txn.put(Row::KeyVersion(ended(row, epoch))).await?;
                 withdraw_pending(&mut *txn, team).await?;
                 ends.push((team, epoch));
@@ -209,8 +217,9 @@ impl KeyService {
 
     // The check a wrap offered to a team stopped by a catch-up must pass before the device takes its version: the
     // wrap's signer is among the holders the device accepted for the version it stopped at, by an IK reachable from
-    // the one it accepted through endorsed replaces with no reset, and signed under the newest `av` the device knows
-    // for it (0056, Teams, A stopped device). Holders the device first met after it stopped never count.
+    // the one it accepted through endorsed replaces with no reset, signed under the newest `av` the device knows for
+    // it, and consistent with the account's pin: no open alert and no IK it saw replaced (0056, Teams, A stopped
+    // device; Pins). Holders the device first met after it stopped never count.
     pub async fn reconfirmation(
         &self,
         txn: &mut dyn StateTxn,
@@ -231,45 +240,65 @@ impl KeyService {
             }
             .into());
         }
-        let Some(pair) = row.holders.iter().find(|pair| pair.account == wrapper.account) else {
+        let pairs: Vec<&Holder> = row
+            .holders
+            .iter()
+            .filter(|pair| pair.account == wrapper.account)
+            .collect();
+        if pairs.is_empty() {
             return Err(KeysError::NotHolder.into());
-        };
-        let certificates = self.member_certificates(txn, team, wrapper.account).await?;
-        let pinned = match txn.get(&RowKey::KeyPin(wrapper.account)).await? {
-            Some(Row::KeyPin(pin)) => Some(pin.av),
-            _ => None,
-        };
-        let newest = holders::newest_known(self.origin(), &certificates, pinned);
-        if let Some(newest) = newest {
-            check_signed_under_newest(wrapper.av, newest)?;
         }
-        match same_holder(self.origin(), &pair.ik, &certificates, wrapper.av) {
-            Chain::Matches => Ok(Reconfirmation::Taken),
-            Chain::Missing => Ok(Reconfirmation::Held),
-            Chain::Breaks => Err(KeysError::NotHolder.into()),
+        let Some(pin) = pin_of(txn, wrapper.account).await? else {
+            return Ok(Reconfirmation::Held);
+        };
+        if pin.alert {
+            return Ok(Reconfirmation::Held);
+        }
+        let certificates = self.member_certificates(txn, team, wrapper.account).await?;
+        let newest = holders::newest_known(&certificates, Some(pin.av)).unwrap_or(pin.av);
+        check_signed_under_newest(wrapper.av, newest)?;
+        let Some(signed_under) = certificates.get(&wrapper.av) else {
+            return Ok(Reconfirmation::Held);
+        };
+        if pin.replaced.contains(&signed_under.ik) {
+            return Err(KeysError::RetiredIk.into());
+        }
+        match same_holder(self.origin(), &pin.ik, &certificates, wrapper.av) {
+            Chain::Matches => {}
+            Chain::Missing => return Ok(Reconfirmation::Held),
+            Chain::Breaks => return Err(KeysError::NotHolder.into()),
+        }
+        let chains: Vec<Chain> = pairs
+            .iter()
+            .map(|pair| same_holder(self.origin(), &pair.ik, &certificates, wrapper.av))
+            .collect();
+        if chains.contains(&Chain::Matches) {
+            Ok(Reconfirmation::Taken)
+        } else if chains.contains(&Chain::Missing) {
+            Ok(Reconfirmation::Held)
+        } else {
+            Err(KeysError::NotHolder.into())
         }
     }
 
     // A re-confirmation applied: the team moves to the new version in the caller's commit, and the report it sent is
-    // withdrawn from the same commit on (0054, `key_pending`).
-    pub async fn clear_catch_up_stop(&self, txn: &mut dyn StateTxn, row: KeyVersionRow) -> Result<(), SyncError> {
+    // withdrawn from the same commit on (0054, `key_pending`). The wrap that carried the version is checked again, so
+    // no other path clears a catch-up stop.
+    pub async fn clear_catch_up_stop(
+        &self,
+        txn: &mut dyn StateTxn,
+        row: KeyVersionRow,
+        wrapper: &Wrapper,
+    ) -> Result<(), SyncError> {
         let ScopeName::Team(team) = row.scope else {
             return Err(SyncError::NotAllowed {
                 what: "clear a catch-up stop outside a team",
             });
         };
-        let held = team_row(txn, team)
-            .await?
-            .filter(|held| kind(held) == Some(StoppedCause::CatchUp))
-            .ok_or(SyncError::NotAllowed {
-                what: "clear a team that is not stopped by a catch-up",
-            })?;
-        if row.version <= held.version {
-            return Err(KeysError::Stale {
-                held: held.version.get(),
-                offered: row.version.get(),
-            }
-            .into());
+        if self.reconfirmation(txn, team, row.version, wrapper).await? != Reconfirmation::Taken {
+            return Err(SyncError::NotAllowed {
+                what: "clear a catch-up stop before its re-confirmation is taken",
+            });
         }
         txn.put(Row::KeyVersion(KeyVersionRow {
             state: KeyVersionState::Ok,
@@ -301,12 +330,15 @@ impl KeyService {
                 }
                 _ => None,
             })
+            // A certificate its own IK did not sign is no evidence of anything: it is left out, as if not arrived.
+            .filter(|(_, certificate)| certificate.verify(self.origin()).is_ok())
             .collect())
     }
 
-    // Whether an owner or admin on the roster held the version the team stopped at: an account among its holders
-    // whose newest certificate the team holds is still that holder (0056, Teams, Holders). A chain whose certificates
-    // have not arrived counts as held, so the team waits rather than ends on what it cannot see yet.
+    // Whether an owner or admin on the roster held the version the team stopped at: an account among its holders,
+    // by any of its pairs, whose newest certificate the team holds is still that holder (0056, Teams, Holders). An
+    // account under an open alert, or a chain whose certificates have not arrived, counts as held, so the team waits
+    // rather than ends on what it cannot judge yet.
     async fn a_manager_held(
         &self,
         txn: &mut dyn StateTxn,
@@ -315,14 +347,25 @@ impl KeyService {
         members: &[TeamMember],
     ) -> Result<bool, SyncError> {
         for member in members.iter().filter(|member| member.role.manages_keys()) {
-            let Some(pair) = row.holders.iter().find(|pair| pair.account == member.account) else {
+            let pairs: Vec<&Holder> = row
+                .holders
+                .iter()
+                .filter(|pair| pair.account == member.account)
+                .collect();
+            if pairs.is_empty() {
                 continue;
-            };
+            }
+            if pin_of(txn, member.account).await?.is_none_or(|pin| pin.alert) {
+                return Ok(true);
+            }
             let certificates = self.member_certificates(txn, team, member.account).await?;
             let Some(newest) = certificates.keys().next_back().copied() else {
                 return Ok(true);
             };
-            if same_holder(self.origin(), &pair.ik, &certificates, newest) != Chain::Breaks {
+            if pairs
+                .iter()
+                .any(|pair| same_holder(self.origin(), &pair.ik, &certificates, newest) != Chain::Breaks)
+            {
                 return Ok(true);
             }
         }

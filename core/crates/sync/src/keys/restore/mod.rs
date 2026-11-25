@@ -59,6 +59,11 @@ impl RestoreFlows for KeyService {
                 .collect(),
             server: &view,
         });
+        if plan.blind {
+            return Err(SyncError::NotAllowed {
+                what: "push back an account certificate the engine kept no base for",
+            });
+        }
         let effects = self.apply_verdicts(&mut *txn, &gathered, &plan, epoch).await?;
         txn.commit().await?;
         self.announce(&effects)?;
@@ -96,8 +101,7 @@ impl RestoreFlows for KeyService {
         }
         let _serial = self.serialized().await;
         let mut txn = self.begin().await?;
-        // The epoch the push went in, as `push_change_set` sends it: the scope's own.
-        let epoch = self.scope_epoch(&mut *txn, set.scope).await?;
+        let epoch = self.refused_in(&mut *txn, set.scope).await;
         match refusal {
             Refusal::AccountEnds => {
                 for purpose in [KeyPurpose::Personal, KeyPurpose::History] {
@@ -106,7 +110,7 @@ impl RestoreFlows for KeyService {
                     }
                 }
                 txn.commit().await?;
-                self.hooks().end_scope(ScopeName::Personal, Some(epoch));
+                self.hooks().end_scope(ScopeName::Personal, epoch);
                 self.hooks().lock(LockCause::AccountEnded);
                 self.raise_notice(KeyNoticeKind::Locked {
                     cause: LockCause::AccountEnded,
@@ -148,8 +152,8 @@ struct Effects {
 }
 
 // What a refused push-back set does (0051, What cannot go back): an account change set ends the account, a team
-// version or `key.member` ends the team, and a wrap alone ends nothing, since a lost confirmation is made again at
-// the next team version.
+// version ends the team, and a wrap or a `key.member` alone ends nothing: neither is a version, a lost confirmation
+// is made again at the next team version, and the account copies its next certificate after its next `av`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Refusal {
     AccountEnds,
@@ -161,8 +165,11 @@ fn refusal(set: &KeyChangeSet) -> Refusal {
     match set.scope {
         ScopeName::Personal | ScopeName::History => Refusal::AccountEnds,
         ScopeName::Team(team) => {
-            let lone_wrap = matches!(set.changes.as_slice(), [change] if change.kind.as_str() == "key.wrap");
-            if lone_wrap {
+            let alone = matches!(
+                set.changes.as_slice(),
+                [change] if matches!(change.kind.as_str(), "key.wrap" | "key.member")
+            );
+            if alone {
                 Refusal::Nothing
             } else {
                 Refusal::TeamEnds(team)
@@ -214,6 +221,15 @@ fn push_back_change(held: &HeldObject) -> Result<Change, SyncError> {
 }
 
 impl KeyService {
+    // The epoch a refused push-back set went in: the server's current one, which a push in another epoch would have
+    // met as `epoch_changed`. The refusal is recorded even when the server cannot be asked, with the scope's epoch.
+    async fn refused_in(&self, txn: &mut dyn StateTxn, scope: ScopeName) -> Option<EpochId> {
+        match self.scopes_body().await {
+            Ok(body) => Some(body.epoch),
+            Err(_) => self.scope_epoch(txn, scope).await.ok(),
+        }
+    }
+
     async fn scopes_body(&self) -> Result<ScopesBody, SyncError> {
         let proof = Proof::Dpop(self.dpop_key().await?);
         match self.transport().scopes(None, proof).await? {
@@ -222,12 +238,17 @@ impl KeyService {
         }
     }
 
-    // The key objects of the personal scope and of each team this sign-in still reaches, with the team rows, the
-    // rosters `roster_read` kept once each team's pull caught up, and the bases that say what the server holds.
+    // The key objects of the personal scope and of each team this sign-in still reaches, with the team rows, each
+    // team's roster from this body when the team's pull is caught up, and the bases that say what the server holds.
     async fn gather(&self, txn: &mut dyn StateTxn, body: &ScopesBody) -> Result<Gathered, SyncError> {
         let personal = held_in(txn, ScopeName::Personal).await?;
         let mut bases = server::Bases::default();
         bases.load(txn, ScopeName::Personal).await?;
+        if !personal.is_empty() && !server::has_view(&bases, ScopeName::Personal) {
+            return Err(SyncError::NotAllowed {
+                what: "push back key objects the engine kept no bases for",
+            });
+        }
         let mut teams = Vec::new();
         for info in &body.scopes {
             let ScopeName::Team(team) = info.scope else { continue };
@@ -237,15 +258,17 @@ impl KeyService {
                 continue;
             }
             bases.load(txn, info.scope).await?;
+            if !server::has_view(&bases, info.scope) {
+                continue;
+            }
+            // This body is read now, so it counts as read after the team's pull caught up when that pull has.
+            let caught_up =
+                matches!(txn.get(&RowKey::Scope(info.scope)).await?, Some(Row::Scope(scope)) if scope.caught_up);
             teams.push(GatheredTeam {
                 team,
                 objects,
                 row,
-                roster: self
-                    .rosters()
-                    .get(team)
-                    .filter(|roster| roster.caught_up)
-                    .map(|roster| roster.members),
+                roster: caught_up.then(|| info.members.clone()),
             });
         }
         Ok(Gathered { personal, teams, bases })
@@ -286,7 +309,7 @@ impl KeyService {
                     effects.resumed.push(*team);
                 }
                 TeamVerdict::Ends => {
-                    self.end_team(txn, *team, epoch).await?;
+                    self.end_team(txn, *team, Some(epoch)).await?;
                     effects.ended.push(*team);
                 }
                 TeamVerdict::Waits { .. } | TeamVerdict::Done => {}
@@ -308,26 +331,29 @@ impl KeyService {
             self.hooks().resume_scope(ScopeName::Team(*team));
             self.hooks().pass_soon();
         }
-        if let Some(epoch) = effects.epoch {
-            for team in &effects.ended {
-                self.team_ended(*team, epoch)?;
-            }
+        for team in &effects.ended {
+            self.team_ended(*team, effects.epoch)?;
         }
         Ok(())
     }
 
     // Ends a team on this device for good, with the epoch it ended in, and withdraws any report it sent (0051,
     // A stopped device): the withdrawal is pending in the same commit.
-    pub(crate) async fn end_team(&self, txn: &mut dyn StateTxn, team: TeamId, epoch: EpochId) -> Result<(), SyncError> {
+    pub(crate) async fn end_team(
+        &self,
+        txn: &mut dyn StateTxn,
+        team: TeamId,
+        epoch: Option<EpochId>,
+    ) -> Result<(), SyncError> {
         if let Some(row) = version_row(txn, ScopeName::Team(team), KeyPurpose::Team).await? {
             txn.put(Row::KeyVersion(stop::ended(row, epoch))).await?;
         }
         stop::withdraw_pending(txn, team).await
     }
 
-    pub(crate) fn team_ended(&self, team: TeamId, epoch: EpochId) -> Result<(), SyncError> {
+    pub(crate) fn team_ended(&self, team: TeamId, epoch: Option<EpochId>) -> Result<(), SyncError> {
         let scope = ScopeName::Team(team);
-        self.hooks().end_scope(scope, Some(epoch));
+        self.hooks().end_scope(scope, epoch);
         self.raise_notice(KeyNoticeKind::ScopeEnded { scope })?;
         self.hooks().pass_soon();
         Ok(())

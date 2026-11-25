@@ -735,3 +735,54 @@ fn the_holding_of_a_version_whose_record_the_device_lacks_is_read_from_the_wrap_
 
     assert_eq!(case.plan(), (vec![ids(&v7)], TeamVerdict::Done));
 }
+
+#[test]
+fn a_team_that_ends_on_a_lost_confirmation_takes_none_of_the_sets_planned_before() {
+    let mut case = TeamCase::new("P", 3);
+    let three = ThreeAdmins::new(&case);
+    let others = case.members(&["A", "O"]);
+    let own = case.world.member("P", 2);
+    case.back(others)
+        .back(three.v1.clone())
+        .back(three.v2.clone())
+        .hold(three.all())
+        .hold([own]);
+    case.roster(&[("A", Role::Admin), ("O", Role::Member), ("P", Role::Member)]);
+
+    assert_eq!(case.plan(), (Vec::new(), TeamVerdict::Ends));
+}
+
+#[test]
+fn without_the_record_of_the_version_before_the_device_cannot_call_the_wrap_a_confirmation_and_waits() {
+    let mut case = TeamCase::new("P", 3);
+    let three = ThreeAdmins::new(&case);
+    let held: Vec<HeldObject> = three
+        .all()
+        .into_iter()
+        .filter(|held| held.object.id != three.v1[0].object.id)
+        .collect();
+    case.back(three.members.clone()).back(three.v2.clone()).hold(held);
+    case.server.push(three.v1[0].clone());
+    case.roster(&[("A", Role::Admin), ("O", Role::Member), ("P", Role::Member)]);
+
+    assert!(matches!(case.plan().1, TeamVerdict::Waits { version, .. } if version == v(3)));
+}
+
+#[test]
+fn an_account_certificate_with_no_base_to_judge_plans_nothing_rather_than_guessing() {
+    let personal = Personal::new();
+    let held = personal.held();
+
+    let plan = plan(&Inputs {
+        account: personal.world.account("P"),
+        key_device: personal.b(),
+        newest_av: v(2),
+        approved: true,
+        personal: &held,
+        teams: Vec::new(),
+        server: &super::fakes::Unjudged,
+    });
+
+    assert!(plan.blind);
+    assert!(plan.sets.is_empty());
+}

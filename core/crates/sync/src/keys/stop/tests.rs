@@ -110,7 +110,7 @@ fn a_restore_wait_resumes_a_catch_up_stop_does_not_and_an_ended_row_keeps_its_ep
     waiting.stop(StoppedCause::RestoreWait);
     let mut both = waiting.clone();
     both.stop(StoppedCause::CatchUp);
-    let over = ended(both.clone(), epoch(9));
+    let over = ended(both.clone(), Some(epoch(9)));
 
     assert_eq!(resumed(waiting).state, KeyVersionState::Ok);
     assert_eq!(
@@ -312,7 +312,11 @@ async fn a_cleared_stop_withdraws_in_the_same_commit_and_the_withdrawal_survives
     let rig = stopped_at_6(&world).await;
     let mut txn = rig.service.begin().await.unwrap();
     rig.service
-        .clear_catch_up_stop(&mut *txn, team_row(&world, 7, &[("A", 2), ("P", 2)], None))
+        .clear_catch_up_stop(
+            &mut *txn,
+            team_row(&world, 7, &[("A", 2), ("P", 2)], None),
+            &wrapper(&world, "A", 2),
+        )
         .await
         .unwrap();
     txn.commit().await.unwrap();
@@ -329,17 +333,43 @@ async fn a_cleared_stop_withdraws_in_the_same_commit_and_the_withdrawal_survives
 }
 
 #[tokio::test]
-async fn a_cleared_stop_must_move_to_a_higher_version() {
+async fn a_catch_up_stop_clears_only_with_a_re_confirmation_that_is_taken() {
     let world = World::load();
     let rig = stopped_at_6(&world).await;
     let mut txn = rig.service.begin().await.unwrap();
 
     let same = rig
         .service
-        .clear_catch_up_stop(&mut *txn, team_row(&world, 6, &[("A", 2)], None))
+        .clear_catch_up_stop(
+            &mut *txn,
+            team_row(&world, 6, &[("A", 2)], None),
+            &wrapper(&world, "A", 2),
+        )
+        .await;
+    let by_other = rig
+        .service
+        .clear_catch_up_stop(
+            &mut *txn,
+            team_row(&world, 7, &[("O", 2)], None),
+            &wrapper(&world, "O", 2),
+        )
+        .await;
+    let held = rig
+        .service
+        .clear_catch_up_stop(
+            &mut *txn,
+            team_row(&world, 7, &[("A", 2)], None),
+            &wrapper(&world, "A", 3),
+        )
         .await;
 
     assert_eq!(same.unwrap_err().code(), "keys.stale");
+    assert_eq!(by_other.unwrap_err().code(), "keys.not_holder");
+    assert_eq!(
+        held.unwrap_err().code(),
+        "sync.not_allowed",
+        "a re-confirmation still held clears nothing"
+    );
 }
 
 #[tokio::test]
@@ -501,5 +531,147 @@ async fn a_report_already_sent_needs_nothing_recorded() {
         rig.service.stop_actions().await.unwrap(),
         [report],
         "a report repeats safely"
+    );
+}
+
+fn alert_pin(world: &World, name: &str, av: u32, replaced: Vec<Ed25519Public>, alert: bool) -> Row {
+    Row::KeyPin(KeyPinRow {
+        account: world.account(name),
+        ik: world.ik(name).public().unwrap(),
+        av: v(av),
+        how: PinHow::FirstUse,
+        alert,
+        replaced,
+    })
+}
+
+#[tokio::test]
+async fn a_holder_under_an_open_alert_gives_its_wrap_no_effect_until_the_person_re_confirms() {
+    let world = World::load();
+    let rig = stopped_at_6(&world).await;
+    rig.put([alert_pin(&world, "A", 2, Vec::new(), true)]).await;
+
+    let alerted = reconfirm(&rig, &world, 7, wrapper(&world, "A", 2)).await;
+
+    assert_eq!(alerted.unwrap(), Reconfirmation::Held);
+}
+
+#[tokio::test]
+async fn a_wrap_under_an_ik_the_pin_saw_replaced_is_refused() {
+    let world = World::load();
+    let rig = stopped_at_6(&world).await;
+    let replaced = world.ik("A").public().unwrap();
+    rig.put([alert_pin(&world, "A", 2, vec![replaced], false)]).await;
+
+    let retired = reconfirm(&rig, &world, 7, wrapper(&world, "A", 2)).await;
+
+    assert_eq!(retired.unwrap_err().code(), "keys.retired_ik");
+}
+
+#[tokio::test]
+async fn a_certificate_in_the_team_that_does_not_chain_from_the_pinned_ik_is_held_not_taken() {
+    // The server keeps the account's real certificate at this `av` out of the team and serves one under an IK the
+    // pin does not reach.
+    let world = World::load();
+    let rig = stopped_at_6(&world).await;
+    let pinned_elsewhere = Row::KeyPin(KeyPinRow {
+        account: world.account("A"),
+        ik: world.ik("M").public().unwrap(),
+        av: v(2),
+        how: PinHow::Compared,
+        alert: false,
+        replaced: Vec::new(),
+    });
+    rig.put([pinned_elsewhere]).await;
+
+    let unseen = reconfirm(&rig, &world, 7, wrapper(&world, "A", 2)).await;
+
+    assert_eq!(unseen.unwrap(), Reconfirmation::Held);
+}
+
+#[tokio::test]
+async fn any_holder_pair_of_the_account_may_re_confirm_and_keep_the_team() {
+    let world = World::load();
+    let rig = stopped_at_6(&world).await;
+    let mut row = team_row(&world, 6, &[("A", 2), ("P", 2)], Some(StoppedCause::CatchUp));
+    row.holders.push(Holder {
+        account: world.account("A"),
+        ik: Ed25519Public([0; 32]),
+    });
+    row.holders.push(Holder {
+        account: world.account("A"),
+        ik: Ed25519Public([0xff; 32]),
+    });
+    row.holders.sort();
+    rig.put([Row::KeyVersion(row)]).await;
+    rig.service
+        .rosters()
+        .put(world.team, roster(&world, &[("A", Role::Admin)], true));
+
+    let taken = reconfirm(&rig, &world, 7, wrapper(&world, "A", 2)).await;
+    let actions = rig.service.stop_actions().await.unwrap();
+
+    assert_eq!(taken.unwrap(), Reconfirmation::Taken);
+    assert_eq!(
+        actions,
+        [StopAction::Report {
+            team: world.team,
+            version: v(6)
+        }]
+    );
+}
+
+#[tokio::test]
+async fn an_admin_under_an_open_alert_keeps_the_team_waiting_rather_than_ended() {
+    let world = World::load();
+    let rig = stopped_at_6(&world).await;
+    rig.put([alert_pin(&world, "A", 2, Vec::new(), true)]).await;
+    rig.service
+        .rosters()
+        .put(world.team, roster(&world, &[("A", Role::Admin)], true));
+
+    assert_eq!(
+        rig.service.stop_actions().await.unwrap(),
+        [StopAction::Report {
+            team: world.team,
+            version: v(6)
+        }]
+    );
+}
+
+#[tokio::test]
+async fn a_certificate_with_a_bad_signature_counts_as_not_arrived() {
+    let world = World::load();
+    let rig = stopped_at_6(&world).await;
+    // A's certificate at `av` 3 under A's IK, its signature taken from another certificate: it verifies under nothing.
+    let mut certificate = world.certificate("A", 3, CertKind::ResetEmpty);
+    certificate.sig = world.certificate("M", 2, CertKind::GenesisOrRotation).sig;
+    let object = tablepro_keys::body::KeyObject {
+        id: tablepro_keys::record_id::KeyRecordId::Member {
+            account: world.account("A"),
+            av: v(3),
+        },
+        body: tablepro_keys::body::KeyBody::Member(tablepro_keys::body::AccountBody::of(&certificate)),
+    };
+    rig.put([Row::KeyObject(crate::api::state::KeyObjectRow {
+        scope: ScopeName::Team(world.team),
+        kind: crate::api::ids::KindName::parse("key.member").unwrap(),
+        record_id: object.id.to_wire(),
+        fields: object.fields_json(),
+        applied: true,
+    })])
+    .await;
+    rig.service
+        .rosters()
+        .put(world.team, roster(&world, &[("A", Role::Admin)], true));
+
+    let actions = rig.service.stop_actions().await.unwrap();
+
+    assert_eq!(
+        actions,
+        [StopAction::Report {
+            team: world.team,
+            version: v(6)
+        }]
     );
 }

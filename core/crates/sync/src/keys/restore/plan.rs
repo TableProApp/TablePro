@@ -17,6 +17,10 @@ use crate::keys::HeldObject;
 // Whether the server holds a key object now, in the current epoch.
 pub(crate) trait ServerView {
     fn holds(&self, scope: ScopeName, id: &KeyRecordId) -> bool;
+
+    // Whether the device knows where the object stands at all: a base it can judge. An object with none reads as
+    // lacking, which is safe to push again everywhere but in an account set, whose older blob the server deleted.
+    fn judged(&self, scope: ScopeName, id: &KeyRecordId) -> bool;
 }
 
 pub(crate) struct Inputs<'a> {
@@ -63,12 +67,16 @@ pub(crate) enum TeamVerdict {
 pub(crate) struct Plan {
     pub sets: Vec<PlannedSet>,
     pub teams: Vec<(TeamId, TeamVerdict)>,
+    // An account certificate above the server's has no base to judge: nothing is planned rather than guessed.
+    pub blind: bool,
 }
 
 pub(crate) fn plan(inputs: &Inputs<'_>) -> Plan {
     let mut plan = Plan::default();
-    // An account `av` the device verified with no certificate it holds: nothing above it can go back.
+    // An account `av` the device verified with no certificate it holds, or none it can judge: nothing above it can
+    // go back.
     let Some(personal) = plan_personal(inputs) else {
+        plan.blind = true;
         return plan;
     };
     // A device the server does not approve, and that no account change set going back certifies, can write no key
@@ -143,7 +151,14 @@ fn plan_personal(inputs: &Inputs<'_>) -> Option<Vec<PlannedSet>> {
     let first = server_av.map_or(1, |av| av.get() + 1);
     (first..=inputs.newest_av.get())
         .filter_map(|av| Version::new(av).ok())
-        .map(|av| account_set(&objects, account, av))
+        .map(|av| {
+            let id = KeyRecordId::Account { account, av };
+            inputs
+                .server
+                .judged(ScopeName::Personal, &id)
+                .then(|| account_set(&objects, account, av))
+                .flatten()
+        })
         .collect()
 }
 
@@ -249,6 +264,21 @@ impl Team<'_> {
             .collect()
     }
 
+    // The awaited wrap confirmed the account when the account held no wrap of the version before it, and did not
+    // sign it (0051, What cannot go back). Without that version's record the device cannot tell, so it is no
+    // confirmation and the device keeps waiting.
+    fn held_no_wrap(&self, version: Version) -> bool {
+        let Some((_, record)) = self.objects.version(self.key(version)) else {
+            return false;
+        };
+        let wrapped = self.objects.wraps().any(|(_, wrap)| {
+            wrap.target.purpose == WrapPurpose::Key(KeyPurpose::Team)
+                && wrap.target.version == version
+                && wrap.target.recipient == Recipient::Account(self.account)
+        });
+        record.signer != self.account && !wrapped && !self.holders(version).contains(&self.account)
+    }
+
     // The accounts that hold `version` by what the device holds: its signer, then each recipient of a wrap of it
     // that a holder signed (0056, Teams, Holders). The server's checks count accounts the same way.
     fn holders(&self, version: Version) -> BTreeSet<AccountId> {
@@ -312,6 +342,8 @@ fn plan_team(inputs: &Inputs<'_>, team: &TeamInputs<'_>) -> (Vec<PlannedSet>, Te
         let Ok(version) = Version::new(number) else { break };
         match version_step(&team_view, team.roster, version) {
             Step::Push(mut step) => sets.append(&mut step),
+            // A team that ends takes nothing more, the sets planned before the end included.
+            Step::Stop(TeamVerdict::Ends) => return (Vec::new(), TeamVerdict::Ends),
             Step::Stop(verdict) => return (sets, verdict),
         }
     }
@@ -447,9 +479,7 @@ fn wait_for_holding(team: &Team<'_>, roster: Option<&[TeamMember]>, version: Ver
         awaiting.push(member_of(wrap));
     }
     awaiting.retain(|id| !team.server_holds(id));
-    let confirmation = previous
-        .previous()
-        .is_none_or(|before| !team.holders(before).contains(&team.account));
+    let confirmation = previous.previous().is_none_or(|before| team.held_no_wrap(before));
     let authors_gone = roster.is_some_and(|members| {
         !to_account.is_empty()
             && to_account.iter().all(|wrap| {
