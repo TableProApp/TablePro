@@ -17,14 +17,27 @@ impl ConnectionStore {
         self.edit(|document| {
             let deleted: HashSet<Uuid> = pull.deleted.connections.iter().copied().collect();
             document.connections.retain(|saved| !deleted.contains(&saved.id));
+            // The host deletes a pulled deletion's secrets, so an entry this build cannot read goes too.
+            for id in &deleted {
+                document.connections.release(*id);
+            }
             document.favorites.retain(|id| !deleted.contains(id));
+            let held: HashSet<Uuid> = document.connections.held_ids().into_iter().collect();
+            let held_favorites: Vec<Uuid> = document
+                .favorites
+                .iter()
+                .copied()
+                .filter(|id| held.contains(id))
+                .collect();
             let list = document.list();
             let merged = cloudkit::merged(&list, pull);
             let order = pull.favorites_order.as_deref().unwrap_or(&list.favorites);
             let laid = cloudkit::layout(&list, &merged, order);
             document.groups = laid.groups.to_vec();
             *document.connections = laid.connections.to_vec();
+            // The layout knows only the connections it can read; the others keep their mark.
             document.favorites = laid.favorites.to_vec();
+            document.favorites.extend(held_favorites);
             Ok(())
         })
     }

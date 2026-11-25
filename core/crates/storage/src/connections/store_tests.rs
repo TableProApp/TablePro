@@ -665,3 +665,45 @@ fn an_import_never_takes_the_id_of_a_connection_this_build_cannot_read() {
     let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).expect("read")).expect("json");
     assert!(raw["connections"].as_array().expect("entries").contains(&unreadable));
 }
+
+fn seeded_with_unreadable(root: &TempDir, favourite: bool) -> (ConnectionStore, SavedConnection) {
+    let path = paths(root).connections_file();
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+    let held = plain("held");
+    let mut unreadable = serde_json::to_value(&held).expect("json");
+    unreadable["auth_mode"] = json!("from_the_future");
+    let favorites = if favourite { vec![held.id] } else { Vec::new() };
+    let file = json!({"version": 1, "connections": [unreadable], "favorites": favorites});
+    std::fs::write(&path, serde_json::to_vec(&file).expect("json")).expect("seed");
+    (store(root), held)
+}
+
+#[test]
+fn a_pulled_deletion_removes_a_connection_this_build_cannot_read() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, held) = seeded_with_unreadable(&root, true);
+    let mut pull = crate::cloudkit::CloudPull::default();
+    pull.deleted.connections.push(held.id);
+
+    store.apply_cloud_pull_blocking(&pull).expect("pull");
+
+    let list = ConnectionStore::new(&paths(&root)).list_blocking().expect("the list");
+    assert!(list.unreadable.is_empty());
+    assert!(list.favorites.is_empty());
+}
+
+#[test]
+fn a_pull_keeps_the_favourite_of_a_connection_this_build_cannot_read() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, held) = seeded_with_unreadable(&root, true);
+    let readable = plain("readable");
+    store.upsert_blocking(readable.clone()).expect("save");
+
+    store
+        .apply_cloud_pull_blocking(&crate::cloudkit::CloudPull::default())
+        .expect("pull");
+
+    let list = store.list_blocking().expect("the list");
+    assert_eq!(list.favorites.to_vec(), vec![held.id]);
+    assert_eq!(list.unreadable.to_vec(), vec![held.id]);
+}

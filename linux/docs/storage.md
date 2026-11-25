@@ -142,7 +142,7 @@ Each store carries a `StoreIdentity`, a `generation` and a `sequence` ([core ADR
 
 ## Table folders
 
-`QueryHistory::table_folders` gives the folders a person files a connection's tables in, per database and schema (`table_folders`), and the table each file names (`table_folder_items`, one folder per table). Ids are UUIDs, times whole milliseconds. No foreign key joins them: an item whose folder is missing reads as unfiled. `put` keeps a folder's own id and times, and deleting a folder takes its items with it.
+`QueryHistory::table_folders` gives the folders a person files a connection's tables in, per database and schema (`table_folders`), and the table each file names (`table_folder_items`, one folder per table). Ids are UUIDs, times whole milliseconds. No foreign key joins them: an item whose folder is missing reads as unfiled. `put` keeps a folder's own id and times, deleting a folder takes its items with it, and `SavedQueries::delete_for_connection` takes a deleted connection's folders and items with its saved queries and favourites.
 
 ## Team Library
 
