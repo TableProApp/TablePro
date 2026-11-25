@@ -5,11 +5,9 @@
 
 use std::collections::BTreeSet;
 
-use tablepro_records::Kind;
-
 use super::copy::kind_of;
 use super::settle::{Finish, Settle};
-use super::{PROFILES, SCOPE};
+use super::{PROFILES, SCOPE, identity_row};
 use crate::api::error::SyncError;
 use crate::api::ids::RecordKey;
 use crate::api::state::{Row, RowKey, RowRange, Table};
@@ -38,7 +36,12 @@ impl Settle<'_, '_> {
         Ok(())
     }
 
+    // A fetch that listed nothing proves nothing: it is as likely a zone made again elsewhere, or a short answer, as
+    // a zone emptied record by record.
     async fn unlisted(&mut self, finish: &Finish) -> Result<(), SyncError> {
+        if finish.listed.is_empty() {
+            return Ok(());
+        }
         for row in self.txn.scan(&RowRange::Scope(Table::Bases, SCOPE)).await? {
             let Row::Base(base) = row else {
                 continue;
@@ -60,13 +63,27 @@ impl Settle<'_, '_> {
         Ok(())
     }
 
-    // The stores that refilled are current again; the next fetch is a delta for them.
-    pub(super) async fn refilled(&mut self, refill: &BTreeSet<Kind>) -> Result<(), SyncError> {
+    // The kinds that refilled are current again, unless their store was restored or replaced once more while the fetch
+    // ran: then the row stays and the next fetch refills it again.
+    pub(super) async fn refilled(&mut self, finish: &Finish) -> Result<(), SyncError> {
         let fetcher = self.fetcher;
-        for kind in refill {
-            if let Some(adapter) = fetcher.adapters.get(kind) {
-                let stamp = adapter.identity().await?;
-                self.note_stamp(adapter.store(), stamp, true).await?;
+        for kind in &finish.refill {
+            let Some(adapter) = fetcher.adapters.get(kind) else {
+                continue;
+            };
+            let row = identity_row(*kind, adapter.store());
+            let now = adapter.identity().await?;
+            let unchanged = finish
+                .started
+                .get(&row)
+                .is_some_and(|started| started.generation == now.generation && started.sequence <= now.sequence);
+            if unchanged {
+                self.note_stamp(&row, now, true).await?;
+            }
+        }
+        if finish.scope_refilled {
+            for row in &finish.refill_later {
+                self.refill_later(row).await?;
             }
         }
         Ok(())

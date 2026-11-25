@@ -3,11 +3,9 @@
 // store as a pull does. The store then holds the merge and the base the server's copy with its system fields, so the
 // next push sends the difference on the server's change tag.
 
-use std::collections::BTreeSet;
-
-use super::Fetcher;
 use super::copy::{self, Incoming};
 use super::settle::Batch;
+use super::{Fetcher, PROFILES};
 use crate::api::cloudkit::{CloudKitFetched, CloudKitRecord};
 use crate::api::error::SyncError;
 
@@ -61,6 +59,16 @@ fn onto(server: &CloudKitRecord, items: &mut Vec<Incoming>, rebased: &mut Rebase
     }
 }
 
+// A profile the zone lost is not deleted here, since a deletion found late never removes one: its deletion comes
+// through the changes, and until then its save keeps its base.
+fn gone(name: String, items: &mut Vec<Incoming>, rebased: &mut Rebased) {
+    let key = copy::key_of_name(&name);
+    if let Some(key) = key.filter(|key| copy::kind_of(key).is_some_and(|kind| !PROFILES.contains(&kind))) {
+        items.push(Incoming::Deleted(key));
+    }
+    rebased.gone.push(name);
+}
+
 impl Fetcher<'_> {
     pub async fn rebase(&self, conflicts: Vec<ServerChanged>) -> Result<Rebased, SyncError> {
         let mut rebased = Rebased::default();
@@ -68,42 +76,28 @@ impl Fetcher<'_> {
         let mut by_name = Vec::new();
         for conflict in conflicts {
             match conflict.server {
-                Some(server) => onto(&server, &mut items, &mut rebased),
+                Some(server) if server.name == conflict.name => onto(&server, &mut items, &mut rebased),
+                Some(_) => rebased.failed.push(RebaseFailure::unread(conflict.name)),
                 None => by_name.push(conflict.name),
             }
         }
-        let mut answered = BTreeSet::new();
-        for answer in self.fetch_names(by_name.clone()).await? {
+        let (answers, unanswered) = self.fetch_asked(by_name).await?;
+        for answer in answers {
             match answer {
-                CloudKitFetched::Found { record } => {
-                    answered.insert(record.name.clone());
-                    onto(&record, &mut items, &mut rebased);
-                }
-                CloudKitFetched::Missing { name } => {
-                    items.extend(copy::key_of_name(&name).map(Incoming::Deleted));
-                    answered.insert(name.clone());
-                    rebased.gone.push(name);
-                }
+                CloudKitFetched::Found { record } => onto(&record, &mut items, &mut rebased),
+                CloudKitFetched::Missing { name } => gone(name, &mut items, &mut rebased),
                 CloudKitFetched::Failed {
                     name,
                     code,
                     retry_after_ms,
-                } => {
-                    answered.insert(name.clone());
-                    rebased.failed.push(RebaseFailure {
-                        name,
-                        code: Some(code),
-                        retry_after_ms,
-                    });
-                }
+                } => rebased.failed.push(RebaseFailure {
+                    name,
+                    code: Some(code),
+                    retry_after_ms,
+                }),
             }
         }
-        rebased.failed.extend(
-            by_name
-                .into_iter()
-                .filter(|name| !answered.contains(name))
-                .map(RebaseFailure::unread),
-        );
+        rebased.failed.extend(unanswered.into_iter().map(RebaseFailure::unread));
         self.settle(Batch {
             items,
             ..Batch::default()

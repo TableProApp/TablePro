@@ -1,9 +1,10 @@
 use serde_json::json;
 use tablepro_records::Kind;
+use tablepro_sync::api::cloudkit::{CloudKitField, CloudKitValue};
 use tablepro_sync::api::state::{HeldReason, Standing};
 
 use crate::faults::Unreliable;
-use crate::support::{A, B, C, D, Rig, name, projected};
+use crate::support::{A, B, C, D, Rig, USER, name, projected};
 
 #[tokio::test]
 async fn a_change_to_a_copy_this_build_cannot_read_is_held_then_fetched_by_name_once_it_reads() {
@@ -163,4 +164,74 @@ async fn a_read_by_name_cloudkit_finds_too_large_is_split_and_sent_again() {
             Some(projected(Kind::Group, id, &json!({"name": "renamed"})))
         );
     }
+}
+
+#[tokio::test]
+async fn a_change_to_an_unreadable_local_only_copy_is_not_held() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    rig.fetch().await.unwrap();
+    let kept = projected(Kind::Connection, A, &json!({"name": "on this Mac"}));
+    rig.store(Kind::Connection).put_with(A, kept, Standing::LocalOnly);
+    rig.save_elsewhere(Kind::Connection, B, &json!({"name": "loads the standing"}));
+    rig.fetch().await.unwrap();
+    rig.store(Kind::Connection).make_unreadable(A);
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "renamed"}));
+
+    let report = rig.fetch().await.unwrap();
+
+    assert_eq!(report.counts.held, 0);
+    assert!(rig.held(Kind::Connection, A).await.is_none());
+}
+
+// The zone lost the record with no deletion a delta carried: the held change no longer stands.
+#[tokio::test]
+async fn a_held_change_whose_record_the_zone_no_longer_holds_is_released() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Group, A, &json!({"name": "a"}));
+    rig.fetch().await.unwrap();
+    rig.store(Kind::Group).make_unreadable(A);
+    rig.save_elsewhere(Kind::Group, A, &json!({"name": "renamed"}));
+    rig.fetch().await.unwrap();
+    rig.delete_elsewhere(Kind::Group, A);
+    rig.store(Kind::Group)
+        .put(A, projected(Kind::Group, A, &json!({"name": "a"})));
+    let transport = Unreliable::new(&rig.cloud);
+    transport.hide_deletions();
+
+    rig.fetch_through(&transport).await.unwrap();
+
+    assert!(rig.held(Kind::Group, A).await.is_none());
+    assert_eq!(
+        rig.store(Kind::Group).fields(A),
+        Some(projected(Kind::Group, A, &json!({"name": "a"})))
+    );
+}
+
+// A copy that came back but does not project reads no better on the next pass, so it is not asked for again.
+#[tokio::test]
+async fn a_copy_this_build_cannot_project_is_held_and_not_asked_for_on_every_pass() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    rig.fetch().await.unwrap();
+    rig.cloud.save_elsewhere(
+        USER,
+        "Connection",
+        &name(Kind::Connection, A),
+        vec![CloudKitField {
+            name: "port".to_owned(),
+            value: Some(CloudKitValue::Text("not a port".to_owned())),
+        }],
+    );
+    let transport = Unreliable::new(&rig.cloud);
+
+    rig.fetch_through(&transport).await.unwrap();
+    rig.fetch_through(&transport).await.unwrap();
+
+    assert!(rig.held(Kind::Connection, A).await.is_some());
+    assert!(transport.names_asked().iter().all(Vec::is_empty));
+    assert_eq!(
+        rig.store(Kind::Connection).fields(A),
+        Some(projected(Kind::Connection, A, &json!({"name": "prod"})))
+    );
 }

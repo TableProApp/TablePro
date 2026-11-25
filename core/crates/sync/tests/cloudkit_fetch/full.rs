@@ -86,6 +86,7 @@ async fn a_full_fetch_treats_a_record_it_did_not_return_as_deleted() {
     }
     rig.save_elsewhere(Kind::SshProfile, D, &json!({"name": "bastion"}));
     rig.save_elsewhere(Kind::Tag, A, &json!({"name": "prod"}));
+    rig.save_elsewhere(Kind::Group, D, &json!({"name": "stays"}));
     rig.fetch().await.unwrap();
     let edited = projected(Kind::Connection, B, &json!({"name": "edited here"}));
     rig.store(Kind::Connection).put(B, edited.clone());
@@ -220,5 +221,106 @@ async fn a_scope_in_refill_reads_the_whole_zone_and_leaves_refill_once_it_did() 
     assert_eq!(
         rig.store(Kind::Group).fields(A),
         Some(projected(Kind::Group, A, &json!({"name": "a"})))
+    );
+}
+
+// A zone made again elsewhere, or a short answer, lists nothing it held: that proves no deletion.
+#[tokio::test]
+async fn a_full_fetch_that_lists_nothing_deletes_nothing() {
+    let rig = Rig::new().await;
+    for id in [A, B] {
+        rig.save_elsewhere(Kind::Connection, id, &json!({"name": id}));
+    }
+    rig.fetch().await.unwrap();
+    for id in [A, B] {
+        rig.delete_elsewhere(Kind::Connection, id);
+    }
+    rig.cloud.expire_tokens(USER);
+
+    let report = rig.fetch().await.unwrap();
+
+    assert!(report.full);
+    assert_eq!(report.counts.inferred, 0);
+    assert!(rig.store(Kind::Connection).holds(A) && rig.store(Kind::Connection).holds(B));
+}
+
+// Saved queries and table favourites share a file. Restored while favourites are off, the saved queries refill at
+// once and the favourites once they are on, each from its own row.
+#[tokio::test]
+async fn kinds_that_share_a_restored_store_each_refill_when_their_category_is_on() {
+    let rig = Rig::new().await;
+    let favourite = tablepro_records::record_id::favourite_table(uuid::Uuid::nil(), Some("shop"), None, "orders").id;
+    let query = |name: &str| json!({"name": name, "query": "SELECT 1"});
+    let table = |name: &str| json!({"connection_id": A, "database": "shop", "name": "orders", "schema": name});
+    rig.save_elsewhere(Kind::SavedQuery, B, &query("top"));
+    rig.save_elsewhere(Kind::FavouriteTable, &favourite, &table("public"));
+    rig.fetch().await.unwrap();
+    rig.turn_off(Kind::FavouriteTable);
+    rig.store(Kind::SavedQuery)
+        .restore(vec![(B, projected(Kind::SavedQuery, B, &query("stale")))]);
+    rig.store(Kind::FavouriteTable).restore(vec![(
+        &favourite,
+        projected(Kind::FavouriteTable, &favourite, &table("stale")),
+    )]);
+
+    let first = rig.fetch().await.unwrap();
+    let again = rig.fetch().await.unwrap();
+    rig.turn_on(Kind::FavouriteTable);
+    let on = rig.fetch().await.unwrap();
+
+    assert_eq!(first.refilled, [Kind::SavedQuery]);
+    assert!(again.refilled.is_empty());
+    assert_eq!(on.refilled, [Kind::FavouriteTable]);
+    assert_eq!(
+        rig.store(Kind::SavedQuery).fields(B),
+        Some(projected(Kind::SavedQuery, B, &query("top")))
+    );
+    assert_eq!(
+        rig.store(Kind::FavouriteTable).fields(&favourite),
+        Some(projected(Kind::FavouriteTable, &favourite, &table("public")))
+    );
+}
+
+// The pull wins over what iCloud carries; a field only this device keeps stays.
+#[tokio::test]
+async fn a_refill_keeps_the_fields_icloud_does_not_carry() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    rig.fetch().await.unwrap();
+    let mut stale = projected(Kind::Connection, A, &json!({"name": "stale"}));
+    stale["last_opened_at"] = json!(1_700_000_000_000_i64);
+    rig.store(Kind::Connection).restore(vec![(A, stale)]);
+
+    rig.fetch().await.unwrap();
+
+    let mut expected = projected(Kind::Connection, A, &json!({"name": "prod"}));
+    expected["last_opened_at"] = json!(1_700_000_000_000_i64);
+    assert_eq!(rig.store(Kind::Connection).fields(A), Some(expected));
+}
+
+#[tokio::test]
+async fn a_scope_refill_leaves_a_kind_that_is_off_to_refill_once_it_is_on() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Tag, A, &json!({"name": "prod"}));
+    rig.fetch().await.unwrap();
+    rig.turn_off(Kind::Tag);
+    rig.store(Kind::Tag)
+        .put(A, projected(Kind::Tag, A, &json!({"name": "stale"})));
+    let mut txn = rig.state.begin().await.unwrap();
+    let Some(Row::Scope(scope)) = txn.get(&RowKey::Scope(ScopeName::Personal)).await.unwrap() else {
+        panic!("no scope row");
+    };
+    txn.put(Row::Scope(ScopeRow { refill: true, ..scope })).await.unwrap();
+    txn.commit().await.unwrap();
+
+    let while_off = rig.fetch().await.unwrap();
+    rig.turn_on(Kind::Tag);
+    let on = rig.fetch().await.unwrap();
+
+    assert!(!while_off.refilled.contains(&Kind::Tag));
+    assert_eq!(on.refilled, [Kind::Tag]);
+    assert_eq!(
+        rig.store(Kind::Tag).fields(A),
+        Some(projected(Kind::Tag, A, &json!({"name": "prod"})))
     );
 }

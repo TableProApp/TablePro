@@ -6,6 +6,7 @@ use tablepro_sync::api::cloudkit::{CloudKitOutcome, CloudKitRecord, CloudKitTran
 use tablepro_sync::api::ids::ChangeTag;
 use tablepro_sync::cloudkit::fetch::ServerChanged;
 
+use crate::faults::Unreliable;
 use crate::support::{A, B, Rig, USER, cloud_fields, name, projected};
 
 fn cases() -> Vec<Value> {
@@ -200,4 +201,67 @@ async fn a_record_gone_from_the_zone_keeps_a_content_edit_and_drops_a_reorder() 
     assert!(rig.base(Kind::Connection, A).await.is_none());
     assert_eq!(rig.store(Kind::Connection).fields(B), None);
     assert!(rig.base(Kind::Connection, B).await.is_none());
+}
+
+#[tokio::test]
+async fn a_refusal_whose_copy_names_another_record_is_not_merged() {
+    let (rig, mine) = edited_on_both_sides().await;
+    let other = rig.cloud.record(USER, &name(Kind::Connection, A)).map(|mut copy| {
+        copy.name = name(Kind::Connection, B);
+        copy
+    });
+
+    let rebased = rig
+        .rebase(vec![ServerChanged {
+            name: name(Kind::Connection, A),
+            server: other,
+        }])
+        .await
+        .unwrap();
+
+    assert!(rebased.merged.is_empty());
+    assert_eq!(rebased.failed.len(), 1);
+    assert_eq!(rig.store(Kind::Connection).fields(A), Some(mine));
+    assert!(!rig.store(Kind::Connection).holds(B));
+}
+
+// A deletion found late never removes a profile; its deletion comes through the changes.
+#[tokio::test]
+async fn a_profile_the_zone_lost_is_not_deleted_by_a_rebase() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::SshProfile, A, &json!({"name": "bastion", "host": "jump"}));
+    rig.fetch().await.unwrap();
+    rig.delete_elsewhere(Kind::SshProfile, A);
+
+    let rebased = rig
+        .rebase(vec![ServerChanged {
+            name: name(Kind::SshProfile, A),
+            server: None,
+        }])
+        .await
+        .unwrap();
+
+    assert_eq!(rebased.gone, [name(Kind::SshProfile, A)]);
+    assert!(rig.store(Kind::SshProfile).holds(A));
+    assert!(rig.base(Kind::SshProfile, A).await.is_some());
+}
+
+#[tokio::test]
+async fn a_refusal_whose_copy_cannot_be_read_waits_for_a_later_pass() {
+    let (rig, mine) = edited_on_both_sides().await;
+    let transport = Unreliable::new(&rig.cloud);
+    transport.fail_reads(&name(Kind::Connection, A), 1);
+
+    let rebased = rig
+        .fetcher(&transport)
+        .rebase(vec![ServerChanged {
+            name: name(Kind::Connection, A),
+            server: None,
+        }])
+        .await
+        .unwrap();
+
+    assert!(rebased.merged.is_empty());
+    assert_eq!(rebased.failed[0].code, Some(15));
+    assert_eq!(rig.store(Kind::Connection).fields(A), Some(mine));
 }

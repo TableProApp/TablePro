@@ -24,6 +24,7 @@ mod full;
 mod held;
 mod rebase;
 mod settle;
+mod stores;
 
 pub use rebase::{RebaseFailure, Rebased, ServerChanged};
 
@@ -36,6 +37,11 @@ pub const SCOPE: ScopeName = ScopeName::Personal;
 // A profile's deletion unlinks connections and removes Keychain secrets no pull can bring back: it waits for a build
 // that reads the profile, and a deletion found late, deferred or by a full fetch, never removes one.
 const PROFILES: [Kind; 2] = [Kind::SshProfile, Kind::CredentialProfile];
+
+// The `stores` row of one kind. Kinds that share a store can be in different categories, so each refills on its own.
+fn identity_row(kind: Kind, store: &str) -> String {
+    format!("{store}/{}", kind.as_str())
+}
 
 // The kinds whose category is on. Another kind sends nothing and takes no pulled change, and a deletion pulled for it
 // waits until a full fetch reads its category.
@@ -70,14 +76,14 @@ pub struct Counts {
 }
 
 impl Counts {
-    fn add(&mut self, other: Self) {
-        self.written += other.written;
-        self.removed += other.removed;
-        self.held += other.held;
-        self.deferred += other.deferred;
-        self.inferred += other.inferred;
-        self.skipped += other.skipped;
-        self.recovered += other.recovered;
+    const fn add(&mut self, other: Self) {
+        self.written = self.written.saturating_add(other.written);
+        self.removed = self.removed.saturating_add(other.removed);
+        self.held = self.held.saturating_add(other.held);
+        self.deferred = self.deferred.saturating_add(other.deferred);
+        self.inferred = self.inferred.saturating_add(other.inferred);
+        self.skipped = self.skipped.saturating_add(other.skipped);
+        self.recovered = self.recovered.saturating_add(other.recovered);
     }
 }
 
@@ -99,12 +105,16 @@ pub struct Fetcher<'a> {
     categories: Categories,
 }
 
-// Where the fetch starts: the stored token, the kinds whose store went back or was replaced, and every store's
-// identity as the fetch found it.
+// Where the fetch starts: the stored token, the kinds whose store went back or was replaced, and each kind's store
+// identity as the fetch found it, by identity row.
 struct Start {
     token: Option<Vec<u8>>,
     refill: BTreeSet<Kind>,
-    stamps: BTreeMap<String, StoreStamp>,
+    started: BTreeMap<String, StoreStamp>,
+    unseen: BTreeSet<String>,
+    // The state file as a whole refills, and the identity rows of kinds whose category is off meanwhile.
+    scope_refill: bool,
+    refill_later: Vec<String>,
 }
 
 struct Pass {
@@ -112,20 +122,29 @@ struct Pass {
     full: bool,
     started_over: bool,
     listed: BTreeSet<RecordKey>,
-    refill: BTreeSet<Kind>,
+    // Tokens this pass was given, so a transport that never ends a fetch is refused.
+    seen: BTreeSet<Vec<u8>>,
+    start: Start,
     stamps: BTreeMap<String, StoreStamp>,
 }
 
 impl Pass {
     fn new(start: Start) -> Self {
         let full = start.token.is_none() || !start.refill.is_empty();
+        let stamps = start
+            .started
+            .iter()
+            .filter(|(row, _)| start.unseen.contains(*row))
+            .map(|(row, stamp)| (row.clone(), *stamp))
+            .collect();
         Self {
-            next: start.token.filter(|_| !full),
+            next: start.token.clone().filter(|_| !full),
             full,
             started_over: false,
             listed: BTreeSet::new(),
-            refill: start.refill,
-            stamps: start.stamps,
+            seen: start.token.iter().cloned().collect(),
+            start,
+            stamps,
         }
     }
 
@@ -136,6 +155,11 @@ impl Pass {
         self.full = true;
         self.started_over = true;
         self.listed.clear();
+        self.seen.clear();
+    }
+
+    fn refill(&self) -> BTreeSet<Kind> {
+        self.start.refill.clone()
     }
 
     fn batch(&mut self, items: Vec<Incoming>, token: Vec<u8>, last: bool) -> Batch {
@@ -145,11 +169,14 @@ impl Pass {
         }
         let finish = (self.full && last).then(|| Finish {
             listed: std::mem::take(&mut self.listed),
-            refill: self.refill.clone(),
+            refill: self.refill(),
+            started: self.start.started.clone(),
+            refill_later: self.start.refill_later.clone(),
+            scope_refilled: self.start.scope_refill,
         });
         Batch {
             items,
-            pull_wins: self.refill.clone(),
+            pull_wins: self.refill(),
             token: (!self.full || last).then_some(token),
             caught_up: last,
             finish,
@@ -191,8 +218,11 @@ impl<'a> Fetcher<'a> {
         };
         let mut pass = Pass::new(start);
         loop {
-            let asked = pass.next.clone();
-            let changes = match self.transport.fetch_changes(self.account.clone(), asked.clone()).await {
+            let changes = match self
+                .transport
+                .fetch_changes(self.account.clone(), pass.next.clone())
+                .await
+            {
                 Ok(changes) => changes,
                 Err(CloudKitFailure::TokenExpired) if !pass.started_over => {
                     report.token_expired = true;
@@ -201,8 +231,9 @@ impl<'a> Fetcher<'a> {
                 }
                 Err(failure) => return Err(failure.into()),
             };
-            report.pages += 1;
-            if changes.more && asked.as_ref() == Some(&changes.token) {
+            report.pages = report.pages.saturating_add(1);
+            let empty = changes.changed.is_empty() && changes.deleted.is_empty() && changes.unfetched.is_empty();
+            if changes.more && (empty || !pass.seen.insert(changes.token.clone())) {
                 return Err(SyncError::Malformed { what: "change token" });
             }
             let last = !changes.more;
@@ -216,7 +247,7 @@ impl<'a> Fetcher<'a> {
             pass.next = Some(token);
         }
         report.full = pass.full;
-        report.counts.add(self.recover().await?);
+        report.counts.add(self.recover(pass.refill()).await?);
         Ok(report)
     }
 
@@ -226,30 +257,44 @@ impl<'a> Fetcher<'a> {
             Some(Row::Scope(scope)) => Some(scope),
             _ => None,
         };
-        let everything = scope.as_ref().is_some_and(|scope| scope.refill);
+        let scope_refill = scope.as_ref().is_some_and(|scope| scope.refill);
         let token = scope.and_then(|scope| match scope.cursor {
             Some(Cursor::CloudKit(token)) => Some(token),
             _ => None,
         });
-        let mut refill = BTreeSet::new();
-        let mut stamps = BTreeMap::new();
+        let mut start = Start {
+            token,
+            refill: BTreeSet::new(),
+            started: BTreeMap::new(),
+            unseen: BTreeSet::new(),
+            scope_refill,
+            refill_later: Vec::new(),
+        };
         for (kind, adapter) in &self.adapters {
+            let row = identity_row(*kind, adapter.store());
             let stamp = adapter.identity().await?;
-            let seen = match txn.get(&RowKey::Store(adapter.store().to_owned())).await? {
+            let seen = match txn.get(&RowKey::Store(row.clone())).await? {
                 Some(Row::Store(seen)) => Some(StoreStamp {
                     generation: seen.generation,
                     sequence: seen.sequence,
                 }),
                 _ => None,
             };
-            // A store whose category is off keeps the row it had, so it refills once the category is on.
-            let refills = everything || seen.is_some_and(|seen| stamp.needs_refill(seen));
-            if refills && self.categories.syncs(*kind) {
-                refill.insert(*kind);
+            // A kind whose category is off keeps the row it had, so it refills once the category is on.
+            let refills = scope_refill || seen.is_some_and(|seen| stamp.needs_refill(seen));
+            match (refills, self.categories.syncs(*kind)) {
+                (true, true) => {
+                    start.refill.insert(*kind);
+                }
+                (true, false) if scope_refill => start.refill_later.push(row.clone()),
+                _ => {}
             }
-            stamps.insert(adapter.store().to_owned(), stamp);
+            if seen.is_none() {
+                start.unseen.insert(row.clone());
+            }
+            start.started.insert(row, stamp);
         }
-        Ok(Start { token, refill, stamps })
+        Ok(start)
     }
 
     // A record the zone reported changed whose fetch failed is fetched by name, and held when it still fails, so the
@@ -261,18 +306,12 @@ impl<'a> Fetcher<'a> {
             .into_iter()
             .filter(|name| copy::key_of_name(name).is_some())
             .collect();
-        let mut unanswered: BTreeSet<String> = unfetched.iter().cloned().collect();
-        for answer in self.fetch_names(unfetched).await? {
+        let (answers, unanswered) = self.fetch_asked(unfetched).await?;
+        for answer in answers {
             match answer {
-                CloudKitFetched::Found { record } => {
-                    unanswered.remove(&record.name);
-                    items.extend(copy::changed(&record));
-                }
-                CloudKitFetched::Missing { name } => {
-                    unanswered.remove(&name);
-                }
+                CloudKitFetched::Found { record } => items.extend(copy::changed(&record)),
+                CloudKitFetched::Missing { .. } => {}
                 CloudKitFetched::Failed { name, .. } => {
-                    unanswered.remove(&name);
                     items.extend(copy::key_of_name(&name).map(|key| Incoming::Unread { key, tag: None }));
                 }
             }

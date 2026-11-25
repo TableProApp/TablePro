@@ -21,8 +21,11 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 struct Faults {
     unfetched: BTreeSet<String>,
     failing_reads: BTreeMap<String, u32>,
-    fetch_calls_before_failure: Option<usize>,
+    fetch_calls_before_failure: Option<(usize, CloudKitFailure)>,
+    read_call_failure: Option<CloudKitFailure>,
     names_per_call: Option<usize>,
+    hide_deletions: bool,
+    endless: bool,
     names_asked: Vec<Vec<String>>,
 }
 
@@ -51,7 +54,26 @@ impl<'a> Unreliable<'a> {
 
     // After `calls` more change fetches, the next one fails with the network.
     pub fn stop_after(&self, calls: usize) {
-        lock(&self.faults).fetch_calls_before_failure = Some(calls);
+        self.fail_after(calls, CloudKitFailure::Network);
+    }
+
+    pub fn fail_after(&self, calls: usize, failure: CloudKitFailure) {
+        lock(&self.faults).fetch_calls_before_failure = Some((calls, failure));
+    }
+
+    // The next read by name fails whole.
+    pub fn fail_next_read_call(&self, failure: CloudKitFailure) {
+        lock(&self.faults).read_call_failure = Some(failure);
+    }
+
+    // The change fetch leaves deletions out, as a zone that lost them would.
+    pub fn hide_deletions(&self) {
+        lock(&self.faults).hide_deletions = true;
+    }
+
+    // Every page is empty and says more follows, each with a new token.
+    pub fn never_end(&self) {
+        lock(&self.faults).endless = true;
     }
 
     // A read by name of more records than this answers `limitExceeded`.
@@ -81,16 +103,27 @@ impl CloudKitTransport for Unreliable<'_> {
     async fn fetch_changes(&self, account: String, token: Option<Vec<u8>>) -> Result<CloudKitChanges, CloudKitFailure> {
         {
             let mut faults = lock(&self.faults);
-            match faults.fetch_calls_before_failure {
-                Some(0) => {
-                    faults.fetch_calls_before_failure = None;
-                    return Err(CloudKitFailure::Network);
-                }
-                Some(calls) => faults.fetch_calls_before_failure = Some(calls - 1),
+            match faults.fetch_calls_before_failure.take() {
+                Some((0, failure)) => return Err(failure),
+                Some((calls, failure)) => faults.fetch_calls_before_failure = Some((calls - 1, failure)),
                 None => {}
+            }
+            if faults.endless {
+                let mut next = token.unwrap_or_default();
+                next.push(0);
+                return Ok(CloudKitChanges {
+                    changed: Vec::new(),
+                    deleted: Vec::new(),
+                    unfetched: Vec::new(),
+                    token: next,
+                    more: true,
+                });
             }
         }
         let mut changes = self.inner.fetch_changes(account, token).await?;
+        if lock(&self.faults).hide_deletions {
+            changes.deleted.clear();
+        }
         let unfetched = lock(&self.faults).unfetched.clone();
         let (left, kept): (Vec<CloudKitRecord>, Vec<CloudKitRecord>) = changes
             .changed
@@ -109,6 +142,9 @@ impl CloudKitTransport for Unreliable<'_> {
         {
             let mut faults = lock(&self.faults);
             faults.names_asked.push(names.clone());
+            if let Some(failure) = faults.read_call_failure.take() {
+                return Err(failure);
+            }
             if faults.names_per_call.is_some_and(|limit| names.len() > limit) {
                 return Err(CloudKitFailure::LimitExceeded);
             }

@@ -4,13 +4,15 @@
 
 use std::collections::BTreeSet;
 
+use tablepro_records::Kind;
+
 use super::copy::{self, Incoming, kind_of, name_of};
 use super::settle::{Batch, Settle, View};
 use super::{Counts, Fetcher, SCOPE};
 use crate::api::cloudkit::{CloudKitFailure, CloudKitFetched};
 use crate::api::error::SyncError;
-use crate::api::ids::RecordKey;
-use crate::api::state::{HeldReason, Row, RowRange, Standing, Table};
+use crate::api::ids::{ChangeTag, RecordKey};
+use crate::api::state::{HeldReason, HeldRow, Row, RowRange, Standing, Table};
 
 // Under the 400 items per operation that CloudKit's `limitExceeded` documentation gives as its guideline.
 const NAMES_PER_CALL: usize = 200;
@@ -22,8 +24,23 @@ struct Recovery {
     release: Vec<RecordKey>,
 }
 
+const fn answer_name(answer: &CloudKitFetched) -> &String {
+    match answer {
+        CloudKitFetched::Found { record } => &record.name,
+        CloudKitFetched::Missing { name } | CloudKitFetched::Failed { name, .. } => name,
+    }
+}
+
+// A copy that came back but does not project: it reads no better until a delta brings it changed, so it is not
+// asked for again on every pass.
+fn unprojectable(held: &HeldRow) -> bool {
+    held.record.fields.is_none()
+        && held.record.deleted.is_none()
+        && matches!(&held.record.tag, ChangeTag::CloudKit(system_fields) if !system_fields.is_empty())
+}
+
 impl Fetcher<'_> {
-    pub(super) async fn fetch_names(&self, names: Vec<String>) -> Result<Vec<CloudKitFetched>, SyncError> {
+    async fn fetch_names(&self, names: Vec<String>) -> Result<Vec<CloudKitFetched>, SyncError> {
         let mut fetched = Vec::with_capacity(names.len());
         let mut calls: Vec<Vec<String>> = names.chunks(NAMES_PER_CALL).rev().map(<[String]>::to_vec).collect();
         while let Some(call) = calls.pop() {
@@ -41,19 +58,37 @@ impl Fetcher<'_> {
         Ok(fetched)
     }
 
-    pub(super) async fn recover(&self) -> Result<Counts, SyncError> {
+    // One answer per name asked; an answer for a name nobody asked for is dropped, and the names left unanswered
+    // come back with the answers.
+    pub(super) async fn fetch_asked(
+        &self,
+        names: Vec<String>,
+    ) -> Result<(Vec<CloudKitFetched>, BTreeSet<String>), SyncError> {
+        let mut unanswered: BTreeSet<String> = names.iter().cloned().collect();
+        let answers = self
+            .fetch_names(names)
+            .await?
+            .into_iter()
+            .filter(|answer| unanswered.remove(answer_name(answer)))
+            .collect();
+        Ok((answers, unanswered))
+    }
+
+    // Recovered in the same fetch as a refill, a change takes the pull as the refill did.
+    pub(super) async fn recover(&self, pull_wins: BTreeSet<Kind>) -> Result<Counts, SyncError> {
         let recovery = self.recovery().await?;
         if recovery.names.is_empty() && recovery.deletions.is_empty() && recovery.release.is_empty() {
             return Ok(Counts::default());
         }
         let mut items: Vec<Incoming> = recovery.deletions.into_iter().map(Incoming::Deleted).collect();
         let mut release = recovery.release;
-        let mut recovered = 0;
-        for answer in self.fetch_names(recovery.names).await? {
+        let mut recovered = 0_u32;
+        let (answers, _) = self.fetch_asked(recovery.names).await?;
+        for answer in answers {
             match answer {
                 CloudKitFetched::Found { record } => {
                     if let Some(item) = copy::changed(&record) {
-                        recovered += u32::from(matches!(item, Incoming::Changed(_)));
+                        recovered = recovered.saturating_add(u32::from(matches!(item, Incoming::Changed(_))));
                         items.push(item);
                     }
                 }
@@ -65,11 +100,12 @@ impl Fetcher<'_> {
         let mut counts = self
             .settle(Batch {
                 items,
+                pull_wins,
                 release,
                 ..Batch::default()
             })
             .await?;
-        counts.recovered += recovered;
+        counts.recovered = counts.recovered.saturating_add(recovered);
         Ok(counts)
     }
 
@@ -82,7 +118,7 @@ impl Fetcher<'_> {
             let Row::Held(held) = row else {
                 continue;
             };
-            if held.reason == HeldReason::AwaitingApproval {
+            if held.reason == HeldReason::AwaitingApproval || unprojectable(&held) {
                 continue;
             }
             // One of a category this device does not sync now stays held.

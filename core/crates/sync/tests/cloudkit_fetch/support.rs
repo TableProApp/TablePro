@@ -42,37 +42,71 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+// A store's generation and write sequence, which kinds kept in one file share.
+#[derive(Debug)]
+pub struct Identity {
+    generation: Uuid,
+    sequence: u64,
+}
+
+impl Identity {
+    pub fn new() -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Self {
+            generation: Uuid::new_v4(),
+            sequence: 0,
+        }))
+    }
+}
+
 #[derive(Debug)]
 struct Held {
     records: BTreeMap<String, LocalRecord>,
     unreadable: BTreeSet<String>,
-    generation: Uuid,
-    sequence: u64,
     refuse_next: bool,
     writes: usize,
+    // A write the person makes right after the next read, while the pull merges.
+    edit_after_read: Option<(String, Value)>,
 }
 
 #[derive(Debug)]
 pub struct MemoryStore {
     kind: Kind,
     store: String,
+    identity: Arc<Mutex<Identity>>,
     held: Mutex<Held>,
 }
 
 impl MemoryStore {
     pub fn new(kind: Kind) -> Arc<Self> {
+        Self::in_file(kind, kind.as_str(), Identity::new())
+    }
+
+    pub fn in_file(kind: Kind, store: &str, identity: Arc<Mutex<Identity>>) -> Arc<Self> {
         Arc::new(Self {
             kind,
-            store: kind.as_str().to_owned(),
+            store: store.to_owned(),
+            identity,
             held: Mutex::new(Held {
                 records: BTreeMap::new(),
                 unreadable: BTreeSet::new(),
-                generation: Uuid::new_v4(),
-                sequence: 0,
                 refuse_next: false,
                 writes: 0,
+                edit_after_read: None,
             }),
         })
+    }
+
+    fn wrote(&self) -> StoreStamp {
+        let mut identity = lock(&self.identity);
+        identity.sequence += 1;
+        StoreStamp {
+            generation: identity.generation,
+            sequence: identity.sequence,
+        }
+    }
+
+    pub fn store_name(&self) -> &str {
+        &self.store
     }
 
     pub fn put(&self, id: &str, fields: Value) {
@@ -81,7 +115,6 @@ impl MemoryStore {
 
     pub fn put_with(&self, id: &str, fields: Value, standing: Standing) {
         let mut held = lock(&self.held);
-        held.sequence += 1;
         held.unreadable.remove(id);
         held.records.insert(
             id.to_owned(),
@@ -91,13 +124,14 @@ impl MemoryStore {
                 standing,
             },
         );
+        self.wrote();
     }
 
     pub fn remove(&self, id: &str) {
         let mut held = lock(&self.held);
-        held.sequence += 1;
         held.records.remove(id);
         held.unreadable.remove(id);
+        self.wrote();
     }
 
     // The file now holds the record in a form this build cannot read.
@@ -105,6 +139,10 @@ impl MemoryStore {
         let mut held = lock(&self.held);
         held.records.remove(id);
         held.unreadable.insert(id.to_owned());
+    }
+
+    pub fn edit_after_next_read(&self, id: &str, fields: Value) {
+        lock(&self.held).edit_after_read = Some((id.to_owned(), fields));
     }
 
     pub fn fields(&self, id: &str) -> Option<Value> {
@@ -117,7 +155,7 @@ impl MemoryStore {
     }
 
     pub fn generation(&self) -> Uuid {
-        lock(&self.held).generation
+        lock(&self.identity).generation
     }
 
     pub fn writes(&self) -> usize {
@@ -128,11 +166,14 @@ impl MemoryStore {
         lock(&self.held).refuse_next = true;
     }
 
-    // Restored from a backup: a new generation holding these records.
+    // Restored from a backup: the file it shares with other kinds gets a new generation, holding these records.
     pub fn restore(&self, records: Vec<(&str, Value)>) {
+        {
+            let mut identity = lock(&self.identity);
+            identity.generation = Uuid::new_v4();
+            identity.sequence = 1;
+        }
         let mut held = lock(&self.held);
-        held.generation = Uuid::new_v4();
-        held.sequence = 1;
         held.unreadable.clear();
         held.records = records
             .into_iter()
@@ -161,20 +202,30 @@ impl RecordAdapter for MemoryStore {
     }
 
     async fn identity(&self) -> Result<StoreStamp, AdapterError> {
-        let held = lock(&self.held);
+        let identity = lock(&self.identity);
         Ok(StoreStamp {
-            generation: held.generation,
-            sequence: held.sequence,
+            generation: identity.generation,
+            sequence: identity.sequence,
         })
     }
 
     async fn records(&self) -> Result<LocalRecords, AdapterError> {
-        let held = lock(&self.held);
-        Ok(LocalRecords {
-            records: held.records.values().cloned().collect(),
-            unreadable: held.unreadable.iter().cloned().collect(),
-            tombstones: Vec::new(),
-        })
+        let edit = {
+            let mut held = lock(&self.held);
+            held.edit_after_read.take()
+        };
+        let records = {
+            let held = lock(&self.held);
+            LocalRecords {
+                records: held.records.values().cloned().collect(),
+                unreadable: held.unreadable.iter().cloned().collect(),
+                tombstones: Vec::new(),
+            }
+        };
+        if let Some((id, fields)) = edit {
+            self.put(&id, fields);
+        }
+        Ok(records)
     }
 
     async fn apply(&self, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError> {
@@ -208,12 +259,8 @@ impl RecordAdapter for MemoryStore {
                 }
             }
         }
-        held.sequence += 1;
         held.writes += 1;
-        Ok(StoreStamp {
-            generation: held.generation,
-            sequence: held.sequence,
-        })
+        Ok(self.wrote())
     }
 
     async fn tombstones_pushed(&self, _record_ids: Vec<String>) -> Result<(), AdapterError> {
@@ -293,9 +340,26 @@ impl Rig {
             cloud,
             files,
             state,
-            stores: KINDS.into_iter().map(|kind| (kind, MemoryStore::new(kind))).collect(),
+            stores: Self::stores(),
             on: Mutex::new(KINDS.into_iter().collect()),
         }
+    }
+
+    // Saved queries and table favourites live in one file, as the library store keeps them.
+    fn stores() -> BTreeMap<Kind, Arc<MemoryStore>> {
+        let library = Identity::new();
+        KINDS
+            .into_iter()
+            .map(|kind| {
+                let store = match kind {
+                    Kind::SavedQuery | Kind::FavouriteTable => {
+                        MemoryStore::in_file(kind, "library", Arc::clone(&library))
+                    }
+                    _ => MemoryStore::new(kind),
+                };
+                (kind, store)
+            })
+            .collect()
     }
 
     pub fn identity() -> StateIdentity {
@@ -385,7 +449,8 @@ impl Rig {
     }
 
     pub async fn store_row(&self, kind: Kind) -> Option<StoreRow> {
-        match self.row(RowKey::Store(kind.as_str().to_owned())).await {
+        let row = format!("{}/{}", self.store(kind).store_name(), kind.as_str());
+        match self.row(RowKey::Store(row)).await {
             Some(Row::Store(row)) => Some(row),
             _ => None,
         }

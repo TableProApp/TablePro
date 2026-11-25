@@ -8,17 +8,18 @@ use tablepro_records::Kind;
 use tablepro_records::merge::{self, Merged, Mode, Sides};
 
 use super::copy::{Copy, Incoming, kind_of};
+use super::stores::{Local, Planned, pulled_over};
 use super::{Counts, Fetcher, PROFILES, SCOPE};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
-use crate::api::error::SyncError;
+use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
-use crate::api::state::{
-    BaseRow, DeferredRow, HeldReason, HeldRow, Row, RowKey, RowRange, ScopeRow, Standing, StandingRow, StateTxn,
-    StoreRow, Table,
-};
+use crate::api::state::{BaseRow, DeferredRow, HeldReason, HeldRow, Row, RowKey, ScopeRow, Standing, StateTxn};
 use crate::api::transport::{DeletedReason, PulledRecord};
 
-#[derive(Debug, Default)]
+// A store written this many times in a row while its batch merged is left to the next pass.
+const ATTEMPTS: usize = 3;
+
+#[derive(Debug, Clone, Default)]
 pub(super) struct Batch {
     pub items: Vec<Incoming>,
     // Kinds in refill: the pull wins over the store.
@@ -27,23 +28,24 @@ pub(super) struct Batch {
     pub token: Option<Vec<u8>>,
     pub caught_up: bool,
     pub finish: Option<Finish>,
-    // Store identities read when the fetch started, recorded where the state has none yet.
+    // Identity rows the state has none of yet, with the stores' identities as the fetch found them.
     pub stamps: BTreeMap<String, StoreStamp>,
     // Held changes to drop: the zone holds no such record any more.
     pub release: Vec<RecordKey>,
 }
 
-// The last page of a full fetch: every record the zone listed, and the kinds whose stores refill.
-#[derive(Debug, Default)]
+// The last page of a full fetch.
+#[derive(Debug, Clone, Default)]
 pub(super) struct Finish {
+    // Every record the zone listed.
     pub listed: BTreeSet<RecordKey>,
     pub refill: BTreeSet<Kind>,
-}
-
-#[derive(Debug, Default)]
-struct Local {
-    records: BTreeMap<String, LocalRecord>,
-    unreadable: BTreeSet<String>,
+    // The identities the refilling stores had when the fetch started, by identity row.
+    pub started: BTreeMap<String, StoreStamp>,
+    // Identity rows of kinds whose category is off while the whole state file refills.
+    pub refill_later: Vec<String>,
+    // The state file as a whole refilled.
+    pub scope_refilled: bool,
 }
 
 pub(super) enum View {
@@ -58,9 +60,12 @@ pub(super) struct Settle<'s, 'f> {
     pub fetcher: &'s Fetcher<'f>,
     pub txn: Box<dyn StateTxn>,
     pub counts: Counts,
-    locals: BTreeMap<Kind, Option<Local>>,
-    changes: BTreeMap<Kind, BTreeMap<String, LocalChange>>,
-    pull_wins: BTreeSet<Kind>,
+    pub locals: BTreeMap<Kind, Option<Local>>,
+    pub changes: BTreeMap<Kind, BTreeMap<String, LocalChange>>,
+    pub pull_wins: BTreeSet<Kind>,
+    // Each store's identity when the batch first read it, and a store written since.
+    pub loaded: BTreeMap<String, StoreStamp>,
+    pub moved: Option<String>,
 }
 
 fn held_change(copy: &Copy) -> PulledRecord {
@@ -87,14 +92,22 @@ fn held_deletion(key: &RecordKey) -> PulledRecord {
     }
 }
 
-const fn record_id(change: &LocalChange) -> &String {
-    match change {
-        LocalChange::Put { record_id, .. } | LocalChange::Delete { record_id } => record_id,
-    }
-}
-
 impl Fetcher<'_> {
     pub(super) async fn settle(&self, batch: Batch) -> Result<Counts, SyncError> {
+        let mut moved = String::new();
+        for _ in 0..ATTEMPTS {
+            match self.settle_once(batch.clone()).await? {
+                Ok(counts) => return Ok(counts),
+                Err(store) => moved = store,
+            }
+        }
+        Err(SyncError::Adapter(AdapterError::Store {
+            store: moved,
+            detail: "written while a pull merged into it".to_owned(),
+        }))
+    }
+
+    async fn settle_once(&self, batch: Batch) -> Result<Result<Counts, String>, SyncError> {
         let txn = self.state.begin().await?;
         let mut settle = Settle::new(self, txn, batch.pull_wins);
         for item in batch.items {
@@ -106,17 +119,19 @@ impl Fetcher<'_> {
         if let Some(finish) = &batch.finish {
             settle.finish(finish).await?;
         }
-        settle.write_stores().await?;
-        for (store, stamp) in &batch.stamps {
-            settle.note_stamp(store, *stamp, false).await?;
+        if settle.write_stores().await?.is_none() {
+            return Ok(Err(settle.moved.unwrap_or_default()));
+        }
+        for (row, stamp) in &batch.stamps {
+            settle.note_stamp(row, *stamp, false).await?;
         }
         if let Some(finish) = &batch.finish {
-            settle.refilled(&finish.refill).await?;
+            settle.refilled(finish).await?;
         }
         settle
             .store_token(batch.token, batch.caught_up, batch.finish.is_some())
             .await?;
-        settle.commit().await
+        settle.commit().await.map(Ok)
     }
 }
 
@@ -129,6 +144,8 @@ impl<'s, 'f> Settle<'s, 'f> {
             locals: BTreeMap::new(),
             changes: BTreeMap::new(),
             pull_wins,
+            loaded: BTreeMap::new(),
+            moved: None,
         }
     }
 
@@ -156,13 +173,14 @@ impl<'s, 'f> Settle<'s, 'f> {
             View::Stored(record) => Some(record),
             View::Missing => None,
         };
-        let base = self.base(&key).await?;
+        let local = record.as_ref().map(|record| &record.fields);
         let merged = if self.pull_wins.contains(&copy.kind) {
-            Merged::Record(copy.fields.clone())
+            Merged::Record(pulled_over(copy.kind, local, &copy.fields))
         } else {
+            let base = self.base(&key).await?;
             let sides = Sides {
                 base: base.as_ref().and_then(|base| base.fields.as_ref()),
-                local: record.as_ref().map(|record| &record.fields),
+                local,
                 server: Some(&copy.fields),
             };
             merge::merge(copy.kind, Mode::Personal, sides)
@@ -191,11 +209,10 @@ impl<'s, 'f> Settle<'s, 'f> {
             // Only an envelope is sealed again, and iCloud carries none.
             Merged::Reseal => return,
         };
-        let record_id = key.record_id.clone();
         match (kept, record) {
             (Some(fields), Some(record)) if record.fields == fields => {}
-            (Some(fields), _) => self.plan(kind, LocalChange::Put { record_id, fields }),
-            (None, Some(_)) => self.plan(kind, LocalChange::Delete { record_id }),
+            (Some(fields), _) => self.plan(kind, key, Planned::Put(fields)),
+            (None, Some(_)) => self.plan(kind, key, Planned::Delete),
             (None, None) => {}
         }
     }
@@ -206,14 +223,13 @@ impl<'s, 'f> Settle<'s, 'f> {
         };
         if !self.fetcher.categories.syncs(kind) {
             self.counts.deferred += 1;
-            return self
-                .txn
+            self.txn
                 .put(Row::Deferred(DeferredRow {
                     key: key.clone(),
                     record: held_deletion(key),
                 }))
-                .await
-                .map_err(SyncError::from);
+                .await?;
+            return Ok(());
         }
         self.txn.delete(&RowKey::Deferred(key.clone())).await?;
         let record = match self.view(key, kind).await? {
@@ -233,32 +249,24 @@ impl<'s, 'f> Settle<'s, 'f> {
         // store in refill went back in time, so what differs from the base there is no edit.
         let goes = self.pull_wins.contains(&kind) || merge::merge(kind, Mode::Personal, sides) == Merged::Deleted;
         if record.is_some() && goes {
-            self.plan(
-                kind,
-                LocalChange::Delete {
-                    record_id: key.record_id.clone(),
-                },
-            );
+            self.plan(kind, key, Planned::Delete);
         }
         self.forget(key).await
     }
 
-    // A copy this build cannot read goes by its id when its standing says it syncs, and a Local only one stays. With
-    // no standing, or a profile, whose deletion unlinks connections a build has to read, the deletion waits.
+    // A copy this build cannot read goes by its id when its standing says it syncs, and a Local only one stays. Only
+    // connections can be Local only, so another kind's copy with no standing recorded syncs. A connection with no
+    // standing, or a profile, whose deletion unlinks connections a build has to read, waits for a build that reads it.
     async fn unreadable_deleted(
         &mut self,
         key: &RecordKey,
         kind: Kind,
         standing: Option<Standing>,
     ) -> Result<(), SyncError> {
+        let standing = standing.or_else(|| (kind != Kind::Connection).then_some(Standing::Syncs));
         match standing {
             Some(Standing::Syncs) if !PROFILES.contains(&kind) => {
-                self.plan(
-                    kind,
-                    LocalChange::Delete {
-                        record_id: key.record_id.clone(),
-                    },
-                );
+                self.plan(kind, key, Planned::Delete);
                 self.forget(key).await
             }
             Some(Standing::LocalOnly) if !PROFILES.contains(&kind) => self.forget(key).await,
@@ -275,14 +283,12 @@ impl<'s, 'f> Settle<'s, 'f> {
             self.counts.skipped += 1;
             return Ok(());
         }
-        let local_only = match self.view(key, kind).await? {
-            View::Stored(record) => record.standing == Standing::LocalOnly,
-            View::Unreadable(standing) => standing == Some(Standing::LocalOnly),
-            View::NoAdapter | View::Missing => false,
+        let reason = match self.view(key, kind).await? {
+            View::Stored(record) if record.standing == Standing::LocalOnly => return self.release(key).await,
+            View::Unreadable(Some(Standing::LocalOnly)) => return self.release(key).await,
+            View::NoAdapter => HeldReason::UnknownKind,
+            View::Stored(_) | View::Unreadable(_) | View::Missing => HeldReason::Unreadable,
         };
-        if local_only {
-            return self.release(key).await;
-        }
         let record = PulledRecord {
             kind: key.kind.clone(),
             record_id: key.record_id.clone(),
@@ -292,31 +298,19 @@ impl<'s, 'f> Settle<'s, 'f> {
             deleted: None,
             service: None,
         };
-        self.hold(key, HeldReason::Unreadable, record).await
+        self.hold(key, reason, record).await
     }
 
-    // The deletion is settled on both sides: no base, nothing held or waiting.
+    // The deletion is settled on both sides: no base, nothing held or waiting, a value awaiting approval included.
     async fn forget(&mut self, key: &RecordKey) -> Result<(), SyncError> {
         self.txn.delete(&RowKey::Base(key.clone())).await?;
         self.txn.delete(&RowKey::Deferred(key.clone())).await?;
-        self.release(key).await
+        self.txn.delete(&RowKey::Held(key.clone())).await?;
+        Ok(())
     }
 
-    // A value waiting for approval is the approval queue's, so neither a hold nor a release here touches it.
-    async fn held_for_approval(&mut self, key: &RecordKey) -> Result<bool, SyncError> {
-        Ok(matches!(
-            self.txn.get(&RowKey::Held(key.clone())).await?,
-            Some(Row::Held(HeldRow {
-                reason: HeldReason::AwaitingApproval,
-                ..
-            }))
-        ))
-    }
-
+    // The newer pulled state replaces whatever the row held, so the token never passes a change left unheld.
     async fn hold(&mut self, key: &RecordKey, reason: HeldReason, record: PulledRecord) -> Result<(), SyncError> {
-        if self.held_for_approval(key).await? {
-            return Ok(());
-        }
         self.counts.held += 1;
         self.txn
             .put(Row::Held(HeldRow {
@@ -328,11 +322,18 @@ impl<'s, 'f> Settle<'s, 'f> {
         Ok(())
     }
 
+    // A value awaiting approval is the approval queue's to settle.
     pub(super) async fn release(&mut self, key: &RecordKey) -> Result<(), SyncError> {
-        if self.held_for_approval(key).await? {
-            return Ok(());
+        let held = self.txn.get(&RowKey::Held(key.clone())).await?;
+        if !matches!(
+            held,
+            Some(Row::Held(HeldRow {
+                reason: HeldReason::AwaitingApproval,
+                ..
+            }))
+        ) {
+            self.txn.delete(&RowKey::Held(key.clone())).await?;
         }
-        self.txn.delete(&RowKey::Held(key.clone())).await?;
         Ok(())
     }
 
@@ -341,149 +342,6 @@ impl<'s, 'f> Settle<'s, 'f> {
             Some(Row::Base(base)) => Some(base),
             _ => None,
         })
-    }
-
-    pub(super) async fn view(&mut self, key: &RecordKey, kind: Kind) -> Result<View, SyncError> {
-        self.load(kind).await?;
-        let Some(Some(local)) = self.locals.get(&kind) else {
-            return Ok(View::NoAdapter);
-        };
-        if let Some(record) = local.records.get(&key.record_id) {
-            return Ok(View::Stored(record.clone()));
-        }
-        if !local.unreadable.contains(&key.record_id) {
-            return Ok(View::Missing);
-        }
-        Ok(View::Unreadable(
-            match self.txn.get(&RowKey::Standing(key.clone())).await? {
-                Some(Row::Standing(row)) => Some(row.standing),
-                _ => None,
-            },
-        ))
-    }
-
-    async fn load(&mut self, kind: Kind) -> Result<(), SyncError> {
-        if self.locals.contains_key(&kind) {
-            return Ok(());
-        }
-        let Some(adapter) = self.fetcher.adapters.get(&kind) else {
-            self.locals.insert(kind, None);
-            return Ok(());
-        };
-        let held = adapter.records().await?;
-        let local = Local {
-            records: held
-                .records
-                .into_iter()
-                .map(|record| (record.record_id.clone(), record))
-                .collect(),
-            unreadable: held.unreadable.into_iter().collect(),
-        };
-        self.keep_standing(kind, &local).await?;
-        self.locals.insert(kind, Some(local));
-        Ok(())
-    }
-
-    // Standing is written by id whenever the store reads a record, so a copy it can no longer read keeps the standing
-    // it last had, and one no longer stored loses it.
-    async fn keep_standing(&mut self, kind: Kind, local: &Local) -> Result<(), SyncError> {
-        let range = RowRange::ScopeKind(Table::Standing, SCOPE, KindName::of(kind));
-        let mut known: BTreeMap<String, Standing> = BTreeMap::new();
-        for row in self.txn.scan(&range).await? {
-            if let Row::Standing(row) = row {
-                known.insert(row.key.record_id, row.standing);
-            }
-        }
-        for record in local.records.values() {
-            if known.remove(&record.record_id) != Some(record.standing) {
-                self.txn
-                    .put(Row::Standing(StandingRow {
-                        key: RecordKey::new(SCOPE, kind, record.record_id.clone()),
-                        standing: record.standing,
-                    }))
-                    .await?;
-            }
-        }
-        for record_id in known.into_keys().filter(|id| !local.unreadable.contains(id)) {
-            self.txn
-                .delete(&RowKey::Standing(RecordKey::new(SCOPE, kind, record_id)))
-                .await?;
-        }
-        Ok(())
-    }
-
-    // Later items of the batch see what the stores will hold once it is written.
-    fn plan(&mut self, kind: Kind, change: LocalChange) {
-        if let Some(Some(local)) = self.locals.get_mut(&kind) {
-            match &change {
-                LocalChange::Put { record_id, fields } => {
-                    let standing = local
-                        .records
-                        .get(record_id)
-                        .map_or(Standing::Syncs, |record| record.standing);
-                    local.unreadable.remove(record_id);
-                    local.records.insert(
-                        record_id.clone(),
-                        LocalRecord {
-                            record_id: record_id.clone(),
-                            fields: fields.clone(),
-                            standing,
-                        },
-                    );
-                }
-                LocalChange::Delete { record_id } => {
-                    local.records.remove(record_id);
-                    local.unreadable.remove(record_id);
-                }
-            }
-        }
-        self.changes
-            .entry(kind)
-            .or_default()
-            .insert(record_id(&change).clone(), change);
-    }
-
-    async fn write_stores(&mut self) -> Result<(), SyncError> {
-        let fetcher = self.fetcher;
-        let mut stamps = BTreeMap::new();
-        for (kind, changes) in std::mem::take(&mut self.changes) {
-            let Some(adapter) = fetcher.adapters.get(&kind) else {
-                continue;
-            };
-            let changes: Vec<LocalChange> = changes.into_values().collect();
-            for change in &changes {
-                match change {
-                    LocalChange::Put { .. } => self.counts.written += 1,
-                    LocalChange::Delete { .. } => self.counts.removed += 1,
-                }
-            }
-            let stamp = adapter.apply(changes).await?;
-            stamps.insert(adapter.store().to_owned(), stamp);
-        }
-        for (store, stamp) in stamps {
-            self.note_stamp(&store, stamp, false).await?;
-        }
-        Ok(())
-    }
-
-    // A stamp moves the store's row forward only. One of another generation, or behind the row, means the store was
-    // restored since the fetch started: the row stays, and the next fetch refills that store's kinds.
-    pub(super) async fn note_stamp(&mut self, store: &str, stamp: StoreStamp, force: bool) -> Result<(), SyncError> {
-        let forward = match self.txn.get(&RowKey::Store(store.to_owned())).await? {
-            Some(Row::Store(seen)) => seen.generation == stamp.generation && seen.sequence <= stamp.sequence,
-            _ => true,
-        };
-        if !force && !forward {
-            return Ok(());
-        }
-        self.txn
-            .put(Row::Store(StoreRow {
-                store: store.to_owned(),
-                generation: stamp.generation,
-                sequence: stamp.sequence,
-            }))
-            .await?;
-        Ok(())
     }
 
     async fn store_token(&mut self, token: Option<Vec<u8>>, caught_up: bool, finished: bool) -> Result<(), SyncError> {
