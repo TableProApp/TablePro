@@ -186,10 +186,15 @@ pub enum CloudKitFailure {
   - The digest is computed again when a key table changes, and the MAC on every commit. A file whose MAC does not verify is refused.
   - One MAC covers the whole snapshot, so rows from two copies of the file cannot be mixed.
 - **Freshness.** A MAC proves the file is this device's, not that it is the latest. Sealed state needs a monotonic counter kept apart from what it seals; this follows ROTE (Matetic et al., "ROTE: Rollback Protection for Trusted Execution", USENIX Security 2017), with the device store in place of a trusted counter.
-  - Every commit raises the counter by one. After the commit, the engine writes the file id, counter and MAC to the file's **anchor**, an item in the device store. A new file writes its anchor first.
+  - Every commit raises the counter by one. The file's **anchor**, an item in the device store, holds the file id and a current entry: the counter, the MAC and the key tables' digest. A new file writes its anchor first.
+  - **A commit writes its anchor in two steps.** Before the commit, the engine adds a pending entry to the anchor with the next counter, its MAC and its digest. After the commit, the pending entry becomes the current one. A commit starts only when no pending entry is left; while one cannot be settled, the engine stops.
   - **Apple platforms:** a Keychain item in the data protection keychain, `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` and not synchronizable. Apple Platform Security, "Keychain data protection", says items of that class don't sync to iCloud Keychain, aren't backed up and aren't in escrow keybags. Other ThisDeviceOnly classes do not serve: "Keybags for Data Protection" (Backup keybag) has them restored to the device they were backed up from. The anchor reads only while the device is unlocked, so a pass that starts locked waits. A device with no passcode uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and falls under the limit below.
   - **Windows:** a Credential Manager item with local machine persistence. **Linux:** a Secret Service item.
-  - **On open,** the file is fresh when it has the anchor's file id, counter and MAC, or the anchor's file id and the next counter, which a crash between the commit and the anchor write leaves. The anchor is then brought up to date. Anything else is stale: an older counter, another file id, a file with no anchor, or an anchor with no file.
+  - **On open,** with the anchor's file id:
+    - a file that matches the current entry, with no pending entry, is fresh;
+    - a file that matches the pending entry is fresh, since the commit landed and only the anchor's second step was lost. The engine finishes that step;
+    - a file that matches the current entry while a pending entry remains may be a commit that never landed, or a commit that landed and a restore of the copy before it. Its sync tables refill. Its key tables stay trusted only when the pending digest equals the current one, so the commit in flight changed no key table; otherwise they are stale;
+    - anything else is stale: an older counter, another file id, a file with no anchor, or an anchor with no file.
 - **A stale file** is trusted for nothing.
   - Its sync tables go into refill, as a restored store does: the pull wins, records the provider has never seen go up as creates, then the diff runs again.
   - Its key tables are not trusted. The holder accepts no log, wrap or envelope and writes no secret until it pins again through a comparison with another holder of the account or with S, as 0053's device approval does. Its holder keys stay, so it is the same holder.
@@ -307,7 +312,8 @@ A copy whose content changed after the move is kept, since a content edit wins. 
   - a history prune followed by a pass pushes nothing, and a history entry the person deleted goes up after a restart;
   - an iCloud account change between `account_status` and `modify`, and while a fetch completes, saves nothing to either account;
   - an older copy of a state file with a valid MAC opens stale: its sync tables refill, and its key tables are trusted only after a comparison;
-  - a crash between a commit and its anchor write opens fresh; a file with no anchor, and an anchor with no file, both need a comparison before any log is trusted;
+  - a crash at each step of a commit and its anchor opens as the rules say. A restore of the copy before a commit whose anchor did not settle leaves the key tables untrusted when that commit changed them;
+  - a file with no anchor, and an anchor with no file, both need a comparison before any log is trusted;
   - a key table row copied from another copy of the file fails the MAC;
   - the first run keeps every consent decision and refusal, and leaves an unapproved synced connection unapproved;
   - the moves with three devices on two fake transports: a deletion on iCloud after another device moved, with and without a later content edit or reorder on the service; an edit on iCloud after another device moved; a record created on the service after the move; and the move back.
