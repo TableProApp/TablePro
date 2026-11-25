@@ -390,7 +390,11 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 - **A self-hosted member removal** sets `purges_at` 30 days out on that person's personal and history scopes. Restoring the member within that time clears it, and a job then deletes the scopes' records, except the `key.identity` and `key.device` logs: they hold no secret, member bundles copy them, and a later genesis must not take their positions again.
 - **A team its owner deletes** hides its scope at once. Restore and purge follow the team's (migration 00013).
 - **Key objects.** The server purges `key.request` and `key.sas` records once they expire, and deletes a superseded recovery blob and its wraps once a `replace` or an activated `reset` applies. At the `activate` of a `fresh` reset, and not before, it deletes every record of the account's personal and history scopes except the key logs.
-- **Removals.** Removing a member from a team raises that team's floor. Removing a device row of an account that has an identity needs a DPoP proof from an approved holder and an IdP sign-in at most 300 seconds old, else `step_up_required` (0053). It revokes the row's refresh token family, marks its key holders revoked and raises the person's floors; it is audited, and every holder is told. On a self-hosted install an install admin can also remove a device in the portal, after the portal's step-up (0044).
+- **Removals.** Removing a member from a team raises that team's floor. A device row of an account that has an identity is removed one of two ways (0053, Rows and the veto):
+  - **from the apps,** with a DPoP proof from an approved holder and an IdP sign-in at most 300 seconds old, else `step_up_required`;
+  - **from the portal,** by an install admin behind the portal's step-up (0044), since the browser holds no keys.
+
+  Either way the server revokes the row's refresh token family, marks its key holders revoked and raises the person's personal floor; the removal is audited, and every holder of the account is told. Neither way changes keys or the veto: it only locks the row, whose holders get `device_removed` and keep the reads and cancels that code leaves open.
 - **Audit:**
   - team writes, as counts per push, `library.changed` as today, for both paths;
   - policy changes and policy tombstone runs, purges and their cancels, epochs, `sync.restore_detected` and `sync.restore_suspected`;
