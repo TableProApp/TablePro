@@ -48,10 +48,11 @@ struct ConnectionStorageSyncDeleteTests {
     }
 
     @Test("A delete that fails to persist records no tombstone (persist before notify)")
-    func failedPersistenceRecordsNoTombstone() {
+    func failedPersistenceRecordsNoTombstone() throws {
         let connection = TestFixtures.makeConnection()
         storage.addConnection(connection)
-        try? FileManager.default.removeItem(at: storageDirectory)
+        try LibraryWriteRefusal.set(true, in: storageDirectory)
+        defer { try? LibraryWriteRefusal.set(false, in: storageDirectory) }
 
         storage.deleteConnection(connection)
 

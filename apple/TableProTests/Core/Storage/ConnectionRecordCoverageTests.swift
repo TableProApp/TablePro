@@ -188,7 +188,8 @@ struct ConnectionDuplicateCoverageTests {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("duplicate_coverage_\(unique).json")
+            .appendingPathComponent("duplicate_coverage_\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true

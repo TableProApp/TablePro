@@ -15,6 +15,20 @@ struct LibraryImage: Equatable {
 
     static let empty = LibraryImage(connections: [], groups: [], tags: [], favoritesOrder: [])
 
+    // The core holds one record per id. connections.json could hold two, and every lookup by id found the first.
+    func keepingFirstOfEachId() -> LibraryImage {
+        var copy = self
+        copy.connections = Self.firstOfEachId(connections)
+        copy.groups = Self.firstOfEachId(groups)
+        copy.tags = Self.firstOfEachId(tags)
+        return copy
+    }
+
+    private static func firstOfEachId<Element: Identifiable>(_ elements: [Element]) -> [Element] where Element.ID == UUID {
+        var seen: Set<UUID> = []
+        return elements.filter { seen.insert($0.id).inserted }
+    }
+
     // The core keeps one list: the favourites in order. One the order does not name yet follows by name, as ADR 0010 reads
     // the favourites order, and an id this build cannot read keeps its place.
     func favorites(keeping held: Set<UUID>) -> [UUID] {

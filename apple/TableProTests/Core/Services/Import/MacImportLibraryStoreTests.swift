@@ -383,7 +383,7 @@ struct MacImportLibraryStoreTests {
         defer { library.cleanUp() }
         let suite = try EphemeralDefaults("ImportLibrary.refusing")
         let refusing = ConnectionStorage(
-            fileURL: library.directory.appendingPathComponent("refusing-connections.json"),
+            fileURL: library.directory.appendingPathComponent("refusing", isDirectory: true).appendingPathComponent("connections.json"),
             userDefaults: suite.defaults,
             syncTracker: SyncChangeTracker(metadataStorage: library.metadata),
             keychain: RefusingKeychain(),
@@ -416,7 +416,8 @@ struct MacImportLibraryStoreTests {
         let library = try ImportLibraryFixture()
         defer { library.cleanUp() }
         _ = library.connections.loadConnections()
-        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: library.directory.path)
+        try LibraryWriteRefusal.set(true, in: library.directory)
+        defer { try? LibraryWriteRefusal.set(false, in: library.directory) }
         let importedId = UUID()
 
         let outcome = try await library.importDefaults(

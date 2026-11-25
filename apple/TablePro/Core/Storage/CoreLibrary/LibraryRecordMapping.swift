@@ -96,7 +96,7 @@ nonisolated enum LibraryRecordMapping {
 
         let ssh: SshSettings?
         let sshProfileId: UUID?
-        switch connection.sshTunnelMode {
+        switch tunnel(of: connection) {
         case .disabled:
             var config = connection.sshConfig
             config.enabled = false
@@ -155,6 +155,17 @@ nonisolated enum LibraryRecordMapping {
             tunnelCommand: tunnelCommandRecord(connection.tunnelCommandMode)
         )
         return LibraryConnectionRecord(connection: record, details: details, device: device)
+    }
+
+    // As DatabaseConnection's init reads the legacy fields, so a connection reads back the tunnel connections.json gave it.
+    private static func tunnel(of connection: DatabaseConnection) -> SSHTunnelMode {
+        guard case .disabled = connection.sshTunnelMode else { return connection.sshTunnelMode }
+        if let profileId = connection.sshProfileId {
+            var snapshot = connection.sshConfig
+            snapshot.enabled = true
+            return .profile(id: profileId, snapshot: snapshot)
+        }
+        return connection.sshConfig.enabled ? .inline(connection.sshConfig) : .disabled
     }
 
     // MARK: - Groups and tags

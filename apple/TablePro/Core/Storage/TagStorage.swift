@@ -72,7 +72,7 @@ internal final class TagStorage {
             return false
         }
         image.tags = tags
-        guard library.commit(image) else {
+        guard library.commit(image, byUser: false) else {
             Self.logger.error("Failed to save tags")
             return false
         }

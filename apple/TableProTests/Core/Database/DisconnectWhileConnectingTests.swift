@@ -48,7 +48,8 @@ struct DisconnectWhileConnectingTests {
         FakeMSSQLPluginRegistration.registerIfNeeded()
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("tablepro-disconnect-connecting-\(unique).json")
+            .appendingPathComponent("tablepro-disconnect-connecting-\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         let marker = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-disconnect-connecting-ran-\(unique)")
         let suite = try EphemeralDefaults()
@@ -85,7 +86,7 @@ struct DisconnectWhileConnectingTests {
                 FakeMSSQLPlugin.clearConnectHold(for: connectionId)
                 FakeMSSQLPlugin.clearConfigurations(for: connectionId)
                 suite.defaults.removePersistentDomain(forName: suite.suiteName)
-                try? FileManager.default.removeItem(at: fileURL)
+                try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
                 try? FileManager.default.removeItem(at: marker)
             }
         )

@@ -22,6 +22,8 @@ final class LegacyLibraryMirror {
     struct Record: Codable, Equatable {
         var legacy: String
         var core: String
+        // A connections.json gone since then was deleted by hand; the previous stable never removes it.
+        var connectionsFileExisted: Bool
     }
 
     static let groupsKey = "com.TablePro.groups"

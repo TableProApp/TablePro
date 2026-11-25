@@ -84,7 +84,7 @@ internal final class GroupStorage {
             return false
         }
         image.groups = groups
-        guard library.commit(image) else {
+        guard library.commit(image, byUser: false) else {
             Self.logger.error("Failed to save groups")
             return false
         }

@@ -872,12 +872,13 @@ struct SessionRecoveryLoopTests {
     @Test("An external connect after the loop gave up redials the session through the normal path")
     func externalConnectAfterExhaustionRedials() async throws {
         let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("tablepro-recovery-\(UUID().uuidString).json")
+            .appendingPathComponent("tablepro-recovery-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         let suite = try EphemeralDefaults()
         let storage = ConnectionStorage(fileURL: fileURL, userDefaults: suite.defaults, keychain: InMemoryKeychain())
         defer {
             suite.defaults.removePersistentDomain(forName: suite.suiteName)
-            try? FileManager.default.removeItem(at: fileURL)
+            try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
         }
         let fixture = makeFixture(storage: storage)
         storage.addConnection(fixture.connection)

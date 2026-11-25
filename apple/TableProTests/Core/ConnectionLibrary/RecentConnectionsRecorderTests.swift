@@ -24,7 +24,8 @@ struct RecentConnectionsRecorderTests {
         let defaults = suite.defaults
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("recent-connections_\(unique).json")
+            .appendingPathComponent("recent-connections_\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true

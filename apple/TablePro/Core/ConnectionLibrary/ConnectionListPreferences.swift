@@ -53,7 +53,7 @@ internal final class ConnectionListPreferences: ObservableObject {
         let library = connectionStorageProvider().library
         guard unique != favoritesOrder, var image = library.current() else { return }
         image.favoritesOrder = unique
-        guard library.commit(image) else {
+        guard library.commit(image, byUser: false) else {
             Self.logger.error("The favourites order was not saved")
             return
         }

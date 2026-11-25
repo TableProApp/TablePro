@@ -169,10 +169,7 @@ final class ConnectionEditorStoreFixture {
     }
 
     func makeLibraryReadOnly(_ readOnly: Bool) throws {
-        try FileManager.default.setAttributes(
-            [.posixPermissions: readOnly ? 0o555 : 0o755],
-            ofItemAtPath: directory.path
-        )
+        try LibraryWriteRefusal.set(readOnly, in: directory)
         storage.invalidateCache()
     }
 

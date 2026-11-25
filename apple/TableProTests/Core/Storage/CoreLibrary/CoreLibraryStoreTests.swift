@@ -128,6 +128,20 @@ struct CoreLibraryStoreTests {
         fixture.defaults.set(recordBefore, forKey: LegacyLibraryMirror.recordKey)
 
         #expect(fixture.launch().loadConnections().map(\.name) == ["first", "second"])
+        #expect(try fixture.legacyConnections().map(\.name) == ["first", "second"])
+    }
+
+    @Test("A connections.json that names one id twice moves in with the first, as every lookup by id read it")
+    func aRepeatedIdKeepsTheFirst() throws {
+        let first = connection("first")
+        var repeated = first
+        repeated.name = "repeated"
+        try fixture.writeAsPreviousStable(connections: [first, repeated, connection("other")])
+
+        let storage = fixture.launch()
+
+        #expect(storage.loadConnections().map(\.name) == ["first", "other"])
+        #expect(storage.addConnection(connection("added")))
     }
 
     @Test("A previous stable's change this build cannot read stops every write")
@@ -155,8 +169,42 @@ struct CoreLibraryStoreTests {
 
         #expect(relaunched.loadConnections().map(\.name) == ["alpha"])
         #expect(!relaunched.isLibraryUnreadable)
-        #expect(try Data(contentsOf: fixture.coreURL.appendingPathExtension("unreadable")) == damaged)
+        #expect(try setAside("unreadable").map { try Data(contentsOf: $0) } == [damaged])
         #expect(try fixture.launchFromCoreOnly().loadConnections().map(\.name) == ["alpha"])
+    }
+
+    @Test("A core file a newer build wrote is never set aside or written over")
+    func aNewerCoreFileIsKept() throws {
+        let storage = fixture.launch()
+        #expect(storage.addConnection(connection("alpha")))
+        let newer = Data(#"{"version": 99, "connections": []}"#.utf8)
+        try newer.write(to: fixture.coreURL, options: .atomic)
+
+        let relaunched = fixture.launch()
+
+        #expect(relaunched.isLibraryUnreadable)
+        #expect(!relaunched.addConnection(connection("beta")))
+        #expect(try Data(contentsOf: fixture.coreURL) == newer)
+        #expect(try setAside("unreadable").isEmpty)
+    }
+
+    @Test("A save that moves secrets out of the store removes the copies set aside, which still hold them")
+    func movingSecretsOutRemovesSetAsideCopies() throws {
+        let storage = fixture.launch()
+        #expect(storage.addConnection(connection("alpha")))
+        try Data("not json".utf8).write(to: fixture.coreURL, options: .atomic)
+        let relaunched = fixture.launch()
+        _ = relaunched.loadConnections()
+        #expect(try setAside("unreadable").count == 1)
+
+        #expect(relaunched.saveConnections(relaunched.loadConnections(), byUser: false, removingSecrets: true))
+
+        #expect(try setAside("unreadable").isEmpty)
+    }
+
+    private func setAside(_ reason: String) throws -> [URL] {
+        try FileManager.default.contentsOfDirectory(at: fixture.coreURL.deletingLastPathComponent(), includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("connections.json.\(reason)-") }
     }
 
     // MARK: - Records this build cannot read
@@ -195,19 +243,64 @@ struct CoreLibraryStoreTests {
 
     // MARK: - Trust
 
-    @Test("A core store changed outside TablePro is not trusted until the user saves")
+    @Test("A core store changed outside TablePro is trusted again only rebuilt from what the user saved")
     func anEditedCoreStoreIsNotTrusted() throws {
         let storage = fixture.launch()
         #expect(storage.addConnection(connection("alpha")))
         #expect(storage.storeIsTrusted)
-        try appendUnreadableCoreEntry(id: UUID())
+        let planted = UUID()
+        try appendUnreadableCoreEntry(id: planted)
 
         let relaunched = fixture.launch()
         _ = relaunched.loadConnections()
         #expect(!relaunched.storeIsTrusted)
+        #expect(relaunched.unreadableConnectionIds.contains(planted))
 
         #expect(relaunched.addConnection(connection("beta")))
         #expect(relaunched.storeIsTrusted)
+        #expect(!relaunched.unreadableConnectionIds.contains(planted))
+        #expect(try setAside("untrusted").count == 1)
+        let reopened = fixture.launch()
+        #expect(reopened.loadConnections().map(\.name) == ["alpha", "beta"])
+        #expect(reopened.storeIsTrusted)
+    }
+
+    @Test("A group, tag or favourites save never vouches for a core store changed outside TablePro")
+    func onlyAConnectionSaveVouches() throws {
+        let storage = fixture.launch()
+        let favorite = connection("alpha", favorite: true)
+        #expect(storage.addConnection(favorite))
+        try appendUnreadableCoreEntry(id: UUID())
+
+        let relaunched = fixture.launch()
+        try fixture.groups(relaunched).addGroup(ConnectionGroup(name: "Staging"))
+        try fixture.tags(relaunched).addTag(ConnectionTag(name: "eu-west"))
+        fixture.preferences(relaunched).setFavoritesOrder([favorite.id])
+        #expect(relaunched.saveConnections(relaunched.loadConnections(), byUser: false))
+
+        #expect(!relaunched.storeIsTrusted)
+        let reopened = fixture.launch()
+        _ = reopened.loadConnections()
+        #expect(!reopened.storeIsTrusted)
+    }
+
+    @Test("A mirror record that points at a planted core file brings nothing of it back")
+    func aForgedMirrorRecordLaundersNothing() throws {
+        let storage = fixture.launch()
+        let kept = connection("kept")
+        #expect(storage.addConnection(kept))
+        let planted = UUID()
+        try appendUnreadableCoreEntry(id: planted)
+        let plantedDigest = LegacyLibraryMirror.digest(of: try Data(contentsOf: fixture.coreURL))
+        let record = LegacyLibraryMirror.Record(legacy: "forged", core: plantedDigest, connectionsFileExisted: true)
+        fixture.defaults.set(try JSONEncoder().encode(record), forKey: LegacyLibraryMirror.recordKey)
+
+        let relaunched = fixture.launch()
+
+        #expect(relaunched.loadConnections().map(\.id) == [kept.id])
+        #expect(!relaunched.unreadableConnectionIds.contains(planted))
+        #expect(relaunched.storeIsTrusted)
+        #expect(try setAside("untrusted").count == 1)
     }
 
     @Test("A connections.json changed outside TablePro hands its doubt to the core")

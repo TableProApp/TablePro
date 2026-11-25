@@ -40,7 +40,7 @@ final class CoreLibraryFixture {
             userDefaults: defaults,
             syncTracker: tracker,
             keychain: keychain,
-            appEvents: events
+            appEvents: self.events
         )
     }
 

@@ -38,7 +38,7 @@ final class TagStorageTests: XCTestCase {
         }
         directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         connectionStorage = makeConnectionStorage()
-        storage = TagStorage(syncTracker: tracker, connectionStorage: connectionStorage, appEvents: appEvents)
+        storage = TagStorage(syncTracker: tracker, connectionStorage: self.connectionStorage, appEvents: appEvents)
         changeCount = 0
     }
 
@@ -68,7 +68,7 @@ final class TagStorageTests: XCTestCase {
             userDefaults: defaults,
             syncTracker: tracker,
             keychain: InMemoryKeychain(),
-            appEvents: appEvents
+            appEvents: self.appEvents
         )
     }
 
@@ -77,7 +77,7 @@ final class TagStorageTests: XCTestCase {
     private func makeStorage(seeding payload: Data) -> TagStorage {
         defaults.set(payload, forKey: "com.TablePro.tags")
         connectionStorage = makeConnectionStorage()
-        return TagStorage(syncTracker: tracker, connectionStorage: connectionStorage, appEvents: appEvents)
+        return TagStorage(syncTracker: tracker, connectionStorage: self.connectionStorage, appEvents: appEvents)
     }
 
     // MARK: - Add

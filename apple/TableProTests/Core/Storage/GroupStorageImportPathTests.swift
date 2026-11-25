@@ -29,7 +29,8 @@ struct GroupStorageImportPathTests {
         let connections = ConnectionStorage(
             fileURL: FileManager.default.temporaryDirectory
                 .appendingPathComponent("tablepro-tests")
-                .appendingPathComponent("group-import-\(unique).json"),
+                .appendingPathComponent("group-import-\(unique)", isDirectory: true)
+                .appendingPathComponent("connections.json"),
             userDefaults: defaults,
             syncTracker: tracker,
             keychain: keychain,

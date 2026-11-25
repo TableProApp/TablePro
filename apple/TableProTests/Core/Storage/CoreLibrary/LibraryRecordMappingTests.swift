@@ -38,7 +38,6 @@ struct LibraryRecordMappingTests {
         ssh.remoteFileAccess = .onServer
         connection.sshConfig = ssh
         connection.sshTunnelMode = .profile(id: try #require(connection.sshProfileId), snapshot: ssh)
-        connection.queryTimeoutSeconds = 45
         return connection
     }
 
@@ -50,6 +49,18 @@ struct LibraryRecordMappingTests {
         let lost = ConnectionCoverageFixture.differingProperties(restored, source)
 
         #expect(lost.isEmpty, "The core's store loses \(lost.sorted().joined(separator: ", ")).")
+    }
+
+    @Test("A query timeout moves to the core's own field and comes back among the connection's fields")
+    func queryTimeoutSurvives() throws {
+        var timed = DatabaseConnection(name: "timed", type: .postgresql, additionalFields: ["schema": "public"])
+        timed.queryTimeoutSeconds = 45
+        let untimed = DatabaseConnection(name: "untimed", type: .postgresql)
+
+        let restored = try throughTheCore([timed, untimed])
+
+        #expect(restored.map(\.queryTimeoutSeconds) == [45, nil])
+        #expect(restored.map(\.additionalFields) == [timed.additionalFields, untimed.additionalFields])
     }
 
     @Test("Every password source lands where the core keeps it and comes back")
@@ -131,6 +142,8 @@ struct LibraryRecordMappingTests {
             tags: contents.tags,
             favorites: contents.favorites
         ))
+        // As a TablePro build that wrote these values tags the store.
+        #expect(ConnectionStoreIntegrity.shared.stamp(try Data(contentsOf: fixture.coreURL), fileURL: fixture.coreURL))
         try FileManager.default.removeItem(at: fixture.legacyURL)
 
         let relaunched = fixture.launch()
