@@ -79,7 +79,9 @@ This is the case the end-to-end design exists for.
 | Swap a public key: a holder's, an SK or an RK | Public keys come only from signed statements. Device and member keys are pinned through a comparison | Logs; Comparing keys |
 | Substitute keys during device approval or member confirmation | A commitment leaves it one guess at 2^-64.6 per session. The QR code carries 256 bits | Comparing keys |
 | Replay an old statement, key version or device list | Hash chains, stored heads and highest versions; `dh` and `ih` compare-and-set; floors | Logs; Ordering rules |
-| Re-add a removed device through its old ASK | An `add` after a `rotate` must verify under the new ASK. The rule is replayable, so every client refuses it | Ordering rules between the two account logs |
+| Add a holder after a removal, or keep one a stolen device planted before it | Approvals are signed by the approving holder, and a `rotate` takes out every holder the removed ones approved. The rules replay the same on every client | Ordering rules between the two account logs |
+| Hand back a superseded envelope under the same key version | Each envelope carries a counter. Clients keep the highest they accepted and refuse a lower one | Envelopes, Replays |
+| Squat a log position, a wrap or a ring through a phished session | Key-object writes need a DPoP proof from an approved holder. The server verifies team statements as it does account statements. A wrap or ring can be replaced by its writer | Key objects as records |
 | Seal a new team key to a revoked SK | Signers seal only to current, unrevoked SKs, and `key` names its recipients | Team log; Rotation pending |
 | Mint an envelope | Envelopes are AEAD under keys the server never has. Team envelopes also carry the writer's signature | Envelopes |
 | Move an envelope to another record, kind, scope or version | The AAD binds them, and the subkey is per record | Envelopes |
@@ -111,6 +113,7 @@ This is the case the end-to-end design exists for.
 
 - **Personal data.** A new session gets no personal record, plaintext or not, until a key holder is approved from another device or with the recovery key. The server enforces this through DPoP proofs checked against the signed device set (0053, Server enforcement). Before approval the session reads only the identity and device logs and the recovery blob, which is under a 256-bit seed.
 - **Team secrets.** They need a sharing key that a signer confirmed through a comparison.
+- **Writes.** The session writes no key object and no envelope in any scope, since those writes need a DPoP proof from an approved holder.
 - **Social engineering.** A request from the attacker shows on the person's devices as a new device asking for approval. Approving it needs the five words on the attacker's screen.
 
 **What does not hold.**
@@ -133,7 +136,7 @@ It holds no IK and no recovery key.
 
 - read everything the person can;
 - write as the person;
-- approve new holders with ASK, which honest devices show in the device list.
+- approve new holders in the stolen holder's name, which honest devices show in the device list. Removing the stolen device removes them too.
 
 **After removal with the recovery key** (0053, Removing a lost device):
 
