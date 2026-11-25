@@ -111,7 +111,7 @@ Under `/v2`, OAuth scope `app`, with clients generated from the OpenAPI document
 ### `GET /v2/sync/scopes`
 
 - **The epoch:** `epoch`, the current epoch's id.
-- **Per scope:** `id`, `type`, `team` for a team scope, `role`, `horizon`, `epochs` (the lineage, oldest first, each epoch's id with the scope's `kept_revision`, 0 when it has no cut), `writable` (false past grace or after a lapse), `policies` (Policies), `quota`, and, for the personal and history scopes when the request carries a DPoP proof, `approved`.
+- **Per scope:** `id`, `type`, `team` for a team scope, `role`, `horizon`, `epochs` (the lineage, oldest first, each epoch's id with the scope's `kept_revision`, 0 when it has no cut), `writable` (false past grace or after a lapse, when only key-object writes are taken), `policies` (Policies), `quota`, and, for the personal and history scopes when the request carries a DPoP proof, `approved`.
 - **For the server:** `limits`, `server_version`, `capabilities`, `idempotency_retention` (86,400 seconds) and `poll_interval` (60 seconds).
 - **ETag.** A strong ETag over the whole body: the SHA-256 of its bytes, base64url, quoted (RFC 9110 section 8.8.3), with `Cache-Control: private, max-age=<poll_interval>` (RFC 9111). `If-None-Match` answers 304. A role change, a new team, a policy or a limit shows on the next poll.
 
@@ -169,9 +169,9 @@ Under `/v2`, OAuth scope `app`, with clients generated from the OpenAPI document
 | Status | Code | When |
 | --- | --- | --- |
 | 401 | `use_dpop_nonce` | The server asks for its `DPoP-Nonce` (RFC 9449 section 9) |
-| 403 | `feature_required` | A push without `service_sync` (personal, history) or `team_library` (team) |
+| 403 | `feature_required` | A push without `service_sync` (personal, history) or `team_library` (team), except one of only key-object writes in a scope that exists (Gates) |
 | 403 | `seat_required` | A team call without a seat |
-| 403 | `license_expired` | A push past `grace_until` |
+| 403 | `license_expired` | A push past `grace_until` that holds anything but key-object writes (Gates) |
 | 403 | `device_not_approved` | A missing or invalid DPoP proof where one is required, or one from a key outside the writer's device set, beyond the writes allowed before approval; a pre-approval call on the history scope |
 | 403 | `interactive_sign_in_required` | A personal or history call, or a key-object or envelope write, on a token from a license-key exchange rather than an interactive sign-in |
 | 404 | `not_found` | A scope the account cannot reach |
@@ -312,11 +312,14 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 | Feature | `service_sync`: SaaS Pro on every cycle, Lifetime included, and Team; self-hosted from the license | `team_library` and a seat |
 | Pull | The scope's account, from an approved key holder; before approval, the key kinds Device approval lists | A seat |
 | Push | The feature, an approved key holder, the policies, within grace | The feature, the role per kind, the policies, within grace |
-| Past grace or after a lapse | Pull-only | Pull-only |
+| Past grace or after a lapse | Pulls, and key-object writes only | Pulls, and key-object writes only |
 
 - **Roles in a team scope.** Owners and admins write every kind. Editors write every kind except the signer kinds: `key.team`, and team wraps and rings. Members write only their own `key.member` and their `key.sas` steps. Every seat reads. Key-object and envelope writes also need an approved key holder (Device approval on the wire).
 - The server checks the gates on every call. The app's gate only shapes the UI.
-- **Pull-only, in both deploys.** Past `grace_until` on a self-hosted install, and once a SaaS plan stops granting the feature, a scope that exists keeps answering pulls, and pushes get `license_expired` or `feature_required`. `LapsedFeature` in tablepro-cloud and `KEPT_PAST_GRACE` in `tablepro-account` become that state for `service_sync` and `team_library` alike. This amends 0047's Expiry line, which kept only `team_library`.
+- **Pull-only for data, in both deploys.** Past `grace_until` on a self-hosted install, and once a SaaS plan stops granting the feature, a scope that exists keeps answering pulls.
+  - **Still taken** in a scope that exists, under every other rule (approval, role, writer binding, log chains): creates of `key.identity`, `key.device`, `key.recovery`, `key.request`, `key.sas`, `key.team` and `key.member`, and creates and replacements of `key.wrap` and `key.ring`, in the personal and team scopes. That covers a `leave` at sign-out, approving a device, removing a stolen one and the `rotate` with its new wraps, a recovery, and a signer's `remove_member`, `revoke_sk` and new team key. The maintainer decided this on 2026-11-25, so a lapsed account can still lock a lost device out.
+  - **Refused:** a push that holds any other change, every data kind, `secret_envelope` and `history_entry` included, is refused whole with 403 `license_expired` past `grace_until`, or `feature_required` after a SaaS lapse.
+  - `LapsedFeature` in tablepro-cloud and `KEPT_PAST_GRACE` in `tablepro-account` become that state for `service_sync` and `team_library` alike. This amends 0047's Expiry line, which kept only `team_library`.
 - The facade keeps its own gates, `team_library` on pulls included.
 
 ## What syncs
@@ -387,6 +390,7 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 - **Facade:** fixtures recorded from 0.88 and 0.89, kept and dropped keys included. `/v1` golden fixtures 046-065 and 089-093 stay unchanged.
 - **Restore:** a dump into a new cluster, a point-in-time restore, and a storage snapshot that changes neither value, each with two clients that refill and converge. A restore, new writes, a failover, then a device offline through both refills its lost write. Two epochs seconds apart, then a restore of a backup older than both, and the device refills its writes from the lost epochs. A device that comes back after another refilled a record and then edited or deleted it keeps that edit or deletion. A database swapped behind a running server serves nothing before its epoch. A policy turned off and on across an epoch while a device is offline keeps that device's copies. A device approved after the backup republishes its approval as a log chain, and two devices republishing overlapping chains both succeed.
 - **Protocol:** every outcome and refusal; stale tags across an epoch; pushes of 500 conflicts store nothing; idempotent replays, mismatches and concurrent retries; page caps by count and bytes; the history order and paging back; a 304 on an idle poll and a new ETag after a role, team or limit change; rate limits.
+- **Past grace:** a `leave`, a `rotate` with its wraps and a team key rotation are taken; a push with any data change, an envelope or a history entry is refused whole with `license_expired`, and with `feature_required` after a SaaS lapse.
 - **History back on:** entries kept through `historySync` off revive over their policy tombstones under the newest key version, and a `user` tombstone stays final.
 - **Gates and policies:** the gate matrix across free, Pro monthly, annual and Lifetime, Team, self-hosted with and without `service_sync`, and past grace; roles per kind; each switch off and on again; the policy tombstone job.
 - **Approval:** DPoP with each field wrong, a replay, a key outside the set and an expired `iat`; a team envelope or key-object write without an approved holder; a team statement, a member bundle and a recovery blob that do not match; each row of the writer binding; a purge that keeps the key logs; what an unapproved holder sees and writes; the cursor after approval; an idempotent replay after the caller's role changed; a license-key token that tries a genesis or reads a personal scope.
@@ -402,7 +406,7 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 - A restore that lost a removal puts the removed holder back in the device set until a device republishes the `rotate`. If the removed holder appends first, devices see a fork and resolve it as 0053 says.
 - A snapshot carries every tombstone's ids, so a new device downloads them with the live records.
 - The server reads key versions and verifies log signatures. The threat model lists what that tells it (0053).
-- Past grace, apps keep pulling personal and history data as well as the team's. Nothing is written then, key objects included: a device signs out without its `leave`, and a new device waits for a renewed license.
+- Past grace, apps keep pulling personal and history data as well as the team's, and write only key objects: a device still signs out with its `leave`, and a person can still remove a stolen device and rotate. A device approved then can only pull until the license is renewed.
 
 ## Alternatives considered
 
