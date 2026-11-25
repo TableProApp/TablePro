@@ -210827,6 +210827,9 @@
         }
       }
     },
+    "The %@ plugin is not installed, and your organization manages plugins on this Mac." : {
+
+    },
     "The %@ plugin is not installed." : {
 
     },
@@ -249831,6 +249834,12 @@
           }
         }
       }
+    },
+    "Your organization doesn't allow links from tablepro.app on this Mac." : {
+
+    },
+    "Your organization manages plugins, so none are downloaded or updated here. Installed plugins keep working." : {
+
     },
     "Your organization manages which server TablePro signs in to." : {
 
