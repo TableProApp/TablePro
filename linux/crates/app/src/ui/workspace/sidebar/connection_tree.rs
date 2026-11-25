@@ -597,7 +597,7 @@ impl TreeInner {
                     let Some(group) = outline.group(id) else {
                         continue;
                     };
-                    let node = self.group_node(id, group.name.as_str());
+                    let node = self.group_node(id, &group.name.shown());
                     let children = self.lay_out(outline, Some(id), file_based, laid);
                     laid.stores.push((node.clone(), children));
                     rows.push(node);
@@ -635,12 +635,20 @@ impl TreeInner {
     ) -> Vec<TreeNode> {
         let key = SessionKey::Saved(saved.id);
         let color = saved.color.map_or("", crate::ui::connection_appearance::color_class);
-        let node = self.node_for(&key, &saved.name);
-        node.update(&saved.name, connection_icon(saved.icon, file_based), color);
+        let name = tablepro_storage::shown_name(&saved.name);
+        let node = self.node_for(&key, &name);
+        node.update(
+            &name,
+            connection_icon(
+                saved.icon.as_ref().and_then(tablepro_storage::LibraryIcon::named),
+                file_based,
+            ),
+            color,
+        );
         laid.kept.insert(key);
         let mut rows = vec![node];
         for (sibling, database) in self.siblings_of(saved.id) {
-            let title = sibling_title(&saved.name, &database);
+            let title = sibling_title(&name, &database);
             let node = self.node_for(&sibling, &title);
             node.update(&title, crate::ui::icons::DRIVE_HARDDISK, color);
             laid.kept.insert(sibling);

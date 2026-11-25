@@ -75,7 +75,7 @@ impl TagForm {
         });
         dialog.set_response_enabled(SAVE, false);
         if let Some(tag) = editing {
-            name.set_text(tag.name.as_str());
+            name.set_text(&tag.name.shown());
         }
         Self { dialog, name, color }
     }

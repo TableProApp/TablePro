@@ -93,7 +93,7 @@ fn entry_text(entry: &ImportEntry, drivers: &DriverRegistry) -> EntryText {
         }
     }
     EntryText {
-        title: saved.name.clone(),
+        title: tablepro_storage::shown_name(&saved.name),
         subtitle: lines.join("\n"),
     }
 }

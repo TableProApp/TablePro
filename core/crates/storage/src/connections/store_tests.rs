@@ -54,39 +54,11 @@ fn plain(name: &str) -> SavedConnection {
     }
 }
 
-/// A connection with every field the macOS app's `Connection` has a home for set.
+// Every field the macOS app's `Connection` has a home for, set.
 fn every_field() -> SavedConnection {
     let profile = Uuid::new_v4();
     SavedConnection {
-        ssh: Some(SavedSshConfig {
-            enabled: false,
-            host: "bastion".to_owned(),
-            port: Some(2222),
-            username: Some("ops".to_owned()),
-            jump_hosts: vec![
-                SshJumpHost::new("edge", Some(22), Some("jump".to_owned())),
-                SshJumpHost {
-                    id: Some(Uuid::new_v4()),
-                    auth: Some(SshJumpAuth::PrivateKey),
-                    key_path: Some(PathBuf::from("~/.ssh/hop")),
-                    ..SshJumpHost::new("inner", None, None)
-                },
-            ],
-            auth: SavedSshAuth::Password,
-            kept_key_path: Some(PathBuf::from("/home/ops/.ssh/id_ed25519")),
-            agent_socket: Some(PathBuf::from("~/.1password/agent.sock")),
-            totp: SshTotp {
-                mode: SshTotpMode::AutoGenerate,
-                algorithm: SshTotpAlgorithm::Sha256,
-                digits: 8,
-                period: 60,
-            },
-            remote_file: SshRemoteFile {
-                path: Some("~/data/app.db".to_owned()),
-                access: RemoteFileAccess::OnServer,
-            },
-            unknown: BTreeMap::from([("compression".to_owned(), json!(true))]),
-        }),
+        ssh: Some(every_ssh_field()),
         safe_mode: SafeModeLevel::SafeModeFull,
         ai_policy: AiPolicy::AppDefault,
         tls: TlsConfig {
@@ -138,47 +110,83 @@ fn every_field() -> SavedConnection {
                 ("preConnectScript".to_owned(), "./vpn.sh".to_owned()),
             ]),
         },
-        device: DeviceOnly {
-            local_only: true,
-            is_sample: true,
-            origin: ConnectionOrigin::Known(KnownOrigin::Imported),
-            password_source: Some(LocalPasswordSource::Command {
-                shell: "pass show db".to_owned(),
-                reuse_seconds: Some(300),
-            }),
-            cloudflare_tunnel: Some(CloudflareTunnel {
-                access_hostname: "db.example.com".to_owned(),
-                local_port: Some(15432),
-                auth_method: CloudflareAuth::ServiceToken,
-                expose_to_lan: false,
-                binary_path: String::new(),
-            }),
-            cloud_sql_proxy: Some(CloudSqlProxy {
-                instance_connection_name: "p:r:i".to_owned(),
-                auth_mode: CloudSqlAuth::ApplicationDefault,
-                use_iam_auth: true,
-                use_private_ip: false,
-                local_port: None,
-                binary_path: String::new(),
-            }),
-            socks_proxy: Some(SocksProxy {
-                host: "proxy".to_owned(),
-                port: 1080,
-                username: "u".to_owned(),
-            }),
-            tunnel_command: Some(TunnelCommand {
-                method: TunnelCommandMethod::Kubectl,
-                command: String::new(),
-                executable_path: String::new(),
-                kubernetes_namespace: "db".to_owned(),
-                kubernetes_resource: "svc/postgres".to_owned(),
-                kubernetes_context: "prod".to_owned(),
-                aws_target: String::new(),
-                aws_profile: String::new(),
-                aws_region: String::new(),
-            }),
-        },
+        device: every_device_field(),
         ..plain("everything")
+    }
+}
+
+fn every_ssh_field() -> SavedSshConfig {
+    SavedSshConfig {
+        enabled: false,
+        host: "bastion".to_owned(),
+        port: Some(2222),
+        username: Some("ops".to_owned()),
+        jump_hosts: vec![
+            SshJumpHost::new("edge", Some(22), Some("jump".to_owned())),
+            SshJumpHost {
+                id: Some(Uuid::new_v4()),
+                auth: Some(SshJumpAuth::PrivateKey),
+                key_path: Some(PathBuf::from("~/.ssh/hop")),
+                ..SshJumpHost::new("inner", None, None)
+            },
+        ],
+        auth: SavedSshAuth::Password,
+        kept_key_path: Some(PathBuf::from("/home/ops/.ssh/id_ed25519")),
+        agent_socket: Some(PathBuf::from("~/.1password/agent.sock")),
+        totp: SshTotp {
+            mode: SshTotpMode::AutoGenerate,
+            algorithm: SshTotpAlgorithm::Sha256,
+            digits: 8,
+            period: 60,
+        },
+        remote_file: SshRemoteFile {
+            path: Some("~/data/app.db".to_owned()),
+            access: RemoteFileAccess::OnServer,
+        },
+        unknown: BTreeMap::from([("compression".to_owned(), json!(true))]),
+    }
+}
+
+fn every_device_field() -> DeviceOnly {
+    DeviceOnly {
+        local_only: true,
+        is_sample: true,
+        origin: ConnectionOrigin::Known(KnownOrigin::Imported),
+        password_source: Some(LocalPasswordSource::Command {
+            shell: "pass show db".to_owned(),
+            reuse_seconds: Some(300),
+        }),
+        cloudflare_tunnel: Some(CloudflareTunnel {
+            access_hostname: "db.example.com".to_owned(),
+            local_port: Some(15432),
+            auth_method: CloudflareAuth::ServiceToken,
+            expose_to_lan: false,
+            binary_path: String::new(),
+        }),
+        cloud_sql_proxy: Some(CloudSqlProxy {
+            instance_connection_name: "p:r:i".to_owned(),
+            auth_mode: CloudSqlAuth::ApplicationDefault,
+            use_iam_auth: true,
+            use_private_ip: false,
+            local_port: None,
+            binary_path: String::new(),
+        }),
+        socks_proxy: Some(SocksProxy {
+            host: "proxy".to_owned(),
+            port: 1080,
+            username: "u".to_owned(),
+        }),
+        tunnel_command: Some(TunnelCommand {
+            method: TunnelCommandMethod::Kubectl,
+            command: String::new(),
+            executable_path: String::new(),
+            kubernetes_namespace: "db".to_owned(),
+            kubernetes_resource: "svc/postgres".to_owned(),
+            kubernetes_context: "prod".to_owned(),
+            aws_target: String::new(),
+            aws_profile: String::new(),
+            aws_region: String::new(),
+        }),
     }
 }
 
@@ -1009,4 +1017,105 @@ fn an_edit_keeps_a_group_that_has_not_arrived_and_an_orphan_group_reorders_at_th
         .find(|group| group.id == orphan.id)
         .expect("the orphan");
     assert_eq!(moved.parent_id, None);
+}
+
+fn stored_group(name: &str, parent_id: Option<Uuid>) -> ConnectionGroup {
+    ConnectionGroup {
+        id: Uuid::new_v4(),
+        name: ConnectionGroupName::from_stored(name),
+        parent_id,
+        order: 0,
+        color: None,
+        icon: None,
+    }
+}
+
+#[test]
+fn an_upsert_keeps_its_place_among_connections_of_one_order() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let connections = vec![plain("a"), plain("b"), plain("c")];
+    store
+        .replace_library_blocking(LibraryWrite {
+            connections: connections.clone(),
+            ..LibraryWrite::default()
+        })
+        .expect("write");
+
+    store
+        .upsert_blocking(SavedConnection {
+            last_opened_at: Some(chrono::Utc::now()),
+            ..connections[0].clone()
+        })
+        .expect("stamp");
+
+    let list = store.list_blocking().expect("list");
+    let shown: Vec<Uuid> = list.connections_in(None).iter().map(|saved| saved.id).collect();
+    let ids: Vec<Uuid> = connections.iter().map(|saved| saved.id).collect();
+    assert_eq!(shown, ids);
+}
+
+#[test]
+fn a_move_at_the_top_lifts_a_cycle_partner_out_rather_than_nesting_it() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let mut first = stored_group("First", None);
+    let second = stored_group("Second", Some(first.id));
+    first.parent_id = Some(second.id);
+    store
+        .replace_library_blocking(LibraryWrite {
+            groups: vec![first.clone(), second.clone()],
+            ..LibraryWrite::default()
+        })
+        .expect("write");
+
+    store
+        .move_groups_blocking(&[first.id], None, None)
+        .expect("a move within the top");
+
+    let list = store.list_blocking().expect("list");
+    let tree = list.group_tree();
+    assert_eq!(tree.parent(first.id), None);
+    assert_eq!(tree.parent(second.id), None, "the partner nested in the moved group");
+}
+
+#[test]
+fn an_import_files_into_a_group_that_reads_at_the_top_by_its_name() {
+    let other_root = TempDir::new().expect("tempdir");
+    let other = store(&other_root);
+    let work = other
+        .create_group_blocking(ConnectionGroup::new(
+            ConnectionGroupName::new("Work").expect("a name"),
+            None,
+        ))
+        .expect("group");
+    other
+        .upsert_blocking(SavedConnection {
+            group_id: Some(work.id),
+            ..plain("api")
+        })
+        .expect("save");
+    let bytes = other.export_blocking().expect("export");
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let waiting = stored_group("Work", Some(Uuid::new_v4()));
+    store
+        .replace_library_blocking(LibraryWrite {
+            groups: vec![waiting.clone()],
+            ..LibraryWrite::default()
+        })
+        .expect("write");
+
+    store
+        .import_blocking(std::path::Path::new("other.json"), &bytes)
+        .expect("import");
+
+    let list = store.list_blocking().expect("list");
+    assert_eq!(list.groups.len(), 1, "{:?}", list.groups);
+    let api = list
+        .connections
+        .iter()
+        .find(|saved| saved.name == "api")
+        .expect("the import");
+    assert_eq!(api.group_id, Some(waiting.id));
 }

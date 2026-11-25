@@ -2160,7 +2160,7 @@ fn attempt_error(error: &ConnectError, server_name_shown: bool) -> AttemptError 
 /// connect: the connection, or the file.
 fn source_name(source: &ConnectSource) -> String {
     match source {
-        ConnectSource::Saved(saved) => saved.name.clone(),
+        ConnectSource::Saved(saved) => tablepro_storage::shown_name(&saved.name),
         ConnectSource::Intent(intent) => intent.request.metadata.name.clone(),
         ConnectSource::File(identity) => file_display_name(&identity.uri),
     }

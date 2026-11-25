@@ -626,10 +626,7 @@ impl ConnectionLibrary {
             let known: std::collections::HashSet<Uuid> = list.groups.iter().map(|group| group.id).collect();
             let listed = |saved: &SavedConnection| ConnectionRecord {
                 name: shown_name(&saved.name),
-                group_id: saved
-                    .group_id
-                    .filter(|id| known.contains(id))
-                    .map(|id| id.to_string()),
+                group_id: saved.group_id.filter(|id| known.contains(id)).map(|id| id.to_string()),
                 ..ConnectionRecord::from(saved)
             };
             let by_group = list.connections_by_group();
@@ -666,7 +663,7 @@ impl ConnectionLibrary {
         record: ConnectionRecord,
         secrets: ConnectionSecrets,
     ) -> Result<ConnectionRecord, CoreError> {
-        let name = record.name.trim().to_owned();
+        let name = shown_name(&record.name);
         if name.is_empty() {
             return Err(CoreError::failed("library.name_required", "a connection needs a name"));
         }
@@ -771,11 +768,10 @@ impl ConnectionLibrary {
 
     pub async fn rename_connection(&self, id: String, name: String) -> Result<(), CoreError> {
         let id = parse_id(&id)?;
-        let name = name.trim().to_owned();
+        let name = shown_name(&name);
         if name.is_empty() {
             return Err(CoreError::failed("library.name_required", "a connection needs a name"));
         }
-        let name = shown_name(&name);
         self.blocking(
             move |store| match store.update_blocking(id, |saved| saved.name = name)? {
                 Some(_) => Ok(()),
@@ -912,7 +908,7 @@ impl ConnectionLibrary {
     // connects alone. It has never been opened and is no favourite.
     pub async fn duplicate(&self, id: String, name: String) -> Result<ConnectionRecord, CoreError> {
         let id = parse_id(&id)?;
-        let name = name.trim().to_owned();
+        let name = shown_name(&name);
         if name.is_empty() {
             return Err(CoreError::failed("library.name_required", "a connection needs a name"));
         }
@@ -1072,6 +1068,13 @@ pub(crate) fn blank(id: Uuid) -> SavedConnection {
     }
 }
 
+fn offered_tls_modes(driver_id: &str) -> &'static [TlsMode] {
+    crate::drivers::registry()
+        .get(driver_id)
+        .and_then(|driver| driver.capabilities().tls)
+        .map_or(&[], |tls| tls.modes)
+}
+
 // `tls` and `icon` are the record's, read before any write so a refused value writes nothing.
 pub(crate) fn apply(
     record: &ConnectionRecord,
@@ -1081,6 +1084,10 @@ pub(crate) fn apply(
     group_id: Option<Uuid>,
     saved: &mut SavedConnection,
 ) {
+    let mode = match saved.driver_id == record.driver_id {
+        true => TlsMode::edited(saved.tls.mode, tls.mode, offered_tls_modes(&record.driver_id)),
+        false => tls.mode,
+    };
     saved.name = shown_name(&name);
     saved.driver_id.clone_from(&record.driver_id);
     saved.host = record.host.trim().to_owned();
@@ -1092,7 +1099,11 @@ pub(crate) fn apply(
         false => AuthMode::Password,
     };
     let unknown = std::mem::take(&mut saved.tls.unknown);
-    saved.tls = TlsConfig { unknown, ..tls.clone() };
+    saved.tls = TlsConfig {
+        mode,
+        unknown,
+        ..tls.clone()
+    };
     saved.ssh = match &record.ssh {
         Some(settings) => Some(edited_ssh(settings, saved.ssh.as_ref())),
         // A form shows no tunnel to a database file on the SSH host, which only the Mac opens, so it stays as it is.

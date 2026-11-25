@@ -729,11 +729,10 @@ impl WorkspaceShell {
         let Some(level) = level else {
             return;
         };
-        button.set_icon_name(match level {
-            tablepro_core::SafeModeLevel::Silent => crate::ui::icons::CHANGES_ALLOW,
-            tablepro_core::SafeModeLevel::Alert | tablepro_core::SafeModeLevel::ReadOnly => {
-                crate::ui::icons::CHANGES_PREVENT
-            }
+        button.set_icon_name(if level == tablepro_core::SafeModeLevel::Silent {
+            crate::ui::icons::CHANGES_ALLOW
+        } else {
+            crate::ui::icons::CHANGES_PREVENT
         });
         let said = gettext_f("Safe Mode: {level}", &[("level", &crate::ui::safe_mode::label(level))]);
         describe_icon_button(&button, &said, None);

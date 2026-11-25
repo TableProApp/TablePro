@@ -415,7 +415,9 @@ fn written_form(value: &serde_json::Value) -> serde_json::Value {
         serde_json::Value::Object(_) => {
             let mut kept = value.clone();
             if let Some(fields) = kept.as_object_mut() {
-                fields.retain(|key, field| !field.is_null() && !(key == "has_passphrase" && field == &false));
+                fields.retain(|key, field| {
+                    !field.is_null() && !(key == "has_passphrase" && field.as_bool() == Some(false))
+                });
                 for field in fields.values_mut() {
                     *field = written_form(field);
                 }

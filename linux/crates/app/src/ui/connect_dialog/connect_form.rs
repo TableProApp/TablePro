@@ -548,6 +548,11 @@ impl ConnectForm {
             database,
             username,
             tls: TlsConfig {
+                mode: existing
+                    .filter(|saved| saved.driver_id == self.driver_id)
+                    .map_or(tls.mode, |saved| {
+                        TlsMode::edited(saved.tls.mode, tls.mode, caps.tls.as_ref().map_or(&[], |tls| tls.modes))
+                    }),
                 unknown: existing.map(|saved| saved.tls.unknown.clone()).unwrap_or_default(),
                 ..tls
             },
@@ -1421,6 +1426,29 @@ mod tests {
         let written = untagged.saved_connection(postgres(), &valid, saved.id, Some(&saved));
         assert!(written.tags.is_empty(), "the entry's tags came back over the form's");
         assert_eq!(written.icon, None);
+    }
+
+    #[test]
+    fn an_edit_keeps_what_it_shows_rounded_up() {
+        let stored = SavedConnection {
+            safe_mode: SafeModeLevel::SafeModeFull,
+            ai_policy: AiPolicy::AppDefault,
+            tls: TlsConfig {
+                mode: TlsMode::VerifyCa,
+                ..TlsConfig::verify_full()
+            },
+            ..saved_from(&filled("postgres", postgres()), postgres())
+        };
+        let mut form = ConnectForm::from_saved(&stored, postgres());
+        assert_eq!(form.safe_mode, SafeModeLevel::ReadOnly);
+        form.tls.mode = TlsMode::VerifyFull;
+
+        let valid = form.validate(postgres()).expect("valid");
+        let written = form.saved_connection(postgres(), &valid, stored.id, Some(&stored));
+
+        assert_eq!(written.tls.mode, TlsMode::VerifyCa);
+        assert_eq!(written.safe_mode, SafeModeLevel::SafeModeFull);
+        assert_eq!(written.ai_policy, AiPolicy::AppDefault);
     }
 
     #[test]

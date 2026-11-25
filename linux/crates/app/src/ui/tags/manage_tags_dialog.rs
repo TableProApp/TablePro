@@ -126,7 +126,7 @@ impl ManageTagsDialog {
 
     fn row(self: &Rc<Self>, tag: &ConnectionTag, count: usize) -> adw::ActionRow {
         let row = adw::ActionRow::builder()
-            .title(tag.name.as_str())
+            .title(tag.name.shown())
             .use_markup(false)
             .subtitle(used_by(count))
             .activatable(true)
@@ -233,7 +233,7 @@ pub(super) fn delete_alert(tag: &ConnectionTag, count: usize) -> adw::AlertDialo
     let dialog = adw::AlertDialog::new(
         Some(&crate::i18n::gettext_f(
             "Delete “{tag}”?",
-            &[("tag", tag.name.as_str())],
+            &[("tag", &tag.name.shown())],
         )),
         body.as_deref(),
     );

@@ -515,6 +515,7 @@ async fn a_form_save_keeps_what_the_form_does_not_show() {
         ssh.jump_hosts = parse_jump_hosts("ops@jump".to_owned()).unwrap();
     }
     form.tls.client_certificate = None;
+    form.tls.mode = TlsModeTag::VerifyFull;
 
     library.save(form, ConnectionSecrets::default()).await.unwrap();
     let saved = library
@@ -527,6 +528,7 @@ async fn a_form_save_keeps_what_the_form_does_not_show() {
 
     let before = &written.connections[0].connection;
     assert_eq!(saved.safe_mode, SafeModeTag::SafeModeFull);
+    assert_eq!(saved.tls.mode, TlsModeTag::VerifyCa, "Verify CA shows as Verify full");
     assert_eq!(saved.ai_policy, Some(AiPolicyTag::AppDefault));
     assert_eq!(saved.icon, before.icon);
     let (ssh, held) = (saved.ssh.unwrap(), before.ssh.clone().unwrap());

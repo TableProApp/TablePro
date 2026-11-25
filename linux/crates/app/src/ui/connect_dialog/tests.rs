@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use gtk4::{AccessibleProperty, AccessibleState};
 use tablepro_core::credentials::{CredentialInteraction, SecretKind, SecretVault};
-use tablepro_core::{DriverError, FileOpenMode, TlsFailure, TlsMode};
+use tablepro_core::{AiPolicy, DriverError, FileOpenMode, TlsFailure, TlsMode};
 use tablepro_session::RequestTarget;
 use tablepro_session::fakes::{FakeConnector, FakeEstablish};
 use tablepro_test_support::ConnectionScript;
@@ -563,7 +563,7 @@ fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
             .get(driver_id)
             .map(|driver| driver.display_name().to_owned())
             .unwrap_or_default();
-        for (index, level) in SafeModeLevel::ALL.into_iter().enumerate() {
+        for (index, level) in SafeModeLevel::ENFORCED.into_iter().enumerate() {
             imp.safe_mode_row.set_selected(index as u32);
 
             assert_eq!(harness.dialog.form().safe_mode, level, "{driver_id}");
@@ -653,7 +653,7 @@ fn each_ai_policy_says_what_it_sends() {
     let imp = harness.dialog.imp();
 
     assert_eq!(harness.dialog.form().ai_policy, AiPolicy::Ask);
-    for (index, policy) in AiPolicy::ALL.into_iter().enumerate() {
+    for (index, policy) in crate::ui::ai_policy::OFFERED.into_iter().enumerate() {
         imp.ai_policy_row.set_selected(index as u32);
 
         assert_eq!(harness.dialog.form().ai_policy, policy);

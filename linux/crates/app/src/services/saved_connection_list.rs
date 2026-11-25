@@ -404,8 +404,8 @@ mod tests {
 
         assert_eq!(
             list.get(gamma.id).map(|saved| saved.order),
-            Some(1),
-            "the store kept Gamma's number"
+            Some(2),
+            "a delete renumbered Gamma"
         );
         assert_eq!(
             objects(&list),

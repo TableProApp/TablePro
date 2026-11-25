@@ -715,9 +715,13 @@ impl ConnectionStore {
             .find(|saved| saved.id == connection.id)
             .map(|saved| (saved.group_id, saved.order));
         document.settle_place(&mut connection, stored);
-        document.connections.retain(|saved| saved.id != connection.id);
         document.connections.release(connection.id);
-        document.connections.push(connection);
+        // In place: entries of one order sort by where the list keeps them, as a Mac library's often do.
+        let id = connection.id;
+        match document.connections.iter_mut().find(|saved| saved.id == id) {
+            Some(slot) => *slot = connection,
+            None => document.connections.push(connection),
+        }
         self.commit(&mut state, document)
     }
 

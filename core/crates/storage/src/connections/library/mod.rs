@@ -113,10 +113,11 @@ impl ConnectionStore {
                     .map_or(Ok(()), |&id| Err(StorageError::GroupNotFound { id }));
             }
             let ordered = document.check_group_move(&moving, parent, before)?;
-            // Only the moved groups take the parent: a sibling whose parent has not arrived keeps it.
+            let known: HashSet<Uuid> = document.groups.iter().map(|group| group.id).collect();
+            // A sibling whose parent has not arrived keeps it; one in a cycle takes `parent`, or it would nest in a moved group.
             for (rank, id) in ordered.iter().enumerate() {
                 if let Some(group) = document.groups.iter_mut().find(|group| group.id == *id) {
-                    if moving.contains(id) {
+                    if moving.contains(id) || group.parent_id.is_none_or(|stored| known.contains(&stored)) {
                         group.parent_id = parent;
                     }
                     group.order = rank_of(rank);
@@ -340,16 +341,26 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
         .enumerate()
         .map(|(index, group)| (group.id, index))
         .collect();
+    // Where each group reads: one whose parent has not arrived, or in a cycle, sits at the top.
+    let under_of: HashMap<Uuid, Option<Uuid>> = {
+        let tree = GroupTree::new(local.as_slice());
+        local.iter().map(|group| (group.id, tree.parent(group.id))).collect()
+    };
     let mut depth: HashMap<Uuid, usize> = HashMap::with_capacity(local.len());
     for group in GroupTree::new(local.as_slice()).walk() {
-        let above = group.parent_id.and_then(|id| depth.get(&id).copied()).unwrap_or(0);
+        let above = under_of
+            .get(&group.id)
+            .copied()
+            .flatten()
+            .and_then(|id| depth.get(&id).copied())
+            .unwrap_or(0);
         depth.insert(group.id, above + 1);
     }
     let mut names = SiblingNames::default();
     let mut next: HashMap<Option<Uuid>, u32> = HashMap::new();
     for group in local.iter() {
-        names.add(group);
-        let last = next.entry(group.parent_id).or_insert(0);
+        names.add(under_of.get(&group.id).copied().flatten(), group);
+        let last = next.entry(under_of.get(&group.id).copied().flatten()).or_insert(0);
         *last = (*last).max(group.order.saturating_add(1));
     }
     // Parents before their children, so each finds its parent mapped.
@@ -358,10 +369,11 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
     for group in &walk {
         if let Some(&index) = at.get(&group.id) {
             let held = &mut local[index];
-            if !names.taken_by_another(held.parent_id, &group.name, held.id) {
-                names.remove(held);
+            let under = under_of.get(&held.id).copied().flatten();
+            if !names.taken_by_another(under, &group.name, held.id) {
+                names.remove(under, held);
                 held.name = group.name.clone();
-                names.add(held);
+                names.add(under, held);
             }
             held.color = group.color;
             held.icon = group.icon.clone();
@@ -392,7 +404,7 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
             let above = parent.and_then(|id| depth.get(&id).copied()).unwrap_or(0);
             depth.insert(added.id, above + 1);
             at.insert(added.id, local.len());
-            names.add_exact(&added);
+            names.add_exact(parent, &added);
             same.insert(group.id, added.id);
             local.push(added);
         }
@@ -408,30 +420,25 @@ struct SiblingNames {
 }
 
 impl SiblingNames {
-    fn add(&mut self, group: &ConnectionGroup) {
-        self.add_exact(group);
+    fn add(&mut self, parent: Option<Uuid>, group: &ConnectionGroup) {
+        self.add_exact(parent, group);
         self.folded
-            .entry((group.parent_id, group.name.shown().to_lowercase()))
+            .entry((parent, group.name.shown().to_lowercase()))
             .or_default()
             .push(group.id);
     }
 
     // An added group stays out of the any-case match, so a file's own `Work` and `work` stay two groups.
-    fn add_exact(&mut self, group: &ConnectionGroup) {
-        self.exact
-            .entry((group.parent_id, group.name.shown()))
-            .or_insert(group.id);
+    fn add_exact(&mut self, parent: Option<Uuid>, group: &ConnectionGroup) {
+        self.exact.entry((parent, group.name.shown())).or_insert(group.id);
     }
 
-    fn remove(&mut self, group: &ConnectionGroup) {
-        let exact = (group.parent_id, group.name.shown());
+    fn remove(&mut self, parent: Option<Uuid>, group: &ConnectionGroup) {
+        let exact = (parent, group.name.shown());
         if self.exact.get(&exact) == Some(&group.id) {
             self.exact.remove(&exact);
         }
-        if let Some(ids) = self
-            .folded
-            .get_mut(&(group.parent_id, group.name.shown().to_lowercase()))
-        {
+        if let Some(ids) = self.folded.get_mut(&(parent, group.name.shown().to_lowercase())) {
             ids.retain(|id| *id != group.id);
         }
     }

@@ -67,6 +67,15 @@ impl TlsMode {
             .or_else(|| offered.iter().copied().max_by_key(|mode| mode.strictness()))
             .unwrap_or(self)
     }
+
+    // A form shows a stored mode it does not offer as `at_least_in`, and sending that back keeps it.
+    pub fn edited(stored: TlsMode, picked: TlsMode, offered: &[TlsMode]) -> TlsMode {
+        if picked == stored.at_least_in(offered) {
+            stored
+        } else {
+            picked
+        }
+    }
 }
 
 #[cfg(test)]
@@ -83,6 +92,27 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&TlsMode::Strict).ok().as_deref(),
             Some("\"strict\"")
+        );
+    }
+
+    #[test]
+    fn a_form_save_keeps_a_mode_it_shows_rounded_up() {
+        let offered = [TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull];
+        assert_eq!(
+            TlsMode::edited(TlsMode::VerifyCa, TlsMode::VerifyFull, &offered),
+            TlsMode::VerifyCa
+        );
+        assert_eq!(
+            TlsMode::edited(TlsMode::VerifyCa, TlsMode::Require, &offered),
+            TlsMode::Require
+        );
+        assert_eq!(
+            TlsMode::edited(TlsMode::Require, TlsMode::VerifyFull, &offered),
+            TlsMode::VerifyFull
+        );
+        assert_eq!(
+            TlsMode::edited(TlsMode::VerifyFull, TlsMode::VerifyFull, &offered),
+            TlsMode::VerifyFull
         );
     }
 

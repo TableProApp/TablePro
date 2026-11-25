@@ -20,7 +20,7 @@ pub(super) async fn ask_group_rename(
     }
     ConnectionGroupName::new(&entry.text())
         .ok()
-        .filter(|name| *name != group.name)
+        .filter(|name| name.as_str() != group.name.shown())
 }
 
 // `taken` leaves the group itself out, so a change of case alone can be saved.
@@ -31,7 +31,7 @@ pub(super) fn rename_group_dialog(
     let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Rename Group")), None);
     let entry = adw::EntryRow::builder()
         .title(crate::i18n::gettext("Name"))
-        .text(current.as_str())
+        .text(current.shown())
         .activates_default(true)
         .build();
     let rows = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();

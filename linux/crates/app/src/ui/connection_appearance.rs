@@ -172,7 +172,7 @@ pub(crate) fn tag_pills<'a>(tags: impl IntoIterator<Item = &'a ConnectionTag>) -
 
 /// "Tags: production, acme", or nothing for a connection with none.
 pub(crate) fn tags_description<'a>(tags: impl IntoIterator<Item = &'a ConnectionTag>) -> Option<String> {
-    let names: Vec<&str> = tags.into_iter().map(|tag| tag.name.as_str()).collect();
+    let names: Vec<String> = tags.into_iter().map(|tag| tag.name.shown()).collect();
     if names.is_empty() {
         return None;
     }

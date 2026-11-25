@@ -59,9 +59,9 @@ impl ConnectDialog {
             .active(ticked)
             .valign(gtk::Align::Center)
             .build();
-        check.update_property(&[gtk::accessible::Property::Label(tag.name.as_str())]);
+        check.update_property(&[gtk::accessible::Property::Label(&tag.name.shown())]);
         let row = adw::ActionRow::builder()
-            .title(tag.name.as_str())
+            .title(tag.name.shown())
             .use_markup(false)
             .activatable_widget(&check)
             .build();
@@ -94,7 +94,7 @@ impl ConnectDialog {
             .borrow()
             .iter()
             .filter(|(_, check)| check.is_active())
-            .map(|(tag, _)| tag.name.as_str().to_owned())
+            .map(|(tag, _)| tag.name.shown())
             .collect();
         imp.tags_row.set_subtitle(&if names.is_empty() {
             crate::i18n::pgettext("no tags", "None")
