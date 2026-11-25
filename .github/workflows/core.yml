@@ -125,10 +125,11 @@ jobs:
       # Each importer reads its app's files from this platform's own places.
       - name: Importers from other apps
         run: cargo test --locked --target "$TARGET" -p tablepro-foreign-import
-      # Release with fat LTO, without the engines (core/docs/decisions/0010-macos-on-the-core.md).
-      - name: Build the static library and its Swift bindings
+      # Release with fat LTO, without the engines (core/docs/decisions/0010-macos-on-the-core.md). The iOS slice proves
+      # the core builds for an iPhone at the iOS app's floor on the system SQLite; ios-tests.yml builds the Simulator's.
+      - name: Build the static libraries and their Swift bindings
         if: ${{ !cancelled() && matrix.swift }}
-        run: apple/scripts/build-core.sh arm64
+        run: apple/scripts/build-core.sh arm64 ios
       - name: Swift binding tests
         if: ${{ !cancelled() && matrix.swift }}
         run: swift test --package-path apple/Packages/TableProFFI

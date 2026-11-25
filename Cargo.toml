@@ -12,6 +12,7 @@ members = [
     "core/crates/keys",
     "core/crates/mcp",
     "core/crates/net",
+    "core/crates/records",
     "core/crates/session",
     "core/crates/ssh",
     "core/crates/storage",
@@ -54,6 +55,7 @@ tablepro-driver-sqlite = { path = "core/crates/drivers/sqlite" }
 tablepro-foreign-import = { path = "core/crates/foreign-import" }
 tablepro-mcp = { path = "core/crates/mcp" }
 tablepro-net = { path = "core/crates/net" }
+tablepro-records = { path = "core/crates/records" }
 tablepro-linux-platform = { path = "linux/crates/platform" }
 tablepro-session = { path = "core/crates/session" }
 tablepro-ssh = { path = "core/crates/ssh" }

@@ -142,8 +142,8 @@ internal enum AccountDeviceText {
     }
 
     // This Mac is the one showing the list, so it is seen now whatever the server last recorded.
-    static func detail(system: String, lastSeenAt: Date, isThisMac: Bool) -> String {
-        guard isThisMac else { return detail(system: system, lastSeenAt: lastSeenAt) }
+    static func detail(system: String, lastSeenAt: Date, isThisDevice: Bool) -> String {
+        guard isThisDevice else { return detail(system: system, lastSeenAt: lastSeenAt) }
         return String(format: String(localized: "%@ · %@"), String(localized: "This Mac"), detail(system: system, lastSeenAt: Date()))
     }
 
