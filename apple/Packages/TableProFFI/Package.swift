@@ -18,6 +18,9 @@ let package = Package(
         .target(
             name: "TableProFFI",
             dependencies: ["TableProFFIC"],
+            // UniFFI's Swift for an async foreign trait starts an unstructured task over non-Sendable closures, which
+            // Swift 6 refuses. The generated code is checked in Swift 5 mode; the apps stay in Swift 6.
+            swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [
                 .linkedFramework("CoreFoundation"),
                 .linkedFramework("Security"),
