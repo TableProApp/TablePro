@@ -88,14 +88,16 @@ impl AppReader for Dbx {
         self.store().is_file()
     }
 
-    fn inventory(&self) -> Inventory {
-        let Ok(db) = self.open() else {
-            return Inventory::default();
+    fn inventory(&self) -> Result<Inventory, ForeignImportError> {
+        let db = match self.open() {
+            Ok(db) => db,
+            Err(ForeignImportError::FileNotFound { .. }) => return Ok(Inventory::default()),
+            Err(error) => return Err(error),
         };
-        Inventory {
-            connections: configs(&db).map_or(0, |configs| configs.len()),
+        Ok(Inventory {
+            connections: configs(&db)?.len(),
             saved_queries: store::saved_sql_count(&db),
-        }
+        })
     }
 
     fn collect(

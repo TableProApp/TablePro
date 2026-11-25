@@ -19,6 +19,11 @@ nonisolated enum ColumnMetadataRules {
         normalized(isGenerated) == "ALWAYS"
     }
 
+    // GENERATED ALWAYS AS IDENTITY refuses a written value (SQLSTATE 428C9) and an UPDATE to anything but DEFAULT.
+    static func postgresRejectsWrittenValues(identityGeneration: String?) -> Bool {
+        normalized(identityGeneration) == "ALWAYS"
+    }
+
     /// `PRAGMA table_info` reports `pk` as the column's 1-based rank inside the primary key, not as
     /// a flag, so a composite key's second column comes back as 2.
     static func sqliteIsPrimaryKey(pk: String?) -> Bool {

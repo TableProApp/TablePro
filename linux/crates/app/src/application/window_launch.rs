@@ -11,4 +11,6 @@ pub enum WindowLaunch {
     /// The sessions one window held when the application last quit, in
     /// the order it adopted them.
     Restore(Vec<SessionKey>),
+    // The setup guide, asked for from a window busy with a session.
+    Setup,
 }

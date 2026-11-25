@@ -59,7 +59,7 @@ public sealed partial class ShellTests
     public void WordWrapBreaksALongLineOverSeveralRows(string theme)
     {
         var folder = AppSession.NewDataFolder(theme);
-        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}", "wordWrap": true }""");
+        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}", "setupGuideSeen": true, "wordWrap": true }""");
         using var app = AppSession.Relaunch(folder, theme);
 
         OpenSample(app);
@@ -126,6 +126,7 @@ public sealed partial class ShellTests
             $$"""
             {
               "theme": "{{theme}}",
+              "setupGuideSeen": true,
               "editorLightScheme": "tablepro.github-light",
               "editorDarkScheme": "tablepro.dracula"
             }
@@ -139,7 +140,7 @@ public sealed partial class ShellTests
 
     private static void OpenSample(AppSession app)
     {
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
     }
 

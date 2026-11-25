@@ -3,7 +3,8 @@ use tablepro_foreign_import::review::{
     ConnectionRow, QueryAvailability, QueryRow, QueryStatus, Resolution, RowNote, TlsFileReason,
 };
 use tablepro_foreign_import::{
-    ForeignApp, ForeignImportError, ForeignSslMode, Inventory, PasswordOutcome, PasswordSource, SavedQuerySupport,
+    ForeignApp, ForeignImportError, ForeignSource, ForeignSslMode, PasswordOutcome, PasswordSource, SavedQuerySupport,
+    SourceAvailability, UnreadableReason,
 };
 use tablepro_storage::GroupTree;
 
@@ -15,12 +16,15 @@ pub(super) struct OptionText {
     pub subtitle: String,
 }
 
-pub(super) fn source_subtitle(app: ForeignApp, available: bool, inventory: Inventory) -> String {
-    if app.picked_file_extensions().is_some() {
+pub(crate) fn source_subtitle(source: &ForeignSource) -> String {
+    if source.picks_file() {
         return gettext("Choose an export file to import");
     }
-    if !available {
-        return gettext("Not found on this computer");
+    let inventory = source.inventory;
+    match &source.availability {
+        SourceAvailability::NotFound => return gettext("Not found on this computer"),
+        SourceAvailability::Unreadable(reason) => return unreadable_text(reason),
+        SourceAvailability::Available => {}
     }
     let connections = ngettext_f(
         "{n} connection found",
@@ -38,6 +42,17 @@ pub(super) fn source_subtitle(app: ForeignApp, available: bool, inventory: Inven
         &[("n", &inventory.saved_queries.to_string())],
     );
     format!("{connections} · {queries}")
+}
+
+// The row says why its count is missing; the error's own text, with its path, goes in the tooltip.
+pub(crate) fn unreadable_text(reason: &UnreadableReason) -> String {
+    match reason.code {
+        "foreign_import.parse" | "foreign_import.unsupported_format" => {
+            gettext("Found, but its files are in a form TablePro does not know")
+        }
+        "foreign_import.unreadable" => gettext("Found, but its files could not be read"),
+        _ => gettext("Found, but its connections could not be counted"),
+    }
 }
 
 // What the passwords switch can do for this app on Linux, said before anything is read.

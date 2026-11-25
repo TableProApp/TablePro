@@ -3,6 +3,7 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use tablepro_cloud_api::{rate_limited, read_capped};
 use url::Url;
 
 use crate::account_error::AccountError;
@@ -363,7 +364,7 @@ async fn fetch_json<T: serde::de::DeserializeOwned>(
         .map_err(AccountError::unreachable)?;
     let status = response.status();
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        return Err(crate::cloud_api::rate_limited(response.headers()));
+        return Err(rate_limited(response.headers()).into());
     }
     // A server that is down is still the server; only an answer it gives says it is not TablePro's.
     if status.is_server_error() {
@@ -379,20 +380,6 @@ async fn fetch_json<T: serde::de::DeserializeOwned>(
     let body = read_capped(response, METADATA_LIMIT).await?;
     serde_json::from_slice(&body)
         .map_err(|error| ServerError::NotTablePro(server.to_owned(), format!("{:?}", error.classify())).into())
-}
-
-// A body past the limit is refused before it is all read.
-pub(crate) async fn read_capped(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>, AccountError> {
-    let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(AccountError::unreachable)? {
-        if body.len() + chunk.len() > limit {
-            return Err(AccountError::Protocol(format!(
-                "the answer is larger than {limit} bytes"
-            )));
-        }
-        body.extend_from_slice(&chunk);
-    }
-    Ok(body)
 }
 
 // The person's choice, kept beside the account file so a sign-out keeps it. Discovery is never kept: a file another

@@ -10,7 +10,7 @@ final class WelcomeWindowUITests: UITestCase {
             welcome.buttons["Open Sample Database"].waitToExist(timeout: 10),
             "An empty store must offer the sample database where the list would be"
         )
-        XCTAssertFalse(welcome.links["Skip"].exists, "The first launch must not open on a tour")
+        XCTAssertFalse(window("setup-guide", in: app).exists, "The UI test sandbox opens no setup guide unless asked")
         XCTAssertEqual(
             app.children(matching: .window).count,
             1,
@@ -18,20 +18,6 @@ final class WelcomeWindowUITests: UITestCase {
         )
         XCTAssertFalse(window("support", in: app).exists, "Launching must never present the support screen")
         XCTAssertTrue(waitForActivationPolicy(.regular), "A launch the person asked for is an ordinary app")
-    }
-
-    func testAFirstLaunchShowsTheWelcomeSheetUntilContinue() throws {
-        let app = try launchApp(environment: ["TABLEPRO_UI_TEST_SHOW_WELCOME_SHEET": "1"])
-        let welcome = welcomeWindow(in: app)
-        XCTAssertTrue(welcome.waitToExist(timeout: 10))
-
-        let continueButton = welcome.descendants(matching: .button)["welcome-sheet-continue"]
-        XCTAssertTrue(continueButton.waitToExist(timeout: 10), "A first launch must show the welcome sheet")
-        XCTAssertTrue(waitUntilHittable(continueButton, timeout: 5))
-        continueButton.click()
-
-        XCTAssertTrue(waitForPredicate(timeout: 5) { !continueButton.exists }, "Continue must close the sheet")
-        XCTAssertTrue(welcome.buttons["Open Sample Database"].waitToExist(timeout: 5))
     }
 
     // The one flow left on the bundled Chinook sample: opening it is what is under test.

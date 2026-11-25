@@ -52,8 +52,8 @@ targets:
       - TableProWidget/Shared/QueryActivityAttributes.swift
       - TableProWidget/Shared/SharedConnectionStore.swift
       - TableProWidget/Shared/WidgetConnectionItem.swift
-      # The sample database the macOS app ships, opened from the empty connection list.
-      - path: ../TablePro/Resources/SampleDatabases/Chinook.sqlite
+      # The sample database every app ships, opened from the empty connection list.
+      - path: ../../core/resources/Chinook.sqlite
         buildPhase: resources
       # FreeTDS bridging the iOS build compiles directly; there is no plugin
       # bundle on iOS, so the driver links into the app.

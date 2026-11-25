@@ -3,14 +3,17 @@ import Observation
 
 @MainActor @Observable
 final class OnboardingPreferences {
+    // The old welcome page's key, read only to keep sync on for people who finished that onboarding.
     static let hasSeenWelcomeKey = "com.TablePro.hasCompletedOnboarding"
+    // A new key, so someone who saw the old welcome and still has no connections gets the origin page once.
+    static let hasSeenOriginKey = "com.TablePro.setupGuideSeen"
     static let lastSeenVersionKey = "com.TablePro.lastSeenAppVersion"
 
     @ObservationIgnored private let defaults: UserDefaults
 
     private(set) var syncChoice: Bool?
     private(set) var usageDataChoice: Bool?
-    private(set) var hasSeenWelcome: Bool
+    private(set) var hasSeenOrigin: Bool
     private(set) var lastSeenVersion: String?
     // What the organization decides over the person's choices; their choices stay for when it lets go.
     private(set) var managed: ManagedAppConfiguration
@@ -20,7 +23,7 @@ final class OnboardingPreferences {
         Self.migrateLegacyState(in: defaults)
         syncChoice = defaults.object(forKey: AppPreferences.cloudSyncEnabledKey) as? Bool
         usageDataChoice = defaults.object(forKey: AppPreferences.usageDataKey) as? Bool
-        hasSeenWelcome = defaults.bool(forKey: Self.hasSeenWelcomeKey)
+        hasSeenOrigin = defaults.bool(forKey: Self.hasSeenOriginKey)
         lastSeenVersion = defaults.string(forKey: Self.lastSeenVersionKey)
         managed = ManagedAppConfiguration.current(defaults: defaults)
     }
@@ -50,10 +53,10 @@ final class OnboardingPreferences {
         defaults.set(enabled, forKey: AppPreferences.usageDataKey)
     }
 
-    func markWelcomeSeen() {
-        guard !hasSeenWelcome else { return }
-        hasSeenWelcome = true
-        defaults.set(true, forKey: Self.hasSeenWelcomeKey)
+    func markOriginSeen() {
+        guard !hasSeenOrigin else { return }
+        hasSeenOrigin = true
+        defaults.set(true, forKey: Self.hasSeenOriginKey)
     }
 
     // An older build writes nothing, so going back to the newer one does not show its highlights again.

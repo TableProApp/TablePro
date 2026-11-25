@@ -25,17 +25,17 @@ struct AppStateManagedConfigurationTests {
         #expect(state.syncCoordinator.status != .disabled(.userDisabled))
     }
 
-    @Test("A welcome that skipped the iCloud question for the organization leaves sync off once the policy goes")
+    @Test("A first run that skipped the iCloud question for the organization leaves sync off once the policy goes")
     func skippedQuestionIsNoConsent() throws {
         let fixture = try AppStateFixture()
         fixture.defaults.set(["ICloudSyncAllowed": false], forKey: ManagedAppConfiguration.defaultsKey)
         let state = fixture.makeState(syncEnabled: false)
 
-        state.finishFirstRun(pages: [.welcome, .usageData])
+        state.finishFirstRun(pages: [.origin, .usageData])
         fixture.defaults.removeObject(forKey: ManagedAppConfiguration.defaultsKey)
         let relaunched = OnboardingPreferences(defaults: fixture.defaults)
 
-        #expect(relaunched.syncChoice == false)
+        #expect(relaunched.syncChoice == nil)
         #expect(!relaunched.isCloudSyncEnabled)
     }
 }

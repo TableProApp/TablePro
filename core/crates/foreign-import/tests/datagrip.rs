@@ -143,7 +143,10 @@ fn an_empty_home_has_nothing_and_an_import_finds_no_files() {
     let home = tempfile::tempdir().expect("a temp dir");
     for platform in [ForeignPlatform::MacOs, ForeignPlatform::Linux, ForeignPlatform::Windows] {
         let importer = plain(home.path(), platform);
-        assert_eq!(importer.inventory_blocking(), Inventory::default());
+        assert_eq!(
+            importer.inventory_blocking().expect("an inventory"),
+            Inventory::default()
+        );
         assert!(!importer.is_available_blocking());
         let outcome = importer.collect_blocking(&request(true, true), &CancellationToken::new());
         assert!(matches!(
@@ -160,7 +163,7 @@ fn the_inventory_counts_unique_data_sources() {
     let importer = mac("connections", Arc::default());
     assert!(importer.is_available_blocking());
     assert_eq!(
-        importer.inventory_blocking(),
+        importer.inventory_blocking().expect("an inventory"),
         Inventory {
             connections: 13,
             saved_queries: 0
@@ -508,7 +511,9 @@ fn no_consoles_are_read_unless_saved_queries_are_requested() {
 #[test]
 fn the_inventory_counts_consoles_that_have_text() {
     assert_eq!(
-        mac("consoles", Arc::default()).inventory_blocking(),
+        mac("consoles", Arc::default())
+            .inventory_blocking()
+            .expect("an inventory"),
         Inventory {
             connections: 2,
             saved_queries: 7

@@ -22,6 +22,9 @@ pub fn install_app_actions(app: &TableProApplication) {
     let about = gio::ActionEntry::builder("about")
         .activate(|app: &TableProApplication, _, _| present_about(app))
         .build();
+    let shortcuts = gio::ActionEntry::builder("shortcuts")
+        .activate(|app: &TableProApplication, _, _| present_shortcuts(app))
+        .build();
     // The license ask's Buy a License.
     let buy_license = gio::ActionEntry::builder("buy-license")
         .activate(|app: &TableProApplication, _, _| open_pricing(app))
@@ -40,6 +43,7 @@ pub fn install_app_actions(app: &TableProApplication) {
         quit,
         preferences,
         about,
+        shortcuts,
         buy_license,
         shared_links,
         focus_tab,
@@ -119,6 +123,20 @@ fn open_shared_links(app: &TableProApplication) {
             tracing::warn!(%error, "the shared links page was not opened");
         }
     });
+}
+
+// Built again on each activation, so it shows the keys of the preset chosen since.
+fn present_shortcuts(app: &TableProApplication) {
+    let builder = gtk4::Builder::from_resource(&format!(
+        "{}/builder/shortcuts-dialog.ui",
+        crate::config::RESOURCE_BASE_PATH
+    ));
+    let Some(dialog) = builder.object::<libadwaita::ShortcutsDialog>("shortcuts_dialog") else {
+        tracing::error!("the keyboard shortcuts dialog is not in the resources");
+        return;
+    };
+    super::keymap::fill_shortcuts_dialog(&builder);
+    dialog.present(app.active_window().as_ref());
 }
 
 fn present_about(app: &TableProApplication) {

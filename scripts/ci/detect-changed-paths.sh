@@ -36,10 +36,10 @@ case "$SUITE" in
             '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$'
             # The app links the core's FFI crate without the engines (apple/scripts/build-core.sh).
             'core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$' 'apple/scripts/build-core\.sh$')
-        # No driver, test or doc of the core is in the app's library. The app's tests run the script corpus and the
-        # model merge cases the core's tests run.
+        # No driver, test or doc of the core is in the app's library. The app's tests run the script corpus, the
+        # model merge cases and the source list cases the core's tests run.
         SKIP='core/crates/drivers/|core/crates/[^/]+/tests/|core/.*\.md$'
-        KEEP='core/crates/core/tests/fixtures/sql_script_corpus\.json$|core/crates/ai/tests/model-merge-cases\.json$' ;;
+        KEEP='core/crates/core/tests/fixtures/sql_script_corpus\.json$|core/crates/ai/tests/model-merge-cases\.json$|core/crates/foreign-import/tests/fixtures/source_list\.json$' ;;
     plugins)
         # Registry plugins link the TableProCore and TableProOracle products.
         PATTERNS=('apple/Plugins/' 'apple/Packages/TableProCore/' 'apple/Packages/TableProOracle/' 'apple/Native/'
@@ -60,6 +60,8 @@ case "$SUITE" in
             '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/(ci|ios-tests)\.yml$'
             # The TableProCore package tests read the function names and the script corpus the Linux app shares.
             'core/crates/core/tests/fixtures/(state_changing_functions|sql_script_corpus)\.json$'
+            # The app bundles the sample database the core holds; the spec scan below reads only apple/ paths.
+            'core/resources/Chinook\.sqlite$'
             # The app links the core's FFI crate without the engines, as the Mac app does.
             'core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$' 'apple/scripts/build-core\.sh$')
         SKIP='core/crates/drivers/|core/crates/[^/]+/tests/|core/.*\.md$'

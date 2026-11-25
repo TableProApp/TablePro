@@ -2,6 +2,7 @@ import Foundation
 import TableProAutocomplete
 @testable import TableProMobile
 import TableProModels
+import TableProPluginKit
 import Testing
 
 struct QueryCompletionCatalogTests {
@@ -334,7 +335,7 @@ struct QueryCompletionCatalogTests {
         #expect(await reads.readCount == 1)
     }
 
-    @Test("an enum column offers its values: the driver's labels, or the ENUM type MySQL and DuckDB spell out")
+    @Test("an enum column offers its values: the driver's labels, or the ENUM type MySQL spells out")
     func enumValues() async {
         let source = CatalogColumnSource([
             "orders": [
@@ -354,11 +355,40 @@ struct QueryCompletionCatalogTests {
         #expect(await catalog.allowedValues(forColumn: "mood", in: moods) == ["sad", "ok"])
     }
 
-    @Test("DuckDB enum labels keep their backslashes and blanks")
-    func duckDBLabelsAreKeptAsWritten() {
-        #expect(QueryCompletionCatalog.duckDBEnumLabels(in: #"ENUM('C:\temp', '  padded  ', 'it''s')"#)
-            == [#"C:\temp"#, "  padded  ", "it's"])
-        #expect(QueryCompletionCatalog.duckDBEnumLabels(in: "VARCHAR") == nil)
+    @Test("DuckDB offers the labels its driver read, never a list column's, and never reads the type itself")
+    func duckDBLabelsComeFromTheDriver() async {
+        let source = CatalogColumnSource([
+            "t": [
+                ColumnInfo(
+                    name: "mood", typeName: #"ENUM('C:\temp', '  padded  ')"#, allowedValues: [#"C:\temp"#, "  padded  "]
+                ),
+                ColumnInfo(name: "tags", typeName: "ENUM('a', 'b')[]", allowedValues: ["a", "b"]),
+                ColumnInfo(name: "raw", typeName: "ENUM('x', 'y')")
+            ]
+        ])
+        let catalog = catalog(source, tables: [table("t")], type: .duckdb)
+        let t = [TableReference(tableName: "t", alias: nil)]
+
+        #expect(await catalog.allowedValues(forColumn: "mood", in: t) == [#"C:\temp"#, "  padded  "])
+        #expect(await catalog.allowedValues(forColumn: "tags", in: t).isEmpty)
+        #expect(await catalog.allowedValues(forColumn: "raw", in: t).isEmpty)
+    }
+
+    @Test("a ClickHouse enum's labels reach value completion through the plugin driver")
+    func clickHouseLabelsThroughThePluginDriver() async {
+        let plugin = StubPluginDriver()
+        plugin.scriptedColumns = [
+            PluginColumnInfo(name: "id", dataType: "UInt32", isNullable: false),
+            PluginColumnInfo(name: "status", dataType: "Enum8('new' = 1, 'paid' = 2)", allowedValues: ["new", "paid"])
+        ]
+        let driver = PluginBackedDriver(plugin: plugin, dialedHosts: [], readsOnly: { _ in true })
+        let catalog = QueryCompletionCatalog(
+            tables: [table("t")], databaseType: .clickhouse, schema: nil,
+            readColumns: { table, schema in try await driver.fetchColumns(table: table, schema: schema) }
+        )
+
+        #expect(await catalog.allowedValues(forColumn: "status", in: [TableReference(tableName: "t", alias: nil)])
+            == ["new", "paid"])
     }
 
     @Test("enum values of a table named in the statement are read when no columns are cached yet")

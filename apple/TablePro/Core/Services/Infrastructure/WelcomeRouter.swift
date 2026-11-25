@@ -32,7 +32,7 @@ internal enum WelcomeRequest {
     case importFromAWS
     case importFromURL
     case openProjectFolder
-    case showWelcomeSheet
+    case importHandoff(ImportHandoff)
 }
 
 @MainActor
@@ -100,6 +100,12 @@ internal final class WelcomeRouter: ObservableObject {
         guard !pendingSharedQueries.isEmpty else { return }
         let queries = consumePendingSharedQueries()
         pendingSharedQueries = queries.filter { !TabRouter.shared.openSharedQuery($0) }
+    }
+
+    // Work a launch intent or a menu command left for Welcome; the setup guide stays out of its way.
+    internal var hasPendingWork: Bool {
+        pendingRequest != nil || pendingImport != nil || pendingConnectionShare != nil || pendingError != nil
+            || pendingPluginInstall != nil || !pendingSQLFiles.isEmpty || !pendingSharedQueries.isEmpty
     }
 
     internal func route(_ request: WelcomeRequest) {

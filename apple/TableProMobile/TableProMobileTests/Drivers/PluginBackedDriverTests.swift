@@ -333,4 +333,20 @@ struct PluginBackedDriverTests {
         #expect(columns.map(\.ordinalPosition) == [0, 1])
         #expect(columns.map(\.isPrimaryKey) == [true, false])
     }
+
+    @Test("Catalog columns keep the plugin's enum labels, and only an always identity refuses written values")
+    func columnsKeepLabelsAndIdentityKind() async throws {
+        let plugin = StubPluginDriver()
+        plugin.scriptedColumns = [
+            PluginColumnInfo(name: "ID", dataType: "NUMBER", isNullable: false, identityKind: .always),
+            PluginColumnInfo(name: "SEQ", dataType: "NUMBER", isNullable: false, identityKind: .byDefault),
+            PluginColumnInfo(name: "status", dataType: "Enum8('new' = 1, 'paid' = 2)", allowedValues: ["new", "paid"])
+        ]
+
+        let columns = try await makeDriver(plugin).fetchColumns(table: "events", schema: nil)
+
+        #expect(columns.map(\.rejectsWrittenValues) == [true, false, false])
+        #expect(columns.map(\.isServerOwned) == [true, false, false])
+        #expect(columns.map(\.allowedValues) == [nil, nil, ["new", "paid"]])
+    }
 }

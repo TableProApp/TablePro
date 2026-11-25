@@ -10,6 +10,7 @@ publish.workspace = true
 fakes = []
 
 [dependencies]
+tablepro-cloud-api.workspace = true
 tablepro-core.workspace = true
 tablepro-storage.workspace = true
 async-trait.workspace = true
@@ -26,9 +27,6 @@ jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_
 # Its own reqwest 0.12 stays off: requests go through the workspace's
 # reqwest, with redirects off.
 oauth2 = { version = "5.0.0", default-features = false }
-progenitor-client = "0.15.1"
-# The generated client checks the document's string patterns with it.
-regress = "0.12.0"
 reqwest.workspace = true
 secrecy.workspace = true
 serde.workspace = true
@@ -38,11 +36,6 @@ tokio = { workspace = true, features = ["fs", "rt"] }
 tracing.workspace = true
 url.workspace = true
 
-[build-dependencies]
-openapiv3 = "2.2"
-progenitor = { version = "0.15.1", default-features = false }
-serde_json.workspace = true
-
 [dev-dependencies]
 getrandom = "0.3"
 tempfile.workspace = true
@@ -50,7 +43,3 @@ tokio = { workspace = true, features = ["rt", "test-util"] }
 
 [lints]
 workspace = true
-
-# Only the v2 client build.rs generates into OUT_DIR uses it, and shear does not read that.
-[package.metadata.cargo-shear]
-ignored = ["regress"]

@@ -84,6 +84,12 @@ public sealed record AppSettings
     // Vim's modes and keys in the SQL editor, off as on macOS.
     public bool VimMode { get; set; }
 
+    // A preset id from the core's keymaps.json; null keeps TablePro's own keys.
+    public string? ShortcutPreset { get; set; }
+
+    // Kept on this device only, so another device with an empty library still shows the guide (core 0057).
+    public bool SetupGuideSeen { get; set; }
+
     // A color scheme's id; null keeps the editor's default colors.
     public string? EditorLightScheme { get; set; }
 
@@ -197,6 +203,7 @@ public sealed record AppSettings
         EditorFontFamily = string.IsNullOrWhiteSpace(EditorFontFamily) ? null : EditorFontFamily.Trim(),
         EditorLightScheme = string.IsNullOrWhiteSpace(EditorLightScheme) ? null : EditorLightScheme.Trim(),
         EditorDarkScheme = string.IsNullOrWhiteSpace(EditorDarkScheme) ? null : EditorDarkScheme.Trim(),
+        ShortcutPreset = string.IsNullOrWhiteSpace(ShortcutPreset) ? null : ShortcutPreset.Trim(),
         GridFontFamily = string.IsNullOrWhiteSpace(GridFontFamily) ? null : GridFontFamily.Trim(),
         GridFontSize = double.IsFinite(GridFontSize) ? Math.Clamp(GridFontSize, 8, 36) : DefaultGridFontSize,
         NullDisplay = string.IsNullOrEmpty(NullDisplay)

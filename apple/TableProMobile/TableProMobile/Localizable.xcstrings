@@ -1234,6 +1234,9 @@
     "%d line(s) printed" : {
 
     },
+    "%d passwords could not be kept in the Keychain." : {
+
+    },
     "%d row(s) affected" : {
       "localizations" : {
         "ko" : {
@@ -1606,6 +1609,9 @@
     "1 key" : {
 
     },
+    "1 password could not be kept in the Keychain." : {
+
+    },
     "1 row" : {
       "localizations" : {
         "ko" : {
@@ -1653,6 +1659,9 @@
 
     },
     "60 seconds" : {
+
+    },
+    "A .tablepro file from AirDrop, Files, or Mail." : {
 
     },
     "A check constraint of %@ is not one SQL expression, so it cannot be written." : {
@@ -4220,6 +4229,12 @@
     "BRIN indexes need PostgreSQL 9.5 or later." : {
 
     },
+    "Bring Your Connections" : {
+
+    },
+    "Bring your connections, or start with a new one." : {
+
+    },
     "Broadcast" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -6489,6 +6504,9 @@
           }
         }
       }
+    },
+    "Connections from TablePro on your Mac appear here." : {
+
     },
     "Connections from your other devices appear here." : {
       "localizations" : {
@@ -9608,6 +9626,9 @@
       }
     },
     "Enter the RDS Endpoint in this connection's Authentication section." : {
+
+    },
+    "Enter the server details yourself." : {
 
     },
     "Enter the server's https address, such as https://tablepro.example.com." : {
@@ -21787,6 +21808,9 @@
         }
       }
     },
+    "Setup Guide" : {
+
+    },
     "Shadows the SQL keyword '%@'" : {
       "localizations" : {
         "ko" : {
@@ -23151,6 +23175,9 @@
     "Star of Life" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Start Fresh" : {
+
     },
     "Start URL" : {
 
@@ -30664,6 +30691,9 @@
           }
         }
       }
+    },
+    "Using another app? Import its connections in TablePro on your Mac, then sync them here with iCloud." : {
+
     },
     "UTF-8 via Latin 1" : {
       "localizations" : {

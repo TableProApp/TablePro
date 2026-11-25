@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use async_trait::async_trait;
@@ -10,10 +10,10 @@ use url::Url;
 
 use super::company_tests::{Items, LICENSED, company, managed, settings};
 use super::tests::{
-    ACCOUNT, Asked, Keyring, TOKENS, asked, cloud_with_bodies, device_answer, form, keep, machine, signed_in, stored,
-    stub_settings,
+    ACCOUNT, Asked, Keyring, OTHER_ACCOUNT, TOKENS, asked, cloud_with_bodies, device_answer, form, keep, machine,
+    signed_in, stored, stub_settings,
 };
-use super::{Account, AccountHosts, SignOutCause};
+use super::{AccessToken, Account, AccountHosts, SignOutCause};
 use crate::account_error::AccountError;
 use crate::account_file::{self, AccountFile};
 use crate::account_settings::{AccountSettings, AppClient, Endpoints, SignInKey};
@@ -23,6 +23,7 @@ use crate::fakes;
 use crate::server::ServerError;
 
 const DEVICE: &str = "dev_01k8d6wpggfd68tbhz818p4ww4";
+const OTHER_DEVICE: &str = "dev_01k8d6wpggfd68tbhz818p4zzz";
 
 // The URL the platform's session comes back with, from the page it opened.
 type Answer = fn(&Url) -> Result<Url, WebAuthenticationError>;
@@ -773,6 +774,104 @@ async fn each_sign_in_has_its_own_session_id_which_every_bearer_carries_and_a_si
     assert_eq!(first.len(), 32);
     assert_ne!(first, second, "a new sign-in of the same account is another session");
     assert!(matches!(&*account.status().borrow(), AccountStatus::SignedOut));
+}
+
+// tablepro.app for two accounts, each on a device of its own. The license key that signed in last says which one every
+// later request is of.
+fn two_accounts_stub() -> Endpoints {
+    let current = Arc::new(StdMutex::new((ACCOUNT, DEVICE)));
+    cloud_with_bodies(move |method, path, body| {
+        let mut current = current.lock().expect("the account signed in");
+        match form(body).get("subject_token").map(String::as_str) {
+            Some("TP-KEY-OTHER") => *current = (OTHER_ACCOUNT, OTHER_DEVICE),
+            Some(_) => *current = (ACCOUNT, DEVICE),
+            None => {}
+        }
+        let (account, device) = *current;
+        match (method, path) {
+            ("POST", "/oauth/token") => (
+                200,
+                "",
+                format!(
+                    r#"{{"access_token":"access-{device}","token_type":"Bearer","expires_in":900,"refresh_token":"refresh-{device}"}}"#
+                ),
+            ),
+            ("POST", "/oauth/revoke") => (200, "", String::new()),
+            ("POST", "/v2/devices") => (200, "", device_answer().replace(DEVICE, device)),
+            ("POST", p) if p == format!("/v2/devices/{device}/entitlement") => {
+                let mut claims = fakes::claims(Utc::now(), TimeDelta::days(14), &["team_library"]);
+                (claims.sub, claims.dev, claims.mid) =
+                    (account.to_owned(), device.to_owned(), machine().as_str().to_owned());
+                let token = fakes::sign(&claims).expect("a token");
+                (
+                    200,
+                    "",
+                    format!(
+                        r#"{{"token":"{token}","expires_at":"2026-12-01T00:00:00Z","refresh_after":"2026-11-20T00:00:00Z"}}"#
+                    ),
+                )
+            }
+            _ => (404, "", String::new()),
+        }
+    })
+}
+
+// A caller such as sync keys what it keeps by the account and device a bearer is of, so a switch to another account
+// must never hand it one sign-in's token with another's ids.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn every_bearer_names_the_account_device_and_session_of_its_own_sign_in_across_a_switch() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let account = mac(dir.path(), two_accounts_stub(), Keyring::holding(None), None);
+    account
+        .use_license_key(&SecretString::from("TP-KEY-1234"))
+        .await
+        .expect("signed in");
+    let first = account.access_token().await.expect("a bearer");
+    let switched = Arc::new(AtomicBool::new(false));
+    let reader = tokio::spawn({
+        let (account, switched) = (account.clone(), switched.clone());
+        async move {
+            let mut read = Vec::new();
+            while !switched.load(Ordering::SeqCst) {
+                read.push(account.access_token().await.expect("a bearer"));
+                tokio::task::yield_now().await;
+            }
+            read
+        }
+    });
+
+    account
+        .use_license_key(&SecretString::from("TP-KEY-OTHER"))
+        .await
+        .expect("signed in to the other account");
+    switched.store(true, Ordering::SeqCst);
+    let mut read = reader.await.expect("the reader");
+    read.push(account.access_token().await.expect("a bearer"));
+
+    let last: &AccessToken = read.last().expect("a bearer");
+    assert_eq!(
+        (first.account_id.as_deref(), first.device_id.as_deref()),
+        (Some(ACCOUNT), Some(DEVICE))
+    );
+    assert_eq!(
+        (last.account_id.as_deref(), last.device_id.as_deref()),
+        (Some(OTHER_ACCOUNT), Some(OTHER_DEVICE))
+    );
+    assert_ne!(first.session_id, last.session_id);
+    for bearer in read.iter().chain([&first]) {
+        let (owner, session) = match bearer.device_id.as_deref() {
+            Some(DEVICE) => (ACCOUNT, &first.session_id),
+            Some(OTHER_DEVICE) => (OTHER_ACCOUNT, &last.session_id),
+            other => panic!("a device no sign-in registered: {other:?}"),
+        };
+        let device = bearer.device_id.as_deref().unwrap_or_default();
+        assert_eq!(bearer.token.expose_secret(), format!("access-{device}"));
+        assert_eq!(
+            (bearer.account_id.as_deref(), &bearer.session_id),
+            (Some(owner), session)
+        );
+        assert_eq!(bearer.origin, account.server().api_origin);
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

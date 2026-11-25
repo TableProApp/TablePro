@@ -111,7 +111,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 
 - Team plaintext records, as far as the account's seat and role allow.
 - **Genesis** on an account with no keys yet is trust on first use. An attacker who gets there first owns that identity. The person's own genesis fails, and the account comes back through a reset.
-- **A reset.** An attacker who also passes the step-up, a passkey the server holds or on the SaaS a code it emails, can start one. The honest server holds it 7 days, every device and the portal show it, the SaaS emails, and any certified device or the recovery key cancels it. If nobody cancels it in that time, it applies, whether or not the person still has the recovery key: the person's other devices are removed, and teammates see an alert. A kind 3 reset, which runs whatever device rows remain, also deletes the personal and history records.
+- **A reset.** An attacker who also passes the step-up, a passkey the server holds or on the SaaS a code it emails, can start one. Before a person's first passkey, a self-hosted step-up is only as strong as the IdP: an attacker with the IdP sign-in binds the first passkey, which then counts as the step-up. The honest server holds it 7 days, every device and the portal show it, the SaaS emails, and any certified device or the recovery key cancels it. If nobody cancels it in that time, its proposing device can activate it within the next 7 days, whether or not the person still has the recovery key. Once activated, the person's other devices are removed, and teammates see an alert. A kind 3 reset, which runs whatever device rows remain, also deletes the personal and history records.
 
 ## A lost or stolen device
 
@@ -154,7 +154,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 - A device refuses an older certificate, version record or identity key as current, and an envelope below the copy it holds; older objects still verify history. At an anchored scope key version it takes only the record the anchor names.
 - In a pull, which serves changes in revision order, a new or changed envelope counts only under the scope's newest version at its place in that order, the rule the honest server writes by. An offline device catches up on writes made before a rotation and refuses ones slipped in after it.
 - A restored state file cannot forget a newer version or an alert while its anchor survives.
-- A device approved by another starts from that device's pins, open alerts and versions, and keeps what it already held when that is newer.
+- A device approved by another starts from that device's pins, open alerts and versions for what it does not hold yet. A team key version it holds moves only through its own checks, never through an approver's view, and its current personal and history keys are the versions signed under the account's current key version, so a higher one signed under an older account key never comes back through an approval.
 
 **What does not hold.**
 
@@ -196,13 +196,13 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 On 2026-11-25 the maintainer accepted risks 2, 3, 5, 6 and 9, which the vault model leaves open as 1Password and Bitwarden do. No step waits for every member to acknowledge a removal; the honest server's `rotation_due` holds team envelopes only until the next team version. The same day he accepted, under risk 2, that a member a stolen admin device confirmed can still be shown to other teammates.
 
 1. **Trust on first use** at a genesis, for a team's creator, for each member an admin confirms without comparing, for teammates on a device recovered with the recovery key, and for a re-confirmation after a reset.
-2. **Withholding and split views** go undetected until devices or people compare. A server that withholds a member's rotation from a teammate gets the next team key wrapped to the member's old key, which a stolen device of that member opens. The member's app raises an alarm if that wrap reaches it, which does not stop the split. The same server can keep showing teammates a member that a stolen device confirmed and the person removed.
+2. **Withholding and split views** go undetected until devices or people compare. A server that withholds a member's rotation from a teammate gets the next team key wrapped to the member's old key, which a stolen device of that member opens. The member's app raises an alarm if that wrap reaches it, which does not stop the split. The same server can keep showing teammates a member that a stolen device confirmed and the person removed. Its own-account form: before any approval, a device of the person that the server keeps on the old account key version writes personal secrets and history under keys the removed device holds.
 3. **A removed member with the server's help** can sign a new team key version, since it holds the previous one, and show it to members whose view missed the removal.
 4. **A stolen device before the recovery key is typed** can be given new data by a compromised server.
 5. **A confirmed member with the server's help** can replace a team secret's value.
 6. **Rollback within a version,** and records a removed device with the server's help plants under a version it held: in a snapshot, which the server can force, and in history.
 7. **Full rollback** for a state file restored with its anchor. A restored state file, with its anchor or without it, can also bring back history the person deleted, since deleted history ids live in the file and not in the anchor (0054). These are limits of local state, not among the risks accepted above.
-8. **A reset** by someone who passes the person's sign-in and step-up succeeds if nobody cancels it for 7 days. Teammates see an alert.
+8. **A reset** by someone who passes the person's sign-in and step-up can be activated by its proposing device if nobody cancels it for 7 days. On a self-hosted install, before the person's first passkey, the IdP sign-in alone is enough to bind one. Teammates see an alert.
 9. **An exposed recovery key after a replace.** With the server's help, its holder can keep a device or a teammate that never saw the replace on the old identity, a split view.
 10. **A person who confirms without reading** approves whatever is on the other screen.
 11. **Plaintext records and metadata** are readable by the operator.

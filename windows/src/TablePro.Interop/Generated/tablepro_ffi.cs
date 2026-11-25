@@ -1505,6 +1505,10 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2266,7 +2270,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_core_foreign_sources(ulong @ptr,RustBuffer @dirs
+     ulong uniffi_tablepro_ffi_fn_method_core_foreign_sources(ulong @ptr,RustBuffer @dirs,RustBuffer @depth
     );
 
     #if NET8_0_OR_GREATER
@@ -4686,6 +4690,28 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_keymap_preset(RustBuffer @id,RustBuffer @platform,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_func_keymap_presets(RustBuffer @platform,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      void uniffi_tablepro_ffi_fn_func_check_jump_hosts(RustBuffer @list,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -5435,6 +5461,28 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_func_parse_connection_url(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_keymap_preset(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_func_keymap_presets(
     );
 
     #if NET8_0_OR_GREATER
@@ -8176,6 +8224,18 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_keymap_preset();
+            if (checksum != 61230) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_keymap_preset` checksum `61230`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_keymap_presets();
+            if (checksum != 36740) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_keymap_presets` checksum `36740`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_func_check_jump_hosts();
             if (checksum != 27175) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_func_check_jump_hosts` checksum `27175`, library returned `{checksum}`");
@@ -8501,8 +8561,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_foreign_sources();
-            if (checksum != 52035) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_foreign_sources` checksum `52035`, library returned `{checksum}`");
+            if (checksum != 20749) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_foreign_sources` checksum `20749`, library returned `{checksum}`");
             }
         }
         {
@@ -11866,7 +11926,7 @@ internal interface ICore {
     /// <exception cref="CoreException"></exception>
     Task TestConnection(ConnectionRecord @record, ConnectionSecrets @secrets, HostPrompter? @prompter, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
-    Task<ForeignSourceInfo[]> ForeignSources(ForeignAppDirsArg @dirs);
+    Task<ForeignSourceInfo[]> ForeignSources(ForeignAppDirsArg @dirs, ScanDepthTag @depth);
     /// <exception cref="CoreException"></exception>
     Task<ForeignImportReview> ReadForeign(ForeignAppTag @app, ForeignAppDirsArg @dirs, string? @file, ForeignImportRequest @request, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
@@ -12100,11 +12160,11 @@ internal class Core : ICore, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task<ForeignSourceInfo[]> ForeignSources(ForeignAppDirsArg @dirs) {
+    public async Task<ForeignSourceInfo[]> ForeignSources(ForeignAppDirsArg @dirs, ScanDepthTag @depth) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_foreign_sources(thisPtr, FfiConverterTypeForeignAppDirsArg.INSTANCE.Lower(@dirs));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_foreign_sources(thisPtr, FfiConverterTypeForeignAppDirsArg.INSTANCE.Lower(@dirs), FfiConverterTypeScanDepthTag.INSTANCE.Lower(@depth));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
@@ -18643,6 +18703,7 @@ class FfiConverterTypeForeignImportChoices: FfiConverterRustBuffer<ForeignImport
 
 
 internal record ForeignImportOutcome (
+    string[] ConnectionIds, 
     uint Connections, 
     uint Replaced, 
     uint PasswordsNotKept, 
@@ -18657,6 +18718,7 @@ class FfiConverterTypeForeignImportOutcome: FfiConverterRustBuffer<ForeignImport
 
     public override ForeignImportOutcome Read(BigEndianStream stream) {
         return new ForeignImportOutcome(
+            ConnectionIds: FfiConverterSequenceString.INSTANCE.Read(stream),
             Connections: FfiConverterUInt32.INSTANCE.Read(stream),
             Replaced: FfiConverterUInt32.INSTANCE.Read(stream),
             PasswordsNotKept: FfiConverterUInt32.INSTANCE.Read(stream),
@@ -18668,6 +18730,7 @@ class FfiConverterTypeForeignImportOutcome: FfiConverterRustBuffer<ForeignImport
 
     public override int AllocationSize(ForeignImportOutcome value) {
         return 0
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.ConnectionIds)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.Connections)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.Replaced)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.PasswordsNotKept)
@@ -18677,6 +18740,7 @@ class FfiConverterTypeForeignImportOutcome: FfiConverterRustBuffer<ForeignImport
     }
 
     public override void Write(ForeignImportOutcome value, BigEndianStream stream) {
+            FfiConverterSequenceString.INSTANCE.Write(value.ConnectionIds, stream);
             FfiConverterUInt32.INSTANCE.Write(value.Connections, stream);
             FfiConverterUInt32.INSTANCE.Write(value.Replaced, stream);
             FfiConverterUInt32.INSTANCE.Write(value.PasswordsNotKept, stream);
@@ -18797,12 +18861,16 @@ class FfiConverterTypeForeignQueryRow: FfiConverterRustBuffer<ForeignQueryRow> {
 internal record ForeignSourceInfo (
     ForeignAppTag App, 
     string Name, 
-    bool Available, 
+    SourceAvailabilityTag Availability, 
     ulong Connections, 
     ulong SavedQueries, 
     string[] FileExtensions, 
     PasswordSourceTag Passwords, 
-    SavedQuerySupportTag SavedQuerySupport
+    SavedQuerySupportTag SavedQuerySupport, 
+    PasswordOfferTag PasswordOffer, 
+    bool OffersSavedQueries, 
+    bool StartsTicked, 
+    bool Preselected
 ) {
 }
 
@@ -18813,12 +18881,16 @@ class FfiConverterTypeForeignSourceInfo: FfiConverterRustBuffer<ForeignSourceInf
         return new ForeignSourceInfo(
             App: FfiConverterTypeForeignAppTag.INSTANCE.Read(stream),
             Name: FfiConverterString.INSTANCE.Read(stream),
-            Available: FfiConverterBoolean.INSTANCE.Read(stream),
+            Availability: FfiConverterTypeSourceAvailabilityTag.INSTANCE.Read(stream),
             Connections: FfiConverterUInt64.INSTANCE.Read(stream),
             SavedQueries: FfiConverterUInt64.INSTANCE.Read(stream),
             FileExtensions: FfiConverterSequenceString.INSTANCE.Read(stream),
             Passwords: FfiConverterTypePasswordSourceTag.INSTANCE.Read(stream),
-            SavedQuerySupport: FfiConverterTypeSavedQuerySupportTag.INSTANCE.Read(stream)
+            SavedQuerySupport: FfiConverterTypeSavedQuerySupportTag.INSTANCE.Read(stream),
+            PasswordOffer: FfiConverterTypePasswordOfferTag.INSTANCE.Read(stream),
+            OffersSavedQueries: FfiConverterBoolean.INSTANCE.Read(stream),
+            StartsTicked: FfiConverterBoolean.INSTANCE.Read(stream),
+            Preselected: FfiConverterBoolean.INSTANCE.Read(stream)
         );
     }
 
@@ -18826,23 +18898,31 @@ class FfiConverterTypeForeignSourceInfo: FfiConverterRustBuffer<ForeignSourceInf
         return 0
             + FfiConverterTypeForeignAppTag.INSTANCE.AllocationSize(value.App)
             + FfiConverterString.INSTANCE.AllocationSize(value.Name)
-            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Available)
+            + FfiConverterTypeSourceAvailabilityTag.INSTANCE.AllocationSize(value.Availability)
             + FfiConverterUInt64.INSTANCE.AllocationSize(value.Connections)
             + FfiConverterUInt64.INSTANCE.AllocationSize(value.SavedQueries)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.FileExtensions)
             + FfiConverterTypePasswordSourceTag.INSTANCE.AllocationSize(value.Passwords)
-            + FfiConverterTypeSavedQuerySupportTag.INSTANCE.AllocationSize(value.SavedQuerySupport);
+            + FfiConverterTypeSavedQuerySupportTag.INSTANCE.AllocationSize(value.SavedQuerySupport)
+            + FfiConverterTypePasswordOfferTag.INSTANCE.AllocationSize(value.PasswordOffer)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.OffersSavedQueries)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.StartsTicked)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Preselected);
     }
 
     public override void Write(ForeignSourceInfo value, BigEndianStream stream) {
             FfiConverterTypeForeignAppTag.INSTANCE.Write(value.App, stream);
             FfiConverterString.INSTANCE.Write(value.Name, stream);
-            FfiConverterBoolean.INSTANCE.Write(value.Available, stream);
+            FfiConverterTypeSourceAvailabilityTag.INSTANCE.Write(value.Availability, stream);
             FfiConverterUInt64.INSTANCE.Write(value.Connections, stream);
             FfiConverterUInt64.INSTANCE.Write(value.SavedQueries, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.FileExtensions, stream);
             FfiConverterTypePasswordSourceTag.INSTANCE.Write(value.Passwords, stream);
             FfiConverterTypeSavedQuerySupportTag.INSTANCE.Write(value.SavedQuerySupport, stream);
+            FfiConverterTypePasswordOfferTag.INSTANCE.Write(value.PasswordOffer, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.OffersSavedQueries, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.StartsTicked, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Preselected, stream);
     }
 }
 
@@ -19221,7 +19301,8 @@ class FfiConverterTypeImportColumnInfo: FfiConverterRustBuffer<ImportColumnInfo>
 
 internal record ImportSummary (
     uint Added, 
-    uint Updated
+    uint Updated, 
+    string[] ConnectionIds
 ) {
 }
 
@@ -19231,19 +19312,22 @@ class FfiConverterTypeImportSummary: FfiConverterRustBuffer<ImportSummary> {
     public override ImportSummary Read(BigEndianStream stream) {
         return new ImportSummary(
             Added: FfiConverterUInt32.INSTANCE.Read(stream),
-            Updated: FfiConverterUInt32.INSTANCE.Read(stream)
+            Updated: FfiConverterUInt32.INSTANCE.Read(stream),
+            ConnectionIds: FfiConverterSequenceString.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(ImportSummary value) {
         return 0
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.Added)
-            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Updated);
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Updated)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.ConnectionIds);
     }
 
     public override void Write(ImportSummary value, BigEndianStream stream) {
             FfiConverterUInt32.INSTANCE.Write(value.Added, stream);
             FfiConverterUInt32.INSTANCE.Write(value.Updated, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.ConnectionIds, stream);
     }
 }
 
@@ -19298,6 +19382,86 @@ class FfiConverterTypeKeyWindowInfo: FfiConverterRustBuffer<KeyWindowInfo> {
             FfiConverterBoolean.INSTANCE.Write(value.HasMore, stream);
             FfiConverterBoolean.INSTANCE.Write(value.Truncated, stream);
             FfiConverterBoolean.INSTANCE.Write(value.Restarted, stream);
+    }
+}
+
+
+
+internal record KeymapBindingInfo (
+    string Action, 
+    string Key, 
+    bool Ctrl, 
+    bool Shift, 
+    bool Alt, 
+    bool Cmd, 
+    bool Derived
+) {
+}
+
+class FfiConverterTypeKeymapBindingInfo: FfiConverterRustBuffer<KeymapBindingInfo> {
+    public static FfiConverterTypeKeymapBindingInfo INSTANCE = new FfiConverterTypeKeymapBindingInfo();
+
+    public override KeymapBindingInfo Read(BigEndianStream stream) {
+        return new KeymapBindingInfo(
+            Action: FfiConverterString.INSTANCE.Read(stream),
+            Key: FfiConverterString.INSTANCE.Read(stream),
+            Ctrl: FfiConverterBoolean.INSTANCE.Read(stream),
+            Shift: FfiConverterBoolean.INSTANCE.Read(stream),
+            Alt: FfiConverterBoolean.INSTANCE.Read(stream),
+            Cmd: FfiConverterBoolean.INSTANCE.Read(stream),
+            Derived: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(KeymapBindingInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Action)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Key)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Ctrl)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Shift)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Alt)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Cmd)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Derived);
+    }
+
+    public override void Write(KeymapBindingInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Action, stream);
+            FfiConverterString.INSTANCE.Write(value.Key, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Ctrl, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Shift, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Alt, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Cmd, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Derived, stream);
+    }
+}
+
+
+
+internal record KeymapPresetInfo (
+    string Id, 
+    string Name
+) {
+}
+
+class FfiConverterTypeKeymapPresetInfo: FfiConverterRustBuffer<KeymapPresetInfo> {
+    public static FfiConverterTypeKeymapPresetInfo INSTANCE = new FfiConverterTypeKeymapPresetInfo();
+
+    public override KeymapPresetInfo Read(BigEndianStream stream) {
+        return new KeymapPresetInfo(
+            Id: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(KeymapPresetInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name);
+    }
+
+    public override void Write(KeymapPresetInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
     }
 }
 
@@ -24166,6 +24330,45 @@ class FfiConverterTypeKeyTtlTag : FfiConverterRustBuffer<KeyTtlTag>{
 
 
 
+internal enum KeymapPlatformTag: int {
+    MacOs,
+    Linux,
+    Windows
+}
+
+class FfiConverterTypeKeymapPlatformTag: FfiConverterRustBuffer<KeymapPlatformTag> {
+    public static FfiConverterTypeKeymapPlatformTag INSTANCE = new FfiConverterTypeKeymapPlatformTag();
+
+    public override KeymapPlatformTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return KeymapPlatformTag.MacOs;
+            case 2: return KeymapPlatformTag.Linux;
+            case 3: return KeymapPlatformTag.Windows;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeKeymapPlatformTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(KeymapPlatformTag value) {
+        return 4;
+    }
+
+    public override void Write(KeymapPlatformTag value, BigEndianStream stream) {
+        switch (value) {
+            case KeymapPlatformTag.MacOs: stream.WriteInt(1); break;
+            case KeymapPlatformTag.Linux: stream.WriteInt(2); break;
+            case KeymapPlatformTag.Windows: stream.WriteInt(3); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeKeymapPlatformTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal enum LicenseStateTag: int {
     Active,
     Grace,
@@ -24617,6 +24820,48 @@ class FfiConverterTypeObjectScopeArg : FfiConverterRustBuffer<ObjectScopeArg>{
                 break;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeObjectScopeArg.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal enum PasswordOfferTag: int {
+    DecryptedWhileReading,
+    PasswordFile,
+    KeyInCredentialManager,
+    SystemStore
+}
+
+class FfiConverterTypePasswordOfferTag: FfiConverterRustBuffer<PasswordOfferTag> {
+    public static FfiConverterTypePasswordOfferTag INSTANCE = new FfiConverterTypePasswordOfferTag();
+
+    public override PasswordOfferTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return PasswordOfferTag.DecryptedWhileReading;
+            case 2: return PasswordOfferTag.PasswordFile;
+            case 3: return PasswordOfferTag.KeyInCredentialManager;
+            case 4: return PasswordOfferTag.SystemStore;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePasswordOfferTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(PasswordOfferTag value) {
+        return 4;
+    }
+
+    public override void Write(PasswordOfferTag value, BigEndianStream stream) {
+        switch (value) {
+            case PasswordOfferTag.DecryptedWhileReading: stream.WriteInt(1); break;
+            case PasswordOfferTag.PasswordFile: stream.WriteInt(2); break;
+            case PasswordOfferTag.KeyInCredentialManager: stream.WriteInt(3); break;
+            case PasswordOfferTag.SystemStore: stream.WriteInt(4); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePasswordOfferTag.Write()", value));
         }
     }
 }
@@ -26350,6 +26595,42 @@ class FfiConverterTypeSavedQuerySupportTag: FfiConverterRustBuffer<SavedQuerySup
 
 
 
+internal enum ScanDepthTag: int {
+    Presence,
+    Inventory
+}
+
+class FfiConverterTypeScanDepthTag: FfiConverterRustBuffer<ScanDepthTag> {
+    public static FfiConverterTypeScanDepthTag INSTANCE = new FfiConverterTypeScanDepthTag();
+
+    public override ScanDepthTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return ScanDepthTag.Presence;
+            case 2: return ScanDepthTag.Inventory;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeScanDepthTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(ScanDepthTag value) {
+        return 4;
+    }
+
+    public override void Write(ScanDepthTag value, BigEndianStream stream) {
+        switch (value) {
+            case ScanDepthTag.Presence: stream.WriteInt(1); break;
+            case ScanDepthTag.Inventory: stream.WriteInt(2); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeScanDepthTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal enum SecretHitKindTag: int {
     AwsAccessKey,
     PrivateKey,
@@ -27001,6 +27282,85 @@ class FfiConverterTypeSignOutCauseTag: FfiConverterRustBuffer<SignOutCauseTag> {
             case SignOutCauseTag.DeviceRevoked: stream.WriteInt(3); break;
             case SignOutCauseTag.ServerChanged: stream.WriteInt(4); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSignOutCauseTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record SourceAvailabilityTag {
+    
+    public record Available: SourceAvailabilityTag {}
+    
+    
+    public record NotFound: SourceAvailabilityTag {}
+    
+    
+    public record Unreadable (
+        string Code,
+        string Detail
+    ) : SourceAvailabilityTag {}
+    
+
+    
+}
+
+class FfiConverterTypeSourceAvailabilityTag : FfiConverterRustBuffer<SourceAvailabilityTag>{
+    public static FfiConverterRustBuffer<SourceAvailabilityTag> INSTANCE = new FfiConverterTypeSourceAvailabilityTag();
+
+    public override SourceAvailabilityTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new SourceAvailabilityTag.Available(
+                );
+            case 2:
+                return new SourceAvailabilityTag.NotFound(
+                );
+            case 3:
+                return new SourceAvailabilityTag.Unreadable(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSourceAvailabilityTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(SourceAvailabilityTag value) {
+        switch (value) {
+            case SourceAvailabilityTag.Available variant_value:
+                return 4;
+            case SourceAvailabilityTag.NotFound variant_value:
+                return 4;
+            case SourceAvailabilityTag.Unreadable variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Code)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Detail);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSourceAvailabilityTag.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(SourceAvailabilityTag value, BigEndianStream stream) {
+        switch (value) {
+            case SourceAvailabilityTag.Available variant_value:
+                stream.WriteInt(1);
+                break;
+            case SourceAvailabilityTag.NotFound variant_value:
+                stream.WriteInt(2);
+                break;
+            case SourceAvailabilityTag.Unreadable variant_value:
+                stream.WriteInt(3);
+                FfiConverterString.INSTANCE.Write(variant_value.Code, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Detail, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSourceAvailabilityTag.Write()", value));
         }
     }
 }
@@ -31785,6 +32145,98 @@ class FfiConverterSequenceTypeImportColumnInfo: FfiConverterRustBuffer<ImportCol
 
 
 
+class FfiConverterSequenceTypeKeymapBindingInfo: FfiConverterRustBuffer<KeymapBindingInfo[]> {
+    public static FfiConverterSequenceTypeKeymapBindingInfo INSTANCE = new FfiConverterSequenceTypeKeymapBindingInfo();
+
+    public override KeymapBindingInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new KeymapBindingInfo[length];
+        var readFn = FfiConverterTypeKeymapBindingInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(KeymapBindingInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeKeymapBindingInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(KeymapBindingInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeKeymapBindingInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeKeymapPresetInfo: FfiConverterRustBuffer<KeymapPresetInfo[]> {
+    public static FfiConverterSequenceTypeKeymapPresetInfo INSTANCE = new FfiConverterSequenceTypeKeymapPresetInfo();
+
+    public override KeymapPresetInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new KeymapPresetInfo[length];
+        var readFn = FfiConverterTypeKeymapPresetInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(KeymapPresetInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeKeymapPresetInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(KeymapPresetInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeKeymapPresetInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeLicenseInfo: FfiConverterRustBuffer<LicenseInfo[]> {
     public static FfiConverterSequenceTypeLicenseInfo INSTANCE = new FfiConverterSequenceTypeLicenseInfo();
 
@@ -33736,6 +34188,24 @@ internal static class CoreMethods {
         return FfiConverterTypeParsedConnectionUrl.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_func_parse_connection_url(FfiConverterTypeSecretString.INSTANCE.Lower(@url), ref _status)
+));
+    }
+
+
+    /// <exception cref="CoreException"></exception>
+    public static KeymapBindingInfo[] KeymapPreset(string @id, KeymapPlatformTag @platform) {
+        return FfiConverterSequenceTypeKeymapBindingInfo.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_keymap_preset(FfiConverterString.INSTANCE.Lower(@id), FfiConverterTypeKeymapPlatformTag.INSTANCE.Lower(@platform), ref _status)
+));
+    }
+
+
+    /// <exception cref="CoreException"></exception>
+    public static KeymapPresetInfo[] KeymapPresets(KeymapPlatformTag @platform) {
+        return FfiConverterSequenceTypeKeymapPresetInfo.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_func_keymap_presets(FfiConverterTypeKeymapPlatformTag.INSTANCE.Lower(@platform), ref _status)
 ));
     }
 

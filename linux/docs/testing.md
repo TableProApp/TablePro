@@ -329,13 +329,13 @@ The MongoDB seed-list and replica-set tests also need public DNS and host port 2
 
 ### Files from tablepro-cloud
 
-`core/crates/account` keeps copies of three tablepro-cloud files: `openapi/v2.openapi-3.0.json`, the `/v2` document `build.rs` generates the client from, and `tests/data/entitlement_vectors.json` and `tests/data/license_vectors.json`, the vectors the entitlement and license checks run against. tablepro-cloud is private and CI cannot reach it, so they are copies, never links. From `linux/`, refresh them from a tablepro-cloud checkout:
+The core keeps copies of three tablepro-cloud files: `core/crates/cloud-api/openapi/v2.openapi-3.0.json`, the `/v2` document its `build.rs` generates the client from, and `core/crates/account/tests/data/entitlement_vectors.json` and `license_vectors.json`, the vectors the entitlement and license checks run against. tablepro-cloud is private and CI cannot reach it, so they are copies, never links. From the repository root, refresh them from a tablepro-cloud checkout:
 
 ```bash
-build-aux/update-cloud-api.sh ~/src/tablepro-cloud   # without an argument, the checkout beside this repository
+core/scripts/update-cloud-api.sh ~/src/tablepro-cloud   # without an argument, the checkout beside this repository
 ```
 
-It prints the tablepro-cloud commit, for the commit message. Then build and run `tablepro-account`'s tests, and the stack tests below against a stack of that commit.
+It prints the tablepro-cloud commit, for the commit message. Then build and run the tests of `tablepro-cloud-api` and `tablepro-account`, and the stack tests below against a stack of that commit.
 
 ### tablepro-cloud stack
 

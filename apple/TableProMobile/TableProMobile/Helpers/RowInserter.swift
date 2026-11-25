@@ -27,7 +27,7 @@ nonisolated enum RowInsertPlanner {
                 driver: driver,
                 columns: values.map(\.column),
                 values: values.map(\.value),
-                firstWritableColumn: columns.first { !$0.isServerOwned }?.name
+                firstWritableColumn: columns.defaultsRowColumn
             )
         }
     }

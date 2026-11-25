@@ -35,11 +35,13 @@ Brief note on each alternative and why it lost.
 
 Context, Decision and Consequences are always there. Rationale and Alternatives considered are there when other options were weighed. A section an ADR needs beyond these, such as a matrix or a dated note, comes after them.
 
-The Status is `Accepted`, `Superseded by 000M` or `Deprecated`. A decision for every platform is in `core/docs/decisions/`, and a Status names one of those as `core 000M`. An accepted ADR that a later one changed in part reads `Accepted; <part> superseded by 000M` (replaced) or `amended by 000M` (extended). The `amended <date>` statuses below predate this rule.
+The Status is `Proposed`, `Accepted`, `Superseded by 000M` or `Deprecated`, as in Nygard's original. A Proposed ADR keeps the rest of its Status, such as `Proposed; amends 000M`. A decision for every platform is in `core/docs/decisions/`, and a Status names one of those as `core 000M`. An accepted ADR that a later one changed in part reads `Accepted; <part> superseded by 000M` (replaced) or `amended by 000M` (extended). The `amended <date>` statuses below predate this rule.
 
 ADRs are short on purpose. If yours is more than a page, you are probably arguing instead of recording.
 
 ## Changing a decision
+
+An ADR under a review gate, with no code built on it yet, is `Proposed`, and is amended in place as the review asks. When the gate passes it becomes `Accepted`, and from then on the rule below holds: its only edit is its Status line.
 
 A new ADR supersedes the old one, as in Michael Nygard's [Documenting Architecture Decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions). The new ADR says what it replaces and why. The old ADR's only edit is its Status line, naming the new one, plus the same change to its row in the index. Do not rewrite an old ADR's body to match the current system.
 
@@ -56,7 +58,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0005](0005-supply-chain-policy.md) | Supply-chain policy | Accepted; the MySQL CA bundle's watch list amended by 0037 | Maintained crates first; custom code needs recorded evidence and a removal trigger. |
 | [0006](0006-meson-cargo-build.md) | Meson drives Cargo | Accepted; where the version lives amended by 0017, the release tarball and the place of the Cargo workspace amended by core 0001 | Meson owns install, data files and the build-time config; Cargo stays the Rust compiler. |
 | [0007](0007-gsettings-preferences.md) | Preferences and window geometry in GSettings | Accepted; the schema id and path per profile amended 2026-10-15 | A schema with ranges and enums replaces preferences.json and window.json; keyed data stays in files. |
-| [0008](0008-flatpak-sandbox-permissions.md) | Flatpak sandbox permissions | Accepted; the Flathub submission deferred by 0018; local sockets amended by 0035; Flathub permission review amended by 0041 | Network, display, home and removable drives for SQLite, the SSH agent and the Kerberos KCM socket; portals for the rest; two Flathub lint exceptions. |
+| [0008](0008-flatpak-sandbox-permissions.md) | Flatpak sandbox permissions | Accepted; the Flathub submission deferred by 0018; local sockets amended by 0035; Flathub permission review amended by 0041; other apps' folders under `~/.var/app` amended by 0048 | Network, display, home and removable drives for SQLite, the SSH agent and the Kerberos KCM socket; portals for the rest; two Flathub lint exceptions. |
 | [0009](0009-crypto-provider-and-sources.md) | One crypto provider, upstream sources and dependency bans | Accepted; sources and the PostgreSQL and ClickHouse TLS setup superseded by 0016, the ring ban amended by 0023, the rsa ban amended by core 0008 | aws-lc-rs only; deny.toml enforces sources, licenses, bans and advisory ignores. |
 | [0010](0010-ddl-plans-and-table-definitions.md) | DDL plans against table definitions | Accepted; truncating and schema and database changes amended by core 0013 | Each engine plans structure changes through its `DdlDialect` against the table's definition; the UI offers only what the plan accepts. |
 | [0012](0012-window-per-session.md) | One window per connection session, built from gtk-rs subclasses | Accepted; what a window holds superseded by 0028 | One `TableProApplication` per profile through D-Bus uniqueness; a window holds at most one session and returns to the picker on disconnect; the application, the window and its workspace are subclasses, not Relm4 components. |
@@ -95,6 +97,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0045](0045-command-line-and-connection-urls.md) | The tablepro command line and connection URLs | Accepted; the link schemes amended by 0046 | One binary: `main()` runs a command word through `tablepro-cli` before the GUI starts, everything else reaches GApplication; the desktop entry claims the core parser's URL schemes, registered with the VFS so gvfs keeps the password; a link opens a saved connection after an alert or fills the connect dialog; the command line only reads the MCP token. |
 | [0046](0046-share-links-and-the-tablepro-scheme.md) | Share links from the editor, its results and favorites, and the tablepro scheme | Accepted | Share Query…, Share Result… and a favorite's Share… open one `AdwDialog` sheet over the core's share calls, with the plan's limits, a preview, secret warnings and Pro tags; the desktop entry and the VFS take `tablepro://share`, whose SQL opens in a new editor tab as a SQL file's does, never run. |
 | [0047](0047-wrapped-text-in-the-data-grid.md) | Wrapped text in the data grid, with the height owned by the cell | Accepted | Wrap Text per grid, with a default for new tabs: `GridCell` asks for height-for-width and measures its text up to 10 lines, `GtkInscription` still draws it, and the app normalizes line breaks and writes the cap's ellipsis. |
+| [0048](0048-flatpak-reads-other-apps-folders.md) | The Flatpak build reads the folders of the Flatpak apps it imports from | Accepted | Both manifests grant each `~/.var/app/<id>` the core's importers search, read-only, and a packaging test holds them to the importers. |
 
 0011 is not used. It was reserved for the DDL decision, which was recorded as 0010, and docs cite ADRs by number, so the later ones keep theirs.
 

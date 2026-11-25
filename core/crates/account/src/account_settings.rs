@@ -2,9 +2,9 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use aws_lc_rs::digest;
+use tablepro_cloud_api::v2::types::Platform;
 use url::Url;
 
-use crate::cloud_api::v2::types::Platform;
 use crate::machine_id::MachineId;
 use crate::server::{ServerSettings, origin_text};
 

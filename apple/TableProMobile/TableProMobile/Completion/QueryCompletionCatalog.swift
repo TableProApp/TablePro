@@ -192,7 +192,7 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
         databases.contains { Self.matches($0, name) }
     }
 
-    // Labels the driver read (PostgreSQL), else the ENUM(...) or SET(...) type MySQL and DuckDB spell out.
+    // Labels the driver read, else the ENUM(...) or SET(...) type MySQL spells out.
     func allowedValues(forColumn column: String, in references: [TableReference]) async -> [String] {
         // With no table named, reading every table's columns would cost too much, so only columns already read count.
         guard !references.isEmpty else {
@@ -213,42 +213,12 @@ actor QueryCompletionCatalog: SQLCompletionCatalog {
 
     private func allowedValues(of column: String, in columns: [ColumnInfo]?) -> [String]? {
         guard let match = columns?.first(where: { Self.matches($0.name, column) }) else { return nil }
-        if let values = match.allowedValues, !values.isEmpty { return values }
-        if let values = spelledOutValues(of: match.typeName), !values.isEmpty { return values }
-        return nil
-    }
-
-    private func spelledOutValues(of typeName: String) -> [String]? {
-        // DuckDB spells a list of enum values ENUM(...)[], whose values are not the column's.
-        guard !typeName.hasSuffix("]") else { return nil }
-        guard databaseType == .duckdb else { return EnumValueParser.parseMySQLEnumOrSet(from: typeName) }
-        return Self.duckDBEnumLabels(in: typeName)
-    }
-
-    // DuckDB keeps a label's backslashes and blanks as written and doubles only its quotes.
-    nonisolated static func duckDBEnumLabels(in typeName: String) -> [String]? {
-        guard typeName.uppercased().hasPrefix("ENUM("), typeName.hasSuffix(")") else { return nil }
-        var labels: [String] = []
-        var current = ""
-        var inQuote = false
-        var characters = typeName.dropFirst(5).dropLast()[...]
-        while let character = characters.popFirst() {
-            guard character == "'" else {
-                if inQuote { current.append(character) }
-                continue
-            }
-            if inQuote, characters.first == "'" {
-                current.append("'")
-                characters.removeFirst()
-            } else if inQuote {
-                labels.append(current)
-                current = ""
-                inQuote = false
-            } else {
-                inQuote = true
-            }
-        }
-        return labels.isEmpty ? nil : labels
+        if let read = SQLCompletionValueLabels.values(match.allowedValues, ofColumnType: match.typeName) { return read }
+        // DuckDB's driver reads its own spelling, which keeps backslashes and blanks that MySQL's drops.
+        guard databaseType != .duckdb else { return nil }
+        return SQLCompletionValueLabels.values(
+            EnumValueParser.parseMySQLEnumOrSet(from: match.typeName), ofColumnType: match.typeName
+        )
     }
 
     // A name the server listed, quoted by its own case rules, unlike text the user wrote.
