@@ -3,7 +3,7 @@
 
 use tablepro_keys::body::KeyObject;
 use tablepro_keys::cert::CertKind;
-use tablepro_keys::encoding::{KeyDeviceId, Version};
+use tablepro_keys::encoding::{KeyDeviceId, ResetId, Version};
 use tablepro_keys::keys::{AccountKeys, AccountPublicKeys, DeviceKeys, Ed25519Public, Ed25519Seed, X25519Public};
 use tablepro_keys::recovery::RecoveryKey;
 
@@ -18,6 +18,14 @@ use crate::api::transport::DpopKey;
 pub struct HeldDeviceKeys {
     pub current: Option<DeviceKeys>,
     pub pending: Option<DeviceKeys>,
+}
+
+// A reset this device proposed: the account keys and device keys its proposal certifies, kept until it activates or
+// ends (0054, `key_pending`).
+#[derive(Debug, Clone)]
+pub struct ResetKeys {
+    pub account: AccountKeys,
+    pub device: DeviceKeys,
 }
 
 // This device's own account as its key tables and device store hold it: the newest `av` it verified, the IK it
@@ -84,6 +92,21 @@ impl KeyService {
     pub async fn store_account_keys(&self, av: Version, keys: &AccountKeys) -> Result<(), SyncError> {
         let _ = (av, keys);
         Err(SyncError::unimplemented("keys.store_account_keys"))
+    }
+
+    pub async fn reset_keys(&self, reset: ResetId) -> Result<Option<ResetKeys>, SyncError> {
+        let _ = reset;
+        Err(SyncError::unimplemented("keys.reset_keys"))
+    }
+
+    pub async fn store_reset_keys(&self, reset: ResetId, keys: &ResetKeys) -> Result<(), SyncError> {
+        let _ = (reset, keys);
+        Err(SyncError::unimplemented("keys.store_reset_keys"))
+    }
+
+    pub async fn erase_reset_keys(&self, reset: ResetId) -> Result<(), SyncError> {
+        let _ = reset;
+        Err(SyncError::unimplemented("keys.erase_reset_keys"))
     }
 
     // None while this device holds no keys of the account it can use: before genesis or approval, or locked.

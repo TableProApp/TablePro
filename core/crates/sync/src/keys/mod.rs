@@ -10,21 +10,24 @@ pub mod pins;
 
 use std::any::Any;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use tablepro_keys::body::KeyObject;
+use serde_json::Value;
+use tablepro_keys::KeysError;
+use tablepro_keys::body::{KeyObject, check_same_object};
 use tablepro_keys::encoding::{AccountId, Origin, random_uuid};
 use tablepro_keys::record_id::KeyKind;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::api::device_store::HostDeviceStore;
 use crate::api::error::SyncError;
-use crate::api::ids::{DeviceRowId, ScopeName};
-use crate::api::key_flows::{DraftId, KeyHooks};
-use crate::api::state::{StateStore, StateTxn};
-use crate::api::transport::{Change, ChangeOutcome, DpopKey, ServiceTransport};
+use crate::api::ids::{DeviceRowId, IdempotencyKey, KindName, ScopeName};
+use crate::api::key_flows::{DraftId, KeyHooks, KeyNotice, KeyNoticeKind, NoticeId};
+use crate::api::state::{KeyObjectRow, KeyTrust, Row, RowKey, RowRange, StateStore, StateTxn, Table};
+use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PushBatch, ServiceTransport};
 
-pub use account::{AccountObjectsPlan, HeldDeviceKeys, KeptDevice, OwnAccount};
+pub use account::{AccountObjectsPlan, HeldDeviceKeys, KeptDevice, OwnAccount, ResetKeys};
 pub use personal::{CurrentPersonal, ScopeKeyPlan};
 pub use pins::{IkStanding, PinChange};
 
@@ -68,10 +71,14 @@ pub struct KeyService {
     drafts: Drafts,
     // One key flow or `apply_*` call changes the key tables at a time.
     serial: AsyncMutex<()>,
+    notices: Mutex<Vec<KeyNotice>>,
+    // A file opened with no anchor handles no secret until an approval or a recovery applies (0054, A stale file).
+    unanchored: AtomicBool,
 }
 
 impl KeyService {
     pub fn new(parts: KeyServiceParts) -> Self {
+        let unanchored = parts.state.opened().key_tables == KeyTrust::Unanchored;
         Self {
             origin: parts.origin,
             account: parts.account,
@@ -83,6 +90,8 @@ impl KeyService {
             clock: parts.clock,
             drafts: Drafts::default(),
             serial: AsyncMutex::new(()),
+            notices: Mutex::new(Vec::new()),
+            unanchored: AtomicBool::new(unanchored),
         }
     }
 
@@ -131,6 +140,37 @@ impl KeyService {
         Ok(self.state.begin().await?)
     }
 
+    pub fn is_unanchored(&self) -> bool {
+        self.unanchored.load(Ordering::SeqCst)
+    }
+
+    // An approval or a recovery applied, so the device holds keys again under what it verified since.
+    pub fn clear_unanchored(&self) {
+        self.unanchored.store(false, Ordering::SeqCst);
+    }
+
+    // Records a notice for `notices` and tells the app. Every lane raises its notices here.
+    pub fn raise_notice(&self, kind: KeyNoticeKind) -> Result<NoticeId, SyncError> {
+        let notice = KeyNotice {
+            id: NoticeId(random_uuid()?),
+            kind,
+        };
+        lock(&self.notices).push(notice.clone());
+        self.hooks.notice(notice.clone());
+        Ok(notice.id)
+    }
+
+    pub fn held_notices(&self) -> Vec<KeyNotice> {
+        lock(&self.notices).clone()
+    }
+
+    pub fn dismiss(&self, notice: NoticeId) -> bool {
+        let mut notices = lock(&self.notices);
+        let before = notices.len();
+        notices.retain(|held| held.id != notice);
+        notices.len() != before
+    }
+
     // A key object at its id in a scope, as `key_objects` holds it.
     pub async fn held_object(
         &self,
@@ -139,8 +179,11 @@ impl KeyService {
         kind: KeyKind,
         record_id: &str,
     ) -> Result<Option<HeldObject>, SyncError> {
-        let _ = (txn, scope, kind, record_id);
-        Err(SyncError::unimplemented("keys.held_object"))
+        let key = RowKey::KeyObject(scope, KindName::parse(kind.name())?, record_id.to_owned());
+        match txn.get(&key).await? {
+            Some(Row::KeyObject(row)) => HeldObject::of(&row).map(Some),
+            _ => Ok(None),
+        }
     }
 
     // Every key object of one kind in a scope, in record id order.
@@ -150,8 +193,15 @@ impl KeyService {
         scope: ScopeName,
         kind: KeyKind,
     ) -> Result<Vec<HeldObject>, SyncError> {
-        let _ = (txn, scope, kind);
-        Err(SyncError::unimplemented("keys.held_objects"))
+        let range = RowRange::ScopeKind(Table::KeyObjects, scope, KindName::parse(kind.name())?);
+        txn.scan(&range)
+            .await?
+            .iter()
+            .filter_map(|row| match row {
+                Row::KeyObject(row) => Some(HeldObject::of(row)),
+                _ => None,
+            })
+            .collect()
     }
 
     // Keeps a key object served or written. Every key kind is create-only: another object at the id of an applied one
@@ -163,8 +213,66 @@ impl KeyService {
         object: &KeyObject,
         applied: bool,
     ) -> Result<(), SyncError> {
-        let _ = (txn, scope, object, applied);
-        Err(SyncError::unimplemented("keys.hold_object"))
+        let kind = KindName::parse(object.id.kind().name())?;
+        let record_id = object.id.to_wire();
+        let fields = object.fields_json();
+        let key = RowKey::KeyObject(scope, kind.clone(), record_id.clone());
+        let held = match txn.get(&key).await? {
+            Some(Row::KeyObject(row)) => Some(row),
+            _ => None,
+        };
+        let row = match held {
+            None => KeyObjectRow {
+                scope,
+                kind,
+                record_id,
+                fields,
+                applied,
+            },
+            Some(row) => {
+                let same = check_same_object(
+                    row.kind.as_str(),
+                    &row.record_id,
+                    row.fields.as_bytes(),
+                    kind.as_str(),
+                    &record_id,
+                    fields.as_bytes(),
+                )
+                .is_ok();
+                match (same, row.applied, applied) {
+                    (true, true, _) | (true, false, false) => return Ok(()),
+                    (true, false, true) => KeyObjectRow { applied: true, ..row },
+                    (false, true, _) => return Err(KeysError::Conflict.into()),
+                    (false, false, _) => KeyObjectRow {
+                        scope,
+                        kind,
+                        record_id,
+                        fields,
+                        applied,
+                    },
+                }
+            }
+        };
+        txn.put(Row::KeyObject(row)).await?;
+        Ok(())
+    }
+
+    // Removes this device's own candidates that never applied, as a change set the server refused leaves them.
+    pub async fn drop_candidates(
+        &self,
+        txn: &mut dyn StateTxn,
+        scope: ScopeName,
+        objects: &[KeyObject],
+    ) -> Result<(), SyncError> {
+        for object in objects {
+            let key = RowKey::KeyObject(scope, KindName::parse(object.id.kind().name())?, object.id.to_wire());
+            if let Some(Row::KeyObject(row)) = txn.get(&key).await?
+                && !row.applied
+            {
+                txn.delete(&key).await?;
+            }
+        }
+        Ok(())
     }
 
     // One change set as one push, applied whole or not at all (0051, Change sets), under the epoch the scope holds.
@@ -174,9 +282,34 @@ impl KeyService {
         changes: Vec<Change>,
         proof: DpopKey,
     ) -> Result<Vec<ChangeOutcome>, SyncError> {
-        let _ = (scope, changes, proof);
-        Err(SyncError::unimplemented("keys.push_change_set"))
+        let epoch = {
+            let mut txn = self.begin().await?;
+            match txn.get(&RowKey::Scope(scope)).await? {
+                Some(Row::Scope(row)) => row.epoch,
+                _ => None,
+            }
+        }
+        .ok_or(SyncError::NotAllowed {
+            what: "push before the scope is read",
+        })?;
+        let sent = changes.len();
+        let batch = PushBatch {
+            scope,
+            epoch: Some(epoch),
+            idempotency_key: Some(IdempotencyKey::parse(&random_uuid()?.to_string())?),
+            changes,
+            proof: Proof::Dpop(proof),
+        };
+        let answer = self.transport.push(batch).await?;
+        if answer.outcomes.len() != sent {
+            return Err(SyncError::Malformed { what: "push answer" });
+        }
+        Ok(answer.outcomes)
     }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 // A key object as `key_objects` holds it: parsed, with the exact `fields` text and whether it is in force.
@@ -187,10 +320,29 @@ pub struct HeldObject {
     pub applied: bool,
 }
 
+impl HeldObject {
+    fn of(row: &KeyObjectRow) -> Result<Self, SyncError> {
+        Ok(Self {
+            object: KeyObject::parse(row.kind.as_str(), &row.record_id, row.fields.as_bytes())?,
+            fields: row.fields.clone(),
+            applied: row.applied,
+        })
+    }
+}
+
 // The create change of a key object: no base, its `fields` as the patch (0051, Push).
 pub fn create_change(object: &KeyObject) -> Result<Change, SyncError> {
-    let _ = object;
-    Err(SyncError::unimplemented("keys.create_change"))
+    let fields: Value =
+        serde_json::from_str(&object.fields_json()).map_err(|_| SyncError::Malformed { what: "key object" })?;
+    Ok(Change {
+        kind: KindName::parse(object.id.kind().name())?,
+        record_id: object.id.to_wire(),
+        base: None,
+        op: ChangeOp::Write {
+            patch: fields.clone(),
+            fields,
+        },
+    })
 }
 
 // What a flow keeps between two calls, by draft id: a recovery key shown and not yet typed back, a review, a session.
@@ -202,7 +354,7 @@ pub struct Drafts {
 
 impl Drafts {
     fn lock(&self) -> MutexGuard<'_, HashMap<DraftId, Box<dyn Any + Send>>> {
-        self.held.lock().unwrap_or_else(PoisonError::into_inner)
+        lock(&self.held)
     }
 
     pub fn put<T: Any + Send>(&self, value: T) -> Result<DraftId, SyncError> {
