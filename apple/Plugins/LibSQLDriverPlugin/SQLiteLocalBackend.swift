@@ -31,8 +31,12 @@ struct LibSQLLocalRawResult: Sendable {
     let isTruncated: Bool
 }
 
+// Its jobs run on a queue of its own, since a statement and a lock wait each block the thread.
 actor SQLiteLocalBackend {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteLocalBackend")
+
+    nonisolated private let executor = SQLiteConnectionExecutor(label: "com.TablePro.libsql.connection")
+    nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
 
     private let runtime: any LibSQLLocalDatabaseRuntime
     private var db: OpaquePointer?
