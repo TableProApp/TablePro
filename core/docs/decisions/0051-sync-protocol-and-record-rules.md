@@ -29,7 +29,7 @@ On 2026-11-25 the maintainer decided:
 
 ## Decision
 
-`/v2/sync` serves records from one table, `sync_records`, in the scopes `sync_scopes` holds. Every write is conditional on an opaque change tag that carries the epoch, the version and a random write tag, so no stale base matches after a restore, and a push names the epoch it was built in. Each change answers on its own. Kinds are open except a reserved set: `key.*`, `secret_envelope`, `history_entry`, and the team library's `connection`, `folder` and `query` in a team scope. The server reads no field but a key version and the keys the facade projects, and verifies the signatures on the account logs. Content edits revive a deleted record; placement edits never do. The server checks the database's identity before it serves on any connection, and a restore opens a new epoch whose cut tells each device which of its writes the server lost. Past grace every sync feature is pull-only. The library's tables move into the store in one expand release behind views, and the facade keeps its documented behavior until the maintainer's 2% threshold.
+`/v2/sync` serves records from one table, `sync_records`, in the scopes `sync_scopes` holds. Every write is conditional on an opaque change tag that carries the epoch, the version and a random write tag, so no stale base matches after a restore, and a push names the epoch it was built in. Each change answers on its own. Kinds are open except a reserved set: `key.*`, `secret_envelope`, `history_entry` and the three team library kinds. The server reads no field but a key version and the keys the facade projects, and verifies the signatures on the account logs. Content edits revive a deleted record; placement edits never do. The server checks the database's identity before it serves on any connection, and a restore opens a new epoch whose cut tells each device which of its writes the server lost. Past grace every sync feature is pull-only. The library's tables move into the store in one expand release behind views, and the facade keeps its documented behavior until the maintainer's 2% threshold.
 
 ## Scopes and records
 
@@ -60,12 +60,12 @@ On 2026-11-25 the maintainer decided:
 
 - **Syntax.** Lowercase ASCII letters, digits and `_`, starting with a letter, with at most one `.` between two such parts, 1 to 64 bytes.
 - **Record ids.** Valid UTF-8 without U+0000, 1 to 255 UTF-16 code units, compared as bytes and never normalized or case-folded, plus the form 0052 gives the kind.
-- **Reserved:** every `key.*` kind, `secret_envelope`, `history_entry`, and in a team scope the team library kinds `connection`, `folder` and `query`, the names the facade already uses (0052). A kind's rules depend on the scope type, so a personal `connection`, under the core model's schema, is an ordinary kind. Any other kind that passes the syntax is ordinary in the personal and team scopes, so a new data kind still needs no server release.
+- **Reserved:** every `key.*` kind, `secret_envelope`, `history_entry`, and the team library kinds `library_connection`, `library_folder` and `library_query`. Their names say what they are in every scope, so a personal `connection`, under the core model's schema, never shares a name with a team library item, under the bundle's. Any other kind that passes the syntax is ordinary in the personal and team scopes, so a new data kind still needs no server release.
 
 | Kind | Scopes | Who writes | Server rule |
 | --- | --- | --- | --- |
 | `connection`, `group`, `tag`, `ssh_profile`, `credential_profile`, `saved_query`, `saved_query_folder`, `favourite_table`, `favourite_database`, `table_folder`, `table_folder_item`, `macos_settings`, `ios_settings`, `linux_settings`, `windows_settings`, `connection_project` (#4376's connection projects, on iCloud and TablePro Sync alike) | personal | The account's approved key holders | Patch and delete |
-| The team library kinds `connection`, `folder`, `query` | team | Owner, admin, editor | Patch and delete, also through the facade. Ids keep the case the library stored, lower case from shipped Macs (0052). No two ids of one kind in a team may match once lower-cased. The keys the facade projects are checked. Tombstones keep their fields until `/v1` sunsets |
+| `library_connection`, `library_folder`, `library_query` | team | Owner, admin, editor | Patch and delete, also through the facade. Ids keep the case the library stored, lower case from shipped Macs (0052). No two ids of one kind in a team may match once lower-cased. The keys the facade projects are checked. Tombstones keep their fields until `/v1` sunsets |
 | `secret_envelope` | personal, team | Personal: approved key holders. Team: owner, admin, editor, from an approved key holder | Patch and delete, written whole. `kv` is checked against the floor, and (`kv`, `n`) against the stored pair |
 | `history_entry` | history | Approved key holders | Created once; a delete tombstones it. `kv` is checked against the floor |
 | `key.identity`, `key.device` | personal | The signers 0053 names | Create only. Each append is verified, and the server derives the account's device set from the two logs |
@@ -74,7 +74,7 @@ On 2026-11-25 the maintainer decided:
 | `key.sas` | personal, team | The party of each step | Create only, purged once its session expires |
 | `key.wrap`, `key.ring` | personal, team | Personal: the account's approved key holders. Team: the signer 0053 names | Written whole; only that writer replaces one |
 | `key.team` | team | Owner, admin | Create only. Each append is verified under every rule over the team log in 0053, against the signer's identity and device logs: k approvals, with k as 0053 sets it, for adding a signer or removing another one, a signer's removal of itself at any time, and a re-root only as 0053 allows it |
-| `key.member` | team | The member it names, in any role | Create only, writer-bound to that account, and byte for byte the account's `key.identity` or `key.device` record at that log and `seq` |
+| `key.member` | team | The member it names, in any role | Create only, writer-bound to that account, and a byte-for-byte copy of a `key.identity` or a `key.device` record, the one at that log and `seq` |
 | Any other kind | personal, team | Personal: approved key holders. Team: owner, admin, editor | Patch and delete |
 
 - A reserved kind in a scope the table does not give it is rejected with `kind_not_in_scope`. The history scope takes only `history_entry`.
@@ -160,7 +160,7 @@ Under `/v2`, OAuth scope `app`, with clients generated from the OpenAPI document
 | `writer_bound` | A key kind whose writer the binding above does not admit |
 | `request_pending` | A second `key.request` from a holder whose first is still open |
 | `id_case_collision` | A create of a team library kind whose id matches another record of that kind in the team once both are lower-cased, tombstones included. Checked under the team lock |
-| `bad_statement` | A `key.identity`, `key.device` or `key.team` append that does not verify, a genesis or reset the account's state does not allow, a `key.member` that does not copy its identity or device record, an `activate` before its 7 days or after its reset was cancelled, or a `key.recovery` whose hash no identity statement names |
+| `bad_statement` | A `key.identity`, `key.device` or `key.team` append that does not verify, a genesis or reset the account's state does not allow, a `key.member` that is not a byte-for-byte copy of a `key.identity` or a `key.device` record, an `activate` before its 7 days or after its reset was cancelled, or a `key.recovery` whose hash no identity statement names |
 | `key_version_stale` | `kv` below the scope's floor |
 | `bad_counter` | A `secret_envelope` whose (`kv`, `n`) is not one step after the stored pair: the same `kv` with `n + 1`, or a higher `kv` with `n` 1. A first envelope has `n` 1 |
 | `quota_exceeded` | A create past the scope's quota; none today |
@@ -346,7 +346,7 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 **R1, one expand migration.**
 
 1. New tables: `sync_scopes`, `sync_records`, `sync_idempotency`, `sync_dpop_jti`, `sync_install` and `install_policies`, and `teams.password_sync`, default true.
-2. Every library row goes into `sync_records` as a record of the facade's kind, `connection`, `folder` or `query`, with its `client_id` as the record id, byte for byte in its stored case, its `id`, `revision`, `version`, writers and `updated_via`, a random write tag and the current epoch as its written epoch.
+2. Every library row goes into `sync_records` as a `library_connection`, `library_folder` or `library_query` record, for the facade's `connection`, `folder` and `query`, with its `client_id` as the record id, byte for byte in its stored case, its `id`, `revision`, `version`, writers and `updated_via`, a random write tag and the current epoch as its written epoch.
    - A folder's columns become `name`, `parent_client_id` and `sort_order`; a query's become `name`, `query`, `keyword`, `folder_client_id`, `connection_client_id` and `sort_order` (0044).
    - `library_epochs` and `library_epoch_horizons` become `sync_epochs` and `sync_epoch_cuts` rows with their ids, start revisions and team horizons. Without any, R1 adds a first epoch with `start_revision` 1.
 3. The three tables are renamed aside, and views `library_connections`, `library_folders` and `library_queries` over `sync_records` take their names, with INSTEAD OF INSERT and UPDATE triggers.
