@@ -22,6 +22,7 @@ struct Faults {
     unfetched: BTreeSet<String>,
     failing_reads: BTreeMap<String, u32>,
     fetch_calls_before_failure: Option<usize>,
+    names_per_call: Option<usize>,
     names_asked: Vec<Vec<String>>,
 }
 
@@ -51,6 +52,11 @@ impl<'a> Unreliable<'a> {
     // After `calls` more change fetches, the next one fails with the network.
     pub fn stop_after(&self, calls: usize) {
         lock(&self.faults).fetch_calls_before_failure = Some(calls);
+    }
+
+    // A read by name of more records than this answers `limitExceeded`.
+    pub fn limit_names(&self, names: usize) {
+        lock(&self.faults).names_per_call = Some(names);
     }
 
     pub fn names_asked(&self) -> Vec<Vec<String>> {
@@ -100,7 +106,13 @@ impl CloudKitTransport for Unreliable<'_> {
         account: String,
         names: Vec<String>,
     ) -> Result<Vec<CloudKitFetched>, CloudKitFailure> {
-        lock(&self.faults).names_asked.push(names.clone());
+        {
+            let mut faults = lock(&self.faults);
+            faults.names_asked.push(names.clone());
+            if faults.names_per_call.is_some_and(|limit| names.len() > limit) {
+                return Err(CloudKitFailure::LimitExceeded);
+            }
+        }
         let answers = self.inner.fetch_records(account, names).await?;
         let mut faults = lock(&self.faults);
         Ok(answers

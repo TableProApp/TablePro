@@ -132,3 +132,35 @@ async fn a_record_the_zone_lists_but_cannot_return_is_fetched_by_name_and_held_w
     assert!(rig.held(Kind::Group, A).await.is_none());
     assert_eq!(transport.names_asked().len(), 3);
 }
+
+#[tokio::test]
+async fn a_read_by_name_cloudkit_finds_too_large_is_split_and_sent_again() {
+    let rig = Rig::new().await;
+    for id in [A, B, C] {
+        rig.save_elsewhere(Kind::Group, id, &json!({"name": id}));
+    }
+    rig.fetch().await.unwrap();
+    for id in [A, B, C] {
+        rig.store(Kind::Group).make_unreadable(id);
+        rig.save_elsewhere(Kind::Group, id, &json!({"name": "renamed"}));
+    }
+    rig.fetch().await.unwrap();
+    for id in [A, B, C] {
+        rig.store(Kind::Group)
+            .put(id, projected(Kind::Group, id, &json!({"name": id})));
+    }
+    let transport = Unreliable::new(&rig.cloud);
+    transport.limit_names(1);
+
+    let report = rig.fetch_through(&transport).await.unwrap();
+
+    let sizes: Vec<usize> = transport.names_asked().iter().map(Vec::len).collect();
+    assert_eq!(sizes, [3, 1, 2, 1, 1]);
+    assert_eq!(report.counts.recovered, 3);
+    for id in [A, B, C] {
+        assert_eq!(
+            rig.store(Kind::Group).fields(id),
+            Some(projected(Kind::Group, id, &json!({"name": "renamed"})))
+        );
+    }
+}
