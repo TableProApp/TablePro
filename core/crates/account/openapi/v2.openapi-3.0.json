@@ -53,6 +53,7 @@
       "AssignableRole": {
         "enum": [
           "admin",
+          "editor",
           "member"
         ],
         "type": "string"
@@ -441,6 +442,11 @@
       },
       "Invitation": {
         "properties": {
+          "accept_url": {
+            "description": "On a self-hosted install, which sends no email: the link to accept, for the inviter to pass on. Only in the answer that created or resent the invitation, since only its hash is kept",
+            "format": "uri",
+            "type": "string"
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -465,11 +471,12 @@
             "type": "string"
           },
           "role": {
-            "description": "Extensible enum: admin, member",
+            "description": "Extensible enum: admin, editor, member",
             "example": "admin",
             "type": "string",
             "x-extensible-enum": [
               "admin",
+              "editor",
               "member"
             ]
           },
@@ -620,7 +627,7 @@
             "type": "string"
           },
           "updated_by_name": {
-            "description": "The last writer's name, as the portal's library shows it. Without one, its address for an owner or admin, who may read the member list, and absent for a member. Absent once that account is deleted",
+            "description": "The last writer's name, as the portal's library shows it. Without one, its address for an owner or admin, who may read the member list, and absent for an editor or member. Absent once that account is deleted",
             "example": "Grace Hopper",
             "type": "string"
           },
@@ -1003,12 +1010,13 @@
             "type": "string"
           },
           "role": {
-            "description": "Extensible enum: owner, admin, member",
+            "description": "Extensible enum: owner, admin, editor, member",
             "example": "owner",
             "type": "string",
             "x-extensible-enum": [
               "owner",
               "admin",
+              "editor",
               "member"
             ]
           }
@@ -1062,12 +1070,13 @@
             "type": "boolean"
           },
           "role": {
-            "description": "Extensible enum: owner, admin, member",
+            "description": "Extensible enum: owner, admin, editor, member",
             "example": "owner",
             "type": "string",
             "x-extensible-enum": [
               "owner",
               "admin",
+              "editor",
               "member"
             ]
           },
@@ -1916,12 +1925,13 @@
             "type": "string"
           },
           "role": {
-            "description": "Extensible enum: owner, admin, member. The caller's role",
+            "description": "Extensible enum: owner, admin, editor, member. The caller's role",
             "example": "owner",
             "type": "string",
             "x-extensible-enum": [
               "owner",
               "admin",
+              "editor",
               "member"
             ]
           }
@@ -1950,12 +1960,13 @@
             "type": "string"
           },
           "role": {
-            "description": "Extensible enum: owner, admin, member. The caller's role; absent for a team API token",
+            "description": "Extensible enum: owner, admin, editor, member. The caller's role; absent for a team API token",
             "example": "owner",
             "type": "string",
             "x-extensible-enum": [
               "owner",
               "admin",
+              "editor",
               "member"
             ]
           },
@@ -2044,6 +2055,12 @@
       }
     },
     "securitySchemes": {
+      "license_file": {
+        "bearerFormat": "license+jwt",
+        "description": "A self-hosted install's license file, as tablepro.app recorded it when it was signed.",
+        "scheme": "bearer",
+        "type": "http"
+      },
       "oauth": {
         "description": "An access token from the TablePro app's sign-in.",
         "flows": {
@@ -3452,6 +3469,123 @@
         ]
       }
     },
+    "/licenses/latest": {
+      "get": {
+        "description": "A self-hosted server with LICENSE_RENEWAL=on sends its installed license file as the bearer, once a day and at each start, and gets the newest file tablepro.app requested and recorded for that license: the bearer itself until a later one is signed. A file tablepro.app did not request and record, or one of a license TablePro ended for good, answers 401. The bearer's exp is not read, so an install in grace or past it gets its next file. Only tablepro.app answers it; a self-hosted server answers 404. 60 an hour per IP, then 30 an hour per license.",
+        "operationId": "get-latest-license",
+        "responses": {
+          "200": {
+            "content": {
+              "application/jwt": {
+                "schema": {
+                  "description": "The license file in JWS compact serialization, typ license+jwt, signed with Ed25519 by TablePro",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The license file, to verify and install",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "tablepro.app has no record of this license file.",
+                      "status": 401,
+                      "title": "Unauthorized",
+                      "type": "https://api.tablepro.app/problems/unauthorized"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later.",
+                      "status": 429,
+                      "title": "Rate limited",
+                      "type": "https://api.tablepro.app/problems/rate-limited"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "license_file": []
+          }
+        ],
+        "summary": "The newest file of a self-hosted license",
+        "tags": [
+          "License"
+        ]
+      }
+    },
     "/me": {
       "get": {
         "description": "The account, the teams it belongs to with its role and seat in each, and the licenses whose features it can use.",
@@ -4203,16 +4337,16 @@
     },
     "/shares": {
       "get": {
-        "description": "The caller's personal links, or with team a team's links: every one for its owner and admins, its own for a seated member, seat_required for a member without a seat. Newest first, without sql.",
+        "description": "The caller's personal links, or with team a team's links: every one for its owner and admins, its own for a seated editor or member, seat_required for an editor or member without a seat. Newest first, without sql.",
         "operationId": "list-shares",
         "parameters": [
           {
-            "description": "Team TypeID: that team's links, every one for its owner and admins, a seated member's own for a member; omit for the caller's personal links",
+            "description": "Team TypeID: that team's links, every one for its owner and admins, its own for a seated editor or member; omit for the caller's personal links",
             "explode": false,
             "in": "query",
             "name": "team",
             "schema": {
-              "description": "Team TypeID: that team's links, every one for its owner and admins, a seated member's own for a member; omit for the caller's personal links",
+              "description": "Team TypeID: that team's links, every one for its owner and admins, its own for a seated editor or member; omit for the caller's personal links",
               "maxLength": 64,
               "type": "string"
             }
@@ -5952,7 +6086,7 @@
         ]
       },
       "post": {
-        "description": "Owners and admins, or a team API token of the team with the invitations:write scope. Emails a link valid for 7 days. With a seat, it needs a free one and reserves it while pending. Creating and resending together: 50 an hour per caller and team, and 100 an hour per team, whoever sends them; one that fails is not counted against the team.",
+        "description": "Owners and admins, or a team API token of the team with the invitations:write scope. Emails a link valid for 7 days. With a seat, it needs a free one and reserves it while pending. Creating and resending together: 50 an hour per caller and team, and 100 an hour per team, whoever sends them; one that fails is not counted against the team. An app's sign-in is refused an invitation to admin with app_sign_in_forbidden: the portal, which asks for a new sign-in, or a team API token makes it.",
         "operationId": "create-team-invitation",
         "parameters": [
           {
@@ -6024,6 +6158,16 @@
             "content": {
               "application/json": {
                 "examples": {
+                  "app_sign_in_forbidden": {
+                    "summary": "App sign in forbidden",
+                    "value": {
+                      "code": "app_sign_in_forbidden",
+                      "detail": "An app's sign-in cannot change roles, remove members or invite admins. Do it in the portal, or with a team API token.",
+                      "status": 403,
+                      "title": "App sign in forbidden",
+                      "type": "https://api.tablepro.app/problems/app-sign-in-forbidden"
+                    }
+                  },
                   "forbidden": {
                     "summary": "Forbidden",
                     "value": {
@@ -6442,7 +6586,7 @@
     },
     "/teams/{team_id}/invitations/{invitation_id}/resend": {
       "post": {
-        "description": "Owners and admins, or a team API token of the team with the invitations:write scope. The new link replaces the old one and lasts 7 days. An invitation is sent at most once every 10 minutes. It keeps its seat as it is: an expired one still holds its reservation, and one whose reservation was taken back stays without a seat, so accepting it needs a free seat at that moment. Creating and resending together: 50 an hour per caller and team, and 100 an hour per team, whoever sends them; one that fails is not counted against the team.",
+        "description": "Owners and admins, or a team API token of the team with the invitations:write scope. The new link replaces the old one and lasts 7 days. An invitation is sent at most once every 10 minutes. It keeps its seat as it is: an expired one still holds its reservation, and one whose reservation was taken back stays without a seat, so accepting it needs a free seat at that moment. Creating and resending together: 50 an hour per caller and team, and 100 an hour per team, whoever sends them; one that fails is not counted against the team. An app's sign-in is refused a new link to an invitation to admin with app_sign_in_forbidden: the portal, which asks for a new sign-in, or a team API token makes it.",
         "operationId": "resend-team-invitation",
         "parameters": [
           {
@@ -6514,6 +6658,16 @@
             "content": {
               "application/json": {
                 "examples": {
+                  "app_sign_in_forbidden": {
+                    "summary": "App sign in forbidden",
+                    "value": {
+                      "code": "app_sign_in_forbidden",
+                      "detail": "An app's sign-in cannot change roles, remove members or invite admins. Do it in the portal, or with a team API token.",
+                      "status": 403,
+                      "title": "App sign in forbidden",
+                      "type": "https://api.tablepro.app/problems/app-sign-in-forbidden"
+                    }
+                  },
                   "forbidden": {
                     "summary": "Forbidden",
                     "value": {
@@ -6843,6 +6997,16 @@
             "content": {
               "application/json": {
                 "examples": {
+                  "cursor_expired": {
+                    "summary": "Cursor expired",
+                    "value": {
+                      "code": "cursor_expired",
+                      "detail": "The cursor is from a library history this server no longer has; pull without one for a fresh snapshot.",
+                      "status": 422,
+                      "title": "Cursor expired",
+                      "type": "https://api.tablepro.app/problems/cursor-expired"
+                    }
+                  },
                   "validation_failed": {
                     "summary": "Validation failed",
                     "value": {
@@ -6928,7 +7092,7 @@
         ]
       },
       "post": {
-        "description": "Owners and admins with a seat and the team_library feature. Up to 500 changes, applied in one transaction and judged item by item. An item's data is at most 256 KiB of JSON and the body at most 4 MiB. A change the server refuses, such as data with a secret-bearing key, refuses the whole push.",
+        "description": "Owners, admins and editors with a seat and the team_library feature. Up to 500 changes, applied in one transaction and judged item by item. An item's data is at most 256 KiB of JSON and the body at most 4 MiB. A change the server refuses, such as data with a secret-bearing key, refuses the whole push.",
         "operationId": "push-library-changes",
         "parameters": [
           {
@@ -7034,10 +7198,20 @@
                     "summary": "Library write forbidden",
                     "value": {
                       "code": "library_write_forbidden",
-                      "detail": "Only the team's owner and admins publish to its library.",
+                      "detail": "Only the team's owner, admins and editors publish to its library.",
                       "status": 403,
                       "title": "Library write forbidden",
                       "type": "https://api.tablepro.app/problems/library-write-forbidden"
+                    }
+                  },
+                  "license_expired": {
+                    "summary": "License expired",
+                    "value": {
+                      "code": "license_expired",
+                      "detail": "This server's license is past its grace: pushes are refused, pulls keep working.",
+                      "status": 403,
+                      "title": "License expired",
+                      "type": "https://api.tablepro.app/problems/license-expired"
                     }
                   }
                 },
@@ -7434,7 +7608,7 @@
     },
     "/teams/{team_id}/members/{member_id}": {
       "delete": {
-        "description": "Owners and admins, or a team API token of the team with the members:write scope. The owner cannot be removed.",
+        "description": "Owners and admins, or a team API token of the team with the members:write scope. The owner cannot be removed. An app's sign-in is refused a removal with app_sign_in_forbidden: the portal, which asks for a new sign-in, or a team API token makes it.",
         "operationId": "delete-team-member",
         "parameters": [
           {
@@ -7499,6 +7673,16 @@
             "content": {
               "application/json": {
                 "examples": {
+                  "app_sign_in_forbidden": {
+                    "summary": "App sign in forbidden",
+                    "value": {
+                      "code": "app_sign_in_forbidden",
+                      "detail": "An app's sign-in cannot change roles, remove members or invite admins. Do it in the portal, or with a team API token.",
+                      "status": 403,
+                      "title": "App sign in forbidden",
+                      "type": "https://api.tablepro.app/problems/app-sign-in-forbidden"
+                    }
+                  },
                   "forbidden": {
                     "summary": "Forbidden",
                     "value": {
@@ -7653,7 +7837,7 @@
         ]
       },
       "patch": {
-        "description": "Owners and admins, or a team API token of the team with the members:write scope. The owner's role changes only by a transfer in the portal, and only the owner changes its own seat.",
+        "description": "Owners and admins, or a team API token of the team with the members:write scope. The owner's role changes only by a transfer in the portal, and only the owner changes its own seat. An app's sign-in is refused a role change; a seat change alone is not with app_sign_in_forbidden: the portal, which asks for a new sign-in, or a team API token makes it.",
         "operationId": "update-team-member",
         "parameters": [
           {
@@ -7735,6 +7919,16 @@
             "content": {
               "application/json": {
                 "examples": {
+                  "app_sign_in_forbidden": {
+                    "summary": "App sign in forbidden",
+                    "value": {
+                      "code": "app_sign_in_forbidden",
+                      "detail": "An app's sign-in cannot change roles, remove members or invite admins. Do it in the portal, or with a team API token.",
+                      "status": 403,
+                      "title": "App sign in forbidden",
+                      "type": "https://api.tablepro.app/problems/app-sign-in-forbidden"
+                    }
+                  },
                   "forbidden": {
                     "summary": "Forbidden",
                     "value": {
