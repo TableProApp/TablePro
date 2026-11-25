@@ -8045,6 +8045,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "tablepro-keys"
+version = "0.0.0"
+dependencies = [
+ "aws-lc-rs",
+ "base64 0.22.1",
+ "hex",
+ "proptest",
+ "rustls",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "url",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "tablepro-linux-platform"
 version = "0.0.0"
 dependencies = [

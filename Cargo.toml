@@ -9,6 +9,7 @@ members = [
     "core/crates/core",
     "core/crates/ffi",
     "core/crates/foreign-import",
+    "core/crates/keys",
     "core/crates/mcp",
     "core/crates/net",
     "core/crates/records",
