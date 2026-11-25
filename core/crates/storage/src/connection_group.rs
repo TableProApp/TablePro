@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::lenient::Identified;
+
 use crate::{ConnectionColor, ConnectionGroupName, LibraryIcon};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +61,12 @@ impl ConnectionGroup {
             color: None,
             icon: None,
         }
+    }
+}
+
+impl Identified for ConnectionGroup {
+    fn id(&self) -> Uuid {
+        self.id
     }
 }
 

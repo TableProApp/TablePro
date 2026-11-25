@@ -55,7 +55,7 @@ pub use favourites::{DatabaseEnvironment, FavouriteDatabase, FavouriteTable, Fav
 pub use library_icon::{LibraryIcon, SymbolName};
 pub use group_name_error::GroupNameError;
 pub use group_tree::GroupTree;
-pub use journal::{ChangeJournal, RecordKind};
+pub use journal::{ChangeJournal, JournalEntry, RecordKind, RecordRef};
 pub use name_rules::shown as shown_name;
 pub use paths::StoragePaths;
 pub use query_history::QueryHistory;

@@ -6,7 +6,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
-use crate::journal::{RecordKind, Signals};
+use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
 use crate::unix_time::to_unix;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +42,24 @@ pub struct FavouriteTable {
     pub name: String,
 }
 
+impl FavouriteTable {
+    fn record(&self) -> RecordRef {
+        RecordRef::Table(crate::TableRef {
+            connection_id: self.connection_id,
+            database: self.database.clone().unwrap_or_default(),
+            schema: self.schema.clone().unwrap_or_default(),
+            name: self.name.clone(),
+        })
+    }
+}
+
+fn database_record(connection_id: Uuid, database: &str) -> RecordRef {
+    RecordRef::Database {
+        connection_id,
+        database: database.to_owned(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FavouriteDatabase {
     pub connection_id: Uuid,
@@ -65,8 +83,8 @@ impl Favourites {
         self.signals.subscribe()
     }
 
-    fn changed(&self, kind: RecordKind) {
-        self.signals.changed(&[kind]);
+    fn changed(&self, entry: JournalEntry) {
+        self.signals.changed(&[entry]);
     }
 
     pub async fn add_table(&self, table: &FavouriteTable) -> Result<(), StorageError> {
@@ -89,7 +107,7 @@ impl Favourites {
         .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed(RecordKind::FavouriteTable);
+            self.changed(JournalEntry::new(RecordKind::FavouriteTable).wrote([table.record()]));
         }
         Ok(())
     }
@@ -125,7 +143,7 @@ impl Favourites {
         .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed(RecordKind::FavouriteTable);
+            self.changed(JournalEntry::new(RecordKind::FavouriteTable).deleted([table.record()]));
         }
         Ok(())
     }
@@ -177,7 +195,7 @@ impl Favourites {
         .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed(RecordKind::FavouriteDatabase);
+            self.changed(JournalEntry::new(RecordKind::FavouriteDatabase).wrote([database_record(connection, database)]));
         }
         Ok(())
     }
@@ -205,7 +223,7 @@ impl Favourites {
             .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed(RecordKind::FavouriteDatabase);
+            self.changed(JournalEntry::new(RecordKind::FavouriteDatabase).deleted([database_record(connection, database)]));
         }
         Ok(())
     }

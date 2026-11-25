@@ -27,7 +27,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
-use crate::journal::{ChangeJournal, JournalSlot, RecordKind, Signals};
+use crate::journal::{ChangeJournal, JournalEntry, JournalSlot, RecordKind, RecordRef, Signals};
 use crate::paths::StoragePaths;
 use crate::store_identity::StoreIdentity;
 use crate::unix_time::{from_unix, to_unix};
@@ -171,9 +171,12 @@ impl QueryHistory {
         crate::table_folders::TableFolders::new(self.pool.clone(), self.path.clone(), self.signals.clone())
     }
 
-    fn history_changed(&self, changed: bool) {
-        if changed {
-            self.journal.notify(&[RecordKind::HistoryEntry]);
+    fn history_changed(&self, written: impl IntoIterator<Item = i64>, deleted: impl IntoIterator<Item = i64>) {
+        let entry = JournalEntry::new(RecordKind::HistoryEntry)
+            .wrote(written.into_iter().map(RecordRef::Row))
+            .deleted(deleted.into_iter().map(RecordRef::Row));
+        if !entry.is_empty() {
+            self.journal.notify(&[entry]);
         }
     }
 
@@ -214,7 +217,7 @@ impl QueryHistory {
         .execute(&self.pool)
         .await?
         .last_insert_rowid();
-        self.history_changed(true);
+        self.history_changed([id], []);
         Ok(id)
     }
 
@@ -319,7 +322,7 @@ impl QueryHistory {
             .execute(&self.pool)
             .await?
             .rows_affected();
-        self.history_changed(changed > 0);
+        self.history_changed((changed > 0).then_some(id), []);
         Ok(())
     }
 
@@ -356,7 +359,7 @@ impl QueryHistory {
             }
         }
         transaction.commit().await?;
-        self.history_changed(!deleted.is_empty());
+        self.history_changed([], deleted.iter().map(|entry| entry.id));
         deleted.sort_by_key(|entry| entry.id);
         Ok(deleted)
     }
@@ -390,7 +393,7 @@ impl QueryHistory {
             .await?;
         }
         transaction.commit().await?;
-        self.history_changed(!entries.is_empty());
+        self.history_changed(entries.iter().map(|entry| entry.id), []);
         Ok(())
     }
 
@@ -406,10 +409,10 @@ impl QueryHistory {
             }],
         )
         .await?;
-        let affected = sqlx::query("DELETE FROM history")
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
+        let removed: Vec<i64> = sqlx::query_scalar("DELETE FROM history RETURNING id")
+            .fetch_all(&mut *transaction)
+            .await?;
+        let affected = removed.len();
         // The delete triggers leave the queries' words in the index until it is optimized.
         if affected > 0 {
             sqlx::query("INSERT INTO history_search(history_search) VALUES('optimize')")
@@ -417,8 +420,8 @@ impl QueryHistory {
                 .await?;
         }
         transaction.commit().await?;
-        self.history_changed(affected > 0);
-        Ok(affected as usize)
+        self.history_changed([], removed);
+        Ok(affected)
     }
 
     /// Drop what the user no longer needs: first anything past the
@@ -438,23 +441,27 @@ impl QueryHistory {
     pub(crate) async fn prune_with_cap(&self, retention_days: u32, cap: i64) -> Result<PruneReport, StorageError> {
         let mut report = PruneReport::default();
 
+        let mut removed: Vec<i64> = Vec::new();
         if let Some(cutoff) = retention::cutoff(retention_days, SystemTime::now()) {
-            report.expired = sqlx::query("DELETE FROM history WHERE pinned = 0 AND executed_at < ?")
-                .bind(to_unix(cutoff))
-                .execute(&self.pool)
-                .await?
-                .rows_affected();
+            let expired: Vec<i64> =
+                sqlx::query_scalar("DELETE FROM history WHERE pinned = 0 AND executed_at < ? RETURNING id")
+                    .bind(to_unix(cutoff))
+                    .fetch_all(&self.pool)
+                    .await?;
+            report.expired = expired.len() as u64;
+            removed.extend(expired);
         }
 
-        report.over_cap = sqlx::query(
+        let over_cap: Vec<i64> = sqlx::query_scalar(
             "DELETE FROM history WHERE pinned = 0 AND id NOT IN (
                  SELECT id FROM history WHERE pinned = 0 ORDER BY executed_at DESC, id DESC LIMIT ?
-             )",
+             ) RETURNING id",
         )
         .bind(cap)
-        .execute(&self.pool)
-        .await?
-        .rows_affected();
+        .fetch_all(&self.pool)
+        .await?;
+        report.over_cap = over_cap.len() as u64;
+        removed.extend(over_cap);
 
         // The delete triggers queue tombstones in the FTS index; without
         // this the index keeps growing even as the table shrinks.
@@ -468,7 +475,7 @@ impl QueryHistory {
         let transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
         trim_upgrade_copies(&self.path, &[]).await?;
         transaction.commit().await?;
-        self.history_changed(report.removed_anything());
+        self.history_changed([], removed);
         Ok(report)
     }
 
@@ -495,21 +502,21 @@ impl QueryHistory {
             }],
         )
         .await?;
-        let removed = sqlx::query("DELETE FROM history WHERE connection_id = ?")
+        let removed: Vec<i64> = sqlx::query_scalar("DELETE FROM history WHERE connection_id = ? RETURNING id")
             .bind(connection.to_string())
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
+            .fetch_all(&mut *transaction)
+            .await?;
         // As after a prune: the delete triggers leave tombstones in the
         // index until it is optimized.
-        if removed > 0 {
+        if !removed.is_empty() {
             sqlx::query("INSERT INTO history_search(history_search) VALUES('optimize')")
                 .execute(&mut *transaction)
                 .await?;
         }
         transaction.commit().await?;
-        self.history_changed(removed > 0);
-        Ok(removed)
+        let count = removed.len() as u64;
+        self.history_changed([], removed);
+        Ok(count)
     }
 
     /// Every connection the history holds entries for, under the name

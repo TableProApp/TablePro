@@ -36,6 +36,10 @@ impl<T> Lenient<T> {
         self.held.len()
     }
 
+    pub(crate) fn held_entry(&self, id: Uuid) -> Option<&Value> {
+        self.held.iter().find(|entry| entry_id(entry) == Some(id))
+    }
+
     /// Drop the held copies of `id`, once a readable one takes its place or the entry is deleted.
     /// Returns whether there was one.
     pub(crate) fn release(&mut self, id: Uuid) -> bool {

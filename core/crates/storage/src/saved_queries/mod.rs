@@ -14,7 +14,7 @@ use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 use crate::error::StorageError;
-use crate::journal::{RecordKind, Signals};
+use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
 use crate::unix_time::{from_unix, to_unix};
 
 pub use folders::{SavedQueryFolder, SavedQueryFolders};
@@ -59,8 +59,8 @@ impl SavedQueries {
         self.signals.subscribe()
     }
 
-    fn changed(&self) {
-        self.signals.changed(&[RecordKind::SavedQuery]);
+    fn wrote(&self, written: impl IntoIterator<Item = i64>, deleted: impl IntoIterator<Item = i64>) {
+        self.signals.changed(&[queries(written, deleted)]);
     }
 
     pub async fn save(&self, query: NewSavedQuery) -> Result<SaveOutcome, StorageError> {
@@ -87,7 +87,7 @@ impl SavedQueries {
         .bind(&query.connection_name).bind(now)
         .fetch_one(&mut *transaction).await?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote([id], []);
         Ok(SaveOutcome { id, replaced })
     }
 
@@ -105,8 +105,8 @@ impl SavedQueries {
         .bind(&query.connection_name).bind(to_unix(SystemTime::now()))
         .fetch_optional(&mut *transaction).await?;
         transaction.commit().await?;
-        if id.is_some() {
-            self.changed();
+        if let Some(id) = id {
+            self.wrote([id], []);
         }
         Ok(id)
     }
@@ -195,7 +195,7 @@ impl SavedQueries {
                 _ => StorageError::Database(error),
             })?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote([id], []);
         Ok(())
     }
 
@@ -223,7 +223,7 @@ impl SavedQueries {
             .execute(&mut *transaction)
             .await?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote([id], []);
         Ok(())
     }
 
@@ -278,7 +278,7 @@ impl SavedQueries {
                 _ => StorageError::Database(error),
             })?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote([id], []);
         Ok(())
     }
 
@@ -354,12 +354,13 @@ impl SavedQueries {
             .bind(id)
             .execute(&mut *transaction)
             .await?;
-        ordering::set_query_order(&mut transaction, &place).await?;
+        let mut moved = vec![id];
+        moved.extend(ordering::set_query_order(&mut transaction, &place).await?);
         if old_folder != folder {
-            ordering::compact_queries(&mut transaction, &owner, old_folder).await?;
+            moved.extend(ordering::compact_queries(&mut transaction, &owner, old_folder).await?);
         }
         transaction.commit().await?;
-        self.changed();
+        self.wrote(moved, []);
         Ok(())
     }
 
@@ -384,14 +385,14 @@ impl SavedQueries {
             .bind(id)
             .execute(&mut *transaction)
             .await?;
-        ordering::compact_queries(
+        let moved = ordering::compact_queries(
             &mut transaction,
             &row.try_get::<String, _>("connection_id")?,
             row.try_get("folder_id")?,
         )
         .await?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote(moved, [id]);
         Ok(())
     }
 
@@ -402,6 +403,12 @@ impl SavedQueries {
         }
         Ok(queries)
     }
+}
+
+pub(super) fn queries(written: impl IntoIterator<Item = i64>, deleted: impl IntoIterator<Item = i64>) -> JournalEntry {
+    JournalEntry::new(RecordKind::SavedQuery)
+        .wrote(written.into_iter().map(RecordRef::Row))
+        .deleted(deleted.into_iter().map(RecordRef::Row))
 }
 
 fn checked_name(name: &str) -> Result<&str, StorageError> {
