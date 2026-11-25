@@ -449,7 +449,7 @@ The exchange is Vaudenay's SAS-based message cross-authentication (CRYPTO 2005; 
    - Teammates see a new SK certified by the IK they pinned and accept it with no comparison (D7).
    - Each team enters rotation pending. Grants the removed holders signed are voided, and the app lists them. The person signs again the ones they recognize (Voided grants).
 
-**Admin removal from the portal.** The browser has no keys.
+**Admin removal from the portal.** The browser has no keys, so the admin removes the row behind the portal's step-up, and nothing about keys or the reset veto changes (Rows and the veto).
 
 1. The server revokes the device row's refresh family and marks its holders revoked. It answers them with `device_removed`, and raises the person's personal floor to the current AK version plus 1.
 2. A holder that gets `device_removed` locks: it stops syncing and keeps its keys (Key holders and sessions).
@@ -552,10 +552,12 @@ The only things a signed-in holder may start alone are these two:
 
 **Rows and the veto.**
 
-- Removing a device row of an account that has an identity needs a DPoP proof from an approved holder and a step-up within 300 s. It is audited, and every holder is told.
-- A row hint never strips the veto. The server takes a `cancel` from any holder the logs list at a pending reset's `dh`, and answers that holder's reads of `key.identity` even when its row was removed.
+- **From the apps,** removing a device row of an account that has an identity needs a DPoP proof from an approved holder and a fresh IdP sign-in within 300 s.
+- **From the portal,** an install admin can still remove a row, behind the portal's step-up (0044, S5). The browser holds no keys, so this is the admin removal in Flows.
+- Either kind is audited, and every holder of the account is told.
+- **Neither kind changes keys or the veto.** It only locks the row: its holders get `device_removed`, and the server refuses them everything but what follows. The server takes a `cancel` from any holder the logs list at a pending reset's `dh`, and answers that holder's reads of `key.identity` even when its row was removed.
 - `device_removed` carries any pending reset, so a locked device shows it and offers the recovery key.
-- For the no-holder reset, a removed row counts as empty only after it has stayed removed for 7 days.
+- For a `fresh` reset, a removed row counts as empty only after it has stayed removed for 7 days.
 
 **Floors.** Each personal and team scope has a floor: the lowest key version a new envelope or history entry may use. Flows says when it rises. An honest server refuses a `kv` below it with `key_version_stale`. After a removal raises it from v to v+1, a write under v is refused, one under v+1 is taken, and the writes queued meanwhile go out once the rotation lands.
 
