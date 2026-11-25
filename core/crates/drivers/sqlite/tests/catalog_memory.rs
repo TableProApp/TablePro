@@ -19,6 +19,9 @@ use tablepro_test_support::{HeapCounter, heap_peak_of as peak_of};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
+#[path = "integration/crafted_schema.rs"]
+mod crafted_schema;
+
 #[global_allocator]
 static HEAP: HeapCounter = HeapCounter;
 
@@ -182,6 +185,7 @@ async fn file_with(directory: &Path, name: &str, schema: Vec<String>) -> Result<
         .create_if_missing(true)
         .foreign_keys(false);
     let mut writer = SqliteConnection::connect_with(&options).await?;
+    crafted_schema::allow_writable_schema(&mut writer).await?;
     for sql in schema {
         writer.execute(sqlx::AssertSqlSafe(sql)).await?;
     }
@@ -332,9 +336,7 @@ async fn parsed_texts_stay_bounded(directory: &Path) -> Outcome {
 
 async fn a_tail_is_not_read(directory: &Path) -> Outcome {
     let path = file_with(directory, "tailed.sqlite3", tailed_schema()).await?;
-    // SQLite 3.54.0 refuses a schema whose stored text runs past its statement's end.
-    // SAFETY: reads a constant of the linked library.
-    if unsafe { libsqlite3_sys::sqlite3_libversion_number() } >= 3_054_000 {
+    if crafted_schema::sqlite_refuses_a_stored_tail(directory).await? {
         let (opened, heap, _) = measured(open(&path)).await;
         assert!(
             matches!(&opened, Err(DriverError::Server(diagnostics))
