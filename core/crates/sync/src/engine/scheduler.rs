@@ -148,12 +148,18 @@ pub fn spawn(pass: Arc<dyn Pass>, wake: Wake, stop: StopSignal, backoff: Backoff
     }
 }
 
+// The poll falls due a poll interval after the last full pass, so journal passes, which diff only what they were told
+// of, never put it off.
 async fn run(pass: Arc<dyn Pass>, wake: Wake, stop: StopSignal, mut backoff: Backoff) {
+    let mut poll_at = tokio::time::Instant::now() + pass.poll_interval();
     loop {
         let why = tokio::select! {
             why = wake.next() => why,
-            () = tokio::time::sleep(pass.poll_interval()) => PassReason::Poll,
+            () = tokio::time::sleep_until(poll_at) => PassReason::Poll,
         };
+        if why != PassReason::Journal {
+            poll_at = tokio::time::Instant::now() + pass.poll_interval();
+        }
         if stop.is_stopped() {
             continue;
         }

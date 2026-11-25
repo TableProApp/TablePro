@@ -440,11 +440,20 @@ impl ServiceSync {
         }
         // Before approval a personal pull serves key objects only: it settles no base, store or epoch.
         let whole = pull.scope != ScopeName::Personal || info.approved == Some(true);
+        // A refill that kept envelopes it could not check is not done for them: their store and the epoch wait for a
+        // pass that can, so that pass refills them by the same rule.
+        let refilling = pull.cut.is_some() || pull.pull_wins.contains(&Kind::SecretEnvelope);
+        let unchecked = refilling && writes.held.iter().any(|row| row.reason == HeldReason::AwaitingApproval);
         if whole {
             if pull.scope != ScopeName::History {
                 writes.dropped = self.unseen_bases(pull).await?;
             }
-            writes.rows = self.settled_stores(ctx, pull.scope).await?;
+            let envelopes = adapters
+                .iter()
+                .find(|adapter| adapter.kind() == Kind::SecretEnvelope)
+                .map(|adapter| adapter.store().to_owned());
+            let except = envelopes.filter(|_| unchecked);
+            writes.rows = self.settled_stores(ctx, pull.scope, except.as_deref()).await?;
             if pull.can_open {
                 writes
                     .unheld
@@ -455,7 +464,9 @@ impl ServiceSync {
                     }));
             }
             if row.refill {
-                ctx.adopt.push((pull.scope, ctx.body.epoch, info.epochs.clone()));
+                if !unchecked {
+                    ctx.adopt.push((pull.scope, ctx.body.epoch, info.epochs.clone()));
+                }
             } else {
                 row.epoch = Some(ctx.body.epoch);
                 row.lineage.clone_from(&info.epochs);
@@ -464,7 +475,7 @@ impl ServiceSync {
         if !writes.is_empty() || *row != before {
             self.commit_page(writes, Some(row)).await?;
         }
-        if whole {
+        if whole && !unchecked {
             ctx.snapshots_done.insert(pull.scope);
         }
         Ok(())

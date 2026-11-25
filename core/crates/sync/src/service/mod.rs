@@ -189,6 +189,7 @@ impl ServiceSync {
         self.set_phase(SyncPhase::Syncing);
         let taken = self.journal.take();
         let named = (why == PassReason::Journal).then(|| taken.clone());
+        let journal_only = named.is_some();
         let outcome = self.run(&mut session, named).await;
         if outcome.is_err() {
             self.journal.give_back(taken);
@@ -196,7 +197,7 @@ impl ServiceSync {
         if let Err(SyncError::Transport(TransportError::DeviceRemoved)) = &outcome {
             crate::api::key_flows::KeyHooks::lock(self.hooks.as_ref(), LockCause::DeviceRemoved);
         }
-        self.finish(&outcome).await;
+        self.finish(&outcome, journal_only).await;
         outcome
     }
 
@@ -227,13 +228,19 @@ impl ServiceSync {
         self.read_key_state(&mut ctx).await?;
         let scopes = self.reachable(&ctx);
         self.read_stores(&mut ctx, &scopes).await?;
-        for info in &scopes {
-            self.pull_or_skip(&mut ctx, session, info).await?;
+        // Each scope as the newest scopes body says, which a re-read after an expired cursor may have replaced.
+        let names: Vec<ScopeName> = scopes.iter().map(|info| info.scope).collect();
+        for scope in &names {
+            if let Some(info) = ctx.body.scopes.iter().find(|info| info.scope == *scope).cloned() {
+                self.pull_or_skip(&mut ctx, session, &info).await?;
+            }
         }
         self.push_back(&mut ctx).await?;
         self.resume_flows().await;
-        for info in &scopes {
-            self.push_rounds(&mut ctx, session, info).await?;
+        for scope in &names {
+            if let Some(info) = ctx.body.scopes.iter().find(|info| info.scope == *scope).cloned() {
+                self.push_rounds(&mut ctx, session, &info).await?;
+            }
         }
         self.write_stores(&ctx).await?;
         self.stop_actions(&ctx).await?;
@@ -412,13 +419,20 @@ impl ServiceSync {
         }))
     }
 
-    // The refilling stores whose every scope has its snapshot once `scope`'s is done, which settle in that commit.
-    async fn settled_stores(&self, ctx: &mut PassCtx, scope: ScopeName) -> Result<Vec<Row>, SyncError> {
+    // The refilling stores whose every scope has its snapshot once `scope`'s is done, which settle in that commit;
+    // `except` waits.
+    async fn settled_stores(
+        &self,
+        ctx: &mut PassCtx,
+        scope: ScopeName,
+        except: Option<&str>,
+    ) -> Result<Vec<Row>, SyncError> {
         let mut rows = Vec::new();
         let done = |held: &ScopeName| *held == scope || ctx.snapshots_done.contains(held);
         let settling: Vec<String> = ctx
             .stores
             .iter()
+            .filter(|(store, _)| except != Some(store.as_str()))
             .filter(|(_, seen)| seen.refill && seen.scopes.contains(&scope) && seen.scopes.iter().all(done))
             .map(|(store, _)| store.clone())
             .collect();
@@ -456,14 +470,17 @@ impl ServiceSync {
         Ok(())
     }
 
-    async fn finish(&self, outcome: &Result<PassReport, SyncError>) {
+    // A journal pass diffs only what it was told of, so the count it saw is not what waits.
+    async fn finish(&self, outcome: &Result<PassReport, SyncError>, journal_only: bool) {
         let counts = self.counts().await;
         let mut status = self.status_lock();
         status.last_pass_ms = Some(self.clock.now_ms());
         match outcome {
             Ok(report) => {
                 status.problem = None;
-                status.queued_changes = u32::try_from(report.queued).unwrap_or(u32::MAX);
+                if !journal_only {
+                    status.queued_changes = u32::try_from(report.queued).unwrap_or(u32::MAX);
+                }
                 status.phase = if report.pull_only {
                     SyncPhase::PullOnly
                 } else {

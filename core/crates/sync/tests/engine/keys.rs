@@ -405,3 +405,46 @@ async fn a_team_envelope_pulled_before_approval_is_taken_once_the_device_is_appr
     }));
     assert!(mini.sync.held_records().await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_refill_that_kept_envelopes_unchecked_refills_them_once_the_device_can_check_them() {
+    let server = FakeServer::new();
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account(), Role::Owner)]);
+    let mac = Device::new(&server, "dev_mac").await;
+    let version = format!("{}/team/1", tablepro_keys::encoding::uuid_to_wire(team.0));
+    let envelope = format!("library_connection/{}/password", id(1).to_lowercase());
+    mac.push_raw(
+        ScopeName::Team(team),
+        vec![write("key.version", &version, None, json!({"suite": "tp1"}))],
+    )
+    .await;
+    mac.push_raw(
+        ScopeName::Team(team),
+        vec![write("secret_envelope", &envelope, None, sealed(1))],
+    )
+    .await;
+    // The secrets store came back from a backup with an older copy, which must not read as an edit.
+    let secrets = envelopes();
+    secrets.put(&envelope, json!({"suite": "tp1", "kv": 1, "nonce": "old", "ct": "old"}));
+    let keys = Arc::new(KeyLog::waiting_for_approval());
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .keys(Arc::clone(&keys))
+        .adapter(ScopeName::Team(team), Arc::clone(&secrets))
+        .build()
+        .await;
+
+    mini.sync().await;
+    keys.approved();
+    mini.sync().await;
+
+    assert_eq!(secrets.get(&envelope), Some(sealed(1)));
+    let stored = server
+        .stored(
+            tablepro_sync_testing::service::ScopeOwner::Team(team),
+            "secret_envelope",
+            &envelope,
+        )
+        .and_then(|record| record.fields);
+    assert_eq!(stored, Some(sealed(1)));
+}

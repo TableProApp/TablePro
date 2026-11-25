@@ -88,10 +88,11 @@ impl KeyHooks for EngineHooks {
         self.keys_changed();
     }
 
+    // A full pass, since what a flow asks to carry is not in the journal.
     fn resume_scope(&self, scope: ScopeName) {
         self.state().stopped.remove(&scope);
         self.keys_changed();
-        self.wake.pass_soon(PassReason::Journal);
+        self.wake.pass_soon(PassReason::Person);
     }
 
     fn end_scope(&self, scope: ScopeName, epoch: Option<EpochId>) {
@@ -108,6 +109,6 @@ impl KeyHooks for EngineHooks {
     }
 
     fn pass_soon(&self) {
-        self.wake.pass_soon(PassReason::Journal);
+        self.wake.pass_soon(PassReason::Person);
     }
 }
