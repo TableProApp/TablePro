@@ -18,7 +18,7 @@ extension VimEngine {
             selectedRegister = char == "\"" ? nil : char
             return true
         }
-        if !takesCharacterArgument, char.isASCII, let digit = char.wholeNumberValue, countPrefix > 0 || digit > 0 {
+        if isCountKey(char), let digit = char.wholeNumberValue {
             if countPrefix <= 99_999 { countPrefix = countPrefix * 10 + digit }
             return true
         }
@@ -35,6 +35,14 @@ extension VimEngine {
     private var takesCharacterArgument: Bool {
         pendingFindChar != nil || pendingReplaceChar || pendingMarkSet || pendingMarkJumpExact != nil || pendingZ
             || pendingTextObject || pendingMacroTarget != nil || pendingBracket != nil
+    }
+
+    // A digit that adds to the count, not one that names a register, a character or the `0` motion.
+    func isCountKey(_ char: Character) -> Bool {
+        guard !pendingRegisterSelect, !takesCharacterArgument, char.isASCII, let digit = char.wholeNumberValue else {
+            return false
+        }
+        return countPrefix > 0 || digit > 0
     }
 
     private func processNormalCommand(_ char: Character, shift: Bool, in buffer: VimTextBuffer) -> Bool { // swiftlint:disable:this function_body_length
@@ -115,12 +123,7 @@ extension VimEngine {
             executeMotion(in: buffer) { self.moveRight(count, in: buffer) }
             return true
         case "w":
-            let count = consumeCount()
-            let op = pendingOperator
-            wordMotion(count, bigWord: false, in: buffer)
-            if let op {
-                recordDot(.operatorWithMotion(op: op, motion: "w", shift: false, count: count))
-            }
+            wordMotion(consumeCount(), bigWord: false, in: buffer)
             return true
         case "b" where buffer.selectedRange().location == 0, "B" where buffer.selectedRange().location == 0:
             // Nothing before the start of the text, so the motion fails and an operator does nothing.
@@ -195,8 +198,7 @@ extension VimEngine {
                 pendingTextObjectAround = false
                 return true
             }
-            countPrefix = 0
-            setMode(.insert)
+            beginInsert(count: consumeCount())
             return true
         case "a":
             if pendingOperator != nil {
@@ -204,22 +206,22 @@ extension VimEngine {
                 pendingTextObjectAround = true
                 return true
             }
-            countPrefix = 0
+            let count = consumeCount()
             let pos = buffer.selectedRange().location
             // On an empty line the caret is on the line break, and the text goes before it.
             if pos < contentEnd(ofLineAt: pos, in: buffer) {
                 buffer.setSelectedRange(NSRange(location: characterEnd(at: pos, in: buffer), length: 0))
             }
-            setMode(.insert)
+            beginInsert(count: count)
             return true
         case "I":
-            countPrefix = 0
+            let count = consumeCount()
             let target = firstNonBlankOffset(from: buffer.selectedRange().location, in: buffer)
             buffer.setSelectedRange(NSRange(location: target, length: 0))
-            setMode(.insert)
+            beginInsert(count: count)
             return true
         case "A":
-            countPrefix = 0
+            let count = consumeCount()
             moveToLineEnd(in: buffer)
             let pos = buffer.selectedRange().location
             let lineRange = buffer.lineRange(forOffset: pos)
@@ -227,27 +229,29 @@ extension VimEngine {
             let targetEnd = lineEnd > lineRange.location && lineEnd <= buffer.length
                 && buffer.character(at: lineEnd - 1) == 0x0A ? lineEnd - 1 : lineEnd
             buffer.setSelectedRange(NSRange(location: targetEnd, length: 0))
-            setMode(.insert)
+            beginInsert(count: count)
             return true
         case "o":
-            countPrefix = 0
+            let count = consumeCount()
+            if count > 1 { openInsertUndoStep() }
             let pos = buffer.selectedRange().location
             let lineRange = buffer.lineRange(forOffset: pos)
             let lineEnd = lineRange.location + lineRange.length
             let lineEndsWithNewline = lineEnd > lineRange.location
                 && buffer.character(at: lineEnd - 1) == 0x0A
-            buffer.replaceCharacters(in: NSRange(location: lineEnd, length: 0), with: "\n")
+            replace(NSRange(location: lineEnd, length: 0), with: "\n", in: buffer)
             let cursorPos = lineEndsWithNewline ? lineEnd : lineEnd + 1
             buffer.setSelectedRange(NSRange(location: cursorPos, length: 0))
-            setMode(.insert)
+            beginInsert(count: count, opensLine: true)
             return true
         case "O":
-            countPrefix = 0
+            let count = consumeCount()
+            if count > 1 { openInsertUndoStep() }
             let pos = buffer.selectedRange().location
             let lineRange = buffer.lineRange(forOffset: pos)
-            buffer.replaceCharacters(in: NSRange(location: lineRange.location, length: 0), with: "\n")
+            replace(NSRange(location: lineRange.location, length: 0), with: "\n", in: buffer)
             buffer.setSelectedRange(NSRange(location: lineRange.location, length: 0))
-            setMode(.insert)
+            beginInsert(count: count, opensLine: true)
             return true
 
         case "v":
@@ -432,8 +436,7 @@ extension VimEngine {
             return true
 
         case ".":
-            let count = consumeCount()
-            replayLastDot(count: count, in: buffer)
+            repeatLastChange(count: countPrefix > 0 ? consumeCount() : nil)
             return true
 
         case "(", ")":
@@ -508,9 +511,7 @@ extension VimEngine {
             return true
 
         case "x":
-            let count = consumeCount()
-            deleteCharUnderCursor(count, in: buffer)
-            recordDot(.deleteCharForward(count: count))
+            deleteCharUnderCursor(consumeCount(), in: buffer)
             return true
 
         default:

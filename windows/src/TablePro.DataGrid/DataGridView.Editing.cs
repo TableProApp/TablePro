@@ -141,8 +141,14 @@ public sealed partial class DataGridView
             }
         }
         _cache?.Dispose();
-        _cache = new CellCache(_data.OpenReader());
+        _cache = new CellCache(_data.OpenReader()) { KeepsLineBreaks = _wrapsText };
         var count = _data.RowCount;
+        // An edit may change any row's lines, so every wrapped row measures again around the first row in view.
+        (int Row, double Part)? anchor = _heights is null ? null : FirstRowAnchor();
+        if (_heights is not null)
+        {
+            _heights = NewHeights(count);
+        }
         if (count != RowCount)
         {
             var focus = (_selection.FocusRow, _selection.FocusColumn);
@@ -178,8 +184,13 @@ public sealed partial class DataGridView
             Cancel(EditorFocused);
         }
         _layoutVersion++;
+        var moved = anchor is { } held && PlaceFirstRow(held);
         InvalidateRows();
         Follow(_viewX, _viewY);
+        if (moved)
+        {
+            SyncScroller();
+        }
         RaiseStatusChanges();
     }
 
@@ -334,16 +345,15 @@ public sealed partial class DataGridView
     private void OpenEditor(int row, int column, string text)
     {
         ClearCellTip();
-        var editor = _editor ??= CreateEditor();
-        var window = column < _columns.FrozenCount ? _frozenWindow : _window;
-        if (!ReferenceEquals(editor.Parent, window))
+        // A TextBox animates its Height from the last size it showed and then sets it to NaN, so no edit reuses one.
+        if (_editor is { Parent: Panel pane } last)
         {
-            (editor.Parent as Panel)?.Children.Remove(editor);
-            window.Children.Add(editor);
+            pane.Children.Remove(last);
         }
+        var editor = _editor = CreateEditor();
+        (column < _columns.FrozenCount ? _frozenWindow : _window).Children.Add(editor);
         _editSession++;
         _edit = (row, column);
-        ClearEditError();
         // Before the text: a TextBox that takes no returns keeps only the first line.
         editor.AcceptsReturn = text.AsSpan().IndexOfAny('\r', '\n') >= 0;
         _newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n"
@@ -353,25 +363,17 @@ public sealed partial class DataGridView
         // What the TextBox holds, so a value with mixed line breaks opened and left is no change.
         _editText = EditorText(editor);
         AutomationProperties.SetName(editor, _names[column]);
-        editor.Visibility = Visibility.Visible;
         PlaceEditor();
-        if (editor.IsLoaded)
-        {
-            FocusEditor(editor);
-        }
-        else
-        {
-            editor.Loaded -= OnEditorLoaded;
-            editor.Loaded += OnEditorLoaded;
-        }
+        // Focus needs the box in the tree, not loaded, so keys typed right after F2 or Tab reach it, not the grid.
+        editor.ApplyTemplate();
+        FocusEditor(editor);
     }
 
-    // A new editor, or one moved to the other pane, takes focus once it is in the tree.
+    // A grid out of the tree could not focus the box; selecting again here would select over typed text.
     private void OnEditorLoaded(object sender, RoutedEventArgs e)
     {
-        var editor = (TextBox)sender;
-        editor.Loaded -= OnEditorLoaded;
-        if (IsEditing)
+        if (IsEditing && sender is TextBox editor && ReferenceEquals(editor, _editor)
+            && editor.FocusState == FocusState.Unfocused)
         {
             FocusEditor(editor);
         }
@@ -391,9 +393,18 @@ public sealed partial class DataGridView
             return;
         }
         Canvas.SetLeft(_editor, _columns.PaneX(edit.Column));
-        Canvas.SetTop(_editor, (edit.Row * _rowHeight) - _originY);
+        Canvas.SetTop(_editor, RowTop(edit.Row) - _originY);
         _editor.Width = _columns.Width(edit.Column);
-        if (_editor.AcceptsReturn)
+        _editor.TextWrapping = _heights is null ? TextWrapping.NoWrap : TextWrapping.Wrap;
+        if (_heights is not null)
+        {
+            // Over a wrapped cell the box wraps too and covers the row, however many lines the row shows.
+            var height = RowHeightOf(edit.Row);
+            _editor.Height = double.NaN;
+            _editor.MinHeight = height;
+            _editor.MaxHeight = Math.Max(height, _rowHeight * EditorMaxRows);
+        }
+        else if (_editor.AcceptsReturn)
         {
             _editor.Height = double.NaN;
             _editor.MinHeight = _rowHeight;
@@ -443,17 +454,17 @@ public sealed partial class DataGridView
             MinWidth = 0,
             MinHeight = 0,
             TextWrapping = TextWrapping.NoWrap,
-            Visibility = Visibility.Collapsed,
         };
         ApplyEditorFont(editor);
+        editor.Loaded += OnEditorLoaded;
         editor.PreviewKeyDown += OnEditorKeyDown;
         // Arrows and paging the TextBox leaves would reach the ScrollViewer around it and scroll the grid.
         editor.KeyDown += (_, e) => e.Handled |= e.Key is VirtualKey.Up or VirtualKey.Down or VirtualKey.Left
             or VirtualKey.Right or VirtualKey.PageUp or VirtualKey.PageDown or VirtualKey.Home or VirtualKey.End;
         editor.LostFocus += OnEditorLostFocus;
-        editor.TextChanged += (_, _) =>
+        editor.TextChanged += (sender, _) =>
         {
-            if (IsEditing)
+            if (IsEditing && ReferenceEquals(sender, _editor))
             {
                 PendingEditChanged?.Invoke(this, EventArgs.Empty);
             }
@@ -478,10 +489,10 @@ public sealed partial class DataGridView
         }
     }
 
-    // Focus moving to the editor's own menus comes back.
+    // Focus moving to the editor's own menus comes back. The event comes late, so it may be from the last edit's box.
     private void OnEditorLostFocus(object sender, RoutedEventArgs e)
     {
-        if (_editor is null || !IsEditing || EditorFocused
+        if (_editor is null || !ReferenceEquals(sender, _editor) || !IsEditing || EditorFocused
             || _editor.ContextFlyout is { IsOpen: true } || _editor.SelectionFlyout is { IsOpen: true })
         {
             return;

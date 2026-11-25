@@ -100,7 +100,11 @@ extension DatabaseManager {
                 preparedConfiguration: preparedConfiguration
             )
             let succeeded = try await driver.testConnection()
-            result = ConnectionTestResult(succeeded: succeeded, warning: driver.connectionWarning)
+            result = ConnectionTestResult(
+                succeeded: succeeded,
+                warning: driver.connectionWarning,
+                serverVersion: driver.serverVersion
+            )
         } catch {
             let reportedError = await Self.preferredTunnelFailure(replacing: error) {
                 await self.attributedTunnelFailure(for: connection)

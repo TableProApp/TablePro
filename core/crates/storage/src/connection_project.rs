@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::{ConnectionColor, ConnectionProjectName, GroupIcon};
 
-// All Connections is no project and has no entry (core ADR 0041).
+// All Connections is no project and has no entry (core ADR 0059).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "StoredProject")]
 pub struct ConnectionProject {

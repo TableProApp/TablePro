@@ -1,17 +1,7 @@
-//
-//  SharedSidebarState.swift
-//  TablePro
-//
-//  Connection-scoped sidebar state shared across all windows of the same
-//  connection. Window-scoped state (table selection) lives in
-//  `WindowSidebarState`.
-//
-
 import Combine
 import Foundation
 import TableProUtilities
 
-/// Which sidebar tab is active
 internal enum SidebarTab: String, CaseIterable {
     case tables
     case favorites
@@ -20,8 +10,11 @@ internal enum SidebarTab: String, CaseIterable {
 internal enum SidebarLayout: String, CaseIterable, Sendable {
     case flat
     case tree
+
+    static let fallback: SidebarLayout = .flat
 }
 
+// Shared by every window of one connection; window-scoped state lives in WindowSidebarState.
 @MainActor
 final class SharedSidebarState: ObservableObject {
     @Published var redisKeyTreeViewModel: RedisKeyTreeViewModel?
@@ -38,8 +31,7 @@ final class SharedSidebarState: ObservableObject {
         recentTables.filter { $0.database == normalizedDatabase(database) }
     }
 
-    /// `objectType` is what the object actually is, where the caller knew it. `isView` stays
-    /// beside it for the callers that know only that much, and is what an older build reads.
+    // isView stays beside objectType for callers that know only that much, and is what an older build reads.
     func recordTableOpen(
         database: String?,
         schema: String?,
@@ -106,8 +98,7 @@ final class SharedSidebarState: ObservableObject {
         )
     }
 
-    /// Removal matches on the entry's id, which is its database, schema and name, so the kind it
-    /// was recorded with is not part of the lookup.
+    // Matches on the id (database, schema, name), so the kind recorded with the entry is not part of the lookup.
     func removeRecentTable(database: String?, schema: String?, name: String) {
         let entry = RecentTableEntry(
             database: normalizedDatabase(database), schema: schema, name: name,
@@ -116,9 +107,7 @@ final class SharedSidebarState: ObservableObject {
         recentTables = RecentTablesStore.shared.remove(connectionId: connectionId, entry: entry)
     }
 
-    /// A renamed table keeps its place in Recent. The store is asked directly rather than the live
-    /// list, because that list is empty while Show Recent Tables is off and the entry is still on
-    /// disk: renaming only what is on screen left a dead entry to reappear under the old name.
+    // Asks the store, not the live list: that list is empty while Show Recent Tables is off, and the entry is still on disk.
     func renameRecentTable(database: String?, schema: String?, from oldName: String, to newName: String) {
         let scope = normalizedDatabase(database)
         let existing = RecentTablesStore.shared.entries(connectionId: connectionId).first {
@@ -128,8 +117,7 @@ final class SharedSidebarState: ObservableObject {
         publish(RecentTablesStore.shared.rename(connectionId: connectionId, entry: existing, to: newName))
     }
 
-    /// Every Recent entry in a renamed container follows it, because the entries are keyed by the
-    /// container's name and would otherwise all point at one that has gone.
+    // Entries are keyed by the container's name, so each one has to follow the rename.
     func renameRecentDatabase(from oldName: String, to newName: String) {
         publish(RecentTablesStore.shared.renameDatabase(
             connectionId: connectionId, from: oldName, to: newName
@@ -142,9 +130,7 @@ final class SharedSidebarState: ObservableObject {
         ))
     }
 
-    /// A table opened before the session knew its schema is recorded without one, and clicking that
-    /// entry opens the same name in whichever schema is browsed by then. It takes the schema the tab
-    /// resolved, in place.
+    // An entry recorded before the session knew its schema would open the name in whichever schema is browsed.
     func resolveRecentSchema(database: String?, name: String, to schema: String) {
         publish(RecentTablesStore.shared.resolveSchema(
             connectionId: connectionId, database: normalizedDatabase(database), name: name, to: schema
@@ -206,8 +192,7 @@ final class SharedSidebarState: ObservableObject {
         }
     }
 
-    /// Keyed by database name, "" for an engine browsed without one. Written only through the
-    /// methods below, which keep the stored copy in step.
+    // Keyed by database name, "" without one. Written only through the methods below, which keep the stored copy in step.
     @Published private(set) var schemaFilterSelected: [String: Set<String>]
 
     func schemaFilter(for database: String?) -> Set<String> {
@@ -237,8 +222,7 @@ final class SharedSidebarState: ObservableObject {
         setSchemaFilter(selected, for: database)
     }
 
-    /// A filter whose last schema was dropped is cleared rather than left naming nothing: an empty
-    /// selection is no filter, which is the list the user saw before picking the dropped one.
+    // An empty selection is no filter, which is the list the user saw before picking the dropped schema.
     func removeSchemaFromFilter(database: String?, schema: String) {
         var selected = schemaFilter(for: database)
         guard selected.remove(schema) != nil else { return }
@@ -288,7 +272,7 @@ final class SharedSidebarState: ObservableObject {
         get {
             guard let raw = AppStorageEnvironment.shared.defaults.string(forKey: SidebarPersistenceKey.defaultLayout),
                   let layout = SidebarLayout(rawValue: raw) else {
-                return .flat
+                return .fallback
             }
             return layout
         }
@@ -329,11 +313,10 @@ final class SharedSidebarState: ObservableObject {
         }
     }
 
-    /// Default init for previews and tests
     init() {
         self.connectionId = UUID()
         self.selectedSidebarTab = .tables
-        self.sidebarLayout = .flat
+        self.sidebarLayout = .fallback
         self.databaseFilterSelected = []
         self.schemaFilterSelected = [:]
         self.favoriteDatabaseEnvironmentFilter = .all

@@ -26,7 +26,7 @@ use crate::decode::value_at;
 use crate::duck_type::DuckType;
 use crate::encode::bind_all;
 use crate::errors::map_error;
-use crate::instance::{Link, attach_unless_open};
+use crate::instance::{AttachTarget, Link, attach_unless_open};
 use crate::result_origin::{TracedTable, traced_table};
 use crate::transaction_state::transaction_state;
 
@@ -610,7 +610,7 @@ fn closes_last(tokens: &[ScriptToken], open: usize) -> bool {
 ///
 /// A path that does not evaluate refuses the ATTACH: a misread boundary
 /// would otherwise let DuckDB open a file nothing checked.
-fn attach_targets(link: &Link, statement: &str, path: Range<usize>) -> Result<Vec<PathBuf>, DriverError> {
+fn attach_targets(link: &Link, statement: &str, path: Range<usize>) -> Result<Vec<AttachTarget>, DriverError> {
     // DuckDB turns some non-ASCII spaces into spaces before it reads the
     // ATTACH, as far as its own reading of quotes goes, and starts again
     // in the query below. So the path goes in as DuckDB reads it there.
@@ -658,7 +658,13 @@ fn attach_targets(link: &Link, statement: &str, path: Range<usize>) -> Result<Ve
     Ok(readings
         .into_iter()
         .filter(|path| !path.is_empty() && !path.starts_with(":memory:"))
-        .map(|path| resolved_like_duckdb(expand_path(path, home.as_deref())))
+        .map(|path| {
+            let asked = expand_path(path, home.as_deref());
+            AttachTarget {
+                opened: resolved_like_duckdb(asked.clone()),
+                asked,
+            }
+        })
         .collect())
 }
 

@@ -42,17 +42,62 @@ public enum ForeignSavedQuerySupport
     NotInExport,
 }
 
+public enum ForeignScanDepth
+{
+    // Whether each app is there, with no count: what a launch asks before it shows anything.
+    Presence,
+    Inventory,
+}
+
+public abstract record ForeignSourceAvailability
+{
+    private ForeignSourceAvailability()
+    {
+    }
+
+    public sealed record Available : ForeignSourceAvailability
+    {
+        public static Available Instance { get; } = new();
+    }
+
+    public sealed record NotFound : ForeignSourceAvailability
+    {
+        public static NotFound Instance { get; } = new();
+    }
+
+    // The app's data is there and could not be read; Code is a foreign_import.* code the app words.
+    public sealed record Unreadable(string Code, string Detail) : ForeignSourceAvailability;
+}
+
+public enum ForeignPasswordOffer
+{
+    DecryptedWhileReading,
+    // DataGrip's KeePass file, which opens with the user's DPAPI.
+    PasswordFile,
+    // DBX's key, which Credential Manager hands over.
+    KeyInCredentialManager,
+    // A store Windows does not let another app read, so passwords are not offered.
+    SystemStore,
+}
+
 // FileExtensions is set for an app imported from an export file the user picks, which is always available.
+// Preselected is true on at most one source: the one a dialog that takes one app selects first.
 public sealed record ForeignSource(
     ForeignApp App,
     string Name,
-    bool IsAvailable,
+    ForeignSourceAvailability Availability,
     long Connections,
     long SavedQueries,
     IReadOnlyList<string> FileExtensions,
     ForeignPasswordSource Passwords,
-    ForeignSavedQuerySupport SavedQuerySupport)
+    ForeignSavedQuerySupport SavedQuerySupport,
+    ForeignPasswordOffer PasswordOffer,
+    bool OffersSavedQueries,
+    bool StartsTicked,
+    bool Preselected)
 {
+    public bool IsAvailable => Availability is ForeignSourceAvailability.Available;
+
     public bool PicksFile => FileExtensions.Count > 0;
 }
 
@@ -204,13 +249,15 @@ public sealed record ForeignImportChoices(
     bool Importable);
 
 // PasswordsNotKept: refused by Credential Manager, so those connections ask when they connect.
+// ConnectionIds: the saved connections written, added or replaced, in the review's order; Keep Existing writes none.
 public sealed record ForeignImportOutcome(
     int Connections,
     int Replaced,
     int PasswordsNotKept,
     int QueriesAdded,
     int QueriesAlreadySaved,
-    int QueriesFailed);
+    int QueriesFailed,
+    IReadOnlyList<Guid> ConnectionIds);
 
 // Another app's connections and saved queries, read once and checked against the library as it was then.
 public sealed class ForeignImportReview : IDisposable
@@ -295,7 +342,8 @@ public sealed class ForeignImportReview : IDisposable
             checked((int)outcome.PasswordsNotKept),
             checked((int)outcome.QueriesAdded),
             checked((int)outcome.QueriesAlreadySaved),
-            checked((int)outcome.QueriesFailed));
+            checked((int)outcome.QueriesFailed),
+            [.. outcome.ConnectionIds.Select(Guid.Parse)]);
     }
 
     public void Dispose() => _review.Dispose();

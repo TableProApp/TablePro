@@ -59,10 +59,13 @@ extension MainContentCoordinator {
 
     // As a first page builds it from this list alone, before any rows arrive to type its filters.
     func tableQueryColumns(for tab: QueryTab, builtOn schema: SchemaColumnStore.Entry) -> TableQueryColumns {
-        let columns = effectiveResultColumns(for: tab, schema: schema)
+        let selected = effectiveResultColumns(for: tab, schema: schema)
+        let (columns, columnTypes) = appendingHiddenColumns(
+            to: selected, types: schema.columnTypes(aligningWith: selected), of: tab, schema: schema
+        )
         return TableQueryColumns(
             columns: columns,
-            columnTypes: schema.columnTypes(aligningWith: columns),
+            columnTypes: columnTypes,
             selectColumns: selectColumns(for: tab, schema: schema),
             unloadedValues: unloadedValuePlan(for: tab, schema: schema)
         )
@@ -242,9 +245,32 @@ extension MainContentCoordinator {
     /// filter guesses from the value's text and sends `0123` to a text column as a number.
     func queryColumns(for tab: QueryTab) -> (columns: [String], columnTypes: [ColumnType]) {
         let buffer = tabSessionRegistry.tableRows(for: tab.id)
-        guard buffer.columns.isEmpty else { return (buffer.columns, buffer.columnTypes) }
+        let schema = cachedSchemaColumns(for: tab)
+        guard buffer.columns.isEmpty else {
+            return appendingHiddenColumns(to: buffer.columns, types: buffer.columnTypes, of: tab, schema: schema)
+        }
         let columns = effectiveResultColumns(for: tab)
-        return (columns, cachedSchemaColumns(for: tab)?.columnTypes(aligningWith: columns) ?? [])
+        return appendingHiddenColumns(
+            to: columns, types: schema?.columnTypes(aligningWith: columns) ?? [], of: tab, schema: schema
+        )
+    }
+
+    // A hidden column leaves the SELECT, not the table, so a filter on it still needs its type. It goes
+    // after the selected columns, so no sort index moves, and only while the SELECT names its columns,
+    // so a driver projecting the whole list never fetches it.
+    private func appendingHiddenColumns(
+        to columns: [String],
+        types: [ColumnType],
+        of tab: QueryTab,
+        schema: SchemaColumnStore.Entry?
+    ) -> (columns: [String], columnTypes: [ColumnType]) {
+        guard let schema, types.count == columns.count,
+              scopedColumns(for: tab, schema: schema) != nil else { return (columns, types) }
+        let selected = Set(columns)
+        let hidden = schema.columns.filter { tab.columnLayout.hiddenColumns.contains($0) && !selected.contains($0) }
+        let hiddenTypes = schema.columnTypes(aligningWith: hidden)
+        guard !hidden.isEmpty, hiddenTypes.count == hidden.count else { return (columns, types) }
+        return (columns + hidden, types + hiddenTypes)
     }
 
     // Built from the tab's scope alone, not where the user browses, with names by bytes, so tables in two databases,

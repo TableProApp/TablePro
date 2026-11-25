@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -12,6 +13,10 @@ internal final class WelcomeSplitViewController: NSSplitViewController {
     internal static let listMinimumWidth: CGFloat = 460
 
     private let viewModel: WelcomeViewModel
+    private var listItem: NSSplitViewItem?
+    private var listPane: WelcomeListPaneController?
+    private(set) var tagFilterBar: WelcomeTagFilterBar?
+    private var tagFilterCancellable: AnyCancellable?
 
     internal init(viewModel: WelcomeViewModel) {
         self.viewModel = viewModel
@@ -39,15 +44,54 @@ internal final class WelcomeSplitViewController: NSSplitViewController {
                 .environment(\.appServices, .live)
         )
         list.sizingOptions = []
-        /// `sceneBridgingOptions` is macOS 14. It lets the hosted SwiftUI tree contribute toolbar
-        /// items to the window; on 13 the pane simply contributes none, and the window keeps the
-        /// toolbar the controller builds itself.
-        if #available(macOS 14.0, *) {
-            list.sceneBridgingOptions = [.toolbars]
+        let listItem: NSSplitViewItem
+        if #available(macOS 26.0, *) {
+            listItem = NSSplitViewItem(viewController: list)
+        } else {
+            let pane = WelcomeListPaneController(content: list)
+            listPane = pane
+            listItem = NSSplitViewItem(viewController: pane)
         }
-        let listItem = NSSplitViewItem(viewController: list)
         listItem.minimumThickness = Self.listMinimumWidth
         addSplitViewItem(listItem)
+        self.listItem = listItem
+
+        tagFilterCancellable = viewModel.$tagFilter.sink { [weak self] filter in
+            self?.showTagFilter(filter)
+        }
+    }
+
+    // Built when the first tag turns on, so the first frame never pays for it.
+    private func showTagFilter(_ filter: WelcomeTagFilter) {
+        guard filter.isActive else {
+            hideTagFilterBar()
+            return
+        }
+        if let tagFilterBar {
+            tagFilterBar.apply(filter)
+            return
+        }
+        let bar = WelcomeTagFilterBar(viewModel: viewModel)
+        bar.apply(filter)
+        tagFilterBar = bar
+        if #available(macOS 26.0, *) {
+            let accessory = NSSplitViewItemAccessoryViewController()
+            accessory.view = bar
+            listItem?.addTopAlignedAccessoryViewController(accessory)
+        } else {
+            listPane?.showBar(bar)
+        }
+    }
+
+    private func hideTagFilterBar() {
+        guard tagFilterBar != nil else { return }
+        tagFilterBar = nil
+        if #available(macOS 26.0, *) {
+            guard let listItem, !listItem.topAlignedAccessoryViewControllers.isEmpty else { return }
+            listItem.removeTopAlignedAccessoryViewController(at: 0)
+        } else {
+            listPane?.showBar(nil)
+        }
     }
 }
 

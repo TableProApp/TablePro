@@ -30,8 +30,7 @@ public enum SecretKind
     SshPassphrase,
 }
 
-// A secret no connection owns.
-public enum SecretItem
+public enum SecretItemKind
 {
     McpToken,
     AnthropicKey,
@@ -40,6 +39,24 @@ public enum SecretItem
 
     // The TablePro account's refresh token, which only the account asks for.
     AccountRefreshToken,
+}
+
+// A secret no connection owns. tablepro.app's refresh token has no sign-in key; another server's names one, so each
+// server keeps its own item (core ADR 0047).
+public readonly record struct SecretItem(SecretItemKind Kind, string? SignInKey = null)
+{
+    public static SecretItem McpToken { get; } = new(SecretItemKind.McpToken);
+
+    public static SecretItem AnthropicKey { get; } = new(SecretItemKind.AnthropicKey);
+
+    public static SecretItem OpenAIKey { get; } = new(SecretItemKind.OpenAIKey);
+
+    public static SecretItem OpenAICompatibleKey { get; } = new(SecretItemKind.OpenAICompatibleKey);
+
+    public static SecretItem AccountRefreshToken { get; } = new(SecretItemKind.AccountRefreshToken);
+
+    public static SecretItem AccountRefreshTokenFor(string signInKey) =>
+        new(SecretItemKind.AccountRefreshToken, signInKey);
 }
 
 public enum SecretStoreFailure

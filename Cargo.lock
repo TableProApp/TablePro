@@ -2087,9 +2087,9 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "duckdb"
-version = "1.20000.1"
+version = "1.20001.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d807ca47d4fa206f102ff568046e018fb84518eb0a0b5e65a165a2eb7bd4a7c2"
+checksum = "eb19e64a2117302336d7e1cc85156b04e7cc2e6fbd974df918cf3b90d35e9f05"
 dependencies = [
  "arrow",
  "cast",
@@ -2469,9 +2469,9 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -4098,9 +4098,9 @@ checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
 name = "libduckdb-sys"
-version = "1.20000.1"
+version = "1.20001.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0140448c472968ee5cf5ba697435deebe558b366ef1e5c080d24d9696b600725"
+checksum = "d1c27e11ec482b43f1e55c782835ec441b3f188a065bfa0d8962b1ba678711ed"
 dependencies = [
  "cc",
  "flate2",
@@ -7148,8 +7148,7 @@ dependencies = [
 [[package]]
 name = "sqlx-core"
 version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c08f9787cc5aff062567dea2205f8ae37a617b04342633ab4f74944858ea6072"
+source = "git+https://github.com/TableProApp/sqlx?rev=642b5cec1deb0f3d801c27b4221ad9e40a4f6712#642b5cec1deb0f3d801c27b4221ad9e40a4f6712"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -7225,8 +7224,7 @@ dependencies = [
 [[package]]
 name = "sqlx-mysql"
 version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19eeb93b96eb10a3a59dfb436f3daf87d2fc41168ed9e9dc153ec8257dd6a761"
+source = "git+https://github.com/TableProApp/sqlx?rev=642b5cec1deb0f3d801c27b4221ad9e40a4f6712#642b5cec1deb0f3d801c27b4221ad9e40a4f6712"
 dependencies = [
  "bitflags 2.13.2",
  "byteorder",
@@ -7637,14 +7635,11 @@ dependencies = [
  "hyper-util",
  "jsonwebtoken",
  "oauth2",
- "openapiv3",
- "progenitor",
- "progenitor-client",
- "regress",
  "reqwest",
  "secrecy",
  "serde",
  "serde_json",
+ "tablepro-cloud-api",
  "tablepro-core",
  "tablepro-storage",
  "tempfile",
@@ -7660,6 +7655,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "chrono",
  "futures-util",
  "http",
  "http-body-util",
@@ -7672,6 +7668,7 @@ dependencies = [
  "sse-stream",
  "tablepro-core",
  "tablepro-net",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -7716,6 +7713,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "tablepro-cloud-api"
+version = "0.0.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "http",
+ "openapiv3",
+ "progenitor",
+ "progenitor-client",
+ "regress",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
 name = "tablepro-core"
 version = "0.0.0"
 dependencies = [
@@ -7738,10 +7754,12 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "sqlformat",
  "sqlparser",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+ "unicode-normalization",
  "unicode-segmentation",
  "unicode-width",
  "url",
@@ -9169,9 +9187,9 @@ dependencies = [
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",

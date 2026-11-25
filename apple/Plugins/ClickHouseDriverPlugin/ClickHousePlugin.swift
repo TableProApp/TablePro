@@ -20,12 +20,15 @@ nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin
     static let databaseDisplayName = "ClickHouse"
     static let iconName = "clickhouse-icon"
     static let defaultPort = 8123
+    // Each HTTP request names its own database and keeps no session, so no statement moves it. The connect names one.
+    static let statementsCanSwitchDatabase = false
     // The trust delegate evaluates the pre-tunnel host through a forward.
     static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
 
     // MARK: - UI/Capability Metadata
 
     static let isDownloadable = true
+    static let urlSchemes: [String] = ["clickhouse", "ch"]
     static let explainVariants: [ExplainVariant] = [
         ExplainVariant(id: "plan", label: "Plan", sqlPrefix: "EXPLAIN", format: .indentedText),
         ExplainVariant(id: "pipeline", label: "Pipeline", sqlPrefix: "EXPLAIN PIPELINE", format: .indentedText),
@@ -139,11 +142,11 @@ nonisolated struct ClickHouseError: Error, PluginDriverError {
 
     static let notConnected = ClickHouseError(message: String(localized: "Not connected to database"))
     static let verifyCaNeedsCertificate = ClickHouseError(message: String(localized: """
-        Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed \
+        Verify CA needs a CA certificate. In the connection's SSL/TLS settings, choose the CA certificate that signed \
         the server's certificate, or set SSL Mode to Verify Identity.
         """))
     static let clientCertificateNeedsKey = ClickHouseError(message: String(localized: """
-        A client certificate needs its client key. On the connection's Network tab, choose the client key, or \
+        A client certificate needs its client key. In the connection's SSL/TLS settings, choose the client key, or \
         clear the client certificate.
         """))
 
@@ -166,6 +169,38 @@ nonisolated struct ClickHouseError: Error, PluginDriverError {
 }
 
 // MARK: - Internal Query Result
+
+// Where a streamed read's elements go: a capped read's own stream, which never holds more than its cap, or an
+// export's spill, which `deliverSuspending` makes wait without blocking a thread of the cooperative pool.
+nonisolated private enum ClickHouseRowSink {
+    case stream(AsyncThrowingStream<PluginStreamElement, Error>.Continuation)
+    case spill(PluginRowSpill)
+
+    func yield(_ header: PluginStreamHeader) {
+        switch self {
+        case .stream(let continuation): continuation.yield(.header(header))
+        case .spill(let spill): spill.yield(header)
+        }
+    }
+
+    // False once the reader has gone.
+    func deliver(_ rows: [PluginRow]) async -> Bool {
+        switch self {
+        case .stream(let continuation):
+            if case .terminated = continuation.yield(.rows(rows)) { return false }
+            return true
+        case .spill(let spill):
+            return await spill.deliverSuspending(rows)
+        }
+    }
+
+    func finish() {
+        switch self {
+        case .stream(let continuation): continuation.finish()
+        case .spill(let spill): spill.finish()
+        }
+    }
+}
 
 nonisolated struct CHQueryResult {
     let columns: [String]
@@ -292,6 +327,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
         report(.preparingSession)
         let profile: ClickHouseServerProfile
+        let startingDatabase: String?
         do {
             let settings = try await probe(ClickHouseServerProfile.settingsProbeQuery, deadline: deadline)
             let catalog = try await probe(ClickHouseServerProfile.catalogProbeQuery, deadline: deadline)
@@ -300,6 +336,11 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 settings: settings.map { (columns: $0.columns, rows: $0.rows) },
                 catalogRow: catalog?.rows.first
             )
+            // A request naming no database runs in the user's default, which `ALTER USER ... DEFAULT DATABASE` moves,
+            // so the connect names the one it starts in on every request after it. Unread, nothing is reported.
+            startingDatabase = lock.withLock({ _currentDatabase.isEmpty })
+                ? try await probe("SELECT currentDatabase()", deadline: deadline)?.rows.first?.first?.asText
+                : nil
         } catch {
             disconnect()
             throw error
@@ -307,6 +348,9 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         lock.withLock {
             _serverVersion = versionText
             _serverProfile = profile
+            if let startingDatabase, !startingDatabase.isEmpty, _currentDatabase.isEmpty {
+                _currentDatabase = startingDatabase
+            }
         }
 
         Self.logger.debug("Connected to ClickHouse at \(self.config.host):\(self.config.port)")
@@ -529,6 +573,11 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
     // MARK: - Database Switching
 
+    var currentDatabase: String? {
+        let database = lock.withLock { _currentDatabase }
+        return database.isEmpty ? nil : database
+    }
+
     func switchDatabase(to database: String) async throws {
         lock.withLock { _currentDatabase = database }
     }
@@ -668,10 +717,10 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 try await streamTabSeparatedRows(
                     request: request,
                     session: session,
-                    batchSize: min(5_000, rowCap + 1),
+                    rowLimit: min(PluginRowBatcher.defaultRowLimit, rowCap + 1),
                     boundedOutputCut: isOutputCut,
                     byteLimit: byteLimit,
-                    continuation: continuation
+                    sink: .stream(continuation)
                 )
             } catch {
                 throw Self.readOnlyRefusal(error, reason: readOnly)
@@ -691,39 +740,44 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     private func streamTabSeparatedRows(
         request: URLRequest,
         session: URLSession,
-        batchSize: Int,
+        rowLimit: Int,
         boundedOutputCut: OSAllocatedUnfairLock<Bool>? = nil,
         byteLimit: Int? = nil,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        sink: ClickHouseRowSink
     ) async throws {
         var decoder = ClickHouseTabSeparatedRowDecoder()
         var tail = ClickHouseStreamTail()
         var otherFormatBody: Data?
         var headerSent = false
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
+        var batch = PluginRowBatcher(rowLimit: rowLimit)
         var bytes = 0
 
         func sendHeader(_ header: ClickHouseTabSeparatedRowDecoder.Header) {
             guard !headerSent else { return }
             headerSent = true
-            continuation.yield(.header(PluginStreamHeader(
+            sink.yield(PluginStreamHeader(
                 columns: header.columns,
                 columnTypeNames: header.columnTypeNames,
                 estimatedRowCount: nil
-            )))
+            ))
         }
 
-        // Keeps the row that takes the decoded rows past `byteLimit`, and says it came; the rest is never read.
-        func take(_ rows: [PluginRow]) -> Bool {
-            guard let byteLimit else {
-                batch.append(contentsOf: rows)
-                return false
-            }
+        // The transfer waits on this, so a reader that falls behind holds the download instead of memory.
+        func send() async throws {
+            guard await sink.deliver(batch.rows) else { throw CancellationError() }
+            batch.removeAll()
+        }
+
+        // Sends each batch as it fills, since one chunk can hold many batches of rows. Keeps the row that takes the
+        // decoded rows past `byteLimit`, and says it came; the rest is never read.
+        func take(_ rows: [PluginRow]) async throws -> Bool {
             for row in rows {
-                batch.append(row)
-                bytes += Self.decodedByteCount(of: row)
-                if bytes > byteLimit { return true }
+                let isFull = batch.append(row)
+                if let byteLimit {
+                    bytes += Self.decodedByteCount(of: row)
+                    if bytes > byteLimit { return true }
+                }
+                if isFull { try await send() }
             }
             return false
         }
@@ -754,17 +808,14 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 if let header = decoder.header {
                     sendHeader(header)
                 }
-                if take(rows) { throw ByteLimitReached() }
-                guard batch.count >= batchSize else { return }
-                continuation.yield(.rows(batch))
-                batch.removeAll(keepingCapacity: true)
+                if try await take(rows) { throw ByteLimitReached() }
             }
         } catch is ByteLimitReached {
             if !batch.isEmpty {
-                continuation.yield(.rows(batch))
+                try await send()
             }
             boundedOutputCut?.withLock { $0 = true }
-            continuation.finish()
+            sink.finish()
             return
         } catch is OtherFormatBodyFull {}
 
@@ -779,10 +830,10 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 columnTypeNames: outcome.columnTypeNames
             ))
             if !outcome.rows.isEmpty {
-                continuation.yield(.rows(outcome.rows))
+                guard await sink.deliver(outcome.rows) else { throw CancellationError() }
             }
             boundedOutputCut?.withLock { $0 = outcome.isTruncated }
-            continuation.finish()
+            sink.finish()
             return
         }
 
@@ -790,15 +841,23 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             exceptionTag: chunks.headerValue("X-ClickHouse-Exception-Tag"),
             header: decoder.header
         )
-        let stoppedAtByteLimit = take(decoder.consume(rest)) || take(decoder.finish())
+        // The header goes ahead of any batch `take` sends.
+        let restRows = decoder.consume(rest)
+        if let header = decoder.header { sendHeader(header) }
+        var stoppedAtByteLimit = try await take(restRows)
+        if !stoppedAtByteLimit {
+            let lastRows = decoder.finish()
+            if let header = decoder.header { sendHeader(header) }
+            stoppedAtByteLimit = try await take(lastRows)
+        }
         sendHeader(decoder.header ?? ClickHouseTabSeparatedRowDecoder.Header(columns: [], columnTypeNames: []))
         if !batch.isEmpty {
-            continuation.yield(.rows(batch))
+            try await send()
         }
         if stoppedAtByteLimit {
             boundedOutputCut?.withLock { $0 = true }
         }
-        continuation.finish()
+        sink.finish()
     }
 
     /// The buffered path's cap for a body in another format. Past it the classifier marks the
@@ -817,16 +876,21 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         stream(query, readOnly: ClickHouseReadOnlyReason(context))
     }
 
+    // An export or a copy reads every row, so the stream is bounded and what its buffer refuses goes to a spool file:
+    // the download keeps the server's pace, and a reader slower than the server costs disk instead of memory. Once
+    // the spool's budget is spent the download waits for the reader.
     private func stream(_ query: String, readOnly: ClickHouseReadOnlyReason?) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        AsyncThrowingStream(bufferingPolicy: .bufferingOldest(PluginRowStream.boundedBufferBatches)) { continuation in
+            let spill = PluginRowSpill(continuation: continuation)
             let streamTask = Task {
                 do {
-                    try await self.performStreamRows(query: query, readOnly: readOnly, continuation: continuation)
+                    try await self.performStreamRows(query: query, readOnly: readOnly, spill: spill)
                 } catch {
-                    continuation.finish(throwing: error)
+                    spill.finish(throwing: error)
                 }
             }
             continuation.onTermination = { @Sendable _ in
+                spill.abandon()
                 streamTask.cancel()
             }
         }
@@ -835,7 +899,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     private func performStreamRows(
         query: String,
         readOnly: ClickHouseReadOnlyReason?,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        spill: PluginRowSpill
     ) async throws {
         let queryId = UUID().uuidString
         let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId)
@@ -853,8 +917,8 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
                 try await streamTabSeparatedRows(
                     request: request,
                     session: session,
-                    batchSize: 5_000,
-                    continuation: continuation
+                    rowLimit: PluginRowBatcher.defaultRowLimit,
+                    sink: .spill(spill)
                 )
             } catch {
                 throw Self.readOnlyRefusal(error, reason: readOnly)

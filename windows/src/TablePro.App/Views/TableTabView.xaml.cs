@@ -37,6 +37,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         ITableColumns? columns = null)
     {
         InitializeComponent();
+        DisplaySettings.FollowKeys(this, ShowKeys);
         Results.ShowsEdits = true;
         var grid = Results.GridView;
         _model = new TableTab(
@@ -48,6 +49,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
             () => workbench.Settings,
             restore,
             filters);
+        Results.WrapsText = _model.WrapsText;
         _model.StateChanged += (_, _) => StateChanged?.Invoke(this, EventArgs.Empty);
         // As macOS keeps a table's column layout: by name, so the table's own changes since are taken in.
         _columns = columns;
@@ -127,6 +129,15 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
     public DataGridView? Grid => _showsStructure && _structure is { } structure ? structure.Grid : Results.GridView;
 
     public bool GridIsTarget => _showsStructure || Results.ShowsGrid;
+
+    // The rows wrap, not the structure's grid, so Structure offers no wrap.
+    public bool? WrapsText => _showsStructure ? null : _model.WrapsText;
+
+    public void SetWrapsText(bool wraps)
+    {
+        Results.WrapsText = wraps;
+        _model.SetWrapsText(wraps);
+    }
 
     public TextBox? MessagesTarget
     {
@@ -1044,6 +1055,17 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         }
     }
 
+
+    // The keys come from the shortcut preset, so the tooltips name them from it.
+    private void ShowKeys()
+    {
+        ToolTipService.SetToolTip(StopButton, DisplaySettings.Tip(StopButton.Label, "cancelQuery"));
+        ToolTipService.SetToolTip(FilterButton, DisplaySettings.Tip(FilterButton.Label, "toggleFilters"));
+        ToolTipService.SetToolTip(AddRowButton, DisplaySettings.Tip(AddRowButton.Label, "addRow"));
+        ToolTipService.SetToolTip(DuplicateRowButton, DisplaySettings.Tip(DuplicateRowButton.Label, "duplicateRow"));
+        ToolTipService.SetToolTip(SaveChangesButton, DisplaySettings.Tip(SaveChangesButton.Label, "saveChanges"));
+        ToolTipService.SetToolTip(PreviewSqlButton, DisplaySettings.Tip(PreviewSqlButton.Label, "previewSQL"));
+    }
     private void OnFilterToggled(object sender, RoutedEventArgs e)
     {
         var show = FilterButton.IsChecked == true;
@@ -1239,6 +1261,8 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(ColumnsMenu());
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(GridMenus.WrapText(this));
         return menu;
     }
 

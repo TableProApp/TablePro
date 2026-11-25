@@ -6,7 +6,7 @@ import TableProUtilities
 internal struct FavoritesTabView: View {
     @ObservedObject private var teamLibrarySync = TeamLibrarySync.shared
     @ObservedObject private var featureAccess = FeatureAccess.shared
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var sidebarDisplay = SidebarDisplayPreferences.shared
     @ObservedObject private var gitStatusStore = LinkedFolderGitStatusStore.shared
     @ObservedObject private var gitActions = LinkedFolderGitActions.shared
     @ObservedObject private var catalog: ConnectionSidebarCatalog
@@ -253,11 +253,7 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    // MARK: - List
-
-    /// Every team query this license can see, before the filter field has had a word to say about
-    /// it. The empty state asks whether the user owns anything, and the filtered list cannot answer
-    /// that question.
+    // Before the filter: the empty state asks whether the user owns anything, which the filtered list cannot answer.
     private var allTeamLibraryQueries: [TeamLibraryQuery] {
         guard featureAccess.isAvailable(.teamLibrary) else { return [] }
         return teamLibrarySync.content.queries
@@ -286,6 +282,7 @@ internal struct FavoritesTabView: View {
     }
 
     private func publishSavedQueriesToTeam(teamID: String) {
+        let destination = teamLibrarySync.destination(teamID)
         Task { @MainActor in
             let favorites = await SQLFavoriteManager.shared.fetchFavorites()
             let folders = await SQLFavoriteManager.shared.fetchFolders()
@@ -299,7 +296,7 @@ internal struct FavoritesTabView: View {
                 outcome = .finished(try await teamLibrarySync.publishSavedQueries(
                     favorites: favorites,
                     folders: folders,
-                    to: teamID
+                    to: destination
                 ))
             } catch {
                 outcome = .failed(error)
@@ -357,7 +354,7 @@ internal struct FavoritesTabView: View {
                 linkedFolderGitStates: linkedFolderGitStates
             ),
             selection: $sharedSidebarState.selectedFavorite,
-            rowSizePreference: settingsManager.general.sidebarRowSize,
+            rowSizePreference: sidebarDisplay.options.rowSize,
             actions: FavoritesOutlineActions(
                 primaryAction: { handlePrimaryAction($0) },
                 deleteSelection: { deleteNode($0) },
@@ -369,9 +366,7 @@ internal struct FavoritesTabView: View {
         )
     }
 
-    /// The cell pins its hosted view to the full row width, and `NSHostingView` centers a root view
-    /// narrower than its bounds, so the row has to claim that width itself or short content drifts
-    /// to the middle.
+    // `NSHostingView` centers a narrower root view, so the row claims the full width or short content drifts.
     private func outlineRow(_ node: FavoritesOutlineNode) -> some View {
         rowContent(node)
             .font(resolvedRowSize.rowFont)
@@ -380,18 +375,15 @@ internal struct FavoritesTabView: View {
             .contentShape(Rectangle())
     }
 
-    /// AppKit sizes the row from `rowSizeStyle`, but it does that by laying out
-    /// `NSTableCellView.textField`, and these cells host SwiftUI instead. Without this the object
-    /// list grew with the sidebar size and the Favorites list beside it did not.
+    // The cells host SwiftUI, so AppKit's row size never reaches the text unless it is passed in.
     private var resolvedRowSize: SidebarRowSize {
         SidebarRowSizeResolver.resolve(
-            preference: settingsManager.general.sidebarRowSize,
+            preference: sidebarDisplay.options.rowSize,
             system: systemRowSize
         )
     }
 
-    /// No `.contextMenu` on any row: the outline view owns the menu, so AppKit sets `clickedRow`,
-    /// highlights the clicked row and answers a right-click below the last one.
+    // No `.contextMenu`: the outline owns the menu, so AppKit sets `clickedRow` and answers below the last row.
     @ViewBuilder
     private func rowContent(_ node: FavoritesOutlineNode) -> some View {
         switch node.kind {
@@ -428,12 +420,12 @@ internal struct FavoritesTabView: View {
         } icon: {
             Image(systemName: group.environment.iconName)
         }
-        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .sidebarRowIcon(visible: sidebarDisplay.options.showObjectIcons)
     }
 
     private func favoriteDatabaseRow(_ entry: FavoriteDatabaseEntry) -> some View {
         Label(entry.database, systemImage: "cylinder")
-            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+            .sidebarRowIcon(visible: sidebarDisplay.options.showObjectIcons)
             .lineLimit(1)
             .accessibilityLabel(String(
                 format: String(localized: "%@: %@"),
@@ -473,8 +465,7 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    /// One line, not two. The outline draws a uniform 24pt row, and the stacked publisher caption
-    /// the SwiftUI list used would be clipped.
+    // One line: the outline draws a uniform row, and a stacked caption would be clipped.
     private func teamQueryRow(name: String, detail: String?) -> some View {
         Label {
             HStack(spacing: 6) {
@@ -510,7 +501,7 @@ internal struct FavoritesTabView: View {
             Image(systemName: TableRowLogic.iconName(for: row.table.type))
                 .selectionAwareTint(Color.accentColor)
         }
-        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+        .sidebarRowIcon(visible: sidebarDisplay.options.showObjectIcons)
         .accessibilityLabel(
             [
                 TableRowLogic.accessibilityLabel(table: row.table, isPendingDelete: false, isPendingTruncate: false),
@@ -543,9 +534,7 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    /// Selecting a favourite does not open it, so every open from this list is a deliberate one:
-    /// a double-click, Return, or a menu item. None of them may hand back a tab the next sidebar
-    /// click throws away.
+    // Every open here is deliberate, so none may hand back a tab the next sidebar click throws away.
     private func handlePrimaryAction(_ kind: FavoritesOutlineNode.Kind) {
         switch kind {
         case .header:
@@ -596,10 +585,7 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    // MARK: - Menu commands
-
-    /// Runs what a contextual menu item described. The commands that end in a confirmation set the
-    /// state this view already owns, so the alert stays where the rest of the presentation is.
+    // Confirmations set state this view owns, so the alert stays with the rest of the presentation.
     private func perform(_ command: FavoritesMenuCommand) {
         switch command {
         case .useDatabase(let entry):
@@ -724,13 +710,7 @@ internal struct FavoritesTabView: View {
         Task { await coordinator?.switchDatabase(to: entry.database) }
     }
 
-    // MARK: - Empty States
-
-    /// An empty list has no row to right-click, so the background menu's commands are here too.
-    ///
-    /// The actions are stacked, not left to `ContentUnavailableView`'s default row. On macOS 15 the
-    /// row of three buttons is wider than the sidebar, and the view sizes its whole content to that
-    /// row, so the description and the buttons ran past both edges and were cut off.
+    // Stacked: on macOS 15 the default row of three buttons is wider than the sidebar and got cut off.
     private var emptyState: some View {
         UnavailableStateView {
             Label(String(localized: "No Favorites"), systemImage: "star")
@@ -775,8 +755,7 @@ internal struct FavoritesTabView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// A filter miss is not a failed search, so it never borrows the search placeholder's "check
-    /// the spelling" advice. The filter control stays on screen above this, which is the reset.
+    // A filter miss is not a failed search, so no "check the spelling" advice; the filter control above is the reset.
     private var noFilterMatchState: some View {
         UnavailableStateView {
             Label(String(localized: "No Matching Favorites"), systemImage: "line.3.horizontal.decrease.circle")

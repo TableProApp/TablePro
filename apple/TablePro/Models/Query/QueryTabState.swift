@@ -74,6 +74,8 @@ struct PersistedTab: Codable {
     var collapsedFoldRanges: [Int]?
     var columnWidths: [String: CGFloat]?
     var columnContentWidths: [String: CGFloat]?
+    // Nil in files written before this existed: the tab then takes the Data Grid setting.
+    var wrapsText: Bool?
     var windowGroupIndex: Int?
     var isPinned: Bool = false
     var isTemporary: Bool = false
@@ -107,6 +109,7 @@ struct PersistedTab: Codable {
         collapsedFoldRanges: [Int]? = nil,
         columnWidths: [String: CGFloat]? = nil,
         columnContentWidths: [String: CGFloat]? = nil,
+        wrapsText: Bool? = nil,
         windowGroupIndex: Int? = nil,
         isPinned: Bool = false,
         isTemporary: Bool = false
@@ -136,6 +139,7 @@ struct PersistedTab: Codable {
         self.collapsedFoldRanges = collapsedFoldRanges
         self.columnWidths = columnWidths
         self.columnContentWidths = columnContentWidths
+        self.wrapsText = wrapsText
         self.windowGroupIndex = windowGroupIndex
         self.isPinned = isPinned
         self.isTemporary = isTemporary
@@ -146,7 +150,7 @@ struct PersistedTab: Codable {
         case sourceFileURL, sourceFileEncoding, erDiagramSchemaKey, objectRef, versionHistorySubject, queryParameters
         case sortColumns, sortSource, restoredPage, restoredPageSize, cursorOffset, cursorLength
         case collapsedFoldRanges
-        case columnWidths, columnContentWidths, windowGroupIndex
+        case columnWidths, columnContentWidths, wrapsText, windowGroupIndex
         case isPinned
         case isTemporary
         case overflowFileName
@@ -179,6 +183,7 @@ struct PersistedTab: Codable {
         collapsedFoldRanges = try container.decodeIfPresent([Int].self, forKey: .collapsedFoldRanges)
         columnWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnWidths)
         columnContentWidths = try container.decodeIfPresent([String: CGFloat].self, forKey: .columnContentWidths)
+        wrapsText = try container.decodeIfPresent(Bool.self, forKey: .wrapsText)
         windowGroupIndex = try container.decodeIfPresent(Int.self, forKey: .windowGroupIndex)
         isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
         isTemporary = try container.decodeIfPresent(Bool.self, forKey: .isTemporary) ?? false
@@ -259,15 +264,13 @@ struct SortState: Equatable {
 }
 
 extension QueryTab {
-    // Named by the caller: a query tab counts the table its statement reads, which its context may not name yet.
     func rowCountScope(table: String) -> RowCountScope {
-        let rerun = filterState.rerunFilters
-        return RowCountScope(
+        RowCountScope(
             table: table,
             schema: tableContext.schemaName,
             database: tableContext.databaseName,
-            filters: rerun.filters,
-            logicMode: rerun.logicMode,
+            filters: filterState.applied?.filters ?? [],
+            logicMode: filterState.applied?.logicMode ?? .and,
             browseSearch: filterState.browseSearch
         )
     }
@@ -420,6 +423,12 @@ struct PaginationState: Equatable {
     mutating func retireDerivedRowCount() {
         totalRowCount = nil
         isApproximateRowCount = false
+        settledRowCountScope = nil
+    }
+
+    // Marked approximate on purpose: a large table's count may have moved, and a capped recount would only blank it.
+    mutating func keepTotalAsEstimate() {
+        isApproximateRowCount = totalRowCount != nil
         settledRowCountScope = nil
     }
 
@@ -759,5 +768,52 @@ struct TabDisplayState: Equatable {
             && lhs.resultSets.map(\.id) == rhs.resultSets.map(\.id)
             && lhs.activeResultSetId == rhs.activeResultSetId
             && lhs.highlightRulesPresentationRequest == rhs.highlightRulesPresentationRequest
+    }
+}
+
+extension ColumnLayoutState {
+    // Every key at once, so two columns that trade names keep their own entries. A nil name drops the column's entries.
+    func remappingColumns(_ newName: (String) -> String?) -> ColumnLayoutState {
+        var layout = self
+        layout.columnWidths = Self.remapping(columnWidths, newName)
+        layout.columnContentWidths = columnContentWidths.map { Self.remapping($0, newName) }
+        layout.columnOrder = columnOrder?.compactMap { newName($0) }
+        layout.hiddenColumns = Set(hiddenColumns.compactMap { newName($0) })
+        return layout
+    }
+
+    // Columns an undo brings back take the entries they had then; every other column keeps what it has now.
+    func restoringColumns(_ names: Set<String>, from saved: ColumnLayoutState) -> ColumnLayoutState {
+        guard !names.isEmpty else { return self }
+        var layout = self
+        for name in names {
+            if saved.hiddenColumns.contains(name) {
+                layout.hiddenColumns.insert(name)
+            }
+            if let width = saved.columnWidths[name] {
+                layout.columnWidths[name] = width
+            }
+            if let width = saved.columnContentWidths?[name] {
+                layout.columnContentWidths = (layout.columnContentWidths ?? [:]).merging([name: width]) { $1 }
+            }
+        }
+        // A name missing from the order lands after every ordered column, so put it back in its old slot.
+        if var order = layout.columnOrder, let savedOrder = saved.columnOrder {
+            for (index, name) in savedOrder.enumerated() where names.contains(name) && !order.contains(name) {
+                order.insert(name, at: min(index, order.count))
+            }
+            layout.columnOrder = order
+        }
+        return layout
+    }
+
+    private static func remapping(_ widths: [String: CGFloat], _ newName: (String) -> String?) -> [String: CGFloat] {
+        var remapped: [String: CGFloat] = [:]
+        for (name, width) in widths {
+            if let moved = newName(name) {
+                remapped[moved] = width
+            }
+        }
+        return remapped
     }
 }

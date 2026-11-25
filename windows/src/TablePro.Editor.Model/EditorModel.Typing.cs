@@ -224,6 +224,54 @@ public sealed partial class EditorModel
         Apply(EditKind.Other, [Edit.Insert(Clamp(start), Clamp(end), text)], 0);
     }
 
+    // Only the part that differs is replaced, so the lines a format leaves keep their line states and folds. One undo
+    // step, after which `after` holds, in offsets of the text once replaced.
+    public void ReplaceRange(int start, int end, string text, Selection after)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        text = TextDocument.Normalize(text);
+        start = Clamp(start);
+        end = Math.Max(start, Clamp(end));
+        var old = Document.GetText(start, end - start);
+        var limit = Math.Min(old.Length, text.Length);
+        var prefix = 0;
+        while (prefix < limit && old[prefix] == text[prefix])
+        {
+            prefix++;
+        }
+        var suffix = 0;
+        while (suffix < limit - prefix && old[^(suffix + 1)] == text[^(suffix + 1)])
+        {
+            suffix++;
+        }
+        // A surrogate pair is never split between the kept and the replaced part.
+        if (prefix > 0 && char.IsHighSurrogate(text[prefix - 1]))
+        {
+            prefix--;
+        }
+        if (suffix > 0 && char.IsLowSurrogate(text[^suffix]))
+        {
+            suffix--;
+        }
+        var length = Document.Length - old.Length + text.Length;
+        var selection = new Selection(Math.Clamp(after.Anchor, 0, length), Math.Clamp(after.Active, 0, length));
+        Document.Undo.Begin(EditKind.Other, _selections.ToList());
+        _applying++;
+        try
+        {
+            if (old.Length != text.Length || prefix < old.Length)
+            {
+                Document.Replace(start + prefix, old.Length - prefix - suffix, text[prefix..^suffix]);
+            }
+            SetSelections([selection]);
+        }
+        finally
+        {
+            _applying--;
+            Document.Undo.End(_selections.ToList());
+        }
+    }
+
     // One undo step for all of them; the primary selection moves with the text and the other carets go.
     public void ReplaceRanges(IReadOnlyList<(int Start, int Length, string Text)> ranges)
     {

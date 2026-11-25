@@ -16,7 +16,7 @@ Each works as the macOS app's does, with its words in Windows sentence case, ove
 - Query > Save query... and the editor's menu keep a query tab's whole text under a name, and the history's entry menu keeps a run's. A dialog asks for the name, prefilled from the text as macOS names a favorite, and a folder once there are folders. A name the connection already uses asks before it replaces that query, which keeps its place unless another folder was picked.
 - View > Show saved queries opens a pane in the place the history pane takes, one of the two at a time. A tree lists folders, then queries, each in its stored order. Invoking a query inserts it in the editor, as macOS does: it replaces an empty query tab's text, follows a tab's text after a blank line, and opens a new query tab when none is in front. Its menu has Insert in editor, Open in new tab, Copy query, Edit..., Move to and Delete; a folder's has New subfolder, Rename and Delete folder, whose folders go with it and whose queries move to the top level.
 - Saved queries belong to a saved connection. A file opened without saving gets a new id each time, so it keeps none. Deleting a connection deletes its saved queries, folders and favourites, as the Linux app does.
-- Keywords are kept by the core but not edited here: macOS expands one through completion, which the Windows editor does not have yet.
+- Keywords are kept by the core but not edited here: macOS expands one through completion, whose list on Windows offers no saved queries yet.
 
 ### History pins
 

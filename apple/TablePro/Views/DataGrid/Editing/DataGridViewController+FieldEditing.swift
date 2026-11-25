@@ -35,6 +35,7 @@ extension DataGridViewController {
             cell: cell.coord
         )
         let cellView = state.editingCellView
+        cellView.firstLineHeight = wrapsText ? table.rowHeight : nil
         cellView.prepare(
             text: text,
             font: ThemeEngine.shared.dataGridFonts.regular,
@@ -77,6 +78,7 @@ extension DataGridViewController {
         unmountEditingCell()
         restoreGridFocus()
         let committed = commit ? commitText(text, for: session) : true
+        noteDeferredRowHeights()
         model.editingDidEnd()
         if let movement, committed {
             continueEditing(from: session.target, movement)
@@ -175,6 +177,7 @@ extension DataGridViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.editingState.session?.editor != .field else { return }
             self.unmountEditingCell()
+            self.noteDeferredRowHeights()
         }
         if state.isApplyingChange {
             state.deferredCommit = (session, text)

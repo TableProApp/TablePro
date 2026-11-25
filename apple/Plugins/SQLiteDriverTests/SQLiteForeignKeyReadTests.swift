@@ -33,6 +33,20 @@ struct SQLiteForeignKeyReadTests {
         return [single, bulk]
     }
 
+    @Test("A composite key reads the same from the table's own read and the schema's")
+    func compositeKeyReadsAlike() async throws {
+        try await withDriver([
+            "CREATE TABLE p (a INTEGER, b INTEGER, PRIMARY KEY (a, b))",
+            "CREATE TABLE c (x INTEGER, y INTEGER, CONSTRAINT fk_c FOREIGN KEY (x, y) REFERENCES p (a, b) ON DELETE CASCADE)"
+        ]) { driver in
+            let reads = try await bothReads(driver, table: "c").map { keys in
+                keys.map { [$0.name, $0.column, $0.referencedTable, $0.referencedColumn, $0.onDelete, $0.onUpdate] }
+            }
+            #expect(reads[0].map { $0[1] } == ["x", "y"])
+            #expect(reads[0] == reads[1])
+        }
+    }
+
     @Test("A declared name equal to another key's positional name keeps the two keys apart")
     func declaredNameSpellingAPositionalName() async throws {
         try await withDriver([

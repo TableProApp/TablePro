@@ -6,12 +6,14 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use secrecy::SecretString;
+use tablepro_core::dialect::DatabaseLayout;
 use tablepro_core::keyspace::{KeyScan, KeyWindow};
 use tablepro_core::meta::{KeyKind, ObjectKind};
 use tablepro_core::{
-    ConfigError, Credentials, DatabaseDriver, DriverError, EditorSessionState, ErrorCategory, LivenessPolicy,
-    NetworkEndpoint, ReadStatement, ResultEvent, ResultSink, RunEnd, RunOptions, ServerCode, SinkFlow, TimeoutPhase,
-    TlsConfig, TransactionState, UnsupportedFeature, UserSql, Value, WorkspaceSettings,
+    ConfigError, Connection, Credentials, DatabaseDriver, DriverError, EditorSession, EditorSessionState,
+    ErrorCategory, LivenessPolicy, NetworkEndpoint, ReadStatement, ResultEvent, ResultSink, RunEnd, RunOptions,
+    ServerCode, SinkFlow, TimeoutPhase, TlsConfig, TransactionState, UnsupportedFeature, UserSql, Value,
+    WorkspaceSettings,
 };
 use tablepro_driver_redis::{RedisDriver, key_text};
 use tablepro_test_support::FaultTransport;
@@ -175,6 +177,165 @@ async fn a_database_that_is_not_a_number_is_refused_before_connecting() {
     let outcome = RedisDriver.connect(options, CancellationToken::new()).await;
 
     assert_eq!(outcome.err(), Some(DriverError::Config(ConfigError::DatabaseNumber)));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn the_server_lists_its_numbered_databases_with_the_connections_own_marked() {
+    let fixture = start().await;
+    let options = fixture_options(&fixture, password(&fixture.password_credentials()), Some("3"));
+    let third = RedisDriver
+        .connect(options, CancellationToken::new())
+        .await
+        .expect("a connection to database 3");
+
+    let databases = third.list_databases(within(CALL)).await.expect("the databases");
+
+    let names: Vec<String> = databases.iter().map(|database| database.name.clone()).collect();
+    let numbers: Vec<String> = (0..16).map(|index: u32| index.to_string()).collect();
+    assert_eq!(names, numbers, "CONFIG GET databases says 16");
+    assert_eq!(own_databases(third.as_ref()).await, ["3"]);
+    assert!(databases.iter().all(|database| !database.is_system));
+    assert_eq!(third.dialect().database_layout(), DatabaseLayout::WithSchemas);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_login_refused_config_and_info_still_lists_redis_s_sixteen() {
+    let fixture = start().await;
+    let admin = connect(&fixture).await;
+    let (granted, _) = run(
+        editor(admin.as_ref()).await.as_ref(),
+        "ACL SETUSER tp_managed on >tp_managed_pw ~* &* +@all -config -info",
+    )
+    .await;
+    assert_eq!(granted.end, RunEnd::Completed);
+    let managed = Credentials::Password {
+        username: "tp_managed".to_owned(),
+        password: SecretString::from("tp_managed_pw".to_owned()),
+    };
+
+    let connection = RedisDriver
+        .connect(fixture_options(&fixture, managed, Some("2")), CancellationToken::new())
+        .await
+        .expect("a connection that may not read CONFIG or INFO");
+    let databases = connection.list_databases(within(CALL)).await.expect("the databases");
+
+    assert_eq!(databases.len(), 16);
+    assert_eq!(own_databases(connection.as_ref()).await, ["2"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn an_editor_moves_to_another_database_with_select() {
+    let fixture = start().await;
+    let credentials = password(&fixture.password_credentials());
+    let connection = connect(&fixture).await;
+    let session = editor(connection.as_ref()).await;
+    assert_eq!(session.database().as_deref(), Some("0"));
+
+    session.use_database("5", within(CALL)).await.expect("a move to 5");
+    let key = unique("moved");
+    run(session.as_ref(), &format!("SET {key} five")).await;
+    let fifth = RedisDriver
+        .connect(
+            fixture_options(&fixture, credentials, Some("5")),
+            CancellationToken::new(),
+        )
+        .await
+        .expect("a connection to database 5");
+    let pattern = KeyScan::sidebar(Some(key.clone()));
+    let in_first = connection.scan_keys(&pattern, within(CALL)).await.expect("a listing");
+    let in_fifth = fifth.scan_keys(&pattern, within(CALL)).await.expect("a listing");
+
+    assert_eq!(session.database().as_deref(), Some("5"));
+    assert!(in_first.keys.is_empty(), "{:?}", in_first.keys);
+    assert_eq!(in_fifth.keys.len(), 1);
+
+    let past = session.use_database("99", within(CALL)).await;
+    let Err(DriverError::Server(diagnostics)) = &past else {
+        panic!("a database past the server's count moved: {past:?}");
+    };
+    assert_eq!(
+        diagnostics.code,
+        Some(ServerCode::Redis {
+            prefix: "ERR".to_owned()
+        })
+    );
+    assert_eq!(
+        session.use_database("five", within(CALL)).await,
+        Err(DriverError::Config(ConfigError::DatabaseNumber))
+    );
+    assert_eq!(session.database().as_deref(), Some("5"));
+    assert_eq!(session.state(), EditorSessionState::Ready);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_typed_select_moves_the_editor_and_a_queued_one_only_when_exec_runs_it() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let session = editor(connection.as_ref()).await;
+
+    run(session.as_ref(), "SELECT 2").await;
+    let typed = session.database();
+    run(session.as_ref(), "MULTI").await;
+    run(session.as_ref(), "SELECT 4").await;
+    run(session.as_ref(), "DISCARD").await;
+    let discarded = session.database();
+    run(session.as_ref(), "MULTI").await;
+    run(session.as_ref(), "SELECT 4").await;
+    let in_block = session.use_database("1", within(CALL)).await;
+    run(session.as_ref(), "EXEC").await;
+    let executed = session.database();
+    run(session.as_ref(), "RESET").await;
+    let reset = session.database();
+    // RESET logs the link out of the password user too.
+    let login = fixture.password_credentials();
+    run(
+        session.as_ref(),
+        &format!("AUTH {} \"{}\"", login.username, login.password),
+    )
+    .await;
+
+    assert_eq!(typed.as_deref(), Some("2"));
+    assert_eq!(discarded.as_deref(), Some("2"));
+    assert_eq!(
+        in_block,
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::DatabaseSwitching
+        })
+    );
+    assert_eq!(executed.as_deref(), Some("4"));
+    assert_eq!(reset.as_deref(), Some("0"));
+    assert_eq!(on_server(session.as_ref()).await, "0");
+}
+
+/// The databases the listing marks as the connection's own.
+async fn own_databases(connection: &dyn Connection) -> Vec<String> {
+    let databases = connection.list_databases(within(CALL)).await.expect("the databases");
+    databases
+        .into_iter()
+        .filter(|database| database.is_default)
+        .map(|database| database.name)
+        .collect()
+}
+
+/// The database `CLIENT INFO` says the session's link is on.
+async fn on_server(session: &dyn EditorSession) -> String {
+    let (_, events) = run(session, "CLIENT INFO").await;
+    let info = rows(&events)
+        .into_iter()
+        .flatten()
+        .find_map(|cell| match cell {
+            Value::Text(info) => Some(info),
+            _ => None,
+        })
+        .expect("CLIENT INFO as text");
+    info.split(' ')
+        .find_map(|field| field.strip_prefix("db="))
+        .expect("a db= field")
+        .to_owned()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

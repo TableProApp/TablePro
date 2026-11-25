@@ -26,6 +26,14 @@ final class SchemaForeignKeyStore {
         return byColumn
     }
 
+    // Nil until the schema's read landed, or for a session's own scope. A name the read does not list has no keys only
+    // when the catalog lists it too: a name typed in SQL can differ in case from the one the read keyed.
+    func listedForeignKeys(of table: String, in scope: DatabaseScope, nameIsCataloged: Bool) -> [ForeignKeyInfo]? {
+        guard !scope.isSessionBound, let tables = entries[scope.catalogKey] else { return nil }
+        if let foreignKeys = tables[CatalogName(table)] { return foreignKeys }
+        return nameIsCataloged ? [] : nil
+    }
+
     func store(_ foreignKeys: [CatalogName: [ForeignKeyInfo]], for scope: DatabaseScope) {
         entries[scope.catalogKey] = foreignKeys
     }

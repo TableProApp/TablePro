@@ -113,6 +113,32 @@ internal sealed partial class Gate(RunContext ctx)
         await Phase(heartbeat, "v_page_verify", 100, _ => (x, y = y + sv.ViewportHeight > MaxY() ? 0 : y + sv.ViewportHeight), check: true);
         await Phase(heartbeat, "xy_random_verify", 200, _ => (random.NextDouble() * MaxX(), random.NextDouble() * MaxY()), check: true);
         await Native.SaveScreenAsync(ctx.Shot("after-random-jumps"));
+        await WrapPerfAsync(heartbeat, random);
+    }
+
+    // After the phases of decision 0003, which run with wrap off as it measured them; the checks that follow do too.
+    private async Task WrapPerfAsync(Heartbeat heartbeat, Random random)
+    {
+        var sv = _grid.Scroller;
+        var rh = _grid.RowHeight;
+        double MaxY() => Math.Max(0, sv.ScrollableHeight);
+        double MaxX() => Math.Max(0, sv.ScrollableWidth);
+        _grid.ScrollTo(0, 0);
+        _grid.WrapsText = true;
+        _grid.UpdateLayout();
+        await Frames.SkipAsync(10);
+        double y = 0;
+        // The extent grows as rows are measured, so each step reads the limit again.
+        await Phase(heartbeat, "wrap_v_smooth", 600, _ => (0, y = Math.Min(MaxY(), y + (rh * 3))), check: false);
+        await Phase(heartbeat, "wrap_v_page", 200, _ => (0, y = Math.Min(MaxY(), y + sv.ViewportHeight)), check: false);
+        await Phase(heartbeat, "wrap_xy_random", 200, _ => (random.NextDouble() * MaxX(), random.NextDouble() * MaxY()), check: false);
+        _report.Line("wrap.rows", string.Create(CultureInfo.InvariantCulture,
+            $"extent={sv.ExtentHeight:F0} one_line_extent={_grid.RowCount * rh:F0} wrap_line_height={_grid.Painter.WrapLineHeight}"));
+        await Native.SaveScreenAsync(ctx.Shot("wrap-after-random-jumps"));
+        _grid.ScrollTo(0, 0);
+        _grid.WrapsText = false;
+        _grid.UpdateLayout();
+        await Frames.SkipAsync(10);
     }
 
     private async Task Phase(Heartbeat heartbeat, string name, int frames, Func<int, (double X, double Y)> next, bool check)

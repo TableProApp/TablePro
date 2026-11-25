@@ -22,6 +22,9 @@ pub fn account_error_message(error: &AccountError) -> String {
         AccountError::SignInRefused { error, .. } => {
             gettext_f("The account service refused the sign-in ({code}).", &[("code", error)])
         }
+        AccountError::SignInIssuerMismatch => {
+            gettext("TablePro could not confirm that the sign-in came from its account service. Sign in again.")
+        }
         AccountError::SignedOut => gettext("You were signed out. Sign in again."),
         AccountError::DeviceRevoked => {
             gettext("This computer was removed from your account, so TablePro signed out here.")
@@ -59,6 +62,8 @@ pub fn account_error_message(error: &AccountError) -> String {
             gettext("The account service is busy. Try again in a few minutes.")
         }
         AccountError::Entitlement(error) => entitlement_message(error),
+        AccountError::Server(_) => gettext("TablePro could not use this account server."),
+        AccountError::License(_) => gettext("The account server’s TablePro license could not be verified."),
         AccountError::Storage { path, .. } => gettext_f(
             "TablePro could not keep the account’s state in {path}.",
             &[("path", path)],
@@ -182,7 +187,8 @@ fn entitlement_message(error: &EntitlementError) -> String {
         | EntitlementError::Algorithm(_)
         | EntitlementError::Type(_)
         | EntitlementError::Signature
-        | EntitlementError::Audience => gettext("This is not a TablePro entitlement, or it was changed."),
+        | EntitlementError::Audience
+        | EntitlementError::Issuer => gettext("This is not a TablePro entitlement, or it was changed."),
     }
 }
 
@@ -215,6 +221,7 @@ mod tests {
                 error: "invalid_scope".to_owned(),
                 description: Some("secret detail".to_owned()),
             },
+            AccountError::SignInIssuerMismatch,
             AccountError::SignedOut,
             AccountError::DeviceRevoked,
             AccountError::DeviceLimitReached { devices: Vec::new() },

@@ -671,6 +671,16 @@
         }
       }
     },
+    "%@ is using %@. Only one app can open a DuckDB file for writing." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ is using %2$@. Only one app can open a DuckDB file for writing."
+          }
+        }
+      }
+    },
     "%@ no longer exists" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -1204,6 +1214,9 @@
     "%d line(s) printed" : {
 
     },
+    "%d passwords could not be kept in the Keychain." : {
+
+    },
     "%d row(s) affected" : {
       "localizations" : {
         "ko" : {
@@ -1576,6 +1589,9 @@
     "1 key" : {
 
     },
+    "1 password could not be kept in the Keychain." : {
+
+    },
     "1 row" : {
       "localizations" : {
         "ko" : {
@@ -1625,9 +1641,15 @@
     "60 seconds" : {
 
     },
+    "A .tablepro file from AirDrop, Files, or Mail." : {
+
+    },
     "A check constraint of %@ is not one SQL expression, so it cannot be written." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "A client certificate needs its client key. In the connection's SSL/TLS settings, choose the client key, or clear the client certificate." : {
+
     },
     "A client certificate needs its client key. On the connection's Network tab, choose the client key, or clear the client certificate." : {
 
@@ -2157,6 +2179,13 @@
         }
       }
     },
+    "Access Token" : {
+
+    },
+    "Access Token is required. Create one in MotherDuck's settings, under Access Tokens." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Account" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -2222,6 +2251,9 @@
           }
         }
       }
+    },
+    "Actual Plan" : {
+
     },
     "Add" : {
       "localizations" : {
@@ -3011,6 +3043,9 @@
         }
       }
     },
+    "All databases" : {
+
+    },
     "All filter conditions will be removed." : {
       "localizations" : {
         "ko" : {
@@ -3082,6 +3117,9 @@
     "Americas" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "An auto-increment column takes its values from a sequence, so it cannot also have a default." : {
+
     },
     "An earlier import made a table named %@ with other columns. Choose another name." : {
 
@@ -3217,6 +3255,9 @@
           }
         }
       }
+    },
+    "Another app is using %@. Only one app can open a DuckDB file for writing." : {
+
     },
     "Another connection closes this one and opens that one with the file." : {
 
@@ -3826,6 +3867,9 @@
         }
       }
     },
+    "Automatic" : {
+
+    },
     "Automatic (%@)" : {
 
     },
@@ -4175,6 +4219,12 @@
       "generatesSymbol" : false
     },
     "BRIN indexes need PostgreSQL 9.5 or later." : {
+
+    },
+    "Bring Your Connections" : {
+
+    },
+    "Bring your connections, or start with a new one." : {
 
     },
     "Broadcast" : {
@@ -4562,6 +4612,9 @@
           }
         }
       }
+    },
+    "Certificate Fingerprint" : {
+
     },
     "Certificate Name Mismatch" : {
 
@@ -5162,6 +5215,10 @@
           }
         }
       }
+    },
+    "Choose the client certificate and key in the connection's SSL/TLS settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Choose the client certificate and key on the connection's Network tab." : {
       "extractionState" : "manual",
@@ -6060,6 +6117,13 @@
         }
       }
     },
+    "Connecting to MotherDuck timed out." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Connecting to the remote DuckDB database timed out." : {
+
+    },
     "Connecting…" : {
       "localizations" : {
         "ko" : {
@@ -6402,6 +6466,9 @@
         }
       }
     },
+    "Connection Type" : {
+
+    },
     "Connections" : {
       "localizations" : {
         "ko" : {
@@ -6429,6 +6496,9 @@
           }
         }
       }
+    },
+    "Connections from TablePro on your Mac appear here." : {
+
     },
     "Connections from your other devices appear here." : {
       "localizations" : {
@@ -6863,6 +6933,10 @@
           }
         }
       }
+    },
+    "Correct the Key Passphrase in the connection's SSL/TLS settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Correct the Key Passphrase on the connection's Network tab." : {
       "extractionState" : "manual",
@@ -7697,6 +7771,9 @@
     "Database & Storage" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Database Alias" : {
+
     },
     "Database File" : {
       "localizations" : {
@@ -8832,6 +8909,9 @@
         }
       }
     },
+    "DuckDB could not allocate a configuration to open the file" : {
+
+    },
     "DuckDB could not install its %@ extension. It downloads the extension from extensions.duckdb.org the first time it connects to a remote database." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -8840,13 +8920,29 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "DuckDB could not load its MotherDuck extension. The first connection downloads it from extensions.duckdb.org and ext.motherduck.com, and every connection checks api.motherduck.com." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "DuckDB could not read the CA Certificate. It reads PEM files only." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "DuckDB could not say whether this session holds a transaction, so the statement did not run." : {
+
+    },
     "DuckDB could not verify the server's certificate. Either no CA it trusts signed it, or it was not issued for this host name. DuckDB checks certificates against /etc/ssl/cert.pem and the CA Certificate, and does not read the macOS keychain, so a CA added in Keychain Access is not trusted." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "DuckDB opened %d catalogs and none of them is current" : {
+
+    },
+    "DuckDB opened the file but reported no catalog to browse" : {
+
+    },
+    "DuckDB reads %lld statements in this text. Run them one at a time." : {
+
     },
     "DuckDB reported: %@" : {
       "extractionState" : "manual",
@@ -9425,6 +9521,10 @@
         }
       }
     },
+    "Enter the Key Passphrase in the connection's SSL/TLS settings." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enter the Key Passphrase on the connection's Network tab." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -9514,6 +9614,9 @@
     "Enter the RDS Endpoint in this connection's Authentication section." : {
 
     },
+    "Enter the server details yourself." : {
+
+    },
     "Enter the start URL and SSO Region in this connection's Authentication section, then sign in." : {
 
     },
@@ -9580,6 +9683,9 @@
           }
         }
       }
+    },
+    "Estimated Plan" : {
+
     },
     "Europe and Africa" : {
       "extractionState" : "manual",
@@ -12573,6 +12679,22 @@
         }
       }
     },
+    "In the connection's SSL/TLS settings, check that the Key under Client Certificates is a valid PEM private key." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "In the connection's SSL/TLS settings, choose the server's CA certificate under Verify Identity or Verify CA. Required (skip verify) also connects, but does not check the certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "In the connection's SSL/TLS settings, set SSL Mode to Disabled." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "In the connection's SSL/TLS settings, set SSL Mode to Verify Identity, or to Required to skip the certificate check." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "In-Memory Database" : {
       "localizations" : {
         "ko" : {
@@ -13969,6 +14091,9 @@
         }
       }
     },
+    "Local File" : {
+
+    },
     "Local Network access is required. Open Settings > Privacy & Security > Local Network and turn TablePro on." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -14766,6 +14891,22 @@
     "More than one row reads as this key, because a SQLite column with no type keeps a number and the same text apart. Change these rows with a query." : {
 
     },
+    "MotherDuck attached no database for this Access Token." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "MotherDuck attached no database named %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "MotherDuck did not accept the Access Token. Check that it is complete and has not expired or been revoked." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "MotherDuck does not accept the DuckDB version this plugin uses yet. The connection works once MotherDuck supports that version." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Mountains" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -15542,6 +15683,9 @@
 
     },
     "No fields found in the file." : {
+
+    },
+    "No file at %@" : {
 
     },
     "No Foreign Keys" : {
@@ -16963,6 +17107,9 @@
     "Open Table" : {
 
     },
+    "Open the File Read-Only" : {
+
+    },
     "Open this connection in TablePro and connect from there to answer the question." : {
 
     },
@@ -17090,6 +17237,9 @@
         }
       }
     },
+    "Operation not supported" : {
+
+    },
     "Operator" : {
       "localizations" : {
         "ko" : {
@@ -17117,6 +17267,9 @@
           }
         }
       }
+    },
+    "Optional" : {
+
     },
     "Optional, for a single-tenant directory" : {
       "extractionState" : "manual",
@@ -17236,6 +17389,9 @@
           }
         }
       }
+    },
+    "Oracle 11g has no identity columns, so a column cannot be auto-increment." : {
+
     },
     "Oracle returned no definition for view '%@'." : {
 
@@ -19044,6 +19200,12 @@
         }
       }
     },
+    "Quit or disconnect the other app, or turn on Open the File Read-Only to join it as a reader." : {
+
+    },
+    "Quit or disconnect the other app, then try again." : {
+
+    },
     "Quote" : {
 
     },
@@ -19570,6 +19732,12 @@
         }
       }
     },
+    "Release File Lock" : {
+
+    },
+    "Release the File Lock After (minutes, 0 to keep it)" : {
+
+    },
     "Reload" : {
       "localizations" : {
         "ko" : {
@@ -19599,6 +19767,9 @@
       }
     },
     "Reload the table to see the row as it is now." : {
+
+    },
+    "Remote (Quack, experimental)" : {
 
     },
     "Remove" : {
@@ -19973,6 +20144,9 @@
           }
         }
       }
+    },
+    "Required (skip verify)" : {
+
     },
     "Reset" : {
       "localizations" : {
@@ -21284,6 +21458,9 @@
     "Semicolon (;)" : {
 
     },
+    "Send one statement at a time." : {
+
+    },
     "Sent to PostHog:" : {
 
     },
@@ -21643,6 +21820,9 @@
           }
         }
       }
+    },
+    "Setup Guide" : {
+
     },
     "Shadows the SQL keyword '%@'" : {
       "localizations" : {
@@ -22994,6 +23174,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Start Fresh" : {
+
+    },
     "Start URL" : {
 
     },
@@ -24003,6 +24186,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro could not reach MotherDuck. Check the network connection, then connect again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro could not read that file." : {
       "localizations" : {
         "ko" : {
@@ -24034,6 +24221,9 @@
     "TablePro could not read the CA Certificate at %@: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro could not read what this connection is holding, so it kept the file." : {
+
     },
     "TablePro could not read your connection library, so nothing was imported." : {
       "localizations" : {
@@ -24797,6 +24987,10 @@
     "The %d statements before it stay applied." : {
 
     },
+    "The Access Token contains a control character. Copy it again from MotherDuck." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The action of foreign key %@ cannot be written as SQL." : {
 
     },
@@ -25234,6 +25428,9 @@
         }
       }
     },
+    "The connection has no current DuckDB catalog to read metadata from" : {
+
+    },
     "The connection moved to another database or schema. Choose the row again." : {
 
     },
@@ -25568,6 +25765,12 @@
         }
       }
     },
+    "the database file" : {
+
+    },
+    "The database file is no longer at %@." : {
+
+    },
     "The database had already ended the import's transaction, so none of its rows were kept." : {
 
     },
@@ -25598,6 +25801,10 @@
           }
         }
       }
+    },
+    "The database name %@ cannot contain ?, # or a control character." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The database name is longer than the 128 bytes FreeTDS takes." : {
 
@@ -27438,6 +27645,9 @@
     "The statement before it stays applied." : {
 
     },
+    "The statement does not take the values it was given" : {
+
+    },
     "The statement was stopped, and the server rolled back the transaction it ran in. Every change since that transaction began is undone." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -27449,6 +27659,9 @@
     "The string or comment that starts on line %lld is longer than the import reads." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The structure of a table in an attached database cannot be changed here." : {
+
     },
     "The table \"%@\" and all its data will be permanently deleted." : {
       "localizations" : {
@@ -27735,6 +27948,21 @@
         }
       }
     },
+    "This build of DuckDB does not accept a limit on how deep an expression nests" : {
+
+    },
+    "This build of DuckDB does not accept a read-only access mode" : {
+
+    },
+    "This build of DuckDB does not accept running its tasks on threads TablePro starts" : {
+
+    },
+    "This build of DuckDB does not accept the storage version that keeps files readable by DuckDB 1.x" : {
+
+    },
+    "This build of DuckDB does not accept turning off persistent secrets" : {
+
+    },
     "This certificate file needs a password. Certificate files exported without one cannot be read on iOS." : {
       "localizations" : {
         "ko" : {
@@ -27931,16 +28159,25 @@
     "This connection has an open transaction. Commit or roll it back first." : {
 
     },
+    "This connection has another database attached, which closing the file would detach." : {
+
+    },
     "This connection has open HANDLER cursors, which reconnecting would close." : {
 
     },
     "This connection has prepared statements, which reconnecting would discard." : {
 
     },
+    "This connection has session objects, such as a temporary table, a macro or a prepared statement, which closing the file would delete." : {
+
+    },
     "This connection has session settings changed, which reconnecting would reset." : {
 
     },
     "This connection has session variables set, which reconnecting would clear." : {
+
+    },
+    "This connection has settings that closing the file would reset." : {
 
     },
     "This connection has temporary tables, which reconnecting would delete." : {
@@ -28034,6 +28271,9 @@
 
     },
     "This connection switched database with USE, which reconnecting would undo." : {
+
+    },
+    "This connection uses a Connection Type this version of the DuckDB plugin does not have. Update the DuckDB plugin." : {
 
     },
     "This connection uses a socket on a Mac and cannot be opened on iPhone or iPad." : {
@@ -30417,6 +30657,9 @@
         }
       }
     },
+    "Using another app? Import its connections in TablePro on your Mac, then sync them here with iCloud." : {
+
+    },
     "UTF-8 via Latin 1" : {
       "localizations" : {
         "ko" : {
@@ -30532,6 +30775,9 @@
     "Values a spreadsheet would read as formulas, written with a leading single quote: %lld. Turn off Sanitize formula-like values to export them unchanged." : {
 
     },
+    "Values cut to Excel's limit of 32,767 characters: %lld. Export as CSV to keep them whole." : {
+
+    },
     "Values of type %@ can't be written." : {
 
     },
@@ -30578,7 +30824,13 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Verify CA needs a CA certificate. In the connection's SSL/TLS settings, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
+
+    },
     "Verify CA needs a CA certificate. On the connection's Network tab, choose the CA certificate that signed the server's certificate, or set SSL Mode to Verify Identity." : {
+
+    },
+    "Verify Fingerprint" : {
 
     },
     "Verify Fingerprint needs the server's Certificate Fingerprint. Run quack_server_list() on the server to read it." : {

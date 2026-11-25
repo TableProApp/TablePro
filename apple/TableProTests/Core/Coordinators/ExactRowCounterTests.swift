@@ -65,7 +65,7 @@ struct ExactRowCounterTests {
     ) async throws -> Int? {
         let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: type), pluginDriver: stub)
         return try await ExactRowCounter.count(
-            on: adapter, table: "Orders", filters: [], logicMode: .and, countSQL: countSQL
+            on: adapter, table: "Orders", schema: nil, filters: [], logicMode: .and, countSQL: countSQL
         )
     }
 

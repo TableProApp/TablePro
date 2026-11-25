@@ -59,6 +59,13 @@ struct PluginListSelectionTests {
         )
     }
 
+    @Test("A reveal target pushes the route the Extensions pane draws its pages for")
+    func targetMapsToItsRoute() {
+        let url = URL(fileURLWithPath: "/tmp/Broken.tableplugin")
+        #expect(PluginListSelection.plugin("com.example.driver").route == .plugin(id: "com.example.driver"))
+        #expect(PluginListSelection.rejected(url).route == .rejectedPlugin(url))
+    }
+
     @Test("Only a plugin missing from the registry reads as an error")
     func statusSeverity() {
         #expect(RejectedPluginStatus(action: .awaitingCompatibleBuild).severity == .warning)

@@ -33,21 +33,43 @@ public enum SQLCompletionWindow {
         let located = SQLStatementScanner.locatedStatementAtCursor(
             in: source as String, cursorPosition: caret, grammar: grammar
         )
-        let end = max(caret, min(NSMaxRange(located.range), caret + radius))
-        var start = min(located.offset, caret)
+        return cut(source, around: caret, statement: located.range, grammar: grammar)
+    }
+
+    // For a caller that already holds the caret's statement, located on this text with this grammar.
+    @concurrent
+    public static func cut(
+        _ text: String,
+        around offset: Int,
+        statement: NSRange,
+        grammar: SQLLexicalGrammar
+    ) async -> (text: String, start: Int)? {
+        cut(text as NSString, around: offset, statement: statement, grammar: grammar)
+    }
+
+    // Costs the statement up to the end of the cut, not the document before it.
+    public static func cut(
+        _ text: NSString,
+        around offset: Int,
+        statement: NSRange,
+        grammar: SQLLexicalGrammar
+    ) -> (text: String, start: Int)? {
+        let length = text.length
+        let caret = min(max(offset, 0), length)
+        let end = max(caret, min(NSMaxRange(statement), caret + radius, length))
+        var start = min(max(statement.location, 0), caret)
         if caret - start > radius {
-            guard let resumed = codeStart(in: source, units: units, from: start, around: caret, grammar: grammar) else {
+            guard let resumed = codeStart(in: text, from: start, around: caret, grammar: grammar) else {
                 return nil
             }
             start = resumed
         }
-        return (source.substring(with: NSRange(location: start, length: end - start)), start)
+        return (text.substring(with: NSRange(location: start, length: end - start)), start)
     }
 
     // A start glued to the word before it is passed over: `E'` and `$$` read differently with nothing in front.
     private static func codeStart(
         in text: NSString,
-        units: [UInt16],
         from statementStart: Int,
         around caret: Int,
         grammar: SQLLexicalGrammar
@@ -58,7 +80,7 @@ public enum SQLCompletionWindow {
         while index < caret {
             if index >= target {
                 if firstCodePosition == nil { firstCodePosition = index }
-                if !SqlDollarQuote.isIdentifierContinuation(units[index - 1]) { return index }
+                if !SqlDollarQuote.isIdentifierContinuation(text.character(at: index - 1)) { return index }
             }
             guard let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar),
                   span.kind != .executableComment else {

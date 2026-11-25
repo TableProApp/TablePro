@@ -115,7 +115,7 @@ struct ServerDashboardGridTests {
     @Test("The sessions grid draws the State hue, white on an emphasized selection, and every other cell in the grid text")
     func sessionsGridDrawsTheStateHue() async throws {
         let viewModel = ServerDashboardViewModel(connectionId: UUID(), databaseType: .postgresql, services: .live)
-        viewModel.sessions = sessions
+        viewModel.board.sessions = sessions
         let window = await host(SessionsTableView(viewModel: viewModel))
         defer {
             viewModel.stopAutoRefresh()
@@ -151,7 +151,7 @@ struct ServerDashboardGridTests {
 
     private func headerRedPixels(selecting ids: Set<String>) async throws -> Int {
         let viewModel = ServerDashboardViewModel(connectionId: UUID(), databaseType: .postgresql, services: .live)
-        viewModel.sessions = sessions
+        viewModel.board.sessions = sessions
         viewModel.sessionSelection.ids = ids
         let size = NSSize(width: 800, height: 400)
         let host = NSHostingView(rootView: SessionsTableView(viewModel: viewModel).frame(width: size.width, height: size.height))
@@ -213,7 +213,7 @@ struct ServerDashboardGridTests {
     @Test("The sessions pane draws its records in the data grid")
     func sessionsMountTheDataGrid() async throws {
         let viewModel = ServerDashboardViewModel(connectionId: UUID(), databaseType: .mysql, services: .live)
-        viewModel.sessions = sessions
+        viewModel.board.sessions = sessions
         let window = await host(SessionsTableView(viewModel: viewModel))
         defer {
             viewModel.stopAutoRefresh()
@@ -226,7 +226,7 @@ struct ServerDashboardGridTests {
     @Test("A session selected in the grid becomes the one Cancel and Terminate act on")
     func gridSelectionReachesTheActionTarget() async throws {
         let viewModel = ServerDashboardViewModel(connectionId: UUID(), databaseType: .postgresql, services: .live)
-        viewModel.sessions = sessions
+        viewModel.board.sessions = sessions
         let window = await host(SessionsTableView(viewModel: viewModel))
         defer {
             viewModel.stopAutoRefresh()
@@ -238,7 +238,7 @@ struct ServerDashboardGridTests {
         table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
 
         #expect(viewModel.sessionSelection.ids == ["10"])
-        #expect(SessionGridColumns.actionTarget(viewModel.sessionSelection.ids, in: viewModel.sessions)?.id == "10")
+        #expect(SessionGridColumns.actionTarget(viewModel.sessionSelection.ids, in: viewModel.board.sessions)?.id == "10")
     }
 
     @Test("The slow query pane draws its records in the data grid")

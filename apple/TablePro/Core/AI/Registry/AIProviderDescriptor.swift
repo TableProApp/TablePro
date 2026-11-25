@@ -16,34 +16,15 @@ struct AIProviderCapabilities: OptionSet, Sendable {
     static let modelListFetchable = AIProviderCapabilities(rawValue: 1 << 5)
 }
 
-struct CuratedModel: Sendable, Identifiable, Equatable {
-    let id: String
-    let displayName: String
-    let supportedEffortLevels: [ReasoningEffort]
-    let defaultEffort: ReasoningEffort?
-
-    init(
-        id: String,
-        displayName: String,
-        supportedEffortLevels: [ReasoningEffort] = [],
-        defaultEffort: ReasoningEffort? = nil
-    ) {
-        self.id = id
-        self.displayName = displayName
-        self.supportedEffortLevels = supportedEffortLevels
-        self.defaultEffort = defaultEffort
-    }
-}
-
 /// How a provider type behaves. Its name, icon and default endpoint live on `AIProviderType`.
 struct AIProviderDescriptor: Sendable {
     let typeID: String
     let capabilities: AIProviderCapabilities
-    let curatedModels: [CuratedModel]
     let showsTelemetryToggle: Bool
     let defaultTelemetryEnabled: Bool
     let oauthFlowKind: OAuthFlowKind?
-    let effortLevelResolver: (@Sendable (String) -> [ReasoningEffort])?
+    // What a model nothing describes takes: the `reasoning_effort` an OpenAI-compatible server reads, else nothing.
+    let unknownReasoning: AIReasoningSupport?
     let makeProvider: @Sendable (AIProviderConfig, String?) -> ChatTransport
 
     var supportsReasoning: Bool { capabilities.contains(.reasoning) }
@@ -53,58 +34,21 @@ struct AIProviderDescriptor: Sendable {
     var allowsMaxOutputTokens: Bool { capabilities.contains(.maxOutputTokens) }
     var fetchesModelList: Bool { capabilities.contains(.modelListFetchable) }
 
-    func curatedModels(for preset: AIProviderPreset?) -> [CuratedModel] {
-        guard let preset, !preset.curatedModels.isEmpty else { return curatedModels }
-        return preset.curatedModels
-    }
-
-    func curatedModel(forID id: String, preset: AIProviderPreset? = nil) -> CuratedModel? {
-        curatedModels(for: preset).first(where: { $0.id == id })
-    }
-
-    // The provider's own list wins over the offline tables; its silence leaves the envelope open.
-    func reasoning(
-        forModelID id: String,
-        fetched: AIModelInfo? = nil,
-        preset: AIProviderPreset? = nil
-    ) -> AIReasoningSupport {
+    // `info` is the provider's list merged with the catalog; with nothing known no level is guessed.
+    func reasoning(for info: AIModelInfo?) -> AIReasoningSupport {
         guard supportsReasoning else { return .unsupported }
-        if let known = fetched?.reasoning
-            ?? preset?.reasoning(forModelID: id)
-            ?? AIModelOverlay.reasoning(providerTypeID: typeID, modelID: id) {
-            return known
-        }
-        if let effortLevelResolver {
-            return AIReasoningSupport(mode: .effortOnly, effortLevels: effortLevelResolver(id))
-        }
-        if let curated = curatedModel(forID: id, preset: preset), !curated.supportedEffortLevels.isEmpty {
-            return AIReasoningSupport(
-                mode: .effortOnly,
-                effortLevels: curated.supportedEffortLevels,
-                defaultEffort: curated.defaultEffort
-            )
-        }
-        return AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high])
+        return info?.reasoning ?? unknownReasoning ?? .unsupported
     }
 
-    func supportedEffortLevels(
-        forModelID id: String,
-        fetched: AIModelInfo? = nil,
-        preset: AIProviderPreset? = nil
-    ) -> [ReasoningEffort] {
-        reasoning(forModelID: id, fetched: fetched, preset: preset).effortLevels
+    func supportedEffortLevels(for info: AIModelInfo?) -> [ReasoningEffort] {
+        reasoning(for: info).effortLevels
     }
 
-    // The saved effort belongs to the saved model, and the chat panel can send another one.
-    func effort(
-        _ requested: ReasoningEffort?,
-        forModelID id: String,
-        fetched: AIModelInfo? = nil,
-        preset: AIProviderPreset? = nil
-    ) -> ReasoningEffort? {
-        let reasoning = reasoning(forModelID: id, fetched: fetched, preset: preset)
+    // The saved effort belongs to the saved model, and the chat panel can send another one. nil sends nothing.
+    func effort(_ requested: ReasoningEffort?, for info: AIModelInfo?) -> ReasoningEffort? {
+        let reasoning = reasoning(for: info)
         guard let requested else {
-            return reasoning.isMandatory ? reasoning.defaultEffort ?? reasoning.effortLevels.first : nil
+            return reasoning.isMandatory ? reasoning.preferredEffort : nil
         }
         return reasoning.clampedEffort(requested)
     }
@@ -117,20 +61,18 @@ struct AIProviderDescriptor: Sendable {
     init(
         typeID: String,
         capabilities: AIProviderCapabilities,
-        curatedModels: [CuratedModel] = [],
         showsTelemetryToggle: Bool = false,
         defaultTelemetryEnabled: Bool = false,
         oauthFlowKind: OAuthFlowKind? = nil,
-        effortLevelResolver: (@Sendable (String) -> [ReasoningEffort])? = nil,
+        unknownReasoning: AIReasoningSupport? = nil,
         makeProvider: @escaping @Sendable (AIProviderConfig, String?) -> ChatTransport
     ) {
         self.typeID = typeID
         self.capabilities = capabilities
-        self.curatedModels = curatedModels
         self.showsTelemetryToggle = showsTelemetryToggle
         self.defaultTelemetryEnabled = defaultTelemetryEnabled
         self.oauthFlowKind = oauthFlowKind
-        self.effortLevelResolver = effortLevelResolver
+        self.unknownReasoning = unknownReasoning
         self.makeProvider = makeProvider
     }
 }

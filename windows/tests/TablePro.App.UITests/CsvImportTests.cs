@@ -17,7 +17,7 @@ public sealed partial class ShellTests
         var file = Path.Combine(app.DataFolder, "genres.csv");
         File.WriteAllText(file, "Name,Notes\r\nTablePro Jazz,first\r\nTablePro Folk,second\r\n");
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         var tree = app.Find("ObjectTree");
         app.RightClick(app.FindByName("Genre", tree), () => app.TryFindMenuItem("Import CSV...") is not null);
         // A click, not UIA's Invoke, which would wait on the picker the item opens.

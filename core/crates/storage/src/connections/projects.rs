@@ -6,7 +6,7 @@ use uuid::Uuid;
 use super::{ConnectionList, ConnectionsDocument, SavedConnection};
 use crate::{ConnectionGroup, ConnectionProject};
 
-// The top-level group decides for its subtree; an id no project holds reads as no project (core ADR 0041).
+// The top-level group decides for its subtree; an id no project holds reads as no project (core ADR 0059).
 #[derive(Debug, Clone, Default)]
 pub struct ProjectMembership {
     groups: HashMap<Uuid, Option<Uuid>>,

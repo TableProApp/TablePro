@@ -1,8 +1,3 @@
-//
-//  ConnectionRecoveryPerformer.swift
-//  TablePro
-//
-
 import AppKit
 
 internal struct PendingConnectionRecovery {
@@ -23,16 +18,17 @@ internal enum ConnectionRecoveryPerformer {
 
     internal static func perform(
         _ action: ConnectionRecoveryAction,
-        for connection: DatabaseConnection
+        for connection: DatabaseConnection,
+        opener: WindowOpener = .shared
     ) {
         switch action {
         case .installPlugin:
             WelcomeRouter.shared.routePluginInstall(connection)
         case .openPluginSettings(let pluginId):
-            PluginsSettingsNavigation.shared.reveal(pluginId: pluginId)
-            WindowOpener.shared.openSettings(tab: .plugins)
+            opener.openSettings(revealingPlugin: pluginId)
         case .editConnection:
-            WindowOpener.shared.openConnectionForm(editing: connection.id)
+            // A connect refused over its own settings (an SSL mode the driver lacks, an extension) shows as an issue there.
+            opener.openConnectionForm(editing: connection.id, facet: .firstIssue)
         case .openLocalNetworkSettings:
             guard let url = localNetworkSettingsURL else { return }
             NSWorkspace.shared.open(url)

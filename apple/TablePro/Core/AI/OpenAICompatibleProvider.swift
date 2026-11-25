@@ -182,7 +182,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         }
 
         if let effort = options.reasoningEffort, acceptsReasoningEffort(model: options.model) {
-            body["reasoning_effort"] = effort.openAIWireValue
+            body["reasoning_effort"] = effort.wireValue
         }
 
         if !options.tools.isEmpty {

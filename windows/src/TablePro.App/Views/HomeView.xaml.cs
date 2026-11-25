@@ -37,6 +37,15 @@ public sealed partial class HomeView : UserControl
     private LibraryItem? _renaming;
     private string? _reveal;
 
+    // Connections an import wrote, checked once the snapshot that holds them is shown.
+    private IReadOnlyList<Guid>? _select;
+
+    // The first of them, scrolled to once the tree has opened the groups above it.
+    private string? _showRow;
+
+    // The search the tree was last built with.
+    private string _shownQuery = string.Empty;
+
     internal HomeView(Workbench workbench, IShell shell)
     {
         _workbench = workbench;
@@ -72,6 +81,11 @@ public sealed partial class HomeView : UserControl
     }
 
     public ObservableCollection<LibraryItem> Items { get; } = [];
+
+    // Each snapshot the page read; a failed read raises nothing, so the setup guide's gate sees only a read library.
+    public event EventHandler<LibrarySnapshot>? LibraryRead;
+
+    public event EventHandler? SetupGuideRequested;
 
     // An empty project is not an empty library: the first-run page is for a library with nothing in it.
     public bool IsLibraryEmpty => LibraryScope.Emptiness(_snapshot) == LibraryEmptiness.Library;
@@ -120,6 +134,42 @@ public sealed partial class HomeView : UserControl
         _snapshot = snapshot;
         ShowSwitcher();
         Rebuild();
+        LibraryRead?.Invoke(this, snapshot);
+    }
+
+    // The connections an import wrote: selection mode with each of them checked.
+    public void SelectConnections(IReadOnlyList<Guid> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        _select = ids;
+        if (Holds(ids))
+        {
+            Rebuild();
+        }
+    }
+
+    private bool Holds(IReadOnlyList<Guid> ids) =>
+        ids.All(id => _snapshot.Connections.Any(connection => connection.Id == id));
+
+    // Before the rows are made, so they start with the search and the folds that would hide the import undone.
+    private IReadOnlyList<Guid>? TakeImported()
+    {
+        if (_select is not { } ids || !Holds(ids))
+        {
+            return null;
+        }
+
+        _select = null;
+        var reveal = LibraryTree.Reveal(_snapshot, LibrarySearch.Text, _collapsed, ids, _workbench.EngineName);
+        _collapsed.IntersectWith(reveal.Collapsed);
+        _showRow = reveal.First;
+        if (reveal.Query != LibrarySearch.Text)
+        {
+            _shownQuery = reveal.Query;
+            LibrarySearch.Text = reveal.Query;
+        }
+
+        return ids;
     }
 
     private void ShowSwitcher()
@@ -201,7 +251,9 @@ public sealed partial class HomeView : UserControl
             SetSelecting(false);
         }
 
+        var imported = TakeImported();
         var query = LibrarySearch.Text;
+        _shownQuery = query;
         var searching = !string.IsNullOrWhiteSpace(query);
         // Clearing the rows reports them collapsed and unchecked, which is not the user's doing.
         _rebuilding = true;
@@ -217,6 +269,14 @@ public sealed partial class HomeView : UserControl
 
         _checking = false;
         _selection.Retain(roots);
+        if (imported is { } ids)
+        {
+            SetSelecting(true);
+            _selection.Apply(
+                Flatten(Items).Select(item => item.Node).Where(node => node.Id is { } id && ids.Contains(id)),
+                []);
+        }
+
         ApplyExpansion(Items);
         SyncChecks();
         UpdateSelectionCommands();
@@ -246,6 +306,11 @@ public sealed partial class HomeView : UserControl
                     Expand(row);
                 }
 
+                if (_showRow is { } key)
+                {
+                    ShowRow(key);
+                }
+
                 // A slower machine lays the rows out over more than one pass.
                 if (passes > 1)
                 {
@@ -254,6 +319,7 @@ public sealed partial class HomeView : UserControl
                 else
                 {
                     _rebuilding = false;
+                    _showRow = null;
                 }
             });
         }
@@ -263,6 +329,27 @@ public sealed partial class HomeView : UserControl
 
     // Through the container: setting the node of a row the tree had not prepared yet left its section folded.
     private static void Expand(TreeViewItem row) => row.IsExpanded = true;
+
+    // TreeView has no ScrollIntoView; the list inside it holds the nodes and makes the row it scrolls to.
+    private void ShowRow(string key)
+    {
+        if (Flatten(Items).FirstOrDefault(item => item.Node.Key == key) is not { } item)
+        {
+            return;
+        }
+
+        if (ConnectionTree.ContainerFromItem(item) is TreeViewItem row)
+        {
+            row.StartBringIntoView();
+            return;
+        }
+
+        var node = Nodes(ConnectionTree.RootNodes).FirstOrDefault(candidate => ReferenceEquals(candidate.Content, item));
+        if (node is not null && Descendant<TreeViewList>(ConnectionTree) is { } list)
+        {
+            list.ScrollIntoView(node);
+        }
+    }
 
     private LibraryItem ToItem(LibraryNode node, bool searching)
     {
@@ -292,7 +379,14 @@ public sealed partial class HomeView : UserControl
         _workbench.EngineName(connection.EngineId),
         ConnectionSearch.Describe(connection, _workbench.IsFileEngine(connection.EngineId)));
 
-    private void OnSearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args) => Rebuild();
+    // An import's clear of the search was built before the box raised this.
+    private void OnSearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (sender.Text != _shownQuery)
+        {
+            Rebuild();
+        }
+    }
 
     // Enter in the search box connects to the first match, as on Linux and macOS.
     private void OnSearchSubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
@@ -1316,12 +1410,9 @@ public sealed partial class HomeView : UserControl
     private async void OnImportFromApp(object sender, RoutedEventArgs e) =>
         await _shell.ImportFromAppAsync().ConfigureAwait(true);
 
-    private void OnImportCard(object sender, RoutedEventArgs e) =>
-        FlyoutBase.ShowAttachedFlyout((FrameworkElement)sender);
-
     private async void OnExportConnections(object sender, RoutedEventArgs e) => await ExportConnectionsAsync().ConfigureAwait(true);
 
-    private async void OnSample(object sender, RoutedEventArgs e) => await _shell.OpenSampleAsync().ConfigureAwait(true);
+    private void OnSetupGuide(object sender, RoutedEventArgs e) => SetupGuideRequested?.Invoke(this, EventArgs.Empty);
 
     private async void OnNewGroup(object sender, RoutedEventArgs e) => await NewGroupAsync(null).ConfigureAwait(true);
 

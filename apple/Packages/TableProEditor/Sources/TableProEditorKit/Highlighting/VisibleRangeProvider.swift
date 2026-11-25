@@ -24,9 +24,15 @@ class VisibleRangeProvider {
         textView?.documentRange ?? .notFound
     }
 
+    // Fragments, not whole lines: one wrapped line can be a megabyte.
+    private var visibleRange: NSRange? {
+        guard let textView else { return nil }
+        return textView.layoutManager.fragmentTextRange(covering: textView.visibleRect)
+    }
+
     /// The set of visible indexes in the text view
     lazy var visibleSet: IndexSet = {
-        IndexSet(integersIn: textView?.visibleTextRange ?? NSRange())
+        IndexSet(integersIn: visibleRange ?? NSRange())
     }()
 
     init(textView: TextView) {
@@ -58,7 +64,7 @@ class VisibleRangeProvider {
 
     /// Updates the view to highlight newly visible text when the textview is scrolled or bounds change.
     @objc func visibleTextChanged() {
-        guard let textViewVisibleRange = textView?.visibleTextRange else {
+        guard let textViewVisibleRange = visibleRange else {
             return
         }
         self.visibleSet = IndexSet(integersIn: textViewVisibleRange)

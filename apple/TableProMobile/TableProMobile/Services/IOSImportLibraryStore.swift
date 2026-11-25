@@ -201,21 +201,24 @@ struct IOSImportLibraryStore: ImportLibraryStore {
         Set(appState.connections.map(\.id)).union(appState.unreadableCopies.connections)
     }
 
-    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) {
+    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) -> CredentialWriteResult {
         let secrets: [(ConnectionSecretKind, String?)] = [
             (.password, credentials.password),
             (.sshPassword, credentials.sshPassword),
             (.keyPassphrase, credentials.keyPassphrase),
             (.totpSecret, credentials.totpSecret)
         ]
+        var refused = 0
         for case let (kind, value?) in secrets {
             do {
                 try secureStore.store(value, forKey: kind.account(for: connectionId))
             } catch {
+                refused += 1
                 let privateDescription = String(reflecting: error)
                 Self.logger.error("Restoring an imported secret failed: \(privateDescription, privacy: .private)")
             }
         }
+        return CredentialWriteResult(secretsNotKept: refused)
     }
 }
 

@@ -71,8 +71,6 @@ paths:
   - "apple/TablePro/Core/AI/ChatGPTCodex/ChatGPTCodexModels.swift"
   - "apple/TablePro/Core/ConnectionLibrary/RecentConnectionsStore.swift"
   - "apple/TablePro/Core/ConnectionLibrary/ConnectionListPreferences.swift"
-  - "apple/TablePro/Core/Diagnostics/TableLoadHistoryStore.swift"
-  - "apple/TablePro/Core/Diagnostics/TableLoadPerformanceRecord.swift"
   - "apple/TablePro/Core/DataWrite/Rewind/RewindCipher.swift"
   - "apple/TablePro/Core/DataWrite/Rewind/RewindRecord.swift"
   - "apple/TablePro/Core/MCP/Outside/MCPServerStore.swift"
@@ -83,6 +81,7 @@ paths:
   - "apple/TablePro/Core/RoutineDebugging/RoutineDebugOptionStore.swift"
   - "apple/TablePro/Core/RowGeneration/RowGenerationModel.swift"
   - "apple/TablePro/Core/SSH/HostKeyStore.swift"
+  - "apple/TableProMobile/TableProMobile/SSH/HostKeyStore.swift"
   - "apple/TablePro/Core/Transfer/Shared/ImportColumnMatcher.swift"
   - "apple/TablePro/Core/Services/Formatting/ValueDisplayFormat.swift"
   - "apple/TablePro/Core/Services/TeamLibrary/TeamLibraryState.swift"
@@ -125,6 +124,7 @@ paths:
   - "apple/Packages/TableProMacCore/Sources/TableProUtilities/File/FileTextEncoding.swift"
   - "apple/Packages/TableProMacCore/Sources/TableProUtilities/UI/QuickSwitcherFrecencyStore.swift"
   - "apple/Packages/TableProMacCore/Sources/TableProMCP/Outside/MCPServerConfiguration.swift"
+  - "apple/Packages/TableProCore/Sources/TableProSSHTransport/HostKeyStore.swift"
   - "apple/Packages/TableProCore/Sources/TableProSSHTransport/PublishedSSHRoute.swift"
   - "apple/Packages/TableProCore/Sources/TableProSSHTransport/TOTPConfiguration.swift"
   - "apple/Packages/TableProCore/Sources/TableProConnectionLibrary/RecentConnectionsLedger.swift"
@@ -173,17 +173,24 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Generate Rows settings per table | UserDefaults, device-local | `RowGenerationSettingsStore` |
 | Row inspector field heights, per column name | UserDefaults, device-local | `InspectorFieldHeightStore` |
 | Favorite tables (iCloud-synced) | UserDefaults | `FavoriteTablesStorage` |
-| Team library, per team: pull cursor, items, unpushed edits, conflicts (synced with tablepro-cloud's `/v2`, never iCloud) | JSON, one file per team | `TeamLibraryStateStore` through `TeamLibrarySync` |
+| Team library read cache, per server and account: each team's pull cursor and items (synced with tablepro-cloud's `/v2`, never iCloud). Unsent edits stay in memory only; the library 0.88 and earlier kept, with its unsent edits, is read once for the tablepro.app sign-in the core restores, behind the UserDefaults flag `com.TablePro.teamLibrary.earlierLibraryConsidered`, then deleted; its edits are uploaded once (`TeamLibrarySync` has the rules) | JSON, one file per team in `TeamLibraryCache/<digest of server and account>/`; 0.88 and earlier: `TeamLibrary/` and `team_library.json` | `TeamLibraryStorage` through `TeamLibrarySync` |
+| TablePro account: the device, the entitlement, the chosen server, a company server's license and entitlement keys | `Account/account.json` in Application Support, device-local, never synced | the core's `tablepro-account` through `AccountServices` |
+| The account's refresh token: tablepro.app's in the item earlier builds read, each company server's in its own | Keychain `com.TablePro.account.refreshToken`, and one item per company server, device-only | the core through `KeychainHostSecrets` |
+| The entitlement builds before the core kept, read once when `account.json` is missing so the update stays signed in | `Account/entitlement.jwt` in Application Support | the core (`legacy_entitlement_file`) |
+| A license key an older build stored, until the key exchange trades it for an account; the digest of one the server refused | Keychain `com.TablePro.license.key`, UserDefaults `com.TablePro.license.setAside` | `StoredLicenseKey` |
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Server Dashboard tiles, per connection | UserDefaults, device-local | `ServerDashboardTileStorage` |
 | Table Health history, per connection and database: when each finding was first and last seen, resolved findings, ignored findings | JSON, one file per connection under `TableHealth/`, device-local, never synced | `TableHealthHistoryStorage` |
 | Module on/off (Settings > Extensions) | UserDefaults, device-local, never synced | `AppModuleSettings` |
+| A module's default on this Mac, for one that was core before: on when an earlier build ran here, written once at the first launch that knows the module, restored by Reset All Settings | UserDefaults `com.TablePro.modules.<id>.default`, device-local, never synced | `AppModule.recordDefaults`, called first in `applicationWillFinishLaunching` |
 | Routine debugger start options, per connection and field | UserDefaults, device-local | `RoutineDebugOptionStore` |
 | Whether the toolbar arrangement already carries the debug items | UserDefaults, device-local | `MainWindowToolbar` |
+| Whether the setup guide ended on this Mac (Finish, Skip or closing it). The older `com.TablePro.settings.hasCompletedOnboarding` is read only by `hasLaunchedBefore()` | UserDefaults `com.TablePro.settings.setupGuideSeen`, device-local, never synced | `AppSettingsStorage`, written by `SetupGuidePresenter.guideDidClose()` |
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Reopen the last session once after Relaunch to Update | UserDefaults, device-local, never synced, cleared by the next launch | `AppRelauncher` |
 | Highest plugin manifest `serial` accepted, so an older signed manifest is refused | UserDefaults, device-local, never synced | `RegistryManifestVerifier` through `RegistryClient` |
+| The AI model catalog last accepted from `updates.tablepro.app`, used over the bundled copy when its `generated` is newer; its HTTP cache only revalidates | `AIModels/models-v1.json` and `AIModels/URLCache` in the support directory, device-local, never synced | `AIModelReference` |
 | Approved environment variable references, per connection, names and destination digest | UserDefaults, device-local, never synced | `ConnectionApprovalStore.envVarReferences` |
 | Approved sign-ins with this Mac's own credentials (Entra, AWS profile or SSO, Google ADC or OAuth, Kerberos, `~/.pgpass`), per connection, field values and destination digest | UserDefaults `com.TablePro.localCredentialApprovals`, plus `com.TablePro.localCredentialApprovalsMigrated` for the one-time approval of this Mac's rows; device-local, never synced | `ConnectionApprovalStore.localCredentials` |
 | Snowflake SSO and MFA tokens, per host and user. A bare account's `NAME.USER` item stays for 0.83.1, which reads only that key | Keychain, device-local | `SnowflakeTokenCache` |
@@ -205,5 +212,5 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | The active project, which every list of connections follows. A view that shows scoped data reloads on `ConnectionScope.scopedSetChanged`, the one signal for a change of the in-scope set, and on nothing else | UserDefaults `com.TablePro.connectionList.activeProjectId`, device-local, never synced | `ConnectionScope` |
 | Whether the first run that can write projects has run: it marks projects and their members to upload, and a member with no local project takes the one its cached server record carries | UserDefaults `com.TablePro.sync.projectMembershipSeeded`, device-local, never synced | `SyncMetadataStorage.projectMembershipSeeded` through `SyncCoordinator` |
 | Where a connection came from (`origin`): this Mac, imported, iCloud | `connections.json`, never synced or exported | `ConnectionStorage` |
-| Table load timings (no identifying data, never uploaded) | JSON lines | `TableLoadHistoryStore` |
+| Connections opened from a database file or a link and never saved, whose view state, tab state and table-scoped files the next launch removes once no window holds them; never recorded while the library failed to load | UserDefaults `com.TablePro.connections.transientIds`, device-local, never synced | `TransientConnectionLedger`, written by `DatabaseManager.registerPendingSession`, swept by `PostLaunchWork` |
 | Reopen Last Session list (`LastSession.json`, plus `LastOpenConnections.json` holding only the ids that reconnect, which older builds read) | JSON | `LastOpenConnectionsStorage` |

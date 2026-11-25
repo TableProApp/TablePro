@@ -41,6 +41,137 @@ public sealed class InteractionTests
     });
 
     [Fact]
+    public Task KeysKeepTheFocusedCellInViewOverRowsOfUnevenHeight() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData());
+        (VirtualKey Key, bool Control)[] steps =
+        [
+            (VirtualKey.Down, false),
+            (VirtualKey.Down, false),
+            (VirtualKey.Right, false),
+            (VirtualKey.PageDown, false),
+            (VirtualKey.PageDown, false),
+            (VirtualKey.PageUp, false),
+            (VirtualKey.End, true),
+            (VirtualKey.Up, false),
+            (VirtualKey.PageUp, false),
+            (VirtualKey.Home, true),
+        ];
+        foreach (var (key, control) in steps)
+        {
+            var before = grid.FocusedRow;
+            Assert.True(grid.HandleKey(key, control, shift: false));
+            await WrapChecks.SettleAsync(grid);
+            var row = grid.FocusedRow;
+            Assert.True(grid.IsCellVisible(row, grid.FocusedColumn), $"{key} left row {row} out of view");
+            var view = grid.VisibleArea();
+            Assert.InRange(grid.RowTop(row), view.Top - 0.5, view.Bottom - grid.RowHeightOf(row) + 0.5);
+            Assert.Equal(view.Top, grid.Scroller.VerticalOffset, 2.0);
+            if (key is VirtualKey.PageDown or VirtualKey.PageUp)
+            {
+                // A page is never more rows than fit: the row it left is still within one view of the row it reached.
+                Assert.InRange(Math.Abs(grid.RowTop(row) - grid.RowTop(before)), grid.RowHeight, view.Height);
+            }
+            WrapChecks.AssertPlaced(grid, key.ToString());
+        }
+        Assert.Equal((0, 0), (grid.FocusedRow, grid.FocusedColumn));
+    });
+
+    [Fact]
+    public Task APointAndACellsBoundsFollowRowsOfUnevenHeight() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData(), frozen: 1);
+        var x = grid.Columns.PaneX(3) + 5;
+
+        Assert.True(grid.RowHeightOf(0) > grid.RowHeight);
+        Assert.Equal((0, 3), grid.HitTest(frozen: false, new Point(x, grid.RowTop(1) - 2)));
+        Assert.Equal((1, 3), grid.HitTest(frozen: false, new Point(x, grid.RowTop(1) + 2)));
+        Assert.Equal((1, 3), grid.HitTest(frozen: false, new Point(x, grid.RowTop(2) - 2)));
+        Assert.Equal((2, 3), grid.HitTest(frozen: false, new Point(x, grid.RowTop(2) + 2)));
+        Assert.Equal((1, -1), grid.HitTest(frozen: true, new Point(4, grid.RowTop(2) - 2)));
+
+        var scale = grid.XamlRoot.RasterizationScale;
+        var upper = grid.CellBoundsPhysical(0, 3);
+        var lower = grid.CellBoundsPhysical(1, 3);
+        Assert.Equal(grid.RowHeightOf(0) * scale, upper.Height, 1.0);
+        Assert.Equal(grid.RowHeightOf(1) * scale, lower.Height, 1.0);
+        Assert.Equal(upper.Bottom, lower.Top, 1.0);
+        Assert.Equal(grid.RowHeightOf(0) * scale, grid.RowNumberBoundsPhysical(0).Height, 1.0);
+        Assert.Equal(lower.Top, grid.RowNumberBoundsPhysical(1).Top, 1.0);
+
+        grid.HandlePress(frozen: false, new Point(x, grid.RowTop(2) - 3), shift: false);
+        Assert.Equal((1, 3), (grid.FocusedRow, grid.FocusedColumn));
+        grid.HandlePress(frozen: false, new Point(x, grid.RowTop(3) + 3), shift: true);
+        Assert.Equal(new CellRange(1, 3, 3, 3), grid.SelectionRange);
+    });
+
+    [Fact]
+    public Task TurningWrapOnAndOffKeepsTheFirstRowInViewWhereItWas() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new WrapData());
+        await GridChecks.JumpAsync(grid, 0, 400.5 * grid.RowHeight);
+
+        grid.WrapsText = true;
+        await WrapChecks.SettleAsync(grid);
+
+        Assert.True(grid.RowHeightOf(400) > grid.RowHeight);
+        Assert.Equal(grid.RowTop(400) + (0.5 * grid.RowHeightOf(400)), grid.VisibleArea().Top, 1.5);
+        Assert.Equal(grid.VisibleArea().Top, grid.Scroller.VerticalOffset, 2.0);
+        WrapChecks.AssertPlaced(grid, "wrap on");
+
+        grid.WrapsText = false;
+        await WrapChecks.SettleAsync(grid);
+
+        Assert.Equal(400.5 * grid.RowHeight, grid.VisibleArea().Top, 1.5);
+        Assert.Equal(grid.VisibleArea().Top, grid.Scroller.VerticalOffset, 2.0);
+        Assert.Equal(grid.RowCount * grid.RowHeight, grid.TotalHeight);
+    });
+
+    // The pixel offset was kept, so at row 5,000 a size change from 14 to 20 showed row 3,478.
+    [Fact]
+    public Task AFontSizeChangeKeepsTheFirstRowInViewWhereItWas() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData());
+        grid.ApplyTextScale(1);
+        await GridChecks.JumpAsync(grid, 0, 5000.25 * grid.RowHeight);
+        var before = grid.RowHeight;
+
+        grid.CellFontSize = 20;
+        await WrapChecks.SettleAsync(grid);
+
+        Assert.True(grid.RowHeight > before);
+        Assert.Equal(5000.25 * grid.RowHeight, grid.VisibleArea().Top, 1.5);
+        Assert.Equal(grid.VisibleArea().Top, grid.Scroller.VerticalOffset, 2.0);
+        Assert.Equal(5000, grid.RowWindow.First);
+
+        grid.CellFontSize = 14;
+        await WrapChecks.SettleAsync(grid);
+
+        Assert.Equal(5000.25 * before, grid.VisibleArea().Top, 1.5);
+        Assert.Equal(grid.VisibleArea().Top, grid.Scroller.VerticalOffset, 2.0);
+    });
+
+    // Rows above the view are one line until they are first shown, then as tall as their text.
+    [Fact]
+    public Task RowsThatGrowAsTheyScrollInFromAboveLeaveTheRowsInViewInPlace() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WrapChecks.ShowAsync(new WrapData());
+        await GridChecks.JumpAsync(grid, 0, grid.RowTop(2_000));
+        await WrapChecks.SettleAsync(grid);
+        var first = grid.RowWindow.First;
+        var extent = grid.TotalHeight;
+
+        grid.ScrollTo(0, grid.VisibleArea().Top - (3 * grid.RowHeight));
+        await WrapChecks.SettleAsync(grid);
+
+        Assert.Equal(2_000, first);
+        Assert.True(grid.TotalHeight > extent);
+        Assert.Equal(3 * grid.RowHeight, grid.RowTop(first) - grid.VisibleArea().Top, 1.5);
+        Assert.Equal(grid.VisibleArea().Top, grid.Scroller.VerticalOffset, 2.0);
+        WrapChecks.AssertPlaced(grid, "scrolled up");
+    });
+
+    [Fact]
     public Task ShiftExtendsTheSelectionAndControlASelectsEverything() => WinUiHost.RunAsync(async () =>
     {
         var grid = await WinUiHost.ShowAsync(new SyntheticData());

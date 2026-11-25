@@ -26,15 +26,9 @@
             <MenuBarItem x:Uid="FileMenu" x:Name="FileMenu">
                 <MenuFlyoutItem x:Uid="MenuNewConnection" x:Name="MenuNewConnection" Click="OnNewConnection">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Add" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control" Key="N" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuOpenFile" x:Name="MenuOpenFile" Click="OnOpenFile">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="OpenFile" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control" Key="O" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutSubItem x:Uid="MenuOpenRecent" x:Name="MenuOpenRecent" />
                 <MenuFlyoutItem x:Uid="MenuImport" x:Name="MenuImport" Click="OnImport">
@@ -45,44 +39,22 @@
                 <!-- The Connections page's switcher, here for the keyboard and for a window with no Connections page. -->
                 <MenuFlyoutSubItem x:Uid="MenuProject" x:Name="MenuProject" AutomationProperties.AutomationId="MenuProject" />
                 <MenuFlyoutSeparator />
-                <MenuFlyoutItem x:Uid="MenuNewQueryTab" x:Name="MenuNewQueryTab" Click="OnNewQueryTab" IsEnabled="False">
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control" Key="T" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
-                </MenuFlyoutItem>
-                <MenuFlyoutItem x:Uid="MenuCloseTab" x:Name="MenuCloseTab" Click="OnCloseTab" IsEnabled="False">
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control" Key="W" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
-                </MenuFlyoutItem>
-                <MenuFlyoutItem x:Uid="MenuReopenTab" x:Name="MenuReopenTab" Click="OnReopenTab" IsEnabled="False">
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control,Shift" Key="T" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
-                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuNewQueryTab" x:Name="MenuNewQueryTab" Click="OnNewQueryTab" IsEnabled="False" />
+                <MenuFlyoutItem x:Uid="MenuCloseTab" x:Name="MenuCloseTab" Click="OnCloseTab" IsEnabled="False" />
+                <MenuFlyoutItem x:Uid="MenuReopenTab" x:Name="MenuReopenTab" Click="OnReopenTab" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuMoveTab" x:Name="MenuMoveTab" Click="OnMoveTab" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="NewWindow" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
-                <!-- A table tab's pending changes or a query tab's file; the keys live here only, so one press never runs twice. -->
+                <!-- The keymap gives the managed items their keys and labels in code (docs/decisions/0025), so one press never runs twice. -->
                 <MenuFlyoutItem x:Uid="MenuSaveChanges" x:Name="MenuSaveChanges" Click="OnSaveChanges" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Save" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control" Key="S" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
-                <MenuFlyoutItem x:Uid="MenuSaveAs" x:Name="MenuSaveAs" Click="OnSaveAs" IsEnabled="False">
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control,Shift" Key="S" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
-                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuSaveAs" x:Name="MenuSaveAs" Click="OnSaveAs" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuDiscardChanges" x:Name="MenuDiscardChanges" Click="OnDiscardChanges" IsEnabled="False" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuExportResults" x:Name="MenuExportResults" Click="OnExportResults" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Download" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control,Shift" Key="E" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuShareResult" x:Name="MenuShareResult" Click="OnShareResult" IsEnabled="False">
@@ -126,17 +98,10 @@
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuAddRow" x:Name="MenuAddRow" Click="OnAddRow" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Add" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control,Shift" Key="N" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuDuplicateRow" x:Name="MenuDuplicateRow" Click="OnDuplicateRow" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Copy" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control,Shift" Key="D" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
-                <!-- The grid takes Delete itself, so the menu only names the key. -->
                 <MenuFlyoutItem x:Uid="MenuDeleteRows" x:Name="MenuDeleteRows" Click="OnDeleteRows" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Delete" /></MenuFlyoutItem.Icon>
                 </MenuFlyoutItem>
@@ -145,37 +110,22 @@
             <MenuBarItem x:Uid="ViewMenu" x:Name="ViewMenu">
                 <MenuFlyoutItem x:Uid="MenuShowConnections" x:Name="MenuShowConnections" Click="OnShowConnections">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Home" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control,Shift" Key="H" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
-                <ToggleMenuFlyoutItem x:Uid="MenuShowObjects" x:Name="MenuShowObjects" IsChecked="True" Click="OnToggleObjects" IsEnabled="False">
-                    <ToggleMenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control" Key="B" />
-                    </ToggleMenuFlyoutItem.KeyboardAccelerators>
-                </ToggleMenuFlyoutItem>
-                <MenuFlyoutItem x:Uid="MenuFilterObjects" x:Name="MenuFilterObjects" Click="OnFilterObjects" IsEnabled="False">
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control" Key="P" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
-                </MenuFlyoutItem>
+                <ToggleMenuFlyoutItem x:Uid="MenuShowObjects" x:Name="MenuShowObjects" IsChecked="True" Click="OnToggleObjects" IsEnabled="False" />
+                <MenuFlyoutItem x:Uid="MenuFilterObjects" x:Name="MenuFilterObjects" Click="OnFilterObjects" IsEnabled="False" />
                 <ToggleMenuFlyoutItem x:Uid="MenuShowHistory" x:Name="MenuShowHistory" Click="OnToggleHistory" IsEnabled="False" />
                 <ToggleMenuFlyoutItem x:Uid="MenuShowSavedQueries" x:Name="MenuShowSavedQueries" Click="OnToggleSavedQueries" IsEnabled="False" />
                 <ToggleMenuFlyoutItem x:Uid="MenuShowAssistant" x:Name="MenuShowAssistant" Click="OnToggleAssistant" IsEnabled="False" />
+                <MenuFlyoutSeparator />
+                <ToggleMenuFlyoutItem x:Uid="MenuWrapText" x:Name="MenuWrapText" Click="OnToggleWrapText" IsEnabled="False" />
             </MenuBarItem>
 
             <MenuBarItem x:Uid="DatabaseMenu" x:Name="DatabaseMenu">
                 <MenuFlyoutItem x:Uid="MenuRefresh" x:Name="MenuRefresh" Click="OnRefresh" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Refresh" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Key="F5" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuSwitchDatabase" x:Name="MenuSwitchDatabase" Click="OnSwitchDatabase" IsEnabled="False">
                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE1D3;" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control" Key="K" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuNewDatabase" x:Name="MenuNewDatabase" Click="OnNewDatabase" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Add" /></MenuFlyoutItem.Icon>
@@ -192,22 +142,13 @@
             <MenuBarItem x:Uid="QueryMenu" x:Name="QueryMenu">
                 <MenuFlyoutItem x:Uid="MenuRun" x:Name="MenuRun" Click="OnRun" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Play" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control" Key="Enter" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
-                <MenuFlyoutItem x:Uid="MenuRunStatement" x:Name="MenuRunStatement" Click="OnRunStatement" IsEnabled="False">
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control,Shift" Key="Enter" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
-                </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuRunStatement" x:Name="MenuRunStatement" Click="OnRunStatement" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuStop" x:Name="MenuStop" Click="OnStop" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Stop" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Shift" Key="F5" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
+                <MenuFlyoutItem x:Uid="MenuFormatQuery" x:Name="MenuFormatQuery" Click="OnFormatQuery" IsEnabled="False" />
                 <!-- No shortcut: Ctrl+D is the editor's next occurrence. -->
                 <MenuFlyoutItem x:Uid="MenuSaveQuery" x:Name="MenuSaveQuery" Click="OnSaveQuery" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Save" /></MenuFlyoutItem.Icon>
@@ -219,15 +160,9 @@
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuFilterRows" x:Name="MenuFilterRows" Click="OnFilterRows" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Filter" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control,Shift" Key="F" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuPreviewSql" x:Name="MenuPreviewSql" Click="OnPreviewSql" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Preview" /></MenuFlyoutItem.Icon>
-                    <MenuFlyoutItem.KeyboardAccelerators>
-                        <KeyboardAccelerator Modifiers="Control,Shift" Key="P" />
-                    </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
             </MenuBarItem>
 
@@ -239,7 +174,8 @@
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="MenuReportIssue" x:Name="MenuReportIssue" Click="OnReportIssue" />
-                <MenuFlyoutItem x:Uid="MenuSample" x:Name="MenuSample" Click="OnOpenSample" />
+                <MenuFlyoutItem x:Uid="MenuSetupGuide" x:Name="MenuSetupGuide" AutomationProperties.AutomationId="MenuSetupGuide" Click="OnSetupGuide" />
+                <MenuFlyoutItem x:Uid="MenuSample" x:Name="MenuSample" AutomationProperties.AutomationId="MenuSample" Click="OnOpenSample" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Name="MenuCheckForUpdates" AutomationProperties.AutomationId="MenuCheckForUpdates" Click="OnCheckForUpdates" />
                 <MenuFlyoutItem x:Uid="MenuAbout" x:Name="MenuAbout" Click="OnAbout" />

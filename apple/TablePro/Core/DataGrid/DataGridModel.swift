@@ -373,6 +373,22 @@ final class DataGridModel: ObservableObject {
         refreshFind()
     }
 
+    // MARK: - Wrap
+
+    // Only a grid that offers the command wraps, whatever its store holds.
+    var wrapsText: Bool {
+        configuration.commands.contains(.wrapText) && store.wrapsText
+    }
+
+    // The cached text is flattened or keeps its breaks by this flag, so it goes with the change, mounted or not.
+    func setWrapsText(_ wraps: Bool) {
+        guard configuration.commands.contains(.wrapText), wraps != store.wrapsText, commitEditing() else { return }
+        store.wrapsText = wraps
+        display.keepsLineBreaks = wraps
+        display.cache.removeAll()
+        mountedView?.configurationDidChange()
+    }
+
     // MARK: - Schemas
 
     private func observeSchemas() {

@@ -74,11 +74,16 @@ internal enum OperationConfirmationPrompt {
 
     // A connection reaches many databases, so the person approving reads which one this runs in.
     internal static func scopeLine(of scope: DatabaseScope?) -> String? {
-        guard let scope, !scope.isServerScoped else { return nil }
-        guard let schema = scope.schema else {
-            return String(format: String(localized: "Database: %@"), scope.database)
+        switch (scope?.namedDatabase, scope?.schema) {
+        case (nil, nil):
+            return nil
+        case (let database?, nil):
+            return String(format: String(localized: "Database: %@"), database)
+        case (nil, let schema?):
+            return String(format: String(localized: "Schema: %@"), schema)
+        case (let database?, let schema?):
+            return String(format: String(localized: "Database: %1$@, schema: %2$@"), database, schema)
         }
-        return String(format: String(localized: "Database: %1$@, schema: %2$@"), scope.database, schema)
     }
 
     /// The line under a confirmation's heading, for a sheet that confirms without going through

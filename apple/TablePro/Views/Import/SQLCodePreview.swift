@@ -1,17 +1,9 @@
-//
-//  SQLCodePreview.swift
-//  TablePro
-//
-//  Read-only SQL code preview with tree-sitter syntax highlighting
-//
-
 import SwiftUI
 import TableProEditorKit
 import TableProGrammars
 
-/// Read-only SQL code preview with syntax highlighting powered by TableProEditorKit
 struct SQLCodePreview: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var editorSettings = AppSettingsManager.shared.editorSlice
     @Binding var text: String
 
     @State private var editorState = SourceEditorState()
@@ -28,9 +20,10 @@ struct SQLCodePreview: View {
         .onReceive(AppEvents.shared.themeChanged) { _ in
             editorConfiguration = Self.makeConfiguration()
         }
+        .onChange(of: editorSettings.value) { _ in
+            editorConfiguration = Self.makeConfiguration()
+        }
     }
-
-    // MARK: - Configuration
 
     private static func makeConfiguration() -> SourceEditorConfiguration {
         SourceEditorConfiguration(

@@ -53,6 +53,9 @@ internal struct SourceObjectSyncBuilder {
     }
 
     internal func build(for result: CompareObjectResult, action: TableSyncAction) throws -> [SyncStatement] {
+        if action != .skip, let refusal = result.scriptRefusal {
+            throw CompareSyncError.unsupportedOperation(refusal)
+        }
         switch action {
         case .skip:
             return []

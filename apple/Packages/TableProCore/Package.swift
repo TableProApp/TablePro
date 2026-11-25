@@ -324,9 +324,10 @@ let package = Package(
             dependencies: ["TableProTabularIO", "TableProNumberFormatting"],
             path: "Sources/TableProTabular"
         ),
+        // The plugins link the vendored SQLite through CSQLite; the iOS app has no vendored build and uses the SDK's.
         .target(
             name: "TableProSQLiteCore",
-            dependencies: ["CSQLite"],
+            dependencies: [.target(name: "CSQLite", condition: .when(platforms: [.macOS]))],
             path: "Sources/TableProSQLiteCore"
         ),
         // Linked by a plugin bundle, so never TableProPluginKit: the plugin would carry its own copy of PluginKit's types.

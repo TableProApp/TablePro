@@ -10,6 +10,8 @@ import Combine
 @MainActor
 internal final class EditorTabStripView: NSView {
     internal var commands: EditorTabCommands?
+    // The button's state now, not when the event being handled was queued.
+    internal var isPrimaryButtonDown: () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }
 
     internal private(set) var items: [EditorTabItem] = []
     internal private(set) var run = EditorTabRunLayout(viewportWidth: 0, count: 0)
@@ -45,7 +47,7 @@ internal final class EditorTabStripView: NSView {
         fatalError("EditorTabStripView does not support NSCoder init")
     }
 
-    override internal var isFlipped: Bool { true }
+    override nonisolated internal var isFlipped: Bool { true }
 
     private func configure() {
         addSubview(track)
@@ -534,14 +536,19 @@ internal final class EditorTabStripView: NSView {
 
     // A drag session reports Escape and a release on empty space the same way, so the key is latched as it arrives.
     private func watchForDragCancel() {
+        stopWatchingForDragCancel()
         dragWasCancelled = false
         dragCancelMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            let isEscape = event.keyCode == KeyCode.escape.rawValue
-            MainActor.assumeIsolated {
-                if isEscape { self?.dragWasCancelled = true }
-            }
+            let keyCode = event.keyCode
+            MainActor.assumeIsolated { self?.noteKeyDuringDrag(keyCode) }
             return event
         }
+    }
+
+    internal var isWatchingForDragCancel: Bool { dragCancelMonitor != nil }
+
+    internal func noteKeyDuringDrag(_ keyCode: UInt16) {
+        if keyCode == KeyCode.escape.rawValue { dragWasCancelled = true }
     }
 
     private func stopWatchingForDragCancel() {
@@ -552,7 +559,7 @@ internal final class EditorTabStripView: NSView {
 
     internal func dragDidEnd(of view: EditorTabItemView, at screenPoint: NSPoint, operation: NSDragOperation) {
         let id = view.item.id
-        let wasCancelled = dragWasCancelled || NSEvent.pressedMouseButtons & 1 != 0
+        let wasCancelled = dragWasCancelled || isPrimaryButtonDown()
         stopWatchingForDragCancel()
         reorder = nil
         dragHasLeftStrip = false
@@ -568,6 +575,70 @@ internal final class EditorTabStripView: NSView {
         commands.tearOff(id, screenPoint)
     }
 
+    // A drag handled only after its release runs no session, and an Escape still queued before the release cancels it.
+    internal func beginDeferredDrag() {
+        pendingRenameId = nil
+        watchForDragCancel()
+    }
+
+    // The release point settles a deferred drag as a session would have.
+    internal func drop(_ view: EditorTabItemView, releasedAt screenPoint: NSPoint) {
+        let wasCancelled = dragWasCancelled
+        stopWatchingForDragCancel()
+        guard let commands, !wasCancelled else { return }
+        let id = view.item.id
+        if let target = Self.strip(at: screenPoint), let targetWindow = target.window {
+            target.settleDrop(of: view, atWindowPoint: targetWindow.convertPoint(fromScreen: screenPoint))
+            return
+        }
+        guard EditorTabDragEnding.opensNewWindow(
+            operation: [],
+            wasCancelled: false,
+            isOverTabStrip: commands.isOverTabStrip(screenPoint),
+            canTearOff: commands.canTearOff(id)
+        ) else { return }
+        commands.tearOff(id, screenPoint)
+    }
+
+    internal func settleDrop(of source: EditorTabItemView, atWindowPoint point: NSPoint) {
+        let location = slotLocation(atWindowPoint: point)
+        guard source.strip === self else {
+            guard accepts(source) else { return }
+            updateIncoming(toLocation: location)
+            _ = receive(source)
+            return
+        }
+        let pinned = Set(items.filter(\.isPinned).map(\.id))
+        reorder = EditorTabReorder(draggedId: source.item.id, order: items.map(\.id), pinnedIds: pinned)
+        updateReorder(toLocation: location)
+        commitReorder()
+        reorder = nil
+        layoutTabs(animated: true)
+    }
+
+    // The frontmost window at the point decides, as it would for a session's destination.
+    private static func strip(at screenPoint: NSPoint) -> EditorTabStripView? {
+        let number = NSWindow.windowNumber(at: screenPoint, belowWindowWithWindowNumber: 0)
+        guard let window = NSApp.window(withWindowNumber: number) else { return nil }
+        return strip(in: window, atWindowPoint: window.convertPoint(fromScreen: screenPoint))
+    }
+
+    // The strip sits in the titlebar, outside the content view, so the hit test starts at the frame view.
+    internal static func strip(in window: NSWindow, atWindowPoint point: NSPoint) -> EditorTabStripView? {
+        var view = window.contentView?.superview?.hitTest(point)
+        while let current = view, !(current is EditorTabStripView) {
+            view = current.superview
+        }
+        return view as? EditorTabStripView
+    }
+
+    private func slotLocation(atWindowPoint point: NSPoint) -> CGFloat {
+        run.slotLocation(
+            ofContentX: document.convert(point, from: nil).x,
+            offset: scrollView.contentView.bounds.minX
+        )
+    }
+
     // MARK: - Dragging in
 
     override internal func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -581,10 +652,7 @@ internal final class EditorTabStripView: NSView {
         let isOwnTab = source.strip === self
         guard isOwnTab || accepts(source) else { return [] }
         autoscroll(towards: sender.draggingLocation)
-        let location = run.slotLocation(
-            ofContentX: document.convert(sender.draggingLocation, from: nil).x,
-            offset: scrollView.contentView.bounds.minX
-        )
+        let location = slotLocation(atWindowPoint: sender.draggingLocation)
         if isOwnTab {
             updateReorder(toLocation: location)
         } else {
@@ -604,22 +672,30 @@ internal final class EditorTabStripView: NSView {
     }
 
     override internal func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let source = sender.draggingSource as? EditorTabItemView, let commands else { return false }
+        guard let source = sender.draggingSource as? EditorTabItemView, commands != nil else { return false }
         if source.strip === self {
-            guard let reorder, reorder.movedFromOriginal, let destination = reorder.destinationIndex else {
-                return true
-            }
-            // The manager publishes a turn later, and the tab must not slide back in the meantime.
-            let byId = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-            items = reorder.order.compactMap { byId[$0] }
-            commands.moveTab(reorder.draggedId, destination)
+            commitReorder()
             return true
         }
+        return receive(source)
+    }
+
+    private func commitReorder() {
+        guard let commands, let reorder, reorder.movedFromOriginal, let destination = reorder.destinationIndex else {
+            return
+        }
+        // The manager publishes a turn later, and the tab must not slide back in the meantime.
+        let byId = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        items = reorder.order.compactMap { byId[$0] }
+        commands.moveTab(reorder.draggedId, destination)
+    }
+
+    private func receive(_ source: EditorTabItemView) -> Bool {
         defer {
             incomingIndex = nil
             layoutTabs(animated: true)
         }
-        guard accepts(source), let index = incomingIndex else { return false }
+        guard let commands, accepts(source), let index = incomingIndex else { return false }
         return commands.receiveTab(source.item.id, index)
     }
 
@@ -739,7 +815,7 @@ internal enum EditorTabDragEnding {
 }
 
 internal final class EditorTabDocumentView: NSView {
-    override internal var isFlipped: Bool { true }
+    override nonisolated internal var isFlipped: Bool { true }
     override internal var mouseDownCanMoveWindow: Bool { false }
 }
 
@@ -764,7 +840,7 @@ internal final class EditorTabScrollView: NSScrollView {
 
 @MainActor
 internal final class EditorTabTrackView: NSView {
-    override internal var isFlipped: Bool { true }
+    override nonisolated internal var isFlipped: Bool { true }
     override internal var mouseDownCanMoveWindow: Bool { false }
 
     override internal func draw(_ dirtyRect: NSRect) {

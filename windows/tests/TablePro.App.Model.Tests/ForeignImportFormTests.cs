@@ -25,8 +25,9 @@ public sealed class ForeignImportFormTests
         Assert.Equal(form.Sources.Single(source => source.App == app).SavedQuerySupport, form.Queries.Support);
     }
 
+    // Changed on purpose: the core's preselected source is chosen, no longer the first one found.
     [Fact]
-    public async Task TheFirstAppFoundIsChosenAndOneNotFoundCannotBe()
+    public async Task TheCorePreselectedAppIsChosenAndOneNotFoundCannotBe()
     {
         var form = await Loaded(new FakeImporter(Sources()));
 
@@ -46,6 +47,129 @@ public sealed class ForeignImportFormTests
                 ForeignSourceNote.Found,
             ],
             form.Sources.Select(ForeignImportForm.NoteFor));
+    }
+
+    [Fact]
+    public async Task TheMostConnectionsArePreselectedOverAnEmptyAppListedFirst()
+    {
+        var importer = new FakeImporter(
+        [
+            Counted(ForeignApp.TablePlus, 0, preselected: false),
+            Counted(ForeignApp.DBeaver, 12, preselected: true),
+        ]);
+
+        var form = await Loaded(importer);
+
+        Assert.Equal(ForeignApp.DBeaver, form.Chosen?.App);
+        Assert.Equal([ForeignScanDepth.Inventory], importer.Scans);
+    }
+
+    [Fact]
+    public async Task NoAppPreselectedLeavesNothingChosen()
+    {
+        var form = await Loaded(new FakeImporter([Counted(ForeignApp.DBeaver, 0, preselected: false)]));
+
+        Assert.Null(form.Chosen);
+        Assert.False(form.CanContinue);
+    }
+
+    [Fact]
+    public async Task AnUnreadableAppSaysSoAndCannotBeChosen()
+    {
+        var unreadable = Counted(ForeignApp.DataGrip, 0, preselected: false) with
+        {
+            Availability = new ForeignSourceAvailability.Unreadable("foreign_import.parse", "bad XML at line 3"),
+        };
+        var form = await Loaded(new FakeImporter([Counted(ForeignApp.DBeaver, 2, preselected: true), unreadable]));
+
+        Assert.Equal(ForeignSourceNote.Unreadable, ForeignImportForm.NoteFor(unreadable));
+        Assert.False(form.Choose(ForeignApp.DataGrip));
+        Assert.Equal(ForeignApp.DBeaver, form.Chosen?.App);
+    }
+
+    [Fact]
+    public async Task SavedQueriesStartOnOnlyWhenTheAppCountedSome()
+    {
+        var empty = Counted(ForeignApp.DBeaver, 2, preselected: true) with { SavedQueries = 0 };
+        var form = await Loaded(new FakeImporter([empty, Counted(ForeignApp.Dbx, 2, preselected: false)]));
+
+        Assert.True(form.Queries.Offered);
+        Assert.False(form.Queries.Checked);
+        form.Choose(ForeignApp.Dbx);
+        Assert.True(form.Queries.Checked);
+        form.SetQueries(false);
+        form.Choose(ForeignApp.DBeaver);
+        form.SetQueries(true);
+        Assert.True(form.Queries.Checked);
+    }
+
+    [Fact]
+    public async Task PasswordsFollowWhatTheCoreOffers()
+    {
+        var offered = Counted(ForeignApp.TablePlus, 2, preselected: true) with
+        {
+            Passwords = ForeignPasswordSource.Keychain,
+            PasswordOffer = ForeignPasswordOffer.DecryptedWhileReading,
+        };
+        var form = await Loaded(new FakeImporter([offered]));
+
+        Assert.Equal(new ForeignPasswordOption(true, true, ForeignPasswordNote.DecryptedWhileReading), form.Passwords);
+    }
+
+    [Fact]
+    public async Task AQueuedAppStartsOnItsSourceWithNoScan()
+    {
+        var importer = new FakeImporter(Sources()) { Review = Review() };
+        var form = new ForeignImportForm(importer, Sources(), ForeignApp.Dbx);
+
+        Assert.Equal(ForeignImportStep.Choosing, form.Step);
+        Assert.Equal(ForeignApp.Dbx, form.Chosen?.App);
+        Assert.Empty(importer.Scans);
+        Assert.True(await form.ReadAsync(null, TestContext.Current.CancellationToken));
+        Assert.Equal(ForeignApp.Dbx, Assert.Single(importer.Reads).App);
+    }
+
+    [Fact]
+    public async Task AnImportHandsOverTheIdsItWrote()
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var review = Review();
+        review.Outcome = new ForeignImportOutcome(2, 0, 0, 0, 0, 0, [first, second]);
+        var form = await Read(review);
+
+        var ending = await form.ImportAsync();
+
+        Assert.Equal([first, second], ending?.ConnectionIds);
+        Assert.Equal(ImportSource.ThisComputer, ending!.Source);
+        Assert.Equal(
+            new SetupEnding.SelectInLibrary([first, second]),
+            SetupGuide.Handoff(ending.ConnectionIds, ending.Source));
+        Assert.Empty(ForeignImportEnding.Refused(Error("storage.io"), ImportSource.ThisComputer).ConnectionIds);
+    }
+
+    [Fact]
+    public async Task AnAppsOwnStoreOpensOneConnectionAndAPickedExportOnlySelectsIt()
+    {
+        var id = Guid.NewGuid();
+        var token = TestContext.Current.CancellationToken;
+        var stored = Review();
+        stored.Outcome = new ForeignImportOutcome(1, 0, 0, 0, 0, 0, [id]);
+        var exported = Review();
+        exported.Outcome = stored.Outcome;
+        var store = await Read(stored);
+        var export = await Loaded(new FakeImporter(Sources()) { Review = exported });
+        Assert.True(export.Choose(export.Sources.Single(source => source.PicksFile).App));
+        Assert.True(await export.ReadAsync(@"C:\exports\connections.ncx", token));
+
+        var fromStore = await store.ImportAsync();
+        var fromExport = await export.ImportAsync();
+
+        Assert.Equal(new SetupEnding.Open(id), SetupGuide.Handoff(fromStore!.ConnectionIds, fromStore.Source));
+        Assert.Equal(ImportSource.FileOrLink, fromExport!.Source);
+        Assert.Equal(
+            new SetupEnding.SelectInLibrary([id]),
+            SetupGuide.Handoff(fromExport.ConnectionIds, fromExport.Source));
     }
 
     [Fact]
@@ -246,7 +370,7 @@ public sealed class ForeignImportFormTests
     public async Task AnImportSaysWhatLandedAndWhatDidNotInOrder()
     {
         var review = Review();
-        review.Outcome = new ForeignImportOutcome(2, 1, 1, 3, 0, 1);
+        review.Outcome = new ForeignImportOutcome(2, 1, 1, 3, 0, 1, [Guid.NewGuid(), Guid.NewGuid()]);
         var form = await Read(review);
 
         var ending = await form.ImportAsync();
@@ -341,6 +465,20 @@ public sealed class ForeignImportFormTests
 
     private static CoreError Error(string code) => new(code, [code], code, null, null);
 
+    private static ForeignSource Counted(ForeignApp app, long connections, bool preselected) => new(
+        app,
+        app.ToString(),
+        ForeignSourceAvailability.Available.Instance,
+        connections,
+        1,
+        [],
+        ForeignPasswordSource.AppFiles,
+        ForeignSavedQuerySupport.Scripts,
+        ForeignPasswordOffer.DecryptedWhileReading,
+        true,
+        connections > 0,
+        preselected);
+
     // The apps the core lists on Windows, in its order.
     private static IReadOnlyList<ForeignSource> Sources(bool tablePlusFound = false) =>
     [
@@ -348,8 +486,14 @@ public sealed class ForeignImportFormTests
             ForeignApp.TablePlus,
             tablePlusFound,
             ForeignPasswordSource.Keychain,
-            ForeignSavedQuerySupport.GlobalFolder),
-        Source(ForeignApp.DBeaver, true, ForeignPasswordSource.AppFiles, ForeignSavedQuerySupport.Scripts),
+            ForeignSavedQuerySupport.GlobalFolder,
+            preselected: tablePlusFound),
+        Source(
+            ForeignApp.DBeaver,
+            true,
+            ForeignPasswordSource.AppFiles,
+            ForeignSavedQuerySupport.Scripts,
+            preselected: !tablePlusFound),
         Source(ForeignApp.DataGrip, true, ForeignPasswordSource.Keychain, ForeignSavedQuerySupport.Consoles),
         Source(
             ForeignApp.BeekeeperStudio,
@@ -359,12 +503,16 @@ public sealed class ForeignImportFormTests
         new ForeignSource(
             ForeignApp.Navicat,
             "Navicat",
-            true,
+            ForeignSourceAvailability.Available.Instance,
             0,
             0,
             ["ncx"],
             ForeignPasswordSource.AppFiles,
-            ForeignSavedQuerySupport.NotInExport),
+            ForeignSavedQuerySupport.NotInExport,
+            ForeignPasswordOffer.DecryptedWhileReading,
+            false,
+            false,
+            false),
         Source(ForeignApp.Dbx, true, ForeignPasswordSource.Keychain, ForeignSavedQuerySupport.Scripts),
     ];
 
@@ -372,8 +520,27 @@ public sealed class ForeignImportFormTests
         ForeignApp app,
         bool found,
         ForeignPasswordSource passwords,
-        ForeignSavedQuerySupport queries) =>
-        new(app, app.ToString(), found, found ? 2 : 0, found ? 1 : 0, [], passwords, queries);
+        ForeignSavedQuerySupport queries,
+        bool preselected = false) =>
+        new(
+            app,
+            app.ToString(),
+            found ? ForeignSourceAvailability.Available.Instance : ForeignSourceAvailability.NotFound.Instance,
+            found ? 2 : 0,
+            found ? 1 : 0,
+            [],
+            passwords,
+            queries,
+            app switch
+            {
+                _ when passwords == ForeignPasswordSource.AppFiles => ForeignPasswordOffer.DecryptedWhileReading,
+                ForeignApp.DataGrip => ForeignPasswordOffer.PasswordFile,
+                ForeignApp.Dbx => ForeignPasswordOffer.KeyInCredentialManager,
+                _ => ForeignPasswordOffer.SystemStore,
+            },
+            queries is ForeignSavedQuerySupport.Scripts or ForeignSavedQuerySupport.Consoles,
+            found,
+            preselected);
 
     // Orders imports, billing matches a saved connection, ledger is an engine no driver opens.
     private static FakeReview Review() => new(
@@ -418,9 +585,22 @@ internal sealed class FakeImporter(IReadOnlyList<ForeignSource> sources) : IFore
 
     public TaskCompletionSource<IForeignReview>? Pending { get; init; }
 
-    public Task<IReadOnlyList<ForeignSource>> GetSourcesAsync() => SourcesFailure is { } failure
-        ? Task.FromException<IReadOnlyList<ForeignSource>>(new TableProException(failure))
-        : Task.FromResult(sources);
+    public List<ForeignScanDepth> Scans { get; } = [];
+
+    public TaskCompletionSource<IReadOnlyList<ForeignSource>>? PendingSources { get; init; }
+
+    public Task<IReadOnlyList<ForeignSource>> GetSourcesAsync(ForeignScanDepth depth)
+    {
+        Scans.Add(depth);
+        if (PendingSources is { } pending)
+        {
+            return pending.Task;
+        }
+
+        return SourcesFailure is { } failure
+            ? Task.FromException<IReadOnlyList<ForeignSource>>(new TableProException(failure))
+            : Task.FromResult(sources);
+    }
 
     public Task<IForeignReview> ReadAsync(
         ForeignApp app,
@@ -472,7 +652,7 @@ internal sealed class FakeReview : IForeignReview
 
     public IReadOnlyList<ForeignQueryRow> SavedQueries { get; }
 
-    public ForeignImportOutcome Outcome { get; set; } = new(0, 0, 0, 0, 0, 0);
+    public ForeignImportOutcome Outcome { get; set; } = new(0, 0, 0, 0, 0, 0, []);
 
     public CoreError? Refusal { get; set; }
 

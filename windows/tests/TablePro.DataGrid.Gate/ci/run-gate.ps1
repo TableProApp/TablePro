@@ -83,7 +83,8 @@ New-Item -ItemType File -Force "$Out\stop" | Out-Null
 Start-Sleep 2
 Stop-Process -Id $uia.Id -Force -ErrorAction SilentlyContinue
 
-$phases = 'v_smooth', 'v_page', 'v_random', 'h_smooth', 'h_page', 'xy_random', 'v_page_verify', 'xy_random_verify'
+$phases = 'v_smooth', 'v_page', 'v_random', 'h_smooth', 'h_page', 'xy_random', 'v_page_verify', 'xy_random_verify',
+    'wrap_v_smooth', 'wrap_v_page', 'wrap_xy_random'
 foreach ($name in 'first', 'gate', 'repeat') {
     $file = "$Out\$name.json"
     if (-not (Test-Path $file)) { continue }
@@ -101,7 +102,7 @@ foreach ($name in 'first', 'gate', 'repeat') {
 }
 foreach ($file in Get-ChildItem "$Out\uia-*.json") { Write-Host "== $($file.Name)"; Get-Content $file.FullName | Out-Host }
 
-# The bars of windows/docs/decisions/0003-data-grid-control.md, Gate.
+# The bars of windows/docs/decisions/0003-data-grid-control.md, Gate; the wrap phases' are 0023's.
 $failures = @()
 foreach ($name in 'first', 'gate', 'repeat') {
     $file = "$Out\$name.json"

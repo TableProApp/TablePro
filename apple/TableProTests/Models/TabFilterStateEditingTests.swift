@@ -8,10 +8,9 @@ import Foundation
 import Testing
 
 struct TabFilterStateEditingTests {
-    private func state(_ filters: [TableFilter], commit: FilterCommit? = nil) -> TabFilterState {
+    private func state(_ filters: [TableFilter]) -> TabFilterState {
         var state = TabFilterState()
         state.filters = filters
-        state.commit = commit
         return state
     }
 
@@ -92,6 +91,20 @@ struct TabFilterStateEditingTests {
         #expect(state.filters.last?.columnName == "name")
     }
 
+    @Test("A row's add button puts the new row right under it")
+    func addFilterAfterARow() {
+        let first = TestFixtures.makeTableFilter(column: "id")
+        let last = TestFixtures.makeTableFilter(column: "name")
+        var state = state([first, last])
+
+        let id = state.addFilter(
+            settings: settings(.anyColumn), columns: ["name"], primaryKeyColumn: nil, offersRawFilter: true,
+            after: first.id
+        )
+
+        #expect(state.filters.map(\.id) == [first.id, id, last.id])
+    }
+
     @Test("Filtering with a column adds a row for it and opens the panel")
     func addFilterForColumn() {
         var state = TabFilterState()
@@ -168,38 +181,132 @@ struct TabFilterStateEditingTests {
         #expect(state.filters == [row])
     }
 
-    @Test("Removing the soloed row drops the commit, removing another keeps it")
-    func removeFilterClearsOnlyItsSoloCommit() {
+    @Test("Removing the row applied alone stops filtering, removing another keeps it alone")
+    func removingTheAloneRowStopsFiltering() throws {
         let first = TestFixtures.makeTableFilter(column: "id")
         let second = TestFixtures.makeTableFilter(column: "name")
+        let alone = try #require(state([first, second]).applyingAlone(second.id))
 
-        var soloed = state([first, second], commit: .solo(second.id))
-        soloed.removeFilter(second)
-        #expect(soloed.filters == [first])
-        #expect(soloed.commit == nil)
+        let withoutAlone = alone.removingFilter(second.id)
+        #expect(withoutAlone.filters == [first])
+        #expect(withoutAlone.applied == nil)
+        #expect(!withoutAlone.isFiltering)
 
-        var other = state([first, second], commit: .solo(second.id))
-        other.removeFilter(first)
-        #expect(other.commit == .solo(second.id))
+        let withoutOther = alone.removingFilter(first.id)
+        #expect(withoutOther.applied == alone.applied)
+        #expect(withoutOther.aloneFilterID == second.id)
 
-        var all = state([first, second], commit: .all)
-        all.removeFilter(first)
-        #expect(all.commit == .all)
+        let all = state([first, second]).applyingCheckedRows()
+        #expect(all.removingFilter(first.id).applied == AppliedFilters.checkedRows(of: [second], logicMode: .and))
     }
 
-    @Test("Removing a row reports the reload the rows on screen now need")
-    func removeFilterReportsReload() {
+    @Test("Removing a row reruns what ran without it, and a row that never ran changes nothing")
+    func removingFilterReachesWhatRuns() {
         let first = TestFixtures.makeTableFilter(column: "id")
         let second = TestFixtures.makeTableFilter(column: "name")
         let draft = TestFixtures.makeTableFilter(column: "email", value: "")
 
-        var running = state([first, second, draft], commit: .all)
-        #expect(running.removeFilter(draft) == .noChange)
-        #expect(running.removeFilter(first) == .reapply([second]))
-        #expect(running.removeFilter(second) == .clear)
+        let running = state([first, second, draft]).applyingCheckedRows()
+        #expect(running.removingFilter(draft.id).applied == running.applied)
+        let withoutFirst = running.removingFilter(first.id)
+        #expect(withoutFirst.applied?.filters == [second])
+        #expect(withoutFirst.removingFilter(second.id).applied == nil)
 
-        var unapplied = state([first])
-        #expect(unapplied.removeFilter(first) == .noChange)
+        #expect(state([first]).removingFilter(first.id).applied == nil)
+    }
+
+    @Test("Removing a running row leaves the rest running as they ran, an unapplied edit staying a draft")
+    func removingRunningRowKeepsTheRestAsTheyRan() {
+        let age = TableFilter(columnName: "age", value: "10")
+        let city = TableFilter(columnName: "city", value: "Paris")
+        var state = state([age, city]).applyingCheckedRows()
+        state.isVisible = true
+        state.filters[1].value = "London"
+
+        let next = state.removingFilter(age.id)
+
+        #expect(next.filters.map(\.value) == ["London"])
+        #expect(next.applied?.filters == [city])
+        #expect(next.applied?.logicMode == .and)
+        #expect(next.status == .changesNotApplied)
+        #expect(next.isVisible)
+    }
+
+    @Test("Removing a row that is not running leaves what runs unchanged")
+    func removingRowNotRunningKeepsApplied() {
+        let running = TestFixtures.makeTableFilter(column: "id")
+        let unchecked = TestFixtures.makeTableFilter(column: "name", isEnabled: false)
+        var state = state([running, unchecked]).applyingCheckedRows()
+        let typedAfterApply = TestFixtures.makeTableFilter(column: "email", value: "a")
+        state.filters.append(typedAfterApply)
+        #expect(state.status == .changesNotApplied)
+
+        let withoutUnchecked = state.removingFilter(unchecked.id)
+        #expect(withoutUnchecked.applied == state.applied)
+
+        let withoutTyped = state.removingFilter(typedAfterApply.id)
+        #expect(withoutTyped.applied == state.applied)
+        #expect(withoutTyped.status == .applied)
+    }
+
+    @Test("Removing the last row hides the bar")
+    func removingLastRowHidesTheBar() {
+        let row = TestFixtures.makeTableFilter(column: "id")
+        var running = state([row]).applyingCheckedRows()
+        running.isVisible = true
+        var unapplied = state([row])
+        unapplied.isVisible = true
+
+        for state in [running, unapplied] {
+            let next = state.removingFilter(row.id)
+            #expect(next.filters.isEmpty)
+            #expect(next.applied == nil)
+            #expect(!next.isVisible)
+        }
+    }
+
+    @Test("Remove All hides the bar and stops filtering")
+    func removingAllFilters() {
+        var state = state([
+            TestFixtures.makeTableFilter(column: "id"),
+            TestFixtures.makeTableFilter(column: "name")
+        ]).applyingCheckedRows()
+        state.isVisible = true
+
+        let next = state.removingAllFilters()
+
+        #expect(next.filters.isEmpty)
+        #expect(!next.isFiltering)
+        #expect(!next.isVisible)
+    }
+
+    @Test("Applying in the current mode keeps a row applied alone alone")
+    func applyingCurrentModeKeepsAlone() throws {
+        let alone = TestFixtures.makeTableFilter(column: "id", value: "1")
+        let draft = state([alone, TestFixtures.makeTableFilter(column: "name")])
+        var applied = try #require(draft.applyingAlone(alone.id))
+        applied.filters[0].value = "2"
+
+        let next = applied.applyingCurrentMode()
+
+        #expect(next.aloneFilterID == alone.id)
+        #expect(next.applied?.filters.map(\.value) == ["2"])
+        #expect(next.status == .appliedAlone)
+    }
+
+    @Test("Applying in the current mode with no row alone applies the checked rows")
+    func applyingCurrentModeAppliesCheckedRows() {
+        let checked = TestFixtures.makeTableFilter(column: "id", value: "1")
+        let unchecked = TestFixtures.makeTableFilter(column: "name", isEnabled: false)
+        var state = state([checked, unchecked])
+
+        state = state.applyingCurrentMode()
+        #expect(state.applied == AppliedFilters.checkedRows(of: [checked], logicMode: .and))
+
+        state.filters[0].value = "2"
+        state = state.applyingCurrentMode()
+        #expect(state.applied?.filters.map(\.value) == ["2"])
+        #expect(state.aloneFilterID == nil)
     }
 
     @Test("The header checkbox turns every row on or off")
@@ -216,28 +323,29 @@ struct TabFilterStateEditingTests {
         #expect(state.allEnabledState == false)
     }
 
-    @Test("Clearing drops the rows and the commit and leaves the panel open")
+    @Test("Clearing drops the rows and what runs and leaves the panel open")
     func clearFilters() {
-        var state = state([TestFixtures.makeTableFilter(column: "id")], commit: .all)
+        var state = state([TestFixtures.makeTableFilter(column: "id")]).applyingCheckedRows()
         state.isVisible = true
 
         state.clearFilters()
 
         #expect(state.filters.isEmpty)
-        #expect(state.commit == nil)
+        #expect(state.applied == nil)
         #expect(state.isVisible)
     }
 
-    @Test("Loading a preset replaces the rows and nothing else")
+    @Test("Loading a preset with no logic mode replaces only the rows")
     func loadPreset() {
         let presetRow = TestFixtures.makeTableFilter(column: "name")
-        var state = state([TestFixtures.makeTableFilter(column: "id")], commit: .all)
+        var state = state([TestFixtures.makeTableFilter(column: "id")]).applyingCheckedRows()
         state.filterLogicMode = .or
+        let applied = state.applied
 
         state.loadPreset(FilterPreset(name: "Names", filters: [presetRow]))
 
         #expect(state.filters == [presetRow])
-        #expect(state.commit == .all)
+        #expect(state.applied == applied)
         #expect(state.filterLogicMode == .or)
     }
 
@@ -250,27 +358,9 @@ struct TabFilterStateEditingTests {
         state.setReferenceFilter(reference)
 
         #expect(state.filters == [reference])
-        #expect(state.commit == .all)
+        #expect(state.applied == AppliedFilters.checkedRows(of: [reference], logicMode: .and))
         #expect(state.isVisible)
         #expect(state.filterLogicMode == .and)
-    }
-
-    @Test("A single filter replaces the rows and runs, and an invalid one changes nothing")
-    func applySingleFilter() {
-        let existing = TestFixtures.makeTableFilter(column: "id")
-        let single = TestFixtures.makeTableFilter(column: "name", value: "a")
-        var state = state([existing])
-        state.filterLogicMode = .or
-
-        state.applySingleFilter(TestFixtures.makeTableFilter(column: "", value: ""))
-        #expect(state.filters == [existing])
-        #expect(state.commit == nil)
-
-        state.applySingleFilter(single)
-        #expect(state.filters == [single])
-        #expect(state.commit == .all)
-        #expect(state.isVisible)
-        #expect(state.filterLogicMode == .or)
     }
 
     @Test("A cross-column search is one enabled CONTAINS row per column")
@@ -281,45 +371,72 @@ struct TabFilterStateEditingTests {
         #expect(filters.allSatisfy { $0.filterOperator == .contains && $0.value == "ana" && $0.isEnabled })
     }
 
-    @Test("What reruns is what ran: the restored rows before the first query, then the running ones")
-    func rerunReadsRunningFilters() {
-        var state = state([TableFilter(columnName: "age", value: "10")], commit: .all)
-        #expect(state.rerunFilters.filters.map(\.value) == ["10"])
+    @Test("Search All Rows writes its rows into the draft and runs them under Match any")
+    func searchingAllRows() {
+        let next = state([TestFixtures.makeTableFilter(column: "id")])
+            .searchingAllRows(term: "ana", columns: ["name", "email"])
 
-        state.adoptAppliedFiltersAsRunning()
+        #expect(next.filters.map(\.columnName) == ["name", "email"])
+        #expect(next.filters.allSatisfy { $0.filterOperator == .contains && $0.value == "ana" && $0.isEnabled })
+        #expect(next.filterLogicMode == .or)
+        #expect(next.applied?.filters == next.filters)
+        #expect(next.applied?.logicMode == .or)
+        #expect(next.isVisible)
+        #expect(next.status == .applied)
+    }
+
+    @Test("What reruns is what ran, whatever the draft says since")
+    func rerunReadsRunningFilters() {
+        var state = state([TableFilter(columnName: "age", value: "10")]).applyingCheckedRows()
+        #expect(state.applied?.filters.map(\.value) == ["10"])
+
         state.filters[0] = state.filters[0].selectingRawCondition()
         state.filterLogicMode = .or
 
-        #expect(state.rerunFilters.filters.map(\.columnName) == ["age"])
-        #expect(state.rerunFilters.logicMode == .and)
+        #expect(state.applied?.filters.map(\.columnName) == ["age"])
+        #expect(state.applied?.logicMode == .and)
 
-        state.commit = nil
-        #expect(state.rerunFilters.filters.isEmpty)
+        #expect(state.turningOff().applied == nil)
     }
 
     @Test("Removing a running row whose text was erased without Apply still stops it running")
     func removingEditedRunningRowStopsIt() {
         let running = TableFilter(columnName: "age", value: "10")
-        var state = state([running], commit: .all)
-        state.adoptAppliedFiltersAsRunning()
+        var state = state([running]).applyingCheckedRows()
         state.filters[0].value = ""
 
-        #expect(state.removeFilter(state.filters[0]) == .clear)
+        #expect(state.removingFilter(running.id).applied == nil)
     }
 
     @Test("Renaming or removing a column carries what is running along with the draft")
     func columnEditsReachRunningFilters() {
-        var state = state([TableFilter(columnName: "city", value: "Paris"), TableFilter(columnName: "age", value: "3")],
-                          commit: .all)
-        state.adoptAppliedFiltersAsRunning()
+        var state = state([TableFilter(columnName: "city", value: "Paris"), TableFilter(columnName: "age", value: "3")])
+            .applyingCheckedRows()
 
         state.renameFilterColumn(from: "city", to: "town")
-        #expect(state.rerunFilters.filters.map(\.columnName) == ["town", "age"])
+        #expect(state.applied?.filters.map(\.columnName) == ["town", "age"])
         #expect(state.filters.map(\.columnName) == ["town", "age"])
 
         state.removeFilters(onColumns: ["age"])
-        #expect(state.rerunFilters.filters.map(\.columnName) == ["town"])
+        #expect(state.applied?.filters.map(\.columnName) == ["town"])
         #expect(state.filters.map(\.columnName) == ["town"])
+    }
+
+    @Test("Columns that trade names move in one pass, and a column that is gone takes its rows")
+    func remapColumnsSwapsNamesTogether() {
+        let rows = [
+            TableFilter(columnName: "Column 2", value: "a"),
+            TableFilter(columnName: "Column 3", value: "b"),
+            TableFilter(columnName: "Column 1", value: "c"),
+            TableFilter.rawCondition("1 = 1"),
+        ]
+        var state = state(rows).applyingCheckedRows()
+        let moves = ["Column 2": "Column 3", "Column 3": "Column 2"]
+
+        state.remapColumns { moves[$0] ?? ($0 == "Column 1" ? nil : $0) }
+
+        #expect(state.filters.map(\.columnName) == ["Column 3", "Column 2", TableFilter.rawSQLColumn])
+        #expect(state.applied?.filters.map(\.columnName) == ["Column 3", "Column 2", TableFilter.rawSQLColumn])
     }
 
     @Test("A cross-column search ignores case, like the find that offers it")

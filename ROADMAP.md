@@ -25,20 +25,22 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 2. Phase 1, then Windows: the Windows items of Phase 0 and every CORE item of Phase 2, then the first public Windows release (D-04).
 3. Phases 3 to 8, by tier and demand.
 
+Phase 7 runs now as its own lane, ahead of this order (D-06).
+
 ## Progress
 
 | Section | Boxes | Done |
 |---|---|---|
-| Phase 0: Release blockers | 16 | 5 |
+| Phase 0: Release blockers | 16 | 6 |
 | Phase 1: Core enablers | 23 | 9 |
-| Phase 2: Windows daily use | 62 | 42 |
+| Phase 2: Windows daily use | 62 | 46 |
 | Phase 3: Standard features both apps lack | 118 | 0 |
 | Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
-| Phase 7: Sync and teams | 15 | 0 |
+| Phase 7: Sync and teams | 24 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 366 | 56 |
+| Total | 375 | 61 |
 
 ## Where each app stands
 
@@ -70,7 +72,7 @@ awk '/^## /{p=$0} /^ *- \[[ x]\]/{t[p]++} /^ *- \[x\]/{d[p]++} END{for(k in t) p
 
 ### Windows first public release
 
-- [ ] **R-01** RUSTSEC-2026-0459 (bundled SQLite before 3.54.0): `deny.toml` blocks a Windows release until sqlx allows libsqlite3-sys 0.39 and the pin is raised (#4166)
+- [x] **R-01** RUSTSEC-2026-0459 (bundled SQLite before 3.54.0): `deny.toml` blocks a Windows release until sqlx allows libsqlite3-sys 0.39 and the pin is raised (#4166): #4371
 - [ ] **R-02** Maintainer setup, `windows/RELEASING.md` steps 1-6: tag rulesets, Artifact Signing with a Public Trust profile, the OIDC app registration, the `windows-release` secrets, `WINDOWS_SIGNING_*` and `WINDOWS_PUBLISHER` (permanent after the first release), the `windows-winget` environment
 - [x] **R-03** Dry run of `release-windows.yml` from main: the x64 and Arm64 packages, the bundle, install-and-start tests and winget validation, unsigned (ADR 0005): [run 43164825446](https://github.com/TableProApp/TablePro/actions/runs/43164825446)
 - [ ] **R-04** Real hardware: Windows 10 build 17763, Native AOT, Mica on a GPU, TabView in the title bar on Windows 10, loading from a signed MSIX (ADR 0001, 0004)
@@ -100,8 +102,8 @@ Each item ends in an FFI surface Windows needs. Linux paths are under `linux/cra
 - [ ] **C-04** SQL dump and SQL file import through the FFI: `core::dump`, `SqlFileReader`, with the orchestration in `ui/export/dump_job.rs` and `services/import_file.rs` moved down
 - [ ] **C-05** Structure through the FFI: the table definition (columns, indexes, keys, comments), CREATE statements, `core::ddl` drafts, `diff_table`, plans and catalog operations (core ADR 0013); the logic in `services/pending_structure.rs` moves down · partly #4213: `core::ddl` drafts, `diff_table`, plans, catalog operations and the move of `services/pending_structure.rs` are left
 - [x] **C-06** Storage through the FFI: `QueryHistory` (FTS5, retention, export), `SavedQueries` with folders and keywords, `Favourites`, `DraftStore` (deferred by core ADR 0017): #4213, #4288. `DraftStore` stays off the FFI, since Windows keeps tab text in its session file ([core ADR 0030](core/docs/decisions/0030-storage-import-and-library-through-the-ffi.md))
-- [ ] **C-07** SQL formatter into core: `ui/editor/format_plan.rs` and `significant_tokens.rs`
-- [ ] **C-08** Completion context into core: `completion/completion_scope.rs`, `catalog_read.rs` and the fuzzy ranking; proposal objects stay per app
+- [ ] **C-07** SQL formatter into core: `ui/editor/format_plan.rs` and `significant_tokens.rs` · partly #4401: the Linux app still uses its own copy; it moves onto the core one after its 0.1.0 tag
+- [ ] **C-08** Completion context into core: `completion/completion_scope.rs`, `catalog_read.rs` and the fuzzy ranking; proposal objects stay per app · partly #4401: the Linux app still uses its own copy; it moves onto the core one after its 0.1.0 tag
 - [ ] **C-09** Script runner into core: `script_runner.rs` and `run_log.rs` with `BatchErrorPolicy` (the FFI's `QueryEditor::run` takes one statement or one `GO` batch)
 - [ ] **C-10** Pending row edits keyed by primary key into core: `services/change_tracker.rs` and `undo_op.rs`, so edits survive sort, filter and paging and undo is shared; replaces the position-keyed FFI `TableEditor` and Windows `UndoHistory.cs`
 - [ ] **C-11** Copy and display text into core: `ui/clipboard/copy_renderer.rs`, `services/grid/display_text.rs`, `date_display.rs`, `hex_dump.rs`, `ui/format/thousands.rs`
@@ -137,7 +139,7 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 - [ ] **W-09** Object context menu: Open, Open in New Tab, Copy Name, Show CREATE, Truncate, Drop, through Safe Mode · CORE · needs C-05 · partly #4213, #4304: Truncate and Drop run once confirmed instead of waiting for Save, and views, materialized views and sequences cannot be dropped yet; both wait on C-05
 - [x] **W-10** Create and drop databases and schemas · CORE · needs C-05: #4304
-- [ ] **W-11** Database switcher per connection and per query tab · CORE · partly #4285: Redis numbered databases get no switcher, because the core reports a Redis server as one database
+- [x] **W-11** Database switcher per connection and per query tab · CORE · #4285, #4369
 - [x] **W-12** Open a routine, trigger or sequence: its definition read-only, with Copy and Open in Editor · STD: #4213
 - [ ] **W-13** Columns, indexes and keys under a table node · STD · needs C-05
 - [x] **W-14** Table info: rows, size, comment · STD: #4318
@@ -166,8 +168,8 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 ### SQL editor
 
-- [ ] **W-31** Completion: tables, columns, aliases, schemas, functions, keywords · CORE · needs C-08 (#4275)
-- [ ] **W-32** Formatter · CORE · needs C-07
+- [x] **W-31** Completion: tables, columns, aliases, schemas, functions, keywords · CORE · needs C-08 (#4275): #4401
+- [x] **W-32** Formatter · CORE · needs C-07: #4401
 - [x] **W-33** Replace, and regular expressions in Find · CORE: #4285
 - [x] **W-34** Open and save .sql files, drop a file on the editor, recent files · CORE: #4285
 - [x] **W-35** Query history with search, pins and retention · CORE · needs C-06: #4213, #4285, #4288
@@ -209,7 +211,7 @@ The first public Windows release waits for every CORE item here and the Windows 
 
 - [x] **W-57** AI assistant: providers, chat with schema context, Explain, Review, Optimize, Fix, AI policy per connection · STD · needs C-17: #4319
 - [x] **W-58** MCP server with an External Clients level per connection · ADV · #4326
-- [ ] **W-59** Account page, license ask, and the paid-feature gate on the macOS license (D-02) · STD · needs C-19 · partly #4253: the license ask and the gate on paid features are left
+- [x] **W-59** Account page, license ask, and the paid-feature gate on the macOS license (D-02) · STD · needs C-19 · #4253, #4370
 - [ ] **W-60** `tablepro://` and database URL links · STD · partly #4253, #4325, #4360: `tablepro://import` needs the core connection record to carry every macOS field, which changes `linux/` and waits on Linux 0.1.0; `integrations/pair` waits on A-09; matching a database URL to a saved connection waits on that logic moving into the core
 - [x] **W-61** File associations for .sql, SQLite and DuckDB files · STD: #4325
 - [x] **W-62** Launch arguments and the `tablepro` CLI (the execution alias reads only a share link today) · STD · #4325, #4326
@@ -556,31 +558,45 @@ Linux already holds each bar; these bring Windows to it, plus one shared item.
 
 ## Phase 7: Sync and teams
 
-A TablePro sync service on every platform (D-01). macOS keeps iCloud beside it, and the user picks one. It syncs connections and groups, secrets encrypted end to end, saved queries and settings, and Team Library and Team Catalog; iCloud Sync, Team Library and Team Catalog are 3 of the 10 paid features.
+A TablePro sync service on every platform (D-01), run by us or on a customer's servers, as [core ADR 0044](core/docs/decisions/0044-sync-through-one-service-run-by-us-or-on-premises.md) designs it. macOS and iOS keep iCloud beside it, and each device picks one. One engine in the core runs both, with CloudKit as a Swift transport, and iCloud gains no new kind ([core ADR 0054](core/docs/decisions/0054-one-sync-engine-in-the-core-for-tablepro-sync-and-icloud.md)). It syncs connections and groups, secrets encrypted end to end, saved queries, query history and settings, and Team Library; Team Catalog stays a shared folder. iCloud Sync, Team Library and Team Catalog are 3 of the 10 paid features.
+
+Phase 7 runs now as its own lane, ahead of [Order](#order) (D-06). The account slice of [core ADR 0010](core/docs/decisions/0010-macos-on-the-core.md) moved the Mac's account onto `tablepro-account` through TableProFFI in #4470. macOS comes first, then iOS. Linux comes after its 0.1.0, and Windows after its first public release. Every part is built first, and how releases stage it is decided later.
 
 - **T-01** Design ADR: the data model, conflict rules (field by field, as core ADR 0010 merges CloudKit records), end-to-end encryption of secrets and key recovery, whether query history syncs, and iCloud beside the service on macOS
   - [ ] core
 - **T-02** The service: storage per account and team, the sync API, the entitlement check (core ADR 0016)
   - [ ] server
-- **T-03** Sync client in the core: pull, push, merge, an offline queue, and the device list
+- **T-03** Sync engine in the core (`tablepro-sync`): pull, push, an offline queue on disk, approvals and moves between providers, for TablePro Sync and for iCloud through a CloudKit transport the Swift apps implement ([core ADR 0054](core/docs/decisions/0054-one-sync-engine-in-the-core-for-tablepro-sync-and-icloud.md)). Records are T-10 and keys T-11
   - [ ] core
 - **T-04** Connections, groups, tags, colours and SSH profiles, without their secrets
   - [ ] Linux
   - [ ] Windows
-- **T-05** Secrets encrypted on the device before they leave it, never readable on the server
+  - [ ] iOS
+- **T-05** Secrets encrypted on the device before they leave it, never readable on the server; part of the first self-hosted release
   - [ ] core
   - [ ] Linux
   - [ ] Windows
-- **T-06** Saved queries, snippets, favourites and settings
+  - [ ] iOS
+- **T-06** Saved queries with their keywords, query history, favourites and settings
   - [ ] Linux
   - [ ] Windows
+  - [ ] iOS
 - **T-07** Team Library and Team Catalog: shared connections and queries with roles, as on macOS
   - [ ] core
   - [ ] server
   - [ ] Linux
   - [ ] Windows
-- **T-08** macOS on the service: everything T-04 to T-07 sync, beside iCloud, a setting to pick one, and a move from iCloud to the service
+  - [ ] iOS
+- **T-08** macOS and iOS on the service: everything T-04 to T-07 sync, beside iCloud, a setting to pick one, and a move from iCloud to the service and back. iCloud sync itself moves onto the core engine first, with the Swift sync metadata still written while the previous stable reads it
   - [ ] macOS
+  - [ ] iOS
+- **T-09** iOS account: sign-in through `tablepro-account` via TableProFFI, the `tablepro-ios` OAuth client and the `ios` device platform
+  - [ ] server
+  - [ ] iOS
+- **T-10** Records in the core (`tablepro-records`): kinds, record ids, field classes, the field merge and the CloudKit mapping, one set for both providers
+  - [ ] core
+- **T-11** Keys in the core (`tablepro-keys`): the end-to-end crypto, with signed logs, envelopes and recovery
+  - [ ] core
 
 ## Phase 8: Beyond the market
 
@@ -641,7 +657,7 @@ Survey features no client covers on every platform, and the macOS app lacks them
 
 ## Decisions
 
-Answered by the maintainer on 2026-11-13, D-08 on 2026-11-14.
+Answered by the maintainer on 2026-11-13, D-08 on 2026-11-14, and D-06 amended on 2026-11-24.
 
 | ID | Question | Decision |
 |---|---|---|
@@ -650,7 +666,7 @@ Answered by the maintainer on 2026-11-13, D-08 on 2026-11-14.
 | D-03 | Engines added after install on Windows | No. Linux and Windows link drivers at compile time for good ([core ADR 0025](core/docs/decisions/0025-linux-and-windows-link-their-drivers.md)) |
 | D-04 | The bar for the first public Windows release | Phase 0 plus every CORE item in Phase 2, with no public build before |
 | D-05 | Which survey gaps to take | All but G-06 and G-12 ([Phase 8](#phase-8-beyond-the-market)) |
-| D-06 | Which comes first | Linux 0.1.0, then Phase 1 and Windows ([Order](#order)) |
+| D-06 | Which comes first | Linux 0.1.0, then Phase 1 and Windows ([Order](#order)). Amended 2026-11-24: Phase 7 runs now as its own lane, ahead of this order ([Phase 7](#phase-7-sync-and-teams)) |
 | D-07 | An Android app | Not now |
 | D-08 | Masking on Linux and Windows | In share links only: no rules per connection, and no masking in the grid, exports, MCP or the assistant ([core ADR 0028](core/docs/decisions/0028-data-masking.md)) |
 

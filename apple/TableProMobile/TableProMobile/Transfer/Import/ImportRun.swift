@@ -531,13 +531,15 @@ nonisolated final class ImportRun: @unchecked Sendable {
     private func refuseIfSessionMoved(on driver: any DatabaseDriver, dialect: (any MobileWriteDialect)?) async throws {
         guard let wanted = request.database, !wanted.isEmpty else { return }
         if let target = request.target, dialect?.namesDatabase == true, target.newTable == nil { return }
-        let current: String?
+        var current: String?
         if let reporting = driver as? any SessionDatabaseReporting {
             current = try? await reporting.sessionDatabase()
-        } else {
+        }
+        // A driver that cannot name its database, as an engine with no database to move cannot, leaves the window's.
+        if current?.isEmpty ?? true {
             current = await host.transferDatabase
         }
-        guard let current, !current.isEmpty, current != wanted else { return }
+        guard let moved = current, !moved.isEmpty, moved != wanted else { return }
         throw MobileTransferRefusal(reason: request.target == nil ? Self.sqlFileSessionMovedMessage : Self.sessionMovedMessage)
     }
 

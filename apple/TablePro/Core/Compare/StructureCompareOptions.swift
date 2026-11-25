@@ -26,14 +26,19 @@ internal extension StructureCompareOptions {
         return ignoreIdentifierCase ? trimmed.lowercased() : trimmed
     }
 
-    /// Two schemas of one database can hold the same table name, so the name alone cannot identify
-    /// a table. Matching on it collapsed `public.users` and `audit.users` onto one result, diffed
-    /// both against whichever target arrived first, and never reported the other as target-only.
-    /// The schema joins the key only when both sides carry one, so a schemaless engine is
-    /// unaffected.
-    func matchKey(name: String, schema: String?) -> String {
+    // Two schemas of one listing can hold the same name, so another schema joins the key. The schema the side was
+    // listed from does not: SQL Server spells it on every table, and `dbo.users` has to pair with `staging.users`.
+    func matchKey(name: String, schema: String?, listedIn listedSchema: String? = nil) -> String {
         guard let schema, !schema.isEmpty else { return matchKey(name) }
+        if let listedSchema, matchKey(listedSchema) == matchKey(schema) { return matchKey(name) }
         return "\(matchKey(schema))\u{1F}\(matchKey(name))"
+    }
+
+    // The endpoint's schema, or with none the one schema its listing carries: a listing is one schema, the session's own.
+    static func listedSchema(endpoint: String?, tableSchemas: [String?]) -> String? {
+        if let endpoint, !endpoint.isEmpty { return endpoint }
+        let carried = Set(tableSchemas.compactMap { $0 }.filter { !$0.isEmpty })
+        return carried.count == 1 ? carried.first : nil
     }
 
     func normalizedText(_ value: String?) -> String? {

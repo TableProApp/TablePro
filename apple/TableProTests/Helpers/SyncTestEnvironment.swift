@@ -1,4 +1,5 @@
 import CloudKit
+import Combine
 import Foundation
 @testable import TablePro
 import TableProSyncTransport
@@ -93,6 +94,8 @@ final class SyncTestEnvironment {
         favorites: SQLFavoriteManager? = nil,
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { nil },
         licenseGate: @escaping @MainActor () -> DisableReason? = { nil },
+        policyGate: @escaping @MainActor () -> DisableReason? = { nil },
+        policyChanges: AnyPublisher<DisableReason?, Never> = Empty().eraseToAnyPublisher(),
         activationClock: any Clock<Duration> = ContinuousClock(),
         pushRegistrar: SyncPushRegistrar = .inert,
         projectSyncWritable: Bool = false
@@ -151,6 +154,8 @@ final class SyncTestEnvironment {
             makeNetworkMonitor: makeNetworkMonitor,
             columnLayouts: self.columnLayouts,
             licenseGate: licenseGate,
+            policyGate: policyGate,
+            policyChanges: policyChanges,
             activationClock: activationClock,
             pushRegistrar: pushRegistrar,
             schema: .projects(deployed: projectSyncWritable)

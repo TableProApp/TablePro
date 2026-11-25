@@ -8,6 +8,7 @@ mod catalog;
 mod catalog_change;
 mod cloud;
 pub mod command_line;
+mod completion;
 mod connection_url;
 mod core_handle;
 #[cfg(windows)]
@@ -27,6 +28,7 @@ mod host;
 mod host_key;
 mod import;
 mod key_read;
+mod keymap;
 mod library;
 mod masking;
 mod mcp;
@@ -47,16 +49,18 @@ mod test_session;
 pub mod window_abi;
 
 pub use account::{
-    AccountConfig, AccountListener, AccountService, AccountStateTag, AccountStatusInfo, CreatedShareInfo, DeviceInfo,
-    EntitlementProblemTag, FeatureAccessTag, HostBrowser, HostBrowserError, LicenseInfo, MembershipInfo, ProfileInfo,
-    SecretHitInfo, SecretHitKindTag, ShareExpiryTag, ShareInfo, ShareKindTag, ShareLimitsInfo, SharePageInfo,
-    ShareRequestArg, ShareTeamInfo, SharedLinkInfo, TeamInfo, scan_columns_for_secrets, scan_sql_for_secrets,
-    share_token_from_link,
+    AccessTokenInfo, AccountConfig, AccountListener, AccountService, AccountStateTag, AccountStatusInfo, AppClientTag,
+    CreatedShareInfo, DeviceInfo, EntitlementProblemTag, FeatureAccessTag, HostBrowser, HostBrowserError,
+    HostWebAuthenticator, LicenseInfo, LicenseStateTag, ManagedPolicyArg, ManagedPolicyValues, MembershipInfo,
+    PersonalSyncChoices, ProfileInfo, SecretHitInfo, SecretHitKindTag, ServerInfo, ServerLicenseInfo, ShareExpiryTag,
+    ShareInfo, ShareKindTag, ShareLimitsInfo, SharePageInfo, ShareRequestArg, ShareTeamInfo, SharedLinkInfo,
+    SignOutCauseTag, SyncProviderTag, TeamInfo, personal_sync_choices, scan_columns_for_secrets, scan_sql_for_secrets,
+    settled_sync_provider, share_token_from_link,
 };
 pub use ai::{
     AiActionTag, AiAssistant, AiChatArg, AiConversationArg, AiConversationStart, AiFailureInfo, AiMessageArg,
-    AiProviderInfo, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener, AiRoleTag, AiSettingsArg, AiStopTag,
-    ai_action_message, ai_address_is_valid, ai_host_of, ai_providers,
+    AiModelInfo, AiProviderInfo, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener, AiRoleTag, AiSettingsArg,
+    AiStopTag, ai_action_message, ai_address_is_valid, ai_host_of, ai_providers,
 };
 pub use app_link::{AppLinkInfo, parse_app_link};
 pub use cancel_token::CancelToken;
@@ -66,6 +70,10 @@ pub use catalog_change::{
     DatabaseChoicesInfo, DatabaseDraftArg, DatabaseFieldsInfo, ReplicationArg,
 };
 pub use cloud::{CloudConnectionFields, CloudGroupFields, CloudLibraryPull, CloudLibraryRecords};
+pub use completion::{
+    CompletionItem, CompletionKindTag, CompletionList, CompletionPage, FormattedSql, MatchedSpan, format_sql,
+    format_sql_selection,
+};
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
 pub use definition::ObjectSource;
@@ -80,8 +88,9 @@ pub use filter::{
 pub use foreign_import::{
     ExistingConnectionInfo, ForeignAppDirsArg, ForeignAppTag, ForeignConnectionChoice, ForeignConnectionRow,
     ForeignImportChoices, ForeignImportOutcome, ForeignImportRequest, ForeignImportReview, ForeignQueryChoice,
-    ForeignQueryRow, ForeignSourceInfo, ForeignSslModeTag, PasswordOutcomeTag, PasswordSourceTag, QueryAvailabilityTag,
-    ResolutionTag, RowNoteInfo, SavedQuerySupportTag, TlsFileReasonTag,
+    ForeignQueryRow, ForeignSourceInfo, ForeignSslModeTag, PasswordOfferTag, PasswordOutcomeTag, PasswordSourceTag,
+    QueryAvailabilityTag, ResolutionTag, RowNoteInfo, SavedQuerySupportTag, ScanDepthTag, SourceAvailabilityTag,
+    TlsFileReasonTag,
 };
 pub use history::{
     HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryOutcomeTag, HistoryPageInfo, HistoryRun,
@@ -93,6 +102,7 @@ pub use import::{
     ImportColumnInfo, LineSpan,
 };
 pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
+pub use keymap::{KeymapBindingInfo, KeymapPlatformTag, KeymapPresetInfo, keymap_preset, keymap_presets};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
     LibrarySnapshot, ProjectRecord, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
@@ -121,6 +131,7 @@ pub use session::{
 };
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};
+pub use syntax::SqlGrammarTag;
 
 use secrecy::{ExposeSecret, SecretString};
 

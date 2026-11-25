@@ -69,12 +69,13 @@ extension PluginManager {
     }
 
     func runRegistryUpdatePass(
-        registryClient: RegistryClient = .shared,
+        registryClient: @autoclosure () -> RegistryClient = RegistryClient.shared,
         appBuild: Int = Bundle.main.buildNumber
     ) async -> RegistryUpdatePassResult {
         let targets = registryUpdateTargets(appBuild: appBuild)
         guard !targets.isEmpty else { return .finished }
-        guard let manifest = await registryClient.fetchWaitingForConnectivity() else {
+        // Resolved only once there is work: the shared client opens its URL cache, and the pass runs before the first window.
+        guard let manifest = await registryClient().fetchWaitingForConnectivity() else {
             Self.logger.warning("Plugin update pass deferred: the plugin manifest is unavailable")
             return .retry
         }
@@ -278,6 +279,10 @@ extension PluginManager {
     }
 
     func resolveRegistryId(for rejected: RejectedPlugin, manifest: RegistryManifest) -> String? {
+        Self.resolveRegistryId(for: rejected, in: manifest)
+    }
+
+    nonisolated static func resolveRegistryId(for rejected: RejectedPlugin, in manifest: RegistryManifest) -> String? {
         if let id = rejected.registryId { return id }
         if let bundleId = rejected.bundleId,
            manifest.plugins.contains(where: { $0.id == bundleId }) {
@@ -291,15 +296,23 @@ extension PluginManager {
     }
 
     func registryPlugin(for rejected: RejectedPlugin) -> RegistryPlugin? {
-        guard let manifest = RegistryClient.shared.manifest else { return nil }
-        guard let id = resolveRegistryId(for: rejected, manifest: manifest) else { return nil }
+        Self.registryPlugin(for: rejected, in: RegistryClient.shared.manifest)
+    }
+
+    nonisolated static func registryPlugin(for rejected: RejectedPlugin, in manifest: RegistryManifest?) -> RegistryPlugin? {
+        guard let manifest, let id = resolveRegistryId(for: rejected, in: manifest) else { return nil }
         return manifest.plugins.first(where: { $0.id == id })
     }
 
     func rejectedAction(for rejected: RejectedPlugin) -> RejectedPluginAction {
+        rejectedAction(for: rejected, manifest: RegistryClient.shared.manifest)
+    }
+
+    // A surface that holds its own registry client passes that client's manifest, so its captions follow it.
+    func rejectedAction(for rejected: RejectedPlugin, manifest: RegistryManifest?) -> RejectedPluginAction {
         Self.rejectedAction(
-            registryPlugin: registryPlugin(for: rejected),
-            manifestLoaded: RegistryClient.shared.manifest != nil,
+            registryPlugin: Self.registryPlugin(for: rejected, in: manifest),
+            manifestLoaded: manifest != nil,
             kits: Self.compatibleKits
         )
     }
@@ -341,7 +354,11 @@ extension PluginManager {
         if PluginMetadataRegistry.shared.snapshot(for: type) == nil {
             await registryClient.fetch(policy: .ifStale)
         }
-        let unavailability = driverUnavailability(for: type, registryManifest: registryClient.manifest)
+        let unavailability = driverUnavailability(
+            for: type,
+            registryManifest: registryClient.manifest,
+            catalogAllowed: registryClient.allowsCatalog
+        )
         guard unavailability == .notInstalled else {
             Self.logger.info("Plugin '\(typeId, privacy: .public)' unavailable to connect: \(String(describing: unavailability), privacy: .public)")
             return

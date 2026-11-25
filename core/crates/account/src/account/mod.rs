@@ -1,42 +1,55 @@
 use std::collections::HashMap;
 use std::num::NonZeroU64;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use chrono::{DateTime, TimeDelta, Utc};
 use secrecy::{ExposeSecret as _, SecretString};
-use tokio::sync::{Mutex, watch};
+use tablepro_cloud_api::{Bearer, answer_error, http_client, v2};
+use tokio::sync::{Mutex, broadcast, watch};
 use tokio::time::Instant;
 
-use crate::account_error::{AccountError, http_text};
+use crate::account_error::AccountError;
 use crate::account_file::{self, AccountFile};
-use crate::account_settings::AccountSettings;
+use crate::account_settings::{AccountSettings, Redirect};
 use crate::account_status::{AccountStatus, EntitlementProblem, SignedIn};
-use crate::browser::BrowserLauncher;
-use crate::cloud_api::{Bearer, answer_error, v2};
+use crate::browser::{BrowserLauncher, WebAuthenticationError, WebAuthenticator};
 use crate::entitlement::{Entitlement, EntitlementError};
-use crate::loopback::{Callback, Loopback};
+use crate::license::{License, LicenseError};
+use crate::loopback::{ExpectedIssuer, Loopback, callback};
 use crate::machine_id::MachineId;
 use crate::oauth::{OAuth, Tokens};
+use crate::policy::ManagedPolicy;
 use crate::profile::{Device, Profile};
-use crate::token_vault::RefreshTokenVault;
+use crate::server::{ServerError, ServerInfo, ServerSettings};
+use crate::token_vault::{RefreshTokenVault, RefreshTokenVaults, SingleVault};
 
+#[cfg(test)]
+mod company_tests;
+#[cfg(test)]
+mod mac_tests;
+mod server_calls;
+mod server_state;
 mod share_calls;
+
+pub(crate) use server_state::{Licensed, Server, Trust};
 
 // The server forgets an unanswered sign-in after 10 minutes.
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const ACCESS_TOKEN_MARGIN: TimeDelta = TimeDelta::seconds(60);
+// An `expires_in` past this is read as this: the wall clock cannot hold some values a server can send.
+const ACCESS_TOKEN_CAP: Duration = Duration::from_secs(24 * 60 * 60);
 pub const REFRESH_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 pub const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 60);
 // How soon after a wake a refresh that came due during the sleep runs.
 const WALL_CLOCK_CHECK: Duration = Duration::from_secs(5 * 60);
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const FIELD_CHARACTERS: usize = 100;
 const DEVICE_PAGE: NonZeroU64 = NonZeroU64::MIN.saturating_add(199);
 // A server that keeps answering with a cursor cannot hold the session forever.
 const DEVICE_PAGES: usize = 10;
+// Only a sign-out that comes while one is read is held for the reader.
+const SIGN_OUT_BACKLOG: usize = 16;
 
 // Every operation holds the session, so a token refresh is single-flight.
 #[derive(Clone)]
@@ -44,18 +57,63 @@ pub struct Account {
     inner: Arc<Inner>,
 }
 
+// What the app passes in: where each sign-in keeps its refresh token, the browser, and for a client whose redirect is
+// a custom scheme, the platform's web authentication session.
+pub struct AccountHosts {
+    pub vaults: Arc<dyn RefreshTokenVaults>,
+    pub browser: Arc<dyn BrowserLauncher>,
+    pub web_authenticator: Option<Arc<dyn WebAuthenticator>>,
+}
+
+// Why a sign-in ended, for the app's telemetry and Team Library.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignOutCause {
+    Requested,
+    // The server refused the refresh token: its family was revoked, or a token was replayed.
+    Refused,
+    DeviceRevoked,
+    // The person picked another server, or the organization named one.
+    ServerChanged,
+}
+
+// A bearer for a /v2 call made outside the account, with the server and sign-in it is of. One hold of the session
+// reads it all, so a switch never pairs one sign-in's token with another's account or device.
+#[derive(Debug, Clone)]
+pub struct AccessToken {
+    pub token: SecretString,
+    pub api: String,
+    // The API origin, as `ServerInfo::api_origin` gives it.
+    pub origin: String,
+    // None until an entitlement or /v2/me names the account, as over the device limit.
+    pub account_id: Option<String>,
+    // None until the device is registered.
+    pub device_id: Option<String>,
+    pub session_id: Option<String>,
+}
+
 struct Inner {
     settings: AccountSettings,
     http: reqwest::Client,
-    oauth: OAuth,
-    vault: Arc<dyn RefreshTokenVault>,
+    vaults: Arc<dyn RefreshTokenVaults>,
     browser: Arc<dyn BrowserLauncher>,
+    web_authenticator: Option<Arc<dyn WebAuthenticator>>,
+    server: watch::Sender<Arc<Server>>,
     session: Mutex<Session>,
     status: watch::Sender<AccountStatus>,
     // When run() refreshes next. Every refresh moves it, whatever asked for it.
     due: watch::Sender<Instant>,
-    // Bumped by each sign-in and sign-out, so an earlier sign-in still out cannot commit over them.
+    // Bumped by each sign-in, sign-out and server change, so an earlier sign-in still out cannot commit over them.
     attempts: AtomicU64,
+    sign_outs: broadcast::Sender<SignOutCause>,
+    // A company server's verified license, kept apart from the entitlement, which can fail after it.
+    license: watch::Sender<Option<Arc<License>>>,
+    // The managed values the host passed last (core ADR 0055).
+    policy: watch::Sender<ManagedPolicy>,
+    // Set once those values stop allowing the server, which only a launch changes: from then on the account calls it
+    // no more.
+    held: AtomicBool,
+    // Held, never across an await, while the values or the server change, so each change sees the other's result.
+    switching: std::sync::Mutex<()>,
 }
 
 #[derive(Default)]
@@ -69,6 +127,12 @@ struct Session {
     remembered: bool,
     // Until when each call a 429 answered waits, by its Retry-After, on the wall clock as the access token's expiry is.
     held: HashMap<Call, DateTime<Utc>>,
+    // A company server's license and keys, once verified.
+    licensed: Option<Licensed>,
+    // The OAuth issuer a company server's sign-in came from.
+    issuer: Option<String>,
+    // Set by each sign-in and each restore, in this process only: a bearer says which one it is of.
+    id: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -76,6 +140,10 @@ enum Call {
     Token,
     Register,
     Entitlement,
+    License,
+    Keys,
+    Discovery,
+    LicenseKey,
     Profile,
     Devices,
     RemoveDevice,
@@ -116,36 +184,63 @@ impl Session {
 }
 
 impl Account {
-    // Reads the system's certificates, so it belongs off the GTK thread.
+    // For an app that signs in to one fixed server, with its refresh token in one item. Reads the system's
+    // certificates, so it belongs off the GTK thread.
     pub fn new(
         settings: AccountSettings,
         vault: Arc<dyn RefreshTokenVault>,
         browser: Arc<dyn BrowserLauncher>,
         status: watch::Sender<AccountStatus>,
     ) -> Result<Self, AccountError> {
-        // Redirects stay off so a token never follows one to another host.
-        let http = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .user_agent(format!(
-                "TablePro/{} ({})",
-                settings.device.app_version, settings.client.system
-            ))
-            .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .map_err(|error| AccountError::Protocol(http_text(error)))?;
-        let oauth = OAuth::new(settings.client, &settings.endpoints, http.clone())?;
+        // One item would hand tablepro.app's token to whatever server a choice named.
+        if matches!(settings.server, ServerSettings::Resolved(_)) {
+            return Err(AccountError::Protocol(
+                "an app with one refresh token item signs in to a fixed server".to_owned(),
+            ));
+        }
+        let hosts = AccountHosts {
+            vaults: Arc::new(SingleVault(vault)),
+            browser,
+            web_authenticator: None,
+        };
+        Self::open(settings, hosts, status)
+    }
+
+    // Reads the system's certificates and the server choice, so it belongs off the UI thread.
+    pub fn open(
+        settings: AccountSettings,
+        hosts: AccountHosts,
+        status: watch::Sender<AccountStatus>,
+    ) -> Result<Self, AccountError> {
+        let http = http_client(&settings.device.app_version, settings.client.system)?;
+        let server = Server::initial(&settings, &http, hosts.vaults.as_ref())?;
+        let policy = match &settings.server {
+            ServerSettings::Resolved(policy) => policy.managed.clone(),
+            ServerSettings::Fixed(_) => ManagedPolicy::default(),
+        };
+        let held = !policy.allows_server(&server.target.origin);
+        if held {
+            tracing::warn!(
+                "the organization's policy does not allow the account server, so the account makes no call to it"
+            );
+        }
         Ok(Self {
             inner: Arc::new(Inner {
                 settings,
                 http,
-                oauth,
-                vault,
-                browser,
+                vaults: hosts.vaults,
+                browser: hosts.browser,
+                web_authenticator: hosts.web_authenticator,
+                server: watch::Sender::new(Arc::new(server)),
                 session: Mutex::new(Session::default()),
                 status,
                 due: watch::Sender::new(Instant::now()),
                 attempts: AtomicU64::new(0),
+                sign_outs: broadcast::Sender::new(SIGN_OUT_BACKLOG),
+                license: watch::Sender::new(None),
+                policy: watch::Sender::new(policy),
+                held: AtomicBool::new(held),
+                switching: std::sync::Mutex::new(()),
             }),
         })
     }
@@ -154,8 +249,87 @@ impl Account {
         self.inner.status.subscribe()
     }
 
+    pub fn sign_outs(&self) -> broadcast::Receiver<SignOutCause> {
+        self.inner.sign_outs.subscribe()
+    }
+
     pub fn machine_id(&self) -> &MachineId {
         &self.inner.settings.machine_id
+    }
+
+    // The company server's license this sign-in verified last, whether or not an entitlement came with it.
+    pub fn license(&self) -> Option<License> {
+        self.inner.license.borrow().as_deref().cloned()
+    }
+
+    pub fn server(&self) -> ServerInfo {
+        self.inner.server.borrow().info()
+    }
+
+    fn current(&self) -> Arc<Server> {
+        self.inner.server.borrow().clone()
+    }
+
+    pub fn policy(&self) -> ManagedPolicy {
+        self.inner.policy.borrow().clone()
+    }
+
+    // Share-link reads and the AI model catalog refresh ask this before any request (core ADR 0055).
+    pub fn allows_tablepro_requests(&self) -> bool {
+        self.inner.policy.borrow().allows_tablepro_requests()
+    }
+
+    // Values the host read again. They apply at once, but the server changes only at a launch: when they no longer
+    // allow it, the account stops calling it until then, and a call already sent has its answer dropped. True when
+    // they stopped it now; `report_stop` then says so in the status, which waits for a call in flight.
+    pub fn apply_policy(&self, policy: ManagedPolicy) -> bool {
+        let _switching = self.switching();
+        let changed = self.inner.policy.send_if_modified(|held| {
+            let changed = *held != policy;
+            *held = policy.clone();
+            changed
+        });
+        let stopped = changed && !self.is_held() && !policy.allows_server(&self.current().target.origin);
+        if stopped {
+            self.hold();
+        }
+        stopped
+    }
+
+    pub async fn report_stop(&self) {
+        let session = self.inner.session.lock().await;
+        if self.is_held() && session.refresh.is_some() {
+            let kept = self.inner.status.borrow().entitlement().cloned();
+            let problem = EntitlementProblem::RefreshFailed(ServerError::Managed.into());
+            self.publish(&session, kept, Some(problem));
+        }
+    }
+
+    fn is_held(&self) -> bool {
+        self.inner.held.load(Ordering::SeqCst)
+    }
+
+    fn hold(&self) {
+        if !self.inner.held.swap(true, Ordering::SeqCst) {
+            tracing::warn!(
+                "the organization's policy no longer allows the account server, so the account stops calling it"
+            );
+        }
+    }
+
+    fn switching(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.inner
+            .switching
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    // Before every request to the server signed in to, and again before an answer is kept.
+    fn reachable(&self) -> Result<(), AccountError> {
+        match self.is_held() {
+            true => Err(ServerError::Managed.into()),
+            false => Ok(()),
+        }
     }
 
     pub async fn run(&self) {
@@ -172,14 +346,19 @@ impl Account {
         }
     }
 
-    // Without account.json no one is signed in, so the keyring stays shut: opening it can prompt.
+    // Without account.json no one is signed in, so the keyring stays shut: opening it can prompt. The Mac's entitlement
+    // from before the core is the one exception.
+    // A company server is discovered when a refresh first needs it, so an unreachable one never holds back what the
+    // account file verifies.
     pub async fn restore(&self) {
         let mut session = self.inner.session.lock().await;
         let path = &self.inner.settings.account_file;
         let file = match account_file::read(path).await {
             Ok(Some(file)) => file,
             Ok(None) => {
-                self.signed_out(&mut session);
+                if !self.adopt_legacy(&mut session).await {
+                    self.signed_out(&mut session);
+                }
                 return;
             }
             Err(error) => {
@@ -187,11 +366,15 @@ impl Account {
                 AccountFile::default()
             }
         };
+        if let Some(other) = file.server.as_deref().filter(|api| *api != self.current().api) {
+            self.leave_other_server(&mut session, other).await;
+            return;
+        }
         if file.offline_only {
             self.restore_offline(&mut session, file).await;
             return;
         }
-        let refresh = match self.inner.vault.load_refresh_token().await {
+        let refresh = match self.current().vault.load_refresh_token().await {
             Ok(Some(refresh)) => refresh,
             Ok(None) => {
                 if let Err(error) = account_file::remove(path).await {
@@ -206,35 +389,59 @@ impl Account {
                 return;
             }
         };
-        let kept = file.entitlement.as_deref().map(|token| (token, self.verify(token)));
-        let (entitlement, problem) = match kept {
-            None => (None, None),
-            Some((_, Ok(entitlement))) => (Some(entitlement), None),
-            Some((token, Err(EntitlementError::Expired(at)))) => {
-                (self.lapsed(token, at), Some(EntitlementProblem::Expired))
-            }
-            Some((_, Err(error))) => {
-                tracing::warn!(%error, "the kept entitlement does not verify");
-                (None, None)
-            }
+        self.restore_signed_in(&mut session, file, refresh);
+    }
+
+    fn restore_signed_in(&self, session: &mut Session, file: AccountFile, refresh: SecretString) {
+        let tagged = self.current().is_company() && server_calls::tag_matches(&file, &refresh, &self.current().api);
+        let licensed = match tagged {
+            true => self.licensed_from(&file),
+            false => Ok(None),
         };
         *session = Session {
             refresh: Some(refresh),
-            access: None,
             device_id: file.device_id,
-            account_id: entitlement
-                .as_ref()
-                .map(|it| it.claims().sub.clone())
-                .or(file.account_id),
+            account_id: file.account_id,
             remembered: true,
-            held: HashMap::new(),
+            licensed: licensed.as_ref().ok().cloned().flatten(),
+            // Kept untagged: a tag left stale by a failed write must not strand the sign-in, and the issuer only
+            // narrows where the refresh token may go.
+            issuer: file.issuer,
+            id: Some(new_session_id()),
+            ..Session::default()
         };
-        self.publish(&session, entitlement, problem);
+        let (entitlement, problem) = match (&licensed, file.entitlement.as_deref()) {
+            (Err(error), _) => (None, Some(EntitlementProblem::RefreshFailed(error.clone()))),
+            (Ok(_), None) => (None, None),
+            (Ok(_), Some(token)) => self.kept(session, token),
+        };
+        if let Some(entitlement) = &entitlement {
+            session.account_id = Some(entitlement.claims().sub.clone());
+        }
+        self.publish(session, entitlement, problem);
+    }
+
+    // A kept entitlement that expired still says who has paid, as it was before it expired.
+    fn kept(&self, session: &Session, token: &str) -> (Option<Entitlement>, Option<EntitlementProblem>) {
+        match self.verify(session, token, Utc::now()) {
+            Ok(entitlement) => (Some(entitlement), None),
+            Err(AccountError::Entitlement(EntitlementError::Expired(at))) => {
+                (self.lapsed(session, token, at), Some(EntitlementProblem::Expired))
+            }
+            Err(error) => {
+                tracing::warn!(%error, "the kept entitlement does not verify");
+                (None, None)
+            }
+        }
     }
 
     // No sign-in goes with it, so the keyring stays shut.
     async fn restore_offline(&self, session: &mut Session, file: AccountFile) {
-        match file.entitlement.as_deref().map(|token| self.verify(token)) {
+        match file
+            .entitlement
+            .as_deref()
+            .map(|token| self.verify(session, token, Utc::now()))
+        {
             Some(Ok(entitlement)) => {
                 *session = Session::default();
                 self.inner
@@ -257,13 +464,35 @@ impl Account {
     // ends only the wait for the browser: once the code is back, the tokens it brings are stored whatever happens.
     pub async fn sign_in(&self, cancelled: impl Future<Output = ()> + Send) -> Result<(), AccountError> {
         let attempt = self.inner.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+        let mut cancelled = std::pin::pin!(cancelled);
+        // A slow company server's discovery holds the session, so a cancel ends it too, and no page opens.
+        let discovering = async {
+            let mut session = self.inner.session.lock().await;
+            self.connection(&mut session, true).await
+        };
+        let server = tokio::select! {
+            connected = discovering => connected?,
+            () = &mut cancelled => return Err(AccountError::SignInCanceled),
+        };
+        let oauth = &server.connection()?.oauth;
+        let issuer = server.expected_issuer()?;
+        let tokens = match self.inner.settings.client.redirect {
+            Redirect::Loopback => self.browser_sign_in(oauth, &issuer, &mut cancelled).await?,
+            Redirect::Scheme(scheme) => self.web_sign_in(oauth, &issuer, scheme, &mut cancelled).await?,
+        };
+        self.commit_sign_in(attempt, &server, tokens).await
+    }
+
+    async fn browser_sign_in(
+        &self,
+        oauth: &OAuth,
+        issuer: &ExpectedIssuer,
+        cancelled: impl Future<Output = ()> + Send,
+    ) -> Result<Tokens, AccountError> {
         let loopback = Loopback::bind()
             .await
             .map_err(|error| AccountError::Protocol(format!("no loopback port: {error}")))?;
-        let authorization = self
-            .inner
-            .oauth
-            .authorization(loopback.redirect_uri(), &self.inner.settings.device)?;
+        let authorization = oauth.authorization(loopback.redirect_uri(), &self.inner.settings.device)?;
         self.inner
             .browser
             .open(&authorization.url)
@@ -274,37 +503,91 @@ impl Account {
             waited = tokio::time::timeout(SIGN_IN_TIMEOUT, waiting) => waited,
             () = cancelled => return Err(AccountError::SignInCanceled),
         };
-        let callback = callback.map_err(|_| AccountError::SignInTimedOut)?;
-        let code = match callback {
-            Callback::Code(code) => code,
-            Callback::Refused { error, description } => {
-                return Err(AccountError::SignInRefused { error, description });
-            }
-        };
-        let tokens = self.inner.oauth.exchange_code(code, authorization).await?;
-        self.commit_sign_in(attempt, tokens).await
+        let code = callback.map_err(|_| AccountError::SignInTimedOut)?.code_for(issuer)?;
+        // The browser can come back after the organization's values stopped the account.
+        self.reachable()?;
+        oauth.exchange_code(code, authorization).await
     }
 
-    // Only the latest sign-in or sign-out counts: tokens that come back for an attempt a later one superseded are
-    // revoked, never adopted. Nothing replaces a working sign-in until the new one has a refresh token.
-    async fn commit_sign_in(&self, attempt: u64, tokens: Tokens) -> Result<(), AccountError> {
+    // RFC 8252 section 7.1: the platform's session comes back with the URL the server redirected to.
+    async fn web_sign_in(
+        &self,
+        oauth: &OAuth,
+        issuer: &ExpectedIssuer,
+        scheme: &str,
+        cancelled: impl Future<Output = ()> + Send,
+    ) -> Result<Tokens, AccountError> {
+        let authenticator = self
+            .inner
+            .web_authenticator
+            .clone()
+            .ok_or_else(|| AccountError::Browser("the app gave no web authenticator".to_owned()))?;
+        let redirect_uri = format!("{scheme}:{}", Redirect::CALLBACK_PATH);
+        let authorization = oauth.authorization(redirect_uri, &self.inner.settings.device)?;
+        let waiting = authenticator.authenticate(&authorization.url, scheme);
+        let answered = tokio::select! {
+            waited = tokio::time::timeout(SIGN_IN_TIMEOUT, waiting) => waited,
+            () = cancelled => return Err(AccountError::SignInCanceled),
+        };
+        let url = answered
+            .map_err(|_| AccountError::SignInTimedOut)?
+            .map_err(|error| match error {
+                WebAuthenticationError::Canceled => AccountError::SignInCanceled,
+                WebAuthenticationError::Failed(detail) => AccountError::Browser(detail),
+            })?;
+        if url.scheme() != scheme || url.path() != Redirect::CALLBACK_PATH {
+            return Err(AccountError::Protocol(
+                "the sign-in came back to another address".to_owned(),
+            ));
+        }
+        let answered = callback(url.query().unwrap_or_default(), authorization.state.secret())
+            .ok_or_else(|| AccountError::Protocol("the sign-in came back for another request".to_owned()))?;
+        let code = answered.code_for(issuer)?;
+        // The browser can come back after the organization's values stopped the account.
+        self.reachable()?;
+        oauth.exchange_code(code, authorization).await
+    }
+
+    // Only the latest sign-in, sign-out or server change counts: tokens that come back for an attempt a later one
+    // superseded are revoked, never adopted. Nothing replaces a working sign-in until the new one has a refresh token.
+    async fn commit_sign_in(&self, attempt: u64, server: &Server, tokens: Tokens) -> Result<(), AccountError> {
+        self.reachable()?;
         let Some(refresh) = tokens.refresh.clone().filter(|token| !token.expose_secret().is_empty()) else {
             return Err(AccountError::Protocol("the sign-in gave no refresh token".to_owned()));
         };
+        let connection = server.connection()?;
+        let oauth = &connection.oauth;
+        if let Err(error) = server_calls::audience_check(server, &tokens.access) {
+            if let Err(revoked) = oauth.revoke(&refresh).await {
+                tracing::warn!(error = %revoked, "a sign-in for another API was not revoked");
+            }
+            return Err(error);
+        }
         let mut session = self.inner.session.lock().await;
+        // The values may have stopped the server while another call held the session.
+        self.reachable()?;
         if self.inner.attempts.load(Ordering::SeqCst) != attempt {
-            if let Err(error) = self.inner.oauth.revoke(&refresh).await {
+            if let Err(error) = oauth.revoke(&refresh).await {
                 tracing::warn!(%error, "a superseded sign-in was not revoked");
             }
             return Err(AccountError::SignInCanceled);
         }
-        // A sign-in over another, such as to switch accounts, ends the first one's token family.
+        // A sign-in over another, such as to switch accounts, ends the first one's token family, at the issuer that
+        // gave it.
         if let Some(previous) = session.refresh.take()
-            && let Err(error) = self.inner.oauth.revoke(&previous).await
+            && server_calls::same_issuer(&session, server).is_ok()
+            && let Err(error) = oauth.revoke(&previous).await
         {
             tracing::warn!(%error, "the previous sign-in was not revoked");
         }
-        *session = Session::default();
+        *session = Session {
+            issuer: connection
+                .discovered
+                .as_ref()
+                .map(|discovered| discovered.issuer.clone()),
+            id: Some(new_session_id()),
+            ..Session::default()
+        };
         self.adopt(&mut session, tokens).await;
         self.write_file(&session, None).await;
         self.publish(&session, None, None);
@@ -317,11 +600,20 @@ impl Account {
     pub async fn sign_out(&self) -> Result<(), AccountError> {
         let mut session = self.inner.session.lock().await;
         self.inner.attempts.fetch_add(1, Ordering::SeqCst);
-        let revoked = match session.refresh.as_ref() {
-            Some(refresh) => self.inner.oauth.revoke(refresh).await,
+        let revoked = match session.refresh.clone() {
+            Some(refresh) => match self.connection(&mut session, false).await {
+                Ok(server) if server_calls::same_issuer(&session, &server).is_err() => {
+                    Err(ServerError::Mismatch("issuer").into())
+                }
+                Ok(server) => match server.connection() {
+                    Ok(connection) => connection.oauth.revoke(&refresh).await,
+                    Err(error) => Err(error),
+                },
+                Err(error) => Err(error),
+            },
             None => Ok(()),
         };
-        self.forget(&mut session).await;
+        self.forget(&mut session, SignOutCause::Requested).await;
         tracing::info!("signed out of the TablePro account");
         revoked
     }
@@ -358,11 +650,15 @@ impl Account {
         }
     }
 
-    // The file holds the token itself and passes the checks an online one does.
+    // The file holds the token itself and passes the checks an online one does. tablepro.app's portal makes them, so
+    // a company server takes none.
     pub async fn import_offline_file(&self, token: &str) -> Result<(), AccountError> {
         let token = token.trim();
-        let entitlement = self.verify(token)?;
         let mut session = self.inner.session.lock().await;
+        if self.current().is_company() {
+            return Err(ServerError::Unsupported("an offline file").into());
+        }
+        let entitlement = self.verify(&session, token, Utc::now())?;
         let signed_in = session.refresh.is_some();
         // Another account's file would show its plan, and identify its user, under this sign-in.
         if signed_in && self.account_id(&mut session).await? != entitlement.claims().sub {
@@ -373,6 +669,8 @@ impl Account {
             account_id: Some(entitlement.claims().sub.clone()),
             entitlement: Some(token.to_owned()),
             offline_only: !signed_in,
+            server: Some(self.current().api.clone()),
+            ..AccountFile::default()
         };
         account_file::write(&self.inner.settings.account_file, &file).await?;
         tracing::info!(expires_at = %entitlement.expires_at(), signed_in, "imported an offline file");
@@ -408,8 +706,13 @@ impl Account {
         }
     }
 
+    // A company server's license comes first: without it, nothing says which keys sign its entitlements.
     async fn fetch_entitlement(&self, session: &mut Session) -> Result<(), AccountError> {
         session.waited(Call::Entitlement)?;
+        if let Trust::Licensed(keys) = &self.current().trust {
+            self.fetch_license(session, keys).await?;
+            self.relicense(session).await;
+        }
         let device_id = match session.device_id.clone() {
             Some(device_id) => device_id,
             None => self.register(session).await?,
@@ -422,10 +725,11 @@ impl Account {
         };
         let answer = match self.api(bearer).issue_entitlement(&device_id, &request).await {
             Ok(answer) => Ok(answer.into_inner()),
-            Err(error) => Err(answer_error(error).await),
+            Err(error) => Err(answer_error(error).await.into()),
         };
         let answer = session.answered(Call::Entitlement, answer)?;
-        let entitlement = self.verify(&answer.token)?;
+        self.reachable()?;
+        let entitlement = self.verify(session, &answer.token, Utc::now())?;
         session.account_id = Some(entitlement.claims().sub.clone());
         self.write_file(session, Some(entitlement.token().to_owned())).await;
         tracing::info!(features = entitlement.claims().features.len(), expires_at = %entitlement.expires_at(), "entitlement refreshed");
@@ -449,7 +753,7 @@ impl Account {
         let bearer = self.bearer(session, false).await?;
         let answer = match self.api(bearer).get_me().await {
             Ok(answer) => Ok(answer.into_inner().into()),
-            Err(error) => Err(answer_error(error).await),
+            Err(error) => Err(answer_error(error).await.into()),
         };
         session.answered(Call::Profile, answer)
     }
@@ -460,9 +764,10 @@ impl Account {
         let mut devices = Vec::new();
         let mut cursor = None;
         for _ in 0..DEVICE_PAGES {
+            self.reachable()?;
             let page = match api.list_devices(cursor.as_deref(), Some(DEVICE_PAGE)).await {
                 Ok(answer) => answer.into_inner(),
-                Err(error) => return session.answered(Call::Devices, Err(answer_error(error).await)),
+                Err(error) => return session.answered(Call::Devices, Err(answer_error(error).await.into())),
             };
             devices.extend(page.data.into_iter().map(Device::from));
             cursor = page.next_cursor;
@@ -478,17 +783,17 @@ impl Account {
         let bearer = self.bearer(session, false).await?;
         let answer = match self.api(bearer).delete_device(device_id).await {
             Ok(_) => Ok(()),
-            Err(error) => Err(answer_error(error).await),
+            Err(error) => Err(answer_error(error).await.into()),
         };
         session.answered(Call::RemoveDevice, answer)
     }
 
     // A refused sign-in or a removed device ends the session, whichever call learns it.
     async fn ended_by<T>(&self, session: &mut Session, result: Result<T, AccountError>) -> Result<T, AccountError> {
-        if let Err(AccountError::SignedOut | AccountError::DeviceRevoked) = &result
+        if let Err(error @ (AccountError::SignedOut | AccountError::DeviceRevoked)) = &result
             && session.refresh.is_some()
         {
-            self.forget(session).await;
+            self.forget(session, cause_of(error)).await;
         }
         result
     }
@@ -506,7 +811,7 @@ impl Account {
         };
         let device = match self.api(bearer).register_device(&registration).await {
             Ok(answer) => Ok(answer.into_inner()),
-            Err(error) => Err(answer_error(error).await),
+            Err(error) => Err(answer_error(error).await.into()),
         };
         let device = session.answered(Call::Register, device)?;
         session.device_id = Some(device.id.clone());
@@ -517,38 +822,56 @@ impl Account {
         Ok(device.id)
     }
 
+    // Every call of the generated client takes its bearer here, so none reaches a company server unlicensed.
     async fn bearer(&self, session: &mut Session, renew: bool) -> Result<Bearer, AccountError> {
+        self.vouched(session).await?;
+        self.access(session, renew).await.map(Bearer::token)
+    }
+
+    async fn access(&self, session: &mut Session, renew: bool) -> Result<SecretString, AccountError> {
+        self.reachable()?;
         if !renew
             && let Some((access, until)) = &session.access
             && *until > Utc::now() + ACCESS_TOKEN_MARGIN
         {
-            return Ok(Bearer::token(access.clone()));
+            return Ok(access.clone());
         }
         let refresh = session.refresh.clone().ok_or(AccountError::SignedOut)?;
         session.waited(Call::Token)?;
-        let tokens = self.inner.oauth.refresh(&refresh).await;
+        let server = self.connection(session, false).await?;
+        server_calls::same_issuer(session, &server)?;
+        let tokens = server.connection()?.oauth.refresh(&refresh).await;
         let tokens = session.answered(Call::Token, tokens)?;
+        server_calls::audience_check(&server, &tokens.access)?;
         let access = tokens.access.clone();
+        // A rotated refresh token is kept whatever happened meanwhile, or the sign-in would be lost.
         self.adopt(session, tokens).await;
-        Ok(Bearer::token(access))
+        self.reachable()?;
+        Ok(access)
     }
 
     async fn adopt(&self, session: &mut Session, tokens: Tokens) {
-        let lifetime = TimeDelta::from_std(tokens.lifetime).unwrap_or_default();
+        let lifetime = TimeDelta::from_std(tokens.lifetime.min(ACCESS_TOKEN_CAP)).unwrap_or_default();
         session.access = Some((tokens.access, Utc::now() + lifetime));
         let Some(refresh) = tokens.refresh else {
             return;
         };
-        session.remembered = match self.inner.vault.store_refresh_token(&refresh).await {
+        let vault = self.current().vault.clone();
+        session.remembered = match vault.store_refresh_token(&refresh).await {
             Ok(()) => true,
             Err(error) => {
                 tracing::warn!(%error, "no keyring took the account's sign-in; it lasts until the app quits");
                 // A rotated token presented again revokes the whole family.
-                let _ = self.inner.vault.delete_refresh_token().await;
+                let _ = vault.delete_refresh_token().await;
                 false
             }
         };
         session.refresh = Some(refresh);
+        // The kept issuer's and license's tag is keyed with the refresh token, so it follows each rotation.
+        if self.current().is_company() {
+            let held = self.inner.status.borrow().entitlement().map(|it| it.token().to_owned());
+            self.write_file(session, held).await;
+        }
     }
 
     async fn settle(&self, session: &mut Session, result: Result<(), AccountError>) -> Result<(), AccountError> {
@@ -558,10 +881,16 @@ impl Account {
         };
         let kept = self.inner.status.borrow().entitlement().cloned();
         match &error {
-            AccountError::SignedOut | AccountError::DeviceRevoked => self.forget(session).await,
+            AccountError::SignedOut | AccountError::DeviceRevoked => self.forget(session, cause_of(&error)).await,
             AccountError::DeviceLimitReached { devices } => {
                 let problem = EntitlementProblem::DeviceLimitReached(devices.clone());
                 self.publish(session, kept, Some(problem));
+            }
+            // A license that no longer verifies admits no key, so what it admitted before stops too.
+            AccountError::License(_) => {
+                session.licensed = None;
+                self.write_file(session, None).await;
+                self.publish(session, None, Some(EntitlementProblem::RefreshFailed(error.clone())));
             }
             other => {
                 let problem = EntitlementProblem::RefreshFailed(other.clone());
@@ -571,62 +900,121 @@ impl Account {
         Err(error)
     }
 
-    async fn forget(&self, session: &mut Session) {
-        if let Err(error) = self.inner.vault.delete_refresh_token().await {
+    async fn forget(&self, session: &mut Session, cause: SignOutCause) {
+        let signed_in = session.refresh.is_some();
+        if let Err(error) = self.current().vault.delete_refresh_token().await {
             tracing::warn!(%error, "the account's sign-in was not removed from the keyring");
         }
         if let Err(error) = account_file::remove(&self.inner.settings.account_file).await {
             tracing::warn!(%error, "the account file was not removed");
         }
         self.signed_out(session);
+        if signed_in {
+            let _ = self.inner.sign_outs.send(cause);
+        }
     }
 
     fn reschedule(&self, refreshed: &Result<(), AccountError>) {
-        self.inner.due.send_replace(Instant::now() + next_refresh(refreshed));
+        let now = Instant::now();
+        let due = now
+            .checked_add(next_refresh(refreshed))
+            .unwrap_or(now + REFRESH_INTERVAL);
+        self.inner.due.send_replace(due);
     }
 
     fn signed_out(&self, session: &mut Session) {
         *session = Session::default();
+        self.inner.license.send_replace(None);
         self.inner.status.send_replace(AccountStatus::SignedOut);
     }
 
+    // The license first, so an app told of the status reads the license that goes with it.
     fn publish(&self, session: &Session, entitlement: Option<Entitlement>, problem: Option<EntitlementProblem>) {
+        self.inner
+            .license
+            .send_replace(session.licensed.as_ref().map(|licensed| licensed.license.clone()));
         self.inner
             .status
             .send_replace(AccountStatus::SignedIn(Box::new(SignedIn {
                 entitlement,
                 problem,
                 remembered: session.remembered,
+                session_id: session.id.clone(),
             })));
     }
 
     async fn write_file(&self, session: &Session, entitlement: Option<String>) {
-        let file = AccountFile {
-            device_id: session.device_id.clone(),
-            account_id: session.account_id.clone(),
-            entitlement,
-            offline_only: false,
-        };
+        let file = self.file_for(session, entitlement);
         if let Err(error) = account_file::write(&self.inner.settings.account_file, &file).await {
             tracing::warn!(%error, "the account file was not written");
         }
     }
 
-    // Still checked, at the moment before it expired: what it names says who has paid, as a lapse while the app
-    // runs keeps it too. Only its features stop.
-    fn lapsed(&self, token: &str, expired_at: DateTime<Utc>) -> Option<Entitlement> {
-        let settings = &self.inner.settings;
-        let before = expired_at - TimeDelta::seconds(1);
-        Entitlement::verify(token, &settings.keys, settings.machine_id.as_str(), before).ok()
+    fn file_for(&self, session: &Session, entitlement: Option<String>) -> AccountFile {
+        let api = self.current().api.clone();
+        let mut file = AccountFile {
+            device_id: session.device_id.clone(),
+            account_id: session.account_id.clone(),
+            entitlement,
+            offline_only: false,
+            license: session
+                .licensed
+                .as_ref()
+                .map(|licensed| licensed.license.token().to_owned()),
+            entitlement_keys: session.licensed.as_ref().map(|licensed| licensed.jwks.clone()),
+            issuer: session.issuer.clone(),
+            server: Some(api.clone()),
+            trust_tag: None,
+        };
+        if let Some(refresh) = &session.refresh
+            && self.current().is_company()
+        {
+            file.trust_tag = Some(server_calls::trust_tag(refresh, &api, &file));
+        }
+        file
     }
 
-    fn verify(&self, token: &str) -> Result<Entitlement, EntitlementError> {
-        let settings = &self.inner.settings;
-        Entitlement::verify(token, &settings.keys, settings.machine_id.as_str(), Utc::now())
+    // Still checked, at the moment before it expired: what it names says who has paid, as a lapse while the app
+    // runs keeps it too. Only its features stop.
+    fn lapsed(&self, session: &Session, token: &str, expired_at: DateTime<Utc>) -> Option<Entitlement> {
+        self.verify(session, token, expired_at - TimeDelta::seconds(1)).ok()
+    }
+
+    // Against the server's keys: tablepro.app's or a stack's, or those a company server's license admitted.
+    fn verify(&self, session: &Session, token: &str, now: DateTime<Utc>) -> Result<Entitlement, AccountError> {
+        let server = self.current();
+        let machine = self.inner.settings.machine_id.as_str();
+        match &server.trust {
+            Trust::Fixed(keys) => Ok(Entitlement::verify(token, keys, &server.issuer, machine, now)?),
+            Trust::Licensed(_) => {
+                let licensed = session.licensed.as_ref().ok_or(LicenseError::NotInstalled)?;
+                let entitlement = Entitlement::verify(token, &licensed.keys, &server.issuer, machine, now)?;
+                Ok(entitlement.within(licensed.license.clone()))
+            }
+        }
     }
 
     fn api(&self, bearer: Bearer) -> v2::Client {
-        v2::Client::new_with_client(&self.inner.settings.endpoints.api, self.inner.http.clone(), bearer)
+        v2::Client::new_with_client(&self.current().api, self.inner.http.clone(), bearer)
+    }
+}
+
+// 128 random bits as hex.
+fn new_session_id() -> String {
+    use aws_lc_rs::rand::SecureRandom as _;
+    let mut bytes = [0u8; 16];
+    if aws_lc_rs::rand::SystemRandom::new().fill(&mut bytes).is_err() {
+        // The time and process still tell this sign-in from the last one.
+        let nanos = Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        bytes = ((i128::from(nanos) << 32) | i128::from(std::process::id())).to_be_bytes();
+    }
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn cause_of(error: &AccountError) -> SignOutCause {
+    match error {
+        AccountError::DeviceRevoked => SignOutCause::DeviceRevoked,
+        _ => SignOutCause::Refused,
     }
 }
 
@@ -681,6 +1069,7 @@ mod tests {
 
     use async_trait::async_trait;
     use chrono::TimeDelta;
+    use tablepro_cloud_api::{CONNECT_TIMEOUT, REQUEST_TIMEOUT};
     use tablepro_core::credentials::SecretError;
     use url::Url;
 
@@ -688,26 +1077,27 @@ mod tests {
     use crate::account_settings::{AppClient, CallbackPage, DeviceDescription, Endpoints};
     use crate::account_status::FeatureAccess;
     use crate::entitlement::test_tokens::{claims, keys, sign};
+    use crate::server::{FixedServer, ServerSettings};
 
-    const FEATURE: &str = "env_var_references";
-    const ACCOUNT: &str = "acct_01k8d6wk00f8xsr79e7x052rkk";
-    const OTHER_ACCOUNT: &str = "acct_01k8d6x3q0f8xsr79e7x052zzz";
+    pub(super) const FEATURE: &str = "env_var_references";
+    pub(super) const ACCOUNT: &str = "acct_01k8d6wk00f8xsr79e7x052rkk";
+    pub(super) const OTHER_ACCOUNT: &str = "acct_01k8d6x3q0f8xsr79e7x052zzz";
 
     // Counts every time the account opens it.
-    struct Keyring {
-        token: Mutex<Option<SecretString>>,
+    pub(super) struct Keyring {
+        pub(super) token: Mutex<Option<SecretString>>,
         opened: AtomicUsize,
     }
 
     impl Keyring {
-        fn holding(token: Option<&str>) -> Arc<Self> {
+        pub(super) fn holding(token: Option<&str>) -> Arc<Self> {
             Arc::new(Self {
                 token: Mutex::new(token.map(SecretString::from)),
                 opened: AtomicUsize::new(0),
             })
         }
 
-        fn opened(&self) -> usize {
+        pub(super) fn opened(&self) -> usize {
             self.opened.load(Ordering::SeqCst)
         }
     }
@@ -732,7 +1122,7 @@ mod tests {
         }
     }
 
-    struct NoBrowser;
+    pub(super) struct NoBrowser;
 
     #[async_trait]
     impl BrowserLauncher for NoBrowser {
@@ -741,17 +1131,41 @@ mod tests {
         }
     }
 
-    fn machine() -> MachineId {
+    pub(super) fn machine() -> MachineId {
         MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine ID")
     }
 
+    // A stand-in for tablepro.app that signs with the test key and names its issuer.
+    pub(super) fn stub_settings(dir: &Path, endpoints: Endpoints) -> AccountSettings {
+        AccountSettings {
+            client: AppClient::LINUX,
+            server: ServerSettings::Fixed(FixedServer {
+                endpoints,
+                keys: keys(),
+                issuer: crate::fakes::ISSUER.to_owned(),
+            }),
+            device: DeviceDescription {
+                name: "Ada's laptop".to_owned(),
+                app_version: "0.1.0".to_owned(),
+                os_version: "Fedora Linux 43 (Workstation Edition)".to_owned(),
+            },
+            machine_id: machine(),
+            account_file: dir.join("account.json"),
+            callback_page: CallbackPage {
+                finished: String::new(),
+                unknown: String::new(),
+            },
+            legacy_entitlement_file: None,
+        }
+    }
+
     // Port 1 is below every system's ephemeral range, so no test's listener takes it and every request is refused.
-    fn unreachable() -> Endpoints {
+    pub(super) fn unreachable() -> Endpoints {
         Endpoints::new("http://127.0.0.1:1", "http://127.0.0.1:1/v2").expect("the endpoints")
     }
 
     // Stands in for tablepro-cloud: `answer` gives the status and body for a method and path.
-    fn cloud(answer: impl Fn(&str, &str) -> (u16, String) + Send + 'static) -> Endpoints {
+    pub(super) fn cloud(answer: impl Fn(&str, &str) -> (u16, String) + Send + 'static) -> Endpoints {
         cloud_with_headers(move |method, path| {
             let (status, body) = answer(method, path);
             (status, "", body)
@@ -764,10 +1178,10 @@ mod tests {
     }
 
     // The status, header lines and body the stub answers a method, path and request body with.
-    type Answer = dyn Fn(&str, &str, &str) -> (u16, &'static str, String) + Send;
+    pub(super) type Answer = dyn Fn(&str, &str, &str) -> (u16, &'static str, String) + Send;
 
     // As cloud_with_headers, also given the request's body.
-    fn cloud_with_bodies(
+    pub(super) fn cloud_with_bodies(
         answer: impl Fn(&str, &str, &str) -> (u16, &'static str, String) + Send + 'static,
     ) -> Endpoints {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
@@ -780,7 +1194,7 @@ mod tests {
         Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints")
     }
 
-    fn serve(stream: std::net::TcpStream, answer: &Answer) {
+    pub(super) fn serve(stream: std::net::TcpStream, answer: &Answer) {
         use std::io::{BufRead as _, Read as _, Write as _};
         let mut reader = std::io::BufReader::new(stream.try_clone().expect("a second handle"));
         let mut line = String::new();
@@ -810,7 +1224,7 @@ mod tests {
         .expect("the answer");
     }
 
-    const TOKENS: &str =
+    pub(super) const TOKENS: &str =
         r#"{"access_token":"stub-access","token_type":"Bearer","expires_in":900,"refresh_token":"stub-refresh"}"#;
 
     fn account(dir: &Path, keyring: Arc<Keyring>) -> Account {
@@ -818,40 +1232,25 @@ mod tests {
     }
 
     fn account_at(dir: &Path, keyring: Arc<Keyring>, endpoints: Endpoints) -> Account {
-        let settings = AccountSettings {
-            client: AppClient::LINUX,
-            endpoints,
-            device: DeviceDescription {
-                name: "Ada's laptop".to_owned(),
-                app_version: "0.1.0".to_owned(),
-                os_version: "Fedora Linux 43 (Workstation Edition)".to_owned(),
-            },
-            machine_id: machine(),
-            keys: keys(),
-            account_file: dir.join("account.json"),
-            callback_page: CallbackPage {
-                finished: String::new(),
-                unknown: String::new(),
-            },
-        };
+        let settings = stub_settings(dir, endpoints);
         let status = watch::Sender::new(AccountStatus::SignedOut);
         Account::new(settings, keyring, Arc::new(NoBrowser), status).expect("an account")
     }
 
     // As a refresh writes it: the account goes with the entitlement.
-    async fn keep(dir: &Path, entitlement: Option<String>) {
+    pub(super) async fn keep(dir: &Path, entitlement: Option<String>) {
         let file = AccountFile {
             device_id: Some("dev_01k8d6wpggfd68tbhz818p4ww4".to_owned()),
             account_id: entitlement.as_ref().map(|_| ACCOUNT.to_owned()),
             entitlement,
-            offline_only: false,
+            ..AccountFile::default()
         };
         account_file::write(&dir.join("account.json"), &file)
             .await
             .expect("the account file");
     }
 
-    fn entitlement(issued: chrono::DateTime<Utc>) -> String {
+    pub(super) fn entitlement(issued: chrono::DateTime<Utc>) -> String {
         let mut claims = claims(issued, TimeDelta::days(14), &[FEATURE]);
         claims.mid = machine().as_str().to_owned();
         sign(&claims)
@@ -872,14 +1271,14 @@ mod tests {
         sign(&claims)
     }
 
-    fn signed_in(account: &Account) -> SignedIn {
+    pub(super) fn signed_in(account: &Account) -> SignedIn {
         match &*account.status().borrow() {
             AccountStatus::SignedIn(signed_in) => (**signed_in).clone(),
             other => panic!("the account is not signed in: {other:?}"),
         }
     }
 
-    async fn stored(dir: &Path) -> AccountFile {
+    pub(super) async fn stored(dir: &Path) -> AccountFile {
         account_file::read(&dir.join("account.json"))
             .await
             .expect("read")
@@ -936,6 +1335,7 @@ mod tests {
             account_id: None,
             entitlement: Some(offline_file(Utc::now() - TimeDelta::days(40))),
             offline_only: true,
+            ..AccountFile::default()
         };
         account_file::write(&path, &file).await.expect("the account file");
         let keyring = Keyring::holding(None);
@@ -1001,7 +1401,7 @@ mod tests {
             device_id: Some("dev_01k8d6wpggfd68tbhz818p4ww4".to_owned()),
             account_id: Some(ACCOUNT.to_owned()),
             entitlement: Some(entitlement(Utc::now() - TimeDelta::days(20))),
-            offline_only: false,
+            ..AccountFile::default()
         };
         account_file::write(&dir.path().join("account.json"), &file)
             .await
@@ -1220,7 +1620,7 @@ mod tests {
         }
     }
 
-    type Asked = Arc<std::sync::Mutex<Vec<String>>>;
+    pub(super) type Asked = Arc<std::sync::Mutex<Vec<String>>>;
 
     // Answers the entitlement with the device limit until `freed`, and keeps what it was asked.
     fn limit_cloud(freed: Arc<AtomicBool>, asked: Asked) -> Endpoints {
@@ -1243,7 +1643,7 @@ mod tests {
         })
     }
 
-    fn asked(asked: &Asked) -> Vec<String> {
+    pub(super) fn asked(asked: &Asked) -> Vec<String> {
         asked.lock().expect("the requests").clone()
     }
 
@@ -1544,14 +1944,14 @@ mod tests {
         assert!(empty.is_err());
     }
 
-    fn device_answer() -> String {
+    pub(super) fn device_answer() -> String {
         format!(
             r#"{{"id":"dev_01k8d6wpggfd68tbhz818p4ww4","machine_id":"{}","platform":"linux","name":"Ada's laptop","app_version":"0.1.0","os_version":"Fedora Linux 43 (Workstation Edition)","created_at":"2026-10-29T00:00:00Z","last_seen_at":"2026-10-29T00:00:00Z"}}"#,
             machine().as_str()
         )
     }
 
-    fn form(body: &str) -> HashMap<String, String> {
+    pub(super) fn form(body: &str) -> HashMap<String, String> {
         url::form_urlencoded::parse(body.as_bytes()).into_owned().collect()
     }
 
@@ -1562,7 +1962,7 @@ mod tests {
             device_id: None,
             account_id: Some(ACCOUNT.to_owned()),
             entitlement: None,
-            offline_only: false,
+            ..AccountFile::default()
         };
         account_file::write(&dir.path().join("account.json"), &file)
             .await
@@ -1610,8 +2010,8 @@ mod tests {
 
     // Keeps the authorization URL for the test to answer when it chooses.
     #[derive(Default)]
-    struct HeldBrowser {
-        opened: std::sync::Mutex<Option<Url>>,
+    pub(super) struct HeldBrowser {
+        pub(super) opened: std::sync::Mutex<Option<Url>>,
     }
 
     #[async_trait]
@@ -1623,27 +2023,17 @@ mod tests {
     }
 
     fn held_account(dir: &Path, keyring: Arc<Keyring>, endpoints: Endpoints, browser: Arc<HeldBrowser>) -> Account {
-        let settings = AccountSettings {
-            client: AppClient::LINUX,
-            endpoints,
-            device: DeviceDescription {
-                name: "Ada's laptop".to_owned(),
-                app_version: "0.1.0".to_owned(),
-                os_version: "Fedora Linux 43 (Workstation Edition)".to_owned(),
-            },
-            machine_id: machine(),
-            keys: keys(),
-            account_file: dir.join("account.json"),
-            callback_page: CallbackPage {
-                finished: String::new(),
-                unknown: String::new(),
-            },
-        };
+        let settings = stub_settings(dir, endpoints);
         Account::new(settings, keyring, browser, watch::Sender::new(AccountStatus::SignedOut)).expect("an account")
     }
 
     // Answers the redirect the sign-in waits for, as the browser would once the user approves.
-    async fn approve(browser: &HeldBrowser) {
+    pub(super) async fn approve(browser: &HeldBrowser) {
+        answer(browser, &[("code", "late-code")]).await;
+    }
+
+    // The redirect the server sends the browser to: `pairs`, then the request's own state.
+    pub(super) async fn answer(browser: &HeldBrowser, pairs: &[(&str, &str)]) {
         let url = loop {
             if let Some(url) = browser.opened.lock().expect("the URL").clone() {
                 break url;
@@ -1658,7 +2048,7 @@ mod tests {
         let mut redirect = Url::parse(&asked("redirect_uri").expect("a redirect")).expect("a URL");
         redirect
             .query_pairs_mut()
-            .append_pair("code", "late-code")
+            .extend_pairs(pairs)
             .append_pair("state", &asked("state").expect("a state"));
         reqwest::get(redirect).await.expect("the redirect delivered");
     }

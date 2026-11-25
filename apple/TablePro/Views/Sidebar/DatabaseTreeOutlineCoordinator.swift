@@ -1,8 +1,3 @@
-//
-//  DatabaseTreeOutlineCoordinator.swift
-//  TablePro
-//
-
 import AppKit
 import Combine
 import Observation
@@ -50,24 +45,19 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal var bucketMemo = DatabaseTreeBucketMemo<DatabaseTreeContainerSlot>()
     internal var loadedContentMemo = DatabaseTreeBucketMemo<CatalogName>()
     internal var tableRowMemo: [CatalogName: DatabaseTreeTableRows] = [:]
-    /// Whether a routine row shows its signature depends on the other rows in its own section, so
-    /// the label is decided where the section is built and looked up here when the row draws.
+    // Decided where the section is built: whether a routine shows its signature depends on its siblings.
     internal var routineDisplayLabels: [String: String] = [:]
-    /// Built once per refresh for each container, because the container, its folders and its kind
-    /// sections all read the same plan and AppKit asks for each of them separately.
+    // Built once per refresh: the container, its folders and its kind sections all read the same plan.
     internal var flatFolderPlan: TableFolderPlan?
     internal var containerFolderPlans: [DatabaseTreeContainerKey: TableFolderPlan] = [:]
-    /// The folder whose name is being typed, which a search must not hide out from under the field.
+    // The folder being renamed, which a search must not hide out from under the field.
     internal var revealedFolderId: UUID?
-    /// A reload ends a drag in flight and drops the field a name is being typed into, so one asked
-    /// for during either waits for it to finish. The Welcome list holds its reloads the same way.
+    // A reload ends a drag and drops a rename field, so one asked for during either waits for it to finish.
     internal var isDragging = false
     internal var isReloadDeferred = false
-    /// The tables and views a drag carries, resolved once when it starts rather than on every move
-    /// of the pointer. Nil for a drag that started in another window.
+    // Resolved once when the drag starts; nil for a drag from another window.
     internal var draggedFolderItems: [TableFolderDragItem]?
 
-    /// A rename in progress, held as identity only. See `DatabaseTreeOutlineCoordinator+Rename`.
     internal var renameSession: DatabaseTreeRenameSession?
     private var cachedRowContext: DatabaseTreeRowContext?
     private var cachedRowActions: DatabaseTreeRowActions?
@@ -124,8 +114,6 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         Set(PluginManager.shared.systemSchemaNames(for: databaseType))
     }
 
-    // MARK: - Attach / input
-
     func attach(outlineView: NSOutlineView) {
         self.outlineView = outlineView
         let tableObserver = NotificationCenter.default.addObserver(
@@ -163,23 +151,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         observeObjectListAppearance()
     }
 
-    /// The rows repaint from the setting rather than from the command that wrote it, so the same
-    /// change arrives whether it came from the View Options control in the filter row, the
-    /// empty-area menu, or Settings. Toggling Show Object Icons in Settings used to repaint
-    /// nothing, because only the contextual menu's own handler called `refreshVisibleRows`.
-    ///
-    /// Re-arms itself, because `withObservationTracking` fires once per registration.
-    ///
-    /// The macro registers access on the stored `general` property rather than on the two fields
-    /// read inside it, so this wakes on every `GeneralSettings` write, the query timeout and the
-    /// sync write-back included. `refreshVisibleRows` reconfigures every row of every open window,
-    /// so the two values are compared before it runs.
+    // Follows the setting, not the command that wrote it, so the filter row, the empty-area menu and Settings all repaint.
     private func observeObjectListAppearance() {
-        appearanceObservation = AppSettingsManager.shared.onMainActorChange { [weak self] in
+        appearanceObservation = AppSettingsManager.shared.generalSlice.onMainActorChange { [weak self] in
             guard let self else { return }
             let appearance = Self.objectListAppearance()
             guard appearance != self.observedAppearance else { return }
             self.observedAppearance = appearance
+            self.cachedRowContext = nil
             self.refreshVisibleRows()
         }
     }
@@ -212,8 +191,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         viewModel = view.viewModel
 
         let activeChanged = activeDatabase != view.activeDatabase || activeSchema != view.activeSchema
+        let searchChanged = searchText != view.searchText
         let changed = connectionChanged
-            || searchText != view.searchText
+            || searchChanged
             || isConnected != view.isConnected
             || activeChanged
             || pendingTruncates != view.pendingTruncates
@@ -239,6 +219,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         }
 
         guard hasRenderedOnce, !changed else {
+            // The filter paces the next key by how long this rebuild takes.
+            if searchChanged { viewModel?.noteSearchRebuild(for: searchText) }
             hasRenderedOnce = true
             refresh()
             return
@@ -258,8 +240,6 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             }
         }
     }
-
-    // MARK: - Observation
 
     private func beginObserving() {
         observationGeneration += 1
@@ -373,16 +353,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         tableRowMemo = tableRowMemo.filter { childrenCache[$0.key] != nil }
     }
 
-    /// Coalesced with any reload already scheduled, because the edit that ended the hold usually
-    /// posts a change of its own that asks for one too.
+    // Coalesced: the edit that ended the hold usually posts a change that asks for a reload too.
     internal func applyDeferredReloadIfNeeded() {
         guard isReloadDeferred, !isDragging, renameSession == nil else { return }
         isReloadDeferred = false
         scheduleReconcile(forcing: true)
     }
 
-    /// A star toggling on or off changes no row and no ordering, so the rows are reconfigured in
-    /// place. Reloading would throw away every hosted SwiftUI view to repaint one glyph.
+    // Reconfigures in place: a reload would throw away every hosted SwiftUI view to repaint one glyph.
     internal func refreshVisibleRows() {
         guard let outlineView else { return }
         outlineView.enumerateAvailableRowViews { _, row in
@@ -449,8 +427,6 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         )
     }
 
-    // MARK: - Selection / open
-
     internal func selectedRefs() -> [DatabaseTreeTableRef] {
         DatabaseTreeSelection.tableRefs(of: selectedNodes())
     }
@@ -481,20 +457,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         isSyncingSelection = false
     }
 
-    /// The window writes `selectedTables` whenever the active editor tab moves, so the highlight has
-    /// to follow it the way the `List(selection:)` binding this outline replaced did. Reading it back
-    /// is also what keeps a click on the row that is still highlighted from being swallowed: AppKit
-    /// posts no selection change when the selection already holds that row, so a highlight left
-    /// behind on a table the user has since navigated away from becomes a dead row.
-    ///
-    /// A table can be drawn twice, once under Recent and once in its own section. Only the section
-    /// row is adopted, because that is the row the model's `TableInfo` stands for.
-    ///
-    /// Nothing is adopted while this coordinator is opening a row the user clicked. `activate(_:)`
-    /// moves the browse database before `publishSelection()` runs, so through that window the model
-    /// still names the previous database's table. Adopting it would deselect the clicked row and
-    /// then publish the empty selection over it. The depth counts, because a second click can land
-    /// while the first switch is still in flight.
+    // Adopts only a table's section row, and never while a clicked open is still moving the browse database.
     private func adoptModelSelection() {
         guard let windowState, openSelectionDepth == 0 else { return }
         let selectedTables = windowState.selectedTables
@@ -506,19 +469,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         publishedTables = selectedTables
         publishedSelectionDatabase = selectionDatabase
 
-        /// Matched on the object and scoped to the database on screen, in that order, rather than
-        /// on the whole reference. The model holds the row the user picked, database included, but
-        /// browsing elsewhere is meant to move the highlight onto that database's copy of the same
-        /// object; comparing references pins it to the database it was picked in and leaves the
-        /// tree with nothing selected the moment the browse cursor moves.
+        // By object, not reference, so browsing another database moves the highlight to its copy of the table.
         let selectedObjects = Set(selectedTables.map(\.table))
         let nodes = nodeCache.nodes(drawing: selectedObjects).filter { node in
             selectionDatabase == nil || node.tableRef?.database == selectionDatabase
         }
         lastSelectedNodeIds = nodes.map(\.id)
         lastSelection = Set(DatabaseTreeSelection.tableRefs(of: nodes))
-        /// Still pending while a selected table has no row in the database being browsed: the row is
-        /// usually one that has not been built yet, and the next sync adopts it.
+        // Pending while a selected table has no row yet in the browsed database; the next sync adopts it.
         isModelSelectionAdoptionPending = Set(lastSelection.map(\.table)) != selectedObjects
     }
 
@@ -528,11 +486,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         return activeDatabase
     }
 
-    /// Opens run one after another, because a double-click is two opens of the same row and the
-    /// second lands while the first is still inside `activate(_:)`. Both would then read the same
-    /// stale `activeDatabase` and switch the database twice for one gesture, which on an engine
-    /// that reconnects to switch means two reconnects and two schema invalidations. Waiting for the
-    /// one in flight lets the second see the database it already moved to, so it only promotes.
+    // Serialized: a double-click is two opens, and two reads of a stale `activeDatabase` would switch twice.
     private func open(
         _ ref: DatabaseTreeTableRef,
         activateGridFocus: Bool,
@@ -557,13 +511,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         }
     }
 
-    /// The Table menu reads `windowState.selectedTables`, so the tree has to put its own selection
-    /// there or every command that acts on a selection does nothing in tree layout.
-    ///
-    /// Timing is the whole trick. The shared navigation observer also watches this property, and it
-    /// opens whatever single table appeared. Publishing before the tree's own open landed would race
-    /// it into opening the table twice, so a selection that navigates publishes only once the tab is
-    /// already the clicked table, which is exactly the case that observer resolves to skip.
+    // Published only once the tab is the clicked table, or the window's navigation observer opens it twice.
     private func publishSelection() {
         guard let windowState else { return }
         let nodes = selectedNodes()
@@ -571,8 +519,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         publishedTables = tables
         publishedSelectionDatabase = modelSelectionDatabase
         isModelSelectionAdoptionPending = false
-        /// The row count goes with the tables, because this is the one list that can select a row
-        /// which is not a table. One table selected beside a schema must not read as a pick.
+        // This list can select rows that are not tables, so one table beside a schema must not read as a pick.
         windowState.select(tables: tables, rowCount: nodes.count)
     }
 
@@ -617,10 +564,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         }
     }
 
-    /// Every visible row is handed the same context and the same action set, and both are pure
-    /// functions of the inputs `update(from:)` already tracks, so they are built once per refresh
-    /// instead of once per row. Rebuilding them in `viewFor` allocated a fresh set of closures for
-    /// every row the outline drew, on every reload and every scroll.
+    // Built once per refresh, not per row: `viewFor` allocated fresh closures for every row it drew.
     private var rowContext: DatabaseTreeRowContext {
         if let cachedRowContext { return cachedRowContext }
         let context = makeRowContext()
@@ -663,7 +607,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 self?.routineDisplayLabels[ref.id] ?? ref.routine.name
             },
             showsPartitions: showsPartitions,
-            listsAttachedSchemas: listsAttachedSchemas
+            listsAttachedSchemas: listsAttachedSchemas,
+            showsObjectIcons: observedAppearance.showsIcons,
+            showsObjectComments: observedAppearance.showsComments
         )
     }
 
@@ -674,8 +620,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         )
     }
 
-    /// A namespace rescopes the browse pattern and a key opens; neither goes through the
-    /// double-click window a table open needs, because there is no preview tab to promote.
+    // No double-click window: there is no preview tab to promote.
     private func openRedis(_ node: RedisKeyNode) {
         switch node {
         case .namespace(_, let fullPrefix, _, _):
@@ -772,13 +717,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         perform(DatabaseTreeDoubleClickResolver.resolve(node: node), on: node, in: outlineView)
     }
 
-    /// Return does what a double-click does, because a keyboard user arrowing through the tree has
-    /// already opened every row they passed and needs the same way to keep one. `NSOutlineView`
-    /// routes neither gesture on its own.
+    // Return keeps the row the way a double-click does; `NSOutlineView` routes neither on its own.
     internal func performPrimaryAction() {
-        /// One row only, for the same reason `DatabaseTreeSelection.navigationTarget` refuses to
-        /// navigate on an extended selection: that selection is a batch about to be exported or
-        /// truncated, and opening one of its rows would move the browsed database out from under it.
+        // An extended selection is a batch; opening one of its rows would move the database out from under it.
         guard let outlineView, outlineView.numberOfSelectedRows == 1,
               outlineView.selectedRow >= 0,
               let node = outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode
@@ -814,8 +755,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
 }
 
 extension DatabaseTreeOutlineCoordinator: DatabaseTreeSelectionClearing {
-    /// Deselecting runs the normal delegate path, which publishes the now empty selection, so the
-    /// Table menu and the outline agree without a second write.
+    // The delegate path publishes the empty selection, so the Table menu agrees without a second write.
     func clearSelection() {
         guard let outlineView, !outlineView.selectedRowIndexes.isEmpty else { return }
         outlineView.deselectAll(nil)
@@ -831,9 +771,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDataSource {
         resolvedChildren(of: item)[index]
     }
 
-    /// `DatabaseTreeNode.isExpandable` answers from the node's kind alone and has no settings to
-    /// read, so the hide-partitions gate has to be applied here as well as in the node builder.
-    /// Without it a hidden table kept a disclosure triangle that opened on nothing.
+    // `isExpandable` cannot read settings, so the hide-partitions gate is applied here too.
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         guard let node = item as? DatabaseTreeNode, node.isExpandable else { return false }
         switch node.kind {
@@ -848,16 +786,13 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDataSource {
 }
 
 extension DatabaseTreeOutlineCoordinator {
-    // MARK: - NSTextFieldDelegate
-
-    /// The rename editor's callbacks. They live here rather than in the rename extension because
-    /// they are `@objc` and an extension cannot supply them for the conformance.
+    // Here, not in the rename extension: an extension cannot supply `@objc` requirements for the conformance.
     internal func controlTextDidChange(_ obj: Notification) {
         guard let field = obj.object as? NSTextField else { return }
         renameSession?.pendingName = field.stringValue
     }
 
-    /// The click-away path, which commits the way Finder and the Xcode navigator do.
+    // Click-away commits, as Finder and the Xcode navigator do.
     internal func controlTextDidEndEditing(_ obj: Notification) {
         guard renameSession != nil else { return }
         endRename(commit: true)
@@ -873,8 +808,7 @@ extension DatabaseTreeOutlineCoordinator {
             return true
         }
         if selector == #selector(NSResponder.cancelOperation(_:)) {
-            /// `abortEditing` discards the edit without posting `controlTextDidEndEditing`, so the
-            /// cancel does not immediately arrive back as a commit.
+            // `abortEditing` posts no `controlTextDidEndEditing`, so the cancel is not read back as a commit.
             (control as? NSTextField)?.abortEditing()
             endRename(commit: false)
             return true
@@ -902,11 +836,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         return DatabaseTreeSelection.isSelectable(node.kind)
     }
 
-    /// Hands the section headers to AppKit. In `.sourceList` a group row is drawn at its own
-    /// height with its own background and collapse control, and its children are laid out at the
-    /// depth the group itself sits at rather than one level in. That last part is what makes a
-    /// table under "Tables" line up with a database, the way a package lines up with the project
-    /// in Xcode's navigator.
+    // A source list lays a group's children at the group's depth, so a table under Tables lines up with a database.
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
         (item as? DatabaseTreeNode)?.isGroupRow ?? false
     }
@@ -923,9 +853,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         )
     }
 
-    /// The load has to run before AppKit asks for the children, which is what `will` is for. The
-    /// recording is the opposite: `will` fires before the state flips, so a disclosure recorded
-    /// there is describing the state the row is leaving.
+    // Loads in `will`, before AppKit asks for children; the disclosure is recorded in `did`, once the state flipped.
     func outlineViewItemWillExpand(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
         beginExpansionTrace(for: node)
@@ -957,14 +885,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         }
     }
 
-    /// A collapse that hides the selected row makes AppKit rewrite the outline's selection, and that
-    /// rewrite is not a pick. Publishing it wrote an empty `selectedTables` the tree could never take
-    /// back: an empty model against an empty published set leaves `adoptModelSelection()` nothing to
-    /// restore when the row comes back.
-    ///
-    /// AppKit posts that selection change outside the will/did pair, so the suppression is raised at
-    /// both ends and lowered a main-actor hop later, which is also when the highlight is driven back
-    /// from the model.
+    // AppKit rewrites the selection a collapse hides, outside the will/did pair; that is not a pick, so publishing waits a hop.
     func outlineViewItemWillCollapse(_ notification: Notification) {
         isCollapsingItem = true
     }
@@ -983,23 +904,12 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         scheduleSelectionSync(force: true)
     }
 
-    /// A filtered tree discloses whatever matches, so while the field has text the disclosure on
-    /// screen is the search's, not the user's. A gesture against it is an edit of the search view
-    /// and must stay out of the saved state: recording it made the row spring back open on the next
-    /// keystroke and then, once the filter cleared, took the layout the user had built with it.
+    // While filtering, disclosure belongs to the search, so gestures stay out of the saved state.
     private var isRecordingExpansion: Bool {
         !isApplyingExpansion && searchText.isEmpty
     }
 
-    /// Selection drives the content, which is how a source list works: the navigator picks, the
-    /// detail follows. Both the mouse and the keyboard land here, so there is one entry point.
-    ///
-    /// This deliberately does not use `NSTableView.action`. AppKit sends the action on mouse up,
-    /// which is a whole gesture later than the selection the user already sees.
-    ///
-    /// Nothing is published when a single table was added, because the open publishes it once the
-    /// tab is already that table. Publishing here would hand the same table to the window's
-    /// navigation observer first and open it twice.
+    // Selection drives the content, not `action`, which arrives on mouse up; a single added table is published by its open.
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !isSyncingSelection, !isReloading, !isCollapsingItem else { return }
         let nodes = selectedNodes()
@@ -1009,8 +919,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
             selectedNodes: nodes, previousRefs: lastSelection, newRefs: refs
         )
         if let target {
-            /// Only a repeating key is a burst to wait out. A discrete press is the whole gesture
-            /// and opens now, the way a click does.
+            // Only a repeating key is a burst to wait out; a discrete press opens now.
             if isAutorepeatingSelection {
                 scheduleOpen(target, after: NSEvent.keyRepeatInterval)
             } else {
@@ -1037,10 +946,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
         return DatabaseTreeTypeSelect.isAutorepeatingArrowNavigation(event)
     }
 
-    /// A held arrow key is one gesture, not one open per row it travels over, so a repeating key
-    /// waits out `NSEvent.keyRepeatInterval` and each new selection cancels the pending one. The
-    /// burst collapses to the row the user stopped on. Without it, arrowing down a schema ran a
-    /// query and opened a tab for every row in between.
+    // A held arrow key is one gesture: each repeat cancels the pending open, so only the row it stops on opens.
     private func scheduleOpen(_ ref: DatabaseTreeTableRef, after delay: TimeInterval) {
         pendingOpenWork?.cancel()
         let work = DispatchWorkItem { [weak self] in

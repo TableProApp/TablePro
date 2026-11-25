@@ -687,8 +687,10 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// hands one over with a live session and no phase change to follow, so its panes still
         /// held the empty view they were constructed with and the connection opened blank. This
         /// costs a key comparison when nothing has moved, which is what the record is for.
+        let detailHeldKeyboard = detailPaneHoldsKeyboard
         syncSelectedPanes()
         showSelectedPanes()
+        keepKeyboardInDetailPane(detailHeldKeyboard: detailHeldKeyboard)
 
         /// A workspace put into Agent mode while another connection was on screen never reached
         /// the branch that reveals its columns, because that branch only ever touched the selected
@@ -902,6 +904,11 @@ internal final class MainSplitViewController: NSSplitViewController {
         sessionState?.coordinator.commandActions
     }
 
+    // Any hosted connection's actions can ask, since the question covers every connection in the window.
+    var closeQuestionActions: MainContentCommandActions? {
+        commandActions ?? workspaces.workspaces.lazy.compactMap { $0.sessionState?.coordinator.commandActions }.first
+    }
+
     var currentPane: ConnectionWindowPane {
         workspaces.selected?.resolvedPane ?? .unavailable(.notConnected)
     }
@@ -962,18 +969,20 @@ internal final class MainSplitViewController: NSSplitViewController {
     @ViewBuilder
     private func buildDetailView(for workspace: ConnectionWorkspace) -> some View {
         let pane = workspace.resolvedPane
+        // The pane's closures name the id: the workspace retains this tree, so capturing it is a cycle.
+        let connectionId = workspace.connectionId
         if pane == .connecting, let pendingConnection = workspace.connection {
             ConnectingStateView(connection: pendingConnection) { [weak self] in
-                self?.cancelConnectionAttempt(for: workspace.connectionId)
+                self?.cancelConnectionAttempt(for: connectionId)
             }
         } else if case .unavailable(let reason) = pane, let connection = workspace.connection {
             ConnectionUnavailableView(
                 connection: connection,
                 reason: reason,
                 onPrimaryAction: { [weak self] in
-                    self?.performUnavailablePrimaryAction(reason, for: workspace.connectionId)
+                    self?.performUnavailablePrimaryAction(reason, for: connectionId)
                 },
-                onRetry: { [weak self] in self?.reconnectWorkspace(workspace.connectionId) },
+                onRetry: { [weak self] in self?.reconnectWorkspace(connectionId) },
                 onManageConnections: { [weak self] in self?.openConnectionList() }
             )
         } else if pane == .content,
@@ -986,7 +995,7 @@ internal final class MainSplitViewController: NSSplitViewController {
                     ConnectionRecoveryBar(
                         content: ConnectionRecoveryBarContent(connectionName: session.connection.name, progress: recovery)
                     ) { [weak self] in
-                        self?.cancelRecovery(for: workspace.connectionId)
+                        self?.cancelRecovery(for: connectionId)
                     }
                 }
                 MainContentView(
@@ -1107,8 +1116,8 @@ internal final class MainSplitViewController: NSSplitViewController {
     private func windowTitleBinding(for workspace: ConnectionWorkspace) -> Binding<String> {
         Binding(
             get: { [weak self] in self?.windowTitle ?? "" },
-            set: { [weak self] newValue in
-                guard let self, self.isShowingBrowseDetail(of: workspace) else { return }
+            set: { [weak self, weak workspace] newValue in
+                guard let self, let workspace, self.isShowingBrowseDetail(of: workspace) else { return }
                 self.windowTitle = newValue
             }
         )
@@ -1117,8 +1126,8 @@ internal final class MainSplitViewController: NSSplitViewController {
     private func windowSubtitleBinding(for workspace: ConnectionWorkspace) -> Binding<String> {
         Binding(
             get: { [weak self] in self?.windowSubtitle ?? "" },
-            set: { [weak self] newValue in
-                guard let self, self.isShowingBrowseDetail(of: workspace) else { return }
+            set: { [weak self, weak workspace] newValue in
+                guard let self, let workspace, self.isShowingBrowseDetail(of: workspace) else { return }
                 self.windowSubtitle = newValue
             }
         )
@@ -1130,8 +1139,8 @@ internal final class MainSplitViewController: NSSplitViewController {
     private func windowRepresentedURLBinding(for workspace: ConnectionWorkspace) -> Binding<URL?> {
         Binding(
             get: { [weak self] in self?.windowRepresentedURL },
-            set: { [weak self] newValue in
-                guard let self, self.isShowingBrowseDetail(of: workspace) else { return }
+            set: { [weak self, weak workspace] newValue in
+                guard let self, let workspace, self.isShowingBrowseDetail(of: workspace) else { return }
                 self.windowRepresentedURL = newValue
             }
         )

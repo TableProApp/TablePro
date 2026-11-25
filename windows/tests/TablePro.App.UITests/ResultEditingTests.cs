@@ -13,7 +13,7 @@ public sealed partial class ShellTests
         const string Renamed = "AC/DC (from a query)";
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Artist", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "SELECT ArtistId, Name FROM Artist");
         app.Chord(
@@ -60,7 +60,7 @@ public sealed partial class ShellTests
         const string Reason = "Grouped, distinct or computed rows can't be edited.";
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "SELECT GenreId, COUNT(*) AS Tracks FROM Track GROUP BY GenreId");
         app.Chord(

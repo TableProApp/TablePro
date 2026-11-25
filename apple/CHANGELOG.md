@@ -9,6 +9,154 @@ Unreleased changes are files in `changelog.d/`.
 
 <!-- towncrier release notes start -->
 
+## [0.88.0](https://github.com/TableProApp/TablePro/releases/tag/v0.88.0) - 2026-11-24
+
+Share a query, a saved query or a result as a link anyone can open in a browser, with sensitive columns masked first.
+iPhone and iPad export tables, results, selected rows or a whole database, and import CSV, JSON, XLSX and SQL files.
+The editor tab bar scrolls and drags like the macOS one, tabs move between windows, and a query tab can be renamed.
+Wrap Text shows long values on several lines in the data grid, and Option-Return opens a cell's value editor.
+PostgreSQL, MySQL, SSH tunnels and large results take fewer round trips and less memory, and Vim mode acts more like Vim.
+The setting that wrapped editor tabs onto more rows is gone.
+
+### Added
+
+- Open a shared link in TablePro to get its SQL in a new query tab, without running it. ([#4253](https://github.com/TableProApp/TablePro/pull/4253))
+- Share a query, a saved query or a result as a link anyone can open in a browser. ([#4253](https://github.com/TableProApp/TablePro/pull/4253))
+- Share Result masks columns that look sensitive before upload, and lets you keep, mask or remove each column. ([#4253](https://github.com/TableProApp/TablePro/pull/4253))
+- Select several rows on iPhone and iPad to export, copy or delete them. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Export tables, query results, selected rows or a whole database to a file on iPhone and iPad. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Import CSV, JSON and XLSX files into a table, and run SQL files, on iPhone and iPad. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Drag an editor tab onto another window of the same connection to move it there. ([#4323](https://github.com/TableProApp/TablePro/pull/4323))
+- Name a query tab by double-clicking it or choosing Rename Tab, and the name stays after a restart. ([#4343](https://github.com/TableProApp/TablePro/pull/4343))
+- Open a cell's value editor from its context menu, the Query menu, or Option-Return. ([#4374](https://github.com/TableProApp/TablePro/pull/4374))
+- Double-click a PHP serialized value in a read-only result to open it in the viewer. ([#4377](https://github.com/TableProApp/TablePro/pull/4377))
+- Wrap Text in the data grid shows long values on several lines, up to 10 lines a row. ([#4378](https://github.com/TableProApp/TablePro/pull/4378))
+
+### Changed
+
+- Typing in the query editor no longer redraws the tab strip and the rest of the window on every keystroke. ([#4286](https://github.com/TableProApp/TablePro/pull/4286))
+- Restore Dump's database picker shows favorite databases and their menu, like the toolbar switcher. ([#4303](https://github.com/TableProApp/TablePro/pull/4303))
+- The editor tab bar now scrolls, animates and drags like the macOS tab bar. ([#4323](https://github.com/TableProApp/TablePro/pull/4323))
+- Fetch All on PostgreSQL uses less memory, and binary columns load much faster. ([#4328](https://github.com/TableProApp/TablePro/pull/4328))
+- TLS connections to PostgreSQL 17 and later skip a round trip once the server is known. ([#4328](https://github.com/TableProApp/TablePro/pull/4328))
+- PostgreSQL connections open faster and a table's columns load in one round trip. ([#4328](https://github.com/TableProApp/TablePro/pull/4328))
+- Spanner, Cloudflare D1 and SurrealDB tables are counted only when you choose Count Exactly. ([#4330](https://github.com/TableProApp/TablePro/pull/4330))
+- Row totals stay in place while you page through a table, until you refresh or change the filters. ([#4330](https://github.com/TableProApp/TablePro/pull/4330))
+- Large ClickHouse results decode about 2.7 times faster. ([#4331](https://github.com/TableProApp/TablePro/pull/4331))
+- Oracle results that stream in fetch 1,000 rows per round trip instead of 50. ([#4331](https://github.com/TableProApp/TablePro/pull/4331))
+- libSQL queries stop at the row limit instead of downloading the whole result first. ([#4331](https://github.com/TableProApp/TablePro/pull/4331))
+- Snowflake table columns and details load without a running warehouse. ([#4331](https://github.com/TableProApp/TablePro/pull/4331))
+- SSH tunnels transfer large results many times faster over high-latency connections. ([#4331](https://github.com/TableProApp/TablePro/pull/4331))
+- Redis key browsing loads a page in fewer round trips on databases with 10,000 keys or more. ([#4332](https://github.com/TableProApp/TablePro/pull/4332))
+- Elasticsearch deep pages no longer download the documents they skip. ([#4332](https://github.com/TableProApp/TablePro/pull/4332))
+- MongoDB collection pages load without an extra round trip to the server. ([#4332](https://github.com/TableProApp/TablePro/pull/4332))
+- Memcached key browsing reads a page of values in one request. ([#4332](https://github.com/TableProApp/TablePro/pull/4332))
+- CSV and JSON exports of large tables finish several times faster. ([#4333](https://github.com/TableProApp/TablePro/pull/4333))
+- Refreshing a database with thousands of tables now updates only the sidebar rows that changed. ([#4334](https://github.com/TableProApp/TablePro/pull/4334))
+- Wide tables and long values draw and scroll faster in the data grid. ([#4335](https://github.com/TableProApp/TablePro/pull/4335))
+- VoiceOver reads the data grid columns on screen, and scrolling sideways brings in the next ones. ([#4335](https://github.com/TableProApp/TablePro/pull/4335))
+- Opening a table redraws the data grid once instead of several times. ([#4335](https://github.com/TableProApp/TablePro/pull/4335))
+- Selecting hundreds of thousands of rows in the data grid stays responsive. ([#4335](https://github.com/TableProApp/TablePro/pull/4335))
+- Typing on a long line with line wrapping off no longer lays out every visible line again. ([#4340](https://github.com/TableProApp/TablePro/pull/4340))
+- Large results use less memory, and the first edit in one no longer pauses to copy every row. ([#4340](https://github.com/TableProApp/TablePro/pull/4340))
+- Typing in a very large SQL file no longer pauses while syntax highlighting catches up. ([#4340](https://github.com/TableProApp/TablePro/pull/4340))
+- MySQL and MariaDB no longer switch database before each statement, so paging and running queries take half the time. ([#4341](https://github.com/TableProApp/TablePro/pull/4341))
+- Opening a MySQL or MariaDB table reads its columns in one round trip. ([#4341](https://github.com/TableProApp/TablePro/pull/4341))
+- ROW_COUNT() and SHOW WARNINGS on MySQL and MariaDB answer for your last statement, not for a database switch. ([#4341](https://github.com/TableProApp/TablePro/pull/4341))
+- A MySQL or MariaDB query with a row limit sends the limit together with the query. ([#4341](https://github.com/TableProApp/TablePro/pull/4341))
+- PostgreSQL and SQL Server results take less CPU to read. ([#4342](https://github.com/TableProApp/TablePro/pull/4342))
+- Table tabs open sorted by their primary key unless you chose another default row sort. ([#4344](https://github.com/TableProApp/TablePro/pull/4344))
+- The first page of a Kafka topic loads with one request per broker instead of one per partition. ([#4349](https://github.com/TableProApp/TablePro/pull/4349))
+- Cassandra table pages after the first load without preparing the query again. ([#4349](https://github.com/TableProApp/TablePro/pull/4349))
+- The Data Dictionary export reads a PostgreSQL schema's columns, keys and indexes in one pass, not table by table. ([#4350](https://github.com/TableProApp/TablePro/pull/4350))
+- BigQuery statements that finish within two seconds return in one request, without the half-second wait each one had. ([#4352](https://github.com/TableProApp/TablePro/pull/4352))
+- DuckDB connections now refuse SET threads below the number of processors. ([#4354](https://github.com/TableProApp/TablePro/pull/4354))
+- A PostgreSQL SQL export reads each schema's indexes, comments, sequences and enum types in one pass, not table by table. ([#4355](https://github.com/TableProApp/TablePro/pull/4355))
+- A PostgreSQL SQL import stops at a statement read before an earlier write changed standard_conforming_strings. ([#4356](https://github.com/TableProApp/TablePro/pull/4356))
+- A PostgreSQL SQL import with Wrap in transaction on sends its writes in batches, not one statement at a time. ([#4356](https://github.com/TableProApp/TablePro/pull/4356))
+- Tables open a round trip sooner from the columns read with the schema, and a bar offers Reload if they changed since. ([#4357](https://github.com/TableProApp/TablePro/pull/4357))
+
+### Removed
+
+- Removed the setting that wrapped editor tabs onto more rows. ([#4323](https://github.com/TableProApp/TablePro/pull/4323))
+
+### Fixed
+
+- Switching tabs cleared the undo history of grid edits still waiting to be saved. ([#4283](https://github.com/TableProApp/TablePro/pull/4283))
+- One connection TablePro could not read emptied the whole connection list and blocked saving. ([#4283](https://github.com/TableProApp/TablePro/pull/4283))
+- After a reconnect lost a transaction, a grid save used up the warning meant for your next statement. ([#4283](https://github.com/TableProApp/TablePro/pull/4283))
+- Choosing Save when closing a tab could save another tab instead if the selection changed while the prompt was up. ([#4286](https://github.com/TableProApp/TablePro/pull/4286))
+- Query History saved the statements of a script without their schema, so reopening one ran in the default schema. ([#4286](https://github.com/TableProApp/TablePro/pull/4286))
+- Importing a SQL file joined the words around a dropped comment, so `a/* x */FROM t` ran as `aFROM t`. ([#4289](https://github.com/TableProApp/TablePro/pull/4289))
+- On iOS, a ROLLBACK after a MySQL `#` comment or a nested PostgreSQL comment left the transaction shown as open. ([#4289](https://github.com/TableProApp/TablePro/pull/4289))
+- Importing a SQL file split a PostgreSQL `E'...'` string continued on the next line, or a SQLite `$name(...)` parameter. ([#4289](https://github.com/TableProApp/TablePro/pull/4289))
+- The editor flagged a bracket inside a `$$` body, a `[name]`, a MySQL `#` comment or PostgreSQL's `'C:\'` as unmatched. ([#4289](https://github.com/TableProApp/TablePro/pull/4289))
+- Query Insights grouped statements without the engine's quoting and comment rules, such as PostgreSQL's `'C:\'`. ([#4289](https://github.com/TableProApp/TablePro/pull/4289))
+- Renaming a SQL Server column failed, or renamed the wrong one, when a schema or table name held a dot or a bracket. ([#4294](https://github.com/TableProApp/TablePro/pull/4294))
+- An XLSX file with one huge shared string could use up memory while it was previewed. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- A small SQL file whose last characters were Latin-1 was read as UTF-8. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Inserting a row of only defaults on Oracle did nothing on iPhone and iPad. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Markdown export cut emoji and dropped accents in aligned columns. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Oracle triggers were left out of SQL exports, and Oracle drops failed to restore before 23ai. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- SQL exports wrote wrong trigger or routine drops for Cassandra, Teradata, SQL Server aggregates and DuckDB macros. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- XLSX export dropped leading and trailing spaces in text cells. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- CSV, JSON and XLSX import was offered for MongoDB and then failed. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Stopping an XLSX or Markdown export after its last row still saved the file. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- SQL exports with Drop wrote DROP ROUTINE, which no database accepts, and dropped PostgreSQL procedures as functions. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- SQL exports from two windows at once could leave out sequences and mix up their warnings. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- PostgreSQL booleans showed as t and f on iPhone and iPad. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- A SQL export of query results failed with Read every table at one snapshot turned on. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- SQLite SQL exports dropped NUL characters inside text. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- Copy as SQL INSERT on iPhone and iPad quoted MySQL BIT values and listed generated columns. ([#4302](https://github.com/TableProApp/TablePro/pull/4302))
+- A Claude, Gemini, OpenAI or xAI reply that ended with nothing in it showed an empty message instead of an error. ([#4317](https://github.com/TableProApp/TablePro/pull/4317))
+- PostgreSQL pages of a large table with no sort order no longer skip rows. ([#4328](https://github.com/TableProApp/TablePro/pull/4328))
+- Views and tables with no row estimate no longer run a full row count when you open them. ([#4330](https://github.com/TableProApp/TablePro/pull/4330))
+- Paging through a table without a primary key no longer rereads its structure on every page. ([#4330](https://github.com/TableProApp/TablePro/pull/4330))
+- Clicking another table no longer waits for the previous table's structure to finish loading. ([#4330](https://github.com/TableProApp/TablePro/pull/4330))
+- Snowflake clustering keys no longer come from a table whose name differs only by case. ([#4331](https://github.com/TableProApp/TablePro/pull/4331))
+- Parquet exports of large tables no longer take most of the memory on your Mac. ([#4333](https://github.com/TableProApp/TablePro/pull/4333))
+- On iPhone and iPad, one connection, group or tag the app could not read emptied the library and blocked changes. ([#4339](https://github.com/TableProApp/TablePro/pull/4339))
+- After a dropped MySQL connection, a read could rerun on the wrong database when USE was typed without a space. ([#4341](https://github.com/TableProApp/TablePro/pull/4341))
+- A reopened tab could share its Query number with another open tab. ([#4343](https://github.com/TableProApp/TablePro/pull/4343))
+- Opening a new tab crashed when another tab was titled Query 9223372036854775807. ([#4343](https://github.com/TableProApp/TablePro/pull/4343))
+- Renaming a database or schema replaced the SQL in a query tab whose last run read a table there. ([#4343](https://github.com/TableProApp/TablePro/pull/4343))
+- After renaming a table or schema, the tab and the window title showed different names. ([#4343](https://github.com/TableProApp/TablePro/pull/4343))
+- Tabs such as ER Diagram kept their old language after you changed the app's language. ([#4343](https://github.com/TableProApp/TablePro/pull/4343))
+- A tab saved with Save As showed its file name without the extension, unlike the same file opened later. ([#4343](https://github.com/TableProApp/TablePro/pull/4343))
+- A saved or shared tab titled Query 2 was renumbered when moved to another connection or restored. ([#4343](https://github.com/TableProApp/TablePro/pull/4343))
+- After a COMMIT, autocomplete offered no columns before FROM until it read them again. ([#4344](https://github.com/TableProApp/TablePro/pull/4344))
+- A saved connection the app could not read was replaced by its iCloud copy, or stayed after being deleted elsewhere. ([#4345](https://github.com/TableProApp/TablePro/pull/4345))
+- In Vim mode, `w` stopped on a symbol followed by a variation selector, such as ❤️. ([#4347](https://github.com/TableProApp/TablePro/pull/4347))
+- In Vim mode, marks stayed where they were when lines were typed, pasted or undone above them. ([#4347](https://github.com/TableProApp/TablePro/pull/4347))
+- In Vim mode, `"a2p` pasted register a once and then the last yank, and `2P` mixed up the copies. ([#4347](https://github.com/TableProApp/TablePro/pull/4347))
+- In Vim mode, Escape or leaving the command line kept a pending `d` or `c`, so the next key could delete text. ([#4347](https://github.com/TableProApp/TablePro/pull/4347))
+- In Vim mode, `ip` dropped the last character of the last paragraph. ([#4347](https://github.com/TableProApp/TablePro/pull/4347))
+- In Vim mode, `cw`, `cj`, `dF` and `db` at the start of a line changed more text than Vim does. ([#4347](https://github.com/TableProApp/TablePro/pull/4347))
+- In Vim mode, Enter, `+` and `-` did nothing in Normal mode. ([#4347](https://github.com/TableProApp/TablePro/pull/4347))
+- In Vim mode, `d%`, `c%`, `dn`, `d}`, `d'a` and other motions after an operator only moved the cursor. ([#4347](https://github.com/TableProApp/TablePro/pull/4347))
+- In Vim mode, `a` and `p` on an empty line put the text on the next line. ([#4347](https://github.com/TableProApp/TablePro/pull/4347))
+- In Vim mode, the next motion after `viw` shrank the selection instead of extending it. ([#4347](https://github.com/TableProApp/TablePro/pull/4347))
+- A PostgreSQL dump of a table using one enum type in two columns listed each label twice, so its CREATE TYPE failed. ([#4355](https://github.com/TableProApp/TablePro/pull/4355))
+- A SQL export or Data Dictionary dropped or mixed up tables and schemas whose names differ only in Unicode form. ([#4359](https://github.com/TableProApp/TablePro/pull/4359))
+- A DuckDB SET or table function that calls nextval() no longer breaks the connection until it is reopened. ([#4364](https://github.com/TableProApp/TablePro/pull/4364))
+- A SQL export dropped values or mixed up keys when two tables, columns or keys had names differing only in Unicode form. ([#4365](https://github.com/TableProApp/TablePro/pull/4365))
+- The ER diagram, sidebar, autocomplete and compare merged tables or schemas named alike in two Unicode forms. ([#4366](https://github.com/TableProApp/TablePro/pull/4366))
+- Pressing Return or typing on a checkbox cell opened a text field over the checkbox. ([#4374](https://github.com/TableProApp/TablePro/pull/4374))
+- A Windows path or other text that only starts like a PHP token was shown as an invalid PHP value. ([#4377](https://github.com/TableProApp/TablePro/pull/4377))
+- Remote libSQL and Turso queries lost binary values on reads or failed to send them as parameters by @shuvroroy. ([#4379](https://github.com/TableProApp/TablePro/pull/4379))
+- Cross-engine Table Transfer and Data Sync wrote booleans, dates and arrays the target engine stored wrong. ([#4381](https://github.com/TableProApp/TablePro/pull/4381))
+- SQL export wrote binary values Redshift and KingbaseES restored as the wrong bytes. ([#4381](https://github.com/TableProApp/TablePro/pull/4381))
+- A sqlite:// or duckdb:// link read its parameters, such as name, as part of the file path. ([#4390](https://github.com/TableProApp/TablePro/pull/4390))
+- Exporting tables from a SQLite file suggested the database file's full path as the file name. ([#4390](https://github.com/TableProApp/TablePro/pull/4390))
+- A query edited past 2,000,000 characters kept stale syntax colors instead of turning plain text. ([#4392](https://github.com/TableProApp/TablePro/pull/4392))
+- Read-Only Safe Mode blocked reading rows from BigQuery, Spanner, Elasticsearch, Typesense and etcd. ([#4397](https://github.com/TableProApp/TablePro/pull/4397))
+
+### Security
+
+- Opening or browsing a DuckDB file with deeply nested constraints, defaults or views could crash the app. ([#4293](https://github.com/TableProApp/TablePro/pull/4293))
+- Attaching a DuckDB file with deeply nested constraints, defaults or views could crash the app. ([#4354](https://github.com/TableProApp/TablePro/pull/4354))
+
+
 ## [0.87.0](https://github.com/TableProApp/TablePro/releases/tag/v0.87.0) - 2026-11-17
 
 Read-Only and Safe Mode hold on more engines, and the AI assistant and MCP clients see only what a connection allows. A Local only connection keeps its passwords off iCloud Keychain.

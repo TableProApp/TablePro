@@ -305,6 +305,18 @@ struct PhpSerializeParserDepthTests {
         #expect(!PhpSerializeParser.looksLikePhpSerialized("some text"))
     }
 
+    @Test("looksLikePhpSerialized rejects a token prefix with no numeric payload")
+    func looksLikeRejectsNonNumericPayload() {
+        #expect(!PhpSerializeParser.looksLikePhpSerialized(#"C:\Users\me"#))
+        #expect(!PhpSerializeParser.looksLikePhpSerialized("a:b"))
+        #expect(!PhpSerializeParser.looksLikePhpSerialized("i:love"))
+        #expect(!PhpSerializeParser.looksLikePhpSerialized("b:ar"))
+        #expect(PhpSerializeParser.looksLikePhpSerialized("C:3:\"Foo\":0:{}"))
+        #expect(PhpSerializeParser.looksLikePhpSerialized("b:1;"))
+        #expect(PhpSerializeParser.looksLikePhpSerialized("i:-5;"))
+        #expect(PhpSerializeParser.looksLikePhpSerialized("d:1.5;"))
+    }
+
     private static func nested(_ inner: String, wrappers: Int, padding: Int = 0) -> String {
         String(repeating: "a:1:{i:0;", count: wrappers) + inner + String(repeating: "}", count: wrappers)
             + String(repeating: " ", count: padding)

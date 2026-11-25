@@ -10,8 +10,9 @@ use std::sync::{Arc, Mutex};
 
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_ffi::{
-    Core, ForeignAppDirsArg, ForeignAppTag, ForeignImportRequest, HostConfig, HostSecretError, HostSecrets,
-    PasswordOutcomeTag, QueryAvailabilityTag, ResolutionTag, SecretItemTag, SecretKindTag,
+    Core, ForeignAppDirsArg, ForeignAppTag, ForeignImportRequest, ForeignSourceInfo, HostConfig, HostSecretError,
+    HostSecrets, PasswordOfferTag, PasswordOutcomeTag, QueryAvailabilityTag, ResolutionTag, ScanDepthTag,
+    SecretItemTag, SecretKindTag, SourceAvailabilityTag,
 };
 
 #[derive(Default)]
@@ -119,6 +120,10 @@ fn dbeaver(home: &Path) {
     fs::write(project.join("Scripts/Report.sql"), "select 42;").unwrap();
 }
 
+fn source(sources: &[ForeignSourceInfo], app: ForeignAppTag) -> &ForeignSourceInfo {
+    sources.iter().find(|source| source.app == app).unwrap()
+}
+
 const EVERYTHING: ForeignImportRequest = ForeignImportRequest {
     include_passwords: true,
     include_saved_queries: true,
@@ -131,7 +136,10 @@ async fn another_app_s_connection_lands_with_its_password_and_saved_query_once()
     let core = core(dir.path(), &vault);
     dbeaver(dir.path());
 
-    let sources = core.foreign_sources(dirs(dir.path())).await.unwrap();
+    let sources = core
+        .foreign_sources(dirs(dir.path()), ScanDepthTag::Inventory)
+        .await
+        .unwrap();
     let review = core
         .clone()
         .read_foreign(ForeignAppTag::DBeaver, dirs(dir.path()), None, EVERYTHING, None)
@@ -152,17 +160,16 @@ async fn another_app_s_connection_lands_with_its_password_and_saved_query_once()
         .await
         .unwrap();
 
-    let source = sources
-        .iter()
-        .find(|source| source.app == ForeignAppTag::DBeaver)
-        .unwrap();
-    assert!(source.available);
-    assert_eq!((source.connections, source.saved_queries), (1, 1));
-    let navicat = sources
-        .iter()
-        .find(|source| source.app == ForeignAppTag::Navicat)
-        .unwrap();
+    let dbeaver = source(&sources, ForeignAppTag::DBeaver);
+    assert_eq!(dbeaver.availability, SourceAvailabilityTag::Available);
+    assert_eq!((dbeaver.connections, dbeaver.saved_queries), (1, 1));
+    assert_eq!(dbeaver.password_offer, PasswordOfferTag::DecryptedWhileReading);
+    assert!(dbeaver.offers_saved_queries && dbeaver.starts_ticked && dbeaver.preselected);
+    let navicat = source(&sources, ForeignAppTag::Navicat);
     assert_eq!(navicat.file_extensions, ["ncx"]);
+    assert_eq!(navicat.availability, SourceAvailabilityTag::Available);
+    assert!(!navicat.starts_ticked && !navicat.preselected);
+    assert_eq!(sources.iter().filter(|source| source.preselected).count(), 1);
     assert_eq!(review.passwords(), PasswordOutcomeTag::Read);
     assert_eq!(rows[0].name, "Windows PG");
     assert_eq!(rows[0].connection.as_ref().unwrap().host, "windows.example.com");
@@ -175,6 +182,7 @@ async fn another_app_s_connection_lands_with_its_password_and_saved_query_once()
         (outcome.connections, outcome.passwords_not_kept, outcome.queries_added),
         (1, 0, 1)
     );
+    assert_eq!(outcome.connection_ids, std::slice::from_ref(&saved.id));
     assert_eq!(again.code(), "foreign_import.applied");
     assert_eq!(library.connections.len(), 1);
     assert_eq!(saved.name, "Windows PG");
@@ -208,7 +216,7 @@ async fn a_second_read_matches_the_saved_connection_and_keeps_it_for_the_queries
 
     let review = read().await.unwrap();
     let before = review.choices();
-    review.set_selected("windows".to_owned(), true);
+    review.set_selected("General/windows".to_owned(), true);
     let checked = review.choices();
     let outcome = review.apply(None).await.unwrap();
     let count = core.library().unwrap().snapshot().await.unwrap().connections.len();
@@ -228,6 +236,7 @@ async fn a_second_read_matches_the_saved_connection_and_keeps_it_for_the_queries
         Some(ResolutionTag::KeepExisting { id: saved_id })
     );
     assert_eq!((outcome.connections, outcome.queries_already_saved), (0, 1));
+    assert!(outcome.connection_ids.is_empty());
     assert_eq!(count, 1);
 }
 
@@ -252,6 +261,68 @@ async fn another_app_s_connection_lands_in_the_project_the_import_names() {
     assert_eq!(malformed.code(), "library.invalid_id");
     assert_eq!(scoped.connections.len(), 1);
     assert_eq!(scoped.connections[0].project_id.as_deref(), Some(acme.id.as_str()));
+}
+
+#[tokio::test]
+async fn a_replaced_connection_keeps_its_id_in_the_outcome() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Arc::new(Vault::default());
+    let core = core(dir.path(), &vault);
+    dbeaver(dir.path());
+    let read = || {
+        core.clone()
+            .read_foreign(ForeignAppTag::DBeaver, dirs(dir.path()), None, EVERYTHING, None)
+    };
+    read().await.unwrap().apply(None).await.unwrap();
+    let saved_id = core.library().unwrap().snapshot().await.unwrap().connections[0]
+        .id
+        .clone();
+
+    let review = read().await.unwrap();
+    review.set_selected("General/windows".to_owned(), true);
+    let replaced = review
+        .resolve(
+            "General/windows".to_owned(),
+            ResolutionTag::Replace { id: saved_id.clone() },
+        )
+        .unwrap();
+    let outcome = review.apply(None).await.unwrap();
+
+    assert!(replaced);
+    assert_eq!((outcome.connections, outcome.replaced), (1, 1));
+    assert_eq!(outcome.connection_ids, [saved_id]);
+}
+
+#[tokio::test]
+async fn the_launch_probe_reads_no_count_and_unreadable_data_says_why() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Arc::new(Vault::default());
+    let core = core(dir.path(), &vault);
+    dbeaver(dir.path());
+
+    let probe = core
+        .foreign_sources(dirs(dir.path()), ScanDepthTag::Presence)
+        .await
+        .unwrap();
+    let data_sources = dbeaver_root(dir.path()).join("DBeaverData/workspace6/General/.dbeaver/data-sources.json");
+    fs::write(&data_sources, "{ not json").unwrap();
+    let broken = core
+        .foreign_sources(dirs(dir.path()), ScanDepthTag::Inventory)
+        .await
+        .unwrap();
+
+    let found = source(&probe, ForeignAppTag::DBeaver);
+    assert_eq!(found.availability, SourceAvailabilityTag::Available);
+    assert_eq!((found.connections, found.saved_queries), (0, 0));
+    assert!(!found.starts_ticked);
+    let unreadable = source(&broken, ForeignAppTag::DBeaver);
+    let code = match &unreadable.availability {
+        SourceAvailabilityTag::Unreadable { code, .. } => Some(code.as_str()),
+        _ => None,
+    };
+    assert_eq!(code, Some("foreign_import.parse"), "{:?}", unreadable.availability);
+    assert!(!unreadable.starts_ticked && !unreadable.preselected);
+    assert!(source(&broken, ForeignAppTag::Navicat).preselected);
 }
 
 #[tokio::test]

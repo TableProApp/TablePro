@@ -150,8 +150,8 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 sql: "SELECT sqlite_version()",
                 requestTimeout: deadline.remainingSeconds()
             )
-            let version = libsqlVersion?.rows.first?.first?.stringValue
-                ?? sqliteVersion.rows.first?.first?.stringValue
+            let version = libsqlVersion?.rows.first?.first?.cell.asText
+                ?? sqliteVersion.rows.first?.first?.cell.asText
                 ?? "libSQL"
 
             lock.withLock { _serverVersion = version }
@@ -345,7 +345,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
             if !result.rows.isEmpty {
                 let rows = result.rows.map { rawRow in
-                    rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
+                    rawRow.map(\.cell)
                 }
                 spill.deliver(rows)
             }
@@ -961,7 +961,7 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 truncated = true
                 break
             }
-            let row = rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
+            let row = rawRow.map(\.cell)
             rows.append(row)
         }
 

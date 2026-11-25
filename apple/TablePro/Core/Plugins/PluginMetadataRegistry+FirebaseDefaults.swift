@@ -9,7 +9,7 @@ extension PluginMetadataRegistry {
             ("Firestore", PluginMetadataSnapshot(
                 displayName: "Cloud Firestore", iconName: "firebase-icon", defaultPort: 0,
                 requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "firestore", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
                 brandColorHex: "#FFA000",
@@ -53,6 +53,7 @@ extension PluginMetadataRegistry {
     private func firebaseCapabilities(realtimeDatabase: Bool) -> PluginMetadataSnapshot.CapabilityFlags {
         PluginMetadataSnapshot.CapabilityFlags(
             supportsSchemaSwitching: false,
+            statementsCanSwitchDatabase: false,
             supportsImport: false,
             supportsExport: true,
             supportsSSH: false,

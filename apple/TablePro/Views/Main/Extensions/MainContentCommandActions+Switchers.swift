@@ -22,8 +22,6 @@ internal extension MainContentCommandActions {
     /// mean.
     func openScopeSwitcher(_ target: ContainerSwitchTarget?) {
         guard let coordinator, canSwitchContainer(target, on: coordinator) else { return }
-        /// Clearing first responder is what lets the popover's search field take focus.
-        coordinator.contentWindow?.makeFirstResponder(nil)
         presentDatabaseSwitcher(on: coordinator, target: target)
     }
 

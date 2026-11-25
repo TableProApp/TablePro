@@ -37,6 +37,48 @@ extension TextLayoutManager {
         layoutView?.needsLayout = true
     }
 
+    // A wrapped line restyles the fragments the edit touched; anything else is typeset again.
+    func restyleLayout(for range: NSRange) {
+        invalidateGeometry(in: range)
+
+        for linePosition in lineStorage.linesInRange(range) {
+            guard let fragments = restyledFragments(of: linePosition, in: range) else {
+                linePosition.data.setNeedsLayout()
+                continue
+            }
+            for fragment in fragments {
+                viewReuseQueue.getView(forKey: fragment.id)?.needsDisplay = true
+            }
+        }
+
+        if range.location == textStorage?.length, !lineStorage.isEmpty {
+            lineStorage.last?.data.setNeedsLayout()
+        }
+
+        layoutView?.needsLayout = true
+    }
+
+    private func restyledFragments(
+        of linePosition: TextLineStorage<TextLine>.TextLinePosition,
+        in range: NSRange
+    ) -> [LineFragment]? {
+        guard renderDelegate == nil,
+              let textStorage,
+              let edited = range.intersection(linePosition.range),
+              linePosition.height == linePosition.data.lineFragments.height,
+              attachments.getAttachmentsOverlapping(linePosition.range).isEmpty,
+              markedTextManager.markedRanges(in: linePosition.range) == nil else {
+            return nil
+        }
+        return linePosition.data.restyle(
+            range: NSRange(location: edited.location - linePosition.range.location, length: edited.length),
+            lineLocation: linePosition.range.location,
+            maxWidth: maxLineLayoutWidth,
+            displayData: makeDisplayData(maxWidth: maxLineLayoutWidth),
+            stringRef: textStorage
+        )
+    }
+
     /// Forgets the measured width of every line and lays them out again.
     ///
     /// Call this when something changes how wide every line is, such as the font or the letter spacing. Without it the

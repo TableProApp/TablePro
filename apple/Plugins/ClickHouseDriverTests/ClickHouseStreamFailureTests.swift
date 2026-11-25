@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 /// Bodies as the servers wrote them when `SELECT number, throwIf(number = 100000) FROM
@@ -170,6 +171,51 @@ struct ClickHouseStreamFailureTests {
         await #expect(throws: ClickHouseError.self) {
             for try await _ in driver.streamRows(query: "SELECT number FROM numbers(200000)") {}
         }
+    }
+
+    // 30 batches of 5,000 rows, past the 16 the stream buffers.
+    private static let heldExportRowCount = 150_000
+
+    // Reads an export of `body` with a reader that takes one batch, then holds the stream until the rows its buffer
+    // refuses have gone to the spool. Returns the ids taken in order, and the error the stream ended with.
+    private static func readHeldExport(_ body: String) async throws -> (ids: [Int], error: ClickHouseError?) {
+        let server = ClickHouseStubServer { _ in
+            ClickHouseStubReply(statusCode: 200, body: body, headers: ["X-ClickHouse-Format": "TabSeparatedWithNamesAndTypes"])
+        }
+        let driver = server.connectedDriver()
+        var iterator = driver.streamRows(query: "SELECT number FROM numbers(200000)").makeAsyncIterator()
+        var ids: [Int] = []
+        func take(_ element: PluginStreamElement?) {
+            guard case .rows(let batch)? = element else { return }
+            ids += batch.compactMap { $0.first?.asText.flatMap(Int.init) }
+        }
+        while ids.isEmpty { take(try await iterator.next()) }
+        try await waitUntil(timeout: .seconds(30)) { SpoolBudget.shared.bytesInUse > 0 }
+        do {
+            while let element = try await iterator.next() { take(element) }
+            return (ids, nil)
+        } catch let error as ClickHouseError {
+            return (ids, error)
+        }
+    }
+
+    @Test("An export whose reader holds the stream gets every row in order through the spill")
+    func heldExportReaderGetsEveryRow() async throws {
+        let read = try await Self.readHeldExport(Self.twoColumnHeader + Self.rows(Self.heldExportRowCount))
+        #expect(read.error == nil)
+        #expect(read.ids == Array(0..<Self.heldExportRowCount))
+    }
+
+    @Test("An export whose reader holds the stream gets the rows ahead of a server error in order, then the error")
+    func heldExportReaderGetsTheErrorAfterTheRows() async throws {
+        let message = "\(Self.throwIfMessage) (version 25.8.33.6 (official build))"
+        let read = try await Self.readHeldExport(
+            Self.twoColumnHeader + Self.rows(Self.heldExportRowCount) + "__exception__\r\n" + message + "\n"
+        )
+        #expect(read.error?.message == message)
+        // More than the buffer holds, so rows came back from the spool before the error did.
+        #expect(read.ids.count > PluginRowStream.boundedBufferBatches * PluginRowBatcher.defaultRowLimit)
+        #expect(read.ids == Array(0..<read.ids.count))
     }
 
     @Test("A capped read whose query names another format comes back as one Output value")

@@ -70,6 +70,7 @@ internal struct WelcomeMenuContext {
     internal let disconnectableConnectionIds: Set<UUID>
     internal let reconnectableConnectionIds: Set<UUID>
     internal let isSyncEnabled: Bool
+    internal let isCompareSyncEnabled: Bool
     internal let canPublishToTeamCatalog: Bool
     internal let teamLibraryTeams: [TeamLibraryTeam]
     internal let hasTeamLibraryConflicts: Bool
@@ -135,17 +136,21 @@ internal enum WelcomeMenuSpec {
                 .command(Titles.newGroup, .newGroup),
             ]),
             WelcomeMenuSection([
-                .submenu(title: Titles.importTitle, sections: [
-                    WelcomeMenuSection([
-                        .command(Titles.importConnections, .importConnections),
-                        .command(Titles.importFromURL, .importFromURL),
-                        .command(Titles.importFromApp, .importFromApp),
-                        .command(Titles.importFromAWS, .importFromAWS),
-                    ]),
-                    WelcomeMenuSection([.command(Titles.openProjectFolder, .openProjectFolder)]),
-                ]),
+                .submenu(title: Titles.importTitle, sections: ImportCommand.groups.map { group in
+                    WelcomeMenuSection(group.map { WelcomeMenuItem.command($0.title, menuCommand(for: $0)) })
+                }),
             ]),
         ]
+    }
+
+    internal static func menuCommand(for command: ImportCommand) -> WelcomeMenuCommand {
+        switch command {
+        case .connectionsFile: .importConnections
+        case .url: .importFromURL
+        case .otherApp: .importFromApp
+        case .aws: .importFromAWS
+        case .projectFolder: .openProjectFolder
+        }
     }
 
     // MARK: - Connections
@@ -165,12 +170,14 @@ internal enum WelcomeMenuSpec {
             primary.append(.command(Titles.disconnect, .disconnect(id)))
         }
 
-        let manage: [WelcomeMenuItem] = [
+        var manage: [WelcomeMenuItem] = [
             .command(Titles.edit, .edit(id)),
             .command(Titles.rename, .rename(.connection(id, section: section))),
             .command(Titles.duplicate, .duplicate(id)),
-            .command(Titles.compareAndSync, .compareAndSync(id)),
         ]
+        if context.isCompareSyncEnabled {
+            manage.append(.command(Titles.compareAndSync, .compareAndSync(id)))
+        }
 
         let currentGroupId = validGroupId(of: connection, groups: context.groups)
         var organize: [WelcomeMenuItem] = [
@@ -437,11 +444,6 @@ internal extension WelcomeMenuSpec {
         static var newConnection: String { String(localized: "New Connection…") }
         static var newGroup: String { String(localized: "New Group…") }
         static var importTitle: String { String(localized: "Import") }
-        static var importConnections: String { String(localized: "Import Connections…") }
-        static var importFromURL: String { String(localized: "Import from URL…") }
-        static var importFromApp: String { String(localized: "Import from Other App…") }
-        static var importFromAWS: String { String(localized: "Import from AWS…") }
-        static var openProjectFolder: String { String(localized: "Open Project Folder…") }
         static var disconnect: String { String(localized: "Disconnect") }
         static var reconnect: String { String(localized: "Reconnect") }
         static var edit: String { String(localized: "Edit…") }

@@ -120,6 +120,13 @@ extension DataGridViewController {
             return appliesRowFormat && commands.canCopyAsUpdate(scope)
         case #selector(SetValueCommandResponding.setCellsToValue(_:)):
             return commands.isSetCellsToValueOffered(for: commands.cells(scope))
+        // A grid that does not offer it dims the View menu's item instead of leaving it lit and doing nothing.
+        case #selector(toggleWrapText(_:)):
+            let state: NSControl.StateValue = model.wrapsText ? .on : .off
+            if let menuItem = item as? NSMenuItem, menuItem.state != state {
+                menuItem.state = state
+            }
+            return commands.offers(.wrapText)
         default:
             if let command = Self.setValueCommand(for: action) {
                 return commands.isSetValueOffered(command, for: commands.cells(scope))

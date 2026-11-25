@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: build.sh app|plugins [--unsigned]
+# Usage: build.sh app [arm64|x86_64]|plugins [--unsigned]
 # VERSION and BUILD, when set, become MARKETING_VERSION and CURRENT_PROJECT_VERSION.
-# Writes build/release/TablePro.app and its archive, or build/release/plugins and plugins-dSYMs.
+# The app builds one arch into build/release/<arch>/TablePro.app and its archive; with no arch it
+# builds both. plugins writes build/release/plugins and plugins-dSYMs (universal).
 
 usage() {
-    echo "Usage: build.sh app|plugins [--unsigned]" >&2
+    echo "Usage: build.sh app [arm64|x86_64]|plugins [--unsigned]" >&2
     exit 2
 }
 
@@ -16,15 +17,18 @@ die() {
 }
 
 KIND=""
+ARCH=""
 SIGNED=true
 for arg in "$@"; do
     case "$arg" in
         app | plugins) [ -z "$KIND" ] || usage; KIND="$arg" ;;
+        arm64 | x86_64) [ -z "$ARCH" ] || usage; ARCH="$arg" ;;
         --unsigned) SIGNED=false ;;
         *) usage ;;
     esac
 done
 [ -n "$KIND" ] || usage
+[ "$KIND" = app ] || [ -z "$ARCH" ] || die "an arch applies only to the app build"
 case "${BUILD:-}" in
     *[!0-9]*) echo "build.sh: BUILD must be an integer, got '$BUILD'" >&2; exit 2 ;;
 esac
@@ -81,35 +85,51 @@ check_universal() {
     done
 }
 
+check_arch() {
+    local app="$1" arch="$2" other binary
+    case "$arch" in arm64) other=x86_64 ;; x86_64) other=arm64 ;; *) die "unknown arch $arch" ;; esac
+    for binary in "$app/Contents/MacOS"/*; do
+        lipo "$binary" -verify_arch "$arch" || die "$binary has no $arch slice: $(lipo -archs "$binary")"
+        ! lipo "$binary" -verify_arch "$other" 2> /dev/null \
+            || die "$binary has an $other slice too: $(lipo -archs "$binary")"
+    done
+}
+
 build_app() {
-    local archive="$OUT/TablePro.xcarchive" app="$OUT/TablePro.app" name profile=()
-    rm -rf "$archive" "$app" "$OUT/export"
+    local arch="$1"
+    local out="$OUT/$arch"
+    local archive="$out/TablePro.xcarchive" app="$out/TablePro.app" exported="$out/export" name profile=()
+    # Per-arch so a both-arch build keeps each arch's intermediates apart; xcodebuild_project reads it.
+    local DERIVED="$out/DerivedData"
+    rm -rf "$out"
+    mkdir -p "$out"
     if [ "$SIGNED" = true ]; then
         [ -f "$EXPORT_OPTIONS" ] || die "$EXPORT_OPTIONS is missing"
         name="$(/usr/libexec/PlistBuddy -c 'Print :provisioningProfiles:com.TablePro' "$EXPORT_OPTIONS")"
         profile=("TABLEPRO_PROVISIONING_PROFILE=$name")
     fi
 
-    # One task at a time: the app module's arm64 and x86_64 whole-module compiles at once outgrow
-    # a 7 GB hosted runner and swap, 237 min against 105 min measured in run 42617599195.
-    xcodebuild_project archive-app archive -jobs 1 -scheme TablePro -archivePath "$archive" \
-        ${profile[@]+"${profile[@]}"}
+    # One arch per build: the app module's whole-module compile for both arches at once outgrew a
+    # 7 GB hosted runner and swapped (237 min against 105 min, run 42617599195). -jobs 1 still caps
+    # the peak within the single arch.
+    xcodebuild_project "archive-app-$arch" archive -jobs 1 -scheme TablePro -archivePath "$archive" \
+        ARCHS="$arch" ONLY_ACTIVE_ARCH=NO ${profile[@]+"${profile[@]}"}
     # -exportArchive refuses a generic archive, which is what any other installed product makes it.
     [ "$(plutil -extract ApplicationProperties.ApplicationPath raw -o - "$archive/Info.plist" 2> /dev/null)" \
         = "Applications/TablePro.app" ] || die "$archive is not an app archive: $(find "$archive/Products" -mindepth 2 -maxdepth 3)"
 
     if [ "$SIGNED" = true ]; then
-        run_xcodebuild export-app -exportArchive -archivePath "$archive" -exportPath "$OUT/export" \
+        run_xcodebuild "export-app-$arch" -exportArchive -archivePath "$archive" -exportPath "$exported" \
             -exportOptionsPlist "$EXPORT_OPTIONS"
-        mv "$OUT/export/TablePro.app" "$app"
-        rm -rf "$OUT/export"
+        mv "$exported/TablePro.app" "$app"
+        rm -rf "$exported"
     else
         ditto "$archive/Products/Applications/TablePro.app" "$app"
     fi
 
-    check_universal "$app"
-    scripts/ci/verify-plugin-loads.sh "$app/Contents/PlugIns" "$app/Contents/Frameworks"
-    echo "Built $app ($(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist"))"
+    check_arch "$app" "$arch"
+    scripts/ci/verify-plugin-loads.sh --arch "$arch" "$app/Contents/PlugIns" "$app/Contents/Frameworks"
+    echo "Built $app ($arch, $(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist"))"
 }
 
 build_plugins() {
@@ -136,4 +156,10 @@ build_plugins() {
     echo "Built $(wc -l < "$targets" | tr -d ' ') plugins in $OUT/plugins"
 }
 
-"build_$KIND"
+if [ "$KIND" = plugins ]; then
+    build_plugins
+elif [ -n "$ARCH" ]; then
+    build_app "$ARCH"
+else
+    for ARCH in arm64 x86_64; do build_app "$ARCH"; done
+fi

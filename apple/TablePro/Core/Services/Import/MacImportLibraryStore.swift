@@ -132,34 +132,45 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
     }
 
     // A file's credential is the secret itself: a key document given as a path would read a key file on this Mac.
-    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) {
+    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) -> CredentialWriteResult {
+        var refused = 0
+        func keep(_ saved: Bool) {
+            if !saved {
+                refused += 1
+            }
+        }
         if let password = credentials.password {
-            connections.savePassword(password, for: connectionId)
+            keep(connections.savePassword(password, for: connectionId))
         }
         if let sshPassword = credentials.sshPassword {
-            connections.saveSSHPassword(sshPassword, for: connectionId)
+            keep(connections.saveSSHPassword(sshPassword, for: connectionId))
         }
         if let keyPassphrase = credentials.keyPassphrase {
-            connections.saveKeyPassphrase(keyPassphrase, for: connectionId)
+            keep(connections.saveKeyPassphrase(keyPassphrase, for: connectionId))
         }
         if let sslClientKeyPassphrase = credentials.sslClientKeyPassphrase {
-            connections.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: connectionId)
+            keep(connections.saveSSLClientKeyPassphrase(sslClientKeyPassphrase, for: connectionId))
         }
         if let totpSecret = credentials.totpSecret {
-            connections.saveTOTPSecret(totpSecret, for: connectionId)
+            keep(connections.saveTOTPSecret(totpSecret, for: connectionId))
         }
         let pluginSecureFields = credentials.pluginSecureFields ?? [:]
-        guard !pluginSecureFields.isEmpty else { return }
-        // A file names any id it likes; the Keychain holds only the fields this connection's type declares secure.
-        let declared = connections.loadConnection(id: connectionId)
-            .map { Set(PluginManager.shared.secureConnectionFieldIds(for: $0.type)) } ?? []
-        for (fieldId, value) in pluginSecureFields where declared.contains(fieldId) {
-            if ConnectionFieldCatalog.keyDocumentFieldIds.contains(fieldId),
-               !ConnectionFieldCatalog.isInlineKeyDocument(value) {
-                continue
+        if !pluginSecureFields.isEmpty {
+            // A file names any id it likes; the Keychain holds only the fields this connection's type declares secure.
+            let declared = connections.loadConnection(id: connectionId)
+                .map { Set(PluginManager.shared.secureConnectionFieldIds(for: $0.type)) } ?? []
+            for (fieldId, value) in pluginSecureFields where declared.contains(fieldId) {
+                if ConnectionFieldCatalog.keyDocumentFieldIds.contains(fieldId),
+                   !ConnectionFieldCatalog.isInlineKeyDocument(value) {
+                    continue
+                }
+                keep(connections.savePluginSecureField(value, fieldId: fieldId, for: connectionId))
             }
-            connections.savePluginSecureField(value, fieldId: fieldId, for: connectionId)
         }
+        if refused > 0 {
+            Self.logger.error("The Keychain refused \(refused, privacy: .public) imported secrets")
+        }
+        return CredentialWriteResult(secretsNotKept: refused)
     }
 
     private func readLibrary() async throws -> (snapshot: ImportLibrarySnapshot, savedQueriesReadable: Bool) {
@@ -227,8 +238,12 @@ internal enum MacImportEnvironment {
         var missingDriverNames: [String: String] = [:]
         for typeId in registeredTypeIds {
             let type = DatabaseType(rawValue: typeId)
-            guard case .notInstalled = pluginManager.driverUnavailability(for: type) else { continue }
-            missingDriverNames[typeId] = PluginManager.registryDisplayName(of: type)
+            switch pluginManager.driverUnavailability(for: type) {
+            case .notInstalled, .installManagedByOrganization:
+                missingDriverNames[typeId] = PluginManager.registryDisplayName(of: type)
+            case .unknownType, .failedToLoad, .outdated:
+                continue
+            }
         }
         return ImportEnvironment(
             rules: ImportRules(

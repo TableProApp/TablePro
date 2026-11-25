@@ -1,45 +1,30 @@
-//
-//  DataResultsSettingsView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 struct DataResultsSettingsView: View {
-    @Binding var dataGrid: DataGridSettings
-    @Binding var valueColors: ValueColorSettings
-    @Binding var history: HistorySettings
-    @Binding var editor: EditorSettings
-    @Binding var typography: TypographySettings
+    @ObservedObject var dataGrid: SettingsSlice<DataGridSettings>
+    let valueColors: SettingsSlice<ValueColorSettings>
+    let editor: SettingsSlice<EditorSettings>
+    let typography: SettingsSlice<TypographySettings>
+    let history: SettingsSlice<HistorySettings>
 
     var body: some View {
         Form {
-            TypographySection(domain: .dataGrid, settings: $typography)
+            DataGridSection(
+                settings: $dataGrid.value,
+                typography: typography,
+                valueColors: valueColors,
+                editor: editor
+            )
 
-            DataGridSection(settings: $dataGrid, valueColors: $valueColors)
-
-            Section("JSON Viewer") {
-                Picker("Default view:", selection: $editor.jsonViewerPreferredMode) {
-                    Text("Text").tag(JSONViewMode.text)
-                    Text("Tree").tag(JSONViewMode.tree)
-                }
+            Section {
+                SettingsDrillRow(route: SettingsRoute.page(.filters), title: SettingsPage.filters.title)
+                // No value: Keep entries for also bounds query tab versions, so one word would mislead.
+                SettingsDrillRow(route: SettingsRoute.page(.queryHistory), title: SettingsPage.queryHistory.title)
+                DataRewindDrillRow(history: history)
             }
-
-            HistorySection(settings: $history)
-
-            DataRewindSection(settings: $history)
         }
         .formStyle(.grouped)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-pane-data")
     }
-}
-
-#Preview {
-    DataResultsSettingsView(
-        dataGrid: .constant(.default),
-        valueColors: .constant(.default),
-        history: .constant(.default),
-        editor: .constant(.default),
-        typography: .constant(.default)
-    )
-    .frame(width: 450, height: 500)
 }

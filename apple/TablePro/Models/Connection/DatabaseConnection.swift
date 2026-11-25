@@ -151,6 +151,8 @@ enum ConnectionColor: String, CaseIterable, Identifiable, Codable {
 /// Model representing a database connection
 struct DatabaseConnection: Identifiable, Hashable {
     static let connectTimeoutSecondsKey = "connectTimeoutSeconds"
+    // Matches TableProModels.DatabaseConnection, so the same stored value resolves the same on both platforms.
+    static let connectTimeoutSecondsRange = 1 ... 600
     static let queryTimeoutSecondsKey = "queryTimeoutSeconds"
     static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
     static let postDisconnectScriptKey = "postDisconnectScript"
@@ -289,14 +291,16 @@ struct DatabaseConnection: Identifiable, Hashable {
 
     var connectTimeoutSeconds: Int? {
         get {
+            // A present common key short-circuits the kafka legacy key, even when it is invalid or
+            // out of range: that keeps "a value was set here" distinct from "fall back to kafka".
             if let common = additionalFields[Self.connectTimeoutSecondsKey] {
-                return Int(common)
+                return Int(common).flatMap { Self.connectTimeoutSecondsRange.contains($0) ? $0 : nil }
             }
             guard type == .kafka else { return nil }
             return additionalFields["kafkaConnectTimeout"].flatMap(Int.init)
         }
         set {
-            if let newValue {
+            if let newValue, Self.connectTimeoutSecondsRange.contains(newValue) {
                 additionalFields[Self.connectTimeoutSecondsKey] = String(newValue)
             } else {
                 additionalFields.removeValue(forKey: Self.connectTimeoutSecondsKey)

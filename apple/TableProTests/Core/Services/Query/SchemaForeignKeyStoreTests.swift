@@ -113,4 +113,26 @@ struct SchemaForeignKeyStoreTests {
             count += 1
         }
     }
+
+    @Test("A table's keys come from the schema's read once it landed")
+    func listedKeysAnswerOnceRead() {
+        let store = SchemaForeignKeyStore()
+        let scope = makeScope(UUID())
+        #expect(store.listedForeignKeys(of: "orders", in: scope, nameIsCataloged: true) == nil)
+
+        store.store(["orders": [makeForeignKey(column: "customer_id", referencedTable: "customers")]], for: scope)
+
+        #expect(store.listedForeignKeys(of: "orders", in: scope, nameIsCataloged: false)?.map { $0.column } == ["customer_id"])
+        #expect(store.listedForeignKeys(of: "customers", in: scope, nameIsCataloged: true)?.isEmpty == true)
+    }
+
+    @Test("A name the read does not list, typed in SQL or of a session's own table, is read again")
+    func unlistedNamesAreNotAnswered() {
+        let store = SchemaForeignKeyStore()
+        let scope = makeScope(UUID())
+        store.store(["orders": [makeForeignKey(column: "customer_id", referencedTable: "customers")]], for: scope)
+
+        #expect(store.listedForeignKeys(of: "Customers", in: scope, nameIsCataloged: false) == nil)
+        #expect(store.listedForeignKeys(of: "orders", in: scope.sessionBound, nameIsCataloged: true) == nil)
+    }
 }

@@ -12,12 +12,14 @@ use tablepro_core::sql_syntax::{SortReference, sort_reference, with_order_by};
 use tablepro_core::{
     ByteLimit, CallOptions, ColumnInfo, EditorSessionOptions, QueryResult, ResultEvent, ResultSink, Truncation,
 };
+use tablepro_session::completion::read_catalog;
 use tablepro_session::runtime::{Tasks, catch_panic};
 use tablepro_session::{FailureCause, MonitorSignal, OperationError, OperationKind, Session, SessionHealth};
 use tokio_util::sync::CancellationToken;
 
 use crate::cancel_token::{CancelToken, token};
 use crate::catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
+use crate::completion::{CompletionList, CompletionRequest, catalog_home};
 use crate::definition::ObjectSource;
 use crate::editor::QueryEditor;
 use crate::error::{BoxedErrorInfo, CoreError};
@@ -93,11 +95,11 @@ impl std::fmt::Debug for PageResume {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum DatabaseLayoutTag {
-    // One database a connection reaches: a file, or numbered databases of keys.
+    // One database a connection reaches, such as a file.
     Single,
     // The server's databases are the schemas the catalog lists.
     AsSchemas,
-    // Each database holds schemas of its own, and a connection's catalog describes the one it opened.
+    // Each database holds schemas, or Redis's keys, of its own, and a connection's catalog describes the one it opened.
     WithSchemas,
 }
 
@@ -536,6 +538,35 @@ impl DatabaseSession {
     // `caret` and the span count UTF-16 units. Split by the grammar `gate_run` and the driver read the text with.
     pub fn statement_at(&self, sql: String, caret: u32) -> Option<StatementSpan> {
         statement_at::statement_at(&sql, caret, self.session.grammar())
+    }
+
+    // What completes at `caret`, in UTF-16 units of `text`, for an editor in `database` (None for the connection's).
+    // None where nothing does, and where nothing is typed in a place that takes anything unless `asked`. The catalog
+    // reads are the ones the object tree shares, so typing does not reach the server again.
+    pub async fn complete(
+        &self,
+        text: String,
+        caret: u32,
+        asked: bool,
+        database: Option<String>,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<Option<Arc<CompletionList>>, CoreError> {
+        let session = self.session.clone();
+        self.cancellable(cancel, async move {
+            let grammar = session.grammar();
+            let Some(request) = CompletionRequest::new(&text, caret, grammar, asked) else {
+                return Ok(None);
+            };
+            let dialect = session.current_dialect();
+            let home = catalog_home(
+                dialect.as_ref().map(|dialect| dialect.database_layout()),
+                session.database(),
+                database.as_deref(),
+            );
+            let answer = read_catalog(&session, request.scope.clone(), home).await;
+            Ok(Some(Arc::new(request.list(&answer, grammar, dialect.as_deref()))))
+        })
+        .await
     }
 
     // A level saved while the session is open applies to it at once. False when `level` is on the other side of

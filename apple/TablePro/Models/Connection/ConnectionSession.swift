@@ -13,6 +13,8 @@ struct ConnectionSession: Identifiable {
     // What the driver dialed: a tunnel's local endpoint rather than `connection`.
     var effectiveConnection: DatabaseConnection?
     var driver: DatabaseDriver?
+    // Renewed by each connect and reconnect, so an approval made on one connect never runs on the next.
+    private(set) var driverGeneration = UUID()
     var status: ConnectionStatus = .disconnected
     var effectiveQueryTimeoutSeconds: Int
     // Whether `driver` can be believed; `status` reads `.connecting` through an ordinary reconnect-to-switch.
@@ -35,6 +37,8 @@ struct ConnectionSession: Identifiable {
     // What the sidebar lists and where a new tab opens, never where an open tab queries: a tab carries its own.
     var browseSchema: String?
     var browseDatabase: String?
+    // Where the driver reported it opened, before any switch: a DuckDB file's own catalog, not one attached later.
+    var openedDatabase: String?
 
     @MainActor
     var tables: [TableInfo] {
@@ -72,6 +76,21 @@ struct ConnectionSession: Identifiable {
 
     mutating func markActive() {
         lastActiveAt = Date()
+    }
+
+    // A database switch moves between this session's own connections and keeps the generation. A connect or reconnect
+    // renews it together with the database the new driver reported, so an approval never pairs this connect with the
+    // last one's database; with no report the old one is cleared, not kept.
+    mutating func install(_ driver: DatabaseDriver, openedDatabase reported: String?) {
+        self.driver = driver
+        driverGeneration = UUID()
+        openedDatabase = reported
+    }
+
+    // Read once the driver connected and ran its startup commands, before a restore or post-connect action switches it.
+    static func openedDatabase(reportedBy driver: DatabaseDriver) -> String? {
+        guard let reported = (driver as? DatabaseReporting)?.currentDatabase, !reported.isEmpty else { return nil }
+        return reported
     }
 
     // `status` alone says connecting through a reconnect the app already stopped believing in.

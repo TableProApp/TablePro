@@ -941,19 +941,28 @@ final class AppState {
     func claimLaunchPresentation(for sceneId: UUID) -> LaunchPresentation {
         guard !TestRuntime.isActive else { return .none }
         guard automaticPresentationOwner == nil || automaticPresentationOwner == sceneId else { return .none }
-        let version = currentAppVersion
-        let presentation = FirstRunPlan(
-            hasSeenWelcome: onboarding.hasSeenWelcome,
+        let presentation = planLaunch(version: currentAppVersion)
+        guard presentation != .none else { return .none }
+        automaticPresentationOwner = sceneId
+        return presentation
+    }
+
+    // Records the launch as it plans it: the version, and the origin as seen when connections leave it out.
+    func planLaunch(version: String) -> LaunchPresentation {
+        let plan = FirstRunPlan(
+            hasSeenOrigin: onboarding.hasSeenOrigin,
+            hasConnections: loadedConnectionIds.map { !$0.isEmpty },
             syncChoice: onboarding.syncChoice,
             usageDataChoice: onboarding.usageDataChoice,
             lastSeenVersion: onboarding.lastSeenVersion,
             currentVersion: version,
             hasHighlightsForCurrentVersion: FeatureHighlights.release(version) != nil
-        ).presentation
+        )
+        if plan.leavesOutOriginForConnections {
+            onboarding.markOriginSeen()
+        }
         onboarding.recordLaunch(version: version)
-        guard presentation != .none else { return .none }
-        automaticPresentationOwner = sceneId
-        return presentation
+        return plan.presentation
     }
 
     func releaseLaunchPresentation(for sceneId: UUID) {
@@ -962,8 +971,8 @@ final class AppState {
     }
 
     func finishFirstRun(pages: [FirstRunPage]) {
-        if pages.contains(.welcome) {
-            onboarding.markWelcomeSeen()
+        if pages.contains(.origin) {
+            onboarding.markOriginSeen()
         }
         if pages.contains(.iCloud), onboarding.syncChoice == nil {
             setCloudSyncEnabled(false)

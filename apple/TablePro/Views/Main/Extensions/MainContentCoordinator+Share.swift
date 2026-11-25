@@ -16,7 +16,7 @@ extension MainContentCoordinator {
 
     // Share Result…: the active result as the grid shows it, masked the way rows leaving the app are masked.
     func shareActiveResult() {
-        guard admitsSheetCommand(), let request = activeResultShareRequest() else { return }
+        guard ShareAvailability.isAvailable, admitsSheetCommand(), let request = activeResultShareRequest() else { return }
         activeSheet = .share(request)
     }
 
@@ -40,7 +40,7 @@ extension MainContentCoordinator {
 
     func presentShareQuery(_ sql: String, title: String) {
         let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, admitsSheetCommand() else { return }
+        guard ShareAvailability.isAvailable, !trimmed.isEmpty, admitsSheetCommand() else { return }
         activeSheet = .share(.query(title: title, sql: trimmed, dialect: connection.type.rawValue))
     }
 
@@ -279,9 +279,8 @@ internal struct ShareTableView: Equatable, Sendable {
 
     @MainActor
     init(_ tab: QueryTab, search: BrowseSearchState?) {
-        let rerun = tab.filterState.rerunFilters
-        filters = rerun.filters
-        logicMode = rerun.logicMode
+        filters = tab.filterState.applied?.filters ?? []
+        logicMode = tab.filterState.applied?.logicMode ?? .and
         self.search = search
         sort = tab.sortState.columns
     }
@@ -292,11 +291,13 @@ private struct ShareTotals: Sendable {
     let exact: Int?
     let estimate: Int?
 
+    // Only a table tab's count describes its rows; on a query tab it would be the whole table's, whatever the WHERE.
     @MainActor
     init(_ tab: QueryTab) {
         let pagination = tab.pagination
-        exact = pagination.isApproximateRowCount ? nil : pagination.totalRowCount
-        estimate = pagination.isApproximateRowCount ? pagination.totalRowCount : nil
+        let counted = tab.tabType == .table ? pagination.totalRowCount : nil
+        exact = pagination.isApproximateRowCount ? nil : counted
+        estimate = pagination.isApproximateRowCount ? counted : nil
     }
 
     // The true total when counted; an estimate when it is above the rows held; else the rows, or nil if more exist.

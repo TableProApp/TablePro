@@ -13,12 +13,13 @@ extension GlobalStateSuites {
             let paneKey = PreferenceKeys.selectedSettingsPane.name
             let storedPane = defaults.string(forKey: paneKey)
             let registry = try OfflineRegistry()
-            let panes = SettingsPaneTabViewController(registryClient: registry.client)
-            let window = NSWindow(contentViewController: panes)
+            let split = SettingsSplitViewController(registryClient: registry.client)
+            let window = NSWindow(contentViewController: split)
             window.isReleasedWhenClosed = false
+            window.setContentSize(SettingsSplitViewController.minimumContentSize)
             defer {
                 window.contentViewController = nil
-                window.close()
+                window.orderOut(nil)
                 if let storedPane {
                     defaults.set(storedPane, forKey: paneKey)
                 } else {
@@ -26,7 +27,8 @@ extension GlobalStateSuites {
                 }
             }
 
-            panes.select(.plugins)
+            split.navigate(to: .plugins)
+            window.layoutIfNeeded()
             try await waitUntil { registry.client.isManifestCurrent }
 
             #expect(registry.requestCount == 1)

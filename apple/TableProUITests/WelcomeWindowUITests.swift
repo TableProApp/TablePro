@@ -10,7 +10,7 @@ final class WelcomeWindowUITests: UITestCase {
             welcome.buttons["Open Sample Database"].waitToExist(timeout: 10),
             "An empty store must offer the sample database where the list would be"
         )
-        XCTAssertFalse(welcome.links["Skip"].exists, "The first launch must not open on a tour")
+        XCTAssertFalse(window("setup-guide", in: app).exists, "The UI test sandbox opens no setup guide unless asked")
         XCTAssertEqual(
             app.children(matching: .window).count,
             1,
@@ -18,20 +18,6 @@ final class WelcomeWindowUITests: UITestCase {
         )
         XCTAssertFalse(window("support", in: app).exists, "Launching must never present the support screen")
         XCTAssertTrue(waitForActivationPolicy(.regular), "A launch the person asked for is an ordinary app")
-    }
-
-    func testAFirstLaunchShowsTheWelcomeSheetUntilContinue() throws {
-        let app = try launchApp(environment: ["TABLEPRO_UI_TEST_SHOW_WELCOME_SHEET": "1"])
-        let welcome = welcomeWindow(in: app)
-        XCTAssertTrue(welcome.waitToExist(timeout: 10))
-
-        let continueButton = welcome.descendants(matching: .button)["welcome-sheet-continue"]
-        XCTAssertTrue(continueButton.waitToExist(timeout: 10), "A first launch must show the welcome sheet")
-        XCTAssertTrue(waitUntilHittable(continueButton, timeout: 5))
-        continueButton.click()
-
-        XCTAssertTrue(waitForPredicate(timeout: 5) { !continueButton.exists }, "Continue must close the sheet")
-        XCTAssertTrue(welcome.buttons["Open Sample Database"].waitToExist(timeout: 5))
     }
 
     // The one flow left on the bundled Chinook sample: opening it is what is under test.
@@ -66,16 +52,11 @@ final class WelcomeWindowUITests: UITestCase {
         let updateLink = welcome.descendants(matching: .any).matching(identifier: "welcome-update-link").firstMatch
         XCTAssertFalse(updateLink.exists, "With nothing pending the welcome window offers no update link")
 
-        app.typeShortcut(.settings)
-        let settings = window("settings", in: app)
-        XCTAssertTrue(settings.waitToExist(timeout: 10), "Command-comma must open Settings")
-        let generalPaneButton = settings.toolbars.buttons["General"]
-        XCTAssertTrue(generalPaneButton.waitToExist(timeout: 10))
-        generalPaneButton.click()
+        let settings = openSettings(in: app)
+        selectSettingsPane("general", page: "software-update", in: settings)
 
-        // The Form builds every row, so the row reads without scrolling to it.
         let action = settings.descendants(matching: .any).matching(identifier: "software-update-action").firstMatch
-        XCTAssertTrue(action.waitToExist(timeout: 10), "General must show the Software Update row")
+        XCTAssertTrue(action.waitToExist(timeout: 10), "The Software Update page must show its status row")
         XCTAssertEqual(action.label, "Check Now")
 
         let headline = settings.descendants(matching: .any).matching(identifier: "software-update-headline").firstMatch

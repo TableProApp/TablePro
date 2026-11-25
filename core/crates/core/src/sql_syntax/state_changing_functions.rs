@@ -269,6 +269,12 @@ const DUCKDB_CALLS: &[&str] = &[
     "dsdgen",
 ];
 
+// MotherDuck adds writers between TablePro releases, and a read-only transaction stops none (measured on 1.5.6).
+const DUCKDB_CALL_FAMILIES: &[&str] = &["md_", "__md_"];
+
+// MotherDuck's drop and delete calls remove a database, share or dive on the service.
+const DUCKDB_DESTRUCTIVE_CALL_FAMILIES: &[&str] = &["md_drop_", "md_delete_"];
+
 const FAMILIES: [(&str, &[&str]); 15] = [
     ("server_signals", SERVER_SIGNALS),
     ("session_control", SESSION_CONTROL),
@@ -295,15 +301,32 @@ pub(crate) fn changes_state(name: &str) -> bool {
 }
 
 pub(crate) fn duckdb_call(name: &str) -> bool {
-    lists(DUCKDB_CALLS, name)
+    lists(DUCKDB_CALLS, name) || starts_with_any(DUCKDB_CALL_FAMILIES, name)
+}
+
+pub(crate) fn duckdb_destroys(name: &str) -> bool {
+    starts_with_any(DUCKDB_DESTRUCTIVE_CALL_FAMILIES, name)
 }
 
 fn lists(names: &[&str], name: &str) -> bool {
-    let folded = match name.is_ascii() {
+    let folded = folded(name);
+    names.iter().any(|known| folded.eq_ignore_ascii_case(known))
+}
+
+fn starts_with_any(prefixes: &[&str], name: &str) -> bool {
+    let folded = folded(name);
+    prefixes.iter().any(|prefix| {
+        folded
+            .get(..prefix.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+    })
+}
+
+fn folded(name: &str) -> Cow<'_, str> {
+    match name.is_ascii() {
         true => Cow::Borrowed(name),
         false => Cow::Owned(name.to_uppercase()),
-    };
-    names.iter().any(|known| folded.eq_ignore_ascii_case(known))
+    }
 }
 
 #[cfg(test)]
@@ -348,8 +371,31 @@ mod tests {
         ] {
             assert!(changes_state(name), "{name}");
         }
-        for name in ["QUERY", "postgres_execute", "sqlite_query", "dbgen"] {
+        for name in [
+            "QUERY",
+            "postgres_execute",
+            "sqlite_query",
+            "dbgen",
+            "md_drop_database",
+            "MD_CREATE_DATABASE",
+            "__md_force_detach",
+            "md_list_databases",
+        ] {
             assert!(duckdb_call(name) && !changes_state(name), "{name}");
+        }
+        for name in ["get_md_token", "cmd_run", "md"] {
+            assert!(!duckdb_call(name), "{name}");
+        }
+        for name in ["md_drop_database", "MD_DROP_DATABASE_SHARE", "md_delete_dive"] {
+            assert!(duckdb_destroys(name), "{name}");
+        }
+        for name in [
+            "md_create_database",
+            "md_list_databases",
+            "md_dropped",
+            "__md_force_detach",
+        ] {
+            assert!(!duckdb_destroys(name), "{name}");
         }
         for name in [
             "currval",
@@ -389,7 +435,14 @@ mod tests {
             serde_json::from_str(include_str!("../../tests/fixtures/state_changing_functions.json")).unwrap();
         let listed: BTreeMap<String, Vec<String>> = FAMILIES
             .iter()
-            .chain([("duckdb_calls", DUCKDB_CALLS)].iter())
+            .chain(
+                [
+                    ("duckdb_calls", DUCKDB_CALLS),
+                    ("duckdb_call_families", DUCKDB_CALL_FAMILIES),
+                    ("duckdb_destructive_call_families", DUCKDB_DESTRUCTIVE_CALL_FAMILIES),
+                ]
+                .iter(),
+            )
             .map(|(family, names)| {
                 let mut names: Vec<String> = names.iter().map(|name| name.to_string()).collect();
                 names.sort();

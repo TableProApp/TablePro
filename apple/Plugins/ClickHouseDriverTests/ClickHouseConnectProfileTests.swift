@@ -153,6 +153,44 @@ struct ClickHouseConnectProfileTests {
         #expect(!driver.serverProfile.hasDataSkippingIndices)
     }
 
+    @Test("With no database named, the connect reads the user's default and every request after it names that database")
+    func blankDatabaseNamesTheDefault() async throws {
+        let server = ClickHouseStubServer { request in
+            if request.body == "SELECT currentDatabase()" {
+                return Self.tsv(["currentDatabase()"], [["analytics"]])
+            }
+            return Self.answer(request, version: "25.8.33.6", settings: ClickHouseURLSetting.allCases)
+        }
+        let driver = server.unconnectedDriver(database: "")
+        defer { driver.disconnect() }
+
+        try await driver.connect()
+        _ = try await driver.execute(query: "TRUNCATE TABLE orders")
+        _ = try await driver.executeBoundedQuery(query: "SELECT 43", rowCap: 10)
+
+        #expect(driver.currentDatabase == "analytics")
+        let truncate = try #require(server.requests.first { $0.body == "TRUNCATE TABLE orders" })
+        let bounded = try #require(server.requests.first { $0.body.hasPrefix("SELECT 43") })
+        #expect(truncate.item("database") == "analytics")
+        #expect(bounded.item("database") == "analytics")
+    }
+
+    @Test("A default the server does not name leaves the connect open and no database reported")
+    func unreadDefaultIsNotReported() async throws {
+        let server = ClickHouseStubServer { request in
+            if request.body == "SELECT currentDatabase()" {
+                return ClickHouseStubReply(statusCode: 500, body: "Code: 497. DB::Exception: Not enough privileges. (ACCESS_DENIED)")
+            }
+            return Self.answer(request, version: "25.8.33.6", settings: ClickHouseURLSetting.allCases)
+        }
+        let driver = server.unconnectedDriver(database: "")
+        defer { driver.disconnect() }
+
+        try await driver.connect()
+
+        #expect(driver.currentDatabase == nil)
+    }
+
     @Test("A server that refuses the version query fails the connect with its own answer")
     func refusedVersionQueryFailsConnect() async throws {
         let server = ClickHouseStubServer { _ in

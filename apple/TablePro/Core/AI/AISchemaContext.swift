@@ -1,17 +1,9 @@
-//
-//  AISchemaContext.swift
-//  TablePro
-//
-//  Builds AI system prompt context from current database connection schema.
-//
-
 import Foundation
 import TableProAutocomplete
 import TableProPluginKit
 import TableProSQLGrammar
 
-/// One table as the schema context describes it. The producer joins each table to its own columns
-/// and foreign keys, because a lookup by name cannot tell two schemas' tables of the same name apart.
+// Each table carries its own columns and foreign keys: a lookup by name cannot tell two schemas' tables apart.
 struct AISchemaTable: Sendable {
     let table: TableInfo
     let columns: [ColumnInfo]
@@ -35,8 +27,6 @@ struct AISchemaRankingInput: Sendable {
 
 struct AISchemaContext {
     static let maxQueryLength = 2_000
-
-    // MARK: - Public
 
     static func buildSystemPrompt(
         databaseType: DatabaseType,
@@ -65,7 +55,7 @@ struct AISchemaContext {
             let schemaContext = buildSchemaSection(
                 tables: tables,
                 defaultSchema: defaultSchema,
-                maxTables: settings.maxSchemaTables,
+                maxTables: settings.clampedMaxSchemaTables,
                 identifierQuote: identifierQuote
             )
             if !schemaContext.isEmpty {
@@ -117,10 +107,7 @@ struct AISchemaContext {
         return parts.joined(separator: "\n")
     }
 
-    // MARK: - Private
-
-    /// A table outside `defaultSchema` is named with its schema, so two tables that share a name
-    /// read as two tables rather than one listed twice.
+    // A table outside defaultSchema is named with its schema, so two tables sharing a name read as two.
     static func buildSchemaSection(
         tables: [AISchemaTable],
         defaultSchema: String?,

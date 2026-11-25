@@ -1,6 +1,6 @@
 // Usage: node seed-library.cjs <config.json to write> <email domain>
-// Inserts, never deletes: a team on a lifetime Team license with an owner, an admin and a member, each seated. The
-// team license's own key signs the owner in, as an old build kept it; the admin and the member get seat keys. Only the
+// Inserts, never deletes: a team on a lifetime Team license with an owner, an admin, an editor and a member, each
+// seated. The team license's own key signs the owner in, as an old build kept it; the others get seat keys. Only the
 // owner has a name, so the library names the admin by address to owners and admins and not at all to members. The
 // rows are the ones seed.ts and the server's import write. DATABASE_URL names the local stack's database.
 const crypto = require('node:crypto');
@@ -27,9 +27,11 @@ async function insertKey(client, licenseID, memberID, key) {
     ownerName: `Probe Owner ${suffix}`,
     ownerEmail: `probe-lib-owner-${suffix}@${domain}`,
     adminEmail: `probe-lib-admin-${suffix}@${domain}`,
+    editorEmail: `probe-lib-editor-${suffix}@${domain}`,
     memberEmail: `probe-lib-member-${suffix}@${domain}`,
     teamKey: newKey(),
     adminKey: newKey(),
+    editorKey: newKey(),
     memberKey: newKey(),
   };
   const client = new Client({ connectionString: process.env.DATABASE_URL });
@@ -48,6 +50,7 @@ async function insertKey(client, licenseID, memberID, key) {
     for (const [email, name, role, key] of [
       [config.ownerEmail, config.ownerName, 'owner', null],
       [config.adminEmail, null, 'admin', config.adminKey],
+      [config.editorEmail, null, 'editor', config.editorKey],
       [config.memberEmail, null, 'member', config.memberKey],
     ]) {
       const account = await client.query(
@@ -69,7 +72,7 @@ async function insertKey(client, licenseID, memberID, key) {
     await client.end();
   }
   fs.writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 });
-  console.log(`seeded team "${config.teamName}" with ${config.ownerEmail}, ${config.adminEmail} and ${config.memberEmail}`);
+  console.log(`seeded team "${config.teamName}" with ${config.ownerEmail}, ${config.adminEmail}, ${config.editorEmail} and ${config.memberEmail}`);
 })().catch((error) => {
   console.error(error.stack || String(error));
   process.exit(1);

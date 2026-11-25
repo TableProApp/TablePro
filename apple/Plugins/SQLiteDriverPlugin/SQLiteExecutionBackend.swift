@@ -3,7 +3,11 @@
 //  TablePro
 //
 
+#if os(iOS)
+import SQLite3
+#else
 import CSQLite
+#endif
 import Foundation
 import os
 import TableProPluginKit
@@ -16,7 +20,7 @@ import TableProSQLiteCore
 /// small agent, because SQLite's file locking is only reliable for a process on the same host as
 /// the file. Both answer the same driver, so every schema, metadata and write path is written once
 /// against this protocol and neither knows which backend it is talking to.
-protocol SQLiteExecutionBackend: Actor {
+nonisolated protocol SQLiteExecutionBackend: Actor {
     /// The SQLite version that will run the statements: the app's library for a local file, the
     /// server's for a remote one. Cached at connect time; nil until then.
     nonisolated var resolvedServerVersion: String? { get }
@@ -52,7 +56,7 @@ protocol SQLiteExecutionBackend: Actor {
 // How one statement runs: the authorizer scope, and whether read-only, with `PRAGMA query_only` around it and
 // `sqlite3_stmt_readonly` checked before it. Safe Mode's Read-Only keeps the session's authorizer scope, so an in-app
 // read keeps the extension functions it uses; an external read takes the `.readOnly` scope, which refuses them.
-struct SQLiteStatementRules: Sendable, Equatable {
+nonisolated struct SQLiteStatementRules: Sendable, Equatable {
     let scope: SQLiteStatementScope
     let readsOnly: Bool
 
@@ -79,7 +83,7 @@ struct SQLiteStatementRules: Sendable, Equatable {
 
 // Where a bounded read stops: once `rowCap` rows are read and another is there, or at the first row that takes the
 // decoded rows past `byteLimit`. That row is kept, so the host sees its own limit was reached.
-struct SQLiteReadBound: Sendable, Equatable {
+nonisolated struct SQLiteReadBound: Sendable, Equatable {
     let rowCap: Int
     let byteLimit: Int?
 
@@ -111,7 +115,7 @@ struct SQLiteReadBound: Sendable, Equatable {
 /// The one thing about a running query that must be reachable while the query holds the backend
 /// actor: the request to stop it. The local backend interrupts the SQLite handle; the remote
 /// backend writes a cancel frame to the agent.
-protocol SQLiteCanceller: Sendable {
+nonisolated protocol SQLiteCanceller: Sendable {
     func cancel()
 }
 
@@ -129,7 +133,7 @@ extension SQLiteExecutionBackend {
     }
 }
 
-struct SQLiteRawResult: Sendable {
+nonisolated struct SQLiteRawResult: Sendable {
     let columns: [String]
     let columnTypeNames: [String]
     let rows: [[PluginCellValue]]
@@ -152,7 +156,7 @@ struct SQLiteRawResult: Sendable {
 ///
 /// Read and written from whichever thread is stepping a statement and from the caller of Stop, so
 /// every access takes the lock.
-final class SQLiteBusyState: @unchecked Sendable {
+nonisolated final class SQLiteBusyState: @unchecked Sendable {
     private let lock = NSLock()
     private var isCancelled = false
     private var timeoutMilliseconds: Int32 = 0
@@ -189,7 +193,7 @@ final class SQLiteBusyState: @unchecked Sendable {
     }
 }
 
-let sqliteBusyHandler: @convention(c) (UnsafeMutableRawPointer?, Int32) -> Int32 = { context, retryCount in
+nonisolated let sqliteBusyHandler: @convention(c) (UnsafeMutableRawPointer?, Int32) -> Int32 = { context, retryCount in
     guard let context else { return 0 }
     let state = Unmanaged<SQLiteBusyState>.fromOpaque(context).takeUnretainedValue()
     guard state.shouldRetry(afterRetryCount: retryCount) else { return 0 }
@@ -199,34 +203,87 @@ let sqliteBusyHandler: @convention(c) (UnsafeMutableRawPointer?, Int32) -> Int32
 
 // MARK: - Local Backend
 
-/// Interrupts the local SQLite handle from the Stop button. Holds the handle behind a lock because
-/// the interrupting thread and the actor stepping the statement reach it at once.
-final class SQLiteLocalCanceller: SQLiteCanceller, @unchecked Sendable {
+// Interrupts the local handle from Stop, behind a lock, since the interrupting thread and the actor stepping a statement
+// reach it at once. SQLite forbids an interrupt on a handle that is closed or closing, so the close clears it first.
+nonisolated final class SQLiteLocalCanceller: SQLiteCanceller, @unchecked Sendable {
     private let lock = NSLock()
     private let busyState: SQLiteBusyState
     private var handle: OpaquePointer?
+    private var lastRead: UInt64 = 0
+    private var requestRunning = false
+    private var steppingRead: UInt64?
+    private var interruptedDuringStep = false
 
     init(busyState: SQLiteBusyState) {
         self.busyState = busyState
     }
 
     func setHandle(_ handle: OpaquePointer?) {
-        lock.lock()
-        self.handle = handle
-        lock.unlock()
+        lock.withLock { self.handle = handle }
     }
 
+    // The host's Stop for its request, sent only while one runs: a pulled read stepping before the request starts would
+    // take the interrupt instead.
     func cancel() {
-        busyState.cancel()
-        lock.lock()
-        let handle = self.handle
-        lock.unlock()
-        guard let handle else { return }
-        sqlite3_interrupt(handle)
+        lock.withLock {
+            guard let handle, requestRunning else { return }
+            busyState.cancel()
+            sqlite3_interrupt(handle)
+        }
+    }
+
+    // Ends whatever runs on the connection, a pulled read's step included, for a connection that runs one transfer.
+    func cancelEverything() {
+        lock.withLock {
+            guard let handle else { return }
+            busyState.cancel()
+            if steppingRead != nil { interruptedDuringStep = true }
+            sqlite3_interrupt(handle)
+        }
+    }
+
+    func setRequestRunning(_ running: Bool) {
+        lock.withLock { requestRunning = running }
+    }
+
+    func makeReadID() -> UInt64 {
+        lock.withLock {
+            lastRead &+= 1
+            return lastRead
+        }
+    }
+
+    // A pulled read's own Stop. Between its steps the read stops by itself at the next pull, and an interrupt then would
+    // reach the next statement on the connection instead, since it stays in effect while the read's statement is open.
+    func cancel(read: UInt64) {
+        lock.withLock {
+            guard let handle, steppingRead == read else { return }
+            interruptedDuringStep = true
+            busyState.cancel()
+            sqlite3_interrupt(handle)
+        }
+    }
+
+    func beginStep(of read: UInt64) {
+        lock.withLock {
+            steppingRead = read
+            interruptedDuringStep = false
+        }
+    }
+
+    // Whether an interrupt arrived while the step ran.
+    func endStep() -> Bool {
+        lock.withLock {
+            defer {
+                steppingRead = nil
+                interruptedDuringStep = false
+            }
+            return interruptedDuringStep
+        }
     }
 }
 
-/// Opens a SQLite database with the plugin's own SQLite build and runs statements against it.
+// Opens a SQLite database with the plugin's own SQLite build on macOS, the SDK's on iOS, and runs statements against it.
 actor SQLiteLocalBackend: SQLiteExecutionBackend {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteLocalBackend")
 
@@ -235,13 +292,23 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
     private var policy: SQLiteAuthorizerPolicy?
     private let busyState: SQLiteBusyState
     private let path: String
-    private let localCanceller: SQLiteLocalCanceller
+    private let openFlags: Int32
+    nonisolated let localCanceller: SQLiteLocalCanceller
+    // Statements a pulled read holds between pulls, apart from any request's, so a request never ends one.
+    private var pulledReads: [UInt64: PulledRead] = [:]
+    // A read whose last batch carried rows, or that had no statement: its next pull ends it.
+    private var finishedReads: Set<UInt64> = []
+    // A read ended under it by an interrupt another statement took.
+    private var interruptedReads: Set<UInt64> = []
 
     nonisolated let canceller: SQLiteCanceller
     nonisolated var resolvedServerVersion: String? { String(cString: sqlite3_libversion()) }
 
-    init(path: String) {
+    // The default creates a missing file, as `sqlite3_open` does. iOS opens an existing file without creating one, and a
+    // transfer's reader read-only.
+    init(path: String, openFlags: Int32 = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) {
         self.path = path
+        self.openFlags = openFlags
         let busyState = SQLiteBusyState()
         self.busyState = busyState
         let canceller = SQLiteLocalCanceller(busyState: busyState)
@@ -253,17 +320,21 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
 
     func open(loading extensions: [LoadableExtension]) throws {
         let expandedPath = expandPath(path)
-        if !FileManager.default.fileExists(atPath: expandedPath) {
+        if openFlags & SQLITE_OPEN_CREATE != 0, !FileManager.default.fileExists(atPath: expandedPath) {
             let directory = (expandedPath as NSString).deletingLastPathComponent
             try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         }
 
-        let result = sqlite3_open(expandedPath, &db)
-        if result != SQLITE_OK {
-            let errorMessage = db.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite error"
+        var opened: OpaquePointer?
+        let result = sqlite3_open_v2(expandedPath, &opened, openFlags, nil)
+        // A failed open still allocates a handle, and only a close frees it.
+        guard result == SQLITE_OK, let opened else {
+            let errorMessage = opened.map { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite error"
+            sqlite3_close(opened)
             throw SQLitePluginError.connectionFailed(errorMessage)
         }
-        guard let db else { throw SQLitePluginError.notConnected }
+        db = opened
+        let db = opened
         let added: SQLiteExtensionNames
         do {
             if extensions.isEmpty {
@@ -289,6 +360,10 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
 
     private func loadExtensions(_ extensions: [LoadableExtension], into db: OpaquePointer) throws {
         guard !extensions.isEmpty else { return }
+        #if os(iOS)
+        // The SDK's SQLite has no loader, and the iOS driver never passes a list.
+        throw SQLitePluginError.unsupportedOperation
+        #else
         let loading = SQLiteExtensionLoading(db: db)
         try LoadableExtensionLoader.load(
             extensions,
@@ -296,10 +371,18 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             loadExtension: loading.load(file:entryPoint:)
         )
         Self.logger.info("Loaded \(extensions.count, privacy: .public) SQLite extension(s)")
+        #endif
     }
 
+    // `sqlite3_close` refuses a handle with an unfinalized statement and leaves it open, so a pulled read goes first.
     func close() {
         localCanceller.setHandle(nil)
+        for read in pulledReads.values {
+            sqlite3_finalize(read.statement)
+        }
+        pulledReads.removeAll()
+        finishedReads.removeAll()
+        interruptedReads.removeAll()
         if db != nil {
             sqlite3_close(db)
             db = nil
@@ -341,12 +424,18 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
 
     // `notReadRefusal` is set when the statement has to be one SQLite reads as read-only. A read-only statement runs on
     // the session's handle, so temporary objects, attachments, `last_insert_rowid()` and `changes()` read as they do there.
+    // `isRequest` is false for a pulled read, whose steps the canceller marks one at a time.
     private func withStatementHandle<T>(
         _ rules: SQLiteStatementRules,
+        isRequest: Bool = true,
         _ body: (OpaquePointer, SQLitePluginError?) throws -> T
     ) throws -> T {
         guard let db, let policy else { throw SQLitePluginError.notConnected }
+        endPulledReadsUnderInterrupt(db)
+        defer { endPulledReadsUnderInterrupt(db) }
         busyState.beginOperation()
+        if isRequest { localCanceller.setRequestRunning(true) }
+        defer { if isRequest { localCanceller.setRequestRunning(false) } }
         guard rules.readsOnly else {
             return try Self.within(rules.scope, of: policy) { try body(db, nil) }
         }
@@ -376,6 +465,8 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         }
         defer {
             if !wasQueryOnly {
+                // An interrupt still in effect would refuse the restore and leave the connection read-only.
+                endPulledReadsUnderInterrupt(db)
                 try? Self.exec("PRAGMA query_only = 0", on: db)
             }
         }
@@ -405,12 +496,17 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         bound: SQLiteReadBound?
     ) throws -> SQLiteRawResult {
         let startTime = Date()
-        let statement = try Self.prepareOnlyStatement(query, db: db)
-        defer { sqlite3_finalize(statement) }
-        // EXPLAIN never runs its statement, but stmt_readonly reports that statement's writes.
-        if let notReadRefusal, sqlite3_stmt_readonly(statement) == 0, sqlite3_stmt_isexplain(statement) == 0 {
-            throw notReadRefusal
+        let prepared = try Self.prepareOnlyStatement(query, db: db)
+        defer { sqlite3_finalize(prepared) }
+        // Text of only comments and blanks compiles to no statement, and stepping none is a misuse.
+        guard let statement = prepared else {
+            if let parameters, !parameters.isEmpty { throw Self.parameterCountRefusal }
+            return SQLiteRawResult(
+                columns: [], columnTypeNames: [], rows: [], rowsAffected: 0,
+                executionTime: Date().timeIntervalSince(startTime), isTruncated: false, columnOrigins: []
+            )
         }
+        try Self.refuseUnlessRead(statement, notReadRefusal)
 
         if let parameters {
             try bind(parameters, to: statement, db: db)
@@ -426,26 +522,27 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         var rows: [[PluginCellValue]] = []
         var truncated = false
         let rowLimit = bound?.rowCap ?? PluginRowLimits.emergencyMax
+        // A statement that writes runs to its end: an autocommit write commits there, and a deferred constraint it
+        // breaks fails only there, so stopping early would report rows the rollback took back.
+        let stopsAtLimit = sqlite3_stmt_readonly(statement) != 0
         var bytes = 0
         var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
-            if rows.count >= rowLimit {
+            if !truncated, rows.count >= rowLimit {
                 truncated = true
-                break
-            }
-            let row = Self.readRow(statement, columnCount: columnCount)
-            rows.append(row)
-            if let byteLimit = bound?.byteLimit {
-                bytes += SQLiteReadBound.byteCount(of: row)
-                if bytes > byteLimit {
-                    truncated = true
-                    break
+            } else if !truncated {
+                let row = Self.readRow(statement, columnCount: columnCount)
+                rows.append(row)
+                if let byteLimit = bound?.byteLimit {
+                    bytes += SQLiteReadBound.byteCount(of: row)
+                    truncated = bytes > byteLimit
                 }
             }
+            if truncated, stopsAtLimit { break }
             stepResult = sqlite3_step(statement)
         }
 
-        if !truncated, stepResult != SQLITE_DONE {
+        if stepResult != SQLITE_DONE, !(truncated && stopsAtLimit) {
             throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
         }
 
@@ -508,11 +605,16 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         notReadRefusal: SQLitePluginError?,
         into spill: PluginRowSpill
     ) throws {
-        let statement = try Self.prepareOnlyStatement(query, db: db)
-        // EXPLAIN never runs its statement, but stmt_readonly reports that statement's writes.
-        if let notReadRefusal, sqlite3_stmt_readonly(statement) == 0, sqlite3_stmt_isexplain(statement) == 0 {
+        guard let statement = try Self.prepareOnlyStatement(query, db: db) else {
+            spill.yield(PluginStreamHeader(columns: [], columnTypeNames: [], estimatedRowCount: nil))
+            spill.finish()
+            return
+        }
+        do {
+            try Self.refuseUnlessRead(statement, notReadRefusal)
+        } catch {
             sqlite3_finalize(statement)
-            throw notReadRefusal
+            throw error
         }
 
         let firstStep = SQLiteResultColumns.stepFirst(statement)
@@ -523,31 +625,28 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         header.columnOrigins = Self.columnOrigins(after: firstStep, of: statement, on: db, text: query)
         spill.yield(header)
 
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
+        var batch = PluginRowBatcher()
 
         var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
             if Task.isCancelled {
-                if !batch.isEmpty { spill.deliver(batch) }
+                if !batch.isEmpty { spill.deliver(batch.rows) }
                 sqlite3_finalize(statement)
                 spill.finish(throwing: CancellationError())
                 return
             }
-            batch.append(Self.readRow(statement, columnCount: columnCount))
-            if batch.count >= batchSize {
+            if batch.append(Self.readRow(statement, columnCount: columnCount)) {
                 // Synchronous on the actor's thread: an await here would let another call reach the handle mid-statement.
-                guard spill.deliver(batch) else {
+                guard spill.deliver(batch.rows) else {
                     sqlite3_finalize(statement)
                     return
                 }
-                batch.removeAll(keepingCapacity: true)
+                batch.removeAll()
             }
             stepResult = sqlite3_step(statement)
         }
 
-        if !batch.isEmpty { spill.deliver(batch) }
+        if !batch.isEmpty { spill.deliver(batch.rows) }
 
         guard stepResult == SQLITE_DONE else {
             let message = String(cString: sqlite3_errmsg(db))
@@ -559,7 +658,23 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         spill.finish()
     }
 
+    static let parameterCountRefusal = SQLitePluginError.queryFailed(
+        String(localized: "The statement does not take the values it was given")
+    )
+
+    // EXPLAIN never runs its statement, but stmt_readonly reports that statement's writes.
+    private static func refuseUnlessRead(_ statement: OpaquePointer, _ notReadRefusal: SQLitePluginError?) throws {
+        if let notReadRefusal, sqlite3_stmt_readonly(statement) == 0, sqlite3_stmt_isexplain(statement) == 0 {
+            throw notReadRefusal
+        }
+    }
+
+    // A statement handed no values leaves its placeholders NULL; any other list binds them one for one, so a short list
+    // never writes NULL where a value was left out.
     private func bind(_ parameters: [PluginCellValue], to statement: OpaquePointer?, db: OpaquePointer) throws {
+        guard parameters.isEmpty || Int(sqlite3_bind_parameter_count(statement)) == parameters.count else {
+            throw Self.parameterCountRefusal
+        }
         let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         for (index, param) in parameters.enumerated() {
             let bindIndex = Int32(index + 1)
@@ -569,9 +684,14 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
                 bindResult = sqlite3_bind_null(statement, bindIndex)
             case .text(let stringValue):
                 bindResult = SQLiteText.bind(stringValue, to: statement, at: bindIndex)
+            // An empty Data has no base address, and a null pointer binds NULL rather than an empty blob.
+            case .bytes(let data) where data.isEmpty:
+                bindResult = sqlite3_bind_zeroblob(statement, bindIndex, 0)
             case .bytes(let data):
                 bindResult = data.withUnsafeBytes { rawBuffer -> Int32 in
-                    sqlite3_bind_blob(statement, bindIndex, rawBuffer.baseAddress, Int32(data.count), sqliteTransient)
+                    sqlite3_bind_blob64(
+                        statement, bindIndex, rawBuffer.baseAddress, sqlite3_uint64(rawBuffer.count), sqliteTransient
+                    )
                 }
             }
             if bindResult != SQLITE_OK {
@@ -581,24 +701,207 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
     }
 
     private static func readRow(_ statement: OpaquePointer?, columnCount: Int32) -> [PluginCellValue] {
-        var row: [PluginCellValue] = []
-        for i in 0..<columnCount {
-            let colType = sqlite3_column_type(statement, i)
-            if colType == SQLITE_NULL {
-                row.append(.null)
-            } else if colType == SQLITE_BLOB {
-                let byteCount = Int(sqlite3_column_bytes(statement, i))
-                if byteCount > 0, let blobPtr = sqlite3_column_blob(statement, i) {
-                    row.append(.bytes(Data(bytes: blobPtr, count: byteCount)))
-                } else {
-                    row.append(.bytes(Data()))
+        (0..<columnCount).map { columnValue(statement, $0).pluginValue }
+    }
+
+    // Valid until the statement steps again. A number reads as the text SQLite prints for it.
+    static func columnValue(_ statement: OpaquePointer?, _ index: Int32) -> SQLiteColumnValue {
+        switch sqlite3_column_type(statement, index) {
+        case SQLITE_NULL:
+            return .null
+        case SQLITE_BLOB:
+            // The pointer first: asking for the length first can convert the value and move it.
+            let bytes = sqlite3_column_blob(statement, index)
+            return .bytes(UnsafeRawBufferPointer(start: bytes, count: Int(sqlite3_column_bytes(statement, index))))
+        default:
+            guard let text = sqlite3_column_text(statement, index) else { return .null }
+            return .text(UnsafeRawBufferPointer(start: text, count: Int(sqlite3_column_bytes(statement, index))))
+        }
+    }
+
+    // MARK: - Reads that cut values
+
+    // The rows of one statement, each value made by `read` from SQLite's own buffer and handed to `deliver` a batch at a
+    // time, until `rowLimit` rows are read or `deliver` declines. The statement ends inside this call, so nothing stays
+    // open on the connection after it. Rows read before a failure are delivered before it is thrown. Returns the rows a
+    // statement with no columns changed. A caller cancelled while it waited for the connection runs nothing.
+    func readValues<Value: Sendable>(
+        _ query: String,
+        rules: SQLiteStatementRules,
+        rowLimit: Int,
+        reading read: SQLiteValueReader<Value>,
+        header: @Sendable (PluginStreamHeader) -> Void,
+        deliver: @Sendable ([[Value]]) -> Bool
+    ) throws -> Int {
+        try Task.checkCancellation()
+        return try withStatementHandle(rules) { db, notReadRefusal in
+            guard let statement = try Self.prepareOnlyStatement(query, db: db) else {
+                header(PluginStreamHeader(columns: [], columnTypeNames: [], estimatedRowCount: nil))
+                return 0
+            }
+            defer { sqlite3_finalize(statement) }
+            try Self.refuseUnlessRead(statement, notReadRefusal)
+            let totalChangesBefore = sqlite3_total_changes64(db)
+            let first = SQLiteResultColumns.stepFirst(statement)
+            header(PluginStreamHeader(columns: first.names, columnTypeNames: first.typeNames, estimatedRowCount: nil))
+            var batch: [[Value]] = []
+            var count = 0
+            var step = first.result
+            while step == SQLITE_ROW, count < rowLimit {
+                if Task.isCancelled {
+                    if !batch.isEmpty { _ = deliver(batch) }
+                    throw CancellationError()
                 }
-            } else if let text = SQLiteText.column(statement, i) {
-                row.append(.text(text))
-            } else {
-                row.append(.null)
+                batch.append(first.names.indices.map { read(first.names[$0], Self.columnValue(statement, Int32($0))) })
+                count += 1
+                if batch.count >= Self.pulledBatchSize {
+                    guard deliver(batch) else { return 0 }
+                    batch.removeAll(keepingCapacity: true)
+                }
+                // A step past the limit would compute a row nobody reads.
+                guard count < rowLimit else { break }
+                step = sqlite3_step(statement)
+            }
+            if !batch.isEmpty, !deliver(batch) { return 0 }
+            guard step == SQLITE_ROW || step == SQLITE_DONE else {
+                throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
+            }
+            return first.names.isEmpty ? Self.changes(of: db, sinceTotal: totalChangesBefore) : 0
+        }
+    }
+
+    // MARK: - Pulled reads
+
+    static let pulledBatchSize = 500
+
+    private struct PulledRead {
+        let statement: OpaquePointer
+        let columnCount: Int32
+        let rules: SQLiteStatementRules
+        // The last step's result; on SQLITE_ROW the row it stands on is not read yet.
+        var step: Int32
+    }
+
+    // The statement is prepared and stepped once here, so the header names the columns the rows will have.
+    func beginPulledRead(_ id: UInt64, query: String, rules: SQLiteStatementRules) throws -> PluginStreamHeader {
+        try Task.checkCancellation()
+        return try withStatementHandle(rules, isRequest: false) { db, notReadRefusal in
+            guard let statement = try Self.prepareOnlyStatement(query, db: db) else {
+                finishedReads.insert(id)
+                return PluginStreamHeader(columns: [], columnTypeNames: [], estimatedRowCount: nil)
+            }
+            let first: SQLiteResultColumns.FirstStep
+            do {
+                try Self.refuseUnlessRead(statement, notReadRefusal)
+                first = try stepping(id) { SQLiteResultColumns.stepFirst(statement) }
+            } catch {
+                sqlite3_finalize(statement)
+                throw error
+            }
+            guard first.result == SQLITE_ROW || first.result == SQLITE_DONE else {
+                let message = String(cString: sqlite3_errmsg(db))
+                sqlite3_finalize(statement)
+                throw SQLitePluginError.queryFailed(message)
+            }
+            pulledReads[id] = PulledRead(statement: statement, columnCount: first.count, rules: rules, step: first.result)
+            return PluginStreamHeader(columns: first.names, columnTypeNames: first.typeNames, estimatedRowCount: nil)
+        }
+    }
+
+    // Nil once the read has no rows left, its statement then finalized.
+    func nextPulledBatch(_ id: UInt64) throws -> [[PluginCellValue]]? {
+        try withStatementHandle(.unrestricted, isRequest: false) { db, _ in
+            if interruptedReads.remove(id) != nil {
+                throw SQLitePluginError.queryFailed(String(cString: sqlite3_errstr(SQLITE_INTERRUPT)))
+            }
+            guard var read = pulledReads[id] else {
+                if finishedReads.remove(id) != nil { return nil }
+                throw CancellationError()
+            }
+            return try applying(read.rules) {
+                var rows: [[PluginCellValue]] = []
+                while read.step == SQLITE_ROW, rows.count < Self.pulledBatchSize {
+                    rows.append(Self.readRow(read.statement, columnCount: read.columnCount))
+                    let statement = read.statement
+                    do {
+                        read.step = try stepping(id) { sqlite3_step(statement) }
+                    } catch {
+                        endPulledRead(id)
+                        throw error
+                    }
+                }
+                switch read.step {
+                case SQLITE_ROW:
+                    pulledReads[id] = read
+                    return rows
+                case SQLITE_DONE:
+                    endPulledRead(id)
+                    guard !rows.isEmpty else { return nil }
+                    finishedReads.insert(id)
+                    return rows
+                default:
+                    let message = String(cString: sqlite3_errmsg(db))
+                    endPulledRead(id)
+                    throw SQLitePluginError.queryFailed(message)
+                }
             }
         }
-        return row
+    }
+
+    func endPulledRead(_ id: UInt64) {
+        finishedReads.remove(id)
+        interruptedReads.remove(id)
+        guard let read = pulledReads.removeValue(forKey: id) else { return }
+        sqlite3_finalize(read.statement)
+    }
+
+    // The read's own rules around a pull: its query_only and authorizer scope, applied for each batch it steps.
+    private func applying<T>(_ rules: SQLiteStatementRules, _ body: () throws -> T) throws -> T {
+        guard rules != .unrestricted, let db, let policy else { return try body() }
+        guard rules.readsOnly else { return try Self.within(rules.scope, of: policy, body) }
+        return try withQueryOnly(db) { try Self.within(rules.scope, of: policy, body) }
+    }
+
+    // Marks the step before reading the cancel, so a consumer that leaves at any moment is either seen here or finds its
+    // read stepping and interrupts it.
+    private func stepping<T>(_ id: UInt64, _ step: () -> T) throws -> T {
+        localCanceller.beginStep(of: id)
+        guard !Task.isCancelled else {
+            _ = localCanceller.endStep()
+            throw CancellationError()
+        }
+        let result = step()
+        guard !localCanceller.endStep() else { throw CancellationError() }
+        return result
+    }
+
+    // An interrupt stays in effect while any statement on the connection is unfinished, so once one is in effect every
+    // read left open between pulls ends: each would fail at its next step, and so would the next statement beside it, a
+    // write inside the user's transaction rolling that transaction back.
+    private func endPulledReadsUnderInterrupt(_ db: OpaquePointer) {
+        guard !pulledReads.isEmpty, sqlite3_is_interrupted(db) != 0 else { return }
+        for (id, read) in pulledReads {
+            sqlite3_finalize(read.statement)
+            interruptedReads.insert(id)
+        }
+        pulledReads.removeAll()
     }
 }
+
+// A value as SQLite holds it for the row a statement stands on.
+nonisolated enum SQLiteColumnValue {
+    case null
+    case text(UnsafeRawBufferPointer)
+    case bytes(UnsafeRawBufferPointer)
+
+    var pluginValue: PluginCellValue {
+        switch self {
+        case .null: .null
+        case .text(let utf8): .text(String(decoding: utf8, as: UTF8.self))
+        case .bytes(let bytes): .bytes(Data(bytes))
+        }
+    }
+}
+
+// What a read hands out for a value of the named column.
+typealias SQLiteValueReader<Value> = @Sendable (_ column: String, _ value: SQLiteColumnValue) -> Value

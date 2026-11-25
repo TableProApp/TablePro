@@ -90,18 +90,11 @@
   <data name="MenuUndo.Text" xml:space="preserve">
     <value>Undo</value>
   </data>
-  <data name="MenuUndo.KeyboardAcceleratorTextOverride" xml:space="preserve">
-    <value>Ctrl+Z</value>
-    <comment>The keys this item names, as Windows words them in this language.</comment>
-  </data>
   <data name="MenuUndo.AccessKey" xml:space="preserve">
     <value>U</value>
   </data>
   <data name="MenuRedo.Text" xml:space="preserve">
     <value>Redo</value>
-  </data>
-  <data name="MenuRedo.KeyboardAcceleratorTextOverride" xml:space="preserve">
-    <value>Ctrl+Y</value>
   </data>
   <data name="MenuRedo.AccessKey" xml:space="preserve">
     <value>R</value>
@@ -109,17 +102,11 @@
   <data name="MenuCut.Text" xml:space="preserve">
     <value>Cut</value>
   </data>
-  <data name="MenuCut.KeyboardAcceleratorTextOverride" xml:space="preserve">
-    <value>Ctrl+X</value>
-  </data>
   <data name="MenuCut.AccessKey" xml:space="preserve">
     <value>T</value>
   </data>
   <data name="MenuCopy.Text" xml:space="preserve">
     <value>Copy</value>
-  </data>
-  <data name="MenuCopy.KeyboardAcceleratorTextOverride" xml:space="preserve">
-    <value>Ctrl+C</value>
   </data>
   <data name="MenuCopy.AccessKey" xml:space="preserve">
     <value>C</value>
@@ -127,26 +114,17 @@
   <data name="MenuPaste.Text" xml:space="preserve">
     <value>Paste</value>
   </data>
-  <data name="MenuPaste.KeyboardAcceleratorTextOverride" xml:space="preserve">
-    <value>Ctrl+V</value>
-  </data>
   <data name="MenuPaste.AccessKey" xml:space="preserve">
     <value>P</value>
   </data>
   <data name="MenuSelectAll.Text" xml:space="preserve">
     <value>Select all</value>
   </data>
-  <data name="MenuSelectAll.KeyboardAcceleratorTextOverride" xml:space="preserve">
-    <value>Ctrl+A</value>
-  </data>
   <data name="MenuSelectAll.AccessKey" xml:space="preserve">
     <value>A</value>
   </data>
   <data name="MenuFind.Text" xml:space="preserve">
     <value>Find</value>
-  </data>
-  <data name="MenuFind.KeyboardAcceleratorTextOverride" xml:space="preserve">
-    <value>Ctrl+F</value>
   </data>
   <data name="MenuFind.AccessKey" xml:space="preserve">
     <value>F</value>
@@ -301,14 +279,8 @@
   <data name="RunButton.Label" xml:space="preserve">
     <value>Run</value>
   </data>
-  <data name="RunButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Run (Ctrl+Enter)</value>
-  </data>
   <data name="StopButton.Label" xml:space="preserve">
     <value>Stop</value>
-  </data>
-  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Stop (Shift+F5)</value>
   </data>
   <data name="TableCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Table commands</value>
@@ -366,24 +338,6 @@
   </data>
   <data name="NewConnectionCard.Description" xml:space="preserve">
     <value>Connect to PostgreSQL, MySQL, SQL Server, MongoDB, Redis and more</value>
-  </data>
-  <data name="OpenFileCard.Header" xml:space="preserve">
-    <value>Open a database file</value>
-  </data>
-  <data name="OpenFileCard.Description" xml:space="preserve">
-    <value>SQLite and DuckDB files on this PC</value>
-  </data>
-  <data name="ImportCard.Header" xml:space="preserve">
-    <value>Import connections</value>
-  </data>
-  <data name="ImportCard.Description" xml:space="preserve">
-    <value>From a TablePro connections file, or from another app on this PC.</value>
-  </data>
-  <data name="SampleCard.Header" xml:space="preserve">
-    <value>Try the sample database</value>
-  </data>
-  <data name="SampleCard.Description" xml:space="preserve">
-    <value>Chinook, a small music store in SQLite</value>
   </data>
   <data name="ConnectionTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Saved connections</value>
@@ -1837,14 +1791,8 @@ New fingerprint: {2}</value>
   <data name="AddRowButton.Label" xml:space="preserve">
     <value>Add row</value>
   </data>
-  <data name="AddRowButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Add row (Ctrl+Shift+N)</value>
-  </data>
   <data name="DuplicateRowButton.Label" xml:space="preserve">
     <value>Duplicate row</value>
-  </data>
-  <data name="DuplicateRowButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Duplicate row (Ctrl+Shift+D)</value>
   </data>
   <data name="DeleteRowsButton.Label" xml:space="preserve">
     <value>Delete</value>
@@ -1855,17 +1803,11 @@ New fingerprint: {2}</value>
   <data name="SaveChangesButton.Label" xml:space="preserve">
     <value>Save changes</value>
   </data>
-  <data name="SaveChangesButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Save changes (Ctrl+S)</value>
-  </data>
   <data name="DiscardChangesButton.Label" xml:space="preserve">
     <value>Discard changes</value>
   </data>
   <data name="PreviewSqlButton.Label" xml:space="preserve">
     <value>Preview SQL</value>
-  </data>
-  <data name="PreviewSqlButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Preview SQL (Ctrl+Shift+P)</value>
   </data>
   <data name="MenuSaveChanges.Text" xml:space="preserve">
     <value>Save</value>
@@ -1883,9 +1825,6 @@ New fingerprint: {2}</value>
     <value>Duplicate row</value>
   </data>
   <data name="MenuDeleteRows.Text" xml:space="preserve">
-    <value>Delete</value>
-  </data>
-  <data name="MenuDeleteRows.KeyboardAcceleratorTextOverride" xml:space="preserve">
     <value>Delete</value>
   </data>
   <data name="GridMenuSetValue" xml:space="preserve">
@@ -1929,6 +1868,7 @@ New fingerprint: {2}</value>
   </data>
   <data name="ReferenceKey" xml:space="preserve">
     <value>{0} ({1})</value>
+    <comment>{0} is a model's name that another model shares, {1} the model's id.</comment>
   </data>
   <data name="ReferenceKeyThrough" xml:space="preserve">
     <value>{0} through {1}</value>
@@ -2530,9 +2470,6 @@ New fingerprint: {2}</value>
   </data>
   <data name="FilterButton.Label" xml:space="preserve">
     <value>Filter</value>
-  </data>
-  <data name="FilterButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Filter rows (Ctrl+Shift+F)</value>
   </data>
   <data name="ReloadDiscardFilter" xml:space="preserve">
     <value>Applying or clearing filters will reload data and discard all unsaved changes.</value>
@@ -3415,6 +3352,9 @@ New fingerprint: {2}</value>
   <data name="Error_account_sign_in_refused" xml:space="preserve">
     <value>The account service refused the sign-in.</value>
   </data>
+  <data name="Error_account_sign_in_issuer_mismatch" xml:space="preserve">
+    <value>TablePro could not confirm that the sign-in came from its account service. Sign in again.</value>
+  </data>
   <data name="Error_account_signed_out" xml:space="preserve">
     <value>Sign in to your TablePro account first.</value>
   </data>
@@ -4198,6 +4138,15 @@ New fingerprint: {2}</value>
   <data name="NullDisplayBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>NULL display</value>
   </data>
+  <data name="GridWrapCard.Header" xml:space="preserve">
+    <value>Wrap text in cells</value>
+  </data>
+  <data name="GridWrapCard.Description" xml:space="preserve">
+    <value>Long values wrap onto up to 10 lines in new tabs. An open tab keeps its own choice.</value>
+  </data>
+  <data name="GridWrapSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Wrap text in cells</value>
+  </data>
   <data name="HistoryRetentionCard.Header" xml:space="preserve">
     <value>Keep runs for</value>
   </data>
@@ -4265,16 +4214,13 @@ New fingerprint: {2}</value>
     <value>Database: {0}</value>
   </data>
   <data name="DatabaseButtonTip" xml:space="preserve">
-    <value>Switch database (Ctrl+K)</value>
+    <value>Switch database</value>
   </data>
   <data name="DatabaseNoneListed" xml:space="preserve">
     <value>No databases to switch to</value>
   </data>
   <data name="MenuReplace.Text" xml:space="preserve">
     <value>Replace</value>
-  </data>
-  <data name="MenuReplace.KeyboardAcceleratorTextOverride" xml:space="preserve">
-    <value>Ctrl+H</value>
   </data>
   <data name="MenuReplace.AccessKey" xml:space="preserve">
     <value>E</value>
@@ -5003,6 +4949,9 @@ New fingerprint: {2}</value>
   <data name="GridMenuColumns" xml:space="preserve">
     <value>Columns</value>
   </data>
+  <data name="GridMenuWrapText" xml:space="preserve">
+    <value>Wrap text</value>
+  </data>
   <data name="GridMenuResetColumns" xml:space="preserve">
     <value>Reset columns</value>
   </data>
@@ -5357,6 +5306,17 @@ New fingerprint: {2}</value>
   <data name="AiModelsNone" xml:space="preserve">
     <value>The provider lists no models.</value>
   </data>
+  <data name="AiModelsOffline" xml:space="preserve">
+    <value>The provider's models could not be read, so TablePro's own list is shown. {0}</value>
+    <comment>{0} is why the provider's list was not read.</comment>
+  </data>
+  <data name="AiModelDeprecated" xml:space="preserve">
+    <value>{0} (deprecated)</value>
+    <comment>{0} is a model's name; the provider is retiring the model.</comment>
+  </data>
+  <data name="AiModelWithId" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
   <data name="AiPolicyCard.Header" xml:space="preserve">
     <value>AI assistant</value>
   </data>
@@ -5551,6 +5511,12 @@ New fingerprint: {2}</value>
   <data name="MenuShowAssistant.AccessKey" xml:space="preserve">
     <value>A</value>
   </data>
+  <data name="MenuWrapText.Text" xml:space="preserve">
+    <value>Wrap text</value>
+  </data>
+  <data name="MenuWrapText.AccessKey" xml:space="preserve">
+    <value>W</value>
+  </data>
   <data name="MenuAiReview.Text" xml:space="preserve">
     <value>Review with AI</value>
   </data>
@@ -5714,65 +5680,70 @@ New fingerprint: {2}</value>
     <value>Undo</value>
     <comment>The SQL editor's context menu.</comment>
   </data>
-  <data name="EditorMenuUndoKeys" xml:space="preserve">
-    <value>Ctrl+Z</value>
-    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
-  </data>
   <data name="EditorMenuRedo" xml:space="preserve">
     <value>Redo</value>
-  </data>
-  <data name="EditorMenuRedoKeys" xml:space="preserve">
-    <value>Ctrl+Y</value>
-    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
   </data>
   <data name="EditorMenuCut" xml:space="preserve">
     <value>Cut</value>
   </data>
-  <data name="EditorMenuCutKeys" xml:space="preserve">
-    <value>Ctrl+X</value>
-    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
-  </data>
   <data name="EditorMenuCopy" xml:space="preserve">
     <value>Copy</value>
-  </data>
-  <data name="EditorMenuCopyKeys" xml:space="preserve">
-    <value>Ctrl+C</value>
-    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
   </data>
   <data name="EditorMenuPaste" xml:space="preserve">
     <value>Paste</value>
   </data>
-  <data name="EditorMenuPasteKeys" xml:space="preserve">
-    <value>Ctrl+V</value>
-    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
-  </data>
   <data name="EditorMenuSelectAll" xml:space="preserve">
     <value>Select All</value>
-  </data>
-  <data name="EditorMenuSelectAllKeys" xml:space="preserve">
-    <value>Ctrl+A</value>
-    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
   </data>
   <data name="EditorMenuToggleComment" xml:space="preserve">
     <value>Toggle Line Comment</value>
   </data>
-  <data name="EditorMenuToggleCommentKeys" xml:space="preserve">
-    <value>Ctrl+/</value>
-    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
+  <data name="EditorMenuFormat" xml:space="preserve">
+    <value>Format Query</value>
+  </data>
+  <data name="MenuFormatQuery.Text" xml:space="preserve">
+    <value>Format query</value>
+  </data>
+  <data name="MenuFormatQuery.AccessKey" xml:space="preserve">
+    <value>M</value>
+  </data>
+  <data name="CompletionListName" xml:space="preserve">
+    <value>Completions</value>
+  </data>
+  <data name="CompletionKeyword" xml:space="preserve">
+    <value>Keyword</value>
+  </data>
+  <data name="CompletionSchema" xml:space="preserve">
+    <value>Schema</value>
+  </data>
+  <data name="CompletionTable" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="CompletionView" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="CompletionMaterializedView" xml:space="preserve">
+    <value>Materialized view</value>
+  </data>
+  <data name="CompletionColumn" xml:space="preserve">
+    <value>Column</value>
+  </data>
+  <data name="CompletionFunction" xml:space="preserve">
+    <value>Function</value>
+  </data>
+  <data name="CompletionRowName" xml:space="preserve">
+    <value>{0}, {1}</value>
+    <comment>{0} is the name a completion writes, {1} what it is: Table, View, Keyword, or a column's type.</comment>
+  </data>
+  <data name="CompletionAnnouncement" xml:space="preserve">
+    <value>{0}, {1:N0} of {2:N0}</value>
+    <comment>What Narrator reads for the selected completion. {0} is its name and kind, {1} its place in the list, {2} how many the list holds.</comment>
   </data>
   <data name="EditorMenuFold" xml:space="preserve">
     <value>Fold</value>
   </data>
-  <data name="EditorMenuFoldKeys" xml:space="preserve">
-    <value>Ctrl+Shift+[</value>
-    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
-  </data>
   <data name="EditorMenuUnfold" xml:space="preserve">
     <value>Unfold</value>
-  </data>
-  <data name="EditorMenuUnfoldKeys" xml:space="preserve">
-    <value>Ctrl+Shift+]</value>
-    <comment>The keys the editor takes for this item, as Windows words them in this language.</comment>
   </data>
   <data name="EditorMenuFoldAll" xml:space="preserve">
     <value>Fold All</value>
@@ -5806,7 +5777,7 @@ New fingerprint: {2}</value>
     <value>Use regular expression</value>
   </data>
   <data name="FindBarToggleReplace" xml:space="preserve">
-    <value>Toggle Replace (Ctrl+H)</value>
+    <value>Toggle Replace</value>
   </data>
   <data name="FindBarPrevious" xml:space="preserve">
     <value>Previous match (Shift+F3)</value>
@@ -5883,6 +5854,14 @@ New fingerprint: {2}</value>
   <data name="ListSeparator" xml:space="preserve">
     <value>, </value>
     <comment>Between the items of a list of names, such as columns or tags.</comment>
+  </data>
+  <data name="ListAndTwo" xml:space="preserve">
+    <value>{0} and {1}</value>
+    <comment>Two names, such as the apps found on this PC.</comment>
+  </data>
+  <data name="ListAndLast" xml:space="preserve">
+    <value>{0}, and {1}</value>
+    <comment>Three or more names: the last, {1}, after the others, {0}, which are joined with ListSeparator.</comment>
   </data>
   <data name="ImportCsvReviewShown_one" xml:space="preserve">
     <value>The first is shown.</value>
@@ -6033,6 +6012,239 @@ New fingerprint: {2}</value>
   </data>
   <data name="UpdateInstallFailedTitle" xml:space="preserve">
     <value>Couldn't install the update</value>
+  </data>
+  <data name="Key_Ctrl" xml:space="preserve">
+    <value>Ctrl</value>
+    <comment>Key names as Windows writes them in menus and tooltips, in this language.</comment>
+  </data>
+  <data name="Key_Alt" xml:space="preserve">
+    <value>Alt</value>
+  </data>
+  <data name="Key_Shift" xml:space="preserve">
+    <value>Shift</value>
+  </data>
+  <data name="Key_Join" xml:space="preserve">
+    <value>{0}+{1}</value>
+    <comment>Joins a modifier and what follows it, as Windows writes Ctrl+S.</comment>
+  </data>
+  <data name="Key_Enter" xml:space="preserve">
+    <value>Enter</value>
+  </data>
+  <data name="Key_Escape" xml:space="preserve">
+    <value>Esc</value>
+  </data>
+  <data name="Key_Space" xml:space="preserve">
+    <value>Space</value>
+  </data>
+  <data name="Key_Tab" xml:space="preserve">
+    <value>Tab</value>
+  </data>
+  <data name="Key_Backspace" xml:space="preserve">
+    <value>Backspace</value>
+  </data>
+  <data name="Key_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Key_Insert" xml:space="preserve">
+    <value>Insert</value>
+  </data>
+  <data name="Key_Left" xml:space="preserve">
+    <value>Left</value>
+  </data>
+  <data name="Key_Up" xml:space="preserve">
+    <value>Up</value>
+  </data>
+  <data name="Key_Right" xml:space="preserve">
+    <value>Right</value>
+  </data>
+  <data name="Key_Down" xml:space="preserve">
+    <value>Down</value>
+  </data>
+  <data name="Key_PageUp" xml:space="preserve">
+    <value>Page Up</value>
+  </data>
+  <data name="Key_PageDown" xml:space="preserve">
+    <value>Page Down</value>
+  </data>
+  <data name="Key_Home" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="Key_End" xml:space="preserve">
+    <value>End</value>
+  </data>
+  <data name="TipWithKeys" xml:space="preserve">
+    <value>{0} ({1})</value>
+    <comment>A button's tooltip. {0} is what the button does, {1} the keys that do it too.</comment>
+  </data>
+  <data name="MenuSetupGuide.Text" xml:space="preserve">
+    <value>Setup guide</value>
+  </data>
+  <data name="MenuSetupGuide.AccessKey" xml:space="preserve">
+    <value>G</value>
+  </data>
+  <data name="SetupGuideCard.Header" xml:space="preserve">
+    <value>Set up TablePro</value>
+  </data>
+  <data name="SetupGuideCard.Description" xml:space="preserve">
+    <value>Import from another app, open the sample database and pick your keyboard shortcuts</value>
+  </data>
+  <data name="SetupTitle_Origin" xml:space="preserve">
+    <value>Welcome to TablePro</value>
+  </data>
+  <data name="SetupTitle_Import" xml:space="preserve">
+    <value>Import from other apps</value>
+  </data>
+  <data name="SetupTitle_FirstConnection" xml:space="preserve">
+    <value>First connection</value>
+  </data>
+  <data name="SetupTitle_Options" xml:space="preserve">
+    <value>Appearance and keys</value>
+  </data>
+  <data name="SetupDescription_Origin" xml:space="preserve">
+    <value>Bring your connections, or start with a new one.</value>
+  </data>
+  <data name="SetupDescription_Import" xml:space="preserve">
+    <value>Select the apps to import from. You review each one before anything is saved.</value>
+  </data>
+  <data name="SetupDescription_FirstConnection" xml:space="preserve">
+    <value>Choose what opens when you finish.</value>
+  </data>
+  <data name="SetupDescription_Options" xml:space="preserve">
+    <value>Changes apply now. You can change them later in Settings.</value>
+  </data>
+  <data name="SetupLooking.Text" xml:space="preserve">
+    <value>Looking for apps on this PC...</value>
+  </data>
+  <data name="SetupNoSources.Text" xml:space="preserve">
+    <value>No other database apps found on this PC.</value>
+  </data>
+  <data name="SetupPasswords.Content" xml:space="preserve">
+    <value>Import passwords</value>
+  </data>
+  <data name="SetupQueries.Content" xml:space="preserve">
+    <value>Import saved queries</value>
+  </data>
+  <data name="SetupSkip.Content" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="SetupContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="SetupFinish_Open" xml:space="preserve">
+    <value>Open connection</value>
+    <comment>The guide's last button when it ends by opening the one connection it imported.</comment>
+  </data>
+  <data name="SetupFinish_SelectInLibrary" xml:space="preserve">
+    <value>Show connections</value>
+  </data>
+  <data name="SetupFinish_NewConnection" xml:space="preserve">
+    <value>Add connection</value>
+  </data>
+  <data name="SetupFinish_Sample" xml:space="preserve">
+    <value>Open sample</value>
+  </data>
+  <data name="SetupFinish_Stay" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="SetupChosen" xml:space="preserve">
+    <value>Opens when you finish</value>
+    <comment>Read out on the card picked as the first connection.</comment>
+  </data>
+  <data name="SetupViewName" xml:space="preserve">
+    <value>Setup guide</value>
+  </data>
+  <data name="ShortcutsCard.Header" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="ShortcutsCard.Description" xml:space="preserve">
+    <value>Use the keys of the app you're used to. A key Windows or the editor keeps for itself stays as it is.</value>
+  </data>
+  <data name="ShortcutsBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="ShortcutPresetTablePro" xml:space="preserve">
+    <value>TablePro</value>
+    <comment>The choice that keeps TablePro's own keys.</comment>
+  </data>
+  <data name="SetupSourcesName" xml:space="preserve">
+    <value>Apps to import from</value>
+  </data>
+  <data name="SetupStepOf" xml:space="preserve">
+    <value>Step {0} of {1}</value>
+    <comment>Above the setup guide's title: the step shown, {0}, and the number of steps, {1}.</comment>
+  </data>
+  <data name="SetupStepTitleName" xml:space="preserve">
+    <value>{0}, step {1} of {2}</value>
+    <comment>What Narrator reads for the setup guide's title: the title, {0}, the step, {1}, and the number of steps, {2}.</comment>
+  </data>
+  <data name="SetupOriginList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>How to start</value>
+  </data>
+  <data name="SetupOtherAppTitle.Text" xml:space="preserve">
+    <value>Import from another app</value>
+  </data>
+  <data name="SetupOtherAppDetail.Text" xml:space="preserve">
+    <value>Connections and saved queries from apps on this PC</value>
+  </data>
+  <data name="SetupFoundApps" xml:space="preserve">
+    <value>Found on this PC: {0}</value>
+    <comment>The Import from another app card's detail once the guide finds apps with data: their names, {0}, joined with ListAndTwo or ListAndLast.</comment>
+  </data>
+  <data name="SetupFileTitle.Text" xml:space="preserve">
+    <value>Import a connections file</value>
+  </data>
+  <data name="SetupFileDetail.Text" xml:space="preserve">
+    <value>A file exported from TablePro. Each connection asks for its password the first time.</value>
+  </data>
+  <data name="SetupStartTitle.Text" xml:space="preserve">
+    <value>Start fresh</value>
+  </data>
+  <data name="SetupStartDetail.Text" xml:space="preserve">
+    <value>Add a connection or open the sample database</value>
+  </data>
+  <data name="SetupFirstConnectionList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>What opens when you finish</value>
+  </data>
+  <data name="SetupNewConnectionTitle.Text" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="SetupNewConnectionDetail.Text" xml:space="preserve">
+    <value>Enter a server's address or a connection URL, or open a database file</value>
+  </data>
+  <data name="SetupSampleTitle.Text" xml:space="preserve">
+    <value>Sample database</value>
+  </data>
+  <data name="SetupSampleDetail.Text" xml:space="preserve">
+    <value>A small music store database in SQLite</value>
+  </data>
+  <data name="SetupNoSourcesHint.Text" xml:space="preserve">
+    <value>Continue to add a connection or open the sample database.</value>
+  </data>
+  <data name="SetupNotFound" xml:space="preserve">
+    <value>Not found on this PC: {0}</value>
+    <comment>Under the apps found: the apps TablePro imports from that are not on this PC, {0}, joined with ListSeparator.</comment>
+  </data>
+  <data name="SetupImportConnections_one" xml:space="preserve">
+    <value>Import {0:N0} connection</value>
+    <comment>The import step's button: the connections the ticked apps hold.</comment>
+  </data>
+  <data name="SetupImportConnections_other" xml:space="preserve">
+    <value>Import {0:N0} connections</value>
+  </data>
+  <data name="SetupThemeHeader.Text" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="SetupThemeTiles.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="SetupThemeLight.Text" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="SetupThemeDark.Text" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="SetupThemeSystem.Text" xml:space="preserve">
+    <value>Use system setting</value>
   </data>
   <data name="MenuProject.Text" xml:space="preserve">
     <value>Project</value>

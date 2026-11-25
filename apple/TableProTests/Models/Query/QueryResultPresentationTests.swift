@@ -120,7 +120,7 @@ struct QueryResultPresentationTests {
         inputs.activeResultHasColumns = true
         inputs.loadedColumnCount = 4
         inputs.loadedRowCount = 0
-        inputs.hasAppliedFilters = true
+        inputs.isFiltering = true
 
         #expect(QueryResultPresentation(inputs: inputs).content == .grid)
     }

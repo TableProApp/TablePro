@@ -48,6 +48,7 @@ extension QueryClassifier {
         databaseType: DatabaseType,
         snapshot: PluginMetadataSnapshot?
     ) -> [DataCommand]? {
+        if speaksCypher(databaseType) { return cypherDataCommands(sql) }
         switch databaseType {
         case .redis:
             return redisDataCommands(sql)
@@ -59,8 +60,6 @@ extension QueryClassifier {
             return kafkaDataCommands(sql)
         case .mongodb:
             return mongoDataCommands(sql, systemDatabases: Set(snapshot?.schema.systemDatabaseNames ?? []))
-        case .neo4j:
-            return cypherDataCommands(sql)
         case .elasticsearch:
             return elasticsearchDataCommands(sql)
         case .typesense:

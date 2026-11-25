@@ -82,6 +82,9 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         _tabs = new WorkspaceTabs<TabViewItem>(this);
         _tabs.Emptied += (_, _) => Emptied?.Invoke(this, EventArgs.Empty);
         InitializeComponent();
+        DisplaySettings.FollowKeys(
+            this,
+            () => ToolTipService.SetToolTip(DatabaseButton, DisplaySettings.Tip(Strings.Get("DatabaseButtonTip"), "openDatabase")));
         ObjectList.ContainerContentChanging += OnObjectContainerChanging;
         for (var number = 1; number <= 9; number++)
         {
@@ -463,7 +466,8 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
                 restored?.FileUnsaved ?? false,
                 onDisk,
                 restored?.FoldedLines,
-                restored?.CustomTitle),
+                restored?.CustomTitle,
+                restored?.WrapText),
             Symbol.Document,
             index);
     }
@@ -2762,7 +2766,6 @@ public sealed partial class WorkspaceView : UserControl, IWorkspaceTabsView<TabV
         DatabaseButtonText.Text = current ?? Strings.Get("DatabaseNone");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
             DatabaseButton, Strings.Format("DatabaseButtonName", current ?? Strings.Get("DatabaseNone")));
-        ToolTipService.SetToolTip(DatabaseButton, Strings.Get("DatabaseButtonTip"));
         if (current is null)
         {
             _ = LearnOwnDatabaseAsync(session);

@@ -10,7 +10,7 @@ import TableProWireIO
 
 // The disk every spill in this plugin draws from: half of what the volume has for important data, counting what the
 // spools already hold, so concurrent runs leave room for the file an export writes. Read again at most every 10 s.
-final class SpoolBudget: @unchecked Sendable {
+nonisolated final class SpoolBudget: @unchecked Sendable {
     static let shared = SpoolBudget(limit: nil)
 
     private let fixedLimit: Int?
@@ -54,7 +54,7 @@ final class SpoolBudget: @unchecked Sendable {
 // Takes a statement's rows without waiting for the reader, so the read, and its lock on a SQLite file, ends at the
 // speed SQLite reads. What the stream's buffer refuses goes to a spool file and follows in order. Past the budget, or
 // without a spool, the producer waits for the reader. One producer per spill.
-final class PluginRowSpill: @unchecked Sendable {
+nonisolated final class PluginRowSpill: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginRowSpill")
 
     private let continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
@@ -88,9 +88,22 @@ final class PluginRowSpill: @unchecked Sendable {
         continuation.yield(.header(header))
     }
 
-    // False once the reader has gone.
+    // False once the reader has gone. Blocks its thread past the budget, so it is for a producer on its own thread.
     @discardableResult
     func deliver(_ batch: [PluginRow]) -> Bool {
+        if let taken = enqueueOrSpill(batch) { return taken }
+        return deliverAtTheReadersPace(batch)
+    }
+
+    // `deliver` for a producer running as a task: past the budget it suspends instead of blocking a thread of the
+    // cooperative pool. Its own name, so a synchronous caller in an async function keeps the blocking one.
+    func deliverSuspending(_ batch: [PluginRow]) async -> Bool {
+        if let taken = enqueueOrSpill(batch) { return taken }
+        return await deliverAtTheReadersPaceSuspending(batch)
+    }
+
+    // Nil when the batch went neither to the stream nor to the spool, and has to wait for the reader.
+    private func enqueueOrSpill(_ batch: [PluginRow]) -> Bool? {
         lock.lock()
         if ended {
             lock.unlock()
@@ -119,7 +132,7 @@ final class PluginRowSpill: @unchecked Sendable {
         if !failed, spill(batch, into: existing) {
             return true
         }
-        return deliverAtTheReadersPace(batch)
+        return nil
     }
 
     // False when the batch did not go to the spool: past the budget, or the spool failed.
@@ -273,6 +286,24 @@ final class PluginRowSpill: @unchecked Sendable {
             usleep(2_000)
         }
         guard PluginRowStream.deliverBlocking(.rows(batch), to: continuation) else {
+            lock.withLock { end() }
+            return false
+        }
+        return true
+    }
+
+    private func deliverAtTheReadersPaceSuspending(_ batch: [PluginRow]) async -> Bool {
+        while true {
+            let (waiting, gone) = lock.withLock { (spilled > 0, ended) }
+            if gone { return false }
+            if !waiting { break }
+            do {
+                try await Task.sleep(for: .milliseconds(2))
+            } catch {
+                return false
+            }
+        }
+        guard await PluginRowStream.deliver(.rows(batch), to: continuation) else {
             lock.withLock { end() }
             return false
         }

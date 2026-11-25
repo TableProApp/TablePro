@@ -10,7 +10,7 @@ set -euo pipefail
 #
 # DuckDB ships no official iOS binary, so we compile it from source with the
 # leetal/ios-cmake toolchain. The extensions in scripts/duckdb-ios-extensions.cmake
-# link in statically. Automatic installs stay off at runtime (DuckDBDriver.connect):
+# link in statically. Automatic installs stay off at runtime (DuckDBExtensionPolicy in the plugin):
 # iOS apps may not download executable code (App Store Review Guideline 2.5.2), and
 # this build links no way to load it.
 #
@@ -25,9 +25,9 @@ set -euo pipefail
 #
 # Usage:
 #   scripts/build-duckdb-ios.sh [duckdb-version]
-#   DUCKDB_VERSION=v2.0.0 BUILD_JOBS=3 scripts/build-duckdb-ios.sh
+#   DUCKDB_VERSION=v2.0.1 BUILD_JOBS=3 scripts/build-duckdb-ios.sh
 
-DUCKDB_VERSION="${1:-${DUCKDB_VERSION:-v2.0.0}}"
+DUCKDB_VERSION="${1:-${DUCKDB_VERSION:-v2.0.1}}"
 DEPLOYMENT_TARGET="${DEPLOYMENT_TARGET:-15.0}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -9,13 +9,14 @@ import TableProPluginKit
 import Testing
 
 struct MySQLConnectionEncodingParityTests {
-    @Test("MySQL and MariaDB curate the same encoding field the plugin declares")
+    // MySQL's own entry is PluginMetadataCuratedParityTests'; a variant keeps its curated fields after the plugin loads.
+    @Test("MariaDB curates the encoding field the MySQL plugin declares")
     func curatedFieldsMatchThePlugin() throws {
         let declared = try BundledPlugin.driver("MySQLDriver").additionalConnectionFields
         let pluginField = try #require(declared.first { $0.id == "mysqlConnectionEncoding" })
         let expected = try Self.encoded(pluginField)
         let curated = PluginMetadataRegistry.curatedDefaults()
-        for typeId in ["MySQL", "MariaDB"] {
+        for typeId in ["MariaDB"] {
             let snapshot = try #require(curated.first { $0.typeId == typeId }?.snapshot)
             let field = try #require(
                 snapshot.connection.additionalConnectionFields.first { $0.id == pluginField.id },

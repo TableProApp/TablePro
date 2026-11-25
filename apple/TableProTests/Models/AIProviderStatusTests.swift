@@ -53,6 +53,20 @@ struct AIProviderStatusTests {
         #expect(status(.chatgptCodex, oauthState: .signedIn(identity: "me@example.com")).isReady)
     }
 
+    @Test("A Copilot service that was never started reads Not started, quietly")
+    func stoppedServiceIsNotStarted() {
+        let stopped = AIProviderStatus.resolve(
+            provider: AIProviderConfig(name: "", type: .copilot),
+            hasAPIKey: false,
+            oauthState: nil,
+            serviceError: nil,
+            claudeAgent: .unknown,
+            serviceStopped: true
+        )
+        #expect(stopped == .notStarted)
+        #expect(stopped.severity == nil)
+    }
+
     @Test("Claude Code states map one to one")
     func claudeAgentStates() {
         #expect(status(.claudeAgent, claudeAgent: .unknown) == .checking)

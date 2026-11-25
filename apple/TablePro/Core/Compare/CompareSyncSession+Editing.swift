@@ -12,6 +12,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 internal extension CompareSyncSession {
     // MARK: - Target
@@ -44,6 +45,24 @@ internal extension CompareSyncSession {
 
     /// What the run did, in the window rather than in the sheet that closed before it started.
     func reportRunResult(_ result: CompareSyncRunResult, target: DatabaseEndpoint) {
+        if let joined = result.joinedSessionTransaction {
+            informationalMessage = joined == .abortedTransaction
+                ? String(
+                    localized: "This sync ran inside the transaction already open on this connection, which can no longer be committed. Roll it back."
+                )
+                : String(
+                    localized: "This sync ran inside the transaction already open on this connection. Commit it to keep the changes, or roll it back to discard them."
+                )
+        }
+        if let rollbackFailure = result.rollbackFailure {
+            errorMessage = String(
+                format: String(
+                    localized: "The run stopped, but the transaction could not be rolled back: %@. Compare again to see where the target stands."
+                ),
+                rollbackFailure
+            )
+            return
+        }
         if result.rollbackLeftWritesInPlace {
             errorMessage = String(
                 format: String(
@@ -61,17 +80,24 @@ internal extension CompareSyncSession {
             return
         }
         guard result.failedCount > 0 else { return }
-        errorMessage = result.rolledBack
-            ? String(
+        if result.rolledBack {
+            errorMessage = String(
                 format: String(localized: "%d statements failed, so the run was rolled back and %@ is unchanged."),
                 result.failedCount, target.qualifiedDescription
             )
-            : String(
+        } else if result.joinedSessionTransaction != nil {
+            errorMessage = String(
+                format: String(localized: "%d statements failed. What already ran is pending in the transaction on this connection."),
+                result.failedCount
+            )
+        } else {
+            errorMessage = String(
                 format: String(
                     localized: "%d statements failed. What already ran stays applied. Compare again to see where the target stands."
                 ),
                 result.failedCount
             )
+        }
     }
 
     // MARK: - Key columns

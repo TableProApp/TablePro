@@ -23,11 +23,14 @@ struct SessionTransactionTrackerTests {
         var connection = TestFixtures.makeConnection(database: database, type: type)
         connection.commitMode = commitMode
         let driver = TransactionScriptedDriver()
+        // A driver that reports its database, as SQLite's does, and what a connect captures from it.
+        driver.reportedDatabase = database
         var session = ConnectionSession(
             connection: connection,
             driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
         )
         session.browseDatabase = database
+        session.openedDatabase = database
         session.status = .connected
         DatabaseManager.shared.injectSession(session, for: connection.id)
         return (connection, driver)
@@ -212,6 +215,24 @@ struct SessionTransactionTrackerTests {
 
         tracker.record(.unknown, on: second, for: key)
         #expect(tracker.holds(for: key.connectionId).isEmpty)
+    }
+
+    @Test("The standing follows the last answer: a hold, a timed-out read, then an idle one")
+    func standingFollowsTheLastAnswer() {
+        let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(), pluginDriver: TransactionScriptedDriver())
+        let tracker = SessionTransactionTracker { _, _ in true }
+        let key = SessionTransactionTracker.Key(connectionId: UUID(), lane: nil)
+        #expect(tracker.standing(of: key.connectionId) == .none)
+
+        tracker.record(.inTransaction, on: driver, for: key)
+        #expect(tracker.standing(of: key.connectionId) == .held)
+
+        tracker.record(.idle, on: driver, for: key)
+        tracker.record(.unknown, on: driver, for: key)
+        #expect(tracker.standing(of: key.connectionId) == .unknown)
+
+        tracker.record(.idle, on: driver, for: key)
+        #expect(tracker.standing(of: key.connectionId) == .none)
     }
 
     @Test("A late answer from a retired driver leaves the replacement's hold alone")
@@ -755,6 +776,15 @@ private final class TransactionScriptedDriver: PluginDriverStub, @unchecked Send
     }
 
     var statements: [String] { lock.withLock { sent } }
+
+    private var reported: String?
+
+    var reportedDatabase: String? {
+        get { lock.withLock { reported } }
+        set { lock.withLock { reported = newValue } }
+    }
+
+    var currentDatabase: String? { reportedDatabase }
 
     var failsNextStatementAborting: Bool {
         get { lock.withLock { abortsNext } }

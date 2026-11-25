@@ -244,6 +244,64 @@ public sealed class LibraryTreeTests
         Assert.False(selection.IsChecked(Flatten(LibraryTree.Build(snapshot, null, EngineName)).First(node => node.Id == local.Id)));
     }
 
+    [Fact]
+    public void AnImportOpensTheSectionAndEveryGroupAboveTheConnectionsItWrote()
+    {
+        var (snapshot, local, _, stage) = Library();
+        var collapsed = Keys(snapshot, LibraryNodeKind.AllConnections, LibraryNodeKind.Group);
+
+        var reveal = LibraryTree.Reveal(snapshot, null, collapsed, [local.Id!.Value, stage.Id!.Value], EngineName);
+
+        Assert.Equal(3, collapsed.Count);
+        Assert.Empty(reveal.Collapsed);
+        Assert.Equal(Row(snapshot, stage).Key, reveal.First);
+        Assert.Equal(string.Empty, reveal.Query);
+    }
+
+    [Fact]
+    public void AnImportLeavesFoldedTheSectionsAndGroupsHoldingNoneOfIt()
+    {
+        var (library, _, prod, _) = Library();
+        var other = Guid.NewGuid();
+        var snapshot = library with
+        {
+            Connections = [.. library.Connections, Connection("archive", "archive.example.com", other)],
+            Groups = [.. library.Groups, new ConnectionGroup(other, "Other", null, 1, null)],
+        };
+        var collapsed = Keys(snapshot, LibraryNodeKind.Favorites, LibraryNodeKind.Recent, LibraryNodeKind.Group);
+        var work = Flatten(LibraryTree.Build(snapshot, null, EngineName)).Single(node => node.Id == Work).Key;
+
+        var reveal = LibraryTree.Reveal(snapshot, null, collapsed, [prod.Id!.Value], EngineName);
+
+        Assert.Equal(5, collapsed.Count);
+        Assert.Equal(collapsed.Where(key => key != work).Order(), reveal.Collapsed.Order());
+        Assert.Equal(Row(snapshot, prod).Key, reveal.First);
+    }
+
+    [Fact]
+    public void ASearchThatHidesAnImportedConnectionIsClearedAndOneThatShowsThemAllIsKept()
+    {
+        var (snapshot, local, _, stage) = Library();
+
+        var hiding = LibraryTree.Reveal(snapshot, "staging", [], [local.Id!.Value, stage.Id!.Value], EngineName);
+        var showing = LibraryTree.Reveal(snapshot, "staging", [], [stage.Id!.Value], EngineName);
+
+        Assert.Equal(string.Empty, hiding.Query);
+        Assert.Equal(Row(snapshot, stage).Key, hiding.First);
+        Assert.Equal("staging", showing.Query);
+    }
+
+    private static HashSet<string> Keys(LibrarySnapshot snapshot, params LibraryNodeKind[] kinds) =>
+    [
+        .. Flatten(LibraryTree.Build(snapshot, null, EngineName))
+            .Where(node => kinds.Contains(node.Kind))
+            .Select(node => node.Key),
+    ];
+
+    private static LibraryNode Row(LibrarySnapshot snapshot, SavedConnection connection) =>
+        Flatten(LibraryTree.Build(snapshot, null, EngineName))
+            .Single(node => node.Section == LibraryTree.ConnectionsSection && node.Id == connection.Id);
+
     // The records hold lists, which compare by reference.
     private sealed class DropComparer : IEqualityComparer<LibraryDrop?>
     {

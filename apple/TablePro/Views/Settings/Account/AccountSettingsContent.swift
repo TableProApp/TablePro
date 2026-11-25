@@ -1,16 +1,9 @@
-//
-//  AccountSettingsContent.swift
-//  TablePro
-//
-
 import Foundation
 
 // What Settings > Account shows for one account state (clients.md, Settings > Account).
 internal struct AccountSettingsContent: Equatable {
     enum Identity: Equatable {
         case signedOut
-        // A key from an older build that the exchange has not traded for a session yet.
-        case licenseKey(isValid: Bool)
         // isSignedIn is false for a Mac that only holds an offline file.
         case account(name: String?, email: String?, isSignedIn: Bool)
     }
@@ -75,10 +68,19 @@ internal struct AccountSettingsContent: Equatable {
     }
 
     struct Verification: Equatable {
-        let verifiedAt: Date
+        // Nil until this run of the app has heard from the server.
+        let verifiedAt: Date?
         let validUntil: Date
         let isOfflineFile: Bool
         let isExpired: Bool
+    }
+
+    enum VerificationState: Equatable {
+        case verified(at: Date?, until: Date)
+        case offlineFile(until: Date)
+        case expired(on: Date)
+        case offlineFileExpired(on: Date)
+        case notVerified
     }
 
     static let expiryWarning: TimeInterval = 3 * 24 * 60 * 60
@@ -89,61 +91,87 @@ internal struct AccountSettingsContent: Equatable {
     let plans: [PlanRow]
     let isFree: Bool
     let showsDevices: Bool
+    let showsTeams: Bool
     let devices: [DeviceRow]?
     let teams: [TeamRow]?
     let verification: Verification?
     let canRefresh: Bool
     let machineID: String
+    let server: AccountServer
+    let serverLicense: AccountServerLicense?
+
+    // tablepro.app sells plans and issues offline files; a company server's license is its administrator's.
+    var sellsPlans: Bool {
+        server.isProduction
+    }
 
     static func make(
         state: AccountState,
         profile: AccountProfile?,
         devices: [AccountDevice]?,
-        hasLegacyLicense: Bool,
         machineID: String,
-        configuration: AccountConfiguration,
         now: Date
     ) -> AccountSettingsContent {
         let entitlement = state.entitlement
         let isDeviceLimit = state.refresh.isDeviceLimit
+        let portal = AccountPortal(server: state.server)
         let ownedTeams = Set((profile?.memberships ?? []).filter { $0.role == "owner" }.map(\.teamID))
         let plans = isDeviceLimit ? [] : (entitlement?.licenses ?? []).map {
-            planRow($0, ownedTeams: ownedTeams, configuration: configuration)
+            planRow($0, ownedTeams: ownedTeams, portal: portal, sellsPlans: state.server.isProduction)
         }
         let showsPlan = state.isSignedIn || entitlement != nil
 
         return AccountSettingsContent(
-            identity: identity(state: state, profile: profile, now: now),
+            identity: identity(state: state, profile: profile),
             notices: notices(state: state, plans: plans, isDeviceLimit: isDeviceLimit, now: now),
             showsPlan: showsPlan,
             plans: plans,
-            isFree: showsPlan && !isDeviceLimit && entitlement != nil && plans.isEmpty,
+            isFree: showsPlan && !isDeviceLimit && entitlement != nil && plans.isEmpty && state.server.isProduction,
             showsDevices: state.isSignedIn,
-            devices: state.isSignedIn ? devices.map { deviceRows($0, machineID: machineID, now: now) } : nil,
-            teams: state.isSignedIn ? profile.map { teamRows($0, configuration: configuration) } : nil,
+            showsTeams: state.isSignedIn,
+            devices: state.isSignedIn ? devices.map { deviceRows($0, now: now) } : nil,
+            teams: state.isSignedIn ? profile.map { teamRows($0, portal: portal) } : nil,
             verification: entitlement.map {
                 Verification(
-                    verifiedAt: $0.issuedAt,
+                    verifiedAt: $0.isOffline ? nil : state.verifiedAt,
                     validUntil: $0.expiresAt,
                     isOfflineFile: $0.isOffline,
                     isExpired: !$0.isValid(at: now)
                 )
             },
-            canRefresh: state.isSignedIn || hasLegacyLicense,
-            machineID: machineID
+            canRefresh: state.isSignedIn,
+            machineID: machineID,
+            server: state.server,
+            serverLicense: state.serverLicense
         )
     }
 
+    var verificationState: VerificationState? {
+        guard let verification else { return canRefresh ? .notVerified : nil }
+        switch (verification.isOfflineFile, verification.isExpired) {
+        case (false, false): return .verified(at: verification.verifiedAt, until: verification.validUntil)
+        case (true, false): return .offlineFile(until: verification.validUntil)
+        case (false, true): return .expired(on: verification.validUntil)
+        case (true, true): return .offlineFileExpired(on: verification.validUntil)
+        }
+    }
+
+    // A notice with Try Again already runs the check the verification row's Refresh would.
+    var offersRetry: Bool {
+        notices.contains { LicensePresentation.action(for: $0) == .retryValidation }
+    }
+
     // Without GET /v2/me, so a team plan's payment notice offers no billing link here.
-    static func notices(state: AccountState, configuration: AccountConfiguration, now: Date) -> [Notice] {
+    static func notices(state: AccountState, now: Date) -> [Notice] {
         let isDeviceLimit = state.refresh.isDeviceLimit
+        let portal = AccountPortal(server: state.server)
         let plans = isDeviceLimit ? [] : (state.entitlement?.licenses ?? []).map {
-            planRow($0, ownedTeams: [], configuration: configuration)
+            planRow($0, ownedTeams: [], portal: portal, sellsPlans: state.server.isProduction)
         }
         return notices(state: state, plans: plans, isDeviceLimit: isDeviceLimit, now: now)
     }
 
-    private static func identity(state: AccountState, profile: AccountProfile?, now: Date) -> Identity {
+    private static func identity(state: AccountState, profile: AccountProfile?) -> Identity {
         if state.isSignedIn || state.entitlement != nil {
             let email = profile?.email ?? state.entitlement?.email
             return .account(
@@ -151,9 +179,6 @@ internal struct AccountSettingsContent: Equatable {
                 email: email?.isEmpty == false ? email : nil,
                 isSignedIn: state.isSignedIn
             )
-        }
-        if let legacy = state.legacy {
-            return .licenseKey(isValid: legacy.isValid(at: now))
         }
         return .signedOut
     }
@@ -190,7 +215,8 @@ internal struct AccountSettingsContent: Equatable {
     private static func planRow(
         _ license: EntitlementLicense,
         ownedTeams: Set<String>,
-        configuration: AccountConfiguration
+        portal: AccountPortal,
+        sellsPlans: Bool
     ) -> PlanRow {
         let plan = AccountCodes.planName(license.plan)
         // The claim's cycle is the product's. Like the portal, only a license someone pays for shows it:
@@ -200,12 +226,12 @@ internal struct AccountSettingsContent: Equatable {
         let cycle = !isBilled || license.cycle == "lifetime" ? nil : AccountCodes.cycleName(license.cycle)
         let title = cycle.map { String(format: String(localized: "%@, %@"), plan, $0) } ?? plan
         let billing: URL?
-        if !isBilled {
+        if !isBilled || !sellsPlans {
             billing = nil
         } else if let team = license.team {
-            billing = ownedTeams.contains(team.id) ? configuration.portalTeamBilling(team.id) : nil
+            billing = ownedTeams.contains(team.id) ? portal.portalTeamBilling(team.id) : nil
         } else {
-            billing = configuration.portalBilling
+            billing = portal.portalBilling
         }
         return PlanRow(
             id: license.id,
@@ -235,19 +261,19 @@ internal struct AccountSettingsContent: Equatable {
         }
     }
 
-    private static func teamRows(_ profile: AccountProfile, configuration: AccountConfiguration) -> [TeamRow] {
+    private static func teamRows(_ profile: AccountProfile, portal: AccountPortal) -> [TeamRow] {
         profile.memberships.map { membership in
             TeamRow(
                 id: membership.teamID,
                 name: membership.teamName,
                 role: AccountCodes.roleName(membership.role),
                 hasSeat: membership.hasSeat,
-                manage: configuration.portalTeam(membership.teamID)
+                manage: portal.portalTeam(membership.teamID)
             )
         }
     }
 
-    private static func deviceRows(_ devices: [AccountDevice], machineID: String, now: Date) -> [DeviceRow] {
+    private static func deviceRows(_ devices: [AccountDevice], now: Date) -> [DeviceRow] {
         devices
             .map { device in
                 DeviceRow(
@@ -255,7 +281,7 @@ internal struct AccountSettingsContent: Equatable {
                     name: device.name,
                     system: AccountCodes.systemName(platform: device.platform, osVersion: device.osVersion),
                     lastSeenAt: device.lastSeenAt,
-                    isThisMac: device.machineID == machineID,
+                    isThisMac: device.isThisMac,
                     offlineUntil: device.offlineFileValid(at: now) ? device.offlineUntil : nil
                 )
             }
@@ -268,6 +294,12 @@ internal struct AccountSettingsContent: Equatable {
 
 // The pane, the gates and Welcome read a state in the same words.
 extension AccountSettingsContent.Notice {
+    // A canceling plan is the person's own choice, so it informs rather than warns.
+    var isInformational: Bool {
+        if case .canceling = self { return true }
+        return false
+    }
+
     var title: String {
         switch self {
         case .deviceLimit:
@@ -356,6 +388,12 @@ internal enum AccountCodes {
         switch code {
         case "owner": String(localized: "Owner")
         case "admin": String(localized: "Admin")
+        // A key of its own: "Editor" already names the code editor.
+        case "editor": String(
+            localized: "team.role.editor",
+            defaultValue: "Editor",
+            comment: "A team role that adds, changes and removes the team's library items"
+        )
         case "member": String(localized: "Member")
         default: nil
         }

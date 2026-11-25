@@ -22,6 +22,7 @@ enum DataGridCommand: Hashable, CaseIterable {
     case valueFilter
     case copyAsSQL
     case loadUnloadedValues
+    case wrapText
 }
 
 enum DataGridLayoutScope: Equatable {
@@ -161,6 +162,7 @@ protocol DataGridStateStore: AnyObject {
     var displayFormats: [ValueDisplayFormat?] { get set }
     var selectionSnapshot: GridSelectionSnapshot { get set }
     var viewportAnchor: GridViewportPlacement? { get set }
+    var wrapsText: Bool { get set }
     var layoutScope: DataGridLayoutScope { get }
 }
 
@@ -172,6 +174,7 @@ final class InMemoryDataGridStateStore: DataGridStateStore {
     var displayFormats: [ValueDisplayFormat?] = []
     var selectionSnapshot = GridSelectionSnapshot.empty
     var viewportAnchor: GridViewportPlacement?
+    var wrapsText = false
     let layoutScope: DataGridLayoutScope = .ephemeral
 
     init(columnLayout: ColumnLayoutState = ColumnLayoutState(), sortState: SortState = SortState()) {

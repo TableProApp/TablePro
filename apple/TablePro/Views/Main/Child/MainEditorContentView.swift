@@ -1,11 +1,3 @@
-//
-//  MainEditorContentView.swift
-//  TablePro
-//
-//  Main editor content view containing tab bar and tab content.
-//  Extracted from MainContentView for better separation.
-//
-
 import AppKit
 import SwiftUI
 import TableProEditorKit
@@ -24,11 +16,9 @@ internal enum ContainerChangeRerunPolicy {
 
 struct MainEditorContentView: View {
     @ObservedObject private var featureAccess = FeatureAccess.shared
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var keyboard = AppSettingsManager.shared.keyboardSlice
     // Must clear the nested editor/results split's required minimums, or dragging the drawer asks AppKit for an unreachable height.
     static let tabContentMinimumHeight = CollapsibleSplitController.combinedMinimumThickness
-
-    // MARK: - Dependencies
 
     @ObservedObject var tabManager: QueryTabManager
     @ObservedObject var coordinator: MainContentCoordinator
@@ -41,8 +31,6 @@ struct MainEditorContentView: View {
     let connection: DatabaseConnection
     let windowId: UUID
     let connectionId: UUID
-
-    // MARK: - Callbacks
 
     let onFirstPage: () -> Void
     let onPreviousPage: () -> Void
@@ -66,8 +54,6 @@ struct MainEditorContentView: View {
         let historyState = HistoryPanelState.forConnection(connectionId)
         return !historyState.isVisible && !historyState.isCapturePaused
     }
-
-    // MARK: - Body
 
     var body: some View {
         EditorAreaHost(input: EditorAreaInput(
@@ -168,8 +154,6 @@ struct MainEditorContentView: View {
         }
     }
 
-    // MARK: - Tab Content
-
     private var selectedQueryTab: QueryTab? {
         guard let tab = tabManager.selectedTab, tab.tabType == .query else { return nil }
         return tab
@@ -221,8 +205,6 @@ struct MainEditorContentView: View {
         }
     }
 
-    // MARK: - Table Listing Tab Content
-
     private func tableListingContent(tab: QueryTab) -> some View {
         let model = tableListingModels.model(forTab: tab.id) {
             TableListingViewModel(
@@ -241,8 +223,6 @@ struct MainEditorContentView: View {
         return TableListingTabView(model: model, databaseType: connection.type)
             .id(tab.id)
     }
-
-    // MARK: - Version History Tab Content
 
     @ViewBuilder
     private func versionHistoryContent(tab: QueryTab) -> some View {
@@ -274,8 +254,6 @@ struct MainEditorContentView: View {
         }
     }
 
-    // MARK: - Object Source Tab Content
-
     @ViewBuilder
     private func objectSourceContent(tab: QueryTab) -> some View {
         if let objectRef = tab.display.objectRef, objectRef.kind == .userType {
@@ -298,8 +276,6 @@ struct MainEditorContentView: View {
             )
         }
     }
-
-    // MARK: - Query Insights Tab Content
 
     private func queryInsightsContent(tab: QueryTab) -> some View {
         Group {
@@ -325,8 +301,6 @@ struct MainEditorContentView: View {
         .id(tab.id)
     }
 
-    // MARK: - Table Health Tab Content
-
     private func tableHealthContent(tab: QueryTab) -> some View {
         Group {
             if let model = coordinator.tableHealthModels[tab.id] {
@@ -344,8 +318,6 @@ struct MainEditorContentView: View {
         }
         .id(tab.id)
     }
-
-    // MARK: - Users & Roles Tab Content
 
     @ViewBuilder
     private func usersRolesContent(tab: QueryTab) -> some View {
@@ -367,8 +339,6 @@ struct MainEditorContentView: View {
         }
         .id(tab.id)
     }
-
-    // MARK: - Server Dashboard Tab Content
 
     @ViewBuilder
     private func serverDashboardContent(tab: QueryTab) -> some View {
@@ -395,8 +365,6 @@ struct MainEditorContentView: View {
         .id(tab.id)
     }
 
-    // MARK: - ER Diagram Tab Content
-
     @ViewBuilder
     private func erDiagramContent(tab: QueryTab) -> some View {
         Group {
@@ -407,12 +375,7 @@ struct MainEditorContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
                         guard coordinator.erDiagramModels[tab.id] == nil else { return }
-                        let vm = ERDiagramViewModel(
-                            connectionId: connection.id,
-                            databaseName: tab.tableContext.databaseName,
-                            schemaKey: tab.display.erDiagramSchemaKey ?? tab.tableContext.databaseName,
-                            connection: connection
-                        )
+                        let vm = ERDiagramViewModel(tab: tab, connection: connection)
                         vm.coordinator = coordinator
                         vm.tabId = tab.id
                         coordinator.erDiagramModels[tab.id] = vm
@@ -426,11 +389,13 @@ struct MainEditorContentView: View {
         guard coordinator.canBuildJoinQuery else { return nil }
         let coordinator = coordinator
         return { tables in
-            coordinator.openJoinBuilder(database: diagram.databaseName, schema: diagram.schemaName, tables: tables)
+            coordinator.openJoinBuilder(
+                database: diagram.scope?.database ?? diagram.databaseName,
+                schema: diagram.scope?.schema ?? diagram.schemaName,
+                tables: tables
+            )
         }
     }
-
-    // MARK: - Per-tab container picker
 
     private var containerSwitchTarget: ContainerSwitchTarget? {
         PluginManager.shared.containerSwitchTarget(for: connection.type)
@@ -516,10 +481,14 @@ struct MainEditorContentView: View {
         )
     }
 
-    private func parameterBinding(for tab: QueryTab) -> Binding<[QueryParameter]> {
+    // Reads the live tab: from the render-time copy, each write in a row started from the array as first drawn.
+    static func parameterBinding(for tab: QueryTab, in tabManager: QueryTabManager) -> Binding<[QueryParameter]> {
         let tabId = tab.id
+        let fallbackParameters = tab.content.queryParameters
         return Binding(
-            get: { tab.content.queryParameters },
+            get: {
+                tabManager.tabs.first(where: { $0.id == tabId })?.content.queryParameters ?? fallbackParameters
+            },
             set: { newValue in
                 tabManager.mutate(tabId: tabId) { $0.content.queryParameters = newValue }
             }
@@ -536,8 +505,6 @@ struct MainEditorContentView: View {
         )
     }
 
-    // MARK: - Table Tab Content
-
     @ViewBuilder
     private func tableTabContent(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
@@ -547,8 +514,6 @@ struct MainEditorContentView: View {
             resultsSection(tab: tab)
         }
     }
-
-    // MARK: - Results Section
 
     @ViewBuilder
     private func executionErrorBanner(tab: QueryTab) -> some View {
@@ -800,7 +765,7 @@ struct MainEditorContentView: View {
         inputs.executionRowsAffected = tab.execution.rowsAffected
         inputs.executionTime = tab.execution.executionTime
         inputs.executionStatusMessage = tab.execution.statusMessage
-        inputs.hasAppliedFilters = tab.filterState.hasAppliedFilters
+        inputs.isFiltering = tab.filterState.isFiltering
         inputs.isFilterPanelVisible = tab.filterState.isVisible
         return QueryResultPresentation(inputs: inputs)
     }
@@ -817,7 +782,8 @@ struct MainEditorContentView: View {
                 QueryTabFilterPanel(
                     coordinator: coordinator,
                     tabManager: tabManager,
-                    columns: rows.columns,
+                    // Hidden columns leave the SELECT, not the table, so a row can still filter on one.
+                    columns: coordinator.columnsForVisibilityPicker(for: tab, resultColumns: rows.columns),
                     primaryKeyColumn: changeManager.primaryKeyColumn,
                     databaseType: connection.type,
                     enumValuesByColumn: rows.filterPickerValues
@@ -862,38 +828,18 @@ struct MainEditorContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // Configuration is applied outside the update pass: the model publishes when it changes.
-    @ViewBuilder
     private func dataGridView(tab: QueryTab) -> some View {
-        let model = displayedGridModel(for: tab)
-        let configuration = coordinator.gridConfiguration(for: tab)
-        let highlightRules = coordinator.highlightRules(for: tab)
-        DataGridView(model: model)
-            .id(tab.id)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .onAppear {
-                model.configuration = configuration
-                focusGridIfRequested(model)
-            }
-            .onChange(of: configuration) { model.configuration = $0 }
-            .onChange(of: highlightRules) { _ in
-                model.display.cache.clearHighlights()
-                model.repaintAllRows()
-            }
+        DataTabGrid(
+            coordinator: coordinator,
+            model: displayedGridModel(for: tab),
+            presentation: coordinator.gridPresentation(for: tab)
+        )
     }
 
     private func displayedGridModel(for tab: QueryTab) -> DataGridModel {
         let model = coordinator.gridModel(forTab: tab.id)
         coordinator.prepareGridModelForDisplay(forTab: tab.id)
         return model
-    }
-
-    // An explicit open asks for the keyboard; the grid is in its window once this turn ends.
-    private func focusGridIfRequested(_ model: DataGridModel) {
-        guard coordinator.consumePendingGridFocus() else { return }
-        Task { @MainActor in
-            model.focus()
-        }
     }
 
     private func resolvedTableRows(for tab: QueryTab) -> TableRows {
@@ -922,8 +868,6 @@ struct MainEditorContentView: View {
             }
         )
     }
-
-    // MARK: - Status Bar
 
     private func statusBar(tab: QueryTab, selectedRowCount: Int) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
@@ -1059,8 +1003,6 @@ struct MainEditorContentView: View {
         )
     }
 
-    // MARK: - Empty State
-
     private var emptyStateView: some View {
         VStack(spacing: 20) {
             Image(systemName: "tablecells")
@@ -1136,7 +1078,7 @@ extension MainEditorContentView {
             supportsFormatting: QueryFormatterFactory.supportsFormatting(coordinator.connection.type),
             aiActions: coordinator.aiQueryActionAvailability(for: tab),
             shortcutHint: { label, action in
-                settingsManager.keyboard.shortcutHint(label, for: action)
+                keyboard.value.shortcutHint(label, for: action)
             }
         )
     }
@@ -1174,8 +1116,6 @@ fileprivate extension MainEditorContentView {
     }
 }
 
-// MARK: - Query Tab Content
-
 extension MainEditorContentView {
     private func queryTabInput(tab: QueryTab) -> QueryTabInput {
         let claimFocus = coordinator.tabManager.pendingFocusTabId == tab.id
@@ -1184,7 +1124,7 @@ extension MainEditorContentView {
         let commands = commandAvailability(for: tab)
         let isExecuting = coordinator.tabExecution.isExecuting(tab.id)
         let showsHistoryTip = showsHistoryTip
-        let parameters = parameterBinding(for: tab)
+        let parameters = Self.parameterBinding(for: tab, in: tabManager)
         let isParameterPanelVisible = parameterVisibilityBinding(for: tab)
         let header: (VimMode?) -> AnyView = { vimMode in
             AnyView(VStack(alignment: .leading, spacing: 0) {

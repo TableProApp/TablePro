@@ -37,9 +37,14 @@ extension DataGridViewController {
         editingDidApply(change)
         selectionDidMove()
         selectionSummaryTracker.dataDidChange()
+        wrapDidApply(change)
     }
 
     func configurationDidChange() {
+        guard model.wrapsText == wrapsText else {
+            wrapModeDidChange()
+            return
+        }
         applyTableSettings()
         let changed = presenter.refreshColumnPresentations()
         reconcileColumns(widening: changed)
@@ -47,6 +52,7 @@ extension DataGridViewController {
         syncSortIndicators()
         redrawVisibleRows()
         updateFittingHeight()
+        syncWrapGeometry()
     }
 
     // MARK: - Structural changes
@@ -56,6 +62,9 @@ extension DataGridViewController {
         let changed = presenter.refreshColumnPresentations()
         reconcileColumns(widening: changed)
         applyRowNumberWidth()
+        // The reload asks every height again, so new widths only drop the counts here.
+        syncWrapGeometry(retiles: false)
+        wrapState.measured = nil
         for pane in panes {
             pane.tableView.reloadData()
         }
@@ -83,14 +92,13 @@ extension DataGridViewController {
     // Only an accessory that came or went can move a width, and a wider column can leave the frozen pane with an open editor.
     private func columnMetadataDidChange() {
         let changed = presenter.refreshColumnPresentations()
-        if changed.isEmpty {
-            refreshHeaders()
-        } else {
+        if !changed.isEmpty {
             suspendFieldEditing(unmounting: true)
             reconcileColumns(widening: changed)
             resumeFieldEditing()
             followRowChangesWithPopovers()
         }
+        refreshHeaders()
         redrawVisibleRows()
     }
 
@@ -185,6 +193,10 @@ extension DataGridViewController {
             font: ThemeEngine.shared.dataGridFonts.regular
         )
         guard panes.contains(where: { $0.tableView.rowHeight != height }) else { return }
+        guard !wrapsText else {
+            applyWrappedRowHeight(height)
+            return
+        }
         keepingFirstVisibleRow {
             for pane in panes {
                 pane.tableView.rowHeight = height
@@ -325,7 +337,7 @@ extension DataGridViewController {
                 displayCount: model.rowCount
             )
             let start = max(nextIndex ?? window.lowerBound, window.lowerBound)
-            guard let (batch, next) = presenter.prewarmBatch(in: window, from: start) else { return }
+            guard let (batch, next) = presenter.prewarmBatch(in: window, from: start, wrap: wrapState.geometry) else { return }
             guard let batch else {
                 nextIndex = next
                 continue
@@ -333,13 +345,16 @@ extension DataGridViewController {
             let formatted = await batch.formatted()
             guard !Task.isCancelled else { return }
             // Text dropped meanwhile leaves these rows to read again.
-            if presenter.installPrewarmed(formatted, of: batch) {
+            var grown: [RowID] = []
+            if presenter.installPrewarmed(formatted, of: batch, grownRows: &grown) {
                 nextIndex = next
             }
+            noteRowHeights(ofRowIDs: grown)
         }
     }
 
     func mainViewportDidMove() {
+        measureViewportRows()
         remountAccessibilityCells()
         schedulePrewarmResume()
     }

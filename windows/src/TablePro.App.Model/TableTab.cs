@@ -236,6 +236,8 @@ public sealed class TableTab : IWorkspaceTab
         Table = table;
         ObjectKind = kind;
         _chosenSize = restore?.PageSize is { } size ? Math.Clamp(size, 1, TablePage.LargestSize) : null;
+        // Read once: a later change of the setting is for new tabs, not this one.
+        WrapsText = restore?.WrapText ?? settings().GridWrapText;
         var first = TablePage.First(PageSize);
         _page = first.At((restore?.Offset ?? 0) / first.Size * first.Size);
         _filters = filters;
@@ -311,6 +313,20 @@ public sealed class TableTab : IWorkspaceTab
     public ResultSet? ShownRows => _results.ShownSet;
 
     public int PageSize => _chosenSize ?? _settings().PageSize;
+
+    // Whether the tab's grid wraps long values, which the View menu and the header menu turn on and off.
+    public bool WrapsText { get; private set; }
+
+    public void SetWrapsText(bool wraps)
+    {
+        if (WrapsText == wraps)
+        {
+            return;
+        }
+        WrapsText = wraps;
+        // The workspace drops its cached snapshot on this, so the session keeps the choice.
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     // The page's pending changes, made anew for each page read.
     public TableEdits? Edits { get; private set; }
@@ -427,6 +443,7 @@ public sealed class TableTab : IWorkspaceTab
         Table = Table.Name,
         ObjectKind = Enum.GetName(ObjectKind),
         PageSize = _chosenSize,
+        WrapText = WrapsText,
         Offset = _page.Offset > 0 ? _page.Offset : null,
         Filter = Filter is { } filter ? SavedFilter.From(filter) : null,
         Edits = _recovered,

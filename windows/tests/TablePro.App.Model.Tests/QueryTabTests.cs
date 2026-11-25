@@ -375,9 +375,48 @@ public sealed class QueryTabTests
 
         Assert.Equal<string>(["select 2", "select * from Artist"], Assert.Single(_session.Editors).Runs);
         Assert.Equal(
-            new SessionTab { Kind = TabKind.Query, Title = "Query 1", Sql = "select * from Artist" },
+            new SessionTab { Kind = TabKind.Query, Title = "Query 1", Sql = "select * from Artist", WrapText = false },
             _tab.Snapshot());
         Assert.False(_tab.HasUnsavedChanges);
+    }
+
+    [Fact]
+    public void ANewTabWrapsAsSettingsSayAndAnOpenTabNeverFollowsAChange()
+    {
+        var settings = new AppSettings { GridWrapText = true };
+        var tab = new QueryTab("Query 2", _session, _view, _results, DataModel.Relational, () => settings);
+
+        settings = new AppSettings();
+
+        Assert.False(_tab.WrapsText);
+        Assert.True(tab.WrapsText);
+        Assert.True(tab.Snapshot().WrapText);
+    }
+
+    [Fact]
+    public void ATabsOwnWrapChoiceIsKeptInItsSnapshotAndToldOnce()
+    {
+        var changes = 0;
+        _tab.StateChanged += (_, _) => changes++;
+
+        _tab.SetWrapsText(true);
+        _tab.SetWrapsText(true);
+
+        Assert.True(_tab.WrapsText);
+        Assert.Equal(1, changes);
+        Assert.True(_tab.Snapshot().WrapText);
+    }
+
+    [Fact]
+    public void ARestoredTabKeepsItsWrapChoiceWhateverSettingsSayNow()
+    {
+        var wrapping = new AppSettings { GridWrapText = true };
+        var kept = new QueryTab(
+            "Query 2", _session, _view, _results, DataModel.Relational, () => wrapping, wrapText: false);
+        var older = new QueryTab("Query 3", _session, _view, _results, DataModel.Relational, () => wrapping);
+
+        Assert.False(kept.WrapsText);
+        Assert.True(older.WrapsText);
     }
 
     [Fact]

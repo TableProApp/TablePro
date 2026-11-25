@@ -137,12 +137,6 @@ final class MainContentCommandActions: ObservableObject {
 
     // MARK: - Save Action
 
-    private func saveInspectorEdits() {
-        Task { [weak self] in
-            await self?.saveInspectorEditsAwaiting()
-        }
-    }
-
     // A close waits on this: started and left, the write could land after the window it reports to closed.
     @discardableResult
     func saveInspectorEditsAwaiting() async -> Bool {
@@ -271,8 +265,10 @@ final class MainContentCommandActions: ObservableObject {
 
     var isReadOnly: Bool { safeModeLevel.blocksAllWrites }
 
+    // A query tab has no pages: a page reload rebuilds the table query over the user's SQL.
     var canNavigatePages: Bool {
-        PluginManager.shared.paginationCapability(for: connection.type).allowsSeeking
+        coordinator?.tabManager.selectedTab?.tabType == .table
+            && PluginManager.shared.paginationCapability(for: connection.type).allowsSeeking
     }
 
     var editorLanguage: EditorLanguage {
@@ -765,6 +761,12 @@ final class MainContentCommandActions: ObservableObject {
     }
 
 
+    // Discard Changes in the Review Changes alert: the window closes as Don't Save closes it.
+    func discardWorkAndCloseWindow() {
+        stop(workInWindow)
+        discardAndClose(asBatchSurvivor: false)
+    }
+
     private func discardAndClose(asBatchSurvivor: Bool?) {
         coordinator?.changeManager.clearChangesAndUndoHistory()
         pendingTruncates.wrappedValue.removeAll()
@@ -800,6 +802,19 @@ final class MainContentCommandActions: ObservableObject {
     func showHighlightRules() {
         guard canPresentHighlightRules, let coordinator else { return }
         coordinator.presentHighlightRules()
+    }
+
+    var canToggleWrapText: Bool {
+        coordinator?.canToggleWrapText ?? false
+    }
+
+    var wrapsGridText: Bool {
+        coordinator?.wrapsGridText ?? false
+    }
+
+    func toggleWrapText() {
+        guard canToggleWrapText, let coordinator else { return }
+        coordinator.toggleWrapText()
     }
 
     func showFindBar(replace: Bool = false) {
@@ -858,35 +873,31 @@ final class MainContentCommandActions: ObservableObject {
             return
         }
         if saveSelectedTypeChanges() { return }
+        let selectedTab = coordinator?.tabManager.selectedTab
         if let session = stagedStructureSession, let coordinator {
             Task { _ = await session.applyStagedChanges(coordinator: coordinator) }
-        } else if hasDataWork {
-            // Data grid first: its edits sync to the sidebar editState, and its path uses the plugin driver for statements.
-            var truncates = pendingTruncates.wrappedValue
-            var deletes = pendingDeletes.wrappedValue
-            var options = tableOperationOptions.wrappedValue
-            coordinator?.saveChanges(
-                pendingTruncates: &truncates,
-                pendingDeletes: &deletes,
-                tableOperationOptions: &options
-            )
-            pendingTruncates.wrappedValue = truncates
-            pendingDeletes.wrappedValue = deletes
-            tableOperationOptions.wrappedValue = options
-        } else if trailingPaneState.inspector.editState.hasEdits {
-            // Save sidebar-only edits (edits made directly in the right panel)
-            saveInspectorEdits()
-        }
-        // File save: write query back to source file
-        else if let tab = coordinator?.tabManager.selectedTab,
-                tab.content.sourceFileURL != nil, tab.content.isFileDirty {
-            saveFileToSourceURL()
-        }
-        // Save As: untitled query tab with content
-        else if let tab = coordinator?.tabManager.selectedTab,
-                tab.tabType == .query, tab.content.sourceFileURL == nil, tab.hasQueryText {
+        } else if hasDataWork || trailingPaneState.inspector.editState.hasEdits || selectedTab?.content.isFileDirty == true {
+            let tabId = selectedTab?.id
+            Task { await saveRowsThenFile(onTab: tabId) }
+        } else if let selectedTab, selectedTab.tabType == .query, selectedTab.content.sourceFileURL == nil,
+                  selectedTab.hasQueryText {
             saveFileAs()
         }
+    }
+
+    // Its path uses the plugin driver for statements, and writes the staged TRUNCATE and DROP too.
+    func saveDataWork() {
+        var truncates = pendingTruncates.wrappedValue
+        var deletes = pendingDeletes.wrappedValue
+        var options = tableOperationOptions.wrappedValue
+        coordinator?.saveChanges(
+            pendingTruncates: &truncates,
+            pendingDeletes: &deletes,
+            tableOperationOptions: &options
+        )
+        pendingTruncates.wrappedValue = truncates
+        pendingDeletes.wrappedValue = deletes
+        tableOperationOptions.wrappedValue = options
     }
 
     func saveFileAs() {

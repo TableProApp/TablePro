@@ -276,6 +276,7 @@ fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks) -> DataGrid {
         find: true,
         filter_by_value: false,
         share: false,
+        wrap_text: false,
         tasks,
         label: key.to_owned(),
     });

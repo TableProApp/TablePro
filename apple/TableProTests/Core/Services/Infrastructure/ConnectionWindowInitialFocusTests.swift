@@ -119,6 +119,75 @@ struct ConnectionWindowInitialFocusTests {
         #expect(window.firstResponder === window)
     }
 
+    // A connection already up when its window opens has the sidebar filter enabled from the first frame, and AppKit's
+    // first-show pick walked on from the container, which refuses focus, to that field.
+    @Test("A key view in the sidebar at first show leaves the window's first focus to the content")
+    func firstFocusSkipsAnEnabledSidebarKeyView() throws {
+        let host = try ConnectionWindowHost()
+        defer { host.tearDown() }
+        host.sidebar.addSubview(NSTextField(frame: NSRect(x: 10, y: host.sidebar.bounds.maxY - 80, width: 160, height: 22)))
+
+        host.window.orderFront(nil)
+
+        #expect(host.window.firstResponder === host.window)
+        host.window.selectNextKeyView(nil)
+        #expect(host.window.firstResponder !== host.window, "Tab from the empty window still reaches a key view")
+    }
+
+    // The two halves of the fix only work together: without the container, the field takes the pick before the
+    // list's turn comes.
+    @Test("An object list built before first show takes the first focus over an enabled sidebar field")
+    func objectListTakesFirstFocus() async throws {
+        let host = try ConnectionWindowHost()
+        defer { host.tearDown() }
+        let sidebar = host.sidebar
+        sidebar.addSubview(NSTextField(frame: NSRect(x: 10, y: sidebar.bounds.maxY - 80, width: 160, height: 22)))
+        let list = SidebarOutlineView(frame: NSRect(x: 0, y: 0, width: 200, height: 300))
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("column"))
+        list.addTableColumn(column)
+        list.outlineTableColumn = column
+        sidebar.addSubview(list)
+
+        host.window.orderFront(nil)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+
+        #expect(host.window.firstResponder === list)
+    }
+
+    @MainActor
+    private struct ConnectionWindowHost {
+        let window: NSWindow
+        let sidebar: NSView
+        private let workspace: ConnectionWorkspace
+
+        init() throws {
+            let connection = TestFixtures.makeConnection(name: "Initial focus, connected")
+            workspace = ConnectionWorkspace(
+                connectionId: connection.id,
+                payload: nil,
+                autoConnect: false,
+                payloadConnection: connection,
+                session: nil,
+                sessionState: nil,
+                trailingPaneState: nil,
+                phase: .connecting
+            )
+            window = TabWindowController.makeEditorWindow()
+            window.isReleasedWhenClosed = false
+            let split = MainSplitViewController(payload: nil, sessionState: nil, adopting: workspace)
+            window.contentViewController = split
+            sidebar = try #require(split.splitViewItems.first?.viewController.view)
+        }
+
+        func tearDown() {
+            window.orderOut(nil)
+            window.contentViewController = nil
+            workspace.teardown()
+        }
+    }
+
     @MainActor
     private struct SidebarHost {
         let sidebar: NavigationSidebarViewController

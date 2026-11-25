@@ -398,6 +398,7 @@ internal static partial class Mapping
         Native.SecretItemTag.OpenAiKey => SecretItem.OpenAIKey,
         Native.SecretItemTag.OpenAiCompatibleKey => SecretItem.OpenAICompatibleKey,
         Native.SecretItemTag.AccountRefreshToken => SecretItem.AccountRefreshToken,
+        Native.SecretItemTag.AccountRefreshTokenFor keyed => SecretItem.AccountRefreshTokenFor(keyed.SignInKey),
         _ => throw new ArgumentOutOfRangeException(nameof(item), item, "A secret item the core added after this build."),
     };
 

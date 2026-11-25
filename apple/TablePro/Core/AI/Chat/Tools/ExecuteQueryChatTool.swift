@@ -94,11 +94,13 @@ struct ExecuteQueryChatTool: ChatTool {
             settings: mcpSettings
         )
 
-        let scope = try await context.bridge.resolveScope(
+        let target = try await ChatToolTarget.runTarget(
+            context: context,
             connectionId: connectionId,
             database: database,
             schema: schema
         )
+        let scope = target.scope
         // A table named without a schema lands in the scope's, and the engine's own schemas hold its grant, setup and
         // settings tables.
         if context.chatMode != .agent, classification.tier != .safe, QueryClassifier.writesSystemScope(
@@ -110,6 +112,7 @@ struct ExecuteQueryChatTool: ChatTool {
         let operation = try await context.authPolicy.checkSafeModeDialog(
             operation: PendingOperation(
                 scope: scope,
+                driverGeneration: target.driverGeneration,
                 databaseType: meta.databaseType,
                 statements: [planned.statement],
                 kind: OperationKind.from(classification.tier),

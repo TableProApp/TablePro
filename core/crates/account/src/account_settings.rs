@@ -1,21 +1,35 @@
 use std::fmt::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use aws_lc_rs::digest;
+use tablepro_cloud_api::v2::types::Platform;
 use url::Url;
 
-use crate::cloud_api::v2::types::Platform;
-use crate::entitlement_keys::EntitlementKeys;
 use crate::machine_id::MachineId;
+use crate::server::{ServerSettings, origin_text};
 
 // tablepro-cloud registers one public OAuth client per app, each with its own redirect: Linux's and Windows's take
-// the loopback one this crate listens on, on any port (api.md, OAuth). The Mac's is a custom scheme.
+// the loopback one this crate listens on, on any port (api.md, OAuth). The Mac's is a custom scheme, which the host's
+// web authenticator answers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AppClient {
     pub client_id: &'static str,
     pub platform: Platform,
     // For the User-Agent.
     pub system: &'static str,
+    pub redirect: Redirect,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Redirect {
+    // RFC 8252 section 7.3, on any port.
+    Loopback,
+    // RFC 8252 section 7.1: `<scheme>:/oauth/callback`.
+    Scheme(&'static str),
+}
+
+impl Redirect {
+    pub(crate) const CALLBACK_PATH: &'static str = "/oauth/callback";
 }
 
 impl AppClient {
@@ -23,12 +37,21 @@ impl AppClient {
         client_id: "tablepro-linux",
         platform: Platform::Linux,
         system: "Linux",
+        redirect: Redirect::Loopback,
     };
 
     pub const WINDOWS: Self = Self {
         client_id: "tablepro-windows",
         platform: Platform::Windows,
         system: "Windows",
+        redirect: Redirect::Loopback,
+    };
+
+    pub const MACOS: Self = Self {
+        client_id: "tablepro-macos",
+        platform: Platform::Macos,
+        system: "macOS",
+        redirect: Redirect::Scheme("app.tablepro"),
     };
 }
 
@@ -61,6 +84,19 @@ impl Endpoints {
             api: api.to_owned(),
         }
     }
+
+    // What a tablepro-cloud stack names as its entitlements' issuer and its licenses' origin.
+    pub fn api_origin(&self) -> String {
+        Url::parse(&self.api).map_or_else(|_| self.api.clone(), |url| origin_text(&url))
+    }
+
+    pub(crate) fn account_origin(&self) -> String {
+        Url::parse(&self.authorize).map_or_else(|_| self.authorize.clone(), |url| origin_text(&url))
+    }
+
+    pub(crate) fn api(&self) -> &str {
+        &self.api
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,32 +116,41 @@ pub struct CallbackPage {
 #[derive(Debug, Clone)]
 pub struct AccountSettings {
     pub client: AppClient,
-    pub endpoints: Endpoints,
+    pub server: ServerSettings,
     pub device: DeviceDescription,
     pub machine_id: MachineId,
-    pub keys: EntitlementKeys,
     pub account_file: PathBuf,
     pub callback_page: CallbackPage,
+    // The Mac's entitlement from before the core kept its account, adopted once while `account_file` is missing.
+    pub legacy_entitlement_file: Option<PathBuf>,
 }
 
-impl AccountSettings {
-    // Names this sign-in among the others a user's secret store can hold: another server, or another build's
-    // state folder, keeps a refresh token of its own. 16 hex characters of SHA-256 over the API and the file.
-    pub fn sign_in_key(&self) -> String {
-        let named = format!("{}\n{}", self.endpoints.api, self.account_file.display());
+// Names one sign-in among the others a user's secret store can hold: another server, or another build's state folder,
+// keeps a refresh token of its own.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SignInKey {
+    pub key: String,
+    // tablepro.app's own service, which a sign-in kept before the key existed was always for.
+    pub production: bool,
+}
+
+impl SignInKey {
+    // 16 hex characters of SHA-256 over the API and the account file.
+    pub fn of(api: &str, account_file: &Path) -> Self {
+        let named = format!("{api}\n{}", account_file.display());
         let hash = digest::digest(&digest::SHA256, named.as_bytes());
-        hash.as_ref()
+        let key = hash
+            .as_ref()
             .iter()
             .take(8)
             .fold(String::with_capacity(16), |mut text, byte| {
                 let _ = write!(text, "{byte:02x}");
                 text
-            })
-    }
-
-    // tablepro.app's own service, which a sign-in kept before the key existed was always for.
-    pub fn is_production(&self) -> bool {
-        self.endpoints == Endpoints::production()
+            });
+        Self {
+            key,
+            production: api == Endpoints::production().api,
+        }
     }
 }
 
@@ -125,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn each_desktop_app_signs_in_as_its_own_client_and_platform() {
+    fn each_app_signs_in_as_its_own_client_platform_and_redirect() {
         assert_eq!(
             (AppClient::LINUX.client_id, AppClient::LINUX.platform.to_string()),
             ("tablepro-linux", "linux".to_owned())
@@ -134,41 +179,41 @@ mod tests {
             (AppClient::WINDOWS.client_id, AppClient::WINDOWS.platform.to_string()),
             ("tablepro-windows", "windows".to_owned())
         );
-    }
-
-    fn settings(api: &str, file: &str) -> AccountSettings {
-        AccountSettings {
-            client: AppClient::WINDOWS,
-            endpoints: Endpoints::new("https://account.tablepro.app", api).expect("the endpoints"),
-            device: DeviceDescription {
-                name: "Lab".to_owned(),
-                app_version: "1.0.0".to_owned(),
-                os_version: "Windows 11".to_owned(),
-            },
-            machine_id: MachineId::derive("4c4f5e2a0b6d4f3c9e8a7b6c5d4e3f20\n").expect("a machine"),
-            keys: crate::entitlement::test_tokens::keys(),
-            account_file: PathBuf::from(file),
-            callback_page: CallbackPage {
-                finished: String::new(),
-                unknown: String::new(),
-            },
-        }
+        assert_eq!(
+            (AppClient::MACOS.client_id, AppClient::MACOS.platform.to_string()),
+            ("tablepro-macos", "macos".to_owned())
+        );
+        assert_eq!(AppClient::LINUX.redirect, Redirect::Loopback);
+        assert_eq!(AppClient::MACOS.redirect, Redirect::Scheme("app.tablepro"));
     }
 
     #[test]
     fn each_server_and_state_folder_signs_in_under_a_key_of_its_own() {
-        let production = settings("https://api.tablepro.app/v2", "C:/Users/a/LocalState/account.json");
-        let local = settings("http://api.localhost:5284/v2", "C:/Users/a/LocalState/account.json");
-        let other_build = settings("https://api.tablepro.app/v2", "C:/Users/a/Dev/LocalState/account.json");
+        let file = Path::new("C:/Users/a/LocalState/account.json");
+        let production = SignInKey::of("https://api.tablepro.app/v2", file);
+        let local = SignInKey::of("http://api.localhost:5284/v2", file);
+        let other_build = SignInKey::of(
+            "https://api.tablepro.app/v2",
+            Path::new("C:/Users/a/Dev/LocalState/account.json"),
+        );
         // python3 -c 'import hashlib;print(hashlib.sha256(b"https://api.tablepro.app/v2\nC:/Users/a/LocalState/account.json").hexdigest()[:16])'
         let expected = "e6989de2b8e8cbc0";
 
-        assert_eq!(production.sign_in_key(), expected);
-        assert_eq!(production.sign_in_key(), production.clone().sign_in_key());
-        assert_ne!(production.sign_in_key(), local.sign_in_key());
-        assert_ne!(production.sign_in_key(), other_build.sign_in_key());
-        assert!(production.is_production());
-        assert!(!local.is_production());
+        assert_eq!(production.key, expected);
+        assert_ne!(production.key, local.key);
+        assert_ne!(production.key, other_build.key);
+        assert!(production.production && other_build.production);
+        assert!(!local.production);
+    }
+
+    #[test]
+    fn the_api_origin_is_the_issuer_a_stack_names() {
+        let endpoints =
+            Endpoints::new("http://account.localhost:5284", "http://api.localhost:5284/v2/").expect("the endpoints");
+
+        assert_eq!(endpoints.api_origin(), "http://api.localhost:5284");
+        assert_eq!(endpoints.account_origin(), "http://account.localhost:5284");
+        assert_eq!(Endpoints::production().api_origin(), "https://api.tablepro.app");
     }
 
     #[test]

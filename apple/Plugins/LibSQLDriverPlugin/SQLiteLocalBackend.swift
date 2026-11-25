@@ -169,31 +169,28 @@ actor SQLiteLocalBackend {
             estimatedRowCount: nil
         ))
 
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
+        var batch = PluginRowBatcher()
 
         var stepResult = firstStep.result
         while stepResult == SQLITE_ROW {
             if Task.isCancelled {
                 if !batch.isEmpty {
-                    spill.deliver(batch)
+                    spill.deliver(batch.rows)
                 }
                 spill.finish(throwing: CancellationError())
                 return
             }
 
-            batch.append(rowValues(of: statement, count: columnCount))
-            if batch.count >= batchSize {
+            if batch.append(rowValues(of: statement, count: columnCount)) {
                 // Synchronous on the actor's thread: an await here would let another call reach the handle mid-statement.
-                guard spill.deliver(batch) else { return }
-                batch.removeAll(keepingCapacity: true)
+                guard spill.deliver(batch.rows) else { return }
+                batch.removeAll()
             }
             stepResult = sqlite3_step(statement)
         }
 
         if !batch.isEmpty {
-            spill.deliver(batch)
+            spill.deliver(batch.rows)
         }
 
         do {

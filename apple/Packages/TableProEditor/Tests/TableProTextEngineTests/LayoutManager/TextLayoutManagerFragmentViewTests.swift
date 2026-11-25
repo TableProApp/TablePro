@@ -183,6 +183,27 @@ struct TextLayoutManagerFragmentViewTests {
         }
     }
 
+    // Unhosted, `visibleRect` is infinite, so a text view built around its text used to lay out every line.
+    @Test
+    func aTextViewBuiltAroundALongDocumentLaysOutOnlyTheFirstBand() throws {
+        let text = (0..<5_000).map { "SELECT * FROM table_\($0) WHERE id = \($0);" }.joined(separator: "\n")
+        let view = TextView(string: text, wrapLines: false)
+        let manager = try #require(view.layoutManager)
+        let firstBand = layoutBand(for: .zero, of: manager)
+
+        expectViewsMatchBand(firstBand, of: manager, in: view)
+        #expect(fragmentViews(of: view).count == fragments(in: firstBand, of: manager).count)
+
+        let scrollView = NSScrollView(frame: NSRect(origin: .zero, size: Self.viewportSize))
+        scrollView.documentView = view
+        view.updateFrameIfNeeded()
+        view.layout()
+
+        let band = layoutBand(for: view.visibleRect, of: manager)
+        expectViewsMatchBand(band, of: manager, in: view)
+        #expect(fragmentViews(of: view).count <= fragments(in: band, of: manager).count * 2)
+    }
+
     /// A document that does not wrap keeps one view per line in the band, and those views follow their lines when an
     /// edit above the viewport moves them.
     @Test

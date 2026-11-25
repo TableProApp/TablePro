@@ -158,11 +158,12 @@ internal final class JoinBuilderViewModel: ObservableObject {
     }
 
     private func fetchCatalog(scope: DatabaseScope) async throws -> Catalog {
+        let schema = scope.schema
         let (columns, foreignKeys) = try await services.databaseManager.withMetadataDriver(
             scope: scope, workload: .bulk
         ) { driver in
-            let columns = try await driver.fetchAllColumns()
-            let foreignKeys = try await driver.fetchAllForeignKeys()
+            let columns = try await driver.fetchAllColumns(schema: schema)
+            let foreignKeys = try await driver.fetchAllForeignKeys(schema: schema)
             return (columns, foreignKeys)
         }
         let slot = EngineNamespaceSlot(databaseType: connection.type)

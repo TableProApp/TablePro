@@ -19,8 +19,7 @@ struct ParseSchemaMetadataTests {
     func populatesComments() {
         let schema = FetchedTableSchema(
             columns: [column("id", comment: "Primary key"), column("name", comment: "Display name")],
-            foreignKeys: nil,
-            approximateRowCount: nil
+            foreignKeys: nil
         )
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.columnComments == ["id": "Primary key", "name": "Display name"])
@@ -30,8 +29,7 @@ struct ParseSchemaMetadataTests {
     func editableViewSuppliesKeys() {
         var schema = FetchedTableSchema(
             columns: [column("key_id", comment: nil), column("name", comment: nil)],
-            foreignKeys: nil,
-            approximateRowCount: nil
+            foreignKeys: nil
         )
         let answer = PluginViewRowEditing.editable(TestFixtures.viewTarget(keys: ["key_id"]))
         schema.viewRowEditing = answer
@@ -42,7 +40,7 @@ struct ParseSchemaMetadataTests {
 
     @Test("A read-only view keeps no key and carries its reason")
     func readOnlyViewHasNoKeys() {
-        var schema = FetchedTableSchema(columns: [column("name", comment: nil)], foreignKeys: nil, approximateRowCount: nil)
+        var schema = FetchedTableSchema(columns: [column("name", comment: nil)], foreignKeys: nil)
         schema.viewRowEditing = .readOnly(.readsSeveralTables)
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.primaryKeyColumns.isEmpty)
@@ -53,8 +51,7 @@ struct ParseSchemaMetadataTests {
     func editableViewTakesItsBaseColumns() {
         var schema = FetchedTableSchema(
             columns: ["id", "name", "q2", "ident", "note"].map { column($0, comment: nil) },
-            foreignKeys: nil,
-            approximateRowCount: nil
+            foreignKeys: nil
         )
         let serial = PluginViewBaseColumn(
             name: "id", isNullable: false, defaultValue: "nextval('t_id_seq')", assignsValue: false, acceptsWrites: true
@@ -87,8 +84,7 @@ struct ParseSchemaMetadataTests {
     func excludesNilAndEmpty() {
         let schema = FetchedTableSchema(
             columns: [column("id", comment: nil), column("name", comment: ""), column("email", comment: "Contact")],
-            foreignKeys: nil,
-            approximateRowCount: nil
+            foreignKeys: nil
         )
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.columnComments == ["email": "Contact"])
@@ -101,8 +97,7 @@ struct ParseSchemaMetadataTests {
                 ColumnInfo(name: "id", dataType: "CHAR(32)", isNullable: false, isPrimaryKey: true),
                 ColumnInfo(name: "name", dataType: "VARCHAR(80)", isNullable: true, isPrimaryKey: false),
             ],
-            foreignKeys: nil,
-            approximateRowCount: nil
+            foreignKeys: nil
         )
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.columnDeclaredTypes == ["id": "CHAR(32)", "name": "VARCHAR(80)"])
@@ -130,8 +125,7 @@ struct ParseSchemaMetadataTests {
     func emptyWhenNoComments() {
         let schema = FetchedTableSchema(
             columns: [column("id", comment: nil), column("name", comment: nil)],
-            foreignKeys: nil,
-            approximateRowCount: nil
+            foreignKeys: nil
         )
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.columnComments.isEmpty)

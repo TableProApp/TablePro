@@ -61,6 +61,17 @@ internal final class ConnectionApprovalStore {
         Self.logger.info("Approved \(self.kind.logName, privacy: .public) for a connection")
     }
 
+    // Approves `connection` only where it asks for no more than `reviewed` did, at the same destination.
+    internal func approve(_ connection: DatabaseConnection, asReviewed reviewed: DatabaseConnection) {
+        guard dialedDestination(connection).digest == dialedDestination(reviewed).digest,
+              kind.items(in: connection).isSubset(of: kind.items(in: reviewed))
+        else {
+            Self.logger.info("Left \(self.kind.logName, privacy: .public) unapproved: the saved definition differs from the one shown")
+            return
+        }
+        approve(connection)
+    }
+
     internal func revoke(for connectionId: UUID) {
         var all = approvals()
         guard all.removeValue(forKey: connectionId.uuidString) != nil else { return }

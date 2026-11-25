@@ -159,15 +159,17 @@ public struct RunMaintenanceTool: MCPToolImplementation {
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
         /// Resolved before the statements, because the schema it carries is what qualifies the target
         /// and its kind is what says whether the operation applies at all.
-        let scope = try await MCPScopeArguments.resolve(
+        let resolved = try await MCPScopeArguments.resolveForAppStatements(
             arguments,
             connectionId: connectionId,
             services: services
         )
         let statements: [String]
+        let scope: DatabaseScope
         do {
-            statements = try await services.connectionBridge.maintenanceStatements(
-                scope: scope,
+            (statements, scope) = try await services.connectionBridge.maintenanceStatements(
+                scope: resolved,
+                schemaWasNamed: try MCPScopeArguments.namedSchema(arguments) != nil,
                 operation: operation,
                 table: table,
                 options: options
@@ -183,29 +185,51 @@ public struct RunMaintenanceTool: MCPToolImplementation {
             try MCPStatementGate.classify(sql: statement, meta: meta, allowsDestructive: true, context: context)
         }
 
-        var results: [JsonValue] = []
-        for (statement, classification) in zip(statements, classifications) {
-            let planned: OperationStatement
+        var planned: [OperationStatement] = []
+        for statement in statements {
             do {
-                planned = try await services.connectionBridge.plannedStatement(
+                planned.append(try await services.connectionBridge.plannedStatement(
                     scope: scope,
                     query: statement,
                     maxRows: Self.rowLimit
-                )
+                ))
             } catch {
                 throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
             }
+        }
+        let operationLabel = String(format: String(localized: "maintenance operation %@"), operation)
+        let generation = await services.connectionBridge.driverGeneration(of: scope.connectionId)
+        let consent = try MCPStatementGate.consent(
+            for: zip(planned, classifications).map { plannedStatement, classification in
+                MCPStatementGate.pendingOperation(
+                    [plannedStatement],
+                    kind: OperationKind.from(classification.tier),
+                    scope: scope,
+                    driverGeneration: generation,
+                    meta: meta,
+                    allowsDestructive: true,
+                    forcesUserConsent: true,
+                    operationLabel: operationLabel,
+                    context: context
+                )
+            },
+            meta: meta,
+            forcesUserConsent: true,
+            operationLabel: operationLabel,
+            context: context
+        )
+
+        var results: [JsonValue] = []
+        for (plannedStatement, classification) in zip(planned, classifications) {
             let approved = try await MCPStatementGate.approve(
-                [planned],
+                [plannedStatement],
                 kind: OperationKind.from(classification.tier),
                 scope: scope,
                 meta: meta,
                 allowsDestructive: true,
                 forcesUserConsent: true,
-                operationLabel: String(
-                    format: String(localized: "maintenance operation %@"),
-                    operation
-                ),
+                operationLabel: operationLabel,
+                consent: consent,
                 context: context,
                 services: services
             )
@@ -294,7 +318,7 @@ public struct TransactionControlTool: MCPToolImplementation {
         // No statement to grade: BEGIN means JavaScript to a MongoDB classifier, so the kind decides.
         try MCPStatementGate.classify(kind: .writeQuery, meta: meta, allowsDestructive: false, context: context)
 
-        let scope = try await MCPScopeArguments.resolve(
+        let scope = try await MCPScopeArguments.resolveForAppStatements(
             arguments,
             connectionId: connectionId,
             services: services

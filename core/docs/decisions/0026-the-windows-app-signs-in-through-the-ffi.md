@@ -1,6 +1,6 @@
 # 0026: The Windows app signs in to its TablePro account through the FFI
 
-- **Status**: Accepted
+- **Status**: Accepted; the host's refresh token item per server amended by [0047](0047-the-apple-apps-sign-in-through-the-core.md)
 - **Date**: 2026-11-13
 
 ## Context

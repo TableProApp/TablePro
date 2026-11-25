@@ -15,68 +15,119 @@ final class FilterCoordinator: ObservableObject {
         self.parent = parent
     }
 
-    // MARK: - Filtering
+    // MARK: - Applying
 
-    func applyFilters(_ filters: [TableFilter], logicMode: FilterLogicMode? = nil, forTab tabId: UUID) {
-        guard let tableName = existingTab(tabId)?.tableContext.tableName else { return }
-        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
-            guard let self, confirmed else { return }
-            commitFilters(filters, logicMode: logicMode, tabId: tabId, tableName: tableName)
+    func applyCheckedFilters() {
+        changeSelectedTab { $0.applyingCheckedRows() }
+    }
+
+    func applyFiltersInCurrentMode() {
+        changeSelectedTab { $0.applyingCurrentMode() }
+    }
+
+    func applyFilterAlone(_ filterID: UUID) {
+        changeSelectedTab { $0.applyingAlone(filterID) }
+    }
+
+    func turnOffFilters() {
+        changeSelectedTab { $0.turningOff() }
+    }
+
+    func removeAllFilters() {
+        changeSelectedTab { $0.removingAllFilters() }
+    }
+
+    // A row that is not running leaves the rows alone, so it needs no reload and no discard guard.
+    func removeFilter(_ filterID: UUID) {
+        guard let state = parent.tabManager.selectedTab?.filterState else { return }
+        guard state.removingFilter(filterID).applied == state.applied else {
+            changeSelectedTab { $0.removingFilter(filterID) }
+            return
+        }
+        mutateSelectedTabFilterState { $0 = $0.removingFilter(filterID) }
+    }
+
+    // The search takes the panel's rows, so it runs only on an empty panel; a row added since the offer stays.
+    func applyCrossColumnSearch(term: String, columns: [String], forTab tabId: UUID) {
+        guard !columns.isEmpty, parent.supportsMatchAnyFilters || columns.count == 1 else { return }
+        change(ofTab: tabId) { state in
+            state.filters.isEmpty ? state.searchingAllRows(term: term, columns: columns) : nil
         }
     }
 
     // The caller holds the discard guard: it also records the view the tab leaves, and both land on one side of a refusal.
     func commitReferenceFilter(_ filter: TableFilter, forTab tabId: UUID) {
-        guard let tableName = existingTab(tabId)?.tableContext.tableName else { return }
-        mutateFilterState(ofTab: tabId) { $0.setReferenceFilter(filter) }
-        commitFilters([filter], logicMode: nil, tabId: tabId, tableName: tableName)
+        guard let tab = existingTab(tabId), let tableName = tab.tableContext.tableName else { return }
+        var next = tab.filterState
+        next.setReferenceFilter(filter)
+        commit(next, forTab: tabId, tableName: tableName)
     }
 
-    // Builds the query before writing the filter state, so a refusal leaves the panel, commit and rows as they were.
-    private func commitFilters(
-        _ filters: [TableFilter],
-        logicMode: FilterLogicMode?,
-        tabId: UUID,
-        tableName: String,
-        adopting proposed: TabFilterState? = nil
-    ) {
-        guard let tab = existingTab(tabId) else { return }
-        var next = proposed ?? tab.filterState
-        if let logicMode {
-            next.filterLogicMode = logicMode
-            next.isVisible = true
+    private func changeSelectedTab(_ transition: @escaping (TabFilterState) -> TabFilterState?) {
+        guard let tabId = parent.tabManager.selectedTab?.id else { return }
+        change(ofTab: tabId, transition)
+    }
+
+    // Every change to what the grid runs: the discard guard first, then the state, query, save and reload together.
+    private func change(ofTab tabId: UUID, _ transition: @escaping (TabFilterState) -> TabFilterState?) {
+        guard let tableName = existingTab(tabId)?.tableContext.tableName else { return }
+        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
+            guard let self, confirmed,
+                  let state = existingTab(tabId)?.filterState,
+                  let next = transition(state) else { return }
+            commit(next, forTab: tabId, tableName: tableName)
         }
+    }
+
+    // Builds the query before writing the state, so a refusal leaves the panel and the rows as they were.
+    private func commit(_ proposed: TabFilterState, forTab tabId: UUID, tableName: String) {
+        guard let tab = existingTab(tabId) else { return }
+        var next = proposed
         if !parent.supportsMatchAnyFilters {
             next.filterLogicMode = .and
+            next.applied = next.applied?.withLogicMode(.and)
         }
 
-        let queryColumns = parent.queryColumns(for: tab)
-        guard let newQuery = parent.queryBuilder.buildFilteredQuery(
-            tableName: tableName,
-            schemaName: tab.tableContext.schemaName,
-            filters: filters,
-            logicMode: next.filterLogicMode,
-            sortState: querySortState(for: tab),
-            columns: queryColumns.columns,
-            columnTypes: queryColumns.columnTypes,
-            selectColumns: parent.selectColumns(for: tab),
-            unloadedValues: parent.unloadedValuePlan(for: tab),
-            limit: tab.pagination.pageSize,
-            offset: 0
-        ) else {
-            let message = FilterSQLGenerator.refusalMessage(for: filters, databaseType: parent.connection.type)
-                ?? String(localized: "This database cannot filter rows with these conditions.")
-            parent.tabManager.mutate(tabId: tabId) {
-                $0.execution.errorMessage = message
+        let columns = parent.tableQueryColumns(for: tab)
+        let query: String
+        if let applied = next.applied {
+            guard let filtered = parent.queryBuilder.buildFilteredQuery(
+                tableName: tableName,
+                schemaName: tab.tableContext.schemaName,
+                filters: applied.filters,
+                logicMode: applied.logicMode,
+                sortState: querySortState(for: tab),
+                columns: columns.columns,
+                columnTypes: columns.columnTypes,
+                selectColumns: columns.selectColumns,
+                unloadedValues: columns.unloadedValues,
+                limit: tab.pagination.pageSize,
+                offset: 0
+            ) else {
+                let message = FilterSQLGenerator.refusalMessage(for: applied.filters, databaseType: parent.connection.type)
+                    ?? String(localized: "This database cannot filter rows with these conditions.")
+                parent.tabManager.mutate(tabId: tabId) {
+                    $0.execution.errorMessage = message
+                }
+                return
             }
-            return
+            query = filtered
+        } else {
+            query = parent.queryBuilder.buildBaseQuery(
+                tableName: tableName,
+                schemaName: tab.tableContext.schemaName,
+                sortState: querySortState(for: tab),
+                columns: columns.columns,
+                selectColumns: columns.selectColumns,
+                unloadedValues: columns.unloadedValues,
+                limit: tab.pagination.pageSize,
+                offset: 0
+            )
         }
 
-        next.executedFilters = filters
-        next.executedLogicMode = next.filterLogicMode
         parent.tabManager.mutate(tabId: tabId) {
             $0.pagination.reset()
-            $0.content.query = newQuery
+            $0.content.query = query
             $0.filterState = next
         }
         if let committed = existingTab(tabId) {
@@ -85,75 +136,13 @@ final class FilterCoordinator: ObservableObject {
         parent.runQuery(onTab: tabId, viewport: .firstRow)
     }
 
-    /// Stops filtering and keeps the rows in the panel, so Apply brings them back.
-    func clearAppliedFiltersAndReload() {
-        unsetFilters(removingRows: false)
-    }
-
-    /// Drops the table's filter rows along with the query they were running, which an empty save
-    /// then reads as a delete. `FilterRestoreBehavior.dontSave` writes nothing either way, so a
-    /// file saved before the setting was turned off outlives this.
-    func removeAllFiltersAndReload() {
-        unsetFilters(removingRows: true)
-    }
-
-    private func unsetFilters(removingRows: Bool) {
-        guard let (selected, _) = parent.tabManager.selectedTabAndIndex,
-              let tableName = selected.tableContext.tableName else { return }
-
-        let tabId = selected.id
-        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
-            guard let self, confirmed,
-                  parent.tabManager.mutate(tabId: tabId, { $0.pagination.reset() }),
-                  let tab = existingTab(tabId) else { return }
-
-            let buffer = parent.tabSessionRegistry.tableRows(for: tabId)
-            let newQuery = parent.queryBuilder.buildBaseQuery(
-                tableName: tableName,
-                schemaName: tab.tableContext.schemaName,
-                sortState: querySortState(for: tab),
-                columns: buffer.columns,
-                selectColumns: parent.selectColumns(for: tab),
-                unloadedValues: parent.unloadedValuePlan(for: tab),
-                limit: tab.pagination.pageSize,
-                offset: tab.pagination.currentOffset
-            )
-
-            parent.tabManager.mutate(tabId: tabId) {
-                $0.content.query = newQuery
-                $0.filterState.commit = nil
-                $0.filterState.executedFilters = []
-                $0.filterState.executedLogicMode = nil
-                if removingRows {
-                    $0.filterState.filters = []
-                }
-            }
-            // Saved, not deleted: the rows left in the panel are the table's working set, and an empty set reads as a delete.
-            if let unset = existingTab(tabId) {
-                saveLastFilters(of: unset)
-            }
-            parent.runQuery(onTab: tabId, viewport: .firstRow)
-        }
-    }
-
     func restoreFiltersForSelectedTab() {
         guard let index = parent.tabManager.selectedTabIndex else { return }
         restoreFilters(forTabAt: index)
     }
 
-    /// Loads a tab's saved filters into it, whether or not it is the selected tab.
-    ///
-    /// The selected tab also has its query rebuilt, because the query is derived from the filters
-    /// and the tab may be carrying one built from a different set. A tab reopened from the recently
-    /// closed history carries the last *filtered* SQL it ran, which would otherwise keep running
-    /// while the panel reported nothing applied. A session restore is already safe, because
-    /// `handleRestoreOrDefault` rewrites every table tab's query to a base query first.
-    ///
-    /// A tab that is not selected gets its filter state and nothing else. Its schema columns are
-    /// not loaded yet (`prepareTableTabFirstLoad` gates that on selection) so a query built now
-    /// would type its values by guessing at their text, and `rebuildTableQuery` writes
-    /// `executedFilters`, which is the record of what the rows on screen were fetched with. That
-    /// tab has no rows. Its first selection runs the first load, which rebuilds the query properly.
+    // Only the selected tab rebuilds its query: an unselected tab has no schema columns to type its
+    // values yet, and its first selection runs the first load, which builds the query properly.
     func restoreFilters(forTabAt index: Int) {
         // Saved filters are keyed by name, which a temporary table shares with the permanent table it hides.
         guard index < parent.tabManager.tabs.count,
@@ -266,10 +255,8 @@ final class FilterCoordinator: ObservableObject {
         parent.tabManager.mutate(at: tabIndex) {
             $0.content.query = built.query
             if built.isRefused {
-                $0.filterState.commit = nil
+                $0.filterState.applied = nil
             }
-            $0.filterState.executedFilters = built.executed
-            $0.filterState.executedLogicMode = $0.filterState.commit == nil ? nil : built.logicMode
         }
     }
 
@@ -304,9 +291,8 @@ final class FilterCoordinator: ObservableObject {
               let tableName = tab.tableContext.tableName,
               activeBrowseSearch(for: tab.filterState) == nil
         else { return nil }
-        let rerun = tab.filterState.rerunFilters
         let (columns, columnTypes) = parent.queryColumns(for: tab)
-        guard !rerun.filters.isEmpty else {
+        guard let applied = tab.filterState.applied else {
             return parent.queryBuilder.buildBaseQuery(
                 tableName: tableName,
                 schemaName: tab.tableContext.schemaName,
@@ -319,8 +305,8 @@ final class FilterCoordinator: ObservableObject {
         return parent.queryBuilder.buildFilteredQuery(
             tableName: tableName,
             schemaName: tab.tableContext.schemaName,
-            filters: rerun.filters,
-            logicMode: parent.supportsMatchAnyFilters ? rerun.logicMode : .and,
+            filters: applied.filters,
+            logicMode: parent.supportsMatchAnyFilters ? applied.logicMode : .and,
             sortState: querySortState(for: tab),
             columns: columns,
             columnTypes: columnTypes,
@@ -335,13 +321,11 @@ final class FilterCoordinator: ObservableObject {
         limit: Int,
         offset: Int,
         columns built: TableQueryColumns
-    ) -> (query: String, executed: [TableFilter], isRefused: Bool, logicMode: FilterLogicMode) {
-        let rerun = tab.filterState.rerunFilters
-        let logicMode = parent.supportsMatchAnyFilters ? rerun.logicMode : .and
+    ) -> (query: String, isRefused: Bool) {
+        let applied = tab.filterState.applied
         let (columns, columnTypes) = (built.columns, built.columnTypes)
 
         let filteredQuery: String?
-        var executed = rerun.filters
         if let search = activeBrowseSearch(for: tab.filterState) {
             filteredQuery = parent.queryBuilder.buildKeyPatternBrowseQuery(
                 tableName: tableName,
@@ -355,14 +339,12 @@ final class FilterCoordinator: ObservableObject {
                 limit: limit,
                 offset: offset
             )
-        } else if rerun.filters.isEmpty {
-            filteredQuery = nil
-        } else {
+        } else if let applied {
             filteredQuery = parent.queryBuilder.buildFilteredQuery(
                 tableName: tableName,
                 schemaName: tab.tableContext.schemaName,
-                filters: rerun.filters,
-                logicMode: logicMode,
+                filters: applied.filters,
+                logicMode: parent.supportsMatchAnyFilters ? applied.logicMode : .and,
                 sortState: querySortState(for: tab),
                 columns: columns,
                 columnTypes: columnTypes,
@@ -371,11 +353,10 @@ final class FilterCoordinator: ObservableObject {
                 limit: limit,
                 offset: offset
             )
+        } else {
+            filteredQuery = nil
         }
-        let isRefused = filteredQuery == nil && !rerun.filters.isEmpty
-        if isRefused {
-            executed = []
-        }
+        let isRefused = filteredQuery == nil && applied != nil
         let query = filteredQuery ?? parent.queryBuilder.buildBaseQuery(
             tableName: tableName,
             schemaName: tab.tableContext.schemaName,
@@ -386,7 +367,7 @@ final class FilterCoordinator: ObservableObject {
             limit: limit,
             offset: offset
         )
-        return (query, executed, isRefused, logicMode)
+        return (query, isRefused)
     }
 
     // MARK: - Filter State
@@ -408,56 +389,31 @@ final class FilterCoordinator: ObservableObject {
 
     // MARK: - Filter Management
 
-    /// The sort a table query carries. An engine that cannot order a table by a column gets none, so a sort
-    /// restored from before the engine said so, or carried in by a stale tab, cannot turn every load into an error.
+    // An engine that cannot order a table by a column gets no sort, so a stale one cannot fail every load.
     private func querySortState(for tab: QueryTab) -> SortState? {
         parent.supportsColumnSort ? tab.sortState : nil
     }
 
-    /// An engine whose filters cannot match any one of several conditions offers no Match Any, so only a logic
-    /// restored from before the engine said so can hold one. It is written back as Match All before anything reads
-    /// it, so the rows, the count and the cell filters all agree on what the filters mean.
+    // Only a mode restored from before the engine dropped Match any can hold one; the rows, the count and
+    // the cell filters must agree on what the filters mean.
     private func normalizeLogicModeIfNeeded(at tabIndex: Int) {
+        let state = parent.tabManager.tabs[tabIndex].filterState
         guard !parent.supportsMatchAnyFilters,
-              parent.tabManager.tabs[tabIndex].filterState.filterLogicMode != .and else { return }
-        parent.tabManager.mutate(at: tabIndex) { $0.filterState.filterLogicMode = .and }
-    }
-
-    /// One CONTAINS row per searchable column, joined with OR, replacing the filter set. Only the
-    /// find bar calls this, and only when no filters are applied, because `filterLogicMode` is one
-    /// mode for the whole array: switching it to OR would silently loosen filters the user wrote.
-    func applyCrossColumnSearch(term: String, columns: [String], forTab tabId: UUID) {
-        guard !columns.isEmpty, parent.supportsMatchAnyFilters || columns.count == 1 else { return }
-        applyFilters(TabFilterState.crossColumnSearchFilters(term: term, columns: columns), logicMode: .or, forTab: tabId)
+              state.filterLogicMode != .and || state.applied.map({ $0.logicMode != .and }) == true else { return }
+        parent.tabManager.mutate(at: tabIndex) {
+            $0.filterState.filterLogicMode = .and
+            $0.filterState.applied = $0.filterState.applied?.withLogicMode(.and)
+        }
     }
 
     func addFilterForColumn(_ columnName: String) {
-        let settings = FilterSettingsStorage.shared.loadSettings()
+        let settings = FilterSettingsStorage.shared.settings
         mutateSelectedTabFilterState { state in
             state.addFilter(forColumn: columnName, settings: settings)
         }
     }
 
-    // MARK: - Apply
-
-    func applySingleFilter(_ filter: TableFilter) {
-        guard filter.isValid else { return }
-        mutateSelectedTabFilterState { state in
-            state.applySingleFilter(filter)
-        }
-    }
-
-    func applyAllFilters() {
-        applyCommit(.all)
-    }
-
-    func applySoloFilter(_ filter: TableFilter) {
-        guard filter.isValid else { return }
-        applyCommit(.solo(filter.id))
-    }
-
-    /// Whether the selected tab's rows can be filtered from the grid: a table tab showing its rows,
-    /// on an engine that filters by column rather than by a key pattern.
+    // A table tab showing its rows, on an engine that filters by column rather than by a key pattern.
     var canFilterRows: Bool {
         guard let tab = parent.tabManager.selectedTab,
               tab.tabType == .table,
@@ -471,30 +427,7 @@ final class FilterCoordinator: ObservableObject {
         guard canFilterRows, filter.isValid,
               let tab = existingTab(tabId),
               !TabFilterState.isRunning(filter, in: tab.filterState) else { return }
-        applyTransition(forTab: tabId) { state in
-            state = TabFilterState.cellFilterState(state, adding: filter)
-        }
-    }
-
-    // Behind the discard guard: `commit` records what the rows on screen were fetched with, so a declined apply must not write it.
-    private func applyCommit(_ commit: FilterCommit) {
-        guard let tabId = parent.tabManager.selectedTabAndIndex?.tab.id else { return }
-        applyTransition(forTab: tabId) { $0.commit = commit }
-    }
-
-    private func applyTransition(forTab tabId: UUID, _ transition: @escaping (inout TabFilterState) -> Void) {
-        guard let tableName = existingTab(tabId)?.tableContext.tableName else { return }
-        parent.confirmDiscardChangesIfNeeded(forTab: tabId, action: .filter) { [weak self] confirmed in
-            guard let self, confirmed, var next = existingTab(tabId)?.filterState else { return }
-            transition(&next)
-            commitFilters(
-                next.appliedFilters,
-                logicMode: nil,
-                tabId: tabId,
-                tableName: tableName,
-                adopting: next
-            )
-        }
+        change(ofTab: tabId) { TabFilterState.cellFilterState($0, adding: filter) }
     }
 
     // MARK: - Panel Visibility
@@ -533,7 +466,7 @@ final class FilterCoordinator: ObservableObject {
         guard !tab.tableContext.isTemporary, let tableName = tab.tableContext.tableName else { return }
         /// Turning saving off stops writing, and leaves what is already on disk alone. Falling
         /// through to an empty write would delete it, so the setting could never be turned back on.
-        guard FilterSettingsStorage.shared.loadSettings().restoreBehavior.savesToDisk else { return }
+        guard FilterSettingsStorage.shared.settings.restoreBehavior.savesToDisk else { return }
         let persisted = tab.filterState.persistedState
         FilterSettingsStorage.shared.saveLastFilters(
             persisted,
@@ -545,7 +478,7 @@ final class FilterCoordinator: ObservableObject {
     }
 
     private func restoreLastFilters(for tableName: String, at index: Int) {
-        let settings = FilterSettingsStorage.shared.loadSettings()
+        let settings = FilterSettingsStorage.shared.settings
         guard index < parent.tabManager.tabs.count else { return }
         let tab = parent.tabManager.tabs[index]
 
@@ -565,11 +498,7 @@ final class FilterCoordinator: ObservableObject {
         }
     }
 
-    /// What a table's filter state becomes when the table opens.
-    ///
-    /// The commit is never fabricated. Setting it to `.all` regardless of what was saved is what
-    /// made a row the reader typed and did not apply count as applied the moment it became valid,
-    /// so the status bar reported it and the next page turn ran it.
+    // The rows come back with their checkboxes, and run only as the grid last showed them.
     static func resolvedRestoredState(
         settings: FilterSettings,
         saved: PersistedFilterState,
@@ -577,11 +506,9 @@ final class FilterCoordinator: ObservableObject {
     ) -> TabFilterState {
         var state = current
         let restored = settings.restoreBehavior.savesToDisk ? saved.filters : []
-        let appliesRestored = settings.restoreBehavior == .restoreAndApply && saved.isApplied
+        let appliesRestored = settings.restoreBehavior == .restoreAndApply && !restored.isEmpty
         state.filters = restored
-        state.commit = restored.isEmpty || !appliesRestored ? nil : .all
-        state.executedFilters = []
-        state.executedLogicMode = nil
+        state.applied = appliesRestored ? saved.restoredApplication : nil
         state.isVisible = settings.alwaysShowPanel || !restored.isEmpty
         state.filterLogicMode = restored.isEmpty ? state.filterLogicMode : saved.logicMode
         return state
@@ -598,7 +525,7 @@ final class FilterCoordinator: ObservableObject {
     func generateFilterPreviewSQL(databaseType: DatabaseType) -> String {
         let state = selectedTabFilterState
         guard let dialect = PluginManager.shared.sqlDialect(for: databaseType) else {
-            return "-- Filters are applied natively"
+            return "-- " + String(localized: "This database filters rows without SQL.")
         }
         let queryColumns = parent.tabManager.selectedTab.map { parent.queryColumns(for: $0) }
         let generator = FilterSQLGenerator(
@@ -611,11 +538,8 @@ final class FilterCoordinator: ObservableObject {
         )
         let filtersToPreview = filtersForPreview(in: state)
 
-        if filtersToPreview.isEmpty && !state.filters.isEmpty {
-            let invalidCount = state.filters.count(where: { !$0.isValid })
-            if invalidCount > 0 {
-                return "-- No valid filters to preview\n-- Complete \(invalidCount) filter(s) by:\n--   • Selecting a column\n--   • Entering a value (if required)\n--   • Filling in second value for BETWEEN"
-            }
+        if filtersToPreview.isEmpty {
+            return "-- " + String(localized: "No checked filter is complete. Choose a column and enter a value.")
         }
 
         guard let whereClause = generator.generateWhereClause(from: filtersToPreview, logicMode: state.filterLogicMode)
@@ -658,6 +582,10 @@ final class FilterCoordinator: ObservableObject {
 extension FilterCoordinator: FilterPanelActions {
     func focusGrid() {
         parent.focusActiveGrid()
+    }
+
+    func openFilterSettings() {
+        WindowOpener.shared.openSettings(SettingsLocation(page: .filters))
     }
 }
 

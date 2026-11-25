@@ -437,7 +437,13 @@ extension PluginMetadataRegistry {
             CompletionEntry(label: ".findOneAndReplace", insertText: ".findOneAndReplace"),
             CompletionEntry(label: ".findOneAndDelete", insertText: ".findOneAndDelete"),
             CompletionEntry(label: ".countDocuments", insertText: ".countDocuments"),
-            CompletionEntry(label: ".createIndex", insertText: ".createIndex")
+            CompletionEntry(label: ".createIndex", insertText: ".createIndex"),
+            CompletionEntry(label: "ObjectId", insertText: "ObjectId"),
+            CompletionEntry(label: "ISODate", insertText: "ISODate"),
+            CompletionEntry(label: "NumberLong", insertText: "NumberLong"),
+            CompletionEntry(label: "NumberDecimal", insertText: "NumberDecimal"),
+            CompletionEntry(label: "BinData", insertText: "BinData"),
+            CompletionEntry(label: "UUID", insertText: "UUID")
         ]
 
         let mongoColumnTypes: [String: [String]] = [
@@ -483,45 +489,19 @@ extension PluginMetadataRegistry {
         ]
 
         let redisCompletions: [CompletionEntry] = [
-            CompletionEntry(label: "GET", insertText: "GET"),
-            CompletionEntry(label: "SET", insertText: "SET"),
-            CompletionEntry(label: "DEL", insertText: "DEL"),
-            CompletionEntry(label: "EXISTS", insertText: "EXISTS"),
-            CompletionEntry(label: "KEYS", insertText: "KEYS"),
-            CompletionEntry(label: "HGET", insertText: "HGET"),
-            CompletionEntry(label: "HSET", insertText: "HSET"),
-            CompletionEntry(label: "HGETALL", insertText: "HGETALL"),
-            CompletionEntry(label: "HDEL", insertText: "HDEL"),
-            CompletionEntry(label: "LPUSH", insertText: "LPUSH"),
-            CompletionEntry(label: "RPUSH", insertText: "RPUSH"),
-            CompletionEntry(label: "LRANGE", insertText: "LRANGE"),
-            CompletionEntry(label: "LLEN", insertText: "LLEN"),
-            CompletionEntry(label: "SADD", insertText: "SADD"),
-            CompletionEntry(label: "SMEMBERS", insertText: "SMEMBERS"),
-            CompletionEntry(label: "SREM", insertText: "SREM"),
-            CompletionEntry(label: "SCARD", insertText: "SCARD"),
-            CompletionEntry(label: "ZADD", insertText: "ZADD"),
-            CompletionEntry(label: "ZRANGE", insertText: "ZRANGE"),
-            CompletionEntry(label: "ZREM", insertText: "ZREM"),
-            CompletionEntry(label: "ZSCORE", insertText: "ZSCORE"),
-            CompletionEntry(label: "EXPIRE", insertText: "EXPIRE"),
-            CompletionEntry(label: "TTL", insertText: "TTL"),
-            CompletionEntry(label: "PERSIST", insertText: "PERSIST"),
-            CompletionEntry(label: "TYPE", insertText: "TYPE"),
-            CompletionEntry(label: "SCAN", insertText: "SCAN"),
-            CompletionEntry(label: "HSCAN", insertText: "HSCAN"),
-            CompletionEntry(label: "SSCAN", insertText: "SSCAN"),
-            CompletionEntry(label: "ZSCAN", insertText: "ZSCAN"),
-            CompletionEntry(label: "INFO", insertText: "INFO"),
-            CompletionEntry(label: "DBSIZE", insertText: "DBSIZE"),
-            CompletionEntry(label: "FLUSHDB", insertText: "FLUSHDB"),
-            CompletionEntry(label: "SELECT", insertText: "SELECT"),
-            CompletionEntry(label: "INCR", insertText: "INCR"),
-            CompletionEntry(label: "DECR", insertText: "DECR"),
-            CompletionEntry(label: "APPEND", insertText: "APPEND"),
-            CompletionEntry(label: "MGET", insertText: "MGET"),
-            CompletionEntry(label: "MSET", insertText: "MSET")
-        ]
+            "GET", "SET", "DEL", "EXISTS", "KEYS", "GETSET", "GETDEL", "GETEX", "MGET", "MSET",
+            "INCR", "DECR", "INCRBY", "DECRBY", "INCRBYFLOAT", "APPEND",
+            "EXPIRE", "PEXPIRE", "EXPIREAT", "PEXPIREAT", "TTL", "PTTL", "PERSIST", "TYPE", "RENAME", "SCAN",
+            "HGET", "HSET", "HGETALL", "HDEL", "HSCAN",
+            "LPUSH", "RPUSH", "LRANGE", "LLEN", "LPOP", "RPOP", "LSET", "LINSERT", "LREM", "LPOS", "LMOVE",
+            "SADD", "SMEMBERS", "SREM", "SCARD", "SPOP", "SRANDMEMBER", "SMOVE",
+            "SUNION", "SINTER", "SDIFF", "SUNIONSTORE", "SINTERSTORE", "SDIFFSTORE", "SSCAN",
+            "ZADD", "ZRANGE", "ZREM", "ZCARD", "ZSCORE", "ZRANGEBYSCORE", "ZREVRANGE", "ZREVRANGEBYSCORE",
+            "ZINCRBY", "ZCOUNT", "ZRANK", "ZREVRANK", "ZPOPMIN", "ZPOPMAX", "ZSCAN",
+            "XRANGE", "XREVRANGE", "XLEN", "XADD", "XREAD", "XDEL", "XTRIM", "XINFO", "XGROUP", "XACK",
+            "PING", "INFO", "DBSIZE", "FLUSHDB", "FLUSHALL", "SELECT", "CONFIG", "AUTH", "OBJECT",
+            "MULTI", "EXEC", "DISCARD",
+        ].map { CompletionEntry(label: $0, insertText: $0) }
 
         let redisColumnTypes: [String: [String]] = [
             "String": ["string"],
@@ -598,4 +578,50 @@ extension PluginMetadataRegistry {
         )
     }
     // swiftlint:enable function_body_length large_tuple
+
+    // OraclePlugin's fields, spelled out: their ids and values come from TableProOracleCore, which the app does not link.
+    static let oracleConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: "oracleConnectionType",
+            label: "Connection Type",
+            defaultValue: "service",
+            fieldType: .dropdown(options: [
+                .init(value: "service", label: "Service Name"),
+                .init(value: "sid", label: "SID")
+            ])
+        ),
+        ConnectionField(
+            id: "oracleServiceName",
+            label: "Service Name",
+            placeholder: "ORCL",
+            visibleWhen: FieldVisibilityRule(fieldId: "oracleConnectionType", values: ["service"])
+        ),
+        ConnectionField(
+            id: "oracleSID",
+            label: "SID",
+            placeholder: "XE",
+            visibleWhen: FieldVisibilityRule(fieldId: "oracleConnectionType", values: ["sid"])
+        ),
+        ConnectionField(
+            id: "oracleRole",
+            label: "Role",
+            defaultValue: "normal",
+            fieldType: .dropdown(options: [
+                .init(value: "normal", label: "Normal"),
+                .init(value: "sysdba", label: "SYSDBA"),
+                .init(value: "sysoper", label: "SYSOPER")
+            ])
+        ),
+        ConnectionField(
+            id: "oracleNetworkEncryption",
+            label: "Network Encryption",
+            defaultValue: "accepted",
+            fieldType: .dropdown(options: [
+                .init(value: "accepted", label: "Accepted"),
+                .init(value: "rejected", label: "Rejected"),
+                .init(value: "requested", label: "Requested"),
+                .init(value: "required", label: "Required")
+            ])
+        )
+    ]
 }

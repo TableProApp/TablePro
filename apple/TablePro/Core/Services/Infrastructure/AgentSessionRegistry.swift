@@ -18,6 +18,7 @@ internal final class AgentSessionRegistry: ObservableObject {
 
     private let store: AgentSessionStore
     private let services: AppServices
+    private let makeEngine: AgentSession.EngineFactory
 
     // One writer: unordered tasks let a stale snapshot land last.
     private var writeTask: Task<Void, Never>?
@@ -34,26 +35,23 @@ internal final class AgentSessionRegistry: ObservableObject {
     private var activityCancellables: [UUID: AnyCancellable] = [:]
 
     // Restored synchronously, before any window exists to mint a second session beside a stored one.
-    internal init(store: AgentSessionStore = AgentSessionStore(), services: AppServices = .live) {
+    internal init(
+        store: AgentSessionStore = AgentSessionStore(),
+        services: AppServices = .live,
+        makeEngine: AgentSession.EngineFactory? = nil
+    ) {
         self.store = store
         self.services = services
+        self.makeEngine = makeEngine ?? { sessionId, conversationId in
+            AIChatViewModel(services: services, sessionId: sessionId, restoringConversation: conversationId)
+        }
         restore()
     }
 
     private func restore() {
         let records = store.load()
         guard !records.isEmpty else { return }
-        sessions = records.map { record in
-            AgentSession(
-                id: record.id,
-                connectionId: record.connectionId,
-                viewModel: makeViewModel(sessionId: record.id, conversationId: record.conversationId),
-                status: record.status.isEnded ? record.status : .stopped,
-                title: record.title,
-                startedAt: record.startedAt,
-                lastActiveAt: record.lastActiveAt
-            )
-        }
+        sessions = records.map { AgentSession(record: $0, makeEngine: makeEngine) }
         for session in sessions {
             observeActivity(of: session)
         }
@@ -68,10 +66,6 @@ internal final class AgentSessionRegistry: ObservableObject {
                 self.objectWillChange.send()
                 Task { @MainActor [weak self] in self?.persist() }
             }
-    }
-
-    private func makeViewModel(sessionId: UUID, conversationId: UUID?) -> AIChatViewModel {
-        AIChatViewModel(services: services, sessionId: sessionId, restoringConversation: conversationId)
     }
 
     // MARK: - Reading
@@ -130,7 +124,7 @@ internal final class AgentSessionRegistry: ObservableObject {
         let session = AgentSession(
             id: id,
             connectionId: connectionId,
-            viewModel: makeViewModel(sessionId: id, conversationId: nil)
+            viewModel: makeEngine(id, nil)
         )
         sessions.append(session)
         displayed[connectionId] = .session(id)
@@ -153,7 +147,8 @@ internal final class AgentSessionRegistry: ObservableObject {
 
     @discardableResult
     internal func resolveIdleSession(for connectionId: UUID) -> AgentSession {
-        if let current = resolveSession(for: connectionId, startingIfNeeded: false), !current.viewModel.isBusy {
+        if let current = resolveSession(for: connectionId, startingIfNeeded: false),
+           current.viewModelIfLoaded?.isBusy != true {
             return current
         }
         return startSession(for: connectionId)
@@ -199,19 +194,42 @@ internal final class AgentSessionRegistry: ObservableObject {
         guard let index = sessions.firstIndex(where: { $0.id == id }) else { return }
         let session = sessions[index]
         let isShown = currentSession(for: session.connectionId) === session
-        let conversationId = session.conversationId
-        session.viewModel.cancelStream()
-        detachRemoteTools(from: id)
-        AIProviderFactory.resetCopilotConversation(sessionId: id)
-        activityCancellables[id] = nil
+        discard(session)
         sessions.remove(at: index)
         if isShown {
             handOverDisplay(from: session)
         }
-        if let conversationId {
-            session.viewModel.deleteStoredConversations([conversationId])
-        }
         persist()
+    }
+
+    // A deleted connection, from this Mac or another: nothing can open its sessions again.
+    internal func removeSessions(for connectionId: UUID) {
+        let owned = sessions.filter { $0.connectionId == connectionId }
+        guard !owned.isEmpty else { return }
+        for session in owned {
+            discard(session)
+        }
+        sessions.removeAll { $0.connectionId == connectionId }
+        displayed[connectionId] = nil
+        persist()
+    }
+
+    // A session never opened has no engine, so its transcript is deleted from the store directly.
+    private func discard(_ session: AgentSession) {
+        let engine = session.viewModelIfLoaded
+        // Read after the cancel: its save can give a new transcript its id.
+        engine?.cancelStream()
+        let conversationId = session.conversationId
+        detachRemoteTools(from: session.id)
+        AIProviderFactory.resetCopilotConversation(sessionId: session.id)
+        activityCancellables[session.id] = nil
+        if let engine {
+            if let conversationId { engine.deleteStoredConversations([conversationId]) }
+            engine.forgetTranscript()
+        } else if let conversationId {
+            let storage = services.aiChatStorage
+            Task { await storage.delete(conversationId) }
+        }
     }
 
     // MARK: - Outside MCP servers
@@ -244,7 +262,7 @@ internal final class AgentSessionRegistry: ObservableObject {
         writeTask?.cancel()
         writeTask = nil
         for session in sessions {
-            session.viewModel.persistCurrentConversationSynchronously()
+            session.viewModelIfLoaded?.persistCurrentConversationSynchronously()
         }
         store.save(sessions.map(\.record))
     }

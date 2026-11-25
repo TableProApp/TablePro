@@ -8,18 +8,33 @@ import Foundation
 import Testing
 
 struct ResponsesDialectTests {
-    @Test("Each dialect has its own default test model")
-    func defaultTestModels() {
-        #expect(ResponsesDialect.openAI.defaultTestModel == "gpt-5.5")
-        #expect(ResponsesDialect.xai.defaultTestModel == "grok-4.5")
+    // Each provider names its own levels, so the wire value is the level itself; Off is OpenAI's `none`.
+    @Test("An effort goes on the wire as the provider spells it")
+    func wireValues() {
+        #expect(ReasoningEffort.off.wireValue == "none")
+        #expect(ReasoningEffort.xhigh.wireValue == "xhigh")
+        #expect(ReasoningEffort.max.wireValue == "max")
+        #expect(ReasoningEffort(wireValue: "none") == .off)
+        #expect(ReasoningEffort(wireValue: "min") == nil, "Requesty spells it min and would get minimal back")
+        #expect(ReasoningEffort(wireValue: "ultra") == nil)
     }
 
-    @Test("xAI reasoning effort clamps to the low/medium/high set the API accepts")
-    func effortMapping() {
-        #expect(ReasoningEffort.minimal.xaiReasoningEffort == "low")
-        #expect(ReasoningEffort.low.xaiReasoningEffort == "low")
-        #expect(ReasoningEffort.medium.xaiReasoningEffort == "medium")
-        #expect(ReasoningEffort.high.xaiReasoningEffort == "high")
-        #expect(ReasoningEffort.xhigh.xaiReasoningEffort == "high")
+    @Test("A wire list keeps known levels in rank order, without Off or repeats")
+    func levelsFromWire() {
+        #expect(ReasoningEffort.levels(fromWire: ["max", "none", "low", "ultra", "low", "xhigh"]) == [.low, .xhigh, .max])
+    }
+
+    @Test("xAI's list carries each model's levels and default")
+    func xaiLanguageModelReasoning() throws {
+        let json: [String: Any] = [
+            "id": "grok-4.5",
+            "input_modalities": ["text", "image"],
+            "output_modalities": ["text"],
+            "capabilities": ["reasoning_effort": ["low", "medium", "high", "xhigh"], "default_reasoning_effort": "high"]
+        ]
+        let model = try #require(OpenAIResponsesProvider.decodeXAILanguageModel(json))
+        #expect(model.reasoning?.effortLevels == [.low, .medium, .high, .xhigh])
+        #expect(model.reasoning?.defaultEffort == .high)
+        #expect(model.supportsImages == true)
     }
 }

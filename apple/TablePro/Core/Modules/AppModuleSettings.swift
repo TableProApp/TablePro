@@ -24,6 +24,10 @@ final class AppModuleSettings: ObservableObject {
         enabledModules.contains(module)
     }
 
+    func defaultEnabled(_ module: AppModule) -> Bool {
+        module.defaultEnabled(in: defaults)
+    }
+
     func setEnabled(_ enabled: Bool, for module: AppModule) {
         guard isEnabled(module) != enabled else { return }
         defaults.set(enabled, forKey: module.defaultsKey)

@@ -1,38 +1,9 @@
-//
-//  ResultStatusBar.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 
-/// The window's bottom bar: what the result is, and the controls that change what of it you see.
-///
-/// Two zones, never three. Centring a variable-width sentence between two variable-width clusters
-/// only holds while the clusters happen to match, which is why the row count sat visibly left of
-/// centre. Anchoring the readout to the leading edge and the controls to the trailing edge also
-/// keeps the controls still when a mode change removes one of them.
-///
-/// The view switcher leads the bar. It was briefly a strip of its own above the result, which cost
-/// a band of height in every mode and left the structure editor with two segmented rows stacked,
-/// the child louder than the parent.
-///
-/// Adding a row still belongs to the toolbar: it changes the document. The structure editor's
-/// add and remove pair is this bar's trailing cluster while the structure editor is the content,
-/// because a second bar underneath it would be the stacking problem again, one bar lower.
-///
-/// The bar gives up chrome rather than overflowing its pane. Its clusters used to be pinned at full
-/// width, which made the bar's own minimum wider than the pane and clipped the data grid along with
-/// it; see `StatusBarTier`. `ViewThatFits` picks the widest tier whose ideal width fits, and the
-/// narrowest tier holds its shape down to 280pt, measured, against a pane whose own floor is 400pt.
-/// Two rules keep that true. No candidate row carries `.fixedSize()`: the clusters carry their own,
-/// and the readout's constant `idealWidth` is what makes a candidate's ideal width equal its floor,
-/// so the mounted row still grows to fill the pane and anchor the controls to the trailing edge. And
-/// no tier drops a control that opens a popover: one anchored to a button that has left the view
-/// tree cannot present, so giving up the Highlight Rules button would have made
-/// `View > Highlight Rules…` do nothing. See `StatusBarTier` for what a tier may give up.
+// Two zones: `ViewThatFits` picks the widest `StatusBarTier` that fits, and no tier drops a control that anchors a popover.
 struct ResultStatusBar: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var keyboard = AppSettingsManager.shared.keyboardSlice
     let model: ResultStatusModel
     let snapshot: StatusBarSnapshot
     let filterState: TabFilterState
@@ -40,10 +11,8 @@ struct ResultStatusBar: View {
     let highlightState: StatusBarHighlightState
     let paginationCallbacks: PaginationCallbacks
     let execution: ExecutionReadout
-    /// Held, not observed: only the readout inside the report slot re-renders when it changes.
+    // Held, not observed: only the readout inside the report slot re-renders when it changes.
     let selectionSummary: SelectionSummaryState
-    /// The object tree's own reload, reported where every other piece of background activity in
-    /// this window is. It had no surface at all between the centred toolbar item going and this.
     let isRefreshingSchema: Bool
     @Binding var viewMode: ResultsViewMode
     // Empty unless the tab holds exactly one result: two or more are chosen from the tab row above the result.
@@ -55,10 +24,7 @@ struct ResultStatusBar: View {
 
     @State private var showColumnPopover = false
     @State private var showHighlightPopover = false
-    /// The tab the rules popover was opened for. Switching tab closes the popover, and by the time
-    /// the close is seen this view already belongs to the tab that was switched to, so pruning
-    /// "the selected tab" pruned the wrong one and left an unfinished rule saved on the tab the
-    /// user actually opened it from.
+    // By the time the close is seen this view belongs to the new tab, so pruning "the selected tab" pruned the wrong one.
     @State private var highlightPopoverTabId: UUID?
     @State private var revealedExecutionTabId: UUID?
     @State private var showSelectionSummaryPopover = false
@@ -97,8 +63,7 @@ struct ResultStatusBar: View {
         }
     }
 
-    /// One row of the bar, drawn the way its tier says. `ViewThatFits` measures each of these and
-    /// mounts the first that fits, so this is both the measurement and the result.
+    // `ViewThatFits` measures each row and mounts the first that fits.
     @ViewBuilder
     private func row(_ tier: StatusBarTier) -> some View {
         let presentation = ResultStatusPresentation(tier: tier)
@@ -122,9 +87,7 @@ struct ResultStatusBar: View {
         }
     }
 
-    /// Segmented while the modes fit, and a pull-down naming the current one once they do not. The
-    /// pull-down is capped, because it takes the width of its widest item and a long locale would
-    /// otherwise decide the narrow tier's floor.
+    // Capped: the pull-down takes its widest item's width, and a long locale would set the narrow tier's floor.
     @ViewBuilder
     private func modeSwitcher(_ presentation: ResultStatusPresentation) -> some View {
         let picker = Picker(String(localized: "View Mode"), selection: $viewMode) {
@@ -147,11 +110,7 @@ struct ResultStatusBar: View {
         }
     }
 
-    // MARK: - Readout
-
-    /// The zone that absorbs the bar's slack, which is why `row` gives it the flexible frame and the
-    /// clusters on either side keep their intrinsic widths. Its three parts are the slots
-    /// `ReadoutZoneLayout` sizes: the sentence, the actions beside it, and the report after them.
+    // Takes the bar's slack; the clusters on either side keep their intrinsic widths.
     private var readoutCluster: some View {
         ReadoutZoneLayout(spacing: StatusBarChrome.clusterSpacing, sentenceIdealWidth: StatusBarLayoutMetrics.readoutIdealWidth) {
             HStack(spacing: Self.readoutSpacing) {
@@ -204,9 +163,7 @@ struct ResultStatusBar: View {
         }
     }
 
-    /// Drawn at the bar's small control size, as every other control on the bar is, and never
-    /// truncated: the sentence beside them gives way first, and `ReadoutZoneLayout` counts their
-    /// width into the tier choice so the bar drops a tier before either has to.
+    // Never truncated: `ReadoutZoneLayout` counts their width, so the bar drops a tier first.
     @ViewBuilder
     private var readoutActions: some View {
         if model.controls.showsExactCountAction {
@@ -234,10 +191,7 @@ struct ResultStatusBar: View {
     @ViewBuilder
     private var readoutMessage: some View {
         if let statusMessage = model.statusMessage {
-            /// Yields its width before the execution report beside it does, so a wordy driver
-            /// message truncates instead of squeezing anything else out. Which tier the bar draws
-            /// is not its business: `ReadoutZoneLayout` leaves it out of the ideal width, so no
-            /// message length can change that choice.
+            // Truncates first, and `ReadoutZoneLayout` leaves it out of the ideal width, so no message changes the tier.
             Text(statusMessage)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -273,15 +227,12 @@ struct ResultStatusBar: View {
         model.selectionSummaryCoversLoadedRowsOnly ? String(localized: "Covers the loaded rows only.") : nil
     }
 
-    /// No `idealWidth` here: `ReadoutZoneLayout` reports the zone's ideal itself, and a frame that
-    /// named one would replace it.
+    // No `idealWidth`: `ReadoutZoneLayout` reports the zone's ideal, and a frame naming one would replace it.
     private func readoutZone(_ content: some View) -> some View {
         content.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
     private static let readoutSpacing: CGFloat = 6
-
-    // MARK: - Controls
 
     @ViewBuilder
     private func controlCluster(_ presentation: ResultStatusPresentation) -> some View {
@@ -305,10 +256,7 @@ struct ResultStatusBar: View {
         .fixedSize()
     }
 
-    /// The tab identity is passed in rather than applied as `.id()`. Keying the view by tab did stop
-    /// a page number typed for one tab being submitted against the next, but it also tore the whole
-    /// cluster down and rebuilt it on every switch, which is a second source of the churn this bar
-    /// exists to avoid. The view resets the same `@State` on the same signal instead.
+    // The tab id is passed, not applied as `.id()`, which rebuilt the cluster on every switch.
     private func paginationControls(_ presentation: ResultStatusPresentation) -> some View {
         PaginationControlsView(
             pagination: snapshot.pagination,
@@ -341,8 +289,7 @@ struct ResultStatusBar: View {
         }
         .statusBarLabelStyle(showsTitle: presentation.showsControlTitles)
         .controlSize(.small)
-        /// Present but inert until the result names its columns, so a reload dims the button rather
-        /// than removing it and shifting everything beside it.
+        // Dimmed, not removed, while columns load, so nothing beside it shifts.
         .disabled(columnState.columns.isEmpty)
         .help(String(localized: "Choose which columns the grid shows"))
         .accessibilityLabel(String(localized: "Columns"))
@@ -377,9 +324,7 @@ struct ResultStatusBar: View {
                     .statusBarControlIcon(besideTitle: false)
             }
         }
-        /// A glyph at every tier. Its title would add 88pt, and measured at the window's default
-        /// 1200pt with the sidebar open the regular tier then no longer fits, so drawing it would
-        /// take the titles off Columns and Filters at the size most windows are.
+        // A glyph at every tier: its title would cost the regular tier at the default 1200pt window.
         .labelStyle(.iconOnly)
         .controlSize(.small)
         .disabled(highlightState.columns.isEmpty)
@@ -457,7 +402,7 @@ struct ResultStatusBar: View {
             Label {
                 Text("Filters")
             } icon: {
-                Image(systemName: filterState.hasAppliedFilters
+                Image(systemName: filterState.isFiltering
                     ? "line.3.horizontal.decrease.circle.fill"
                     : "line.3.horizontal.decrease.circle")
                     .statusBarControlIcon(besideTitle: presentation.showsControlTitles)
@@ -466,7 +411,7 @@ struct ResultStatusBar: View {
         .statusBarLabelStyle(showsTitle: presentation.showsControlTitles)
         .toggleStyle(.button)
         .controlSize(.small)
-        .help(settingsManager.keyboard.shortcutHint(String(localized: "Filters"), for: .toggleFilters))
+        .help(keyboard.value.shortcutHint(String(localized: "Filters"), for: .toggleFilters))
         .accessibilityLabel(String(localized: "Filters"))
         .accessibilityValue(filtersAccessibilityValue)
         .accessibilityAddTraits(filterState.isVisible ? .isSelected : [])
@@ -477,32 +422,22 @@ struct ResultStatusBar: View {
         !columnState.hidden.isEmpty
     }
 
-    /// The count is a value, not part of the name. Folding it into the label made VoiceOver read a
-    /// different control name depending on how many columns happened to be hidden.
+    // A value, not part of the name, so VoiceOver reads one control name however many columns are hidden.
     private var columnsAccessibilityValue: String {
         guard hasHiddenColumns else { return String(localized: "All columns visible") }
         let total = columnState.visibilityColumns.count
         return String(format: String(localized: "%d of %d columns visible"), total - columnState.hidden.count, total)
     }
 
+    // Explicit singular and plural keys: `String(localized:)` does not process inflection.
     private var filtersAccessibilityValue: String {
-        guard filterState.hasAppliedFilters else { return String(localized: "No filters applied") }
-        return String(format: String(localized: "%d filters applied"), filterState.appliedFilters.count)
+        guard let applied = filterState.applied else { return String(localized: "No filters applied") }
+        guard applied.filters.count > 1 else { return String(localized: "1 filter applied") }
+        return String(format: String(localized: "%d filters applied"), applied.filters.count)
     }
 }
 
-/// The readout zone: the sentence, the actions beside it, and the report after them, left to right.
-///
-/// It exists for the ideal width it reports, which is the width `ViewThatFits` picks a tier by. The
-/// sentence and the report count as one constant, `StatusBarLayoutMetrics.readoutIdealWidth`, so
-/// neither a long count, a wordy driver message nor a selection summary drops the bar a tier by
-/// itself. The actions add their own width on top. Counted inside the constant, they left a table
-/// with an estimate on the regular tier with no room for both, and the bar drew "1-22 of ~22 r…"
-/// beside "Count Ex…".
-///
-/// Placed, the actions keep their width and the report keeps what it cannot give up. The sentence
-/// takes the rest up to its own width, and whatever is left after that goes to the report, whose
-/// driver message truncates into it.
+// Reports the ideal width `ViewThatFits` picks a tier by: the sentence and report count as one constant, the actions on top.
 private struct ReadoutZoneLayout: Layout {
     let spacing: CGFloat
     let sentenceIdealWidth: CGFloat
@@ -550,7 +485,6 @@ private struct ReadoutZoneLayout: Layout {
         ]
     }
 
-    /// The width of slots laid side by side, with one gap between each pair that draws anything.
     private func span(of widths: [CGFloat]) -> CGFloat {
         let drawn = widths.filter { $0 > 0 }
         return drawn.reduce(0, +) + spacing * CGFloat(max(0, drawn.count - 1))
@@ -558,9 +492,7 @@ private struct ReadoutZoneLayout: Layout {
 }
 
 private extension View {
-    /// `titleAndIcon` and `iconOnly` are different types, so a tier choosing between them cannot do
-    /// it with a ternary. Branching here keeps each control's modifier chain written once, and keeps
-    /// the system's own label metrics rather than a hand-rolled stack's.
+    // `titleAndIcon` and `iconOnly` are different types, so a ternary cannot choose between them.
     @ViewBuilder
     func statusBarLabelStyle(showsTitle: Bool) -> some View {
         if showsTitle {

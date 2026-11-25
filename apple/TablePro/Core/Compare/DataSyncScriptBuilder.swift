@@ -30,8 +30,10 @@ internal struct DataSyncScriptBuilder {
     private let options: DataCompareOptions
     private let plan: DataComparePlan
     private let targetTypes: [String: ColumnType]
-    // Bit strings the two sides spell differently, so a source value is respelled before it is written.
-    private let bitRespellings: [String: (pair: CrossEngineValueCoercer.ColumnPair, from: SQLTypeFamily)]
+    // Values the two engines spell differently, reshaped before a source value is written: booleans,
+    // MySQL zero-dates, zoned timestamps, PostgreSQL arrays and bit strings. The same coercion Object
+    // Copy and Table Transfer apply.
+    private let crossEngineCoercions: [String: (pair: CrossEngineValueCoercer.ColumnPair, from: SQLTypeFamily, to: SQLTypeFamily)]
     private let immutableColumns: Set<String>
 
     internal init(
@@ -47,37 +49,40 @@ internal struct DataSyncScriptBuilder {
         self.plan = plan
         self.immutableColumns = Set(immutableColumns.map { $0.lowercased() })
         var types: [String: ColumnType] = [:]
-        var respellings: [String: (pair: CrossEngineValueCoercer.ColumnPair, from: SQLTypeFamily)] = [:]
+        var coercions: [String: (pair: CrossEngineValueCoercer.ColumnPair, from: SQLTypeFamily, to: SQLTypeFamily)] = [:]
         for column in plan.columns {
-            if let respelling = Self.bitRespelling(of: column, targetDatabaseType: targetDatabaseType) {
-                respellings[column.name.lowercased()] = respelling
+            if let coercion = Self.crossEngineCoercion(of: column, targetDatabaseType: targetDatabaseType) {
+                coercions[column.name.lowercased()] = coercion
             }
             guard let type = column.targetColumnType else { continue }
             types[column.name.lowercased()] = type
         }
         self.targetTypes = types
-        self.bitRespellings = respellings
+        self.crossEngineCoercions = coercions
     }
 
-    private static func bitRespelling(
+    private static func crossEngineCoercion(
         of column: CompareColumn,
         targetDatabaseType: DatabaseType
-    ) -> (pair: CrossEngineValueCoercer.ColumnPair, from: SQLTypeFamily)? {
+    ) -> (pair: CrossEngineValueCoercer.ColumnPair, from: SQLTypeFamily, to: SQLTypeFamily)? {
         guard let sourceFamily = column.sourceFamily, let sourceType = column.sourceType else { return nil }
         let targetFamily = column.targetFamily ?? SQLTypeFamily.of(targetDatabaseType)
+        // Only a cross-family sync reshapes a value; within one engine a boolean, a zero-date or an
+        // array is already in the spelling the target reads.
+        guard sourceFamily != targetFamily else { return nil }
         let pair = CrossEngineValueCoercer.ColumnPair(
             source: SQLTypeParser.parse(sourceType, family: sourceFamily).kind,
             target: SQLTypeParser.parse(column.targetType ?? sourceType, family: targetFamily).kind
         )
-        guard CrossEngineValueCoercer.respellsBits(pair, from: sourceFamily, to: targetFamily) else { return nil }
-        return (pair, sourceFamily)
+        guard CrossEngineValueCoercer.needsCoercion(pair, from: sourceFamily, to: targetFamily) else { return nil }
+        return (pair, sourceFamily, targetFamily)
     }
 
     // A value read from the source, which the target may spell differently.
     private func sourceLiteral(_ value: PluginCellValue, column: String) -> String {
-        guard let respelling = bitRespellings[column.lowercased()] else { return literal(value, column: column) }
-        let respelled = CrossEngineValueCoercer.respelledBits(value, pair: respelling.pair, from: respelling.from)
-        return literal(respelled, column: column)
+        guard let coercion = crossEngineCoercions[column.lowercased()] else { return literal(value, column: column) }
+        let coerced = CrossEngineValueCoercer.coerce(value, pair: coercion.pair, from: coercion.from, to: coercion.to)
+        return literal(coerced, column: column)
     }
 
     internal func build(entries: [RowDiffEntry]) -> [SyncStatement] {

@@ -107,6 +107,10 @@ extension MainSplitViewController {
         commandActions?.showHighlightRules()
     }
 
+    @objc func toggleWrapText(_ sender: Any?) {
+        commandActions?.toggleWrapText()
+    }
+
     @objc func toggleQueryHistory(_ sender: Any?) {
         commandActions?.toggleHistoryPanel()
     }

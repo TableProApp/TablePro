@@ -1,0 +1,297 @@
+{
+  "cases": [
+    {
+      "name": "the live name wins",
+      "provider": "anthropic",
+      "api": "messages",
+      "hides_unknown": false,
+      "live_ordered": true,
+      "catalog": {
+        "default": "claude-opus-5-5",
+        "models": [
+          { "id": "claude-opus-5-5", "name": "Opus 5.5 from the catalog", "released": "2026-10-20", "apis": ["messages"] }
+        ]
+      },
+      "live": [{ "id": "claude-opus-5-5", "name": "Claude Opus 5.5" }],
+      "expected": [
+        { "id": "claude-opus-5-5", "name": "Claude Opus 5.5", "default": true, "deprecated": false, "offline": false }
+      ]
+    },
+    {
+      "name": "the catalog fills a missing name",
+      "provider": "openai",
+      "api": "chat-completions",
+      "hides_unknown": true,
+      "live_ordered": false,
+      "catalog": {
+        "default": "gpt-5.5",
+        "models": [
+          { "id": "gpt-5.5", "name": "GPT-5.5", "released": "2026-04-23", "apis": ["responses", "chat-completions"] }
+        ]
+      },
+      "live": [{ "id": "gpt-5.5" }],
+      "expected": [{ "id": "gpt-5.5", "name": "GPT-5.5", "default": true, "deprecated": false, "offline": false }]
+    },
+    {
+      "name": "an unknown id is hidden on the vendor host",
+      "provider": "openai",
+      "api": "chat-completions",
+      "hides_unknown": true,
+      "live_ordered": false,
+      "catalog": {
+        "default": "gpt-5.5",
+        "models": [
+          { "id": "gpt-5.5", "name": "GPT-5.5", "released": "2026-04-23", "apis": ["responses", "chat-completions"] }
+        ]
+      },
+      "live": [{ "id": "whisper-1" }, { "id": "gpt-5.5" }, { "id": "text-embedding-3-large" }],
+      "expected": [{ "id": "gpt-5.5", "name": "GPT-5.5", "default": true, "deprecated": false, "offline": false }]
+    },
+    {
+      "name": "an unknown id is kept when unknown ids are not hidden",
+      "provider": "anthropic",
+      "api": "messages",
+      "hides_unknown": false,
+      "live_ordered": true,
+      "catalog": {
+        "default": "claude-opus-5-5",
+        "models": [
+          { "id": "claude-opus-5-5", "name": "Claude Opus 5.5", "released": "2026-10-20", "apis": ["messages"] }
+        ]
+      },
+      "live": [{ "id": "claude-opus-5-5" }, { "id": "claude-next-preview" }],
+      "expected": [
+        { "id": "claude-opus-5-5", "name": "Claude Opus 5.5", "default": true, "deprecated": false, "offline": false },
+        { "id": "claude-next-preview", "name": null, "default": false, "deprecated": false, "offline": false }
+      ]
+    },
+    {
+      "name": "a responses-only id is dropped for chat-completions",
+      "provider": "openai",
+      "api": "chat-completions",
+      "hides_unknown": true,
+      "live_ordered": false,
+      "catalog": {
+        "default": "gpt-5.5",
+        "models": [
+          { "id": "gpt-5.5", "name": "GPT-5.5", "released": "2026-04-23", "apis": ["responses", "chat-completions"] },
+          { "id": "gpt-5.5-pro", "name": "GPT-5.5 Pro", "released": "2026-04-23", "apis": ["responses"] }
+        ]
+      },
+      "live": [{ "id": "gpt-5.5-pro" }, { "id": "gpt-5.5" }],
+      "expected": [{ "id": "gpt-5.5", "name": "GPT-5.5", "default": true, "deprecated": false, "offline": false }]
+    },
+    {
+      "name": "a responses-only id is kept for responses",
+      "provider": "openai",
+      "api": "responses",
+      "hides_unknown": true,
+      "live_ordered": false,
+      "catalog": {
+        "default": "gpt-5.5",
+        "models": [
+          { "id": "gpt-5.5", "name": "GPT-5.5", "released": "2026-04-23", "apis": ["responses", "chat-completions"] },
+          { "id": "gpt-5.5-pro", "name": "GPT-5.5 Pro", "released": "2026-04-23", "apis": ["responses"] }
+        ]
+      },
+      "live": [{ "id": "gpt-5.5-pro" }, { "id": "gpt-5.5" }],
+      "expected": [
+        { "id": "gpt-5.5", "name": "GPT-5.5", "default": true, "deprecated": false, "offline": false },
+        { "id": "gpt-5.5-pro", "name": "GPT-5.5 Pro", "default": false, "deprecated": false, "offline": false }
+      ]
+    },
+    {
+      "name": "a fine-tune and a dated snapshot take their base's entry",
+      "provider": "openai",
+      "api": "chat-completions",
+      "hides_unknown": true,
+      "live_ordered": false,
+      "catalog": {
+        "default": "gpt-5.5",
+        "models": [
+          { "id": "gpt-5.5", "name": "GPT-5.5", "released": "2026-04-23", "apis": ["responses", "chat-completions"] },
+          { "id": "gpt-5.5-pro", "name": "GPT-5.5 Pro", "released": "2026-04-23", "apis": ["responses"] }
+        ]
+      },
+      "live": [
+        { "id": "gpt-5.5-2026-04-23" },
+        { "id": "ft:gpt-5.5-pro:acme::xyz789" },
+        { "id": "ft:gpt-5.5:acme::abc123" }
+      ],
+      "expected": [
+        { "id": "ft:gpt-5.5:acme::abc123", "name": "GPT-5.5", "default": false, "deprecated": false, "offline": false },
+        { "id": "gpt-5.5-2026-04-23", "name": "GPT-5.5", "default": false, "deprecated": false, "offline": false }
+      ]
+    },
+    {
+      "name": "a live default beats the catalog default",
+      "provider": "anthropic",
+      "api": "messages",
+      "hides_unknown": false,
+      "live_ordered": true,
+      "catalog": {
+        "default": "claude-opus-5-5",
+        "models": [
+          { "id": "claude-opus-5-5", "name": "Claude Opus 5.5", "released": "2026-10-20", "apis": ["messages"] },
+          { "id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5", "released": "2026-10-20", "apis": ["messages"] }
+        ]
+      },
+      "live": [{ "id": "claude-opus-5-5" }, { "id": "claude-sonnet-5-5", "default": true }],
+      "expected": [
+        { "id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5", "default": true, "deprecated": false, "offline": false },
+        { "id": "claude-opus-5-5", "name": "Claude Opus 5.5", "default": false, "deprecated": false, "offline": false }
+      ]
+    },
+    {
+      "name": "the catalog default counts only when it is listed",
+      "provider": "openai",
+      "api": "chat-completions",
+      "hides_unknown": true,
+      "live_ordered": false,
+      "catalog": {
+        "default": "gpt-5.5",
+        "models": [
+          { "id": "gpt-5.5", "name": "GPT-5.5", "released": "2026-04-23", "apis": ["responses", "chat-completions"] },
+          { "id": "gpt-5.4", "name": "GPT-5.4", "released": "2026-03-05", "apis": ["responses", "chat-completions"] }
+        ]
+      },
+      "live": [{ "id": "gpt-5.4" }],
+      "expected": [{ "id": "gpt-5.4", "name": "GPT-5.4", "default": false, "deprecated": false, "offline": false }]
+    },
+    {
+      "name": "newest first, undated after dated, ties by id",
+      "provider": "xai",
+      "api": "chat-completions",
+      "hides_unknown": false,
+      "live_ordered": false,
+      "catalog": {
+        "models": [{ "id": "grok-b", "name": "Grok B", "released": "2026-06-01", "apis": ["chat-completions"] }]
+      },
+      "live": [
+        { "id": "grok-z" },
+        { "id": "grok-old", "released": "2025-01-01" },
+        { "id": "grok-b" },
+        { "id": "grok-a", "released": "2026-06-01" },
+        { "id": "grok-c" }
+      ],
+      "expected": [
+        { "id": "grok-a", "name": null, "default": false, "deprecated": false, "offline": false },
+        { "id": "grok-b", "name": "Grok B", "default": false, "deprecated": false, "offline": false },
+        { "id": "grok-old", "name": null, "default": false, "deprecated": false, "offline": false },
+        { "id": "grok-c", "name": null, "default": false, "deprecated": false, "offline": false },
+        { "id": "grok-z", "name": null, "default": false, "deprecated": false, "offline": false }
+      ]
+    },
+    {
+      "name": "the live order is kept when it is documented",
+      "provider": "anthropic",
+      "api": "messages",
+      "hides_unknown": false,
+      "live_ordered": true,
+      "catalog": {
+        "models": [
+          { "id": "claude-a", "released": "2024-01-01", "apis": ["messages"] },
+          { "id": "claude-c", "released": "2026-01-01", "apis": ["messages"] }
+        ]
+      },
+      "live": [{ "id": "claude-b" }, { "id": "claude-a" }, { "id": "claude-c" }],
+      "expected": [
+        { "id": "claude-b", "name": null, "default": false, "deprecated": false, "offline": false },
+        { "id": "claude-a", "name": null, "default": false, "deprecated": false, "offline": false },
+        { "id": "claude-c", "name": null, "default": false, "deprecated": false, "offline": false }
+      ]
+    },
+    {
+      "name": "the default comes first",
+      "provider": "openai",
+      "api": "responses",
+      "hides_unknown": true,
+      "live_ordered": false,
+      "catalog": {
+        "default": "gpt-5.5",
+        "models": [
+          { "id": "gpt-5.5", "name": "GPT-5.5", "released": "2026-04-23", "apis": ["responses", "chat-completions"] },
+          { "id": "gpt-6", "name": "GPT-6", "released": "2026-10-01", "apis": ["responses"] }
+        ]
+      },
+      "live": [{ "id": "gpt-6" }, { "id": "gpt-5.5" }],
+      "expected": [
+        { "id": "gpt-5.5", "name": "GPT-5.5", "default": true, "deprecated": false, "offline": false },
+        { "id": "gpt-6", "name": "GPT-6", "default": false, "deprecated": false, "offline": false }
+      ]
+    },
+    {
+      "name": "deprecated models come last, when either source says so",
+      "provider": "anthropic",
+      "api": "messages",
+      "hides_unknown": false,
+      "live_ordered": true,
+      "catalog": {
+        "default": "claude-opus-5-5",
+        "models": [
+          { "id": "claude-opus-5-5", "name": "Claude Opus 5.5", "released": "2026-10-20", "apis": ["messages"] },
+          { "id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "released": "2025-09-29", "deprecated": true, "apis": ["messages"] }
+        ]
+      },
+      "live": [
+        { "id": "claude-sonnet-4-5" },
+        { "id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "deprecated": true },
+        { "id": "claude-sonnet-5", "name": "Claude Sonnet 5" },
+        { "id": "claude-opus-5-5" }
+      ],
+      "expected": [
+        { "id": "claude-opus-5-5", "name": "Claude Opus 5.5", "default": true, "deprecated": false, "offline": false },
+        { "id": "claude-sonnet-5", "name": "Claude Sonnet 5", "default": false, "deprecated": false, "offline": false },
+        { "id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "default": false, "deprecated": true, "offline": false },
+        { "id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "default": false, "deprecated": true, "offline": false }
+      ]
+    },
+    {
+      "name": "an id listed twice shows once",
+      "provider": "openai-compatible",
+      "api": "chat-completions",
+      "hides_unknown": false,
+      "live_ordered": false,
+      "catalog": { "models": [] },
+      "live": [{ "id": "qwen3" }, { "id": "llama3.2:latest" }, { "id": "qwen3" }],
+      "expected": [
+        { "id": "llama3.2:latest", "name": null, "default": false, "deprecated": false, "offline": false },
+        { "id": "qwen3", "name": null, "default": false, "deprecated": false, "offline": false }
+      ]
+    },
+    {
+      "name": "a failed listing gives the catalog's models offline",
+      "provider": "openai",
+      "api": "chat-completions",
+      "hides_unknown": true,
+      "live_ordered": false,
+      "catalog": {
+        "default": "gpt-5.5",
+        "models": [
+          { "id": "gpt-4.1", "name": "GPT-4.1", "released": "2025-04-14", "deprecated": true, "apis": ["responses", "chat-completions"] },
+          { "id": "gpt-5.5-pro", "name": "GPT-5.5 Pro", "released": "2026-04-23", "apis": ["responses"] },
+          { "id": "gpt-5.4", "name": "GPT-5.4", "released": "2026-03-05", "apis": ["responses", "chat-completions"] },
+          { "id": "gpt-5.5", "name": "GPT-5.5", "released": "2026-04-23", "apis": ["responses", "chat-completions"] },
+          { "id": "gpt-6", "name": "GPT-6", "released": "2026-10-01", "apis": ["chat-completions", "responses"] }
+        ]
+      },
+      "live": null,
+      "expected": [
+        { "id": "gpt-5.5", "name": "GPT-5.5", "default": true, "deprecated": false, "offline": true },
+        { "id": "gpt-6", "name": "GPT-6", "default": false, "deprecated": false, "offline": true },
+        { "id": "gpt-5.4", "name": "GPT-5.4", "default": false, "deprecated": false, "offline": true },
+        { "id": "gpt-4.1", "name": "GPT-4.1", "default": false, "deprecated": true, "offline": true }
+      ]
+    },
+    {
+      "name": "a failed listing with no catalog gives nothing",
+      "provider": "openai-compatible",
+      "api": "chat-completions",
+      "hides_unknown": false,
+      "live_ordered": false,
+      "catalog": { "models": [] },
+      "live": null,
+      "expected": []
+    }
+  ]
+}

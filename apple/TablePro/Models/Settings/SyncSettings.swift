@@ -1,14 +1,6 @@
-//
-//  SyncSettings.swift
-//  TablePro
-//
-//  User-configurable sync preferences
-//
-
 import Foundation
 import TableProSyncTransport
 
-/// User preferences for iCloud sync behavior
 struct SyncSettings: Codable, Equatable {
     var enabled: Bool
     var syncConnections: Bool
@@ -81,6 +73,16 @@ struct SyncSettings: Codable, Equatable {
     // Whether a secret saved now goes to iCloud Keychain.
     var syncsPasswords: Bool {
         enabled && syncConnections && syncPasswords
+    }
+
+    // Passwords ride on connection records, so turning Connections off turns them off in the same write.
+    func settingConnections(_ on: Bool) -> SyncSettings {
+        var copy = self
+        copy.syncConnections = on
+        if !on {
+            copy.syncPasswords = false
+        }
+        return copy
     }
 }
 

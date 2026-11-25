@@ -319,8 +319,10 @@ struct TableTransferServiceTests {
         #expect(destination.insertStatements.isEmpty)
     }
 
-    @MainActor @Test("A transfer whose engines cannot both hold a bit string never reads the source catalog")
-    func noBitStringsNoSourceCatalogRead() async throws {
+    // A SQLite source has no bit string, so its `5` is not a bit to respell; the catalog is still read, as a
+    // cross-engine transfer reads both sides' kinds to coerce booleans, dates and arrays.
+    @MainActor @Test("A non-bit value crosses unchanged, though the source catalog is read")
+    func nonBitValueCrossesUnchanged() async throws {
         let source = TransferStubDriver(
             header: ["id", "flags"],
             rows: [[.text("1"), .text("5")]],
@@ -342,8 +344,120 @@ struct TableTransferServiceTests {
             destinationDriver: adapter(destination, type: .mysql)
         )
 
-        #expect(source.events == ["stream"])
+        #expect(source.events == ["columns", "stream"])
         #expect(destination.executedParameters.last == [.text("5"), .text("1")])
+    }
+
+    @MainActor @Test("A PostgreSQL boolean transferred to a MySQL TINYINT arrives as 1, not t")
+    func postgresBooleanReachesMySQLAsNumber() async throws {
+        let source = TransferStubDriver(
+            header: ["id", "active"],
+            rows: [[.text("7"), .text("t")]],
+            columns: ["id", "active"],
+            types: ["id": "integer", "active": "boolean"]
+        )
+        let destination = TransferStubDriver(columns: ["id", "active"], types: ["id": "int", "active": "tinyint(1)"])
+        let request = TableTransferService.Request(
+            objects: [ExportObjectItem(name: "people", kind: .table, isSelected: true)],
+            sourceType: .postgresql,
+            destinationType: .mysql,
+            sourceColumns: ["people": ["id", "active"]],
+            wrapInTransaction: false
+        )
+
+        try await TableTransferService().transfer(
+            request: request,
+            sourceDriver: adapter(source, type: .postgresql),
+            destinationDriver: adapter(destination, type: .mysql)
+        )
+
+        let written = try #require(destination.executedParameters.last)
+        #expect(written.contains(.text("1")))
+        #expect(!written.contains(.text("t")))
+    }
+
+    @MainActor @Test("A MySQL zero-date transferred to PostgreSQL arrives as NULL, which PostgreSQL accepts")
+    func mysqlZeroDateReachesPostgresAsNull() async throws {
+        let source = TransferStubDriver(
+            header: ["id", "created"],
+            rows: [[.text("7"), .text("0000-00-00")]],
+            columns: ["id", "created"],
+            types: ["id": "int", "created": "date"]
+        )
+        let destination = TransferStubDriver(columns: ["id", "created"], types: ["id": "integer", "created": "date"])
+        let request = TableTransferService.Request(
+            objects: [ExportObjectItem(name: "events", kind: .table, isSelected: true)],
+            sourceType: .mysql,
+            destinationType: .postgresql,
+            sourceColumns: ["events": ["id", "created"]],
+            wrapInTransaction: false
+        )
+
+        try await TableTransferService().transfer(
+            request: request,
+            sourceDriver: adapter(source, type: .mysql),
+            destinationDriver: adapter(destination, type: .postgresql)
+        )
+
+        let written = try #require(destination.executedParameters.last)
+        #expect(written.contains(.null))
+        #expect(!written.contains(.text("0000-00-00")))
+    }
+
+    @MainActor @Test("A PostgreSQL timestamptz transferred to a MySQL DATETIME loses the zone the target cannot hold")
+    func postgresZonedTimestampLosesZoneForMySQL() async throws {
+        let source = TransferStubDriver(
+            header: ["id", "ts"],
+            rows: [[.text("7"), .text("2024-01-01 10:00:00+07")]],
+            columns: ["id", "ts"],
+            types: ["id": "integer", "ts": "timestamptz"]
+        )
+        let destination = TransferStubDriver(columns: ["id", "ts"], types: ["id": "int", "ts": "datetime"])
+        let request = TableTransferService.Request(
+            objects: [ExportObjectItem(name: "events", kind: .table, isSelected: true)],
+            sourceType: .postgresql,
+            destinationType: .mysql,
+            sourceColumns: ["events": ["id", "ts"]],
+            wrapInTransaction: false
+        )
+
+        try await TableTransferService().transfer(
+            request: request,
+            sourceDriver: adapter(source, type: .postgresql),
+            destinationDriver: adapter(destination, type: .mysql)
+        )
+
+        let written = try #require(destination.executedParameters.last)
+        #expect(written.contains(.text("2024-01-01 10:00:00")))
+        #expect(!written.contains(.text("2024-01-01 10:00:00+07")))
+    }
+
+    @MainActor @Test("A PostgreSQL array transferred to a MySQL JSON column arrives as a JSON array")
+    func postgresArrayReachesMySQLAsJSON() async throws {
+        let source = TransferStubDriver(
+            header: ["id", "tags"],
+            rows: [[.text("7"), .text("{1,2,3}")]],
+            columns: ["id", "tags"],
+            types: ["id": "integer", "tags": "integer[]"]
+        )
+        let destination = TransferStubDriver(columns: ["id", "tags"], types: ["id": "int", "tags": "json"])
+        let request = TableTransferService.Request(
+            objects: [ExportObjectItem(name: "tagged", kind: .table, isSelected: true)],
+            sourceType: .postgresql,
+            destinationType: .mysql,
+            sourceColumns: ["tagged": ["id", "tags"]],
+            wrapInTransaction: false
+        )
+
+        try await TableTransferService().transfer(
+            request: request,
+            sourceDriver: adapter(source, type: .postgresql),
+            destinationDriver: adapter(destination, type: .mysql)
+        )
+
+        let written = try #require(destination.executedParameters.last)
+        #expect(written.contains(.text("[1,2,3]")))
+        #expect(!written.contains(.text("{1,2,3}")))
     }
 
     @MainActor @Test("A MySQL BIT transferred to a PostgreSQL bit varying arrives as its digits, at the source's width")

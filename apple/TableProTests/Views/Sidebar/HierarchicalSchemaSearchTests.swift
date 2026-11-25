@@ -208,7 +208,7 @@ struct HierarchicalSchemaSearchTests {
 }
 
 /// The measured case behind the change: a search over 200 schemas, three of which hold a match.
-/// Before it, the first keystroke loaded every schema, two queries each here and three on Oracle.
+/// Before it, the first keystroke loaded every schema, three queries each on Oracle.
 @MainActor
 struct HierarchicalSchemaSearchCostTests {
     private let connectionId = UUID()
@@ -275,7 +275,7 @@ struct HierarchicalSchemaSearchCostTests {
 
         #expect(matched == ["S1", "S71", "S141"])
         #expect(driver.reads.filter { $0 == "allSchemaTables" }.count == 1)
-        let matchReads = 3 * 2
+        let matchReads = 3 * 3
         #expect(driver.reads.count == 1 + matchReads)
     }
 
@@ -286,7 +286,7 @@ struct HierarchicalSchemaSearchCostTests {
         let matched = try await search(schemas, driver: driver)
 
         let listingReads = 1 + 1 + 200
-        let matchReads = 3 * 2
+        let matchReads = 3 * 3
         #expect(matched == ["S1", "S71", "S141"])
         #expect(driver.reads.filter { $0.hasPrefix("routines") }.count == 3)
         #expect(driver.reads.count == listingReads + matchReads)

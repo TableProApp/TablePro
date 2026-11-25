@@ -150,6 +150,14 @@ impl AppSettings {
         self.set_boolean(keys::SHOW_INVISIBLE_CHARACTERS, show)
     }
 
+    pub fn grid_wrap_text(&self) -> bool {
+        self.grid_preferences().snapshot().wrap_text
+    }
+
+    pub fn set_grid_wrap_text(&self, wrap: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::GRID_WRAP_TEXT, wrap)
+    }
+
     pub fn date_format(&self) -> DateFormat {
         self.grid_preferences().snapshot().date_format
     }
@@ -254,6 +262,14 @@ impl AppSettings {
         self.set_boolean(keys::VIM_KEYBINDINGS, on)
     }
 
+    pub fn shortcut_preset(&self) -> String {
+        self.settings.string(keys::SHORTCUT_PRESET).into()
+    }
+
+    pub fn set_shortcut_preset(&self, id: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::SHORTCUT_PRESET, id)
+    }
+
     /// The driver the connect dialog opens on. Remembered so the
     /// common case is one click, not a combo hunt every time.
     pub fn connect_dialog_driver(&self) -> String {
@@ -296,6 +312,14 @@ impl AppSettings {
 
     pub fn set_last_seen_version(&self, version: &str) -> Result<(), SettingsError> {
         self.set_string(keys::LAST_SEEN_VERSION, version)
+    }
+
+    pub fn setup_guide_seen(&self) -> bool {
+        self.settings.boolean(keys::SETUP_GUIDE_SEEN)
+    }
+
+    pub fn set_setup_guide_seen(&self, seen: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SETUP_GUIDE_SEEN, seen)
     }
 
     pub fn share_usage_data(&self) -> bool {

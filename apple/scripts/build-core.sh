@@ -12,6 +12,7 @@ BUILD_DIR="$PACKAGE_DIR/Build"
 TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
 ARCH="${1:-both}"
 source "$APPLE_DIR/scripts/lib/deployment-target.sh"
+source "$APPLE_DIR/scripts/lib/system-sqlite.sh"
 
 case "$ARCH" in
     arm64) TRIPLES=(aarch64-apple-darwin) ;;
@@ -46,6 +47,7 @@ done
 lipo -create "${ARCHIVES[@]}" -output "$BUILD_DIR/lib/libtablepro_ffi.a"
 lipo -info "$BUILD_DIR/lib/libtablepro_ffi.a"
 verify_deployment_target "$BUILD_DIR/lib/libtablepro_ffi.a"
+verify_system_sqlite "$BUILD_DIR/lib/libtablepro_ffi.a"
 
 # Generated from the library just built: UniFFI checks at load that the two carry the same API checksums.
 cargo run --locked --quiet -p tablepro-bindgen --bin uniffi-bindgen-swift -- \

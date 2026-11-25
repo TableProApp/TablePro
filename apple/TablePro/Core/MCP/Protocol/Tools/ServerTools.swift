@@ -185,7 +185,7 @@ public struct StopServerSessionTool: MCPToolImplementation {
         )
 
         let settings = await services.settingsProvider()
-        let scope = try await services.connectionBridge.resolveScope(
+        let scope = try await services.connectionBridge.resolveStatementScope(
             connectionId: connectionId,
             database: nil,
             schema: nil

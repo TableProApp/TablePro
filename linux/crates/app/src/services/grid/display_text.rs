@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::Write;
 
 use tablepro_core::Value;
@@ -9,6 +10,61 @@ use tablepro_linux_platform::settings::DateFormat;
 /// shows. The model keeps the whole value; only the cell is cut, past
 /// what its tooltip quotes.
 pub const DISPLAY_MAX_CHARS: usize = 1_000;
+
+/// The most lines a wrapped cell shows. A constant on every platform, with no setting.
+pub const WRAP_MAX_LINES: i32 = 10;
+
+const LINE_BREAKS: [char; 6] = ['\r', '\u{b}', '\u{c}', '\u{85}', '\u{2028}', '\u{2029}'];
+
+/// `text` for a cell that wraps: each line break as LF, a CRLF as one,
+/// and without one break at its end, which would draw an empty line.
+/// Pango breaks at only some of these, so the layout never meets the rest.
+pub fn keep_line_breaks(text: &str) -> Cow<'_, str> {
+    let head = &text[..text.len() - trailing_break_len(text)];
+    if !head.contains(LINE_BREAKS) {
+        return Cow::Borrowed(head);
+    }
+    let mut kept = String::with_capacity(head.len());
+    let mut chars = head.chars().peekable();
+    while let Some(character) = chars.next() {
+        match character {
+            '\r' => {
+                chars.next_if_eq(&'\n');
+                kept.push('\n');
+            }
+            other if LINE_BREAKS.contains(&other) => kept.push('\n'),
+            other => kept.push(other),
+        }
+    }
+    Cow::Owned(kept)
+}
+
+fn trailing_break_len(text: &str) -> usize {
+    if text.ends_with("\r\n") {
+        return 2;
+    }
+    text.chars()
+        .next_back()
+        .filter(|last| *last == '\n' || LINE_BREAKS.contains(last))
+        .map_or(0, char::len_utf8)
+}
+
+/// `text` up to `hidden_from`, where its first hidden line starts, ending
+/// in an ellipsis. Pango draws none when the cut falls on a line break.
+pub fn line_cut(text: &str, hidden_from: usize) -> String {
+    let mut end = hidden_from.min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let head = &text[..end];
+    let head = head.strip_suffix('\n').unwrap_or(head).trim_end_matches(' ');
+    let mut cut = String::with_capacity(head.len() + '…'.len_utf8());
+    cut.push_str(head);
+    if !head.ends_with('…') {
+        cut.push('…');
+    }
+    cut
+}
 
 /// What a cell shows for a value. `text` borrows the value where it
 /// can, so a text cell draws with no copy of its own.
@@ -224,7 +280,9 @@ mod tests {
     use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
     use tablepro_core::value::{JsonText, OffsetTimestamp, SqlTime, Temporal, UndecodableReason, UndecodedValue};
 
-    use super::{DISPLAY_MAX_CHARS, DisplayText, display_text, null_text};
+    use std::borrow::Cow;
+
+    use super::{DISPLAY_MAX_CHARS, DisplayText, WRAP_MAX_LINES, display_text, keep_line_breaks, line_cut, null_text};
 
     fn text_column() -> ColumnType {
         ColumnType::untyped_text("text")
@@ -397,5 +455,77 @@ mod tests {
 
         assert!(display.len() < 1_100, "{}", display.len());
         assert!(display.ends_with("… (999000 more bytes)"));
+    }
+
+    #[test]
+    fn a_wrapped_cell_shows_ten_lines_on_every_platform() {
+        assert_eq!(WRAP_MAX_LINES, 10);
+    }
+
+    #[test]
+    fn every_line_break_form_becomes_one_lf() {
+        let cases = [
+            ("a\nb", "a\nb"),
+            ("a\r\nb", "a\nb"),
+            ("a\rb", "a\nb"),
+            ("a\u{b}b", "a\nb"),
+            ("a\u{c}b", "a\nb"),
+            ("a\u{85}b", "a\nb"),
+            ("a\u{2028}b", "a\nb"),
+            ("a\u{2029}b", "a\nb"),
+            ("a\r\n\r\nb", "a\n\nb"),
+            ("a\n\rb", "a\n\nb"),
+        ];
+        for (value, kept) in cases {
+            assert_eq!(keep_line_breaks(value), kept, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn one_trailing_line_break_is_dropped() {
+        let cases = [
+            ("a\n", "a"),
+            ("a\r\n", "a"),
+            ("a\r", "a"),
+            ("a\u{2029}", "a"),
+            ("a\n\n", "a\n"),
+            ("a\r\n\r\n", "a\n"),
+            ("\n", ""),
+            ("", ""),
+        ];
+        for (value, kept) in cases {
+            assert_eq!(keep_line_breaks(value), kept, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn text_with_only_lf_breaks_is_not_copied() {
+        assert!(matches!(
+            keep_line_breaks("one\ntwo\tthree"),
+            Cow::Borrowed("one\ntwo\tthree")
+        ));
+        assert!(matches!(keep_line_breaks("one\n"), Cow::Borrowed("one")));
+    }
+
+    #[test]
+    fn a_line_cut_ends_in_one_ellipsis() {
+        assert_eq!(line_cut("one two three", 8), "one two…");
+        assert_eq!(line_cut("one\ntwo\nthree", 8), "one\ntwo…");
+        assert_eq!(
+            line_cut("one\n\nthree", 5),
+            "one\n…",
+            "an empty last line keeps its place"
+        );
+        assert_eq!(
+            line_cut("wait…\nmore", 8),
+            "wait…",
+            "the value's own ellipsis is not doubled"
+        );
+        assert_eq!(line_cut("short", 99), "short…");
+    }
+
+    #[test]
+    fn a_line_cut_never_splits_a_character() {
+        assert_eq!(line_cut("日本語", 4), "日…");
     }
 }

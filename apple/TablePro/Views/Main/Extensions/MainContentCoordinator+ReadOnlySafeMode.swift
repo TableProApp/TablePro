@@ -15,7 +15,7 @@ extension MainContentCoordinator {
 
     // What the tab's query was built from, and what its next page or count runs.
     static func browseFilters(_ filterState: TabFilterState) -> [TableFilter] {
-        filterState.executedFilters + filterState.rerunFilters.filters
+        filterState.applied?.filters ?? []
     }
 
     static func rawFilterExpressions(_ filters: [TableFilter]) -> [String] {

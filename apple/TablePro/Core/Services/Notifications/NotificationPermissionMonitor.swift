@@ -1,18 +1,11 @@
-//
-//  NotificationPermissionMonitor.swift
-//  TablePro
-//
-
 import AppKit
 import Combine
 import UserNotifications
 
-// The permission changes in System Settings while TablePro is in the background, so the pane reads
-// it again each time the app comes back. It never asks for permission: NotificationAuthorization
-// is the one requester.
+// Reads only, again on each activation since System Settings can change it meanwhile; NotificationAuthorization is the one requester.
 @MainActor
 internal final class NotificationPermissionMonitor: ObservableObject {
-    @Published internal private(set) var status: UNAuthorizationStatus = .notDetermined
+    @Published internal private(set) var status: UNAuthorizationStatus
 
     private let authorization: NotificationAuthorization
     private var activation: AnyCancellable?
@@ -23,6 +16,7 @@ internal final class NotificationPermissionMonitor: ObservableObject {
         center: NotificationCenter = .default
     ) {
         self.authorization = authorization
+        status = authorization.status
         activation = center.publisher(for: NSApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in
                 Task { @MainActor in await self?.refresh() }

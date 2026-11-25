@@ -34,6 +34,9 @@ struct PluginMetadataSnapshot: Sendable {
 
     struct CapabilityFlags: Sendable {
         let supportsSchemaSwitching: Bool
+        var schemaSwitchScopesUnqualifiedNames: Bool = false
+        // False where the database is named per request or per session object, so no statement the driver sends moves it.
+        var statementsCanSwitchDatabase: Bool = true
         let supportsImport: Bool
         let supportsExport: Bool
         let supportsSSH: Bool
@@ -130,10 +133,8 @@ struct PluginMetadataSnapshot: Sendable {
         // forwarding and rewriting the built-in endpoint there.
         var serverEndpointFields: ServerEndpointFields?
 
-        // Fields a driver older than this app ignores to the user's cost. A connection that sets one
-        // away from its default, while it is in use, is refused when the loaded driver does not
-        // declare it: DuckDB's SSL Mode read by a driver from before it existed would connect as
-        // Automatic, which is plain HTTP on a loopback host, however the user set it.
+        // Fields an older driver ignores to the user's cost, so a connection that sets one is refused when the driver
+        // lacks the field or the chosen dropdown option (DriverSettingNotSupportedError).
         var fieldsRequiringDriverSupport: [String] = []
 
         // The extensions a new database file can be named with, the first one preferred. Empty
@@ -172,6 +173,10 @@ struct PluginMetadataSnapshot: Sendable {
 
         // Set, a table page reads a large binary value's size through it and loads the value on demand.
         var binaryLengthFunction: String?
+
+        // Whether a table's DDL can state a CHECK value list in the form `QuerySqlParser` reads. False where the
+        // server rewrites the clause into another shape, or where the driver fills `allowedValues` itself.
+        var readsCheckListsFromDDL: Bool = true
 
         var readOnlyEnforcement: ReadOnlyEnforcement = .loginPrivileges
 
@@ -584,21 +589,31 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             resolved = resolved.withBranding(from: existing)
         }
         if let registryDefault = defaultSnapshots[typeId] {
-            resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
-            Self.adoptCuratedCaseSensitivity(&resolved, registryDefault: registryDefault)
-            Self.adoptCuratedSystemNames(&resolved, registryDefault: registryDefault)
-            Self.adoptCuratedExplainVariants(&resolved, registryDefault: registryDefault)
-            if Self.declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
-                Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
-                    "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"
-                )
-                resolved = resolved.withSwitchRouting(from: registryDefault)
-            }
+            resolved = Self.adoptingCuratedEntry(resolved, registryDefault: registryDefault, typeId: typeId)
         }
         snapshots[typeId] = resolved
         for scheme in resolved.urlSchemes {
             schemeIndex[scheme.lowercased()] = typeId
         }
+    }
+
+    // What registration keeps from the type's curated entry over what a plugin declares.
+    static func adoptingCuratedEntry(
+        _ snapshot: PluginMetadataSnapshot,
+        registryDefault: PluginMetadataSnapshot,
+        typeId: String
+    ) -> PluginMetadataSnapshot {
+        var resolved = snapshot.withIsDownloadable(registryDefault.isDownloadable)
+        adoptCuratedCaseSensitivity(&resolved, registryDefault: registryDefault)
+        adoptCuratedSystemNames(&resolved, registryDefault: registryDefault)
+        adoptCuratedExplainVariants(&resolved, registryDefault: registryDefault)
+        if declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
+            Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
+                "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"
+            )
+            resolved = resolved.withSwitchRouting(from: registryDefault)
+        }
+        return resolved
     }
 
     func unregister(typeId: String) {
@@ -647,6 +662,12 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return defaultSnapshots[databaseType.rawValue]
+    }
+
+    // The language a type's statements are read in. A curated entry's wins, so a loaded plugin cannot move an engine the
+    // app ships onto another language's looser classifier.
+    func queryLanguage(for databaseType: DatabaseType) -> EditorLanguage? {
+        (curatedSnapshot(for: databaseType) ?? snapshot(for: databaseType))?.editorLanguage
     }
 
     func snapshot(for databaseType: DatabaseType) -> PluginMetadataSnapshot? {
@@ -714,6 +735,21 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         from driverType: any DriverPlugin.Type,
         isDownloadable: Bool = false
     ) -> PluginMetadataSnapshot {
+        Self.metadataSnapshot(
+            from: driverType,
+            isDownloadable: isDownloadable,
+            existing: snapshot(forRegisteredTypeId: driverType.databaseTypeId)
+        )
+    }
+
+    // A capability with no DriverPlugin static is curated per type, so `existing`, the snapshot registered for the type
+    // before this plugin, carries it over, or registration resets it to the struct default. The plugin cannot be asked:
+    // a stale one without the property crashes with EXC_BAD_INSTRUCTION (missing witness table entry).
+    static func metadataSnapshot(
+        from driverType: any DriverPlugin.Type,
+        isDownloadable: Bool,
+        existing existingSnapshot: PluginMetadataSnapshot?
+    ) -> PluginMetadataSnapshot {
         let parameterStyle = driverType.parameterStyle
         let schemes = driverType.urlSchemes
         let primaryScheme = schemes.first ?? driverType.databaseTypeId.lowercased()
@@ -723,12 +759,6 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             // snapshot, so retire the field here too while its saved value migrates in the model.
             driverType.databaseTypeId != "Kafka" || $0.id != "kafkaConnectTimeout"
         }
-
-        // A capability with no DriverPlugin static is curated per type, so it has to be carried
-        // over from the built-in snapshot or plugin registration silently resets it to the
-        // struct default. Cannot read these from driverType directly: stale plugins without
-        // the property crash with EXC_BAD_INSTRUCTION (missing witness table entry).
-        let existingSnapshot = snapshot(forRegisteredTypeId: driverType.databaseTypeId)
 
         // The app reads the Schema Registry fields itself, so an older bundle keeps the curated ones.
         let declared = Set(pluginFields.map(\.id))
@@ -761,6 +791,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             structureEditing: existingSnapshot?.structureEditing ?? SchemaEditingSupport(),
             capabilities: PluginMetadataSnapshot.CapabilityFlags(
                 supportsSchemaSwitching: driverType.supportsSchemaSwitching,
+                schemaSwitchScopesUnqualifiedNames: driverType.schemaSwitchScopesUnqualifiedNames,
+                statementsCanSwitchDatabase: driverType.statementsCanSwitchDatabase,
                 supportsImport: driverType.supportsImport,
                 supportsExport: driverType.supportsExport,
                 supportsSSH: driverType.supportsSSH,
@@ -834,6 +866,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     .supportsPrincipalConnectionLimit ?? true,
                 supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true,
                 binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction,
+                readsCheckListsFromDDL: existingSnapshot?.capabilities.readsCheckListsFromDDL ?? true,
                 readOnlyEnforcement: existingSnapshot?.capabilities.readOnlyEnforcement ?? .loginPrivileges,
                 statementPolicyInDriver: existingSnapshot?.capabilities.statementPolicyInDriver ?? false,
                 dataCommands: existingSnapshot?.capabilities.dataCommands

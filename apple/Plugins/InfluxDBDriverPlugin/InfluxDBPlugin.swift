@@ -14,6 +14,8 @@ final class InfluxDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "InfluxDB"
     static let iconName = "influxdb-icon"
     static let defaultPort = 8_086
+    // Each HTTP request names its database.
+    static let statementsCanSwitchDatabase = false
     static let isDownloadable = true
 
     static let navigationModel: NavigationModel = .standard

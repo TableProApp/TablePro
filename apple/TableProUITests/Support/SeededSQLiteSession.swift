@@ -12,21 +12,30 @@ internal struct ConnectionSeed {
     internal var safeModeLevel: String
     internal var tabs: [SeededTab]
     internal var isOpen: Bool
+    internal var tagIds: [String]
 
     // A seed that is not open is saved but never restored, so only a list or the switcher reaches it.
+    // Tag ids name the preset tags (`PresetTag`), which the app seeds into an empty store.
     internal init(
         name: String = UITestFixture.connectionName,
         databaseSQL: String = UITestFixture.sql,
         safeModeLevel: String = "silent",
         tabs: [SeededTab] = [.query("SELECT 1;")],
-        isOpen: Bool = true
+        isOpen: Bool = true,
+        tagIds: [String] = []
     ) {
         self.name = name
         self.databaseSQL = databaseSQL
         self.safeModeLevel = safeModeLevel
         self.tabs = tabs
         self.isOpen = isOpen
+        self.tagIds = tagIds
     }
+}
+
+internal enum PresetTag {
+    internal static let local = "00000000-0000-0000-0000-000000000001"
+    internal static let production = "00000000-0000-0000-0000-000000000003"
 }
 
 internal struct SeededConnection {
@@ -53,7 +62,11 @@ internal extension UITestCase {
                 database: root.appendingPathComponent("seeded-\(index).sqlite")
             )
             makeDatabase(at: connection.database, sql: seed.databaseSQL)
-            payloads.append(connectionPayload(connection, sortOrder: index, safeModeLevel: seed.safeModeLevel))
+            var payload = connectionPayload(connection, sortOrder: index, safeModeLevel: seed.safeModeLevel)
+            if !seed.tagIds.isEmpty {
+                payload["tagIds"] = seed.tagIds
+            }
+            payloads.append(payload)
             try writeJSON(
                 tabState(seed.tabs),
                 to: tabStateDirectory.appendingPathComponent("\(connection.id.uuidString).json")

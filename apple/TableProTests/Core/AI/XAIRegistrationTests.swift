@@ -38,24 +38,9 @@ struct XAIRegistrationTests {
         #expect(xai?.showsTelemetryToggle == false)
     }
 
-    @Test("xAI curates the current Grok chat models and no retired slugs")
-    func curatedModels() {
-        let ids = descriptor()?.curatedModels.map(\.id) ?? []
-        #expect(ids == ["grok-4.5", "grok-4.3"])
-        for retired in ["grok-4", "grok-4-0709", "grok-3", "grok-3-mini", "grok-code-fast-1"] {
-            #expect(!ids.contains(retired), "retired slug \(retired) redirects and mis-bills; must not be curated")
-        }
-    }
-
-    @Test("xAI never offers an effort level the API rejects")
+    @Test("xAI offers no effort level for a model nothing describes")
     func effortLevels() {
-        let levels = descriptor()?.supportedEffortLevels(forModelID: "grok-4.5") ?? []
-        #expect(levels == [.low, .medium, .high])
-        #expect(!levels.contains(.minimal))
-        #expect(!levels.contains(.xhigh))
-        let fallback = descriptor()?.supportedEffortLevels(forModelID: "grok-unknown") ?? []
-        #expect(!fallback.contains(.minimal))
-        #expect(!fallback.contains(.xhigh))
+        #expect(descriptor()?.supportedEffortLevels(for: nil).isEmpty == true)
     }
 
     @Test("xAI always talks to the api.x.ai Responses endpoint")

@@ -10,7 +10,7 @@ extension PluginMetadataRegistry {
             ("Bigtable", PluginMetadataSnapshot(
                 displayName: "Google Cloud Bigtable", iconName: "bigtable-icon", defaultPort: 0,
                 requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
-                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                isDownloadable: true, primaryUrlScheme: "bigtable", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
                 supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
                 brandColorHex: "#4285F4",
@@ -18,6 +18,7 @@ extension PluginMetadataRegistry {
                 connectionMode: .apiOnly, supportsDatabaseSwitching: true,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
+                    statementsCanSwitchDatabase: false,
                     supportsImport: false,
                     supportsExport: true,
                     supportsSSH: false,

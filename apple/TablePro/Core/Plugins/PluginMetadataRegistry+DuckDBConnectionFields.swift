@@ -15,7 +15,8 @@ extension PluginMetadataRegistry {
                 defaultValue: "local",
                 fieldType: .dropdown(options: [
                     ConnectionField.DropdownOption(value: "local", label: String(localized: "Local File")),
-                    ConnectionField.DropdownOption(value: "remote", label: String(localized: "Remote (Quack, experimental)"))
+                    ConnectionField.DropdownOption(value: "remote", label: String(localized: "Remote (Quack, experimental)")),
+                    ConnectionField.DropdownOption(value: "motherduck", label: "MotherDuck")
                 ]),
                 section: .authentication
             ),
@@ -90,10 +91,23 @@ extension PluginMetadataRegistry {
                 section: .authentication,
                 visibleWhen: FieldVisibilityRule(fieldId: "duckdbSSLMode", values: ["verifyFingerprint"])
             ),
-            /// Named for what it does to the file rather than to TablePro, to keep it apart from
-            /// Safe Mode's own Read-Only level: that one is a policy this app applies to itself
-            /// and can be changed while connected, this one is how the file is opened and is
-            /// fixed for the life of the connection.
+            ConnectionField(
+                id: "duckdbMotherDuckToken",
+                label: String(localized: "Access Token"),
+                required: true,
+                fieldType: .secure,
+                section: .authentication,
+                hidesPassword: true,
+                visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["motherduck"])
+            ),
+            ConnectionField(
+                id: "duckdbMotherDuckDatabase",
+                label: String(localized: "Database"),
+                placeholder: String(localized: "All databases"),
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["motherduck"])
+            ),
+            // Named for the file, apart from Safe Mode's Read-Only, which can change while connected.
             ConnectionField(
                 id: "duckdbReadOnly",
                 label: String(localized: "Open the File Read-Only"),
@@ -110,7 +124,7 @@ extension PluginMetadataRegistry {
                 section: .advanced,
                 visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"])
             ),
-            .attachedDatabases(visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local"]))
+            .attachedDatabases(visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["local", "motherduck"]))
         ]
     }
 }

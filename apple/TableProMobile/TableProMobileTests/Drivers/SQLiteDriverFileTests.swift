@@ -1,12 +1,10 @@
 import Foundation
-import SQLite3
 import TableProDatabase
 @testable import TableProMobile
 import TableProModels
 import TableProQuery
 import Testing
 
-@Suite("SQLite driver file handling")
 struct SQLiteDriverFileTests {
     private let directory: URL
 
@@ -19,7 +17,7 @@ struct SQLiteDriverFileTests {
     @Test("Opening a file that is not there fails and creates nothing")
     func missingFileIsAnError() async {
         let missing = directory.appendingPathComponent("gone.db")
-        let driver = SQLiteDriver(source: .file(missing))
+        let driver = SQLiteBackedDriver(source: .file(missing))
 
         await #expect(throws: LocalDatabaseFileError.unavailable(fileName: "gone.db", reason: .missing)) {
             try await driver.connect()
@@ -30,13 +28,13 @@ struct SQLiteDriverFileTests {
     @Test("A database created new reopens later with its table intact")
     func createdDatabaseReopens() async throws {
         let file = directory.appendingPathComponent("scratch.db")
-        let creator = SQLiteDriver(source: .file(file), openMode: .createNew)
+        let creator = SQLiteBackedDriver(source: .file(file), openMode: .createNew)
         try await creator.connect()
         _ = try await creator.execute(query: "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)")
         _ = try await creator.execute(query: "INSERT INTO notes (body) VALUES ('kept')")
         try await creator.disconnect()
 
-        let reopened = SQLiteDriver(source: .file(file))
+        let reopened = SQLiteBackedDriver(source: .file(file))
         try await reopened.connect()
         let result = try await reopened.execute(query: "SELECT body FROM notes")
         try await reopened.disconnect()
@@ -87,7 +85,7 @@ struct SQLiteDriverFileTests {
         let driver = try await connectedDriver("check.db")
         _ = try await driver.execute(query: Self.createStudent)
 
-        await #expect(throws: SQLiteError.self) {
+        await #expect(throws: SQLitePluginError.self) {
             _ = try await driver.execute(
                 query: "INSERT INTO STUDENT (SID, NAME, SEX) VALUES ('09999', 'Zed', 'X')"
             )
@@ -119,7 +117,7 @@ struct SQLiteDriverFileTests {
         try await driver.disconnect()
 
         #expect(rowCount == 2)
-        #expect(thrown is SQLiteError)
+        #expect(thrown is SQLitePluginError)
     }
 
     @Test("A consumer that stops after the first row leaves the connection free for the next statement")
@@ -162,7 +160,7 @@ struct SQLiteDriverFileTests {
         let driver = try await connectedDriver("atomic.db")
         _ = try await driver.execute(query: Self.createStudent)
 
-        await #expect(throws: SQLiteError.self) {
+        await #expect(throws: SQLitePluginError.self) {
             try await driver.executeWrite([
                 "INSERT INTO STUDENT (SID, NAME, SEX) VALUES ('00001', 'Ann', 'F')",
                 "INSERT INTO STUDENT (SID, NAME, SEX) VALUES ('00002', 'Bob', 'X')",
@@ -550,13 +548,13 @@ struct SQLiteDriverFileTests {
             ('03517', 'Ben',  'M', '3A', '2013-11-17', 86)
         """
 
-    private func connectedDriver(_ fileName: String) async throws -> SQLiteDriver {
-        let driver = SQLiteDriver(source: .file(directory.appendingPathComponent(fileName)), openMode: .createNew)
+    private func connectedDriver(_ fileName: String) async throws -> SQLiteBackedDriver {
+        let driver = SQLiteBackedDriver(source: .file(directory.appendingPathComponent(fileName)), openMode: .createNew)
         try await driver.connect()
         return driver
     }
 
-    private func streamedElements(_ driver: SQLiteDriver, _ query: String) async throws -> [StreamElement] {
+    private func streamedElements(_ driver: SQLiteBackedDriver, _ query: String) async throws -> [StreamElement] {
         var elements: [StreamElement] = []
         for try await element in driver.executeStreaming(query: query, options: .default) {
             elements.append(element)
@@ -565,66 +563,131 @@ struct SQLiteDriverFileTests {
     }
 }
 
-@Suite("SQLite interrupt handle")
-struct SQLiteInterruptHandleTests {
-    @Test("A stream's consumer interrupts only while that stream's own statement is stepping")
-    func streamInterruptNeedsItsOwnStep() throws {
-        let connection = try openConnection()
-        defer { sqlite3_close(connection) }
-        let handle = SQLiteInterruptHandle()
-        handle.attach(connection)
-        let browser = SQLiteStreamToken()
-        let editor = SQLiteStreamToken()
-
-        handle.interrupt(browser)
-        #expect(sqlite3_is_interrupted(connection) == 0)
-
-        handle.beginStep(of: editor)
-        handle.interrupt(browser)
-        #expect(sqlite3_is_interrupted(connection) == 0)
-        #expect(!handle.endStep())
-
-        handle.beginStep(of: browser)
-        handle.interrupt(browser)
-        #expect(sqlite3_is_interrupted(connection) == 1)
-        #expect(handle.endStep())
+struct SQLiteBackedDriverTests {
+    private func connected(_ source: LocalDatabaseFileSource = .inMemory) async throws -> SQLiteBackedDriver {
+        let driver = SQLiteBackedDriver(source: source, openMode: .createNew)
+        try await driver.connect()
+        return driver
     }
 
-    @Test("Stop interrupts the connection whether or not a stream is stepping")
-    func stopInterruptsWhateverRuns() throws {
-        let connection = try openConnection()
-        defer { sqlite3_close(connection) }
-        let handle = SQLiteInterruptHandle()
-        handle.attach(connection)
-        let stream = SQLiteStreamToken()
+    @Test("Stop interrupts the running query rather than queueing behind it")
+    func stopInterruptsTheRunningQuery() async throws {
+        let driver = try await connected()
+        let endless = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c"
+        let consumer = Task {
+            for try await _ in driver.executeStreaming(query: endless, options: .default) {}
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        consumer.cancel()
 
-        handle.beginStep(of: stream)
-        handle.interrupt()
-        #expect(handle.endStep())
-        #expect(sqlite3_is_interrupted(connection) == 1)
+        let start = ContinuousClock.now
+        let alive = try await driver.ping()
+        let waited = ContinuousClock.now - start
+        try await driver.disconnect()
+
+        #expect(alive)
+        #expect(waited < .seconds(5))
     }
 
-    @Test("A handle detached for a close sends no interrupt")
-    func detachedHandleSendsNothing() throws {
-        let connection = try openConnection()
-        defer { sqlite3_close(connection) }
-        let handle = SQLiteInterruptHandle()
-        handle.attach(connection)
-        handle.detach()
-        let stream = SQLiteStreamToken()
+    @Test("A cancel with nothing running is harmless")
+    func cancelWithNothingRunning() async throws {
+        let driver = try await connected()
+        try await driver.cancelCurrentQuery()
+        let alive = try await driver.ping()
+        try await driver.disconnect()
 
-        handle.interrupt()
-        handle.beginStep(of: stream)
-        handle.interrupt(stream)
-        #expect(!handle.endStep())
-        #expect(sqlite3_is_interrupted(connection) == 0)
+        #expect(alive)
     }
 
-    private func openConnection() throws -> OpaquePointer {
-        var db: OpaquePointer?
-        let opened = sqlite3_open(":memory:", &db)
-        let connection = try #require(db)
-        try #require(opened == SQLITE_OK)
-        return connection
+    @Test("A read is capped at the row limit and says so")
+    func readIsCapped() async throws {
+        let driver = try await connected()
+        var rows = 0
+        var cappedAt: Int?
+        let query = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 1000) SELECT x FROM c"
+        for try await element in driver.executeStreaming(query: query, options: StreamOptions(maxRows: 10)) {
+            switch element {
+            case .row: rows += 1
+            case .truncated(reason: .rowCap(let cap)): cappedAt = cap
+            default: break
+            }
+        }
+        try await driver.disconnect()
+
+        #expect(rows == 10)
+        #expect(cappedAt == 10)
+    }
+
+    @Test("A long value is cut as it is read, a BLOB is its length, and a key column stays whole")
+    func gridReadCutsValues() async throws {
+        let driver = try await connected()
+        _ = try await driver.execute(query: "CREATE TABLE t (id TEXT PRIMARY KEY, body TEXT, payload BLOB)")
+        _ = try await driver.execute(query: """
+            INSERT INTO t VALUES (printf('%.*c', 9000, 'k'), printf('%.*c', 20000, 'b'), zeroblob(70000))
+            """)
+        let options = StreamOptions(lazyContext: LazyContext(table: "t", primaryKeyColumns: ["id"]))
+
+        var cells: [Cell] = []
+        for try await element in driver.executeStreaming(query: "SELECT id, body, payload FROM t", options: options) {
+            if case .row(let row) = element { cells = row.cells }
+        }
+        try await driver.disconnect()
+
+        try #require(cells.count == 3)
+        guard case .truncatedText(_, let keyBytes, _) = cells[0],
+              case .truncatedText(let prefix, let totalBytes, let ref) = cells[1],
+              case .binary(let byteCount, _) = cells[2] else {
+            Issue.record("expected cut text for the key and the body and a binary cell, got \(cells)")
+            return
+        }
+        #expect(keyBytes == 9_000)
+        #expect(prefix.utf8.count == Cell.previewByteLimit)
+        #expect(totalBytes == 20_000)
+        // The row is read back by its whole key, however the grid shows it.
+        #expect(ref?.primaryKey.first?.value.utf8.count == 9_000)
+        #expect(byteCount == 70_000)
+    }
+
+    @Test("A text of several statements is refused and runs none of them, as on the Mac")
+    func severalStatementsAreRefused() async throws {
+        let driver = try await connected()
+        await #expect(throws: (any Error).self) {
+            try await driver.execute(query: "CREATE TABLE never (i INTEGER); SELECT 456")
+        }
+        let tables = try await driver.execute(query: "SELECT count(*) FROM sqlite_master WHERE name = 'never'")
+        try await driver.disconnect()
+
+        #expect(tables.rows == [["0"]])
+    }
+
+    @Test("Text of only a comment runs as an empty result")
+    func commentOnlyText() async throws {
+        let driver = try await connected()
+        let result = try await driver.execute(query: "-- nothing to run")
+        var streamed: [StreamElement] = []
+        for try await element in driver.executeStreaming(query: "/* nothing */", options: .default) {
+            streamed.append(element)
+        }
+        try await driver.disconnect()
+
+        #expect(result.columns.isEmpty)
+        #expect(result.rows.isEmpty)
+        #expect(!streamed.contains { if case .row = $0 { true } else { false } })
+    }
+
+    @Test("The rowid alias reads as auto-increment, and the same key on a WITHOUT ROWID table does not")
+    func rowidAliasIsAutoIncrement() async throws {
+        let driver = try await connected()
+        _ = try await driver.execute(query: "CREATE TABLE a (id INTEGER PRIMARY KEY, name TEXT)")
+        _ = try await driver.execute(query: "CREATE TABLE b (id INTEGER PRIMARY KEY, name TEXT) WITHOUT ROWID")
+        _ = try await driver.execute(query: "CREATE TABLE c (id INT PRIMARY KEY, name TEXT)")
+        let alias = try await driver.fetchColumns(table: "a", schema: nil)
+        let noRowid = try await driver.fetchColumns(table: "b", schema: nil)
+        let intKey = try await driver.fetchColumns(table: "c", schema: nil)
+        try await driver.disconnect()
+
+        #expect(alias.map { $0.isAutoIncrement } == [true, false])
+        #expect(noRowid.map { $0.isAutoIncrement } == [false, false])
+        #expect(intKey.map { $0.isAutoIncrement } == [false, false])
     }
 }

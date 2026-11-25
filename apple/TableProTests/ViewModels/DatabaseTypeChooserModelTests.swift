@@ -20,7 +20,7 @@ struct DatabaseTypeChooserModelTests {
         DatabaseTypeChooserModel(types: [.postgresql, .cockroachdb, .pglite, .mysql, .mariadb, .sqlite])
     }
 
-    @Test("a query naming a driver exactly arms that driver, not an alphabetically earlier tagline hit")
+    @Test("a query naming a driver exactly lists and arms that driver ahead of a tagline hit")
     func exactNameOutranksATaglineMatch() {
         let model = model()
         model.searchText = "PostgreSQL"
@@ -29,8 +29,32 @@ struct DatabaseTypeChooserModelTests {
             model.filteredTypes.contains(.cockroachdb),
             "CockroachDB's tagline mentions PostgreSQL, so it is still a visible result"
         )
-        #expect(model.orderedTypes.first != .postgresql, "CockroachDB sorts ahead of it on screen")
+        #expect(model.orderedTypes.first == .postgresql, "The named driver lists first, ahead of CockroachDB")
         #expect(model.highlightedType == .postgresql, "The armed row must be the driver that was named")
+    }
+
+    // "p" armed PGlite, and "post" kept it because PGlite's tagline says Postgres, so Return opened PGlite.
+    @Test("typing on past a prefix moves the highlight to the best match")
+    func typingOnArmsTheBestMatch() {
+        let model = model()
+        model.searchText = "p"
+        #expect(model.highlightedType == .pglite, "Both names start with p, and PGlite sorts first")
+
+        for query in ["po", "pos", "post"] {
+            model.searchText = query
+            #expect(model.highlightedType == .postgresql, "\(query) begins only PostgreSQL's name")
+            #expect(model.orderedTypes.first == .postgresql)
+        }
+    }
+
+    @Test("a name match lists ahead of matches on the tagline or category")
+    func nameMatchesListFirst() {
+        let model = model()
+        model.searchText = "sql"
+        let rows = model.orderedTypes
+        let named = rows.prefix { $0.rawValue.lowercased().contains("sql") }
+        #expect(named.count == rows.filter { $0.rawValue.lowercased().contains("sql") }.count)
+        #expect(model.highlightedType == .sqlite, "A name that begins with the query outranks one that holds it")
     }
 
     @Test("MySQL is armed over MariaDB, whose tagline names it")

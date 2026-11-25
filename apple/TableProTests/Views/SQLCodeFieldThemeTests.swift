@@ -164,40 +164,49 @@ struct SQLCodeFieldThemeTests {
 
     // MARK: - Connection form fields
 
-    private func startupEditor(_ style: TextValueEditor.Style) throws -> (NSWindow, NSTextView) {
+    // The fixture owns the store's storage, so it lives as long as the window.
+    private func connectionEditorField(
+        _ language: EditorCodeLanguage,
+        row: BuiltInRow
+    ) throws -> (ConnectionEditorStoreFixture, NSWindow, NSTextView) {
+        let fixture = try ConnectionEditorStoreFixture()
+        let store = fixture.makeStore(.new(type: .mysql, parsedURL: nil))
         let window = ThemeTestFixture.host(
-            StartupCommandsEditor(text: .constant("SET time_zone = 'UTC'"), style: style),
-            size: NSSize(width: 360, height: 80)
+            EditorCodeEditor(text: .constant("SET time_zone = 'UTC'"), language: language, row: .builtIn(row), store: store),
+            size: NSSize(width: 360, height: 140)
         )
-        return (window, try #require(ThemeTestFixture.textViews(in: window).first))
+        return (fixture, window, try #require(ThemeTestFixture.textViews(in: window).first))
     }
 
     @Test("Startup Commands and Pre-Connect Script follow the editor theme")
     func startupCommandsFollowTheTheme() throws {
         try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
-            let (window, textView) = try startupEditor(.code)
-            #expect(textView.backgroundColor === NSColor.textBackgroundColor)
-            #expect(textView.enclosingScrollView?.borderType == .bezelBorder)
+            let fields: [(EditorCodeLanguage, BuiltInRow)] = [(.sql, .startupCommands), (.shell, .preConnectScript)]
+            for (language, row) in fields {
+                let (fixture, window, textView) = try connectionEditorField(language, row: row)
+                #expect(textView.backgroundColor === NSColor.textBackgroundColor)
+                #expect(textView.enclosingScrollView?.borderType == .noBorder)
 
-            try ThemeTestFixture.withEverySlotOverridden {
-                #expect(ThemeTestFixture.hex(textView.backgroundColor) == "#FF00FF")
-                #expect(ThemeTestFixture.hex(textView.textColor) == "#FF00FF")
+                try ThemeTestFixture.withEverySlotOverridden {
+                    #expect(ThemeTestFixture.hex(textView.backgroundColor) == "#FF00FF")
+                    #expect(ThemeTestFixture.hex(textView.textColor) == "#FF00FF")
+                }
+
+                #expect(textView.backgroundColor == NSColor.textBackgroundColor)
+                withExtendedLifetime((fixture, window)) {}
             }
-
-            #expect(textView.backgroundColor == NSColor.textBackgroundColor)
-            withExtendedLifetime(window) {}
         }
     }
 
     @Test("AI Rules is prose and keeps the system text colors under any theme")
     func aiRulesStaysPlain() throws {
         try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
-            let (window, textView) = try startupEditor(.plain)
+            let (fixture, window, textView) = try connectionEditorField(.plain, row: .aiRules)
             try ThemeTestFixture.withEverySlotOverridden {
                 #expect(textView.backgroundColor === NSColor.textBackgroundColor)
                 #expect(textView.textColor === NSColor.textColor)
             }
-            withExtendedLifetime(window) {}
+            withExtendedLifetime((fixture, window)) {}
         }
     }
 

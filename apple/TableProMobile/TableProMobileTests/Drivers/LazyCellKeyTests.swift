@@ -60,7 +60,7 @@ struct LazyCellKeyTests {
     }
 
     private static func duckDBBody(selecting query: String) async throws -> [Cell] {
-        let driver = DuckDBDriver(source: .inMemory)
+        let driver = DuckDBBackedDriver(source: .inMemory)
         try await driver.connect()
         _ = try await driver.execute(query: "CREATE TABLE notes (id INTEGER PRIMARY KEY, body VARCHAR)")
         _ = try await driver.execute(query: "INSERT INTO notes VALUES (7, repeat('x', 5000))")

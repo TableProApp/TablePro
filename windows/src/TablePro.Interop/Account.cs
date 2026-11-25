@@ -254,6 +254,11 @@ internal sealed class AccountWake : Native.AccountListener
 
     public void StatusChanged() => _signal.Writer.TryWrite(true);
 
+    // Nothing on Windows tells one way of signing out from another yet; the status change says it happened.
+    public void SignedOut(Native.SignOutCauseTag cause)
+    {
+    }
+
     // False once the account is disposed and no change is left.
     public ValueTask<bool> WaitAsync(CancellationToken cancellationToken) =>
         _signal.Reader.WaitToReadAsync(cancellationToken);

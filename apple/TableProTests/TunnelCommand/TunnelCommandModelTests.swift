@@ -62,21 +62,30 @@ struct TunnelCommandModelTests {
         #expect(decoded.tunnelCommandMode == connection.tunnelCommandMode)
     }
 
-    @Test("form state loads and rebuilds the mode, trimming as it goes")
-    func formStateRoundTrip() {
+    @Test("the editor's draft loads and rebuilds the mode, trimming as it goes")
+    @MainActor
+    func draftRoundTrip() {
+        let postgres = ConnectionTypeTraits.live(for: .postgresql, pluginManager: .shared)
         var connection = DatabaseConnection(name: "K8s", type: .postgresql)
         connection.tunnelCommandMode = .inline(kubectlConfig())
 
-        var state = TunnelCommandFormState()
-        state.load(from: connection)
-        #expect(state.enabled)
-        #expect(state.buildTunnelMode() == connection.tunnelCommandMode)
+        var draft = ConnectionDraft.loaded(from: connection, secrets: .none, traits: postgres)
+        #expect(draft.transport == .tunnelCommand)
+        #expect(ConnectionEditorEngine.edits(draft, postgres, originalTraits: nil, EditorContext()).tunnelCommandMode
+            == connection.tunnelCommandMode)
 
-        state.config.kubernetesResource = "  service/postgres  "
-        #expect(state.buildConfig().kubernetesResource == "service/postgres")
+        draft.tunnelCommand.config.kubernetesResource = "  service/postgres  "
+        #expect(draft.tunnelCommand.trimmedConfiguration.kubernetesResource == "service/postgres")
+        guard case .inline(let written) = ConnectionEditorEngine.edits(
+            draft, postgres, originalTraits: nil, EditorContext()
+        ).tunnelCommandMode else {
+            Issue.record("Expected an inline mode")
+            return
+        }
+        #expect(written.kubernetesResource == "service/postgres")
 
-        state.enabled = false
-        #expect(state.buildTunnelMode() == .disabled)
+        draft.selectTransport(nil)
+        #expect(ConnectionEditorEngine.edits(draft, postgres, originalTraits: nil, EditorContext()).tunnelCommandMode == .disabled)
     }
 
     @Test("the export bridge round-trips every field")

@@ -41,6 +41,7 @@ struct MenuValidationContext: Equatable {
     var canFocusInspector = false
     var canFocusAssistant = false
     var canPresentHighlightRules = false
+    var canToggleWrapText = false
     var isQueryTab = false
     var hasResultRows = false
     // Export Results reaches a Table Health tab's findings, which no result set holds.
@@ -214,9 +215,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && (context.hasResultRows || context.hasTableHealthFindings)
         // A share reads the loaded rows and the editor text, so neither waits on the connection.
         case #selector(shareQueryResult(_:)):
-            return context.hasResultRows
+            return ShareAvailability.isAvailable && context.hasResultRows
         case #selector(shareQuery(_:)):
-            return context.isQueryTab && context.hasQueryText
+            return ShareAvailability.isAvailable && context.isQueryTab && context.hasQueryText
 
         case #selector(exportDataDictionary(_:)):
             return context.isConnected && context.canExportDataDictionary
@@ -330,6 +331,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canUseTableResultCommands
         case #selector(showHighlightRules(_:)):
             return context.isConnected && context.canPresentHighlightRules
+        case #selector(toggleWrapText(_:)):
+            return context.isConnected && context.canToggleWrapText
         case #selector(pinResult(_:)):
             return context.canPinResultTab
         case #selector(compareResult(_:)):
@@ -730,6 +733,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canFocusInspector: canFocusInspector,
             canFocusAssistant: canFocusAssistant,
             canPresentHighlightRules: actions.canPresentHighlightRules,
+            canToggleWrapText: actions.canToggleWrapText,
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
             hasTableHealthFindings: actions.hasTableHealthFindings,
@@ -928,6 +932,8 @@ extension MainSplitViewController: NSMenuItemValidation {
                     ?? String(localized: "Release File Lock"),
                 on: menuItem
             )
+        case #selector(toggleWrapText(_:)):
+            setState(commandActions?.wrapsGridText == true ? .on : .off, on: menuItem)
         case #selector(setResultView(_:)):
             setState(isCurrentResultView(menuItem) ? .on : .off, on: menuItem)
         case #selector(setContentModeFromMenu(_:)):
@@ -951,10 +957,18 @@ extension MainSplitViewController: NSMenuItemValidation {
         guard !Self.manualCommitFootnotes.contains(where: { $0 == menuItem.identifier }) else { return }
         let state = transactionMenuState
         setState(state.isManualCommitOn ? .on : .off, on: menuItem)
-        let shown = Self.shownManualCommitFootnote(state, isConnected: isConnected)
-        for footnote in menuItem.menu?.items ?? [] {
-            guard let identifier = footnote.identifier, Self.manualCommitFootnotes.contains(identifier) else { continue }
+        Self.showManualCommitFootnote(
+            Self.shownManualCommitFootnote(state, isConnected: isConnected),
+            among: menuItem.menu?.items ?? []
+        )
+    }
+
+    // The menu builds its footnotes unwrapped, so the one about to show is laid out here, before AppKit sizes the menu.
+    static func showManualCommitFootnote(_ shown: NSUserInterfaceItemIdentifier?, among items: [NSMenuItem]) {
+        for footnote in items {
+            guard let identifier = footnote.identifier, manualCommitFootnotes.contains(identifier) else { continue }
             let hidden = identifier != shown
+            if !hidden { MenuFootnote.wrap(footnote) }
             if footnote.isHidden != hidden { footnote.isHidden = hidden }
         }
     }

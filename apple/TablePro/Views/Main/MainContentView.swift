@@ -47,7 +47,6 @@ struct MainContentView: View {
     @State var inspectorUpdateTask: Task<Void, Never>?
     @State var inspectorContextRefreshTask: Task<Void, Never>?
     @State var windowId = UUID()
-    @State var viewWindow: NSWindow?
 
     // MARK: - Environment
 
@@ -406,6 +405,13 @@ struct MainContentView: View {
             .onValueChange(of: \.viewMode, in: trailingPaneState.inspector) { _, _ in
                 updateInspectorContext()
             }
+            // The edit state is left empty while the inspector is hidden; a reveal fills it once, now.
+            .onValueChange(of: \.isOnScreen, in: trailingPaneState.inspector) { _, isOnScreen in
+                guard isOnScreen else { return }
+                inspectorUpdateTask?.cancel()
+                updateSidebarEditState()
+                updateInspectorContext()
+            }
             // Debounced: a detached value window commits per keystroke, and rebuilding the JSON tree cancels the reader's fetches.
             .onReceive(coordinator.inspectorRowContentChanged) { _ in
                 scheduleInspectorContextRefresh()
@@ -461,11 +467,15 @@ struct MainContentView: View {
                 Self.lifecycleLogger.debug(
                     "[switch] selectedTabId changed seq=\(seq) from=\(oldTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)"
                 )
-                (viewWindow?.windowController as? TabWindowController)?.refreshUserActivity()
+                (coordinator.contentWindow?.windowController as? TabWindowController)?.refreshUserActivity()
                 handleTabSelectionChange(from: oldTabId, to: newTabId)
             }
             .onChange(of: tabManager.tabStructureVersion) { _ in
                 handleStructureChange()
+            }
+            .onValueChange(of: SidebarMarkSubject(tab: currentTab)) { old, new in
+                guard old.tabId == new.tabId, !coordinator.isTearingDown else { return }
+                coordinator.selectedTabDidRetarget()
             }
             .onChange(of: currentTab?.schemaVersion) { _ in
                 let columns = currentTab.map { coordinator.tabSessionRegistry.tableRows(for: $0.id).columns }
@@ -591,5 +601,24 @@ private struct StructureChangeWatcher: View {
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
             .onChange(of: session.hasChanges) { _ in onChange() }
+    }
+}
+
+// What the sidebar mark is resolved from, for a tab that keeps its id while it shows another table.
+struct SidebarMarkSubject: Equatable {
+    let tabId: UUID?
+    let tabType: TabType?
+    let tableName: String?
+    let databaseName: String?
+    let schemaName: String?
+    let isTemporary: Bool
+
+    init(tab: QueryTab?) {
+        tabId = tab?.id
+        tabType = tab?.tabType
+        tableName = tab?.tableContext.tableName
+        databaseName = tab?.tableContext.databaseName
+        schemaName = tab?.tableContext.schemaName
+        isTemporary = tab?.tableContext.isTemporary ?? false
     }
 }

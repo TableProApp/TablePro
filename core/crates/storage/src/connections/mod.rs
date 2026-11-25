@@ -368,7 +368,7 @@ pub struct ConnectionListSnapshot {
 }
 
 /// What an import did to the list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ImportReport {
     /// Connections the list did not have, including one whose id was
     /// taken by a different connection and was given its own.
@@ -376,10 +376,12 @@ pub struct ImportReport {
     /// Connections already in the list that the file only renamed,
     /// recoloured, regrouped, retagged or gave another icon.
     pub updated: usize,
+    // Each connection written, added or updated, once and in file order, for the app to open or select (core ADR 0057).
+    pub connection_ids: Vec<Uuid>,
 }
 
 impl ImportReport {
-    pub fn total(self) -> usize {
+    pub fn total(&self) -> usize {
         self.added + self.updated
     }
 }
@@ -404,9 +406,18 @@ impl ImportPreview {
             .iter()
             .filter(|entry| entry.change == ImportChange::Added)
             .count();
+        // A file that lists one id twice updates the entry its first row added.
+        let mut seen = HashSet::with_capacity(self.entries.len());
+        let connection_ids = self
+            .entries
+            .iter()
+            .map(|entry| entry.connection.id)
+            .filter(|id| seen.insert(*id))
+            .collect();
         ImportReport {
             added,
             updated: self.entries.len() - added,
+            connection_ids,
         }
     }
 }
@@ -1829,7 +1840,7 @@ mod tests {
             .import_blocking(Path::new("/tmp/connections.json"), &bytes)
             .expect("import");
 
-        assert_eq!(report, ImportReport { added: 1, updated: 0 });
+        assert_eq!((report.added, report.updated), (1, 0));
         let list = target.load_blocking().expect("load");
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "production");
@@ -1851,11 +1862,13 @@ mod tests {
         let first = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
         let second = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
 
-        assert_eq!(first, ImportReport { added: 0, updated: 1 });
-        assert_eq!(second, ImportReport { added: 0, updated: 1 });
+        assert_eq!((first.added, first.updated), (0, 1));
+        assert_eq!((second.added, second.updated), (0, 1));
         let list = store.load_blocking().expect("load");
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "production (renamed)");
+        assert_eq!(first.connection_ids, [list[0].id]);
+        assert_eq!(second.connection_ids, [list[0].id]);
     }
 
     #[test]
@@ -1880,7 +1893,7 @@ mod tests {
 
             let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
 
-            assert_eq!(report, ImportReport { added: 1, updated: 0 }, "{variant}");
+            assert_eq!((report.added, report.updated), (1, 0), "{variant}");
             let list = store.load_blocking().expect("load");
             assert_eq!(list.len(), 2, "{variant}");
             let kept = list.iter().find(|saved| saved.id == mine.id).expect("the saved entry");
@@ -1950,13 +1963,54 @@ mod tests {
 
         let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
 
-        assert_eq!(report, ImportReport { added: 1, updated: 1 });
+        assert_eq!((report.added, report.updated), (1, 1));
         let list = store.load_blocking().expect("load");
         let kept = list.iter().find(|saved| saved.id == mine.id).expect("the saved entry");
         assert_eq!(*kept, mine);
         let added = list.iter().find(|saved| saved.id == lookalike.id).expect("the import");
         assert_eq!(added.name, "Production (imported)");
         assert_eq!(added.last_opened_at, None, "the file's last-opened time came along");
+    }
+
+    #[test]
+    fn an_import_reports_each_connection_it_wrote_once_in_file_order() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mine = saved("production");
+        let untouched = saved("untouched");
+        store.upsert_blocking(mine.clone()).expect("upsert");
+        store.upsert_blocking(untouched.clone()).expect("upsert");
+        let theirs = SavedConnection {
+            host: "db.elsewhere.example".to_owned(),
+            ..saved("theirs")
+        };
+        let renamed = SavedConnection {
+            name: "staging".to_owned(),
+            ..mine.clone()
+        };
+        let taken = SavedConnection {
+            id: mine.id,
+            host: "db.other.example".to_owned(),
+            ..saved("other")
+        };
+        let bytes = crate::document::encode_document(&ConnectionsDocument {
+            connections: vec![theirs.clone(), renamed, taken, theirs.clone()],
+            ..ConnectionsDocument::default()
+        })
+        .expect("encode");
+
+        let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+
+        let list = store.load_blocking().expect("load");
+        let given = list
+            .iter()
+            .find(|saved| saved.host == "db.other.example")
+            .expect("the entry under a new id")
+            .id;
+        assert_ne!(given, mine.id);
+        assert_eq!(report.connection_ids, [theirs.id, mine.id, given]);
+        assert!(!report.connection_ids.contains(&untouched.id));
+        assert_eq!((report.added, report.updated), (2, 2));
     }
 
     #[test]
@@ -1981,7 +2035,7 @@ mod tests {
 
         let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
 
-        assert_eq!(report, ImportReport { added: 1, updated: 1 });
+        assert_eq!((report.added, report.updated), (1, 1));
         let list = store.load_blocking().expect("load");
         let kept = list.iter().find(|saved| saved.id == mine.id).expect("the saved entry");
         assert_eq!(kept.name, "staging");
@@ -2018,7 +2072,7 @@ mod tests {
 
         let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
 
-        assert_eq!(report, ImportReport { added: 0, updated: 2 });
+        assert_eq!((report.added, report.updated), (0, 2));
         let list = store.load_blocking().expect("load");
         let first = list.iter().find(|saved| saved.id == production.id).expect("production");
         assert_eq!(first.name, "staging (imported)");
@@ -2048,7 +2102,7 @@ mod tests {
 
         let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
 
-        assert_eq!(report, ImportReport { added: 1, updated: 1 });
+        assert_eq!((report.added, report.updated), (1, 1));
         let list = store.load_blocking().expect("load");
         let kept = list.iter().find(|saved| saved.id == mine.id).expect("the saved entry");
         assert_eq!(kept.name, "staging");
@@ -2077,10 +2131,8 @@ mod tests {
         for entry in preview.entries() {
             assert_eq!(entry.change, ImportChange::Updated { renamed_from: None });
         }
-        assert_eq!(
-            store.apply_import_blocking(&preview).expect("apply"),
-            ImportReport { added: 0, updated: 2 }
-        );
+        let report = store.apply_import_blocking(&preview).expect("apply");
+        assert_eq!((report.added, report.updated), (0, 2));
         let names: Vec<String> = store
             .load_blocking()
             .expect("load")
@@ -2209,10 +2261,8 @@ mod tests {
         let fresh = store
             .preview_import_blocking(Path::new("/tmp/c.json"), &bytes)
             .expect("preview");
-        assert_eq!(
-            store.apply_import_blocking(&fresh).expect("apply"),
-            ImportReport { added: 1, updated: 0 }
-        );
+        let report = store.apply_import_blocking(&fresh).expect("apply");
+        assert_eq!((report.added, report.updated), (1, 0));
         assert_eq!(store.load_blocking().expect("load").len(), 3);
     }
 
@@ -2232,7 +2282,7 @@ mod tests {
 
         let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
 
-        assert_eq!(report, ImportReport { added: 1, updated: 0 });
+        assert_eq!((report.added, report.updated), (1, 0));
         let names: Vec<String> = store
             .load_blocking()
             .expect("load")
@@ -2614,8 +2664,8 @@ mod tests {
             .import_blocking(Path::new("/tmp/c.json"), &bytes)
             .expect("import");
 
-        assert_eq!(first, ImportReport { added: 2, updated: 0 });
-        assert_eq!(second, ImportReport { added: 0, updated: 2 });
+        assert_eq!((first.added, first.updated), (2, 0));
+        assert_eq!((second.added, second.updated), (0, 2));
         let tags = target.tags_blocking().expect("tags");
         assert_eq!(tags.to_vec(), vec![production.clone(), acme.clone()]);
         assert_eq!(tag_names(&target, &acme_prod), ["production", "acme"]);
@@ -2726,7 +2776,7 @@ mod tests {
             .import_blocking(Path::new("/tmp/c.json"), &document(vec![retagged], vec![acme.clone()]))
             .expect("import");
 
-        assert_eq!(report, ImportReport { added: 0, updated: 1 });
+        assert_eq!((report.added, report.updated), (0, 1));
         let list = store.load_blocking().expect("list");
         assert_eq!(list[0].tags, [acme.id], "a tag the file does not list was kept");
         assert_eq!(list[0].icon, Some(crate::ConnectionIcon::Cloud));

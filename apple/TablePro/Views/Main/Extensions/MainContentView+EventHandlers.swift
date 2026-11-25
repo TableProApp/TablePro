@@ -147,6 +147,7 @@ extension MainContentView {
     func updateSidebarEditState() {
         // A selection change, refresh or undo rebuilds the fields, so the typed run ends here, not in another row's step.
         coordinator.endInspectorEditRun()
+        trailingPaneState.inspector.editState.detachedStager = coordinator.rowEditingCoordinator
         // A structure definition is edited by the structure inspector, not the row fields.
         switch gridSelectionOwner {
         case .schemaGrid, .none:
@@ -163,6 +164,60 @@ extension MainContentView {
             clearSidebarEditState()
             return
         }
+        // Nothing reads the rows off screen, and the copy grows with rows times columns. A value window holds its own
+        // tab and records through the stager, so releasing them strands none of its typing.
+        if trailingPaneState.inspector.isOnScreen {
+            configureSidebarRows(tab: tab, model: model)
+        } else {
+            trailingPaneState.inspector.editState.releaseRows()
+        }
+
+        guard isSidebarEditable else {
+            clearSidebarEditHandlers()
+            return
+        }
+
+        // Weak: the edit state outlives this view, and a strong capture kept the coordinator until teardown.
+        let editState = trailingPaneState.inspector.editState
+        let coordinator = self.coordinator
+        editState.onFieldChanged = { [weak coordinator, weak editState] columnIndex, newValue, continuity in
+            guard let coordinator, let editState else { return }
+            coordinator.stageInspectorFieldEdit(
+                columnIndex: columnIndex,
+                value: newValue,
+                rowIDs: editState.rowIDs,
+                continuity: continuity
+            )
+        }
+        editState.onFieldExpressionChanged = { [weak coordinator, weak editState] columnIndex, sql, continuity in
+            guard let coordinator, let editState else { return }
+            coordinator.rowEditingCoordinator.stageInspectorFieldEdit(
+                columnIndex: columnIndex,
+                value: .text(sql),
+                rowIDs: editState.rowIDs,
+                continuity: continuity,
+                isExpression: true
+            )
+        }
+        editState.onFieldValuesChanged = { [weak coordinator] columnIndex, valuesByRow in
+            coordinator?.rowEditingCoordinator.stageInspectorFieldValues(
+                columnIndex: columnIndex, valuesByRow: valuesByRow
+            )
+        }
+        editState.onFieldReverted = { [weak coordinator] columnIndex, valuesByRow, absentRowIDs, expressionRowIDs in
+            coordinator?.rowEditingCoordinator.revertInspectorFieldEdit(
+                columnIndex: columnIndex,
+                valuesByRow: valuesByRow,
+                absentRowIDs: absentRowIDs,
+                expressionRowIDs: expressionRowIDs
+            )
+        }
+        editState.onFieldRemoved = { [weak coordinator] columnIndex, rowIDs in
+            coordinator?.stageInspectorFieldRemoval(columnIndex: columnIndex, rowIDs: rowIDs)
+        }
+    }
+
+    private func configureSidebarRows(tab: QueryTab, model: DataGridModel) {
         let tableRows = model.rows
         let selectedRows = model.selection.affectedRows.compactMap { model.row(at: $0) }
         let allRows = selectedRows.map { Array($0.values) }
@@ -191,6 +246,7 @@ extension MainContentView {
             }
         }
         trailingPaneState.inspector.editState.configure(
+            tabId: tab.id,
             rowIDs: selectedRows.map(\.id),
             allRows: stringRows,
             absentCells: selectedRows.map { tableRows.absentColumns(of: $0.id) },
@@ -210,57 +266,6 @@ extension MainContentView {
             databaseType: connection.type,
             cellWriter: changeManager.cellWriterSupport
         )
-
-        guard isSidebarEditable else {
-            clearSidebarEditHandlers()
-            return
-        }
-
-        let capturedCoordinator = coordinator
-        let capturedEditState = trailingPaneState.inspector.editState
-        trailingPaneState.inspector.editState.onFieldChanged = { columnIndex, newValue, continuity in
-            capturedCoordinator.stageInspectorFieldEdit(
-                columnIndex: columnIndex,
-                value: newValue,
-                rowIDs: capturedEditState.rowIDs,
-                continuity: continuity
-            )
-        }
-        trailingPaneState.inspector.editState.onFieldExpressionChanged = { columnIndex, sql, continuity in
-            capturedCoordinator.rowEditingCoordinator.stageInspectorFieldEdit(
-                columnIndex: columnIndex,
-                value: .text(sql),
-                rowIDs: capturedEditState.rowIDs,
-                continuity: continuity,
-                isExpression: true
-            )
-        }
-        trailingPaneState.inspector.editState.onFieldValuesChanged = { columnIndex, valuesByRow in
-            capturedCoordinator.rowEditingCoordinator.stageInspectorFieldValues(
-                columnIndex: columnIndex, valuesByRow: valuesByRow
-            )
-        }
-        trailingPaneState.inspector.editState.onFieldReverted = { columnIndex, valuesByRow, absentRowIDs, expressionRowIDs in
-            capturedCoordinator.rowEditingCoordinator.revertInspectorFieldEdit(
-                columnIndex: columnIndex,
-                valuesByRow: valuesByRow,
-                absentRowIDs: absentRowIDs,
-                expressionRowIDs: expressionRowIDs
-            )
-        }
-        trailingPaneState.inspector.editState.onFieldRemoved = { columnIndex, rowIDs in
-            capturedCoordinator.stageInspectorFieldRemoval(columnIndex: columnIndex, rowIDs: rowIDs)
-        }
-        trailingPaneState.inspector.editState.onDetachedFieldChanged = { columnIndex, newValue, rowIDs, isExpression in
-            // A value window commits per keystroke like its field, so its typing folds into one undo step the same way.
-            capturedCoordinator.rowEditingCoordinator.stageInspectorFieldEdit(
-                columnIndex: columnIndex,
-                value: newValue,
-                rowIDs: rowIDs,
-                continuity: .typing,
-                isExpression: isExpression
-            )
-        }
     }
 
     // Only the editor comes from the format; the value stays raw, since a formatted timestamp saved back would corrupt it.
@@ -303,6 +308,5 @@ extension MainContentView {
         trailingPaneState.inspector.editState.onFieldValuesChanged = nil
         trailingPaneState.inspector.editState.onFieldReverted = nil
         trailingPaneState.inspector.editState.onFieldRemoved = nil
-        trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
     }
 }

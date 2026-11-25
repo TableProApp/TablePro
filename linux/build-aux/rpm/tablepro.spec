@@ -125,7 +125,7 @@ Provides:       bundled(aws-lc) = 5.7.0
 Provides:       bundled(jitterentropy) = 3.6.3
 Provides:       bundled(s2n-bignum)
 Provides:       bundled(fiat-crypto)
-Provides:       bundled(duckdb) = 2.0.0
+Provides:       bundled(duckdb) = 2.0.1
 Provides:       bundled(brotli) = 1.1.0
 Provides:       bundled(moodycamel-concurrentqueue)
 Provides:       bundled(fast_float)

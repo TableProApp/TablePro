@@ -10,7 +10,7 @@ import Testing
 
 @MainActor
 struct WelcomeMenuSpecTests {
-    private func context(
+    func context(
         rows: [LibraryRowID],
         connections: [DatabaseConnection] = [],
         groups: [ConnectionGroup] = [],
@@ -18,6 +18,7 @@ struct WelcomeMenuSpecTests {
         reconnectable: Set<UUID> = [],
         linkedFolders: Set<UUID> = [],
         isSyncEnabled: Bool = false,
+        isCompareSyncEnabled: Bool = false,
         teamLibraryTeams: [TeamLibraryTeam] = [],
         hasTeamLibraryConflicts: Bool = false
     ) -> WelcomeMenuContext {
@@ -48,6 +49,7 @@ struct WelcomeMenuSpecTests {
             disconnectableConnectionIds: disconnectable,
             reconnectableConnectionIds: reconnectable,
             isSyncEnabled: isSyncEnabled,
+            isCompareSyncEnabled: isCompareSyncEnabled,
             canPublishToTeamCatalog: false,
             teamLibraryTeams: teamLibraryTeams,
             hasTeamLibraryConflicts: hasTeamLibraryConflicts
@@ -89,6 +91,18 @@ struct WelcomeMenuSpecTests {
     func background() {
         let sections = WelcomeMenuSpec.sections(for: context(rows: []))
         #expect(titles(sections) == [["New Connection…", "New Group…"], ["Import"]])
+    }
+
+    @Test("The Import submenu lists the shared import commands, grouped as the File menu groups them")
+    func importSubmenuFollowsTheSharedList() throws {
+        let sections = WelcomeMenuSpec.sections(for: context(rows: []))
+        let children = try #require(submenu("Import", in: sections))
+        let expectedTitles = ImportCommand.groups.map { group in group.map { $0.title } }
+        let expectedCommands = ImportCommand.groups.flatMap { group in group.map { WelcomeMenuSpec.menuCommand(for: $0) } }
+
+        #expect(titles(children) == expectedTitles)
+        #expect(entries(children).map { $0.command } == expectedCommands)
+        #expect(expectedCommands == [.importConnections, .importFromURL, .importFromApp, .importFromAWS, .openProjectFolder])
     }
 
     @Test("A single connection in the tree offers the full set, with Delete last on its own")

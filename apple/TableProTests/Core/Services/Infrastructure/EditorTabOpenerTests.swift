@@ -25,9 +25,7 @@ struct EditorTabOpenerTests {
         DatabaseManager.shared.injectSession(session, for: connection.id)
     }
 
-    /// While a switch to the entry on screen is on its way the cursor still names the database being
-    /// left. A new tab belongs to the entry on screen; a table named without a database is the one
-    /// in the database being browsed, which is also what the lookup for an open copy of it uses.
+    // Mid-switch, the cursor still names the database being left while the screen shows the next one.
     @Test("A new tab takes the entry on screen and a bare table takes the browsed database")
     func unnamedPayloadsResolveByKind() throws {
         let connection = TestFixtures.makeConnection(database: "tenant_a", type: .mysql)
@@ -49,8 +47,7 @@ struct EditorTabOpenerTests {
         #expect(manager.tabs.map(\.tableContext.databaseName) == ["tenant_b", "tenant_a"])
     }
 
-    /// A link, MCP or AppleScript naming another database and no schema bound the table to the
-    /// schema browsed in this one, so its first query named a relation that database may not have.
+    // A link, MCP or AppleScript naming another database once took the schema browsed in this one.
     @Test("A table payload naming another database takes no schema from the browsed one")
     func foreignDatabasePayloadTakesNoBrowsedSchema() throws {
         let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
@@ -90,9 +87,7 @@ struct EditorTabOpenerTests {
         #expect(tab.content.query.contains("sales"))
     }
 
-    /// The regression this guards: a payload naming a table used to open a tab only while a
-    /// connection was being created for it, so asking a connection that was already open for a
-    /// second table did nothing at all.
+    // A table payload once opened a tab only while its connection was being created.
     @Test("A table payload opens a tab in a list that already has one")
     func tableOpensIntoPopulatedList() {
         let connection = makeConnection()
@@ -132,28 +127,22 @@ struct EditorTabOpenerTests {
         #expect(manager.selectedTab?.tableContext.tableName == "customers")
     }
 
-    /// The FK arrow's "Open in New Tab" builds a payload carrying its own filter. It used to be
-    /// written onto whatever tab the table already had, destroying filters the user applied there
-    /// and leaving the grid on rows the new filter never ran against.
+    // The FK arrow's Open in New Tab once wrote its filter over the tab already showing the table.
     @Test("A payload that must open its own tab does not write over the tab already showing the table")
     func forcesNewTabLeavesTheExistingTabAlone() throws {
         let connection = makeConnection()
         let manager = QueryTabManager()
         try manager.addTableTab(tableName: "customers", databaseType: .mysql, databaseName: "shop")
         let existingId = try #require(manager.selectedTabId)
-        let userFilter = TabFilterState(
-            filters: [TableFilter(columnName: "country", filterOperator: .equal, value: "DE")],
-            commit: .all,
-            isVisible: true,
-            filterLogicMode: .and
+        let userFilter = TabFilterState.applying(
+            [TableFilter(columnName: "country", filterOperator: .equal, value: "DE")],
+            logicMode: .and
         )
         manager.mutate(at: 0) { $0.filterState = userFilter }
 
-        let fkFilter = TabFilterState(
-            filters: [TableFilter(columnName: "id", filterOperator: .equal, value: "42")],
-            commit: .all,
-            isVisible: true,
-            filterLogicMode: .and
+        let fkFilter = TabFilterState.applying(
+            [TableFilter(columnName: "id", filterOperator: .equal, value: "42")],
+            logicMode: .and
         )
         EditorTabOpener.apply(
             EditorTabPayload(
@@ -177,18 +166,15 @@ struct EditorTabOpenerTests {
         #expect(manager.selectedTabId == manager.tabs[1].id)
     }
 
-    /// Without the new-tab intent the opener still reselects, and a reselected tab is not the
-    /// caller's to rewrite.
+    // Without the new-tab intent the opener reselects, and a reselected tab is not the caller's to rewrite.
     @Test("Reselecting an existing tab leaves its filter state untouched")
     func reselectingLeavesFilterStateUntouched() throws {
         let connection = makeConnection()
         let manager = QueryTabManager()
         try manager.addTableTab(tableName: "customers", databaseType: .mysql, databaseName: "shop")
-        let userFilter = TabFilterState(
-            filters: [TableFilter(columnName: "country", filterOperator: .equal, value: "DE")],
-            commit: .all,
-            isVisible: true,
-            filterLogicMode: .and
+        let userFilter = TabFilterState.applying(
+            [TableFilter(columnName: "country", filterOperator: .equal, value: "DE")],
+            logicMode: .and
         )
         manager.mutate(at: 0) { $0.filterState = userFilter }
 
@@ -199,11 +185,9 @@ struct EditorTabOpenerTests {
                 tableName: "customers",
                 databaseName: "shop",
                 isView: false,
-                initialFilterState: TabFilterState(
-                    filters: [TableFilter(columnName: "id", filterOperator: .equal, value: "42")],
-                    commit: .all,
-                    isVisible: true,
-                    filterLogicMode: .and
+                initialFilterState: TabFilterState.applying(
+                    [TableFilter(columnName: "id", filterOperator: .equal, value: "42")],
+                    logicMode: .and
                 )
             ),
             to: manager,
@@ -231,7 +215,7 @@ struct EditorTabOpenerTests {
         #expect(manager.selectedTab?.tabType == .query)
     }
 
-    /// Restoring a session brings its own tabs back, so the payload must not add one on top.
+    // Restoring a session brings its own tabs back.
     @Test("A restore payload opens nothing")
     func restoreOpensNothing() {
         let connection = makeConnection()

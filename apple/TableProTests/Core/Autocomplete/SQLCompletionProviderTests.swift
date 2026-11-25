@@ -1208,6 +1208,8 @@ struct SQLCompletionProviderTests {
     @Test("A comma-joined FROM offers every table's columns, alias-qualified")
     func testCommaFromScopesColumnsToAllTables() async {
         let driver = makeTwoTableDriver()
+        let schemaProvider = SQLSchemaProvider.reading(from: driver)
+        let provider = SQLCompletionProvider(schemaProvider: schemaProvider, databaseType: .mysql)
         await schemaProvider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         let base = "SELECT * FROM users u, orders o WHERE "
 
@@ -1231,6 +1233,8 @@ struct SQLCompletionProviderTests {
     @Test("An alias prefix resolves to that table's columns, unqualified")
     func testAliasPrefixScopesToItsOwnTable() async {
         let driver = makeTwoTableDriver()
+        let schemaProvider = SQLSchemaProvider.reading(from: driver)
+        let provider = SQLCompletionProvider(schemaProvider: schemaProvider, databaseType: .mysql)
         await schemaProvider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         let text = "SELECT * FROM users u, orders o WHERE u."
 

@@ -20,6 +20,7 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let isDownloadable = true
 
     static let connectionMode: ConnectionMode = .network
+    static let urlSchemes: [String] = ["trino"]
     static let pathFieldRole: PathFieldRole = .database
     static let requiresAuthentication = false
     static let brandColorHex = "#DD5F3B"
@@ -29,6 +30,7 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsSchemaEditing = true
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
+    static let schemaSwitchScopesUnqualifiedNames = true
     static let requiresReconnectForDatabaseSwitch = false
     static let databaseGroupingStrategy: GroupingStrategy = .hierarchicalSchema
     static let defaultGroupName = "default"

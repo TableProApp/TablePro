@@ -1,11 +1,3 @@
-//
-//  AppSettingsStorage.swift
-//  TablePro
-//
-//  Persistent storage for application settings using UserDefaults.
-//  Follows FilterSettingsStorage pattern - singleton with JSON encoding.
-//
-
 import Foundation
 import os
 
@@ -16,8 +8,6 @@ final class AppSettingsStorage: Sendable {
     private let defaults: UserDefaults
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
-
-    // MARK: - UserDefaults Keys
 
     private enum Keys {
         static let general = "com.TablePro.settings.general"
@@ -35,7 +25,9 @@ final class AppSettingsStorage: Sendable {
         static let mcp = "com.TablePro.settings.mcp"
         static let notifications = "com.TablePro.settings.notifications"
         static let typography = "com.TablePro.settings.typography"
+        // Builds before the setup guide wrote it when their welcome sheet closed; read only as proof of an earlier launch.
         static let hasSeenWelcomeSheet = "com.TablePro.settings.hasCompletedOnboarding"
+        static let setupGuideSeen = "com.TablePro.settings.setupGuideSeen"
         static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
         // One height per editor kind, before a height belonged to its column.
         static let retiredFieldHeights = [
@@ -52,14 +44,17 @@ final class AppSettingsStorage: Sendable {
         self.defaults = userDefaults
     }
 
-    // MARK: - General Settings
-
     func loadGeneral() -> GeneralSettings {
         load(key: Keys.general, default: .default)
     }
 
     func saveGeneral(_ settings: GeneralSettings) {
         save(settings, key: Keys.general)
+    }
+
+    // Every launch since 0.51.0 sets the startup migration flag, with no user action; read it before this launch does.
+    func hasLaunchedBefore() -> Bool {
+        defaults.object(forKey: Keys.startupReopenMigration) != nil || defaults.bool(forKey: Keys.hasSeenWelcomeSheet)
     }
 
     func migrateStartupBehaviorToReopenLastIfNeeded() {
@@ -79,8 +74,6 @@ final class AppSettingsStorage: Sendable {
         }
     }
 
-    // MARK: - Appearance Settings
-
     func loadAppearance() -> AppearanceSettings {
         load(key: Keys.appearance, default: .default)
     }
@@ -89,8 +82,7 @@ final class AppSettingsStorage: Sendable {
         save(settings, key: Keys.appearance)
     }
 
-    // Older builds kept the mode inside the synced appearance blob. The first load carries it to its
-    // own key and writes it there, because the next save of the blob drops the field.
+    // Older builds kept the mode in the synced appearance blob; the first load moves it, since the blob's next save drops it.
     func loadAppearanceMode() -> AppAppearanceMode {
         if let stored = defaults.string(forKey: Keys.appearanceMode) {
             guard let mode = AppAppearanceMode(rawValue: stored) else {
@@ -151,8 +143,6 @@ final class AppSettingsStorage: Sendable {
         save(settings, key: Keys.typography)
     }
 
-    // MARK: - Editor Settings
-
     func loadEditor() -> EditorSettings {
         load(key: Keys.editor, default: .default)
     }
@@ -160,8 +150,6 @@ final class AppSettingsStorage: Sendable {
     func saveEditor(_ settings: EditorSettings) {
         save(settings, key: Keys.editor)
     }
-
-    // MARK: - Formatter Settings
 
     func loadFormatter() -> SQLFormatterSettings {
         load(key: Keys.formatter, default: .default)
@@ -171,8 +159,6 @@ final class AppSettingsStorage: Sendable {
         save(settings, key: Keys.formatter)
     }
 
-    // MARK: - Data Grid Settings
-
     func loadDataGrid() -> DataGridSettings {
         load(key: Keys.dataGrid, default: .default)
     }
@@ -180,8 +166,6 @@ final class AppSettingsStorage: Sendable {
     func saveDataGrid(_ settings: DataGridSettings) {
         save(settings, key: Keys.dataGrid)
     }
-
-    // MARK: - Value Color Settings
 
     func loadValueColors() -> ValueColorSettings {
         load(key: Keys.valueColors, default: .default)
@@ -191,8 +175,6 @@ final class AppSettingsStorage: Sendable {
         save(settings, key: Keys.valueColors)
     }
 
-    // MARK: - History Settings
-
     func loadHistory() -> HistorySettings {
         load(key: Keys.history, default: .default)
     }
@@ -200,9 +182,6 @@ final class AppSettingsStorage: Sendable {
     func saveHistory(_ settings: HistorySettings) {
         save(settings, key: Keys.history)
     }
-
-
-    // MARK: - Tab Settings
 
     func loadTabs() -> TabSettings {
         load(key: Keys.tabs, default: .default)
@@ -212,8 +191,6 @@ final class AppSettingsStorage: Sendable {
         save(settings, key: Keys.tabs)
     }
 
-    // MARK: - Keyboard Settings
-
     func loadKeyboard() -> KeyboardSettings {
         load(key: Keys.keyboard, default: KeyboardSettings.default).sanitized()
     }
@@ -221,8 +198,6 @@ final class AppSettingsStorage: Sendable {
     func saveKeyboard(_ settings: KeyboardSettings) {
         save(settings, key: Keys.keyboard)
     }
-
-    // MARK: - AI Settings
 
     func loadAI() -> AISettings {
         load(key: Keys.ai, default: .default)
@@ -232,8 +207,6 @@ final class AppSettingsStorage: Sendable {
         save(settings, key: Keys.ai)
     }
 
-    // MARK: - Sync Settings
-
     func loadSync() -> SyncSettings {
         load(key: Keys.sync, default: .default)
     }
@@ -241,8 +214,6 @@ final class AppSettingsStorage: Sendable {
     func saveSync(_ settings: SyncSettings) {
         save(settings, key: Keys.sync)
     }
-
-    // MARK: - MCP Settings
 
     func loadNotifications() -> NotificationSettings {
         load(key: Keys.notifications, default: .default)
@@ -260,8 +231,6 @@ final class AppSettingsStorage: Sendable {
         save(settings, key: Keys.mcp)
     }
 
-    // MARK: - Last Selected Database (per connection)
-
     func saveLastDatabase(_ database: String?, for connectionId: UUID) {
         if let database {
             defaults.set(database, forKey: "com.TablePro.lastSelectedDatabase.\(connectionId)")
@@ -273,8 +242,6 @@ final class AppSettingsStorage: Sendable {
     func loadLastDatabase(for connectionId: UUID) -> String? {
         defaults.string(forKey: "com.TablePro.lastSelectedDatabase.\(connectionId)")
     }
-
-    // MARK: - Last Selected Schema (per connection)
 
     func saveLastSchema(_ schema: String?, for connectionId: UUID) {
         if let schema {
@@ -288,20 +255,19 @@ final class AppSettingsStorage: Sendable {
         defaults.string(forKey: "com.TablePro.lastSelectedSchema.\(connectionId)")
     }
 
-    // MARK: - Welcome Sheet
-
-    func hasSeenWelcomeSheet() -> Bool {
-        defaults.bool(forKey: Keys.hasSeenWelcomeSheet)
+    func hasSeenSetupGuide() -> Bool {
+        defaults.bool(forKey: Keys.setupGuideSeen)
     }
 
-    func markWelcomeSheetSeen() {
-        defaults.set(true, forKey: Keys.hasSeenWelcomeSheet)
+    func markSetupGuideSeen() {
+        defaults.set(true, forKey: Keys.setupGuideSeen)
     }
-
-    // MARK: - Reset
 
     func resetToDefaults() {
-        saveGeneral(.default)
+        var general = GeneralSettings.default
+        // Share usage data is a consent choice, so a reset keeps it.
+        general.shareAnalytics = loadGeneral().shareAnalytics
+        saveGeneral(general)
         saveAppearance(.default)
         saveAppearanceMode(.auto)
         saveEditor(.default)
@@ -314,6 +280,7 @@ final class AppSettingsStorage: Sendable {
         saveAI(loadAI().resetKeepingProviders)
         saveSync(.default)
         saveMCP(.default)
+        saveNotifications(.default)
         saveTypography(.default)
         defaults.removeObject(forKey: PreferenceKeys.selectedSettingsPane.name)
         defaults.removeObject(forKey: PreferenceKeys.rowInspectorFieldHeights.name)
@@ -321,8 +288,6 @@ final class AppSettingsStorage: Sendable {
         defaults.removeObject(forKey: SidebarPersistenceKey.defaultLayout)
         RoutineDebugOptionStore(defaults: { [defaults] in defaults }).removeAll()
     }
-
-    // MARK: - Helpers
 
     private func load<T: Codable>(key: String, default defaultValue: T) -> T {
         guard let data = defaults.data(forKey: key) else {

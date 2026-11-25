@@ -18,6 +18,7 @@ extension FindPanelViewModel {
 
     private func moveMatch(forwards: Bool) {
         guard let target = target else { return }
+        refreshMatchesIfStale()
 
         guard !findMatches.isEmpty else {
             showWrapNotification(forwards: forwards, error: true, targetView: target.findPanelTargetView)

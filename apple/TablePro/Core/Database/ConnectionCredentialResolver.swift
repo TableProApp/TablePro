@@ -36,7 +36,9 @@ enum ConnectionCredentialResolver {
         fields: [String: String],
         override: String? = nil,
         deadline: ConnectionDeadline? = nil,
-        leaseOwner: UUID? = nil
+        leaseOwner: UUID? = nil,
+        connectionStorage: ConnectionStorage = .shared,
+        profileStorage: CredentialProfileStorage = .shared
     ) async throws -> ResolvedSignIn {
         if let minter = iamPasswordMinter(for: connection, fields: fields) {
             return try await minter.mint(deadline: deadline)
@@ -48,7 +50,9 @@ enum ConnectionCredentialResolver {
         return try await resolveStoredSignIn(
             for: connection,
             override: override,
-            leaseOwner: leaseOwner ?? credentialOwner(for: connection)
+            leaseOwner: leaseOwner ?? credentialOwner(for: connection),
+            connectionStorage: connectionStorage,
+            profileStorage: profileStorage
         )
     }
 
@@ -69,15 +73,19 @@ enum ConnectionCredentialResolver {
     private static func resolveStoredSignIn(
         for connection: DatabaseConnection,
         override: String?,
-        leaseOwner: UUID
+        leaseOwner: UUID,
+        connectionStorage: ConnectionStorage,
+        profileStorage: CredentialProfileStorage
     ) async throws -> ResolvedSignIn {
         if let override { return ResolvedSignIn(username: nil, password: override) }
         if case .profile(let profileId) = connection.credentialMode,
-           let profile = CredentialProfileStorage.shared.profile(for: profileId) {
-            return try await resolveProfileSignIn(profile, for: connection, leaseOwner: leaseOwner)
+           let profile = profileStorage.profile(for: profileId) {
+            return try await resolveProfileSignIn(
+                profile, for: connection, leaseOwner: leaseOwner, profileStorage: profileStorage
+            )
         }
         if let passwordSource = connection.passwordSource {
-            guard ConnectionStorage.shared.storeIsTrusted else {
+            guard connectionStorage.storeIsTrusted else {
                 throw PasswordSourceResolver.ResolutionError.storeNotTrusted
             }
             return try await resolveSource(passwordSource, for: connection, leaseOwner: leaseOwner)
@@ -85,7 +93,12 @@ enum ConnectionCredentialResolver {
         if connection.usePgpass, readsPgpass(connection) {
             return ResolvedSignIn(username: nil, password: pgpassPassword(for: connection, username: resolveUsername(for: connection)))
         }
-        return ResolvedSignIn(username: nil, password: ConnectionStorage.shared.loadPassword(for: connection.id) ?? "")
+        let password = await storedPassword(connectionStorage.passwordRead(for: connection.id))
+        return ResolvedSignIn(username: nil, password: password)
+    }
+
+    private static func storedPassword(_ read: DeferredSecretRead) async -> String {
+        await DeferredSecretRead.run([read])[read.key] ?? ""
     }
 
     private static func resolveSource(
@@ -143,11 +156,13 @@ enum ConnectionCredentialResolver {
     private static func resolveProfileSignIn(
         _ profile: CredentialProfile,
         for connection: DatabaseConnection,
-        leaseOwner: UUID
+        leaseOwner: UUID,
+        profileStorage: CredentialProfileStorage
     ) async throws -> ResolvedSignIn {
         switch profile.passwordMode {
         case .stored:
-            return ResolvedSignIn(username: nil, password: CredentialProfileStorage.shared.loadPassword(for: profile.id) ?? "")
+            let password = await storedPassword(profileStorage.passwordRead(for: profile.id))
+            return ResolvedSignIn(username: nil, password: password)
         case .prompt:
             // The prompt's answer arrives as `override`; reaching here means it was declined or the connect is unattended.
             return ResolvedSignIn(username: nil, password: "")
@@ -156,7 +171,7 @@ enum ConnectionCredentialResolver {
             return ResolvedSignIn(username: nil, password: pgpassPassword(for: connection, username: profile.username))
         case .source(let source):
             // A source can name a shell command, or a Vault address to send a token to.
-            guard CredentialProfileStorage.shared.storeIsTrusted else {
+            guard profileStorage.storeIsTrusted else {
                 throw PasswordSourceResolver.ResolutionError.profileStoreNotTrusted
             }
             return try await resolveSource(source, for: connection, leaseOwner: leaseOwner)

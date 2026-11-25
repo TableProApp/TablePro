@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -180,6 +181,32 @@ struct DriverUnavailabilityTests {
 
         #expect(manager.driverUnavailability(for: .mssql) == .notInstalled)
         #expect(ConnectionFailureClassifier.recoveryAction(for: manager.driverUnavailableError(for: .mssql)) == .installPlugin)
+    }
+
+    @Test("With the registry off by policy, a registry driver says the organization manages plugins and nothing is fetched")
+    func managedCatalogFetchesNothing() async throws {
+        let (manager, root) = try makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        UnreachableRegistryProtocol.reset()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [UnreachableRegistryProtocol.self]
+        let manifestURL = try #require(URL(string: "https://registry.invalid/\(UUID().uuidString)/plugins/v3.json"))
+        let registry = RegistryClient(
+            manifestURL: manifestURL,
+            session: URLSession(configuration: config),
+            catalogAllowed: Just(false).eraseToAnyPublisher()
+        )
+
+        try await manager.prepareForConnecting(to: .mssql, registryClient: registry)
+        let fetched = await registry.fetch(policy: .mustBeCurrent)
+        let passFetched = await registry.fetchWaitingForConnectivity()
+
+        #expect(fetched == nil && passFetched == nil && registry.manifest == nil)
+        #expect(UnreachableRegistryProtocol.requestCount == 0)
+        #expect(manager.driverUnavailability(for: .mssql, registryManifest: nil, catalogAllowed: false) == .installManagedByOrganization)
+        let error = PluginError.pluginInstallManaged(PluginManager.registryDisplayName(of: .mssql))
+        #expect(ConnectionFailureClassifier.recoveryAction(for: error) == nil)
+        #expect(error.errorDescription?.contains("organization") == true)
     }
 
     @Test("A bundled type whose plugin never registered failed to load, and says which")

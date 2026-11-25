@@ -11,7 +11,7 @@ This file covers the macOS and iOS apps in `apple/`, and every command in it run
 | SwiftLint | 0.65.1 | The version CI runs |
 | GitHub CLI | any | Optional: `scripts/download-libs.sh` falls back to `curl` |
 | Go | `toolchain` in `Native/HanaBridge/go.mod` | SAP HANA plugin only: run `scripts/build-hana.sh` with no argument before building `HanaDriver` or `AllPlugins`. When the installed `go` is another release, `go` switches to that toolchain itself |
-| Rust | `Native/DamengBridge/rust-toolchain.toml` | Dameng plugin only, through [rustup](https://rustup.rs), which installs it: run `scripts/build-dameng.sh arm64` before building `DamengDriver` or `AllPlugins` |
+| Rust | `rust-toolchain.toml` at the repository root | Through [rustup](https://rustup.rs), which installs it. The app links the shared core: run `scripts/build-core.sh arm64` (or `x86_64`) before the first build and after a change under `core/`. The Dameng plugin pins its own in `Native/DamengBridge/rust-toolchain.toml`: run `scripts/build-dameng.sh arm64` before building `DamengDriver` or `AllPlugins` |
 
 Fork the repo on GitHub, then:
 
@@ -19,6 +19,7 @@ Fork the repo on GitHub, then:
 git clone https://github.com/<your-fork>/TablePro.git && cd TablePro/apple
 brew install xcodegen swiftlint
 scripts/download-libs.sh
+scripts/build-core.sh arm64
 cp Configs/Secrets.xcconfig.example Configs/Secrets.xcconfig
 scripts/generate-project.sh
 open TablePro.xcodeproj
@@ -61,7 +62,7 @@ xcodebuild build -project TablePro.xcodeproj -scheme AllPlugins -destination 'pl
 
 ### A Release build
 
-`scripts/release/build.sh` builds the app and the registry plugins the way a tag does, universal, into `build/release/`; `package.sh` writes the assets to `dist/`. The nightly's Release Build job runs the same:
+`scripts/release/build.sh` builds the app and the registry plugins the way a tag does: the app once per arch into `build/release/<arch>/`, the plugins universal into `build/release/plugins`; `package.sh` writes the assets to `dist/`. The nightly's Release Build job runs the same:
 
 ```bash
 export VERSION=0.0.0-dev BUILD=9999999
@@ -72,7 +73,7 @@ scripts/release/build.sh plugins --unsigned && scripts/release/package.sh plugin
 
 Signed: drop `--unsigned`, with the Developer ID identity and the provisioning profile `scripts/release/ExportOptions.plist` names. `scripts/release/notarize.sh <path>...` needs the profile `xcrun notarytool store-credentials TablePro --key <p8> --key-id <id> --issuer <issuer>` creates.
 
-The disk image opens to the window `scripts/release/dmg.DS_Store` describes, a file Finder wrote. To change it, edit the Finder settings in `scripts/release/dmg.sh`, run `scripts/release/dmg.sh layout build/release/TablePro.app` on a Mac with a logged-in session, and open a disk image built with the new file before committing it.
+The disk image opens to the window `scripts/release/dmg.DS_Store` describes, a file Finder wrote. To change it, edit the Finder settings in `scripts/release/dmg.sh`, run `scripts/release/dmg.sh layout build/release/arm64/TablePro.app` on a Mac with a logged-in session, and open a disk image built with the new file before committing it.
 
 ### Clean builds
 
@@ -164,4 +165,6 @@ The export builds the app first, so run `scripts/download-libs.sh` and `scripts/
 | `error: …/tablepro-hana-helper is missing or has no <arch> slice` | Run `scripts/build-hana.sh` with no argument, which builds both architectures |
 | Signing errors after a fresh clone | `Configs/Base.xcconfig` defaults to the maintainer's team and includes `Secrets.xcconfig` optionally, so a build without it still runs and fails to sign. Create the file with your team |
 | Package resolution fails | `Cmd+Shift+K` and reopen Xcode; then `rm -rf ~/Library/Developer/Xcode/DerivedData` |
+| `local binary target 'TableProFFIC' ... does not contain a binary artifact` | The core is not built: `scripts/build-core.sh arm64` |
+| `UniFFI API checksum mismatch` at launch | The bindings and the library come from different builds of the core: `scripts/build-core.sh arm64` again |
 | Test runs left defaults domains (`com.TablePro.tests.*`, `com.TablePro.uitest.*`) or temp folders behind | Quit TablePro, then run `scripts/clean-test-residue.sh`. It only reports until you pass `--apply` |

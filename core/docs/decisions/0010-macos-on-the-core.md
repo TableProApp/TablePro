@@ -1,6 +1,6 @@
 # 0010: The macOS app moves to the core in slices, starting with the connection library
 
-- **Status**: Accepted
+- **Status**: Accepted; later slices for importers, the MCP server and SSH amended by [0043](0043-macos-later-slices-importers-mcp-ssh.md); an account slice, shipped in #4470, and slice 9 for SSH profiles, credential profiles, favourites and table folders, amended by [0044](0044-sync-through-one-service-run-by-us-or-on-premises.md); what stays Swift, the record cache included, and the CloudKit mapping amended by [0054](0054-one-sync-engine-in-the-core-for-tablepro-sync-and-icloud.md)
 - **Date**: 2026-11-04
 
 ## Context

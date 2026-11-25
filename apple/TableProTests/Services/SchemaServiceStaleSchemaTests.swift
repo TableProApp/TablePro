@@ -72,7 +72,7 @@ struct SchemaServiceStaleSchemaTests {
 
         await service.refreshLoadedSchemaObjects(in: scope, fetchingNow: ["S0", "NEVER_LOADED"], driver: driver)
 
-        #expect(Set(driver.perSchemaReads) == ["tables:S0", "routines:S0"])
+        #expect(Set(driver.perSchemaReads) == ["tables:S0", "routines:S0", "triggers:S0"])
         #expect(service.schemasWithCurrentTables(for: connectionId) == ["S0"])
         #expect(!service.schemaObjectsNeedFetch(for: connectionId, schema: "S0"))
         #expect(service.schemaObjectsNeedFetch(for: connectionId, schema: "S1"))

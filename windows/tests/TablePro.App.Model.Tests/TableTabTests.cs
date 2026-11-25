@@ -116,6 +116,52 @@ public sealed class TableTabTests
     }
 
     [Fact]
+    public void ANewTabWrapsAsSettingsSayAndAnOpenTabNeverFollowsAChange()
+    {
+        Assert.False(_tab.WrapsText);
+
+        _settings = new AppSettings { GridWrapText = true };
+        var later = New();
+
+        Assert.False(_tab.WrapsText);
+        Assert.True(later.WrapsText);
+        Assert.False(_tab.Snapshot().WrapText);
+        Assert.True(later.Snapshot().WrapText);
+
+        _settings = new AppSettings();
+
+        Assert.True(later.WrapsText);
+    }
+
+    [Fact]
+    public void ATabsOwnWrapChoiceIsKeptInItsSnapshotAndToldOnce()
+    {
+        var changes = 0;
+        _tab.StateChanged += (_, _) => changes++;
+
+        _tab.SetWrapsText(true);
+        _tab.SetWrapsText(true);
+
+        Assert.True(_tab.WrapsText);
+        Assert.Equal(1, changes);
+        Assert.True(_tab.Snapshot().WrapText);
+    }
+
+    [Fact]
+    public void ARestoredTabKeepsItsWrapChoiceAndOneWithNoneReadsSettingsOnce()
+    {
+        _settings = new AppSettings { GridWrapText = true };
+        var kept = New(new SessionTab { Kind = TabKind.Table, Title = "Artist", Table = "Artist", WrapText = false });
+        var older = New(new SessionTab { Kind = TabKind.Table, Title = "Artist", Table = "Artist" });
+
+        _settings = new AppSettings();
+
+        Assert.False(kept.WrapsText);
+        Assert.True(older.WrapsText);
+        Assert.True(New(older.Snapshot()).WrapsText);
+    }
+
+    [Fact]
     public void ARestoredTabStartsAtThePageHoldingItsFirstRow()
     {
         var tab = New(new SessionTab

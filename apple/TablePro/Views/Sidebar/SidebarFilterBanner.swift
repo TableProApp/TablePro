@@ -1,11 +1,6 @@
-//
-//  SidebarFilterBanner.swift
-//  TablePro
-//
-
 import SwiftUI
 
-/// A filtered list looks exactly like a short one, so the sidebar says it is filtered.
+// A filtered list looks exactly like a short one, so the sidebar says it is filtered.
 struct SidebarFilterBanner: View {
     let label: String
     let showAll: () -> Void
@@ -27,7 +22,7 @@ struct SidebarFilterBanner: View {
     }
 }
 
-/// The schema filter's banner for one database, shown while the filter keeps anything at all.
+// Shown while the schema filter keeps anything at all.
 struct SidebarSchemaFilterBanner: View {
     let connectionId: UUID
     let database: String?
@@ -35,7 +30,7 @@ struct SidebarSchemaFilterBanner: View {
     @ObservedObject var sidebarState: SharedSidebarState
     @ObservedObject var catalog: ConnectionSidebarCatalog
 
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var sidebarDisplay = SidebarDisplayPreferences.shared
 
     private var summary: DatabaseTreeVisibility.Summary? {
         let selected = sidebarState.schemaFilter(for: database)
@@ -43,7 +38,7 @@ struct SidebarSchemaFilterBanner: View {
               let schemas = SidebarSchemaFilter().schemaList(connectionId: connectionId, database: database ?? "")
         else { return nil }
         let systemSchemas = Set(PluginManager.shared.systemSchemaNames(for: databaseType))
-        let showsSystem = settingsManager.general.showSystemContainers
+        let showsSystem = sidebarDisplay.options.showSystemContainers
         guard DatabaseTreeVisibility.isFilteringSchemas(
             selected: selected, schemas: schemas, systemSchemas: systemSchemas, showsSystem: showsSystem
         ) else { return nil }

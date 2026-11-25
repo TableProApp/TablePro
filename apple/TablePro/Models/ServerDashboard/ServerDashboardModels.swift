@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
 // MARK: - Dashboard Panel
@@ -69,4 +70,24 @@ struct DashboardSlowQuery: Identifiable {
     func hasSameContent(as other: DashboardSlowQuery) -> Bool {
         duration == other.duration && query == other.query && user == other.user && database == other.database
     }
+}
+
+struct DashboardBoard {
+    var sessions: [DashboardSession] = []
+    var metrics: [DashboardMetric] = []
+    var slowQueries: [DashboardSlowQuery] = []
+    var panelErrors: [DashboardPanel: String] = [:]
+
+    func hasSameContent(as other: DashboardBoard) -> Bool {
+        sessions == other.sessions
+            && metrics == other.metrics
+            && panelErrors == other.panelErrors
+            && slowQueries.elementsEqual(other.slowQueries, by: { $0.hasSameContent(as: $1) })
+    }
+}
+
+@MainActor
+final class DashboardRefreshStatus: ObservableObject {
+    @Published var isRefreshing = false
+    @Published var lastRefreshDate: Date?
 }

@@ -1,15 +1,11 @@
-//
-//  NotificationSettings.swift
-//  TablePro
-//
-
 import Foundation
 
-/// Whether a finished operation is worth a notification, and how long is long enough to count.
+// The threshold also decides the tab's unseen mark, with the switch on or off.
 struct NotificationSettings: Codable, Equatable {
     static let minimumThresholdSeconds = 5
     static let maximumThresholdSeconds = 600
     static let defaultThresholdSeconds = 20
+    static let thresholdChoices = [5, 10, 20, 30, 60, 120, 300, 600]
 
     var isEnabled: Bool
     var thresholdSeconds: Int
@@ -18,6 +14,12 @@ struct NotificationSettings: Codable, Equatable {
 
     var validatedThresholdSeconds: Int {
         min(max(thresholdSeconds, Self.minimumThresholdSeconds), Self.maximumThresholdSeconds)
+    }
+
+    var thresholdOptions: [Int] {
+        let current = validatedThresholdSeconds
+        guard !Self.thresholdChoices.contains(current) else { return Self.thresholdChoices }
+        return (Self.thresholdChoices + [current]).sorted()
     }
 
     init(

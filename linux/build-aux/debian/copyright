@@ -680,6 +680,21 @@ License: CC0-1.0
  On Debian systems, the complete text of the CC0 1.0 Universal license
  can be found in "/usr/share/common-licenses/CC0-1.0".
 
+Files: core/resources/Chinook.sqlite
+Copyright: 2008-2024 Luis Rocha
+License: Expat
+ Chinook Database
+ --------------------------------------
+ Copyright (c) 2008-2024 Luis Rocha
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and
+ to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 Files: vendor/adler2-2.0.1/*
 Copyright: Jonas Schievink <jonasschievink@gmail.com>
 License: 0BSD or Apache-2.0 or Expat
@@ -7518,8 +7533,8 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
-Files: vendor/duckdb-1.20000.1/*
- vendor/libduckdb-sys-1.20000.1/*
+Files: vendor/duckdb-1.20001.0/*
+ vendor/libduckdb-sys-1.20001.0/*
 Copyright: 2021-2026 Stichting DuckDB Foundation
 License: Expat
  Copyright 2021-2026 Stichting DuckDB Foundation
@@ -8988,7 +9003,7 @@ License: Apache-2.0 or Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/form_urlencoded-1.2.2/*
+Files: vendor/form_urlencoded-1.2.3/*
 Copyright: 2013-2016 The rust-url developers
 License: Apache-2.0 or Expat
  On Debian systems, the complete text of the Apache License, Version 2.0
@@ -11875,7 +11890,7 @@ License: Apache-2.0 or Expat
 
 Files: vendor/idna-1.1.0/*
  vendor/percent-encoding-2.3.2/*
- vendor/url-2.5.8/*
+ vendor/url-2.5.9/*
 Copyright: 2013-2025 The rust-url developers
 License: Apache-2.0 or Expat
  On Debian systems, the complete text of the Apache License, Version 2.0
@@ -25365,7 +25380,7 @@ Files: vendor/lexical-write-float-1.0.6/src/compact.rs
 Copyright: Andrea Samoljuk
 License: BSL-1.0
 
-Files: vendor/libduckdb-sys-1.20000.1/duckdb.tar.gz
+Files: vendor/libduckdb-sys-1.20001.0/duckdb.tar.gz
 Copyright: 2021 The fast_float authors
  Daniel Lemire
  The Mbed TLS Contributors

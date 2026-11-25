@@ -85,17 +85,23 @@ jobs:
           retention-days: 30
 
   app:
-    name: App
+    name: App (${{ matrix.arch }})
     needs: verify
     runs-on: xcode-27
     environment: signing
-    # The archive alone took 138 minutes for v0.84.0-beta.1; signing and two notarizations come on top.
+    # One arch per leg, the two in parallel. The universal archive, both arches in one job, took 138 minutes
+    # for v0.84.0-beta.1; signing and two notarizations come on top.
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
     permissions:
       contents: read
     env:
       VERSION: ${{ needs.verify.outputs.version }}
       BUILD: ${{ needs.verify.outputs.build }}
+      ARCH: ${{ matrix.arch }}
     defaults:
       run:
         working-directory: apple
@@ -119,6 +125,8 @@ jobs:
         run: printf 'POSTHOG_PROJECT_KEY = %s\n' "$POSTHOG_PROJECT_KEY" > Configs/Secrets.xcconfig
 
       - uses: ./.github/actions/prepare-build
+        with:
+          core-arch: ${{ matrix.arch }}
 
       - uses: ./.github/actions/apple-signing
         with:
@@ -130,20 +138,20 @@ jobs:
           asc-key-p8: ${{ secrets.ASC_KEY_P8 }}
 
       - name: Build the app
-        run: scripts/release/build.sh app
+        run: scripts/release/build.sh app "$ARCH"
 
       - name: Notarize the app
-        run: scripts/release/notarize.sh build/release/TablePro.app
+        run: scripts/release/notarize.sh "build/release/$ARCH/TablePro.app"
 
       - name: Package the app
-        run: scripts/release/package.sh app
+        run: scripts/release/package.sh app "$ARCH"
 
       - name: Notarize the disk image
-        run: scripts/release/notarize.sh "dist/TablePro-$VERSION.dmg"
+        run: scripts/release/notarize.sh "dist/TablePro-$VERSION-$ARCH.dmg"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: app
+          name: app-${{ matrix.arch }}
           path: apple/dist/
           if-no-files-found: error
           retention-days: 30
@@ -230,7 +238,8 @@ jobs:
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: app
+          pattern: app-*
+          merge-multiple: true
           path: dist
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

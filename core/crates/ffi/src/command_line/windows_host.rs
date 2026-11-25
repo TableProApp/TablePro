@@ -10,7 +10,7 @@ use tablepro_cli::{Host, HostError, Places, Terminal};
 
 // The Windows app's names for where it keeps the switch and the token.
 const PLACES: Places = Places {
-    mcp_settings: "Settings > MCP",
+    mcp_settings: "Settings > MCP server",
     token_store: "Credential Manager",
 };
 
@@ -235,6 +235,6 @@ mod tests {
 
     #[test]
     fn the_messages_name_the_windows_settings() {
-        assert_eq!(WindowsHost::current().places().mcp_settings, "Settings > MCP");
+        assert_eq!(WindowsHost::current().places().mcp_settings, "Settings > MCP server");
     }
 }

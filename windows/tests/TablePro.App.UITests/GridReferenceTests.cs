@@ -9,7 +9,7 @@ public sealed partial class ShellTests
     public void AForeignKeyOpensTheRowItPointsAtAndTheRowsPointingBack(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.Click(app.FindByName("Track", app.Find("ObjectTree")), () => app.TryFind("TableStatus") is not null);
         var tracks = app.Find("ResultsGrid");
         Assert.Equal("1", app.WaitForCell(tracks, 0, 2, value => value == "1"));

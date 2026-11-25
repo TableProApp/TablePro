@@ -6,8 +6,8 @@ import TableProPluginKit
 import Testing
 
 struct DuckDBTransferEngineTests {
-    private func session() async throws -> DuckDBDriver {
-        let driver = DuckDBDriver(source: .inMemory)
+    private func session() async throws -> DuckDBBackedDriver {
+        let driver = DuckDBBackedDriver(source: .inMemory)
         try await driver.connect()
         return driver
     }
@@ -122,13 +122,17 @@ struct DuckDBTransferEngineTests {
         #expect(!transfer.holdsSuspensionBlockingResource)
         #expect(before == "1")
         #expect(during == "1")
-        await #expect(throws: DuckDBDriverError.self) { _ = try await transfer.ping() }
+        await #expect(throws: (any Error).self) { _ = try await transfer.ping() }
     }
 
-    @Test("A grid statement on the session does not end a read the session streams for an export")
+    // Past the 64 batches a stream buffers, so a read that held the session's executor would never let the grid run.
+    @Test(
+        "A grid statement on the session does not end a read the session streams for an export",
+        .timeLimit(.minutes(1))
+    )
     func sessionExportSurvivesGridStatements() async throws {
         let driver = try await session()
-        _ = try await driver.execute(query: "CREATE TABLE t AS SELECT i FROM range(0, 10000) AS r(i)")
+        _ = try await driver.execute(query: "CREATE TABLE t AS SELECT i FROM range(0, 400000) AS r(i)")
 
         var iterator = driver.exportRows(query: "SELECT i FROM t ORDER BY i", readOnly: false).makeAsyncIterator()
         _ = try await iterator.next()
@@ -139,6 +143,65 @@ struct DuckDBTransferEngineTests {
         }
         try await driver.disconnect()
 
-        #expect(count == 10_000)
+        #expect(count == 400_000)
+    }
+
+    @Test(
+        "A transfer read paused past its buffer lets the session run, and its close ends it",
+        .timeLimit(.minutes(1))
+    )
+    func pausedTransferReadLetsTheSessionRun() async throws {
+        let driver = try await session()
+        _ = try await driver.execute(query: "CREATE TABLE big AS SELECT i FROM range(0, 400000) AS r(i)")
+        let transfer = try #require(try await driver.openTransferDriver() as? any ExportRowStreaming)
+
+        var iterator = transfer.exportRows(query: "SELECT i FROM big", readOnly: false).makeAsyncIterator()
+        _ = try await iterator.next()
+        _ = try await iterator.next()
+        let other = try await driver.execute(query: "SELECT 42")
+        try await transfer.disconnect()
+        let after = try await driver.execute(query: "SELECT count(*) FROM big")
+        try await driver.disconnect()
+
+        #expect(other.rows == [["42"]])
+        #expect(after.rows == [["400000"]])
+    }
+
+    @Test("A transfer read reads every row once, a batch at a time")
+    func transferReadIsWhole() async throws {
+        let driver = try await session()
+        _ = try await driver.execute(query: "CREATE TABLE big AS SELECT i FROM range(0, 300000) AS r(i)")
+        let transfer = try #require(try await driver.openTransferDriver() as? any ExportRowStreaming)
+
+        var rows = 0
+        var sum = 0
+        for try await element in transfer.exportRows(query: "SELECT i FROM big", readOnly: true) {
+            if case .rows(let batch) = element {
+                rows += batch.count
+                sum += batch.reduce(0) { $0 + (Int($1[0].asText ?? "") ?? 0) }
+            }
+        }
+        try await transfer.disconnect()
+        try await driver.disconnect()
+
+        #expect(rows == 300_000)
+        #expect(sum == 299_999 * 300_000 / 2)
+    }
+
+    @Test("Macros list from the schema the export reads, so one named alike in another schema stays out")
+    func macrosListFromTheExportSchema() async throws {
+        let driver = try await session()
+        _ = try await driver.execute(query: "CREATE SCHEMA other")
+        _ = try await driver.execute(query: "CREATE MACRO main.twin(x) AS x + 1")
+        _ = try await driver.execute(query: "CREATE MACRO other.twin(x) AS x + 2")
+        let catalog = try await driver.makeExportCatalog(context: Self.context)
+
+        let macros = try await catalog.exportObjects(database: "", schema: nil).filter { $0.kind == .routine }
+        let ddl = try await catalog.fetchObjectDDL(try #require(macros.first))
+        try await driver.disconnect()
+
+        #expect(macros.map(\.name) == ["twin"])
+        #expect(ddl.contains("+ 1"))
+        #expect(!ddl.contains("+ 2"))
     }
 }

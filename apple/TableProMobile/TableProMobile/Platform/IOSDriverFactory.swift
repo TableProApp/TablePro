@@ -166,11 +166,16 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     ) throws -> any DatabaseDriver {
         switch connection.type {
         case .sqlite where connection.isSample:
-            return SQLiteDriver(source: .file(try SampleDatabaseInstaller.live.installIfNeeded()))
+            return SQLiteBackedDriver(
+                source: .file(try SampleDatabaseInstaller.live.installIfNeeded()),
+                busyTimeoutSeconds: connection.queryTimeoutSeconds
+            )
         case .sqlite:
-            return SQLiteDriver(source: try sqliteSource(for: connection))
+            return SQLiteBackedDriver(
+                source: try sqliteSource(for: connection), busyTimeoutSeconds: connection.queryTimeoutSeconds
+            )
         case .duckdb:
-            return DuckDBDriver(source: try duckDBSource(for: connection))
+            return DuckDBBackedDriver(source: try duckDBSource(for: connection))
         case .mysql, .mariadb, .tidb, .oceanbase:
             guard connection.macSocketPath == nil else {
                 throw ConnectionError.localSocketNotSupported
@@ -220,7 +225,15 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         case .mssql:
             return MSSQLDriver(connection: connection, password: password)
         case .oracle:
-            return OracleDriver(connection: connection, password: password, serverName: preTunnelHost)
+            // The stored mode as it is: this device keeps no certificate file for Oracle, and the form shows none.
+            let ssl = DriverSSLConfiguration(sslEnabled: connection.sslEnabled, configuration: connection.sslConfiguration)
+            return OracleBackedDriver(
+                oracle: OraclePluginDriver(config: pluginConfig(
+                    for: connection, password: password, ssl: ssl, preTunnelHost: preTunnelHost
+                )),
+                dialedHosts: [connection.host],
+                queryTimeoutSeconds: connection.queryTimeoutSeconds
+            )
         case .clickhouse:
             return PluginRowWritingDriver(
                 plugin: ClickHousePluginDriver(config: pluginConfig(

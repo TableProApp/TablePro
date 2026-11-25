@@ -256,6 +256,15 @@ custom_rules:
     excluded_match_kinds: [comment, doccomment]
     message: "Declare an FSEvents callback as a `nonisolated private static let` of type FSEventStreamCallback and pass that."
     severity: error
+  # The app builds in the Swift 6 mode, where a main-actor @objc getter checks its executor on every call. The editor
+  # package builds in the Swift 5 mode, so the scope names the app folder alone.
+  flipped_view_getter_isolation:
+    name: "Flipped View Getter Isolation"
+    regex: '^(?![^\n]*\bnonisolated\b)[^\n]*\boverride\b[^\n]*\bvar\s+isFlipped\b'
+    included: ['.*/apple/TablePro/']
+    excluded_match_kinds: [comment, doccomment]
+    message: "isFlipped is a constant AppKit asks in every coordinate conversion: declare it nonisolated."
+    severity: error
   date_formatter_locale:
     name: "Fixed-Format Date Formatter Locale"
     regex: 'DateFormatter\(\)(?:(?!\.locale\s*=|DateFormatter\(\))[\s\S]){0,800}?\.dateFormat\s*=\s*"(?!(?:[^\n]*\n){0,8}[^\n]*\.locale\s*=)'
@@ -592,8 +601,9 @@ custom_rules:
   vendored_sqlite_import:
     name: "Vendored SQLite Import"
     included: ['.*/(Plugins/(SQLiteDriverPlugin|LibSQLDriverPlugin)|Packages/TableProCore/Sources/TableProSQLiteCore)/']
-    regex: '(?-s)^[ \t]*(?:@\w+[ \t]+)*import[ \t]+SQLite3\b'
-    message: "A target on the vendored SQLite imports CSQLite, not the SDK's SQLite3."
+    # iOS has no vendored build, so the line after `#if os(iOS)` may import the SDK's.
+    regex: '(?-s)(?<!#if os\(iOS\)\n)^[ \t]*(?:@\w+[ \t]+)*import[ \t]+SQLite3\b'
+    message: "A target on the vendored SQLite imports CSQLite, not the SDK's SQLite3, except under #if os(iOS)."
     severity: error
   column_classification_declared_type:
     name: "Classify By Classification Name"
@@ -632,4 +642,23 @@ custom_rules:
     regex: '(?:^#if\b[^\n]*\n[ \t]*|^)(?:@\w+[ \t]+)*@(?:Testing\.)?Suite(?:[ \t]*\(\s*(?:"(?:[^"\\\n]|\\.)*"|#+"[^\n]*?"#+)?\s*\))?(?![ \t]*\()(?=\s)'
     excluded_match_kinds: [comment, doccomment]
     message: "Every top-level @Suite expansion walks every other one, so compile time grows with their square. Keep @Suite only to carry a trait such as .serialized."
+    severity: error
+
+  # Settings
+  # A line that introduces a CopyableCodeBlock keeps its colon.
+  settings_label_trailing_colon:
+    name: "Settings Label Colon"
+    included: ['.*/TablePro/Views/Settings/']
+    regex: '\b(?:Text|Label|LabeledContent|Toggle|Picker|TextField|SecureField|Stepper|DatePicker|ColorPicker|Section|SettingsNumberField|SettingsTextField|SettingsDrillRow)\((?:\s*route:[^,\n]*,)?\s*(?:title:\s*)?(?:String\(\s*localized:\s*)?("(?!e\.g\.|i\.e\.)(?:\p{Lu}|\p{Ll}[^"\\\s]*[ \t])[^"\\\n]*?\p{L}[:：][ \t]?")(?!(?:[^\n]*\n){0,3}[^\n]*\bCopyableCodeBlock\()'
+    capture_group: 1
+    excluded_match_kinds: [comment, doccomment]
+    message: "A grouped Form draws the label column, so a label takes no trailing colon."
+    severity: error
+  # An SF Symbol sized by a text style is not text, so its chain is left alone.
+  settings_caption_font:
+    name: "Settings Caption Font"
+    included: ['.*/TablePro/Views/Settings/']
+    regex: '(?<!\bImage\(systemName:[^\n]{1,120})(?<!\bImage\(systemName:[^\n]{1,120}\n[ \t]{0,40})(?<!\bImage\(systemName:[^\n]{1,120}\n[ \t]{0,40}\.[^\n]{0,160}\n[ \t]{0,40})\.font\(\s*(?:[^()\n]*?[?:]\s*)?(?:Font)?\.(?:system\(\s*\.)?caption2?\b'
+    excluded_match_kinds: [comment, doccomment]
+    message: ".caption is 10pt on macOS. Put help in the label's second Text, or use .subheadline with .secondary."
     severity: error

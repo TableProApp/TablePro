@@ -31,8 +31,7 @@ internal final class PluginInstallProgressPresenter: NSObject {
         }
     }
 
-    private let pluginName: String
-    private let tracker: PluginInstallTracker
+    private let install: PluginInstallRun
     private var panel: NSPanel?
     private var sheetParent: NSWindow?
     private let indicator = NSProgressIndicator()
@@ -42,14 +41,10 @@ internal final class PluginInstallProgressPresenter: NSObject {
         target: self,
         action: #selector(cancelInstall)
     )
-    private var followed: AnyCancellable?
-    private var pluginId: String?
-    private var cancelTask: (() -> Void)?
-    private(set) var didCancel = false
+    private var rendered: AnyCancellable?
 
     private init(pluginName: String, tracker: PluginInstallTracker) {
-        self.pluginName = pluginName
-        self.tracker = tracker
+        install = PluginInstallRun(pluginName: pluginName, tracker: tracker)
         super.init()
     }
 
@@ -61,46 +56,22 @@ internal final class PluginInstallProgressPresenter: NSObject {
         _ install: @escaping Install
     ) async throws {
         let presenter = PluginInstallProgressPresenter(pluginName: pluginName, tracker: tracker)
-        let task = Task { @MainActor in
-            try await install { pluginId in presenter.follow(pluginId: pluginId) }
-        }
-        presenter.cancelTask = { task.cancel() }
         presenter.begin(window: window)
         defer { presenter.end() }
-        do {
-            try await withTaskCancellationHandler {
-                try await task.value
-            } onCancel: {
-                task.cancel()
-            }
-        } catch {
-            guard !presenter.didCancel, !PluginInstallTracker.isCancellation(error) else { throw CancellationError() }
-            throw error
-        }
-    }
-
-    private func follow(pluginId: String) {
-        self.pluginId = pluginId
-        followed = tracker.$entries.sink { [weak self] entries in
-            guard let self else { return }
-            render(Display.make(pluginName: pluginName, phase: entries[pluginId]?.phase))
-        }
+        try await presenter.install.run(install)
     }
 
     @objc private func cancelInstall() {
-        didCancel = true
-        cancelButton.isEnabled = false
-        if let pluginId {
-            tracker.cancel(pluginId: pluginId)
-        }
-        cancelTask?()
+        install.cancel()
     }
 
     private func begin(window: NSWindow?) {
         guard panel == nil else { return }
         let panel = makePanel()
         self.panel = panel
-        render(Display.make(pluginName: pluginName, phase: nil))
+        rendered = install.$display.combineLatest(install.$didCancel).sink { [weak self] display, cancelled in
+            self?.render(display, cancelled: cancelled)
+        }
 
         guard let parent = AlertHelper.resolveWindow(window) else {
             panel.center()
@@ -111,11 +82,12 @@ internal final class PluginInstallProgressPresenter: NSObject {
         parent.beginSheet(panel)
     }
 
-    private func render(_ display: Display) {
+    // @Published delivers before the property changes, so the cancel state comes in with the display.
+    private func render(_ display: Display, cancelled: Bool) {
         label.stringValue = display.message
         indicator.setAccessibilityLabel(display.message)
         panel?.setAccessibilityLabel(display.message)
-        cancelButton.isEnabled = display.canCancel && !didCancel
+        cancelButton.isEnabled = display.canCancel && !cancelled
         if let fraction = display.fraction {
             if indicator.isIndeterminate {
                 indicator.stopAnimation(nil)
@@ -129,7 +101,7 @@ internal final class PluginInstallProgressPresenter: NSObject {
     }
 
     private func end() {
-        followed = nil
+        rendered = nil
         indicator.stopAnimation(nil)
         guard let panel else { return }
         self.panel = nil

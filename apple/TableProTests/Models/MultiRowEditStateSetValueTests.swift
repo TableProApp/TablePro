@@ -204,22 +204,6 @@ struct MultiRowEditStateSetValueTests {
         #expect(literals == [.text("now()")])
     }
 
-    @Test("A value window over rows that are no longer selected promotes typed text the same way")
-    func detachedTypedFunctionIsPromoted() {
-        let state = makeState()
-        var detached: [(value: PluginCellValue, rowIDs: [RowID], isExpression: Bool)] = []
-        state.onDetachedFieldChanged = { _, value, rowIDs, isExpression in detached.append((value, rowIDs, isExpression)) }
-
-        state.updateDetachedField(columnIndex: 1, rowIDs: [.existing(5)], value: "CURRENT_TIMESTAMP")
-        state.updateDetachedField(columnIndex: 2, rowIDs: [.existing(5)], value: "now()")
-
-        #expect(detached.count == 2)
-        #expect(detached.first?.value == .text("CURRENT_TIMESTAMP"))
-        #expect(detached.first?.isExpression == true)
-        #expect(detached.last?.value == .text("now()"))
-        #expect(detached.last?.isExpression == false)
-    }
-
     // The grid staged `now()`; the user types over it in the inspector, then types it back.
     @Test("Clearing a field back to the SQL its rows held sends it back as SQL, not as text")
     func revertKeepsTheExpression() {

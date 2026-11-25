@@ -9,10 +9,37 @@ import Foundation
 // Both presentations render this one `AIChatViewModel`, so there is one transcript, draft and scroll position.
 @MainActor
 internal final class AgentSession: ObservableObject, Identifiable {
+    internal typealias EngineFactory = @MainActor (_ sessionId: UUID, _ conversationId: UUID?) -> AIChatViewModel
+
     internal let id: UUID
     internal let connectionId: UUID
 
-    internal let viewModel: AIChatViewModel
+    // Each engine subscribes to app events, so a stored session builds one only when a reader shows it.
+    private enum Engine {
+        case loaded(AIChatViewModel)
+        case stored(EngineFactory)
+    }
+
+    private var engine: Engine
+    private let storedConversationId: UUID?
+
+    // Reading this builds a stored session's engine, so a reader that shows nothing takes `viewModelIfLoaded`.
+    internal var viewModel: AIChatViewModel {
+        switch engine {
+        case .loaded(let viewModel):
+            return viewModel
+        case .stored(let makeEngine):
+            let viewModel = makeEngine(id, storedConversationId)
+            engine = .loaded(viewModel)
+            observeEngine(viewModel)
+            return viewModel
+        }
+    }
+
+    internal var viewModelIfLoaded: AIChatViewModel? {
+        guard case .loaded(let viewModel) = engine else { return nil }
+        return viewModel
+    }
 
     @Published internal private(set) var status: AgentSessionStatus
     @Published internal private(set) var title: String
@@ -47,17 +74,30 @@ internal final class AgentSession: ObservableObject, Identifiable {
     ) {
         self.id = id
         self.connectionId = connectionId
-        self.viewModel = viewModel
+        self.engine = .loaded(viewModel)
+        self.storedConversationId = nil
         self.status = status
         self.title = title
         self.startedAt = startedAt
         self.lastActiveAt = lastActiveAt
-        observeEngine()
+        observeEngine(viewModel)
+    }
+
+    internal init(record: AgentSessionRecord, makeEngine: @escaping EngineFactory) {
+        id = record.id
+        connectionId = record.connectionId
+        engine = .stored(makeEngine)
+        storedConversationId = record.conversationId
+        status = record.status.isEnded ? record.status : .stopped
+        title = record.title
+        startedAt = record.startedAt
+        lastActiveAt = record.lastActiveAt
     }
 
     // A session restored from disk or released holds its conversation's id before its transcript.
     internal var conversationId: UUID? {
-        viewModel.activeConversationID ?? viewModel.conversationToRestore
+        guard let viewModel = viewModelIfLoaded else { return storedConversationId }
+        return viewModel.activeConversationID ?? viewModel.conversationToRestore
     }
 
     internal var displayTitle: String {
@@ -65,7 +105,7 @@ internal final class AgentSession: ObservableObject, Identifiable {
     }
 
     // A tool-use block mutates its turn rather than `messages`, so each turn is observed as well.
-    private func observeEngine() {
+    private func observeEngine(_ viewModel: AIChatViewModel) {
         viewModel.objectWillChange
             .sink { [weak self] _ in
                 guard let self else { return }
@@ -82,6 +122,7 @@ internal final class AgentSession: ObservableObject, Identifiable {
     private var turnCancellables: [UUID: AnyCancellable] = [:]
 
     private func observeTurns() {
+        guard let viewModel = viewModelIfLoaded else { return }
         let live = Set(viewModel.messages.map(\.id))
         turnCancellables = turnCancellables.filter { live.contains($0.key) }
         for turn in viewModel.messages where turnCancellables[turn.id] == nil {
@@ -96,7 +137,8 @@ internal final class AgentSession: ObservableObject, Identifiable {
 
     // A failed session follows the engine, since Retry moves it back through streaming.
     private func refreshDerivedState() {
-        let engineStatus = derivedStatus()
+        guard let viewModel = viewModelIfLoaded else { return }
+        let engineStatus = derivedStatus(of: viewModel)
         if status != .stopped, status != engineStatus {
             if engineStatus == .working {
                 markActive()
@@ -105,14 +147,14 @@ internal final class AgentSession: ObservableObject, Identifiable {
         }
         // Empty lists say nothing about the title of a transcript that is not read yet.
         guard !viewModel.isAwaitingTranscript else { return }
-        let derivedTitle = derivedTitle()
+        let derivedTitle = derivedTitle(of: viewModel)
         if title != derivedTitle {
             title = derivedTitle
         }
     }
 
     // A tool card leaves `streamingState` on `.streaming` while the stream waits on the answer.
-    private func derivedStatus() -> AgentSessionStatus {
+    private func derivedStatus(of viewModel: AIChatViewModel) -> AgentSessionStatus {
         if ToolApprovalCenter.shared.hasPending(sessionId: id) { return .waitingOnYou }
         if case .awaitingApproval = viewModel.streamingState { return .waitingOnYou }
         if viewModel.lastMessageFailed { return .failed }
@@ -120,7 +162,7 @@ internal final class AgentSession: ObservableObject, Identifiable {
         return .ready
     }
 
-    private func derivedTitle() -> String {
+    private func derivedTitle(of viewModel: AIChatViewModel) -> String {
         if let conversationTitle = viewModel.conversations
             .first(where: { $0.id == viewModel.activeConversationID })?.title,
             !conversationTitle.isEmpty {
@@ -147,14 +189,16 @@ internal final class AgentSession: ObservableObject, Identifiable {
 
     // None of the callers is the user throwing a conversation away, so the transcript is written first.
     internal func stop() {
-        viewModel.cancelStream()
-        viewModel.persistCurrentConversation()
+        if let viewModel = viewModelIfLoaded {
+            viewModel.cancelStream()
+            viewModel.persistCurrentConversation()
+        }
         mark(.stopped)
     }
 
     // Only once no window shows the session; its next showing reads back from disk what this drops.
     internal func release() {
-        viewModel.releaseLoadedState()
+        viewModelIfLoaded?.releaseLoadedState()
     }
 
     // Nothing is replayed: a statement waiting for an answer was cancelled by the stop.

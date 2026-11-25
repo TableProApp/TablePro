@@ -1,17 +1,10 @@
-//
-//  TriggerEditorView.swift
-//  TablePro
-//
-//  DDL-first editor sheet for creating and editing triggers.
-//
-
 import SwiftUI
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
 
 struct TriggerEditorView: View {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var editorSettings = AppSettingsManager.shared.editorSlice
     enum Mode {
         case create
         case edit(originalName: String, originalDefinition: String)
@@ -99,6 +92,9 @@ struct TriggerEditorView: View {
         }
         .onChange(of: fontSize) { newSize in
             editorConfiguration = Self.makeConfiguration(fontSize: newSize)
+        }
+        .onChange(of: editorSettings.value) { _ in
+            editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
         }
     }
 

@@ -16,7 +16,7 @@ struct SQLSchemaProviderRefreshTests {
     }
 
     private static func loaded(_ driver: MockDatabaseDriver, tables: [TableInfo]? = nil) async -> SQLSchemaProvider {
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase("db", tables: tables ?? [users], driver: driver)
         return provider
     }

@@ -7,11 +7,8 @@ import Foundation
 import TableProPluginKit
 import TableProSQLQuoting
 
-/// The `SELECT` a table tab pages through, with its filters.
-///
-/// A page with no sort has no `ORDER BY`: a bare `OFFSET ... FETCH` is valid, and the `ORDER BY 1` it used to carry
-/// fails with ORA-22848 on a table whose first column is a LOB.
-internal enum OracleBrowseSQL {
+// A page with no sort has no ORDER BY: `ORDER BY 1` fails with ORA-22848 when the first column is a LOB.
+nonisolated internal enum OracleBrowseSQL {
     static func browseQuery(
         qualifiedTable: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
@@ -68,10 +65,7 @@ internal enum OracleBrowseSQL {
         )
     }
 
-    /// `DATE 'YYYY-MM-DD'` or `TIMESTAMP 'YYYY-MM-DD HH:MM:SS[.f][±HH:MM]'`, or nil for any other text. Oracle's ANSI
-    /// literals take exactly these shapes (measured on 23ai): a `T` separator, a time without seconds or a fraction
-    /// past nine digits is an error, so an ISO `T` is written as the space Oracle takes. The shapes admit no quote,
-    /// so the value is written as it is.
+    // Oracle's ANSI literals take only these shapes (measured on 23ai), so an ISO `T` is written as a space.
     static func temporalLiteral(_ value: String) -> String? {
         if value.range(of: datePattern, options: .regularExpression) != nil {
             return "DATE '\(value)'"

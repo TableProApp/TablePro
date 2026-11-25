@@ -1,0 +1,13 @@
+TablePro links its shared core, which is built with the Rust crates below. Each is listed under the license it is used under. apple/scripts/update-core-licenses.sh writes this file from Cargo.lock; do not edit it by hand.
+{{#each licenses}}
+
+================================================================================
+{{{name}}}
+
+Used by:
+{{#each used_by}}
+  {{{crate.name}}} {{{crate.version}}}
+{{/each}}
+
+{{{text}}}
+{{/each}}

@@ -385,33 +385,35 @@ public sealed partial class SqlEditor
     private MenuFlyout BuildContextMenu()
     {
         var menu = new MenuFlyout();
-        // The editor handles these keys itself, so the items only show them.
-        MenuFlyoutItem Add(string name, Action action)
+        var keyed = new List<(MenuFlyoutItem Item, EditorCommand Command)>();
+        // The editor handles these keys itself, so the items only show them; a space keeps a moved key's old text away.
+        MenuFlyoutItem Add(string name, EditorCommand? command, Action action)
         {
-            var item = new MenuFlyoutItem
+            var item = new MenuFlyoutItem { Text = HostStrings.Get(name) };
+            if (command is { } keyedCommand)
             {
-                Text = HostStrings.Get(name),
-                KeyboardAcceleratorTextOverride = HostStrings.Get(name + "Keys"),
-            };
+                keyed.Add((item, keyedCommand));
+            }
             item.Click += (_, _) => action();
             menu.Items.Add(item);
             return item;
         }
-        Add("EditorMenuUndo", () => Edit(_model.Undo));
-        Add("EditorMenuRedo", () => Edit(_model.Redo));
+        Add("EditorMenuUndo", EditorCommand.Undo, () => Run(EditorCommand.Undo));
+        Add("EditorMenuRedo", EditorCommand.Redo, () => Run(EditorCommand.Redo));
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add("EditorMenuCut", Cut);
-        Add("EditorMenuCopy", Copy);
-        Add("EditorMenuPaste", () => _ = PasteAsync());
+        Add("EditorMenuCut", EditorCommand.Cut, () => Run(EditorCommand.Cut));
+        Add("EditorMenuCopy", EditorCommand.Copy, () => Run(EditorCommand.Copy));
+        Add("EditorMenuPaste", EditorCommand.Paste, () => Run(EditorCommand.Paste));
         menu.Items.Add(new MenuFlyoutSeparator());
-        Add("EditorMenuSelectAll", () => _model.SelectAll());
-        Add("EditorMenuToggleComment", () => Edit(_model.ToggleLineComment));
+        Add("EditorMenuSelectAll", EditorCommand.SelectAll, () => Run(EditorCommand.SelectAll));
+        Add("EditorMenuToggleComment", EditorCommand.ToggleComment, () => Run(EditorCommand.ToggleComment));
+        var format = Add("EditorMenuFormat", EditorCommand.FormatQuery, () => Run(EditorCommand.FormatQuery));
         var foldSeparator = new MenuFlyoutSeparator();
         menu.Items.Add(foldSeparator);
-        var fold = Add("EditorMenuFold", () => FoldAtCaret());
-        var unfold = Add("EditorMenuUnfold", () => UnfoldAtCaret());
-        var foldAll = Add("EditorMenuFoldAll", () => FoldAll());
-        var unfoldAll = Add("EditorMenuUnfoldAll", () => UnfoldAll());
+        var fold = Add("EditorMenuFold", EditorCommand.Fold, () => Run(EditorCommand.Fold));
+        var unfold = Add("EditorMenuUnfold", EditorCommand.Unfold, () => Run(EditorCommand.Unfold));
+        var foldAll = Add("EditorMenuFoldAll", null, () => FoldAll());
+        var unfoldAll = Add("EditorMenuUnfoldAll", null, () => UnfoldAll());
         var own = menu.Items.Count;
         menu.Opening += (_, _) =>
         {
@@ -419,6 +421,12 @@ public sealed partial class SqlEditor
             {
                 menu.Items.RemoveAt(menu.Items.Count - 1);
             }
+            foreach (var (item, command) in keyed)
+            {
+                var keys = KeyLabel(command);
+                item.KeyboardAcceleratorTextOverride = keys.Length == 0 ? " " : keys;
+            }
+            format.Visibility = CanFormat ? Visibility.Visible : Visibility.Collapsed;
             // Fold reads the caret's line, as Ctrl+Shift+[ does; Unfold opens the fold on it.
             var regions = RegionsNow();
             var folding = _foldingEnabled && regions.Count > 0;

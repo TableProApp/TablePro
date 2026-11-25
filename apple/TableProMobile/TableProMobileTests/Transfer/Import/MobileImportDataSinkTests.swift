@@ -34,8 +34,8 @@ struct MobileImportDataSinkTests {
         directory = try TransferTestFolders.make("sink")
     }
 
-    private func people(_ rows: [(Int, String)] = []) async throws -> SQLiteDriver {
-        let driver = SQLiteDriver(source: .file(directory.appendingPathComponent("people.db")), openMode: .createNew)
+    private func people(_ rows: [(Int, String)] = []) async throws -> SQLiteBackedDriver {
+        let driver = SQLiteBackedDriver(source: .file(directory.appendingPathComponent("people.db")), openMode: .createNew)
         try await driver.connect()
         _ = try await driver.execute(query: "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)")
         for (id, name) in rows {
@@ -45,7 +45,7 @@ struct MobileImportDataSinkTests {
     }
 
     private func sink(
-        on driver: SQLiteDriver,
+        on driver: SQLiteBackedDriver,
         mode: ImportWriteMode = .insert,
         clearsTargetFirst: Bool = false
     ) -> MobileImportDataSink {
@@ -65,7 +65,7 @@ struct MobileImportDataSinkTests {
         )
     }
 
-    private func names(_ driver: SQLiteDriver) async throws -> [String] {
+    private func names(_ driver: SQLiteBackedDriver) async throws -> [String] {
         try await driver.execute(query: "SELECT id || ':' || name FROM people ORDER BY id").rows.compactMap { $0.first ?? nil }
     }
 
@@ -351,6 +351,19 @@ struct MobileImportDataSinkTests {
         #expect(try written("boolean", on: .postgresql) == .text("true"))
         #expect(try written("BOOLEAN", on: .duckdb) == .text("true"))
         #expect(!ImportTargetValues.writesNumericBooleans(.redshift))
+    }
+
+    @Test("An Oracle row of only defaults names an always identity, never a virtual column")
+    func defaultsRowNamesTheIdentity() {
+        let values = ImportTargetValues(
+            columns: [
+                ColumnInfo(name: "TOTAL", typeName: "NUMBER", isGenerated: true),
+                ColumnInfo(name: "ID", typeName: "NUMBER", isAutoIncrement: true, rejectsWrittenValues: true)
+            ],
+            databaseType: .oracle,
+            binaryText: nil
+        )
+        #expect(values.firstWritableColumn == "ID")
     }
 
     @Test("A CSV value in a binary column is read as bytes, and text that only starts like hex is refused")

@@ -1,8 +1,3 @@
-//
-//  CopilotPreambleBuilder.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import TableProPluginKit
@@ -58,7 +53,7 @@ final class CopilotPreambleBuilder {
         databaseType: DatabaseType,
         referencing documentText: String? = nil,
         grammar: SQLLexicalGrammar? = nil,
-        maxTables: Int = AppSettingsManager.shared.ai.maxSchemaTables
+        maxTables: Int = AppSettingsManager.shared.ai.clampedMaxSchemaTables
     ) async {
         try? FileManager.default.createDirectory(at: Self.contextDirectory, withIntermediateDirectories: true)
 

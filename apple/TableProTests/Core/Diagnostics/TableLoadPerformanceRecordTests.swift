@@ -205,7 +205,7 @@ struct TableLoadPerformanceRecordTests {
         #expect(record.openTabBucket == TableLoadOpenTabBucket.upTo5.rawValue)
     }
 
-    @Test("A record round-trips through the encoding the store writes")
+    @Test("A record round-trips through the encoding the benchmark line uses")
     func roundTripsThroughJSON() throws {
         let metrics = TableLoadResultMetrics(rowCount: 12, columnCount: 3, estimatedBytes: 900)
         let record = TableLoadPerformanceRecord(
@@ -214,55 +214,15 @@ struct TableLoadPerformanceRecordTests {
             recordedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
-        let encoder = TableLoadHistoryStore.makeEncoder()
-        let decoder = TableLoadHistoryStore.makeDecoder()
+        let encoder = TableLoadPerformanceRecord.makeEncoder()
+        let decoder = TableLoadPerformanceRecord.makeDecoder()
         let decoded = try decoder.decode(TableLoadPerformanceRecord.self, from: encoder.encode(record))
 
         #expect(decoded == record)
     }
 
-    private static let lineWithoutLeaseStages = """
-        {"anomalies":[],"appBuild":"1","appVersion":"0.84.0","databaseTypeId":"MySQL","driverFetchMs":12.5,\
-        "openTabBucket":"1","origin":"sidebar","osVersion":"macOS 15.2.0","outcome":"completed",\
-        "recordedAt":"2026-11-01T10:00:00.000Z","totalMs":40,"usesSSH":false}
-        """
-
-    @Test("A line an older build wrote still decodes, with the newer phases absent")
-    func decodesALineFromAnOlderBuild() throws {
-        let data = try #require(Self.lineWithoutLeaseStages.data(using: .utf8))
-        let record = try TableLoadHistoryStore.makeDecoder().decode(TableLoadPerformanceRecord.self, from: data)
-
-        #expect(record.driverFetchMs == 12.5)
-        #expect(record.leaseWaitMs == nil)
-        #expect(record.pinMs == nil)
-        #expect(record.firstRowMs == nil)
-        #expect(record.phase2Ms == nil)
-    }
-
-    private struct PreviousStableRecord: Decodable {
-        let recordedAt: Date
-        let appVersion: String
-        let appBuild: String
-        let osVersion: String
-        let origin: String
-        let outcome: String
-        let anomalies: [String]
-        let databaseTypeId: String
-        let usesSSH: Bool
-        let totalMs: Double
-        let preparationMs: Double?
-        let driverFetchMs: Double?
-        let resultApplyMs: Double?
-        let gridReloadMs: Double?
-        let mainRunLoopIdleMs: Double?
-        let rowBucket: String?
-        let columnBucket: String?
-        let resultSizeBucket: String?
-        let openTabBucket: String
-    }
-
-    @Test("The previous stable reads a line this build writes")
-    func previousStableReadsANewLine() throws {
+    @Test("The lease, pin, first row and phase 2 timings reach the record")
+    func carriesTheLeaseTimings() {
         var traced = summary()
         traced.leaseWait = .milliseconds(30)
         traced.pin = .milliseconds(200)
@@ -273,16 +233,10 @@ struct TableLoadPerformanceRecordTests {
         #expect(record.pinMs == 200)
         #expect(record.firstRowMs == 205)
         #expect(record.phase2Ms == 1_200)
-
-        let line = try TableLoadHistoryStore.makeEncoder().encode(record)
-        let read = try TableLoadHistoryStore.makeDecoder().decode(PreviousStableRecord.self, from: line)
-
-        #expect(read.totalMs == 1_250)
-        #expect(read.outcome == TableLoadOutcome.completed.rawValue)
     }
 
     /// The trace this record comes from knows a table name and the connection behind it knows a host,
-    /// a port and a username. None of them may survive into a file that accumulates for a week.
+    /// a port and a username. None of them may survive into a benchmark log.
     @Test("Nothing identifying the query, the table or the server survives into the record")
     func carriesNothingIdentifying() throws {
         let secrets = [
@@ -302,7 +256,7 @@ struct TableLoadPerformanceRecordTests {
             recordedAt: .now
         )
 
-        let data = try TableLoadHistoryStore.makeEncoder().encode(record)
+        let data = try TableLoadPerformanceRecord.makeEncoder().encode(record)
         let json = try #require(String(data: data, encoding: .utf8))
 
         for secret in secrets {

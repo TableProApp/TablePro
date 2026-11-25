@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import os
 
 @MainActor
@@ -7,13 +8,17 @@ internal enum PluginInstallPrompt {
 
     internal typealias Install = PluginInstallProgressPresenter.Install
 
-    internal static func ensureInstalled(_ format: InstallableExportFormat, window: NSWindow?) async -> Bool {
-        await confirmAndRun(
-            pluginName: format.displayName,
+    // Only asks: a sheet that offers the format runs the install in place, so no panel opens on top of it.
+    internal static func confirmInstall(_ format: InstallableExportFormat, window: NSWindow?) async -> Bool {
+        await confirm(
             title: String(format: String(localized: "Install the %@ plugin?"), format.displayName),
             message: String(localized: "TablePro writes this format with a plugin it downloads from the plugin registry."),
             window: window
-        ) { onBegin in
+        )
+    }
+
+    internal static func install(_ format: InstallableExportFormat) -> Install {
+        { onBegin in
             try await PluginManager.shared.installMissingExportFormat(format, onBegin: onBegin)
         }
     }
@@ -45,20 +50,53 @@ internal enum PluginInstallPrompt {
     internal static func run(pluginName: String, window: NSWindow?, _ install: @escaping Install) async -> Bool {
         do {
             try await PluginInstallProgressPresenter.run(pluginName: pluginName, window: window, install)
-            logger.info("Installed the \(pluginName, privacy: .public) plugin")
-            return true
-        } catch is CancellationError {
-            logger.info("Install of the \(pluginName, privacy: .public) plugin was cancelled")
-            return false
         } catch {
-            logger.error("Install failed for \(pluginName, privacy: .public): \(error.publicLogShape, privacy: .public)")
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Plugin Installation Failed"),
-                message: error.localizedDescription,
-                window: window
-            )
+            reportFailure(error, pluginName: pluginName, window: window)
             return false
         }
+        logger.info("Installed the \(pluginName, privacy: .public) plugin")
+        return true
+    }
+
+    // The caller shows `progress` as its sheet's root. `onEnd` takes it down before a failure alert goes on that sheet.
+    internal static func run(
+        _ progress: PluginInstallRun,
+        window: NSWindow?,
+        onEnd: () -> Void,
+        _ install: @escaping Install
+    ) async -> Bool {
+        do {
+            try await progress.run(install)
+        } catch {
+            onEnd()
+            reportFailure(error, pluginName: progress.pluginName, window: window)
+            return false
+        }
+        onEnd()
+        logger.info("Installed the \(progress.pluginName, privacy: .public) plugin")
+        return true
+    }
+
+    private static func reportFailure(_ error: any Error, pluginName: String, window: NSWindow?) {
+        guard !(error is CancellationError) else {
+            logger.info("Install of the \(pluginName, privacy: .public) plugin was cancelled")
+            return
+        }
+        logger.error("Install failed for \(pluginName, privacy: .public): \(error.publicLogShape, privacy: .public)")
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Plugin Installation Failed"),
+            message: error.localizedDescription,
+            window: window
+        )
+    }
+
+    private static func confirm(title: String, message: String, window: NSWindow?) async -> Bool {
+        await AlertHelper.confirm(
+            title: title,
+            message: message,
+            confirmButton: String(localized: "Install"),
+            window: window
+        )
     }
 
     private static func confirmAndRun(
@@ -68,13 +106,68 @@ internal enum PluginInstallPrompt {
         window: NSWindow?,
         install: @escaping Install
     ) async -> Bool {
-        let confirmed = await AlertHelper.confirm(
-            title: title,
-            message: message,
-            confirmButton: String(localized: "Install"),
-            window: window
-        )
-        guard confirmed else { return false }
+        guard await confirm(title: title, message: message, window: window) else { return false }
         return await run(pluginName: pluginName, window: window, install)
+    }
+}
+
+// An install shown inside the caller's own sheet, with the panel presenter's tracker entry, cancel and errors.
+@MainActor
+internal final class PluginInstallRun: ObservableObject {
+    @Published internal private(set) var display: PluginInstallProgressPresenter.Display
+    @Published internal private(set) var didCancel = false
+    internal let pluginName: String
+    private let tracker: PluginInstallTracker
+    private var followed: AnyCancellable?
+    private var pluginId: String?
+    private var task: Task<Void, any Error>?
+
+    internal var canCancel: Bool {
+        display.canCancel && !didCancel
+    }
+
+    internal init(pluginName: String, tracker: PluginInstallTracker = .shared) {
+        self.pluginName = pluginName
+        self.tracker = tracker
+        display = .make(pluginName: pluginName, phase: nil)
+    }
+
+    // Throws `CancellationError` when the user cancelled, here or through the tracker entry.
+    internal func run(_ install: @escaping PluginInstallPrompt.Install) async throws {
+        let task = Task { @MainActor in
+            try await install { pluginId in self.follow(pluginId: pluginId) }
+        }
+        self.task = task
+        defer {
+            self.task = nil
+            followed = nil
+        }
+        do {
+            try await withTaskCancellationHandler {
+                try await task.value
+            } onCancel: {
+                task.cancel()
+            }
+        } catch {
+            guard !didCancel, !PluginInstallTracker.isCancellation(error) else { throw CancellationError() }
+            throw error
+        }
+    }
+
+    internal func cancel() {
+        guard canCancel else { return }
+        didCancel = true
+        if let pluginId {
+            tracker.cancel(pluginId: pluginId)
+        }
+        task?.cancel()
+    }
+
+    private func follow(pluginId: String) {
+        self.pluginId = pluginId
+        followed = tracker.$entries.sink { [weak self] entries in
+            guard let self else { return }
+            display = .make(pluginName: pluginName, phase: entries[pluginId]?.phase)
+        }
     }
 }

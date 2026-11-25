@@ -31,9 +31,10 @@ public enum ImportApplier {
         outcome.connectionsReplaced = write.replaced.count
 
         var stored = Set(write.added).union(write.replaced)
+        outcome.connectionIds = plan.connections.map(\.id).filter { stored.contains($0) }
         for planned in plan.connections where stored.contains(planned.id) {
             if let credentials = planned.credentials {
-                library.writeCredentials(credentials, connectionId: planned.id)
+                outcome.passwordsNotKept += library.writeCredentials(credentials, connectionId: planned.id).secretsNotKept
             }
         }
         if !plan.keptConnections.isEmpty {

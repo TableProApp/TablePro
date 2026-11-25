@@ -6,7 +6,7 @@
 import Foundation
 import TableProSQLQuoting
 
-enum DuckDBLogicalType: String, CaseIterable, Sendable {
+nonisolated enum DuckDBLogicalType: String, CaseIterable, Sendable {
     case boolean = "BOOLEAN"
     case tinyint = "TINYINT"
     case smallint = "SMALLINT"
@@ -47,7 +47,7 @@ enum DuckDBLogicalType: String, CaseIterable, Sendable {
     var displayName: String { rawValue }
 }
 
-extension DuckDBLogicalType {
+nonisolated extension DuckDBLogicalType {
     static let typesTheValueAPICannotRender: Set<DuckDBLogicalType> = [
         .timestampSeconds,
         .timestampMilliseconds,
@@ -87,7 +87,7 @@ extension DuckDBLogicalType {
     }
 }
 
-enum DuckDBProjectedQuery {
+nonisolated enum DuckDBProjectedQuery {
     static func sourceAlias(at index: Int) -> String {
         "c\(index + 1)"
     }

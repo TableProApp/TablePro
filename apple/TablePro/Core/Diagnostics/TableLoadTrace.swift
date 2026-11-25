@@ -121,7 +121,7 @@ internal struct TableLoadTraceRecorder {
         return evictedSequences
     }
 
-    /// The same channel for the persisted history. A trace ends four ways and only one of them is
+    /// The same channel for the summaries. A trace ends four ways and only one of them is
     /// `finish`, so the summary is built where the entry actually leaves the live set rather than at
     /// any single caller, and `isSummarized` makes that at most once per trace whichever path wins.
     internal mutating func takeCompletedSummaries() -> [TableLoadTraceSummary] {
@@ -180,7 +180,7 @@ internal struct TableLoadTraceRecorder {
     }
 
     /// Anomalies belong to the trace, not only to the log line, so they are recorded here rather than
-    /// measured and thrown away: "how often did a load report this" is the question the history exists
+    /// measured and thrown away: "how often did a load report this" is the question the summary exists
     /// to answer. Repeats are folded, because one navigation can be blocked several times.
     internal mutating func note(
         _ anomaly: TableLoadAnomaly,
@@ -317,7 +317,7 @@ internal struct TableLoadTraceRecorder {
 
     /// A superseded trace stays addressable so its late result can still report against it, and that
     /// late report is the only source of `resultTableMismatch` and `staleResultDropped`, the two
-    /// findings a history of this kind exists to count. Summarizing here would freeze the record
+    /// findings a summary of this kind exists to count. Summarizing here would freeze the record
     /// before either could arrive, so a trace whose query is still on its way back is left to the
     /// ending that result gives it. One that never executed can never report again, so it is
     /// summarized now rather than waiting for an eviction that may never come.

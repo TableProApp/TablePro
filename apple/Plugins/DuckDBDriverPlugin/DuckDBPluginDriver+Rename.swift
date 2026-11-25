@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-extension DuckDBPluginDriver {
+nonisolated extension DuckDBPluginDriver {
     /// The new name is bare and the object stays in its schema. DuckDB has no `ALTER SCHEMA
     /// RENAME` and no database rename at all, so those stay unimplemented.
     func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {

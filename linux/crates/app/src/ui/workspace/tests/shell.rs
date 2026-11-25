@@ -486,7 +486,11 @@ fn application_and_session_commands_have_separate_native_menus() {
     let mut app_actions = Vec::new();
     collect_actions(primary.upcast_ref(), &mut app_actions);
     // New Project… and Manage Projects…, and the radio item of All Connections above them.
-    assert_eq!(app_actions.len(), 14);
+    assert_eq!(app_actions.len(), 15);
+    assert!(
+        app_actions.iter().any(|action| action == "win.setup-guide"),
+        "the menu has the Setup Guide"
+    );
     let button = session_menu_button(&test);
     assert!(!button.is_primary(), "F10 belongs to Main Menu");
     crate::test_support::assert_labelled(&button).expect("the menu's accessible name");

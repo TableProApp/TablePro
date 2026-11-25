@@ -403,6 +403,9 @@ final class MainContentCoordinator: ObservableObject {
     // Updated by TabWindowController; read by event handlers such as the sidebar table-selection filter.
     var isKeyWindow = false
 
+    // What the sidebar was last marked with, so becoming key re-marks only when the open tab now shows something else.
+    var lastSidebarMark: Set<DatabaseTreeTableRef>?
+
     var refreshCoalesceTask: Task<Void, Never>?
     var refreshPendingTrailing = false
     let autoRefresh = TableAutoRefreshSchedule()
@@ -836,11 +839,16 @@ final class MainContentCoordinator: ObservableObject {
     // Never from `onDisappear`: a workspace switch unparents panes the connection comes back to. Releases synchronously, not via deinit.
     // `endsTabSession` is false when only the session went: the workspace stays and reconnects into the same tab set.
     func teardown(endsTabSession: Bool = true) {
+        // Once: a window close tears the coordinator down and then its workspace, and the provider hold is refcounted.
+        let alreadyTornDown = _didTeardown.withLock { done in
+            defer { done = true }
+            return done
+        }
+        guard !alreadyTornDown else { return }
         let start = Date()
         Self.lifecycleLogger.info(
             "[close] MainContentCoordinator.teardown start connId=\(self.connection.id, privacy: .public) tabs=\(self.tabManager.tabs.count) windowId=\(self.windowId?.uuidString ?? "nil", privacy: .public)"
         )
-        _didTeardown.withLock { $0 = true }
 
         sheetWork.stopAll()
         unregisterFromPersistence()
@@ -1211,6 +1219,7 @@ final class MainContentCoordinator: ObservableObject {
         }
 
         if result.isEmpty,
+           services.pluginManager.readsCheckListsFromDDL(for: connectionType),
            let scope,
            let createSQL = try? await services.databaseManager.withMetadataDriver(scope: scope, { driver in
                try await driver.fetchTableDDL(table: tableName, schema: scope.schema)

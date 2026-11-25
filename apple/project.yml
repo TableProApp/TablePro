@@ -51,6 +51,10 @@ packages:
     path: Packages/TableProMacCore
   TableProOracle:
     path: Packages/TableProOracle
+  # The shared Rust core (core/docs/decisions/0010-macos-on-the-core.md). Its binary target comes from
+  # scripts/build-core.sh, which has to run before a package resolve or a build.
+  TableProFFI:
+    path: Packages/TableProFFI
   # Exact, because .github/actions/setup-sparkle installs the feed signing tools from this pin.
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
@@ -92,6 +96,7 @@ targetTemplates:
       - Plugins/Shared/PluginURLSessionTaskBox.swift
       - Plugins/Shared/PluginRedirectRefusingDelegate.swift
       - Plugins/Shared/PluginNameSpellings.swift
+      - Plugins/Shared/PluginRowBatcher.swift
     dependencies:
       - target: TableProPluginKit
         embed: false
@@ -270,10 +275,13 @@ targetTemplates:
           - -force_load
           - $(SRCROOT)/Libs/libsqlite3_vendored.a
 
+  # An export spills what its reader has not taken yet, as SQLite's does.
   ClickHouseLinkage:
+    sources:
+      - Plugins/SharedSpill
     dependencies:
       - package: TableProCore
-        products: [TableProNumberFormatting, TableProSQLGrammar, TableProTLSClientIdentity]
+        products: [TableProNumberFormatting, TableProSQLGrammar, TableProTLSClientIdentity, TableProWireIO]
 
   # The SAP HANA driver runs go-hdb in tablepro-hana-helper, which scripts/build-hana.sh builds.
   # The plugin looks it up in Contents/MacOS, and the copy there signs it with the plugin's identity.
@@ -327,6 +335,15 @@ targets:
         buildPhase: resources
       # The MCP client catalog, one file the Linux app reads too.
       - path: ../core/crates/mcp/clients.json
+        buildPhase: resources
+      # The AI model catalog, one file the Linux and Windows apps read too.
+      - path: ../core/crates/ai/ai-models.json
+        buildPhase: resources
+      # The sample database every app ships, one copy in the core.
+      - path: ../core/resources/Chinook.sqlite
+        buildPhase: resources
+      # The shortcut presets, one file the Linux and Windows apps read through the core.
+      - path: ../core/crates/core/keymaps.json
         buildPhase: resources
       - path: TablePro/CLI/tablepro
         buildPhase:
@@ -436,6 +453,7 @@ targets:
         products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProMemcachedCore, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLFile, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTLSClientIdentity, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
       - package: TableProMacCore
         products: [TableProCloudAPI, TableProMCP, TableProMCPClients, TableProSSHConfig, TableProUtilities]
+      - package: TableProFFI
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
     postCompileScripts:
       - name: Write WhatsNew.md
@@ -736,7 +754,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.ParquetExportPlugin
         # DuckDB does the Parquet encoding, so this links the same static library the
         # DuckDB driver does. That is why the plugin is registry-only rather than bundled:
-        # 149MB universal is not worth adding to every app download for one export format.
+        # 226MB universal is not worth adding to every app download for one export format.
+        # force_load is required: the static parquet and core_functions extensions register
+        # through an autoregister constructor nothing references, which a plain link drops.
         HEADER_SEARCH_PATHS:
           - $(inherited)
           - $(SRCROOT)/Plugins/DuckDBDriverPlugin/CDuckDB/include
@@ -767,6 +787,9 @@ targets:
     templateAttributes:
       folder: XLSXExportPlugin
       principalClass: XLSXExportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProGzip
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.XLSXExportPlugin
@@ -864,6 +887,9 @@ targets:
     templates: [PluginTests, ClickHouseLinkage]
     templateAttributes:
       folder: ClickHouseDriverPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProTestSupport
 
   # The eleven bundled format plugins in one bundle: none links a C library, and no two declare the
   # same top-level name. SQLiteLinkage is for the round-trip tests, which need the SQLite the driver ships.

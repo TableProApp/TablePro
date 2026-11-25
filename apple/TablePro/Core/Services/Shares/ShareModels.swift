@@ -171,6 +171,8 @@ internal enum ShareFailure: Error, Equatable, Sendable {
     case offline
     case canceled
     case server
+    // The organization holds the app to its own server, so nothing is read from tablepro.app.
+    case managedByOrganization
 
     static func problem(status: Int, code: String?) -> ShareFailure {
         switch code {
@@ -217,7 +219,9 @@ internal enum ShareFailure: Error, Equatable, Sendable {
             return problem(status: status, code: code)
         case .oauth("invalid_grant", _):
             return .signedOut
-        case .oauth, .invalidResponse, .stateMismatch, .entitlementRejected:
+        case .companyServer(.managed):
+            return .managedByOrganization
+        case .oauth, .invalidResponse, .otherIssuer, .offlineFileRejected, .companyServer, .signOutFirst:
             return .server
         }
     }
@@ -243,6 +247,8 @@ internal enum ShareFailure: Error, Equatable, Sendable {
             return String(localized: "Too many links just now. Try again in a moment.")
         case .offline:
             return String(localized: "You appear to be offline. Try again once you're connected.")
+        case .managedByOrganization:
+            return String(localized: "Your organization manages which server TablePro signs in to.")
         case .seatRequired, .notFound, .limitReached, .revoked, .removed, .invalid,
              .passwordRequired, .passwordWrong, .server:
             return String(localized: "The link couldn't be created. Try again.")

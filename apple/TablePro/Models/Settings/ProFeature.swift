@@ -1,8 +1,3 @@
-//
-//  ProFeature.swift
-//  TablePro
-//
-
 import Foundation
 
 // Raw values are the feature codes the entitlement carries (product.md, Feature codes).
@@ -58,9 +53,9 @@ internal enum ProFeature: String, CaseIterable {
         case .linkedFolders:
             return "folder.badge.gearshape"
         case .teamCatalog:
-            return "person.2.fill"
+            return "person.2"
         case .teamLibrary:
-            return "books.vertical.fill"
+            return "books.vertical"
         case .compareSync:
             return "arrow.left.arrow.right.square"
         case .dataRewind:

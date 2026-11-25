@@ -59,6 +59,24 @@ struct LibPQSingleRowReadTests {
         #expect(!result.isTruncated)
     }
 
+    @Test("A read with a keep limit holds that many rows, counts every row and sends no cancel")
+    func keepLimitHoldsOnlyItsRows() async throws {
+        let rows: [[String?]] = (0..<500).map { [String($0)] }
+        let server = try Self.server(answering: .init(columns: Self.columns, rows: rows))
+        defer { server.close() }
+        server.start()
+        let connection = try await Self.connected(to: server)
+        defer { connection.disconnect() }
+
+        let result = try await connection.executeSingleStatement(Self.events, keeping: 4)
+
+        #expect(result.rows.count == 4)
+        #expect(result.rows.last == [.text("3")])
+        #expect(result.affectedRows == 500)
+        #expect(result.isTruncated)
+        #expect(server.cancelRequests == 0)
+    }
+
     @Test("A read with parameters goes through the same read")
     func parametersTakeTheSameRead() async throws {
         let server = try Self.server(answering: .init(columns: Self.columns, rows: [["1"]]))

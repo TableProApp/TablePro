@@ -1,4 +1,8 @@
+#if os(iOS)
+import SQLite3
+#else
 import CSQLite
+#endif
 
 // SQLite keeps a NUL inside text, so text crosses the C API with its byte count, never as a C string.
 public enum SQLiteText {

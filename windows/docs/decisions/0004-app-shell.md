@@ -1,6 +1,6 @@
 # 0004: The app shell: one window, a rail of connections, a page per surface
 
-- **Status**: Accepted; packaging amended by [0005](0005-distribution.md), table reads by [0007](0007-browsing-a-connection.md), the execution alias by [0019](0019-mcp-server-and-command-line.md), strings by [0021](0021-localization.md), the Connections page's project switcher by [0024](0024-connection-projects.md)
+- **Status**: Accepted; packaging amended by [0005](0005-distribution.md), table reads by [0007](0007-browsing-a-connection.md), the execution alias by [0019](0019-mcp-server-and-command-line.md), strings by [0021](0021-localization.md), the Connections page's project switcher by [0027](0027-connection-projects.md); the first run and Commands and keys superseded by [0025](0025-setup-guide-and-shortcut-presets.md)
 - **Date**: 2026-11-02
 
 ## Context
@@ -79,6 +79,7 @@ On 2026-11-14 the roadmap's Phase 2 added a production cue (W-08), a database sw
 | Ctrl+B, Ctrl+P | Show or hide the object tree, filter objects |
 | Ctrl+K | The database menu of the object pane (Database, Switch database) |
 | Ctrl+F, Ctrl+H, F3 | Find, Find and Replace, next match (Edit menu, the editor's own keys) |
+| Ctrl+Shift+F, Ctrl+Space | Format query (Query menu) and completion, the editor's own keys ([0002](0002-sql-editor-control.md)); in a table tab Ctrl+Shift+F is Filter rows |
 | Ctrl+Shift+H | The Connections page |
 | F1 | Documentation |
 | Enter, F2, Delete on the Connections page | Connect; rename the row in place; delete, confirmed (every checked connection in selection mode) |
@@ -144,8 +145,8 @@ On 2026-11-14 the roadmap's Phase 2 added a production cue (W-08), a database sw
 
 - On an engine with more than one database (`DatabaseSession::database_layout` not `Single`), the object pane's first row is a button naming the database the workspace browses, Ctrl+K or Database, Switch database. Its menu is read from the server each time it opens (`databases`): the user's databases, a separator, then the engine's own, the current one checked.
 - Where the server's databases are the catalog's schemas (MySQL, MariaDB, ClickHouse, Cassandra, MongoDB) the tree already lists each one, so a pick makes it the database new query tabs run in, kept in `session.json` with the connection, and opens and brings its row into view, as macOS's switch moves where the sidebar and new tabs look.
-- Where each database holds schemas of its own (PostgreSQL, SQL Server) a connection's catalog describes only the one it opened, so a pick opens the saved connection in that database as a rail item of its own (`connect_saved` with a database), or brings an open one forward, as the Linux app opens another database beside its connection (Linux ADR 0030). Its tabs, tree, health and transactions are its own; it closes on its own, and comes back with the session. Editing the connection and connecting reconnects each of them too, after asking about their held work.
-- A query tab names its database in its command bar, with the same menu. A pick waits while the tab runs or holds a transaction, so a move never rolls one back, as on Linux; with its editor open, the editor moves (`use_database`), keeping its temporary tables and settings, and on an engine that binds the database at connect the editor is let go and the next run opens one there (`open_editor` with a database). A `USE` typed in the tab moves the button with it (`QueryEditor::database`). The session keeps a tab's database where it is not the connection's own.
+- Where each database holds schemas of its own (PostgreSQL, SQL Server), or keys (Redis's numbered databases, core ADR 0038), a connection's catalog describes only the one it opened, so a pick opens the saved connection in that database as a rail item of its own (`connect_saved` with a database), or brings an open one forward, the connection's own too when it was saved with no database and the server lists that one as the login's, as the Linux app opens another database beside its connection (Linux ADR 0030). Its tabs, tree, health and transactions are its own; it closes on its own, and comes back with the session. Editing the connection and connecting reconnects each of them too, after asking about their held work.
+- A query tab names its database in its command bar, with the same menu. A pick waits while the tab runs or holds a transaction, so a move never rolls one back, as on Linux; with its editor open, the editor moves (`use_database`), keeping its temporary tables and settings, and on an engine that binds the database at connect the editor is let go and the next run opens one there (`open_editor` with a database). A `USE`, or Redis's `SELECT`, typed in the tab moves the button with it (`QueryEditor::database`). The session keeps a tab's database where it is not the connection's own.
 
 ### SQL files
 

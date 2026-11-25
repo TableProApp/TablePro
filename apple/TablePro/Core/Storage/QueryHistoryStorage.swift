@@ -104,6 +104,7 @@ actor QueryHistoryStorage {
             return
         }
         createFingerprintIndex()
+        slimSearchIndexIfNeeded()
         createPlanSnapshotStorage()
         createRewindSnapshotStorage()
         protectDatabaseFiles(at: dbPath)
@@ -146,14 +147,18 @@ actor QueryHistoryStorage {
         );
         """
 
+    // No prefix tables: a prefix query reads the term index without them, about as fast. No size
+    // table: it serves only bm25, and the app orders by time. Each costs WAL frames on every insert.
     private static let ftsTableSql = """
         CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(
             query,
             content='history',
             content_rowid='rowid',
-            prefix='2 3 4'
+            columnsize=0
         );
         """
+
+    private static let slimSearchIndexMarker = "columnsize=0"
 
     private func createTables() {
         execute(Self.historyTableSql)
@@ -189,23 +194,13 @@ actor QueryHistoryStorage {
         return !results.contains(false)
     }
 
-    /// Kept out of `createIndexes` because that runs before the migration, when a database written
-    /// by an older release still has no `fingerprint_hash` column to index.
-    /// Composites rather than `fingerprint_hash` alone, because a representative lookup takes the
-    /// newest row of one shape under the panel's own filters. Unscoped, the first index answers that
-    /// in a single step. Scoped to a connection, only the second one does: without it `connection_id`
-    /// is a filter applied after the walk, so the lookup reads every row of that shape belonging to
-    /// every other connection before it reaches one it can return. The leftmost column still serves
-    /// the grouping, so the narrower index is redundant once these exist.
+    // Kept out of `createIndexes` because that runs before the migration, when a database written by
+    // an older release still has no `shape_hash` column to index. 0.87.0 creates the two
+    // `fingerprint_hash` indexes at its open; this build reads neither, and each costs a WAL frame per
+    // insert. Dropping an absent index writes nothing.
     private func createFingerprintIndex() {
-        execute("""
-            CREATE INDEX IF NOT EXISTS idx_history_fingerprint_executed
-                ON history(fingerprint_hash, executed_at DESC);
-            """)
-        execute("""
-            CREATE INDEX IF NOT EXISTS idx_history_fingerprint_connection_executed
-                ON history(fingerprint_hash, connection_id, executed_at DESC);
-            """)
+        execute("DROP INDEX IF EXISTS idx_history_fingerprint_executed;")
+        execute("DROP INDEX IF EXISTS idx_history_fingerprint_connection_executed;")
         execute("DROP INDEX IF EXISTS idx_history_fingerprint;")
         execute("""
             CREATE INDEX IF NOT EXISTS idx_history_shape_executed
@@ -215,6 +210,45 @@ actor QueryHistoryStorage {
             CREATE INDEX IF NOT EXISTS idx_history_shape_connection_executed
                 ON history(shape_hash, connection_id, executed_at DESC);
             """)
+    }
+
+    // Rebuilds a search index made by an older build (0.87.0's prefix tables, or the plain one before
+    // it) as `ftsTableSql`, once, in one transaction. 0.87.0 still reads the result: its create
+    // statements are no-ops on it and its delete trigger works on it. Any failure keeps the old index.
+    private func slimSearchIndexIfNeeded() {
+        guard let sql = searchIndexSql(), !sql.contains(Self.slimSearchIndexMarker) else { return }
+        guard beginTransaction() else { return }
+        let rebuilt = execute("DROP TRIGGER IF EXISTS history_ai;")
+            && execute("DROP TRIGGER IF EXISTS history_ad;")
+            && execute("DROP TRIGGER IF EXISTS history_au;")
+            && execute("DROP TABLE IF EXISTS history_fts;")
+            && execute(Self.ftsTableSql)
+            && createFtsTriggers()
+            && execute("INSERT INTO history_fts(history_fts) VALUES('rebuild');")
+        guard rebuilt else {
+            Self.logger.error("Query history search index rebuild failed and was rolled back")
+            rollbackTransaction()
+            return
+        }
+        commitTransaction()
+    }
+
+    private func searchIndexSql() -> String? {
+        guard db != nil else { return nil }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(
+            db,
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'history_fts';",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK, sqlite3_step(statement) == SQLITE_ROW,
+            let text = sqlite3_column_text(statement, 0)
+        else {
+            return nil
+        }
+        return String(cString: text)
     }
 
     // MARK: - Migration
@@ -233,7 +267,10 @@ actor QueryHistoryStorage {
         else {
             return false
         }
-        setUserVersion(5)
+        // Setting the same value still writes a WAL frame, at every launch.
+        if userVersion() != 5 {
+            setUserVersion(5)
+        }
         return true
     }
 

@@ -15,7 +15,19 @@ internal static partial class Mapping
         configuration.AccountFile,
         configuration.CallbackFinished,
         configuration.CallbackUnknown,
-        configuration.MachineGuid);
+        configuration.MachineGuid,
+        Native.AppClientTag.Windows,
+        MachineId: null,
+        Policy: new Native.ManagedPolicyArg.Read(new Native.ManagedPolicyValues(
+            AccountServerUrl: null,
+            AllowOtherAccountServers: null,
+            PersonalSyncProvider: null,
+            UsageDataAllowed: null,
+            PluginCatalogAllowed: null,
+            UpdateChecksAllowed: null,
+            IcloudSyncAllowed: null)),
+        LegacyEntitlementFile: null,
+        LicenseKeys: []);
 
     public static AccountStatus Status(Native.AccountStatusInfo status) => new(
         status.State switch

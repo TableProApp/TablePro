@@ -108,8 +108,16 @@ public struct SourceEditor: NSViewControllerRepresentable {
     }
 
     func makeController(coordinator: Coordinator) -> TextViewController {
+        // A coordinator can load the view during init, which sets the highlighter up on the text the controller holds.
+        let initialText: String
+        switch text {
+        case .binding(let binding):
+            initialText = binding.wrappedValue
+        case .storage:
+            initialText = ""
+        }
         let controller = TextViewController(
-            string: "",
+            string: initialText,
             language: language,
             configuration: configuration,
             cursorPositions: state.cursorPositions ?? [],
@@ -119,11 +127,11 @@ public struct SourceEditor: NSViewControllerRepresentable {
             coordinators: coordinators,
             completionDelegate: completionDelegate
         )
-        switch text {
-        case .binding(let binding):
-            controller.textView.setText(binding.wrappedValue)
-        case .storage(let textStorage):
+        if case .storage(let textStorage) = text {
             controller.textView.setTextStorage(textStorage)
+            if controller.isViewLoaded {
+                controller.setUpHighlighter()
+            }
         }
         if controller.textView == nil {
             controller.loadView()

@@ -10,10 +10,7 @@ import Testing
 @MainActor
 struct RowCountPlanTests {
     private func filtered() -> TabFilterState {
-        var state = TabFilterState()
-        state.filters = [TestFixtures.makeTableFilter()]
-        state.commit = .all
-        return state
+        TabFilterState.applying([TestFixtures.makeTableFilter()], logicMode: .and)
     }
 
     @Test("Unfiltered small table runs an exact unfiltered count")
@@ -165,8 +162,7 @@ struct RowCountPlanTests {
         #expect(PluginManager.shared.exactRowCountIsFullScan(for: .scylladb))
     }
 
-    /// The estimate is the whole database's key count, so on a tab narrowed by its key pattern it is
-    /// never the total. The plan counts by the search instead, bounded by the database's size.
+    // The estimate is the whole database's key count, so on a key-pattern tab it is never the total.
     @Test("A browse search is counted by its own scope, never by the table's estimate")
     func browseSearchCountsItsOwnScope() {
         let search = BrowseSearchState(pattern: "user:*")
@@ -199,12 +195,13 @@ struct RowCountPlanTests {
     }
 
     @Test("Non-SQL filtered defers to the driver filtered count")
-    func nonSQLFiltered() {
+    func nonSQLFiltered() throws {
         let state = filtered()
+        let applied = try #require(state.applied)
         let plan = QueryExecutionCoordinator.rowCountPlan(
             isNonSQL: true, filterState: state, approximateRowCount: nil, threshold: 100_000
         )
-        #expect(plan == .filteredNonSQL(filters: state.appliedFilters, logicMode: state.filterLogicMode))
+        #expect(plan == .filteredNonSQL(filters: applied.filters, logicMode: applied.logicMode))
     }
 }
 
@@ -216,9 +213,7 @@ struct RowCountOutcomeTests {
         #expect(applied.isApproximate)
     }
 
-    /// Phase 1 has usually already put an estimate on screen by the time a phase 2 count lands, so
-    /// "we could not work it out" has to leave that alone. Blanking it made a row count appear and
-    /// then vanish a moment later.
+    // Phase 1 has usually put an estimate on screen already; blanking it made the count flash and vanish.
     @Test("An estimate of zero is no answer, so it applies nothing")
     func zeroEstimateAppliesNothing() {
         #expect(RowCountOutcome.count(0, isApproximate: true).appliedTotal == nil)
@@ -254,7 +249,7 @@ struct RowCountOutcomeTests {
         #expect(!RowCountOutcome.count(12, isApproximate: true).settlesScope)
     }
 
-    /// A filter change genuinely invalidates the count, so this one still wipes it.
+    // A filter change really invalidates the count, so this one still wipes it.
     @Test("Clearing reports an unknown total")
     func clearIsUnknown() throws {
         let applied = try #require(RowCountOutcome.clear.appliedTotal)

@@ -48,8 +48,8 @@ targets:
       - TableProWidget/Shared/QueryActivityAttributes.swift
       - TableProWidget/Shared/SharedConnectionStore.swift
       - TableProWidget/Shared/WidgetConnectionItem.swift
-      # The sample database the macOS app ships, opened from the empty connection list.
-      - path: ../TablePro/Resources/SampleDatabases/Chinook.sqlite
+      # The sample database every app ships, opened from the empty connection list.
+      - path: ../../core/resources/Chinook.sqlite
         buildPhase: resources
       # FreeTDS bridging the iOS build compiles directly; there is no plugin
       # bundle on iOS, so the driver links into the app.
@@ -78,10 +78,6 @@ targets:
       # The socket key a Mac connection stores, so iOS refuses exactly what the Mac driver dials
       # through a socket.
       - ../Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
-      # The expression depth limit and the open's stack both apps open a DuckDB file with.
-      - ../Plugins/DuckDBDriverPlugin/DuckDBExpressionDepth.swift
-      # The transaction both apps prepare a DuckDB statement inside.
-      - ../Plugins/DuckDBDriverPlugin/DuckDBPreparedRun.swift
       - ../Plugins/Shared/PluginQueryTimeout.swift
       # The toolbar glyph rule both apps follow on and before the 26 releases.
       - ../TablePro/Core/Services/Infrastructure/Toolbar/ToolbarSymbols.swift
@@ -99,6 +95,20 @@ targets:
           - Info.plist
       - ../Plugins/Shared/PluginConnectTimeout.swift
       - ../Plugins/Shared/PluginRedirectRefusingDelegate.swift
+      # The DuckDB plugin driver runs whole behind PluginBackedDriver; the iOS CDuckDB bridge stands in for the plugin's own.
+      - path: ../Plugins/DuckDBDriverPlugin
+        excludes:
+          - Info.plist
+          - CDuckDB/**
+      # The SQLite plugin driver runs whole behind PluginBackedDriver on the SDK's SQLite. The agent that runs SQLite on an
+      # SSH server stays on the Mac.
+      - path: ../Plugins/SQLiteDriverPlugin
+        excludes:
+          - Info.plist
+          - SQLiteAgentBackend.swift
+          - SQLiteAgentProtocol.swift
+      - ../Plugins/SharedSpill/PluginRowSpill.swift
+      - ../Plugins/Shared/PluginRowBatcher.swift
       # The MongoDB plugin driver runs behind PluginBackedDriver too; the iOS CLibMongoc bridge stands in for the
       # plugin's own, and the principal class stays on the Mac.
       - path: ../Plugins/MongoDBDriverPlugin
@@ -106,6 +116,15 @@ targets:
           - Info.plist
           - MongoDBPlugin.swift
           - CLibMongoc/**
+      # The Oracle plugin driver runs whole behind PluginBackedDriver. The routine debugger and the connection diagnostics
+      # are Mac UI, so they stay on the Mac.
+      - path: ../Plugins/OracleDriverPlugin
+        excludes:
+          - Info.plist
+          - OraclePlugin+Diagnostics.swift
+          - OraclePluginDriver+Debugging.swift
+          - OracleRoutineDebugSession.swift
+          - OracleDebugText.swift
       # The column default reading both apps show and the version floor that says which catalog
       # quotes its defaults.
       - ../Plugins/MySQLDriverPlugin/MySQLCatalogDefault.swift
@@ -181,16 +200,6 @@ targets:
       - ../Plugins/MySQLDriverPlugin/MySQLPrivilegeCatalog.swift
       - ../Plugins/MySQLDriverPlugin/MySQLCreateTableSQL.swift
       - ../Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
-      - ../Plugins/SQLiteDriverPlugin/SQLiteCatalogReads.swift
-      - ../Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
-      - ../Plugins/SQLiteDriverPlugin/SQLiteTemporarySchema.swift
-      - ../Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
-      - ../Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
-      - ../Plugins/DuckDBDriverPlugin/DuckDBExportCatalog.swift
-      - ../Plugins/DuckDBDriverPlugin/DuckDBCreateTableSQL.swift
-      - ../Plugins/DuckDBDriverPlugin/DuckDBSchemaQueries.swift
-      - ../Plugins/DuckDBDriverPlugin/DuckDBIndexClauses.swift
-      - ../Plugins/DuckDBDriverPlugin/DuckDBLexicalFeatures.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogExport.swift
       - ../Plugins/PostgreSQLDriverPlugin/PostgreSQLCreateTableSQL.swift
       - ../Plugins/PostgreSQLDriverPlugin/RedshiftCatalogExport.swift
@@ -217,18 +226,6 @@ targets:
       - ../Plugins/MSSQLDriverPlugin/MSSQLExportCatalog.swift
       - ../Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
       - ../Plugins/MSSQLDriverPlugin/MSSQLTableDefinitionSQL.swift
-      - ../Plugins/OracleDriverPlugin/OracleExportCatalog.swift
-      - ../Plugins/OracleDriverPlugin/OracleStatementError.swift
-      - ../Plugins/OracleDriverPlugin/OraclePluginValues.swift
-      - ../Plugins/OracleDriverPlugin/OracleCreateTableSQL.swift
-      - ../Plugins/OracleDriverPlugin/OracleObjectQueries.swift
-      - ../Plugins/OracleDriverPlugin/OracleIndexStatements.swift
-      - ../Plugins/OracleDriverPlugin/OracleTableDDL.swift
-      - ../Plugins/OracleDriverPlugin/OracleTypeCatalog.swift
-      - ../Plugins/OracleDriverPlugin/OracleBindPlaceholders.swift
-      - ../Plugins/OracleDriverPlugin/OracleRowWriter.swift
-      - ../Plugins/OracleDriverPlugin/OracleNationalText.swift
-      - ../Plugins/OracleDriverPlugin/OracleColumnStatements.swift
       # The libssh2 half of the SSH transport, shared with the macOS app by file reference.
       # The C-free half is the TableProSSHTransport package target; these touch libssh2
       # and cannot be, because a manifest cannot express the slice-dependent header path the
@@ -281,6 +278,7 @@ targets:
           - TableProRedisCore
           - TableProSQLFile
           - TableProSQLGrammar
+          - TableProSQLiteCore
           - TableProSQLQuoting
           - TableProSQLVocabulary
           - TableProSSHTransport
@@ -288,6 +286,7 @@ targets:
           - TableProSyncTransport
           - TableProTabularIO
           - TableProTLSClientIdentity
+          - TableProWireIO
       - package: TableProOracle
         product: TableProOracleCore
       - package: PostHog
@@ -389,7 +388,6 @@ targets:
     platform: iOS
     sources:
       - TableProMobileTests
-      - ../Plugins/DuckDBDriverPlugin/DuckDBReadOnlyStatement.swift
     dependencies:
       - target: TableProMobile
       - package: TableProCore

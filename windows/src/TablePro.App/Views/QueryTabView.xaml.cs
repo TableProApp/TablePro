@@ -50,11 +50,13 @@ public sealed partial class QueryTabView
         bool fileUnsaved = false,
         SqlFileRead? onDisk = null,
         IReadOnlyList<int>? foldedLines = null,
-        string? customTitle = null)
+        string? customTitle = null,
+        bool? wrapText = null)
     {
         var engineId = share.Session.EngineId;
         var restoring = filePath is not null && onDisk is null;
         InitializeComponent();
+        DisplaySettings.FollowKeys(this, ShowKeys);
         Results.ShowsEdits = true;
         var grid = Results.GridView;
         SqlText.Text = onDisk?.Text ?? sql ?? string.Empty;
@@ -78,7 +80,10 @@ public sealed partial class QueryTabView
             onDisk,
             restoring: restoring,
             resultEdits: this,
-            customTitle: customTitle);
+            customTitle: customTitle,
+            wrapText: wrapText);
+        Results.WrapsText = _model.WrapsText;
+        SqlText.CompletionSource = new SessionCompletion(share.Session, () => _model.Database);
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", _model.Title));
         ShowDatabase();
         _model.StateChanged += (_, _) => OnModelStateChanged();
@@ -201,6 +206,14 @@ public sealed partial class QueryTabView
     public SqlEditor? Editor => SqlText;
 
     public DataGridView? Grid => Results.GridView;
+
+    public bool? WrapsText => _model.WrapsText;
+
+    public void SetWrapsText(bool wraps)
+    {
+        Results.WrapsText = wraps;
+        _model.SetWrapsText(wraps);
+    }
 
     public bool GridIsTarget => _target == EditTarget.Grid && Results.ShowsGrid;
 
@@ -678,6 +691,15 @@ public sealed partial class QueryTabView
         }
 
         args.Handled = true;
+        if (grid.HeaderColumnOf(args.OriginalSource) >= 0)
+        {
+            // A header's menu holds what is the whole grid's, not a cell's.
+            var header = new MenuFlyout();
+            header.Items.Add(GridMenus.WrapText(this));
+            GridMenus.Show(header, grid, args);
+            return;
+        }
+
         // Rows still arriving would be exported or shared as if they were all of them.
         var finished = !IsRunning && Results.ShownSet is { IsFinished: true };
         var menu = new MenuFlyout();
@@ -957,6 +979,14 @@ public sealed partial class QueryTabView
         }
     }
 
+
+    // The keys come from the shortcut preset, so the tooltips name them from it.
+    private void ShowKeys()
+    {
+        ToolTipService.SetToolTip(RunButton, DisplaySettings.Tip(RunButton.Label, "executeAllStatements"));
+        ToolTipService.SetToolTip(StopButton, DisplaySettings.Tip(StopButton.Label, "cancelQuery"));
+        ToolTipService.SetToolTip(SaveChangesButton, DisplaySettings.Tip(SaveChangesButton.Label, "saveChanges"));
+    }
     private void OnRun(object sender, RoutedEventArgs e) => Run();
 
     // :w runs the query, as the macOS editor's does.

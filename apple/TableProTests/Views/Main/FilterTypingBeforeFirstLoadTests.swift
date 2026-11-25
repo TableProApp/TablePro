@@ -25,7 +25,7 @@ extension GlobalStateSuites {
             )
             var tab = QueryTab(title: "items", query: "SELECT * FROM `items` LIMIT 200", tabType: .table)
             tab.tableContext.tableName = "items"
-            tab.filterState = TabFilterState(filters: [filter], commit: .all, isVisible: true, filterLogicMode: .and)
+            tab.filterState = .applying([filter], logicMode: .and)
             tabManager.tabs.append(tab)
             tabManager.selectedTabId = tab.id
             return (coordinator, tabManager, tab.id)
@@ -161,6 +161,41 @@ extension GlobalStateSuites {
 
             #expect(resolved.columns == ["id", "code"])
             #expect(resolved.columnTypes == [.integer(rawType: "INT"), .text(rawType: "VARCHAR(20)")])
+        }
+
+        @Test("A hidden column keeps its schema type after the selected ones, so its filter value is quoted")
+        func hiddenColumnKeepsItsType() throws {
+            let (coordinator, tabManager, tabId) = makeCoordinator(
+                filter: TestFixtures.makeTableFilter(column: "code", value: "0123")
+            )
+            defer { coordinator.teardown() }
+            storeSchema(in: coordinator)
+            _ = tabManager.mutate(tabId: tabId) { $0.columnLayout.hiddenColumns = ["code"] }
+            coordinator.setActiveTableRows(
+                TableRows.from(queryRows: [], columns: ["id"], columnTypes: [.integer(rawType: "INT")]),
+                for: tabId
+            )
+
+            let tab = try #require(tabManager.tabs.first { $0.id == tabId })
+            let resolved = coordinator.queryColumns(for: tab)
+
+            #expect(resolved.columns == ["id", "code"])
+            #expect(resolved.columnTypes == [.integer(rawType: "INT"), .text(rawType: "VARCHAR(20)")])
+            #expect(coordinator.selectColumns(for: tab) == ["id"])
+        }
+
+        @Test("A filter on a hidden text column is quoted in the first query", .noDefaultSort)
+        func hiddenTextColumnValueIsQuotedOnFirstLoad() async throws {
+            let (coordinator, tabManager, tabId) = makeCoordinator(
+                filter: TestFixtures.makeTableFilter(column: "code", value: "0123")
+            )
+            defer { coordinator.teardown() }
+            storeSchema(in: coordinator)
+            _ = tabManager.mutate(tabId: tabId) { $0.columnLayout.hiddenColumns = ["code"] }
+
+            let query = try #require(await firstLoadQuery(coordinator, tabManager, tabId: tabId))
+
+            #expect(query.contains("'0123'"))
         }
     }
 }

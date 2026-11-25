@@ -335,6 +335,16 @@ extension PluginManager {
             .capabilities.supportsSchemaSwitching ?? false
     }
 
+    func statementsCanSwitchDatabase(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.statementsCanSwitchDatabase ?? true
+    }
+
+    func schemaSwitchScopesUnqualifiedNames(for databaseType: DatabaseType) -> Bool {
+        supportsSchemaSwitching(for: databaseType)
+            && PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+                .capabilities.schemaSwitchScopesUnqualifiedNames ?? false
+    }
+
     /// Every container dimension the engine can switch, ordered outermost first. An engine can have
     /// both, which is why this is a list: PostgreSQL browses a database and a schema within it, and
     /// naming only one of them is what left the schema with no control of its own.
@@ -648,6 +658,10 @@ extension PluginManager {
 
     func binaryLengthFunction(for databaseType: DatabaseType) -> String? {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.binaryLengthFunction
+    }
+
+    func readsCheckListsFromDDL(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.readsCheckListsFromDDL ?? true
     }
 
     func supportsPrincipalConnectionLimit(for databaseType: DatabaseType) -> Bool {

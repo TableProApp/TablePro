@@ -53,7 +53,7 @@ public sealed partial class DataGridView
             return default;
         }
         var bounds = _frozenContent.TransformToVisual(null).TransformBounds(
-            new Rect(0, row * _rowHeight, _columns.RowHeaderWidth, _rowHeight));
+            new Rect(0, RowTop(row), _columns.RowHeaderWidth, RowHeightOf(row)));
         return PhysicalBounds(bounds);
     }
 

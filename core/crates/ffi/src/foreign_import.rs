@@ -7,8 +7,9 @@ use tablepro_foreign_import::review::{
     TlsFileReason, apply_blocking, plan, save_queries,
 };
 use tablepro_foreign_import::{
-    ForeignApp, ForeignAppDirs, ForeignHost, ForeignImportError, ForeignImporter, ForeignPlatform, ForeignSslMode,
-    ImportRequest, PasswordOutcome, PasswordSource, SavedQuerySupport,
+    ForeignApp, ForeignAppDirs, ForeignHost, ForeignImportError, ForeignImporter, ForeignPlatform, ForeignSource,
+    ForeignSslMode, ImportRequest, PasswordOffer, PasswordOutcome, PasswordSource, SavedQuerySupport, ScanDepth,
+    SourceAvailability, preselect, sources_blocking,
 };
 use tablepro_storage::english_secret_label;
 
@@ -98,18 +99,80 @@ pub enum SavedQuerySupportTag {
     NotInExport,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ScanDepthTag {
+    // Whether each app is there, with no count: the launch probe.
+    Presence,
+    Inventory,
+}
+
+impl From<ScanDepthTag> for ScanDepth {
+    fn from(depth: ScanDepthTag) -> Self {
+        match depth {
+            ScanDepthTag::Presence => Self::Presence,
+            ScanDepthTag::Inventory => Self::Inventory,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SourceAvailabilityTag {
+    Available,
+    NotFound,
+    // The app's data is there and could not be read; code is a foreign_import.* code.
+    Unreadable { code: String, detail: String },
+}
+
+impl From<&SourceAvailability> for SourceAvailabilityTag {
+    fn from(availability: &SourceAvailability) -> Self {
+        match availability {
+            SourceAvailability::Available => Self::Available,
+            SourceAvailability::NotFound => Self::NotFound,
+            SourceAvailability::Unreadable(reason) => Self::Unreadable {
+                code: reason.code.to_owned(),
+                detail: reason.detail.clone(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PasswordOfferTag {
+    DecryptedWhileReading,
+    PasswordFile,
+    KeyInCredentialManager,
+    // Kept where this platform does not let another app read, so passwords are not offered.
+    SystemStore,
+}
+
+impl From<PasswordOffer> for PasswordOfferTag {
+    fn from(offer: PasswordOffer) -> Self {
+        match offer {
+            PasswordOffer::DecryptedWhileReading => Self::DecryptedWhileReading,
+            PasswordOffer::PasswordFile => Self::PasswordFile,
+            PasswordOffer::KeyInCredentialManager => Self::KeyInCredentialManager,
+            PasswordOffer::SystemStore => Self::SystemStore,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ForeignSourceInfo {
     pub app: ForeignAppTag,
     pub name: String,
-    // Its files are where it keeps them; always true for an app that imports from a file the user picks.
-    pub available: bool,
+    // An app that imports from a file the user picks is always available.
+    pub availability: SourceAvailabilityTag,
     pub connections: u64,
     pub saved_queries: u64,
     // The export file's extensions for an app imported from a file the user picks; empty otherwise.
     pub file_extensions: Vec<String>,
     pub passwords: PasswordSourceTag,
     pub saved_query_support: SavedQuerySupportTag,
+    pub password_offer: PasswordOfferTag,
+    pub offers_saved_queries: bool,
+    pub starts_ticked: bool,
+    // True on at most one row: the one a dialog that takes one app selects first.
+    pub preselected: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
@@ -385,8 +448,10 @@ pub struct ForeignImportChoices {
     pub importable: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ForeignImportOutcome {
+    // The saved connections the import wrote, added or replaced, in the review's order; Keep Existing writes none.
+    pub connection_ids: Vec<String>,
     pub connections: u32,
     pub replaced: u32,
     // Passwords the secret store refused; their connections were imported without them.
@@ -549,6 +614,11 @@ async fn write(
         }
     }
     let mut outcome = ForeignImportOutcome {
+        connection_ids: applied
+            .connections
+            .iter()
+            .map(|imported| imported.connection.id.to_string())
+            .collect(),
         connections: count(applied.connections.len()),
         replaced: count(applied.connections.iter().filter(|imported| imported.replaced).count()),
         passwords_not_kept,
@@ -581,12 +651,16 @@ fn count(value: usize) -> u32 {
 #[uniffi::export]
 impl Core {
     // The apps this platform has, each looked for where it keeps its files. Reads files only, never a keychain.
-    pub async fn foreign_sources(&self, dirs: ForeignAppDirsArg) -> Result<Vec<ForeignSourceInfo>, CoreError> {
+    pub async fn foreign_sources(
+        &self,
+        dirs: ForeignAppDirsArg,
+        depth: ScanDepthTag,
+    ) -> Result<Vec<ForeignSourceInfo>, CoreError> {
         let dirs = ForeignAppDirs::from(dirs);
         let tasks = self.tasks.clone();
         on_runtime(&self.tasks, async move {
             tasks
-                .spawn_blocking_task(move || sources_blocking(&dirs))
+                .spawn_blocking_task(move || source_infos(&sources_blocking(&dirs, host(), depth.into())))
                 .await
                 .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))
         })
@@ -648,26 +722,20 @@ impl Core {
     }
 }
 
-fn sources_blocking(dirs: &ForeignAppDirs) -> Vec<ForeignSourceInfo> {
-    ForeignApp::ALL
-        .into_iter()
-        .filter(|app| app.runs_on(dirs.platform))
-        .map(|app| {
-            let importer = importer(app, dirs);
-            let available = importer.is_available_blocking();
-            let picks_file = app.picked_file_extensions();
-            let inventory = if available && picks_file.is_none() {
-                importer.inventory_blocking()
-            } else {
-                tablepro_foreign_import::Inventory::default()
-            };
+fn source_infos(sources: &[ForeignSource]) -> Vec<ForeignSourceInfo> {
+    let preselected = preselect(sources);
+    sources
+        .iter()
+        .map(|source| {
+            let app = source.app;
             ForeignSourceInfo {
                 app: app.into(),
                 name: app.display_name().to_owned(),
-                available,
-                connections: inventory.connections as u64,
-                saved_queries: inventory.saved_queries as u64,
-                file_extensions: picks_file
+                availability: (&source.availability).into(),
+                connections: source.inventory.connections as u64,
+                saved_queries: source.inventory.saved_queries as u64,
+                file_extensions: app
+                    .picked_file_extensions()
                     .unwrap_or_default()
                     .iter()
                     .map(|extension| (*extension).to_owned())
@@ -682,6 +750,10 @@ fn sources_blocking(dirs: &ForeignAppDirs) -> Vec<ForeignSourceInfo> {
                     SavedQuerySupport::Consoles => SavedQuerySupportTag::Consoles,
                     SavedQuerySupport::NotInExport => SavedQuerySupportTag::NotInExport,
                 },
+                password_offer: source.password_offer.into(),
+                offers_saved_queries: source.offers_saved_queries,
+                starts_ticked: source.starts_ticked(),
+                preselected: preselected == Some(app),
             }
         })
         .collect()

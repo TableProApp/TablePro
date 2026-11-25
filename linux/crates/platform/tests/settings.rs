@@ -137,7 +137,8 @@ async fn the_assistant_starts_off_and_keeps_each_providers_model() -> TestResult
     let fixture = Fixture::new()?;
     assert_eq!(fixture.settings.ai_provider(), None);
     assert!(!fixture.settings.ai_inline_suggestions());
-    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "claude-opus-5-5");
+    // Empty until first use, when the app saves the model catalog's default.
+    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "");
     assert_eq!(fixture.settings.ai_model(AiProvider::OpenAi), "");
     assert_eq!(
         fixture.settings.ai_base_url(AiProvider::OpenAiCompatible),
@@ -153,7 +154,7 @@ async fn the_assistant_starts_off_and_keeps_each_providers_model() -> TestResult
 
     assert_eq!(fixture.settings.ai_provider(), Some(AiProvider::OpenAiCompatible));
     assert_eq!(fixture.settings.ai_model(AiProvider::OpenAiCompatible), "llama3.2");
-    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "claude-opus-5-5");
+    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "");
     assert_eq!(
         fixture.settings.ai_base_url(AiProvider::OpenAiCompatible),
         "http://gpu-box:11434/v1"
@@ -683,6 +684,31 @@ async fn invisible_characters_preference_uses_the_shared_snapshot_and_external_u
     assert!(fixture.settings.show_invisible_characters());
     assert_eq!(observed.borrow().as_slice(), &[false, true]);
     assert!(original.show_invisible_characters);
+    Ok(())
+}
+
+#[glib::async_test]
+async fn wrap_text_is_off_by_default_and_follows_the_shared_snapshot_and_external_updates() -> TestResult {
+    use gio::prelude::SettingsExt;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let fixture = Fixture::new()?;
+    let preferences = fixture.settings.grid_preferences();
+    let original = preferences.snapshot();
+    let observed = Rc::new(RefCell::new(Vec::new()));
+    let changes = observed.clone();
+    preferences.connect_changed(move |preferences| {
+        changes.borrow_mut().push(preferences.snapshot().wrap_text);
+    });
+    assert!(!fixture.settings.grid_wrap_text());
+
+    fixture.settings.set_grid_wrap_text(true)?;
+    assert!(fixture.settings.grid_wrap_text());
+    fixture.settings.gio().set_boolean(keys::GRID_WRAP_TEXT, false)?;
+    assert!(!fixture.settings.grid_wrap_text());
+    assert_eq!(observed.borrow().as_slice(), &[true, false]);
+    assert!(!original.wrap_text);
     Ok(())
 }
 

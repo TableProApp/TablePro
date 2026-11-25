@@ -6,6 +6,8 @@ TablePro is licensed under the GNU Affero General Public License, version 3 or l
 
 The MCP client marks under `data/resources/icons/scalable/actions` name each client and stay their owners' trademarks. Claude, Claude Code, Cline, Cursor, Google Gemini, JetBrains, LM Studio, OpenCode, Warp, Windsurf and Zed are Simple Icons 16.37.0 files, under CC0-1.0. GitHub Copilot is the Simple Icons copy of Primer Octicons' copilot-24, under MIT, Copyright (c) 2026 GitHub Inc. goose is `documentation/static/img/goose.svg` from github.com/aaif-goose/goose, under Apache-2.0, Copyright 2024 Block, Inc. OpenAI is `client/assets/openai-logomark.svg` from github.com/openai/openai-realtime-console, under MIT, Copyright (c) 2024 OpenAI. Kiro is the icon kiro.dev publishes, and Visual Studio Code the icon in its brand kit at code.visualstudio.com/brand. Each file is used as published. The MIT and Apache 2.0 texts are under License texts.
 
+The AI model catalog `core/crates/ai/ai-models.json`, which the app compiles in and refreshes from updates.tablepro.app, is model metadata only, trimmed from models.dev (github.com/anomalyco/models.dev), under MIT, Copyright (c) 2025 models.dev. No code from the project ships. The MIT text is under License texts.
+
 ## Overview
 
 - MIT License (MIT)
@@ -4207,9 +4209,9 @@ DEALINGS IN THE SOFTWARE.
 Used by:
 
 - sqlx-core 0.9.1
+- sqlx-mysql 0.9.1
 - sqlx-macros-core 0.9.1
 - sqlx-macros 0.9.1
-- sqlx-mysql 0.9.1
 - sqlx-sqlite 0.9.1
 - sqlx 0.9.1
 
@@ -4388,7 +4390,7 @@ SOFTWARE.
 
 Used by:
 
-- form_urlencoded 1.2.2
+- form_urlencoded 1.2.3
 
 ~~~~text
 Copyright (c) 2013-2016 The rust-url developers
@@ -4425,7 +4427,7 @@ Used by:
 
 - idna 1.1.0
 - percent-encoding 2.3.2
-- url 2.5.8
+- url 2.5.9
 
 ~~~~text
 Copyright (c) 2013-2025 The rust-url developers
@@ -8573,8 +8575,8 @@ SOFTWARE.
 
 Used by:
 
-- duckdb 1.20000.1
-- libduckdb-sys 1.20000.1
+- duckdb 1.20001.0
+- libduckdb-sys 1.20001.0
 
 ~~~~text
 Copyright 2021-2026 Stichting DuckDB Foundation
@@ -12833,7 +12835,7 @@ These crates compile C and C++ code from other projects into TablePro. Each proj
 
 ### DuckDB: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Copyright 2018-2026 Stichting DuckDB Foundation
@@ -12847,7 +12849,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ### Brotli: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/brotli/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/brotli/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors.
@@ -12873,7 +12875,7 @@ THE SOFTWARE.
 
 ### concurrentqueue: BSD 2-Clause "Simplified" License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/concurrentqueue/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/concurrentqueue/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 This license file applies to everything in this repository except that which
@@ -12941,7 +12943,7 @@ DEALINGS IN THE SOFTWARE.
 
 ### fast_float: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/fast_float/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/fast_float/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Permission is hereby granted, free of charge, to any
@@ -12971,7 +12973,7 @@ DEALINGS IN THE SOFTWARE.
 
 ### FastPFor: Apache License 2.0
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/fastpforlib/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/fastpforlib/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Apache License
@@ -13169,7 +13171,7 @@ third-party archives.
 
 ### fmt: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/fmt/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/fmt/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Copyright (c) 2012 - present, Victor Zverovich
@@ -13203,7 +13205,7 @@ without including the above copyright and permission notices.
 
 ### FSST: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/fsst/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/fsst/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 MIT License
@@ -13231,7 +13233,7 @@ SOFTWARE.
 
 ### cpp-httplib: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/httplib/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/httplib/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 The MIT License (MIT)
@@ -13259,7 +13261,7 @@ SOFTWARE.
 
 ### HyperLogLog: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/hyperloglog/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/hyperloglog/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Copyright (c) 2012 Art.sy, Inc.
@@ -13285,7 +13287,7 @@ SOFTWARE.
 
 ### jaro_winkler: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/jaro_winkler/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/jaro_winkler/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Copyright © 2022 Max Bachmann
@@ -13312,7 +13314,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### LZ4: BSD 2-Clause "Simplified" License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/lz4/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/lz4/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 LZ4 Library
@@ -13343,7 +13345,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### Mbed TLS: Apache License 2.0
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/mbedtls/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/mbedtls/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Mbed TLS files are provided under a dual [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html)
@@ -13903,7 +13905,7 @@ Public License instead of this License.
 
 ### miniz: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/miniz/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/miniz/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Copyright 2013-2014 RAD Game Tools and Valve Software
@@ -13932,7 +13934,7 @@ THE SOFTWARE.
 
 ### Apache Parquet: Apache License 2.0
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/parquet/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/parquet/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 
@@ -14156,7 +14158,7 @@ License: http://www.apache.org/licenses/LICENSE-2.0
 
 ### PCG: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/pcg/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/pcg/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Copyright (c) 2014-2017 Melissa O'Neill and PCG Project contributors
@@ -14182,7 +14184,7 @@ SOFTWARE.
 
 ### pdqsort: zlib License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/pdqsort/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/pdqsort/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Copyright (c) 2021 Orson Peters <orsonpeters@gmail.com>
@@ -14205,7 +14207,7 @@ applications, and to alter it and redistribute it freely, subject to the followi
 
 ### RE2: BSD 3-Clause "New" or "Revised" License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/re2/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/re2/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 // Copyright (c) 2009 The RE2 Authors. All rights reserved.
@@ -14239,7 +14241,7 @@ Compiled into libduckdb-sys 1.20000.1, from `third_party/re2/LICENSE` in https:/
 
 ### ska_sort: Boost Software License 1.0
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/ska_sort/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/ska_sort/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
           Copyright Malte Skarupke 2016.
@@ -14249,7 +14251,7 @@ Compiled into libduckdb-sys 1.20000.1, from `third_party/ska_sort/LICENSE` in ht
 
 ### skiplist: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/skiplist/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/skiplist/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 MIT License
@@ -14277,7 +14279,7 @@ SOFTWARE.
 
 ### Snappy: BSD 3-Clause "New" or "Revised" License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/snappy/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/snappy/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Copyright 2011, Google Inc.
@@ -14338,7 +14340,7 @@ Some of the benchmark data in testdata/ is licensed differently:
 
 ### t-digest: Apache License 2.0
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/tdigest/LICENSE and NOTICES` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/tdigest/LICENSE and NOTICES` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
                                  Apache License
@@ -14552,7 +14554,7 @@ The main modifications are 1) higher performance multi- t-digest merging and 2) 
 
 ### Apache Thrift: Apache License 2.0
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/thrift/thrift/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/thrift/thrift/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 
@@ -14798,7 +14800,7 @@ For the lib/nodejs/lib/thrift/json_parse.js:
 
 ### utf8proc: Unicode License Agreement - Data Files and Software (2015)
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/utf8proc/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/utf8proc/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 ## utf8proc license ##
@@ -14898,7 +14900,7 @@ trademarks mentioned herein are the property of their respective owners.
 
 ### vergesort: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/vergesort/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/vergesort/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 The MIT License (MIT)
@@ -14926,7 +14928,7 @@ THE SOFTWARE.
 
 ### yyjson: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/yyjson/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/yyjson/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 MIT License
@@ -14954,7 +14956,7 @@ SOFTWARE.
 
 ### Zstandard: BSD 3-Clause "New" or "Revised" License
 
-Compiled into libduckdb-sys 1.20000.1, from `third_party/zstd/LICENSE` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `third_party/zstd/LICENSE` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 BSD License
@@ -14991,7 +14993,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### Apache Arrow ADBC and nanoarrow: Apache License 2.0
 
-Compiled into libduckdb-sys 1.20000.1, from `LICENSE-2.0.txt` in https://www.apache.org/licenses.
+Compiled into libduckdb-sys 1.20001.0, from `LICENSE-2.0.txt` in https://www.apache.org/licenses.
 
 ~~~~text
 
@@ -15200,7 +15202,7 @@ Compiled into libduckdb-sys 1.20000.1, from `LICENSE-2.0.txt` in https://www.apa
 
 ### robin-hood-hashing: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `LICENSE` in https://github.com/martinus/robin-hood-hashing/tree/3.11.5.
+Compiled into libduckdb-sys 1.20001.0, from `LICENSE` in https://github.com/martinus/robin-hood-hashing/tree/3.11.5.
 
 ~~~~text
 MIT License
@@ -15228,7 +15230,7 @@ SOFTWARE.
 
 ### merge sort tree: MIT License
 
-Compiled into libduckdb-sys 1.20000.1, from `src/include/duckdb/execution/merge_sort_tree.hpp` in https://github.com/duckdb/duckdb/tree/d54cbbe3df17e8e5ce68312f483b4155836112aa.
+Compiled into libduckdb-sys 1.20001.0, from `src/include/duckdb/execution/merge_sort_tree.hpp` in https://github.com/duckdb/duckdb/tree/8d78114e90a53823803660bf821f6073ac87da8c.
 
 ~~~~text
 Copyright 2022 salesforce.com, inc.

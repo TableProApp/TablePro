@@ -43,7 +43,7 @@ internal final class AssistantState: ObservableObject {
     }
 
     internal var viewModelIfActivated: AIChatViewModel? {
-        session?.viewModel
+        session?.viewModelIfLoaded
     }
 
     /// Opens the connection's session, starting one on first use, and returns its engine.
@@ -69,6 +69,8 @@ internal final class AssistantState: ObservableObject {
 
     internal func followDisplayedSession() {
         guard isActivated else { return }
+        // The pane draws the session it follows, and a stored session has no engine until something reads it.
+        _ = session?.viewModel
         follow(session)
     }
 

@@ -134,8 +134,10 @@ final class TelemetryFixture {
         )
     }
 
+    // As AppDelegate launches: telemetry first, then the account publishes what the core restored.
     func start() {
         telemetry.start(sharesUsageData: sharesUsageData.eraseToAnyPublisher(), account: account.services)
+        account.services.loadStoredState()
     }
 
     // Past the launch delay, so the first app_opened check has run.
@@ -208,6 +210,40 @@ struct TelemetryTests {
         #expect(fixture.client?.calls == [.optIn, .identify("acct_test", TelemetryFixture.person)])
     }
 
+    @Test("A session the core restores after telemetry starts keeps its identity; one it does not find resets")
+    func restoreDecidesTheIdentity() async throws {
+        for keepsSession in [true, false] {
+            let fixture = try TelemetryFixture()
+            try await fixture.account.signIn()
+            fixture.start()
+            let kept = keepsSession ? fixture.account.backend.status() : AccountSnapshot()
+            fixture.account.backend.restoreLater(kept)
+            fixture.account.services.loadStoredState()
+            fixture.relaunch()
+            fixture.start()
+
+            fixture.account.backend.finishRestore()
+
+            let client = try #require(fixture.client)
+            let expected: [RecordingTelemetryClient.Call] = keepsSession
+                ? [.optIn, .identify("acct_test", TelemetryFixture.person)]
+                : [.optIn, .reset]
+            #expect(client.calls == expected, "keeps the session: \(keepsSession)")
+        }
+    }
+
+    @Test("An account on a company server is that company's record and never a PostHog person")
+    func companyServerAccountIsAnonymous() async throws {
+        let fixture = try TelemetryFixture()
+        try await fixture.account.services.chooseServer(URL(string: "https://tablepro.example.com")!)
+        fixture.start()
+
+        try await fixture.account.signIn()
+
+        #expect(fixture.client?.calls == [.optIn, .capture("signed_in", ["method": "interactive"])])
+        #expect(fixture.storage.defaults.string(forKey: Telemetry.Keys.identifiedAccount) == nil)
+    }
+
     @Test("app_opened goes once per day with the database types and connection count")
     func appOpenedOncePerDay() async throws {
         let fixture = try TelemetryFixture()
@@ -254,7 +290,7 @@ struct TelemetryTests {
         fixture.start()
         await fixture.account.server.set { $0.refusesRefresh = true }
 
-        _ = try? await fixture.account.services.session.refreshNow()
+        await fixture.account.services.refreshEntitlement()
 
         let client = try #require(fixture.client)
         try await waitUntil { client.calls.last == .reset }
@@ -277,7 +313,7 @@ struct TelemetryTests {
 
     @Test("Opted out, a sign-out, a refused refresh token or a revoked device resets only at the next opt-in")
     func optedOutSignOutResetsOnOptIn() async throws {
-        for cause in [AccountEvent.SignOutCause.user, .refreshRefused, .deviceRevoked] {
+        for cause in [AccountSignOutCause.user, .refreshRefused, .deviceRevoked] {
             let fixture = try TelemetryFixture()
             try await fixture.account.signIn()
             fixture.start()
@@ -289,11 +325,13 @@ struct TelemetryTests {
                 await fixture.account.services.signOut()
             case .refreshRefused:
                 await fixture.account.server.set { $0.refusesRefresh = true }
-                _ = try? await fixture.account.services.session.refreshNow()
+                await fixture.account.services.refreshEntitlement()
                 try await waitUntil { !fixture.account.access.state.isSignedIn }
             case .deviceRevoked:
                 await fixture.account.server.set { $0.deviceRevoked = true }
                 await fixture.account.services.refreshEntitlement()
+            case .serverChanged:
+                Issue.record("The app changes the server only signed out")
             }
 
             #expect(!fixture.account.access.state.isSignedIn, "\(cause)")
@@ -333,16 +371,18 @@ struct TelemetryTests {
         #expect(fixture.storage.defaults.string(forKey: Telemetry.Keys.identifiedAccount) == nil)
     }
 
-    @Test("Use License Key with another account's key resets, then identifies as that account")
+    @Test("Another account's key after a sign-out resets, then identifies as that account")
     func licenseKeySwitchesAccount() async throws {
         let fixture = try TelemetryFixture()
         try await fixture.account.signIn()
         fixture.start()
         await fixture.account.server.set { $0.accountID = "acct_other" }
 
+        await fixture.account.services.signOut()
         _ = try await fixture.account.services.useLicenseKey(FakeAccountServer.validKey)
 
         #expect(Array(fixture.client?.calls.dropFirst(2) ?? []) == [
+            .capture("signed_out", [:]),
             .reset,
             .identify("acct_other", TelemetryFixture.person),
             .capture("signed_in", ["method": "license_key"])
@@ -352,7 +392,7 @@ struct TelemetryTests {
     @Test("A stored key's migration sends signed_in as a migration")
     func migrationSignsIn() async throws {
         let fixture = try TelemetryFixture()
-        try fixture.account.storeLegacyLicense(key: FakeAccountServer.validKey)
+        fixture.account.storeLegacyLicense(key: FakeAccountServer.validKey)
         fixture.start()
 
         #expect(await fixture.account.services.migrateLegacyKeyIfNeeded() == .migrated)
@@ -487,6 +527,26 @@ struct TelemetryTests {
             .capture("support_ask_answered", ["answer": "personal"]),
             .capture("support_ask_answered", ["answer": "not_now"])
         ])
+    }
+
+    @Test("UsageDataAllowed=false keeps usage data off whatever the switch says, and true or absent leaves the switch")
+    func managedUsageDataFollowsThePolicy() {
+        let setting = CurrentValueSubject<Bool, Never>(true)
+        let policy = CurrentValueSubject<ManagedPolicySnapshot, Never>(ManagedPolicySnapshot())
+        var shared: [Bool] = []
+        let subscription = Telemetry.sharesUsageData(
+            setting: setting.eraseToAnyPublisher(),
+            policy: policy.eraseToAnyPublisher()
+        )
+        .sink { shared.append($0) }
+
+        policy.send(ManagedPolicySnapshot(usageDataAllowed: false))
+        setting.send(true)
+        policy.send(ManagedPolicySnapshot(usageDataAllowed: true))
+        setting.send(false)
+        subscription.cancel()
+
+        #expect(shared == [true, false, false, true, false])
     }
 
     @Test("The PostHog client collects nothing on its own and sends each event as it is captured")

@@ -8,7 +8,7 @@ using TablePro.Testing;
 
 namespace TablePro.App.UITests;
 
-// Settings' fonts and history, the production cue, the database switchers, Find and Replace, and .sql files.
+// Settings' fonts and history, the production cue, the database switchers, Redis's too, Find and Replace, and .sql files.
 public sealed partial class ShellTests
 {
     [Theory]
@@ -82,7 +82,7 @@ public sealed partial class ShellTests
     public void FindAndReplaceTakeARegularExpressionAndItsGroups(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "select 1 as one, 2 as two");
 
@@ -183,5 +183,51 @@ public sealed partial class ShellTests
             AppSession.Wait,
             throwOnTimeout: false).Success);
         app.Screenshot("94-database-beside");
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void ARedisTabMovesToAnotherNumberedDatabaseAndTheConnectionOpensOneBesideIt(string theme)
+    {
+        var port = Environment.GetEnvironmentVariable("TABLEPRO_TEST_LIVE_REDIS_PORT");
+        Assert.SkipWhen(string.IsNullOrEmpty(port), "Requires the Redis server windows/ci/live-servers.ps1 starts.");
+        using var app = AppSession.Launch(theme);
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
+        var form = app.WaitForWindow("New connection");
+        app.Click(app.Find("Engine_redis", form), () => app.TryFind("HostBox", form) is not null, form);
+        app.Find("NameBox", form).AsTextBox().Text = "Redis";
+        app.Find("HostBox", form).AsTextBox().Text = "127.0.0.1";
+        app.Find("PortBox", form).AsTextBox().Text = port;
+        app.Find("ConnectButton", form).AsButton().Invoke();
+        app.WaitForClose("New connection");
+        // Saved with no database, the connection is in the one the server lists as the login's.
+        Assert.True(Retry.WhileFalse(
+            () => app.TryFind("DatabaseButton") is { Name: "Database: 0" },
+            AppSession.Wait,
+            throwOnTimeout: false).Success);
+
+        app.Click(app.Find("QueryDatabaseButton"), () => app.TryFindMenuItem("3") is not null);
+        app.Click(app.FindMenuItem("3"), () => app.TryFindMenuItem("3") is null);
+        app.TypeInto("Query 1", "CLIENT INFO");
+        app.Chord(
+            () => app.Find("QueryStatus").Name.StartsWith("Rows: ", StringComparison.Ordinal),
+            VirtualKeyShort.CONTROL,
+            VirtualKeyShort.ENTER);
+        app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value.Contains(" db=3 ", StringComparison.Ordinal));
+        app.Screenshot("185-redis-query-tab-database");
+
+        app.Click(app.Find("DatabaseButton"), () => app.TryFindMenuItem("15") is not null);
+        app.Screenshot("186-redis-databases");
+        app.Click(app.FindMenuItem("5"), () => app.TryFind("Rail_Redis · 5") is not null);
+        Assert.True(Retry.WhileFalse(
+            () => app.TryFind("DatabaseButton") is { Name: "Database: 5" },
+            AppSession.Wait,
+            throwOnTimeout: false).Success);
+        app.Screenshot("187-redis-database-beside");
+
+        // Back to 0 is the connection's own, brought forward rather than opened again.
+        app.Click(app.Find("DatabaseButton"), () => app.TryFindMenuItem("0") is not null);
+        app.Click(app.FindMenuItem("0"), () => app.TryFind("DatabaseButton") is { Name: "Database: 0" });
+        Assert.Null(app.TryFind("Rail_Redis · 0"));
     }
 }

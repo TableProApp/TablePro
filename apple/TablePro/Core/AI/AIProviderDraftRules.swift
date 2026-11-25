@@ -11,33 +11,24 @@ internal enum AIProviderDraftRules {
     /// Which model a provider being set up starts on.
     ///
     /// A list sorted by name has no first choice: taking one put a router's users on whichever of
-    /// several hundred models sorts first. So a model is picked only where someone ranked it, in
-    /// the app's curated list or as the provider's own default, or where there is nothing to
-    /// choose between.
-    internal static func initialModel(curated: [CuratedModel], fetched: [AIModelInfo]) -> String? {
-        if let first = curated.first {
-            return first.id
-        }
-        if let marked = fetched.first(where: \.isProviderDefault) {
+    /// several hundred models sorts first. So a model is picked only where the provider or the
+    /// catalog names a default, or where there is nothing to choose between.
+    internal static func initialModel(fetched: [AIModelInfo]) -> String? {
+        if let marked = fetched.first(where: { $0.isProviderDefault && !$0.isDeprecated }) {
             return marked.id
         }
         return fetched.count == 1 ? fetched.first?.id : nil
     }
 
-    // Without an effort, a model that always reasons runs the server's default, which can be its costliest.
+    // A model that always reasons gets a concrete level, since sending none runs the server's default, which can be its costliest.
     internal static func effort(
         afterPicking current: ReasoningEffort?,
-        reasoning: AIReasoningSupport,
-        curated: CuratedModel?
+        reasoning: AIReasoningSupport
     ) -> ReasoningEffort? {
-        let levels = reasoning.effortLevels
-        guard !levels.isEmpty else { return nil }
-        if let current, levels.contains(current) { return current }
-        guard reasoning.isMandatory else { return curated?.defaultEffort }
-        return current.flatMap(reasoning.clampedEffort)
-            ?? curated?.defaultEffort
-            ?? reasoning.defaultEffort
-            ?? levels.first
+        guard !reasoning.effortLevels.isEmpty || reasoning.canTurnOff else { return nil }
+        if let current, reasoning.takes(current) { return current }
+        guard reasoning.isMandatory else { return nil }
+        return current.flatMap(reasoning.clampedEffort) ?? reasoning.preferredEffort
     }
 
     // A typed id is incomplete until the last keystroke; the send path fits the effort to the model anyway.
@@ -46,10 +37,17 @@ internal enum AIProviderDraftRules {
         reasoning: AIReasoningSupport
     ) -> ReasoningEffort? {
         guard reasoning.isMandatory, !reasoning.effortLevels.isEmpty else { return current }
-        if let current, reasoning.effortLevels.contains(current) { return current }
-        return current.flatMap(reasoning.clampedEffort)
-            ?? reasoning.defaultEffort
-            ?? reasoning.effortLevels.first
+        if let current, reasoning.takes(current) { return current }
+        return current.flatMap(reasoning.clampedEffort) ?? reasoning.preferredEffort
+    }
+
+    // What the Reasoning picker shows: a saved level the model does not take reads as the one a send would use.
+    internal static func displayedEffort(
+        _ current: ReasoningEffort?,
+        reasoning: AIReasoningSupport
+    ) -> ReasoningEffort? {
+        guard let current else { return reasoning.isMandatory ? reasoning.preferredEffort : nil }
+        return reasoning.clampedEffort(current) ?? (reasoning.isMandatory ? reasoning.preferredEffort : nil)
     }
 
     /// Save waits for a model only while the provider's own list is there to pick one from. With

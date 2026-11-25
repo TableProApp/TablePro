@@ -1,13 +1,32 @@
-//
-//  SSHProfileEditorView.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProSSHConfig
 import TableProSSHTransport
 
+struct SSHProfileDraft: Equatable {
+    var name = ""
+    var server = SSHServerDraft()
+
+    var trimmedName: String {
+        name.trimmingCharacters(in: .whitespaces)
+    }
+
+    var validationIssues: [String] {
+        var issues: [String] = []
+        if trimmedName.isEmpty {
+            issues.append(String(localized: "A profile needs a name."))
+        }
+        return issues + server.validationIssues
+    }
+}
+
 struct SSHProfileEditorView: View {
+    private enum TestState: Equatable {
+        case idle
+        case running
+        case succeeded
+        case failed(String)
+    }
+
     @Environment(\.dismiss) private var dismiss
 
     let existingProfile: SSHProfile?
@@ -17,551 +36,240 @@ struct SSHProfileEditorView: View {
     var onSave: ((SSHProfile) -> Void)?
     var onDelete: (() -> Void)?
 
-    @State private var profileName: String = ""
-
-    @State private var host: String = ""
-    @State private var port: String = "22"
-    @State private var username: String = ""
-
-    @State private var authMethod: SSHAuthMethod = .password
-    @State private var sshPassword: String = ""
-    @State private var privateKeyPath: String = ""
-    @State private var keyPassphrase: String = ""
-    @State private var agentSocketOption: SSHAgentSocketOption = .systemDefault
-    @State private var customAgentSocketPath: String = ""
-
-    @State private var totpMode: TOTPMode = .none
-    @State private var totpSecret: String = ""
-    @State private var totpAlgorithm: TOTPAlgorithm = .sha1
-    @State private var totpDigits: Int = 6
-    @State private var totpPeriod: Int = 30
-
-    @State private var jumpHosts: [SSHJumpHost] = []
-
-    @State private var sshConfigEntries: [SSHConfigEntry] = []
-    @State private var selectedSSHConfigHost: String = ""
-
-    @State private var showingDeleteConfirmation = false
+    @State private var draft = SSHProfileDraft()
+    @State private var baseline = SSHProfileDraft()
+    @State private var hasLoaded = false
+    @State private var isStored = false
+    @State private var newProfileId = UUID()
+    @State private var secretReads: [SSHSecret: ProfileSecretRead] = [:]
+    @State private var inheritedSecrets: Set<SSHSecret> = []
+    @State private var usageUnknown = false
+    @State private var configEntries: [SSHConfigEntry] = []
+    @State private var pendingDeletion: PendingProfileDeletion?
     @State private var saveError: String?
-    @State private var connectionsUsingProfile = 0
-    @State private var isTesting = false
-    @State private var testSucceeded = false
-    @State private var testError: String?
+    @State private var test = TestState.idle
     @State private var testTask: Task<Void, Never>?
 
-    private var isStoredProfile: Bool {
-        guard let profile = existingProfile else { return false }
-        return SSHProfileStorage.shared.profile(for: profile.id) != nil
+    private var storage: SSHProfileStorage { .shared }
+
+    private var profileId: UUID {
+        existingProfile?.id ?? newProfileId
     }
 
-    private var isValid: Bool {
-        let nameValid = !profileName.trimmingCharacters(in: .whitespaces).isEmpty
-        let hostValid = !host.trimmingCharacters(in: .whitespaces).isEmpty
-        let portValid = port.isEmpty || (Int(port).map { (1...65_535).contains($0) } ?? false)
-        let authValid = authMethod == .password || authMethod == .sshAgent
-            || authMethod == .keyboardInteractive || authMethod == .none || !privateKeyPath.isEmpty
-        let jumpValid = jumpHosts.allSatisfy(\.isValid)
-        return nameValid && hostValid && portValid && authValid && jumpValid
-    }
-
-    private var resolvedAgentSocketPath: String {
-        agentSocketOption.resolvedPath(customPath: customAgentSocketPath)
+    private var savedSecrets: Set<SSHSecret> {
+        Set(secretReads.filter { $0.value != .absent }.map(\.key)).union(inheritedSecrets)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             Form {
                 Section(String(localized: "Profile")) {
-                    TextField(String(localized: "Name"), text: $profileName, prompt: Text("My Server"))
+                    TextField(String(localized: "Name"), text: $draft.name, prompt: Text("My Server"))
+                        .accessibilityIdentifier("ssh-profile-name")
                 }
-
-                serverSection
-                authenticationSection
-
-                if authMethod.supportsTwoFactorAuthentication {
-                    totpSection
+                if secretReads.values.contains(.unreadable) {
+                    Section {
+                        NoticeLabel(
+                            String(localized: "The Keychain could not be read, so the stored secrets are not shown. Editing the name is safe; they are left as they are.")
+                        )
+                    }
                 }
-
-                jumpHostsSection
+                SSHServerFields(
+                    draft: $draft.server,
+                    configEntries: configEntries,
+                    identifierPrefix: "ssh-profile",
+                    savedSecrets: savedSecrets
+                )
             }
             .formStyle(.grouped)
 
             Divider()
             bottomBar
         }
-        .frame(minWidth: 480, idealHeight: 500)
-        .onAppear {
-            loadExistingProfile()
-        }
+        .frame(minWidth: 520, idealWidth: 520, minHeight: 440, idealHeight: 560)
+        .onAppear(perform: load)
         .task {
-            let entries = await Task.detached { SSHConfigParser.parse() }.value
-            sshConfigEntries = entries
+            configEntries = await Task.detached { SSHConfigParser.parse() }.value
         }
-        .onChange(of: host) { _ in testSucceeded = false }
-        .onChange(of: port) { _ in testSucceeded = false }
-        .onChange(of: username) { _ in testSucceeded = false }
-        .onChange(of: authMethod) { _ in testSucceeded = false }
-        .onChange(of: sshPassword) { _ in testSucceeded = false }
-        .onChange(of: privateKeyPath) { _ in testSucceeded = false }
-        .onChange(of: keyPassphrase) { _ in testSucceeded = false }
-        .onChange(of: agentSocketOption) { _ in testSucceeded = false }
-        .onChange(of: customAgentSocketPath) { _ in testSucceeded = false }
-        .onChange(of: totpMode) { _ in testSucceeded = false }
-        .onChange(of: totpSecret) { _ in testSucceeded = false }
-        .onChange(of: jumpHosts) { _ in testSucceeded = false }
+        .onChange(of: draft) { _ in
+            cancelTest()
+        }
         .onDisappear {
             testTask?.cancel()
         }
     }
 
-    // MARK: - Server Section
-
-    private var serverSection: some View {
-        Section(String(localized: "Server")) {
-            if !sshConfigEntries.isEmpty {
-                Picker(String(localized: "Config Host"), selection: $selectedSSHConfigHost) {
-                    Text(String(localized: "Manual")).tag("")
-                    ForEach(sshConfigEntries) { entry in
-                        Text(entry.displayName).tag(entry.host)
-                    }
-                }
-                .onChange(of: selectedSSHConfigHost) { _ in
-                    applySSHConfigEntry(selectedSSHConfigHost)
-                }
-            }
-            if selectedSSHConfigHost.isEmpty || sshConfigEntries.isEmpty {
-                TextField(String(localized: "SSH Host"), text: $host, prompt: Text("ssh.example.com"))
-            }
-            TextField(String(localized: "SSH Port"), text: $port, prompt: Text("22"))
-            TextField(String(localized: "SSH User"), text: $username, prompt: Text("username"))
-        }
-    }
-
-    // MARK: - Authentication Section
-
-    private var authenticationSection: some View {
-        Section(String(localized: "Authentication")) {
-            Picker(String(localized: "Method"), selection: $authMethod) {
-                ForEach(SSHAuthMethod.allCases) { method in
-                    Text(method.rawValue).tag(method)
-                }
-            }
-            if authMethod == .password {
-                SecureField(String(localized: "Password"), text: $sshPassword)
-            } else if authMethod == .sshAgent {
-                Picker(String(localized: "Agent Socket"), selection: $agentSocketOption) {
-                    ForEach(SSHAgentSocketOption.allCases) { option in
-                        Text(option.displayName).tag(option)
-                    }
-                }
-                if agentSocketOption == .custom {
-                    TextField(
-                        String(localized: "Custom Path"),
-                        text: $customAgentSocketPath,
-                        prompt: Text("/path/to/agent.sock")
-                    )
-                }
-                Text(agentSocketOption.explanation)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                LabeledContent(String(localized: "Identity File")) {
-                    HStack {
-                        TextField("", text: $privateKeyPath, prompt: Text("~/.ssh/id_ed25519.pub"))
-                        Button(String(localized: "Browse")) { browseForPrivateKey() }
-                            .controlSize(.small)
-                    }
-                }
-                Text(String(localized: """
-                Offers the agent key matching this public key file first. With IdentitiesOnly yes \
-                in ~/.ssh/config, only that key is offered.
-                """))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else if authMethod == .keyboardInteractive {
-                SecureField(String(localized: "Password"), text: $sshPassword)
-                Text(String(localized: "Password is sent via keyboard-interactive challenge-response."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else if authMethod == .none {
-                Text("No credentials are sent. Use this when the server handles authentication itself, such as a Tailscale SSH host.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                LabeledContent(String(localized: "Key File")) {
-                    HStack {
-                        TextField("", text: $privateKeyPath, prompt: Text("~/.ssh/id_rsa"))
-                        Button(String(localized: "Browse")) { browseForPrivateKey() }
-                            .controlSize(.small)
-                    }
-                }
-                SecureField(String(localized: "Passphrase"), text: $keyPassphrase)
-            }
-        }
-    }
-
-    // MARK: - TOTP Section
-
-    private var totpSection: some View {
-        Section(String(localized: "Two-Factor Authentication")) {
-            Picker(String(localized: "TOTP"), selection: $totpMode) {
-                ForEach(TOTPMode.allCases) { mode in
-                    Text(mode.displayName).tag(mode)
-                }
-            }
-
-            if totpMode == .autoGenerate {
-                SecureField(String(localized: "TOTP Secret"), text: $totpSecret)
-                    .help(String(localized: "Base32-encoded secret from your authenticator setup"))
-
-                Picker(String(localized: "Algorithm"), selection: $totpAlgorithm) {
-                    ForEach(TOTPAlgorithm.allCases) { algo in
-                        Text(algo.rawValue).tag(algo)
-                    }
-                }
-
-                Picker(String(localized: "Digits"), selection: $totpDigits) {
-                    Text("6").tag(6)
-                    Text("8").tag(8)
-                }
-
-                Picker(String(localized: "Period"), selection: $totpPeriod) {
-                    Text("30s").tag(30)
-                    Text("60s").tag(60)
-                }
-            } else {
-                Text(String(localized: "If the SSH server asks for a verification code, TablePro prompts you for it when you connect."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    // MARK: - Jump Hosts Section
-
-    private var jumpHostsSection: some View {
-        Section {
-            DisclosureGroup(String(localized: "Jump Hosts")) {
-                ForEach(jumpHosts) { jumpHost in
-                    let jumpHostBinding = $jumpHosts.element(jumpHost)
-                    DisclosureGroup {
-                        TextField(String(localized: "Host"), text: jumpHostBinding.host, prompt: Text("bastion.example.com"))
-                        HStack {
-                            TextField(
-                                String(localized: "Port"),
-                                text: Binding(
-                                    get: { jumpHostBinding.wrappedValue.port.map(String.init) ?? "" },
-                                    set: { jumpHostBinding.wrappedValue.port = Int($0) }
-                                ),
-                                prompt: Text("22")
-                            )
-                            .frame(width: 80)
-                            TextField(String(localized: "Username"), text: jumpHostBinding.username, prompt: Text("admin"))
-                        }
-                        Picker(String(localized: "Auth"), selection: jumpHostBinding.authMethod) {
-                            ForEach(SSHJumpAuthMethod.allCases) { method in
-                                Text(method.rawValue).tag(method)
-                            }
-                        }
-                        if jumpHost.authMethod == .privateKey {
-                            LabeledContent(String(localized: "Key File")) {
-                                HStack {
-                                    TextField("", text: jumpHostBinding.privateKeyPath, prompt: Text("~/.ssh/id_rsa"))
-                                    Button(String(localized: "Browse")) {
-                                        browseForJumpHostKey(jumpHost: jumpHostBinding)
-                                    }
-                                    .controlSize(.small)
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Text(
-                                jumpHost.host.isEmpty
-                                    ? String(localized: "New Jump Host")
-                                    : "\(jumpHost.username)@\(jumpHost.host)"
-                            )
-                            .foregroundStyle(jumpHost.host.isEmpty ? .secondary : .primary)
-                            Spacer()
-                            Button {
-                                let idToRemove = jumpHost.id
-                                withMotion { jumpHosts.removeAll { $0.id == idToRemove } }
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .frame(width: 24, height: 24)
-                                    .foregroundStyle(.red)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(String(localized: "Remove jump host"))
-                        }
-                    }
-                }
-                .onMove { indices, destination in
-                    jumpHosts.move(fromOffsets: indices, toOffset: destination)
-                }
-
-                Button {
-                    jumpHosts.append(SSHJumpHost())
-                } label: {
-                    Label(String(localized: "Add Jump Host"), systemImage: "plus")
-                }
-
-                Text("Jump hosts are connected in order before reaching the SSH server above. Only key and agent auth are supported for jumps.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    // MARK: - Bottom Bar
-
     private var bottomBar: some View {
-        HStack {
-            if isStoredProfile {
-                Button(role: .destructive) {
-                    connectionsUsingProfile = ConnectionStorage.shared.loadConnections()
-                        .filter { connection in
-                            guard case .profile(let id, _) = connection.sshTunnelMode else { return false }
-                            return id == existingProfile?.id
-                        }
-                        .count
-                    showingDeleteConfirmation = true
-                } label: {
-                    Text("Delete Profile")
+        DialogFooter {
+            if isStored {
+                Button(String(localized: "Delete Profile"), role: .destructive) {
+                    pendingDeletion = PendingProfileDeletion.make(kind: .ssh, id: profileId, name: baseline.trimmedName)
                 }
-                .alert(
-                    "Delete SSH Profile?",
-                    isPresented: $showingDeleteConfirmation
-                ) {
-                    Button("Delete", role: .destructive) { deleteProfile() }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    if connectionsUsingProfile > 0 {
-                        Text("\(connectionsUsingProfile) connection(s) use this profile. They keep this configuration as their own SSH tunnel.")
-                    } else {
-                        Text("This profile will be permanently deleted.")
-                    }
-                }
+                .disabled(usageUnknown)
+                .accessibilityIdentifier("ssh-profile-delete")
+                .profileDeletionAlert($pendingDeletion) { _ in deleteProfile() }
             }
-
-            Button(action: testSSHConnection) {
-                HStack(spacing: 6) {
-                    if isTesting {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else if testSucceeded {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    } else if testError != nil {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.red)
-                    } else {
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("Test Connection")
-                }
-            }
-            .disabled(isTesting || !isValid)
-
-            if let saveError {
-                NoticeLabel(saveError, severity: .error)
-                    .font(.caption)
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-            } else if testSucceeded {
-                NoticeLabel(String(localized: "Connected"), severity: .success)
-                    .font(.caption)
-            } else if let testError {
-                NoticeLabel(testError)
-                    .font(.caption)
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-            }
-
-            Spacer()
-
-            Button("Cancel") { dismiss() }
+            statusLabel
+        } actions: {
+            Button(String(localized: "Test Connection"), action: testConnection)
+                .disabled(test == .running || !draft.server.validationIssues.isEmpty)
+                .accessibilityIdentifier("ssh-profile-test")
+            Button(String(localized: "Cancel")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
-
-            Button(isStoredProfile ? "Save" : "Create") { saveProfile() }
+                .accessibilityIdentifier("ssh-profile-cancel")
+            Button(isStored ? String(localized: "Save") : String(localized: "Create")) { saveProfile() }
                 .keyboardShortcut(.defaultAction)
-                .disabled(!isValid)
+                .disabled(!draft.validationIssues.isEmpty)
+                .accessibilityIdentifier("ssh-profile-save")
         }
         .padding()
     }
 
-    // MARK: - Actions
-
-    private func loadExistingProfile() {
-        guard let profile = existingProfile else { return }
-        profileName = profile.name
-        host = profile.host
-        port = profile.port.map(String.init) ?? ""
-        username = profile.username
-        authMethod = profile.authMethod
-        privateKeyPath = profile.privateKeyPath
-        jumpHosts = profile.jumpHosts
-        totpMode = profile.totpMode
-        totpAlgorithm = profile.totpAlgorithm
-        totpDigits = profile.totpDigits
-        totpPeriod = profile.totpPeriod
-
-        let option = SSHAgentSocketOption(socketPath: profile.agentSocketPath)
-        agentSocketOption = option
-        if option == .custom {
-            customAgentSocketPath = profile.agentSocketPath
+    @ViewBuilder private var statusLabel: some View {
+        if let saveError {
+            NoticeLabel(saveError, severity: .error)
+                .lineLimit(2)
+                .truncationMode(.tail)
+        } else {
+            switch test {
+            case .running:
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityHidden(true)
+                    Text("Testing…")
+                        .foregroundStyle(.secondary)
+                }
+            case .succeeded:
+                NoticeLabel(String(localized: "Connected"), severity: .success)
+            case .failed(let message):
+                NoticeLabel(message, severity: .error)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+            case .idle:
+                if hasLoaded, draft != baseline, let issue = draft.validationIssues.first {
+                    NoticeLabel(issue)
+                        .lineLimit(2)
+                }
+            }
         }
+    }
 
-        // Load secrets from Keychain, falling back to initial values (e.g. from "Save as Profile")
-        sshPassword = SSHProfileStorage.shared.loadSSHPassword(for: profile.id) ?? initialPassword ?? ""
-        keyPassphrase = SSHProfileStorage.shared.loadKeyPassphrase(for: profile.id) ?? initialKeyPassphrase ?? ""
-        totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profile.id) ?? initialTOTPSecret ?? ""
+    private func load() {
+        guard !hasLoaded else { return }
+        hasLoaded = true
+
+        let stored = existingProfile.flatMap { storage.profile(for: $0.id) }
+        isStored = stored != nil
+        usageUnknown = ConnectionStorage.shared.isLibraryUnreadable
+
+        var loaded = SSHProfileDraft()
+        if let record = stored ?? existingProfile {
+            loaded.name = record.name
+            loaded.server = SSHServerDraft(profile: record)
+        }
+        // A profile not saved yet has no Keychain items; its secrets come from the connection that promoted it.
+        if let stored {
+            for secret in SSHSecret.allCases {
+                let read = storage.readSecret(secret, for: stored.id)
+                secretReads[secret] = read
+                loaded.server.setValue(read.value ?? "", of: secret)
+            }
+        } else {
+            loaded.server.password = initialPassword ?? ""
+            loaded.server.keyPassphrase = initialKeyPassphrase ?? ""
+            loaded.server.totpSecret = initialTOTPSecret ?? ""
+            // They came out of the connection's Keychain, so revealing them asks for authentication like a stored secret.
+            inheritedSecrets = loaded.server.filledSecrets
+        }
+        draft = loaded
+        baseline = loaded
     }
 
     private func saveProfile() {
-        let profileId = existingProfile?.id ?? UUID()
+        // Read, then modify: the stored record may have changed since this sheet opened.
+        let stored = isStored ? storage.profile(for: profileId) : nil
+        var record = stored ?? SSHProfile(id: profileId, name: draft.trimmedName)
+        record.name = draft.trimmedName
+        draft.server.apply(to: &record)
 
-        let profile = SSHProfile(
-            id: profileId,
-            name: profileName.trimmingCharacters(in: .whitespaces),
-            host: host,
-            port: Int(port),
-            username: username,
-            authMethod: authMethod,
-            privateKeyPath: privateKeyPath,
-            agentSocketPath: resolvedAgentSocketPath,
-            jumpHosts: jumpHosts,
-            totpMode: totpMode,
-            totpAlgorithm: totpAlgorithm,
-            totpDigits: totpDigits,
-            totpPeriod: totpPeriod
-        )
-
-        let persisted = isStoredProfile
-            ? SSHProfileStorage.shared.updateProfile(profile)
-            : SSHProfileStorage.shared.addProfile(profile)
-
-        /// The keychain writes below are keyed by the profile id, so running them for a profile
-        /// that never reached disk would leave secrets nothing can name. Dismissing would also
-        /// report a save that did not happen.
+        let persisted = isStored ? storage.updateProfile(record) : storage.addProfile(record)
+        // Keychain items are keyed by the profile id, so writing them for a profile that never reached disk strands them.
         guard persisted else {
             saveError = String(localized: "Could not save the profile. Reopen the SSH settings and try again.")
             return
         }
+        isStored = true
+
+        var secretsSaved = true
+        for secret in SSHSecret.allCases {
+            let before = secretReads[secret] ?? .absent
+            switch ProfileSecretChange.decide(
+                applies: draft.server.applies(secret),
+                value: draft.server.value(of: secret),
+                read: before
+            ) {
+            case .write(let value):
+                if storage.saveSecret(value, secret, for: profileId) {
+                    secretReads[secret] = .found(value)
+                } else {
+                    secretsSaved = false
+                }
+            case .keep:
+                break
+            case .delete:
+                storage.deleteSecret(secret, for: profileId)
+                secretReads[secret] = .absent
+            }
+        }
+        guard secretsSaved else {
+            saveError = String(localized: "The profile was saved, but its password couldn't be saved to the Keychain.")
+            return
+        }
         saveError = nil
-
-        if (authMethod == .password || authMethod == .keyboardInteractive) && !sshPassword.isEmpty {
-            SSHProfileStorage.shared.saveSSHPassword(sshPassword, for: profileId)
-        } else {
-            SSHProfileStorage.shared.deleteSSHPassword(for: profileId)
-        }
-
-        if authMethod == .privateKey && !keyPassphrase.isEmpty {
-            SSHProfileStorage.shared.saveKeyPassphrase(keyPassphrase, for: profileId)
-        } else {
-            SSHProfileStorage.shared.deleteKeyPassphrase(for: profileId)
-        }
-
-        if totpMode == .autoGenerate && !totpSecret.isEmpty {
-            SSHProfileStorage.shared.saveTOTPSecret(totpSecret, for: profileId)
-        } else {
-            SSHProfileStorage.shared.deleteTOTPSecret(for: profileId)
-        }
-
-        onSave?(profile)
+        onSave?(record)
         dismiss()
     }
 
-    func testSSHConnection() {
-        isTesting = true
-        testSucceeded = false
-        testError = nil
-
-        let config = SSHConfiguration(
-            enabled: true,
-            host: host,
-            port: Int(port),
-            username: username,
-            authMethod: authMethod,
-            privateKeyPath: privateKeyPath,
-            agentSocketPath: resolvedAgentSocketPath,
-            jumpHosts: jumpHosts,
-            totpMode: totpMode,
-            totpAlgorithm: totpAlgorithm,
-            totpDigits: totpDigits,
-            totpPeriod: totpPeriod
-        )
-
-        let credentials = SSHTunnelCredentials(
-            sshPassword: sshPassword.isEmpty ? nil : sshPassword,
-            keyPassphrase: keyPassphrase.isEmpty ? nil : keyPassphrase,
-            totpSecret: totpSecret.isEmpty ? nil : totpSecret,
-            keyboardInteractivePromptProvider: nil
-        )
-
+    private func testConnection() {
+        cancelTest()
+        test = .running
+        let config = draft.server.configuration()
+        let credentials = draft.server.testCredentials
         testTask = Task {
             do {
-                try await SSHTunnelManager.shared.testSSHProfile(
-                    config: config,
-                    credentials: credentials
-                )
-                await MainActor.run {
-                    isTesting = false
-                    testSucceeded = true
-                }
+                try await SSHTunnelManager.shared.testSSHProfile(config: config, credentials: credentials)
+                guard !Task.isCancelled else { return }
+                test = .succeeded
             } catch {
                 guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    isTesting = false
-                    testSucceeded = false
-                    testError = error.localizedDescription
-                }
+                test = .failed(error.localizedDescription)
             }
         }
     }
 
+    // An edit makes the last result stale, and a test still running answers for values no longer on screen.
+    private func cancelTest() {
+        testTask?.cancel()
+        testTask = nil
+        test = .idle
+    }
+
     private func deleteProfile() {
-        guard let profile = existingProfile else { return }
-        guard SSHProfileStorage.shared.deleteProfile(profile) else {
-            saveError = String(localized: "Could not delete the profile. Reopen the SSH settings and try again.")
+        guard let stored = storage.profile(for: profileId) else {
+            guard storage.lastLoadFailed else {
+                onDelete?()
+                dismiss()
+                return
+            }
+            saveError = ConnectionCountCopy.deleteFailedMessage
+            return
+        }
+        guard storage.deleteProfile(stored) else {
+            saveError = ConnectionCountCopy.deleteFailedMessage
             return
         }
         onDelete?()
         dismiss()
-    }
-
-    // MARK: - SSH Config Helpers
-
-    private func applySSHConfigEntry(_ configHost: String) {
-        guard !configHost.isEmpty else { return }
-        host = configHost
-    }
-
-    private func browseForPrivateKey() {
-        guard let window = NSApp.keyWindow else { return }
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
-        panel.showsHiddenFiles = true
-        panel.beginSheetModal(for: window) { response in
-            if response == .OK, let url = panel.url {
-                privateKeyPath = url.path(percentEncoded: false)
-            }
-        }
-    }
-
-    private func browseForJumpHostKey(jumpHost: Binding<SSHJumpHost>) {
-        guard let window = NSApp.keyWindow else { return }
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
-        panel.showsHiddenFiles = true
-        panel.beginSheetModal(for: window) { response in
-            if response == .OK, let url = panel.url {
-                jumpHost.wrappedValue.privateKeyPath = url.path(percentEncoded: false)
-            }
-        }
     }
 }

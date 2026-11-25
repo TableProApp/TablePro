@@ -103,7 +103,7 @@ struct ProjectMenuTests {
     func popUpButtonShowsTheActiveScope() throws {
         var selected: [UUID?] = []
         var newProjectCount = 0
-        let coordinator = ProjectPopUpButton.Coordinator(actions: ProjectPopUpActions(
+        let coordinator = ProjectPopUpController(actions: ProjectPopUpActions(
             select: { selected.append($0) },
             newProject: { newProjectCount += 1 },
             manageProjects: {}

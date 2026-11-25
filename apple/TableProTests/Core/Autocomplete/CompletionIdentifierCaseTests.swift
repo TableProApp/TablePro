@@ -124,7 +124,7 @@ struct CompletionIdentifierCaseTests {
         driver.currentSchema = "public"
         driver.allColumnsToReturn = ["Orders": [TestFixtures.makeColumnInfo(name: "id")]]
         driver.columnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
-        let provider = SQLSchemaProvider()
+        let provider = SQLSchemaProvider.reading(from: driver)
         await provider.resetForDatabase(
             "db",
             tables: [

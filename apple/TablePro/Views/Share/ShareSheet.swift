@@ -422,7 +422,7 @@ internal struct ShareSheet: View {
         case .emailUnverified:
             cancelButton
             Button(String(localized: "Open Account")) {
-                openURL(AccountServices.shared.configuration.accountURL)
+                openURL(AccountServices.shared.portal.accountURL)
             }
             .keyboardShortcut(.defaultAction)
         case .form:

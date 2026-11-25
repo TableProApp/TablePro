@@ -2,15 +2,16 @@ use std::num::NonZeroU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use progenitor_client::{Error, ResponseValue};
 use secrecy::{ExposeSecret as _, SecretString};
+use tablepro_cloud_api::v2::{Error, ResponseValue};
+use tablepro_cloud_api::{Bearer, answer_error, v2};
 
 use super::{Account, Call, Session};
 use crate::account_error::AccountError;
-use crate::cloud_api::{Bearer, answer_error, v2};
+use crate::server::ServerError;
 use crate::share::{
     CreatedShare, MAX_SHARE_COLUMNS, MAX_SHARE_SQL_BYTES, Share, ShareExpiry, ShareLimits, SharePage, ShareRequest,
-    SharedLink, SnapshotBody, sent_share_password,
+    SharedLink, sent_share_password, snapshot_body,
 };
 use crate::share_link::is_share_token;
 
@@ -39,16 +40,19 @@ impl Account {
             .as_ref()
             .is_some_and(|snapshot| snapshot.columns.len() > MAX_SHARE_COLUMNS);
         let body = create_body(request)?;
-        let (bearer, attempt) = {
+        // The server is taken with the token, so a token never goes to a server picked during the upload.
+        let (bearer, server, attempt) = {
             let mut session = self.inner.session.lock().await;
             let taken = match session.waited(Call::ShareCreate) {
                 Ok(()) => self.bearer(&mut session, false).await,
                 Err(error) => Err(error),
             };
             let bearer = self.ended_by(&mut session, taken).await?;
-            (bearer, self.inner.attempts.load(Ordering::SeqCst))
+            (bearer, self.current(), self.inner.attempts.load(Ordering::SeqCst))
         };
-        let api = self.api(bearer.lasting(UPLOAD_TIMEOUT));
+        // A policy that stopped the account while the token was taken stops the upload too.
+        self.reachable()?;
+        let api = v2::Client::new_with_client(&server.api, self.inner.http.clone(), bearer.lasting(UPLOAD_TIMEOUT));
         let sent = answer(api.create_share(&body).await).await;
         let mut session = self.inner.session.lock().await;
         // A sign-in or sign-out since the token was taken owns the session now.
@@ -113,17 +117,30 @@ impl Account {
     }
 
     // Public: no session and no token, so anyone with a link reads it, signed in or not.
+    // Refused before any request while the organization holds the app to its own server (core ADR 0055).
     pub async fn fetch_shared(&self, token: &str, password: Option<&SecretString>) -> Result<SharedLink, AccountError> {
+        if !self.allows_tablepro_requests() {
+            return Err(ServerError::Managed.into());
+        }
         if !is_share_token(token) {
             return Err(not_found("not a share token"));
         }
-        let api = self.api(Bearer::public());
+        let api = v2::Client::new_with_client(&self.shared_links_api(), self.inner.http.clone(), Bearer::public());
         let password = password
             .map(|password| sent_share_password(password.expose_secret()))
             .filter(|password| !password.is_empty());
         answer(api.get_shared(token, password).await)
             .await
             .map(SharedLink::from)
+    }
+
+    // A link names no server, and only tablepro.app makes them, so a company server never sees its token or password.
+    pub(super) fn shared_links_api(&self) -> String {
+        let server = self.current();
+        match server.is_company() {
+            true => crate::account_settings::Endpoints::production().api().to_owned(),
+            false => server.api.clone(),
+        }
     }
 
     // Each call holds the session, waits out its 429, takes the bearer and ends the session on a refused sign-in.
@@ -153,7 +170,7 @@ impl Account {
 async fn answer<T>(sent: Result<ResponseValue<T>, Error<v2::types::Problem>>) -> Result<T, AccountError> {
     match sent {
         Ok(answer) => Ok(answer.into_inner()),
-        Err(error) => Err(answer_error(error).await),
+        Err(error) => Err(answer_error(error).await.into()),
     }
 }
 
@@ -179,7 +196,7 @@ fn create_body(request: ShareRequest) -> Result<v2::types::CreateShareBody, Acco
             })
             .transpose()?,
         team_id: request.team_id.map(|team| limited(team, "not a team ID")).transpose()?,
-        snapshot: request.snapshot.map(SnapshotBody::from),
+        snapshot: request.snapshot.map(snapshot_body),
     })
 }
 
@@ -247,6 +264,7 @@ mod tests {
     use crate::browser::BrowserLauncher;
     use crate::entitlement::test_tokens::keys;
     use crate::machine_id::MachineId;
+    use crate::server::{FixedServer, ServerSettings};
     use crate::share::ShareKind;
     use crate::token_vault::RefreshTokenVault;
 
@@ -364,19 +382,23 @@ mod tests {
             .expect("the account file");
         let settings = AccountSettings {
             client: AppClient::WINDOWS,
-            endpoints,
+            server: ServerSettings::Fixed(FixedServer {
+                endpoints,
+                keys: keys(),
+                issuer: crate::fakes::ISSUER.to_owned(),
+            }),
             device: DeviceDescription {
                 name: "Lab".to_owned(),
                 app_version: "1.0.0".to_owned(),
                 os_version: "Windows 11".to_owned(),
             },
             machine_id: MachineId::derive_machine_guid("d3b07384-d113-4ec6-a2f1-6a3f0c2e9b7a").expect("a machine"),
-            keys: keys(),
             account_file: dir.join("account.json"),
             callback_page: CallbackPage {
                 finished: String::new(),
                 unknown: String::new(),
             },
+            legacy_entitlement_file: None,
         };
         let account = Account::new(
             settings,
@@ -630,6 +652,28 @@ mod tests {
         );
         assert_eq!(sent(&log, "PATCH /v2/shares/shr_01")[0].body, r#"{"expiry":"30d"}"#);
         assert_eq!(sent(&log, "DELETE /v2/shares/shr_01").len(), 1);
+    }
+
+    // The organization holds the app to its own server: no link is read from tablepro.app and nothing is uploaded.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_held_company_server_stops_share_reads_and_uploads_before_any_request() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let (endpoints, log) = cloud(|_| (200, "", TOKENS.to_owned()));
+        let account = signed_in(dir.path(), endpoints).await;
+
+        account.apply_policy(crate::policy::ManagedPolicy::Values(crate::policy::PolicyValues {
+            account_server_url: Some("https://tablepro.corp.example".to_owned()),
+            allow_other_account_servers: Some(false),
+            ..Default::default()
+        }));
+        let read = account.fetch_shared(TOKEN, None).await;
+        let created = account.create_share(query("Orders")).await;
+        let limits = account.share_limits().await;
+
+        assert_eq!(read.expect_err("refused").code(), "account.server_managed");
+        assert_eq!(created.expect_err("refused").code(), "account.server_managed");
+        assert_eq!(limits.expect_err("refused").code(), "account.server_managed");
+        assert!(log.lock().expect("the log").is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

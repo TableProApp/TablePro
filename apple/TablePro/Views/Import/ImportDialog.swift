@@ -39,11 +39,7 @@ struct ImportDialog: View {
     @State private var selectedFormatId: String = "sql"
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var importSucceeded = false
-    @State private var showProgressDialog = false
-    @State private var showSuccessDialog = false
-    @State private var showErrorDialog = false
-    @State private var importResult: PluginImportResult?
-    @State private var importError: (any Error)?
+    @State private var phase: Phase = .form
 
     @State private var hostWindow: NSWindow?
 
@@ -57,30 +53,42 @@ struct ImportDialog: View {
 
     @State private var importService: ImportService?
 
+    private enum Phase {
+        case form
+        case running
+        case finished(TransferResult)
+    }
+
     // MARK: - Body
 
+    // A ZStack, not a Group, whose modifiers reach each phase view: a phase switch must not run onDisappear.
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 16) {
-                fileInfoView
-
-                Divider()
-
-                if availableFormats.count > 1 {
-                    formatPickerView
-                    Divider()
+        ZStack {
+            switch phase {
+            case .form:
+                formView
+            case .running:
+                if let service = importService {
+                    ImportProgressView(service: service)
                 }
-
-                filePreviewView
-
-                optionsView
+            case .finished(let result):
+                TransferResultView(
+                    result,
+                    onBack: result.returnsToForm ? { phase = .form } : nil,
+                    onDone: { closeAfterRun() }
+                ) {
+                    if let report = result.errorReport {
+                        Button("Save Report…") {
+                            TransferResults.saveErrorReport(
+                                report,
+                                sourceFileName: fileURL?.lastPathComponent ?? "",
+                                targetTable: nil,
+                                window: hostWindow
+                            )
+                        }
+                    }
+                }
             }
-            .padding(16)
-            .frame(width: 600, height: 550)
-
-            Divider()
-
-            footerView
         }
         .background {
             WindowAccessor { window in
@@ -96,9 +104,15 @@ struct ImportDialog: View {
             }
             captureSettingsSnapshot()
         }
+        // While running, the Stop button owns Escape and asks first.
         .onExitCommand {
-            if !(importService?.state.isImporting ?? false) {
+            switch phase {
+            case .form:
                 isPresented = false
+            case .running:
+                break
+            case .finished:
+                closeAfterRun()
             }
         }
         .task {
@@ -107,6 +121,14 @@ struct ImportDialog: View {
                 let load = Task { await loadFile(initialURL) }
                 loadFileTask = load
                 await load.value
+            }
+        }
+        .onChange(of: selectedEncoding) { _ in
+            loadFileTask?.cancel()
+            if let url = fileURL {
+                loadFileTask = Task {
+                    await loadFile(url)
+                }
             }
         }
         .onDisappear {
@@ -118,31 +140,26 @@ struct ImportDialog: View {
                 restoreSettingsSnapshot()
             }
         }
-        .sheet(isPresented: $showProgressDialog) {
-            if let service = importService {
-                ImportProgressView(service: service)
+    }
+
+    private var formView: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 16) {
+                fileInfoView
+
+                Divider()
+
+                filePreviewView
+
+                optionsView
             }
+            .padding(16)
+
+            Divider()
+
+            footerView
         }
-        .onChange(of: showSuccessDialog) { isShowing in
-            guard isShowing else { return }
-            TransferResultAlert.presentImportSuccess(
-                result: importResult,
-                runResult: importService?.stopResult,
-                window: hostWindow,
-                sourceFileName: fileURL?.lastPathComponent ?? "",
-                targetTable: nil
-            ) {
-                showSuccessDialog = false
-                isPresented = false
-                AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
-            }
-        }
-        .onChange(of: showErrorDialog) { isShowing in
-            guard isShowing else { return }
-            TransferResultAlert.presentImportFailure(error: importError, result: importService?.stopResult, window: hostWindow) {
-                showErrorDialog = false
-            }
-        }
+        .frame(width: 600)
     }
 
     // MARK: - Plugin Helpers
@@ -216,25 +233,6 @@ struct ImportDialog: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var formatPickerView: some View {
-        HStack(spacing: 8) {
-            Text("Format:")
-                .font(.body)
-                .frame(width: 80, alignment: .leading)
-
-            Picker(String(localized: "Format"), selection: $selectedFormatId) {
-                ForEach(availableFormats.map { (id: type(of: $0).formatId, name: type(of: $0).formatDisplayName) }, id: \.id) { item in
-                    Text(item.name).tag(item.id)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .frame(width: 120)
-
-            Spacer()
-        }
-    }
-
     private var filePreviewView: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Preview")
@@ -242,7 +240,7 @@ struct ImportDialog: View {
                 .foregroundStyle(.primary)
 
             SQLCodePreview(text: $filePreview)
-                .frame(height: availableFormats.count > 1 ? 220 : 280)
+                .frame(height: 280)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
@@ -267,37 +265,30 @@ struct ImportDialog: View {
                 .font(.callout)
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Text("Encoding:")
-                        .font(.body)
-                        .frame(width: 80, alignment: .leading)
-
-                    Picker(String(localized: "Encoding"), selection: $selectedEncoding) {
-                        ForEach(ImportEncoding.allCases) { enc in
-                            Text(enc.label).tag(enc)
+            // A plugin view of flat rows lines up with these rows; one wrapped in a VStack is a single row.
+            Form {
+                if availableFormats.count > 1 {
+                    Picker("Format:", selection: $selectedFormatId) {
+                        ForEach(availableFormats.map { (id: type(of: $0).formatId, name: type(of: $0).formatDisplayName) }, id: \.id) { item in
+                            Text(item.name).tag(item.id)
                         }
                     }
                     .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(width: 120)
-                    .onChange(of: selectedEncoding) { _ in
-                        loadFileTask?.cancel()
-                        if let url = fileURL {
-                            loadFileTask = Task {
-                                await loadFile(url)
-                            }
-                        }
-                    }
-
-                    Spacer()
                 }
+
+                Picker("Encoding:", selection: $selectedEncoding) {
+                    ForEach(ImportEncoding.allCases) { enc in
+                        Text(enc.label).tag(enc)
+                    }
+                }
+                .pickerStyle(.menu)
 
                 if let settable = currentPlugin as? any SettablePluginDiscoverable,
                    let pluginView = settable.settingsView() {
                     pluginView
                 }
             }
+            .formStyle(.columns)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -345,6 +336,12 @@ struct ImportDialog: View {
             TransferDialogStorage.shared.saveLastImportEncoding(selectedEncoding)
         }
         settingsSnapshot = nil
+    }
+
+    private func closeAfterRun() {
+        isPresented = false
+        guard importSucceeded else { return }
+        AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
     }
 
     @MainActor
@@ -509,7 +506,7 @@ struct ImportDialog: View {
         let ownsDecompressedFile = decompressedURL != nil
         tempPreviewURL = nil
 
-        showProgressDialog = true
+        phase = .running
 
         importTask = Task {
             do {
@@ -527,32 +524,25 @@ struct ImportDialog: View {
                 )
 
                 await MainActor.run {
-                    showProgressDialog = false
-                    importResult = result
                     recordSuccessfulImport()
-                    showSuccessDialog = true
+                    phase = .finished(TransferResults.importSucceeded(result: result, runResult: service.stopResult))
                 }
             } catch is PluginImportCancellationError {
                 await MainActor.run {
-                    showProgressDialog = false
-                    TransferResultAlert.presentImportCancelled(
-                        result: service.stopResult,
-                        window: hostWindow
-                    ) {}
+                    phase = .finished(TransferResults.importStopped(service.stopResult))
                 }
             } catch let refusal as ExecutionGateError {
                 await MainActor.run {
-                    showProgressDialog = false
-                    guard case .denied = refusal else { return }
-                    importError = refusal
-                    showErrorDialog = true
+                    guard case .denied = refusal else {
+                        phase = .form
+                        return
+                    }
+                    phase = .finished(TransferResults.importFailed(error: refusal, result: service.stopResult))
                 }
                 return
             } catch {
                 await MainActor.run {
-                    showProgressDialog = false
-                    importError = error
-                    showErrorDialog = true
+                    phase = .finished(TransferResults.importFailed(error: error, result: service.stopResult))
                 }
             }
             CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))

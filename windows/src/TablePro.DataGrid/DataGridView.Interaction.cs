@@ -80,7 +80,7 @@ public sealed partial class DataGridView
             default:
                 return false;
         }
-        var page = GridNavigation.PageRows(VisibleArea().Height, _rowHeight);
+        var page = move is GridKey.PageUp or GridKey.PageDown ? PageRows(move == GridKey.PageDown) : 1;
         var (row, column) = GridNavigation.Move(move, control, _selection.FocusRow, _selection.FocusColumn, RowCount, ColumnCount, page);
         SelectCell(row, column, shift);
         return true;
@@ -138,8 +138,21 @@ public sealed partial class DataGridView
                 x = Math.Min(left, right - visible.Width);
             }
         }
-        var top = row * _rowHeight;
-        var bottom = top + _rowHeight;
+        if (_heights is not null)
+        {
+            // The rows that will share the view with this one, so their heights are known before the offset is.
+            MeasureRows(row, -1, visible.Height);
+            y = _viewY;
+            visible = VisibleArea();
+            if (_content.Height != TotalHeight)
+            {
+                // ScrollTo clamps to the ScrollViewer's extent, which follows the new height after a layout pass.
+                UpdateExtent();
+                _scroller.UpdateLayout();
+            }
+        }
+        var top = RowTop(row);
+        var bottom = top + RowHeightOf(row);
         if (top < visible.Top)
         {
             y = top;
@@ -148,7 +161,7 @@ public sealed partial class DataGridView
         {
             y = bottom - visible.Height;
         }
-        if (x != _viewX || y != _viewY)
+        if (x != _viewX || y != _viewY || _unsynced)
         {
             ScrollTo(x, y);
         }
@@ -328,8 +341,8 @@ public sealed partial class DataGridView
             return null;
         }
         var pane = column < _columns.FrozenCount ? (UIElement)_frozenContent : _content;
-        var bounds = pane.TransformToVisual(this).TransformBounds(new Rect(_columns.PaneX(column), row * _rowHeight,
-            _columns.Width(column), _rowHeight));
+        var bounds = pane.TransformToVisual(this).TransformBounds(new Rect(_columns.PaneX(column), RowTop(row),
+            _columns.Width(column), RowHeightOf(row)));
         return new Point(bounds.Left, bounds.Bottom);
     }
 
@@ -341,8 +354,8 @@ public sealed partial class DataGridView
             return default;
         }
         var pane = column < _columns.FrozenCount ? (UIElement)_frozenContent : _content;
-        var bounds = pane.TransformToVisual(null).TransformBounds(new Rect(_columns.PaneX(column), row * _rowHeight,
-            _columns.Width(column), _rowHeight));
+        var bounds = pane.TransformToVisual(null).TransformBounds(new Rect(_columns.PaneX(column), RowTop(row),
+            _columns.Width(column), RowHeightOf(row)));
         var scale = XamlRoot.RasterizationScale;
         return new Rect(bounds.X * scale, bounds.Y * scale, bounds.Width * scale, bounds.Height * scale);
     }
@@ -507,7 +520,7 @@ public sealed partial class DataGridView
         {
             return null;
         }
-        var row = Math.Clamp((int)Math.Floor(point.Y / _rowHeight), 0, RowCount - 1);
+        var row = Math.Clamp(RowAt(point.Y), 0, RowCount - 1);
         if (frozen)
         {
             return point.X < 0 || point.X >= _columns.FrozenWidth ? null : (row, _columns.FrozenColumnAt(point.X));
@@ -529,9 +542,8 @@ public sealed partial class DataGridView
         {
             return (0, -1);
         }
-        var first = Math.Clamp((int)Math.Floor(visible.Top / _rowHeight), 0, RowCount - 1);
-        var last = Math.Clamp((int)Math.Ceiling(visible.Bottom / _rowHeight) - 1, first, RowCount - 1);
-        return (first, last);
+        var first = Math.Clamp(RowAt(visible.Top), 0, RowCount - 1);
+        return (first, LastRowAbove(visible.Bottom, first));
     }
 
     private void SelectionChanged()
@@ -586,8 +598,8 @@ public sealed partial class DataGridView
             _frozenSelectionBox.Visibility = Visibility.Collapsed;
             return;
         }
-        var top = (rows.First * _rowHeight) - _originY;
-        var height = (rows.Last - rows.First + 1) * _rowHeight;
+        var top = RowTop(rows.First) - _originY;
+        var height = RowsHeight(rows.First, rows.Last);
         PlaceSelection(_frozenSelectionBox, range.FirstColumn, Math.Min(range.LastColumn, _columns.FrozenCount - 1), frozen: true, top, height);
         PlaceSelection(_selectionBox, Math.Max(range.FirstColumn, _columns.FrozenCount), range.LastColumn, frozen: false, top, height);
     }
@@ -624,9 +636,9 @@ public sealed partial class DataGridView
             return;
         }
         Canvas.SetLeft(box, _columns.PaneX(column));
-        Canvas.SetTop(box, (row * _rowHeight) - _originY);
+        Canvas.SetTop(box, RowTop(row) - _originY);
         box.Width = _columns.Width(column);
-        box.Height = _rowHeight;
+        box.Height = RowHeightOf(row);
         box.Visibility = Visibility.Visible;
     }
 }

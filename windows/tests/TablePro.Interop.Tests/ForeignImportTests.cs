@@ -62,15 +62,27 @@ public sealed class ForeignImportTests : IDisposable
 
         var dbeaver = sources.Single(source => source.App == ForeignApp.DBeaver);
         Assert.True(dbeaver.IsAvailable);
+        Assert.Equal(ForeignSourceAvailability.Available.Instance, dbeaver.Availability);
         Assert.Equal((1, 1), (dbeaver.Connections, dbeaver.SavedQueries));
-        Assert.True(sources.Single(source => source.App == ForeignApp.Navicat).PicksFile);
+        Assert.Equal(ForeignPasswordOffer.DecryptedWhileReading, dbeaver.PasswordOffer);
+        Assert.True(dbeaver.OffersSavedQueries);
+        Assert.True(dbeaver.StartsTicked);
+        Assert.True(dbeaver.Preselected);
+        Assert.Equal(ForeignApp.DBeaver, sources.Single(source => source.Preselected).App);
+        var navicat = sources.Single(source => source.App == ForeignApp.Navicat);
+        Assert.True(navicat.PicksFile);
+        Assert.False(navicat.StartsTicked);
         Assert.Equal(ForeignPasswordOutcome.Read, review.Passwords);
         Assert.Equal("Windows PG", review.Connections[0].Name);
         Assert.Equal("windows.example.com", review.Connections[0].Connection?.Host);
         Assert.True(choices.Connections[0].Selected);
         Assert.Equal(ForeignResolution.Add.Instance, choices.Connections[0].Resolution);
         Assert.Equal(ForeignQueryAvailability.Available, choices.Queries[0].Availability);
-        Assert.Equal(new ForeignImportOutcome(1, 0, 0, 1, 0, 0), outcome);
+        Assert.Equal(
+            (1, 0, 0, 1, 0, 0),
+            (outcome.Connections, outcome.Replaced, outcome.PasswordsNotKept, outcome.QueriesAdded,
+                outcome.QueriesAlreadySaved, outcome.QueriesFailed));
+        Assert.Equal([saved.Id!.Value], outcome.ConnectionIds);
         Assert.Equal("foreign_import.applied", again.Code);
         Assert.Equal("Windows PG", saved.Name);
         Assert.Equal("windows-pass", _secrets.Load(saved.Id!.Value, SecretKind.DatabasePassword));
@@ -91,9 +103,9 @@ public sealed class ForeignImportTests : IDisposable
         using var review = await _core.ReadForeignAsync(
             ForeignApp.DBeaver, _dirs, null, new ForeignImportRequest(true, false), cancellationToken);
         var before = review.Choices();
-        review.SetSelected("windows", true);
+        review.SetSelected("General/windows", true);
         var offered = review.Choices().Connections[0].Offered;
-        var replaced = review.Resolve("windows", new ForeignResolution.Replace(id));
+        var replaced = review.Resolve("General/windows", new ForeignResolution.Replace(id));
         var outcome = await review.ApplyAsync();
 
         Assert.Equal(new ExistingConnection(id, "Windows PG"), review.Connections[0].Duplicate);
@@ -101,8 +113,54 @@ public sealed class ForeignImportTests : IDisposable
         Assert.False(before.Importable);
         Assert.Equal([ForeignResolution.AddCopy.Instance, new ForeignResolution.Replace(id)], offered);
         Assert.True(replaced);
-        Assert.Equal(new ForeignImportOutcome(1, 1, 0, 0, 0, 0), outcome);
+        Assert.Equal(
+            (1, 1, 0, 0, 0, 0),
+            (outcome.Connections, outcome.Replaced, outcome.PasswordsNotKept, outcome.QueriesAdded,
+                outcome.QueriesAlreadySaved, outcome.QueriesFailed));
+        Assert.Equal([id], outcome.ConnectionIds);
         Assert.Single((await _core.Library.GetSnapshotAsync()).Connections);
+    }
+
+    [Fact]
+    public async Task TheLaunchProbeReadsNoCountAndUnreadableDataSaysWhy()
+    {
+        WriteDBeaver();
+        var probe = await _core.GetForeignSourcesAsync(_dirs, ForeignScanDepth.Presence);
+        File.WriteAllText(Path.Combine(DBeaverProject(), ".dbeaver", "data-sources.json"), "{ not json");
+        var broken = await _core.GetForeignSourcesAsync(_dirs);
+
+        var found = probe.Single(source => source.App == ForeignApp.DBeaver);
+        Assert.True(found.IsAvailable);
+        Assert.Equal((0, 0), (found.Connections, found.SavedQueries));
+        Assert.False(found.StartsTicked);
+        var unreadable = broken.Single(source => source.App == ForeignApp.DBeaver);
+        Assert.False(unreadable.IsAvailable);
+        var reason = Assert.IsType<ForeignSourceAvailability.Unreadable>(unreadable.Availability);
+        Assert.Equal("foreign_import.parse", reason.Code);
+        Assert.False(unreadable.Preselected);
+        Assert.Equal(ForeignApp.Navicat, broken.Single(source => source.Preselected).App);
+    }
+
+    [Fact]
+    public async Task AKeptConnectionWritesNoId()
+    {
+        WriteDBeaver();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using (var first = await _core.ReadForeignAsync(
+            ForeignApp.DBeaver, _dirs, null, new ForeignImportRequest(true, true), cancellationToken))
+        {
+            await first.ApplyAsync();
+        }
+
+        using var review = await _core.ReadForeignAsync(
+            ForeignApp.DBeaver, _dirs, null, new ForeignImportRequest(true, true), cancellationToken);
+        review.SetSelected("General/windows", true);
+        var resolution = review.Choices().Connections[0].Resolution;
+        var outcome = await review.ApplyAsync();
+
+        Assert.IsType<ForeignResolution.KeepExisting>(resolution);
+        Assert.Equal(0, outcome.Connections);
+        Assert.Empty(outcome.ConnectionIds);
     }
 
     [Fact]
@@ -116,12 +174,17 @@ public sealed class ForeignImportTests : IDisposable
     }
 
     // DBeaver's workspace where it keeps it on the platform the test runs on.
-    private void WriteDBeaver()
+    private string DBeaverProject()
     {
         var root = OperatingSystem.IsMacOS() ? Path.Combine(_directory, "Library")
             : OperatingSystem.IsWindows() ? _dirs.Config
             : _dirs.Data;
-        var project = Path.Combine(root, "DBeaverData", "workspace6", "General");
+        return Path.Combine(root, "DBeaverData", "workspace6", "General");
+    }
+
+    private void WriteDBeaver()
+    {
+        var project = DBeaverProject();
         var metadata = Path.Combine(project, ".dbeaver");
         Directory.CreateDirectory(metadata);
         Directory.CreateDirectory(Path.Combine(project, "Scripts"));

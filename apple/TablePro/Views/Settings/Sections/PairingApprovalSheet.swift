@@ -1,4 +1,3 @@
-import Combine
 import SwiftUI
 import TableProMCP
 
@@ -9,7 +8,13 @@ struct PairingApproval: Sendable {
     let extraScopes: Set<MCPScope>
 }
 
+// Hosted by AlertHelper.runPairingApproval in its own window, so it works while Settings is closed.
 struct PairingApprovalSheet: View {
+    private enum Access: Hashable {
+        case all
+        case selected
+    }
+
     let request: PairingRequest
     let codeExpiresAt: Date
     let allowsHiddenConnectionListing: Bool
@@ -17,14 +22,12 @@ struct PairingApprovalSheet: View {
 
     @State private var permissions: TokenPermissions
     @State private var grantsHiddenConnections = false
-    @State private var connectionAccess: ConnectionAccessMode = .all
+    @State private var access: Access = .all
     @State private var selectedConnectionIds: Set<UUID> = []
-    @State private var expiry: ExpiryOption = .never
+    @State private var expiry: TokenExpiry = .never
+    @State private var customExpiry = TokenExpiry.defaultCustomDate()
     @State private var connections: [DatabaseConnection] = []
-    @State private var connectionSearch: String = ""
-    @State private var now: Date = .now
-
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    @State private var isExpired: Bool
 
     init(
         request: PairingRequest,
@@ -37,8 +40,9 @@ struct PairingApprovalSheet: View {
         self.allowsHiddenConnectionListing = allowsHiddenConnectionListing
         self.onComplete = onComplete
         _permissions = State(initialValue: request.scopeRequest.permissions)
+        _isExpired = State(initialValue: codeExpiresAt <= .now)
         if let requested = request.requestedConnectionIds, !requested.isEmpty {
-            _connectionAccess = State(initialValue: .selected)
+            _access = State(initialValue: .selected)
             _selectedConnectionIds = State(initialValue: requested)
         }
     }
@@ -49,7 +53,7 @@ struct PairingApprovalSheet: View {
             Divider()
             Form {
                 permissionsSection
-                connectionAccessSection
+                connectionsSection
                 if requestsHiddenConnections {
                     hiddenConnectionsSection
                 }
@@ -65,12 +69,17 @@ struct PairingApprovalSheet: View {
         .frame(width: 520)
         .task {
             connections = ConnectionStorage.shared.loadConnections()
-            if connectionAccess == .all {
+            if access == .all {
                 selectedConnectionIds = Set(connections.map(\.id))
             }
         }
-        .onReceive(timer) { value in
-            now = value
+        .task {
+            let remaining = codeExpiresAt.timeIntervalSinceNow
+            if remaining > 0 {
+                try? await Task.sleep(for: .seconds(remaining))
+            }
+            guard !Task.isCancelled else { return }
+            isExpired = true
         }
     }
 
@@ -81,11 +90,13 @@ struct PairingApprovalSheet: View {
                 .font(.headline)
                 .lineLimit(2)
                 .truncationMode(.tail)
-            Text(String(localized: "An external app is asking for an API token. Review the permissions before approving."))
-                .font(.callout)
+            Text("An external app is asking for an API token. Review the permissions before approving.")
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
             destinationLabel
-            countdownLabel
+            TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                countdownLabel(now: timeline.date)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -95,11 +106,11 @@ struct PairingApprovalSheet: View {
     private var destinationLabel: some View {
         HStack(spacing: 6) {
             Image(systemName: "arrow.up.forward.app")
-                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                .foregroundStyle(.secondary)
                 .imageScale(.small)
                 .accessibilityHidden(true)
             Text(String(format: String(localized: "Sends the code to %@"), request.redirectDisplayValue))
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .truncationMode(.middle)
@@ -107,117 +118,66 @@ struct PairingApprovalSheet: View {
         }
     }
 
-    private var countdownLabel: some View {
-        HStack(spacing: 6) {
-            Image(systemName: isExpired ? "clock.badge.exclamationmark.fill" : "clock")
-                .foregroundStyle(isExpired ? .red : Color(nsColor: .secondaryLabelColor))
+    private func countdownLabel(now: Date) -> some View {
+        let remaining = max(0, Int(codeExpiresAt.timeIntervalSince(now).rounded(.up)))
+        let expired = isExpired || remaining == 0
+        return HStack(spacing: 6) {
+            Image(systemName: expired ? "clock.badge.exclamationmark.fill" : "clock")
+                .foregroundStyle(expired ? Color.red : Color.secondary)
                 .imageScale(.small)
                 .accessibilityHidden(true)
-            countdownText
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .contentTransition(.numericText())
+            Group {
+                if expired {
+                    Text("Code expired")
+                } else {
+                    Text("Code expires in ^[\(remaining) second](inflect: true)")
+                }
+            }
+            .font(.subheadline)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .contentTransition(.numericText())
         }
-    }
-
-    private var remainingSeconds: Int {
-        let interval = codeExpiresAt.timeIntervalSince(now)
-        return max(0, Int(interval.rounded(.up)))
-    }
-
-    private var isExpired: Bool {
-        remainingSeconds <= 0
-    }
-
-    private var countdownText: Text {
-        if isExpired {
-            return Text(String(localized: "Code expired"))
-        }
-        return Text("Code expires in ^[\(remainingSeconds) second](inflect: true)")
     }
 
     private var permissionsSection: some View {
-        Section(String(localized: "Permission Level")) {
-            Picker(String(localized: "Permission"), selection: $permissions) {
+        Section {
+            Picker(selection: $permissions) {
                 ForEach(TokenPermissions.allCases) { permission in
                     Text(permission.displayName).tag(permission)
                 }
+            } label: {
+                Text("Permissions")
+                Text(permissions.summary)
             }
             .pickerStyle(.segmented)
-            .labelsHidden()
-
-            Text(permissionsDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            .accessibilityIdentifier("pairing-permissions-picker")
         }
     }
 
-    private var connectionAccessSection: some View {
-        Section(String(localized: "Allowed Connections")) {
-            Picker(String(localized: "Access"), selection: $connectionAccess) {
-                Text(String(localized: "All Connections")).tag(ConnectionAccessMode.all)
-                Text(String(localized: "Select Connections")).tag(ConnectionAccessMode.selected)
+    private var connectionsSection: some View {
+        Section {
+            Picker(selection: $access) {
+                Text("All").tag(Access.all)
+                Text("Selected").tag(Access.selected)
+            } label: {
+                Text("Connections")
             }
-            .labelsHidden()
-            .onChange(of: connectionAccess) { newValue in
-                if newValue == .all {
-                    selectedConnectionIds = Set(connections.map(\.id))
-                } else if selectedConnectionIds.isEmpty {
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("pairing-connections-picker")
+            .onChange(of: access) { newValue in
+                if newValue == .all || selectedConnectionIds.isEmpty {
                     selectedConnectionIds = Set(connections.map(\.id))
                 }
             }
 
-            if connectionAccess == .selected {
-                connectionList
+            if access == .selected {
+                ConnectionAllowlistSection(
+                    selection: $selectedConnectionIds,
+                    connections: connections,
+                    showsSelectAll: true
+                )
             }
-        }
-    }
-
-    @ViewBuilder
-    private var connectionList: some View {
-        if connections.isEmpty {
-            Text(String(localized: "No saved connections"))
-                .foregroundStyle(.secondary)
-        } else {
-            HStack {
-                NativeSearchField(text: $connectionSearch, placeholder: String(localized: "Search connections"))
-                Spacer()
-                Button(String(localized: "Select All")) {
-                    selectedConnectionIds.formUnion(filteredConnections.map(\.id))
-                }
-                Button(String(localized: "Deselect All")) {
-                    selectedConnectionIds.subtract(filteredConnections.map(\.id))
-                }
-            }
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(filteredConnections) { connection in
-                        Toggle(isOn: connectionBinding(for: connection.id)) {
-                            HStack(spacing: 6) {
-                                Text(connection.name)
-                                Text(connection.type.displayName)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.checkbox)
-                        .padding(.vertical, 2)
-                    }
-                }
-            }
-            .frame(maxHeight: 200)
-        }
-    }
-
-    private var filteredConnections: [DatabaseConnection] {
-        let trimmed = connectionSearch.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return connections }
-        let lowercased = trimmed.lowercased()
-        return connections.filter { connection in
-            connection.name.lowercased().contains(lowercased)
-                || connection.type.displayName.lowercased().contains(lowercased)
         }
     }
 
@@ -227,32 +187,46 @@ struct PairingApprovalSheet: View {
 
     // Off even when allowed: an agent with a shell can pair to its own redirect, and one Approve must not hand it these.
     private var hiddenConnectionsSection: some View {
-        Section(String(localized: "Connections Hidden from AI")) {
+        Section {
             if allowsHiddenConnectionListing {
-                Toggle(String(localized: "List connections hidden from AI"), isOn: $grantsHiddenConnections)
-                    .accessibilityIdentifier("pairing-hidden-connections-toggle")
-                // swiftlint:disable:next line_length
-                Text(String(localized: "Adds connections whose AI Policy is Never to this app's list, with each user name. The app still cannot query them. Blocked connections stay hidden."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Toggle(isOn: $grantsHiddenConnections) {
+                    Text("List connections hidden from AI")
+                    Text("Adds connections whose AI Policy is Never to this app's list, with each user name. The app still cannot query them. Blocked connections stay hidden.")
+                }
+                .accessibilityIdentifier("pairing-hidden-connections-toggle")
             } else {
                 // swiftlint:disable:next line_length
-                Text(String(localized: "This app also asks to list connections hidden from AI. To allow that, turn on “Allow apps to list connections hidden from AI” in Settings > MCP, then pair again."))
-                    .font(.caption)
+                Text("This app also asks to list connections hidden from AI. To allow that, turn on “Allow apps to list connections hidden from AI” in Settings > MCP, then pair again.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("pairing-hidden-connections-refusal")
             }
+        } header: {
+            Text("Connections Hidden from AI")
         }
     }
 
     private var expirySection: some View {
-        Section(String(localized: "Expiration")) {
-            Picker(String(localized: "Expires"), selection: $expiry) {
-                ForEach(ExpiryOption.allCases) { option in
+        Section {
+            Picker(selection: $expiry) {
+                ForEach(TokenExpiry.allCases) { option in
                     Text(option.displayName).tag(option)
                 }
+            } label: {
+                Text("Expires")
             }
-            .labelsHidden()
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("pairing-expiry-picker")
+
+            if expiry == .custom {
+                DatePicker(
+                    String(localized: "Expiration date"),
+                    selection: $customExpiry,
+                    in: Date.now...,
+                    displayedComponents: .date
+                )
+            }
         }
     }
 
@@ -261,8 +235,8 @@ struct PairingApprovalSheet: View {
             Button(String(localized: "Approve")) {
                 let approval = PairingApproval(
                     grantedPermissions: permissions,
-                    allowedConnectionIds: connectionAccess == .selected ? selectedConnectionIds : nil,
-                    expiresAt: expiry.resolvedDate,
+                    allowedConnectionIds: access == .selected ? selectedConnectionIds : nil,
+                    expiresAt: expiry.resolvedDate(custom: customExpiry),
                     extraScopes: grantsHiddenConnections && allowsHiddenConnectionListing ? [.connectionsDisplay] : []
                 )
                 onComplete(.success(approval))
@@ -278,68 +252,7 @@ struct PairingApprovalSheet: View {
 
     private var approveDisabled: Bool {
         if isExpired { return true }
-        if connectionAccess == .selected && selectedConnectionIds.isEmpty { return true }
+        if access == .selected && selectedConnectionIds.isEmpty { return true }
         return false
-    }
-
-    private func connectionBinding(for id: UUID) -> Binding<Bool> {
-        Binding(
-            get: { selectedConnectionIds.contains(id) },
-            set: { isSelected in
-                if isSelected {
-                    selectedConnectionIds.insert(id)
-                } else {
-                    selectedConnectionIds.remove(id)
-                }
-            }
-        )
-    }
-
-    private var permissionsDescription: String {
-        switch permissions {
-        case .readOnly:
-            String(localized: "Read schema and run SELECT queries.")
-        case .readWrite:
-            String(localized: "Read schema and run any non-destructive query, including INSERT, UPDATE, and DELETE.")
-        case .fullAccess:
-            String(localized: "Full access including destructive DDL after explicit confirmation.")
-        }
-    }
-}
-
-private enum ConnectionAccessMode: String, Identifiable, Sendable {
-    case all
-    case selected
-
-    var id: String { rawValue }
-}
-
-private enum ExpiryOption: String, CaseIterable, Identifiable, Sendable {
-    case never
-    case oneDay
-    case sevenDays
-    case thirtyDays
-    case ninetyDays
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .never: String(localized: "Never")
-        case .oneDay: String(localized: "1 day")
-        case .sevenDays: String(localized: "7 days")
-        case .thirtyDays: String(localized: "30 days")
-        case .ninetyDays: String(localized: "90 days")
-        }
-    }
-
-    var resolvedDate: Date? {
-        switch self {
-        case .never: nil
-        case .oneDay: Calendar.current.date(byAdding: .day, value: 1, to: .now)
-        case .sevenDays: Calendar.current.date(byAdding: .day, value: 7, to: .now)
-        case .thirtyDays: Calendar.current.date(byAdding: .day, value: 30, to: .now)
-        case .ninetyDays: Calendar.current.date(byAdding: .day, value: 90, to: .now)
-        }
     }
 }

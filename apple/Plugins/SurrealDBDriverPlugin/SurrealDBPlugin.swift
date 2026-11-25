@@ -16,6 +16,8 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "SurrealDB"
     static let iconName = "surrealdb-icon"
     static let defaultPort = 8000
+    // Each HTTP request carries the namespace and database headers, so a `USE` in one query does not outlast it.
+    static let statementsCanSwitchDatabase = false
 
     static let connectionMode: ConnectionMode = .network
     static let isDownloadable = true
@@ -36,6 +38,7 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsDatabaseSwitching = true
     static let supportsSchemaSwitching = true
+    static let schemaSwitchScopesUnqualifiedNames = true
     static let databaseGroupingStrategy: GroupingStrategy = .bySchema
     static let containerEntityName = "Namespace"
     static let schemaEntityName = "Database"
@@ -61,6 +64,23 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
         "Binary": ["bytes"],
         "Boolean": ["bool"],
         "Structured": ["object", "array", "set", "geometry", "record", "any"]
+    ]
+
+    static let statementCompletions: [CompletionEntry] = [
+        CompletionEntry(label: "SELECT", insertText: "SELECT * FROM table LIMIT 100"),
+        CompletionEntry(label: "CREATE", insertText: "CREATE table SET field = value"),
+        CompletionEntry(label: "UPDATE", insertText: "UPDATE table:id SET field = value"),
+        CompletionEntry(label: "UPSERT", insertText: "UPSERT table:id SET field = value"),
+        CompletionEntry(label: "DELETE", insertText: "DELETE table:id"),
+        CompletionEntry(label: "RELATE", insertText: "RELATE from:id->edge->to:id SET field = value"),
+        CompletionEntry(label: "USE", insertText: "USE NS namespace DB database"),
+        CompletionEntry(label: "INFO FOR DB", insertText: "INFO FOR DB"),
+        CompletionEntry(label: "INFO FOR TABLE", insertText: "INFO FOR TABLE table"),
+        CompletionEntry(label: "DEFINE TABLE", insertText: "DEFINE TABLE table SCHEMAFULL"),
+        CompletionEntry(label: "DEFINE FIELD", insertText: "DEFINE FIELD field ON table TYPE string"),
+        CompletionEntry(label: "DEFINE INDEX", insertText: "DEFINE INDEX name ON table FIELDS field UNIQUE"),
+        CompletionEntry(label: "REMOVE TABLE", insertText: "REMOVE TABLE table"),
+        CompletionEntry(label: "count", insertText: "SELECT count() AS total FROM table GROUP ALL"),
     ]
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(

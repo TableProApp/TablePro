@@ -232,7 +232,7 @@ enum MCPClientDetailText {
             String(format: String(localized: "TablePro is turned off in %1$@. Turn it on in %1$@'s MCP settings to use it."), name)
         case .usesToken:
             String(
-                format: String(localized: "%@ connects with a token from Settings > MCP > Authentication, which can limit what it reaches. TablePro leaves it as is."),
+                format: String(localized: "%@ connects with a token from Settings > MCP > Tokens, which can limit what it reaches. TablePro leaves it as is."),
                 name
             )
         case .unreadable:

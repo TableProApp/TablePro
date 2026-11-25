@@ -114,13 +114,8 @@ extension MainContentCoordinator {
         case .selectionOrStatementAtCursor:
             return selectionOrStatementAtCursor(in: fullQuery)
         case .statement(let offset):
-            let statement = QueryStatementScanner.locatedStatementAtCursor(
-                in: fullQuery,
-                cursorPosition: min(max(0, offset), (fullQuery as NSString).length),
-                model: statementModel,
-                grammar: lexicalGrammar
-            )
-            return (statement.sql, statement.offset)
+            let located = statement(at: min(max(0, offset), (fullQuery as NSString).length), in: fullQuery)
+            return (located.sql, located.offset)
         }
     }
 
@@ -130,13 +125,23 @@ extension MainContentCoordinator {
             let clampedRange = NSIntersectionRange(firstCursor.range, NSRange(location: 0, length: nsQuery.length))
             return (nsQuery.substring(with: clampedRange), clampedRange.location)
         }
-        let statement = QueryStatementScanner.locatedStatementAtCursor(
-            in: fullQuery,
-            cursorPosition: cursorPositions.first?.range.location ?? 0,
-            model: statementModel,
-            grammar: lexicalGrammar
+        let located = statement(at: cursorPositions.first?.range.location ?? 0, in: fullQuery)
+        return (located.sql, located.offset)
+    }
+
+    // The selected tab's editor answers from the index it keeps when it holds the same text, else the text is scanned.
+    private func statement(at cursor: Int, in fullQuery: String) -> SQLStatementScanner.LocatedStatement {
+        let model = statementModel
+        let grammar = lexicalGrammar
+        if let tabId = tabManager.selectedTabId,
+           let indexed = EditorEventRouter.shared.statement(
+               at: cursor, in: fullQuery, forTab: tabId, connectionId: connectionId, model: model, grammar: grammar
+           ) {
+            return indexed
+        }
+        return QueryStatementScanner.locatedStatementAtCursor(
+            in: fullQuery, cursorPosition: cursor, model: model, grammar: grammar
         )
-        return (statement.sql, statement.offset)
     }
 
     func applyAISuggestion(_ afterSQL: String, replacing beforeSQL: String, source: QueryEditorAnchor?) {

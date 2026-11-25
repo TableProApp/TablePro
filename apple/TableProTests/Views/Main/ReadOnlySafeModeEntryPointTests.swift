@@ -205,9 +205,7 @@ struct ReadOnlySafeModeEntryPointTests {
         )
         let filter = TableFilter.rawCondition("purge_orders() IS NULL")
         tab.filterState.filters = [filter]
-        tab.filterState.commit = .all
-        tab.filterState.executedFilters = [filter]
-        tab.filterState.executedLogicMode = .and
+        tab.filterState.applied = .checkedRows(of: [filter], logicMode: .and)
         return tab
     }
 
@@ -346,10 +344,10 @@ struct ReadOnlySafeModeEntryPointTests {
         let countSQL = "SELECT COUNT(*) FROM orders WHERE (purge_orders() IS NULL)"
 
         _ = try await ExactRowCounter.count(
-            on: adapter, table: "orders", filters: filters, logicMode: .and, countSQL: countSQL, safeModeIsReadOnly: true
+            on: adapter, table: "orders", schema: nil, filters: filters, logicMode: .and, countSQL: countSQL, safeModeIsReadOnly: true
         )
         _ = try await ExactRowCounter.count(
-            on: adapter, table: "orders", filters: filters, logicMode: .and, countSQL: countSQL
+            on: adapter, table: "orders", schema: nil, filters: filters, logicMode: .and, countSQL: countSQL
         )
 
         #expect(driver.calls.map { $0.context?.enforcesReadOnly == true } == [true, false])

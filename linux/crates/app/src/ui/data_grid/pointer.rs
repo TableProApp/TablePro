@@ -1,6 +1,6 @@
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{self as gtk, gdk, glib};
+use gtk4::{self as gtk, gdk, glib, pango};
 
 use super::{DataGrid, GridCell, GridRow};
 
@@ -130,9 +130,8 @@ pub(super) fn cut_text(view: &gtk::ColumnView, x: i32, y: i32) -> Option<String>
         .pick(f64::from(x), f64::from(y), gtk::PickFlags::DEFAULT)
         .and_then(|picked| GridCell::from_focus(&picked))?;
     let display = cell.display()?;
-    let text = display.text().filter(|text| !text.is_empty())?;
-    let (width, _) = display.create_pango_layout(Some(&text)).pixel_size();
-    if width <= display.width() {
+    let (text, _) = cell.whole_text().filter(|(text, _)| !text.is_empty())?;
+    if !is_cut(&cell, display, &text) {
         return None;
     }
     let mut shown: String = text.chars().take(TOOLTIP_MAX_CHARS).collect();
@@ -140,6 +139,43 @@ pub(super) fn cut_text(view: &gtk::ColumnView, x: i32, y: i32) -> Option<String>
         shown.push('…');
     }
     Some(shown)
+}
+
+/// Cut means the cell leaves text out, or its text takes more lines than
+/// the cell shows. A value with a line break is cut in a one-line cell
+/// even when its longest line fits.
+fn is_cut(cell: &GridCell, display: &gtk::Inscription, text: &str) -> bool {
+    if cell.leaves_text_out() {
+        return true;
+    }
+    let layout = display.create_pango_layout(Some(text));
+    // Bold is wider, and a mark's label is smaller.
+    layout.set_attributes(display.attributes().as_ref());
+    if !cell.wraps() {
+        return layout.line_count() > 1 || layout.pixel_size().0 > display.width();
+    }
+    layout.set_width(display.width().saturating_mul(pango::SCALE));
+    layout.set_wrap(pango::WrapMode::WordChar);
+    layout.line_count() > lines_shown(&layout, display.height())
+}
+
+/// How many of `layout`'s lines a text of `height` shows: those that end
+/// inside it, and always the first.
+fn lines_shown(layout: &pango::Layout, height: i32) -> i32 {
+    let limit = height.saturating_mul(pango::SCALE);
+    let mut lines = layout.iter();
+    let mut shown = 0;
+    loop {
+        let (_, line) = lines.line_extents();
+        if line.y() + line.height() > limit {
+            break;
+        }
+        shown += 1;
+        if !lines.next_line() {
+            break;
+        }
+    }
+    shown.max(1)
 }
 
 fn hit_at(grid: &DataGrid, x: f64, y: f64) -> Hit {

@@ -101,6 +101,10 @@
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
                 <ToggleSwitch x:Name="VimSwitch" x:Uid="VimSwitch" AutomationProperties.AutomationId="VimSwitch" Toggled="OnVimToggled" />
             </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="ShortcutsCard" x:Name="ShortcutsCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="ShortcutsBox" x:Uid="ShortcutsBox" AutomationProperties.AutomationId="ShortcutsBox" MinWidth="200" SelectionChanged="OnShortcutsChanged" />
+            </toolkit:SettingsCard>
             <toolkit:SettingsCard x:Uid="LightSchemeCard" x:Name="LightSchemeCard">
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE706;" /></toolkit:SettingsCard.HeaderIcon>
                 <ComboBox x:Name="LightSchemeBox" x:Uid="LightSchemeBox" AutomationProperties.AutomationId="LightSchemeBox" MinWidth="200" SelectionChanged="OnLightSchemeChanged" />
@@ -129,6 +133,10 @@
             <toolkit:SettingsCard x:Uid="NullDisplayCard" x:Name="NullDisplayCard">
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8C4;" /></toolkit:SettingsCard.HeaderIcon>
                 <TextBox x:Name="NullDisplayBox" x:Uid="NullDisplayBox" AutomationProperties.AutomationId="NullDisplayBox" MinWidth="200" MaxLength="20" TextChanged="OnNullDisplayChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="GridWrapCard" x:Name="GridWrapCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE751;" /></toolkit:SettingsCard.HeaderIcon>
+                <ToggleSwitch x:Name="GridWrapSwitch" x:Uid="GridWrapSwitch" AutomationProperties.AutomationId="GridWrapSwitch" Toggled="OnGridWrapToggled" />
             </toolkit:SettingsCard>
 
             <TextBlock x:Uid="QueriesHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />

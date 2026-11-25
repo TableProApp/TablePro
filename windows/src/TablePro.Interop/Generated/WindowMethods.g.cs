@@ -32,6 +32,21 @@ namespace TablePro.Interop.Native
         internal static extern TpWindow* tablepro_cursor_fetch(TpCursor* cursor, ulong first_row, uint row_count, uint first_column, uint column_count, uint max_chars);
 
         /// <summary>
+        ///  As `tablepro_cursor_fetch`, for a grid that wraps its cells: each line
+        ///  break in a cell's text, whatever its form (LF, CR LF, CR, VT, FF, NEL,
+        ///  U+2028, U+2029), is one `\n`. `max_chars` counts the value's
+        ///  characters, so a CR LF counts two. Every other control character is
+        ///  a space, as there.
+        ///
+        ///  # Safety
+        ///
+        ///  `cursor` is null or a cursor `ResultSet::open_cursor` returned and no
+        ///  one freed, used by one thread at a time.
+        /// </summary>
+        [DllImport(__DllName, EntryPoint = "tablepro_cursor_fetch_lines", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern TpWindow* tablepro_cursor_fetch_lines(TpCursor* cursor, ulong first_row, uint row_count, uint first_column, uint column_count, uint max_chars);
+
+        /// <summary>
         ///  # Safety
         ///
         ///  `cursor` is null or a cursor `ResultSet::open_cursor` returned, freed
@@ -93,9 +108,10 @@ namespace TablePro.Interop.Native
     ///  Cells are column by column: the cell of row `r` and column `c` is
     ///  `(c - first_column) * row_count + (r - first_row)`. A cell's text is
     ///  `text[offsets[cell]..offsets[cell + 1]]`, UTF-8, at most the fetch's
-    ///  `max_chars` characters on one line. `nulls` and `truncated` hold a
-    ///  bit per cell, lowest bit first. `column_kinds` and `cell_kinds` hold
-    ///  a `ValueKind` byte each, and a cell's kind says what its `raw` holds.
+    ///  `max_chars` characters, on one line unless the fetch keeps line
+    ///  breaks. `nulls` and `truncated` hold a bit per cell, lowest bit
+    ///  first. `column_kinds` and `cell_kinds` hold a `ValueKind` byte each,
+    ///  and a cell's kind says what its `raw` holds.
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     internal unsafe partial struct TpWindow

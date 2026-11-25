@@ -26,6 +26,8 @@ final class GridFindState: ObservableObject {
     }
 
     @Published var isVisible = false
+    // Set when Find is invoked and taken by the bar's field, so a bar rebuilt by a tab switch leaves the keyboard alone.
+    var requestsFieldFocus = false
     @Published var showsReplace = false
     @Published var term = ""
     @Published var replacement = ""

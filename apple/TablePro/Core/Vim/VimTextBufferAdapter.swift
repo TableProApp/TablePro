@@ -1,10 +1,13 @@
 import AppKit
 import Foundation
+import TableProEditorKit
 import TableProTextEngine
 
 @MainActor
 final class VimTextBufferAdapter: VimTextBuffer {
     private weak var textView: TextView?
+    // The editor runs its typing filters and completion triggers on every edit it does not hear is a command.
+    private weak var controller: TextViewController?
 
     private struct LineStorageTrust {
         weak var storage: NSTextStorage?
@@ -16,6 +19,11 @@ final class VimTextBufferAdapter: VimTextBuffer {
 
     init(textView: TextView) {
         self.textView = textView
+    }
+
+    init(controller: TextViewController) {
+        self.controller = controller
+        self.textView = controller.textView
     }
 
     private var text: NSString? {
@@ -138,8 +146,11 @@ final class VimTextBufferAdapter: VimTextBuffer {
     }
 
     func replaceCharacters(in range: NSRange, with string: String) {
-        guard let textView else { return }
-        textView.replaceCharacters(in: range, with: string)
+        if let controller {
+            controller.replaceCharactersUnfiltered(in: range, with: string)
+        } else {
+            textView?.replaceCharacters(in: range, with: string)
+        }
     }
 
     func undo() {
@@ -150,6 +161,17 @@ final class VimTextBufferAdapter: VimTextBuffer {
     func redo() {
         guard let textView else { return }
         textView.undoManager?.redo()
+    }
+
+    // The undo manager ignores a nested begin but ends at the first end, so only the outermost step groups.
+    func beginUndoStep() -> Bool {
+        guard let undoManager = textView?.editorUndoManager, !undoManager.isGrouping else { return false }
+        undoManager.beginUndoGrouping()
+        return true
+    }
+
+    func endUndoStep() {
+        textView?.editorUndoManager?.endUndoGrouping()
     }
 
     func wordEndBackward(from offset: Int) -> Int {

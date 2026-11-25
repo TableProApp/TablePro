@@ -34,10 +34,12 @@ case "$SUITE" in
             'apple/scripts/localization\.py$' 'scripts/ci/detect-changed-paths\.sh$'
             'apple/scripts/check-pluginkit-abi\.sh$' 'apple/scripts/release/notes\.py$'
             '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$'
-            # The app bundles the MCP client catalog the Linux app compiles in.
-            'core/crates/mcp/clients\.json$'
-            # The app's tests run the script corpus the core's tests run.
-            'core/crates/core/tests/fixtures/sql_script_corpus\.json$') ;;
+            # The app links the core's FFI crate without the engines (apple/scripts/build-core.sh).
+            'core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$' 'apple/scripts/build-core\.sh$')
+        # No driver, test or doc of the core is in the app's library. The app's tests run the script corpus, the
+        # model merge cases and the source list cases the core's tests run.
+        SKIP='core/crates/drivers/|core/crates/[^/]+/tests/|core/.*\.md$'
+        KEEP='core/crates/core/tests/fixtures/sql_script_corpus\.json$|core/crates/ai/tests/model-merge-cases\.json$|core/crates/foreign-import/tests/fixtures/source_list\.json$' ;;
     plugins)
         # Registry plugins link the TableProCore and TableProOracle products.
         PATTERNS=('apple/Plugins/' 'apple/Packages/TableProCore/' 'apple/Packages/TableProOracle/' 'apple/Native/'
@@ -45,7 +47,10 @@ case "$SUITE" in
             'apple/TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$'
             'apple/scripts/(generate-project|download-libs|create-openssl-dylibs|build-dameng|build-hana)\.sh$'
             'apple/scripts/lib/' 'apple/scripts/ci/verify-plugin-loads\.sh$' 'apple/scripts/check-pluginkit-abi\.sh$'
-            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$') ;;
+            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$'
+            # The Unit plan compares every built plugin with the app's curated entries.
+            'apple/TablePro/Core/Plugins/PluginMetadataRegistry[^/]*\.swift$'
+            'apple/TableProTests/Core/Plugins/PluginMetadataCuratedParityTests\.swift$') ;;
     ios)
         # The package's TableProPluginKit target is a symlink, so git reports its changes here.
         PATTERNS=('apple/TableProMobile/' 'apple/Libs/' 'apple/Plugins/TableProPluginKit/'
@@ -54,7 +59,9 @@ case "$SUITE" in
             'scripts/ci/detect-changed-paths\.sh$'
             '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/(ci|ios-tests)\.yml$'
             # The TableProCore package tests read the function names and the script corpus the Linux app shares.
-            'core/crates/core/tests/fixtures/(state_changing_functions|sql_script_corpus)\.json$')
+            'core/crates/core/tests/fixtures/(state_changing_functions|sql_script_corpus)\.json$'
+            # The app bundles the sample database the core holds; the spec scan below reads only apple/ paths.
+            'core/resources/Chinook\.sqlite$')
         # The iOS project compiles files from Plugins/, Packages/ and TablePro/, so every path its
         # spec reaches outside TableProMobile/ is read from the spec instead of copied here.
         SHARED="$(grep -oE '\.\./(Configs|Packages|Plugins|TablePro)/[^"[:space:]]*' apple/TableProMobile/project.yml \
@@ -79,8 +86,8 @@ case "$SUITE" in
             'apple/scripts/release/dmg\.DS_Store$' 'apple/scripts/release/(notes|registry|version)\.py$'
             'apple/scripts/ci/verify-plugin-loads\.sh$' 'scripts/ci/detect-changed-paths\.sh$'
             '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|nightly)\.yml$'
-            'core/crates/mcp/clients\.json$')
-        SKIP='apple/Plugins/[^/]+Tests/|apple/Packages/[^/]+/Tests/'
+            'core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$' 'apple/scripts/build-core\.sh$')
+        SKIP='apple/Plugins/[^/]+Tests/|apple/Packages/[^/]+/Tests/|core/crates/drivers/|core/crates/[^/]+/tests/|core/.*\.md$'
         # shipped is what an X.Y.0 may not change after its newest beta: the release build minus its CI.
         if [ "$SUITE" = shipped ]; then
             KEPT=()
@@ -128,7 +135,11 @@ case "$SUITE" in
         PATTERNS=('core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$'
             'scripts/ci/(detect-changed-paths\.sh|start-windows-sshd\.ps1)$'
             'apple/project\.yml$' 'apple/Packages/TableProFFI/' 'apple/scripts/build-core\.sh$'
-            'apple/scripts/lib/deployment-target\.sh$' '\.github/workflows/(ci|core)\.yml$')
+            'apple/scripts/lib/(deployment-target|system-sqlite)\.sh$' '\.github/workflows/(ci|core)\.yml$'
+            # The notices of the crates the macOS app's core links.
+            'apple/scripts/(update-core-licenses\.sh|about/)' 'linux/about\.toml$'
+            'linux/build-aux/about/(fallbacks|third-party\.json)\.hbs$' 'linux/build-aux/packaging/crate_notices\.py$'
+            'apple/TablePro/Resources/ThirdPartyLicenses/texts/tablepro-core-crates\.txt$')
         SKIP='core/.*\.md$' ;;
     windows)
         # The .NET tests run the whole core through its FFI crate, so any core or workspace change runs them.

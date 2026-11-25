@@ -24,7 +24,7 @@
   {
     "id": "duckdb",
     "name": "DuckDB",
-    "version": "v2.0.0",
+    "version": "v2.0.1",
     "spdx": "MIT",
     "copyrights": [
       "Copyright 2018-2026 Stichting DuckDB Foundation"

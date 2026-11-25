@@ -217,7 +217,7 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         var state = TabFilterState()
         state.filters = [TestFixtures.makeTableFilter(column: "id", op: .equal, value: "42")]
-        state.commit = .all
+        state.applied = .checkedRows(of: state.filters, logicMode: .and)
         state.isVisible = true
         tabManager.tabs[oldIndex].filterState = state
 
@@ -229,7 +229,7 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         let saved = tabManager.tabs[oldIndexAfter].filterState
         #expect(saved.filters.count == 1)
-        #expect(saved.appliedFilters.count == 1)
+        #expect(saved.applied?.filters.count == 1)
         #expect(saved.filters.first?.value == "42")
         #expect(saved.isVisible == true)
     }
@@ -334,7 +334,7 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         var savedFilter = TabFilterState()
         savedFilter.filters = [TestFixtures.makeTableFilter(column: "name", op: .equal, value: "Bob")]
-        savedFilter.commit = .all
+        savedFilter.applied = .checkedRows(of: savedFilter.filters, logicMode: .and)
         savedFilter.isVisible = true
         tabManager.tabs[newIndex].filterState = savedFilter
 
@@ -599,13 +599,14 @@ struct MainContentCoordinatorTabSwitchTests {
         tabManager.tabs[index].filterState.filterLogicMode = .or
         tabManager.tabs[index].filterState.isVisible = true
 
-        coordinator.applyAllFilters()
-        #expect(coordinator.selectedTabFilterState.appliedFilters.count == 2)
+        coordinator.filterCoordinator.applyCheckedFilters()
+        #expect(coordinator.selectedTabFilterState.applied?.filters.count == 2)
+        #expect(coordinator.selectedTabFilterState.applied?.logicMode == .or)
         #expect(coordinator.selectedTabFilterState.filterLogicMode == .or)
 
         coordinator.clearFilterState()
         #expect(coordinator.selectedTabFilterState.filters.isEmpty)
-        #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+        #expect(coordinator.selectedTabFilterState.applied == nil)
         #expect(coordinator.selectedTabFilterState.isVisible == true)
     }
 
@@ -629,8 +630,8 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(tabManager.tabs.first { $0.id == otherId }?.filterState.filters.isEmpty == true)
     }
 
-    @Test("Apply All runs only enabled filters but keeps disabled ones in the panel")
-    func applyAllExcludesDisabledFilters() {
+    @Test("Apply runs only checked filters but keeps unchecked ones in the panel")
+    func applyCheckedExcludesDisabledFilters() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: tabId)
@@ -643,14 +644,14 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         tabManager.tabs[index].filterState.filters = [active, inactive]
 
-        coordinator.applyAllFilters()
+        coordinator.filterCoordinator.applyCheckedFilters()
 
         #expect(coordinator.selectedTabFilterState.filters.count == 2)
-        #expect(coordinator.selectedTabFilterState.appliedFilters == [active])
+        #expect(coordinator.selectedTabFilterState.applied?.filters == [active])
     }
 
-    @Test("Removing the soloed filter clears the applied set")
-    func removingSoloedFilterClearsCommit() {
+    @Test("Removing the row applied alone stops filtering")
+    func removingTheRowAppliedAloneStopsFiltering() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: tabId)
@@ -663,11 +664,12 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         tabManager.tabs[index].filterState.filters = [first, second]
 
-        coordinator.applySoloFilter(second)
-        #expect(coordinator.selectedTabFilterState.appliedFilters.map(\.id) == [second.id])
+        coordinator.filterCoordinator.applyFilterAlone(second.id)
+        #expect(coordinator.selectedTabFilterState.aloneFilterID == second.id)
 
-        coordinator.filterCoordinator.selectedTabFilterStateBinding.wrappedValue.removeFilter(second)
-        #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+        coordinator.filterCoordinator.removeFilter(second.id)
+        #expect(coordinator.selectedTabFilterState.filters == [first])
+        #expect(coordinator.selectedTabFilterState.applied == nil)
     }
 
     @Test("Removing one of two running rows re-runs the query with the other")
@@ -675,23 +677,113 @@ struct MainContentCoordinatorTabSwitchTests {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: tabId)
-        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
-        let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
+        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "first-row")
+        let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "second-row")
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             Issue.record("Expected tab to exist")
             return
         }
         tabManager.tabs[index].filterState.filters = [first, second]
-        coordinator.applyAllFilters()
+        coordinator.filterCoordinator.applyCheckedFilters()
+
+        coordinator.filterCoordinator.removeFilter(first.id)
+
+        let tab = tabManager.tabs[index]
+        #expect(tab.filterState.filters == [second])
+        #expect(tab.filterState.applied?.filters == [second])
+        #expect(tab.content.query.contains("second-row"))
+        #expect(!tab.content.query.contains("first-row"))
+    }
+
+    @Test("Removing a running row reruns what was running minus that row, never the draft")
+    func removingRunningRowRerunsWhatRanNotTheDraft() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        let kept = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "kept-row")
+        let removed = TestFixtures.makeTableFilter(column: "name", op: .equal, value: "removed-row")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [kept, removed]
+        coordinator.filterCoordinator.applyCheckedFilters()
         let binding = coordinator.filterCoordinator.selectedTabFilterStateBinding
+        var edited = kept
+        edited.value = "edited-row"
+        binding.wrappedValue.updateFilter(edited)
+        let added = TestFixtures.makeTableFilter(column: "name", op: .equal, value: "added-row")
+        binding.wrappedValue.filters.append(added)
 
-        let outcome = binding.wrappedValue.removeFilter(first)
-        coordinator.filterCoordinator.reload(after: outcome)
+        coordinator.filterCoordinator.removeFilter(removed.id)
 
-        #expect(outcome == .reapply([second]))
-        #expect(coordinator.selectedTabFilterState.filters == [second])
-        #expect(coordinator.selectedTabFilterState.appliedFilters == [second])
-        #expect(coordinator.selectedTabFilterState.executedFilters == [second])
+        let tab = tabManager.tabs[index]
+        #expect(tab.filterState.filters.map(\.id) == [kept.id, added.id])
+        #expect(tab.filterState.filters.map(\.value) == ["edited-row", "added-row"])
+        #expect(tab.filterState.applied?.filters == [kept])
+        #expect(tab.filterState.status == .changesNotApplied)
+        #expect(tab.content.query.contains("kept-row"))
+        #expect(!tab.content.query.contains("edited-row"))
+        #expect(!tab.content.query.contains("added-row"))
+        #expect(!tab.content.query.contains("removed-row"))
+    }
+
+    // A rerun resets the page, so a page left as it was shows the removal never reloaded.
+    @Test("Removing a row that is not running leaves what runs, the query and the page alone")
+    func removingARowThatIsNotRunningChangesNoRows() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        let running = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "running-row")
+        let unchecked = TestFixtures.makeTableFilter(column: "name", op: .equal, value: "unchecked-row", isEnabled: false)
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [running, unchecked]
+        coordinator.filterCoordinator.applyCheckedFilters()
+        let draft = TestFixtures.makeTableFilter(column: "name", op: .equal, value: "draft-row")
+        coordinator.filterCoordinator.selectedTabFilterStateBinding.wrappedValue.filters.append(draft)
+        tabManager.tabs[index].pagination.currentPage = 3
+        tabManager.tabs[index].pagination.currentOffset = 2 * tabManager.tabs[index].pagination.pageSize
+        let before = tabManager.tabs[index]
+
+        coordinator.filterCoordinator.removeFilter(unchecked.id)
+        coordinator.filterCoordinator.removeFilter(draft.id)
+
+        let after = tabManager.tabs[index]
+        #expect(after.filterState.filters == [running])
+        #expect(after.filterState.applied == before.filterState.applied)
+        #expect(after.content.query == before.content.query)
+        #expect(after.pagination.currentPage == 3)
+        #expect(after.pagination.currentOffset == before.pagination.currentOffset)
+    }
+
+    // Pretends an alert is already up, which `confirmDiscardChangesIfNeeded` answers false to once there are edits.
+    @Test("A removal the discard alert has not answered leaves the rows and what runs as they were")
+    func declinedRemovalChangesNothing() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "first-row")
+        let second = TestFixtures.makeTableFilter(column: "name", op: .equal, value: "second-row")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [first, second]
+        coordinator.filterCoordinator.applyCheckedFilters()
+        stageNameEdit(on: coordinator.changeManager(forTab: tabId))
+        #expect(coordinator.changeManager(forTab: tabId).hasChanges)
+        coordinator.isShowingConfirmAlert = true
+        let before = tabManager.tabs[index]
+
+        coordinator.filterCoordinator.removeFilter(first.id)
+
+        let after = tabManager.tabs[index]
+        #expect(after.filterState == before.filterState)
+        #expect(after.filterState.filters == [first, second])
+        #expect(after.content.query == before.content.query)
     }
 
     @Test("Removing the last running row stops filtering")
@@ -699,27 +791,25 @@ struct MainContentCoordinatorTabSwitchTests {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: tabId)
-        let running = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let running = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "running-row")
         let draft = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "")
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
             Issue.record("Expected tab to exist")
             return
         }
         tabManager.tabs[index].filterState.filters = [running, draft]
-        coordinator.applyAllFilters()
-        let binding = coordinator.filterCoordinator.selectedTabFilterStateBinding
+        coordinator.filterCoordinator.applyCheckedFilters()
 
-        let outcome = binding.wrappedValue.removeFilter(running)
-        coordinator.filterCoordinator.reload(after: outcome)
+        coordinator.filterCoordinator.removeFilter(running.id)
 
-        #expect(outcome == .clear)
-        #expect(coordinator.selectedTabFilterState.filters == [draft])
-        #expect(coordinator.selectedTabFilterState.commit == nil)
-        #expect(coordinator.selectedTabFilterState.executedFilters.isEmpty)
+        let tab = tabManager.tabs[index]
+        #expect(tab.filterState.filters == [draft])
+        #expect(tab.filterState.applied == nil)
+        #expect(!tab.content.query.uppercased().contains("WHERE"))
     }
 
-    @Test("Soloing an invalid filter does nothing")
-    func soloingInvalidFilterIsNoOp() {
+    @Test("Applying an invalid row alone does nothing")
+    func applyingInvalidFilterAloneIsNoOp() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: tabId)
@@ -731,12 +821,12 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         tabManager.tabs[index].filterState.filters = [invalid]
 
-        coordinator.applySoloFilter(invalid)
-        #expect(coordinator.selectedTabFilterState.appliedFilters.isEmpty)
+        coordinator.filterCoordinator.applyFilterAlone(invalid.id)
+        #expect(coordinator.selectedTabFilterState.applied == nil)
     }
 
-    @Test("Apply on a single row queries by only that row without changing checkbox state")
-    func applySoloFilterRunsOnlyThatRowAndKeepsState() {
+    @Test("Applying a single row alone queries by only that row without changing checkbox state")
+    func applyFilterAloneRunsOnlyThatRowAndKeepsState() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: tabId)
@@ -750,12 +840,98 @@ struct MainContentCoordinatorTabSwitchTests {
         }
         tabManager.tabs[index].filterState.filters = [first, second, third]
 
-        coordinator.applySoloFilter(second)
+        coordinator.filterCoordinator.applyFilterAlone(second.id)
 
         let state = coordinator.selectedTabFilterState
         #expect(state.filters.map(\.isEnabled) == [true, false, true])
-        #expect(state.appliedFilters.map(\.id) == [second.id])
-        #expect(state.appliedFilters.first?.isEnabled == true)
+        #expect(state.aloneFilterID == second.id)
+        #expect(state.applied?.filters.map { $0.id } == [second.id])
+        #expect(state.applied?.filters.first?.isEnabled == true)
+    }
+
+    @Test("Applying the checked rows after a row ran alone runs the checked rows again")
+    func applyCheckedAfterAloneReturnsToTheCheckedRows() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        let checked = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "checked-row")
+        let alone = TestFixtures.makeTableFilter(column: "name", op: .equal, value: "alone-row", isEnabled: false)
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [checked, alone]
+
+        coordinator.filterCoordinator.applyFilterAlone(alone.id)
+
+        let aloneTab = tabManager.tabs[index]
+        #expect(aloneTab.filterState.aloneFilterID == alone.id)
+        #expect(aloneTab.filterState.status == .appliedAlone)
+        #expect(aloneTab.content.query.contains("alone-row"))
+        #expect(!aloneTab.content.query.contains("checked-row"))
+
+        coordinator.filterCoordinator.applyCheckedFilters()
+
+        let checkedTab = tabManager.tabs[index]
+        #expect(checkedTab.filterState.aloneFilterID == nil)
+        #expect(checkedTab.filterState.applied?.filters == [checked])
+        #expect(checkedTab.filterState.filters.map(\.isEnabled) == [true, false])
+        #expect(checkedTab.filterState.status == .applied)
+        #expect(checkedTab.content.query.contains("checked-row"))
+        #expect(!checkedTab.content.query.contains("alone-row"))
+    }
+
+    @Test("Turning filters off keeps the rows and runs the table unfiltered")
+    func turnOffKeepsTheRowsAndStopsFiltering() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "first-row")
+        let second = TestFixtures.makeTableFilter(column: "name", op: .equal, value: "second-row")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [first, second]
+        tabManager.tabs[index].filterState.isVisible = true
+        coordinator.filterCoordinator.applyCheckedFilters()
+        #expect(tabManager.tabs[index].filterState.isFiltering)
+
+        coordinator.filterCoordinator.turnOffFilters()
+
+        let tab = tabManager.tabs[index]
+        #expect(tab.filterState.filters == [first, second])
+        #expect(tab.filterState.applied == nil)
+        #expect(tab.filterState.isVisible)
+        #expect(tab.filterState.status == .notApplied)
+        #expect(!tab.content.query.uppercased().contains("WHERE"))
+    }
+
+    @Test("The panel status reads applied after Apply and changes not applied after a later edit")
+    func panelStatusFollowsApplyAndALaterEdit() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tabId)
+        let row = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "first-value")
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        tabManager.tabs[index].filterState.filters = [row]
+        #expect(coordinator.selectedTabFilterState.status == .notApplied)
+
+        coordinator.filterCoordinator.applyCheckedFilters()
+        #expect(coordinator.selectedTabFilterState.status == .applied)
+
+        let binding = coordinator.filterCoordinator.selectedTabFilterStateBinding
+        var edited = row
+        edited.value = "second-value"
+        binding.wrappedValue.updateFilter(edited)
+        #expect(coordinator.selectedTabFilterState.status == .changesNotApplied)
+        #expect(coordinator.selectedTabFilterState.applied?.filters == [row])
+
+        binding.wrappedValue.updateFilter(row)
+        #expect(coordinator.selectedTabFilterState.status == .applied)
     }
 
     @Test("Applying filters persists them immediately so a reopened table restores them")
@@ -780,7 +956,7 @@ struct MainContentCoordinatorTabSwitchTests {
             TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
         ]
 
-        coordinator.applyAllFilters()
+        coordinator.filterCoordinator.applyCheckedFilters()
 
         let persisted = FilterSettingsStorage.shared.loadLastFilters(
             for: "users",
@@ -815,7 +991,7 @@ struct MainContentCoordinatorTabSwitchTests {
             TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
         ]
 
-        coordinator.applyAllFilters()
+        coordinator.filterCoordinator.applyCheckedFilters()
 
         let persisted = FilterSettingsStorage.shared.loadLastFilters(
             for: "users",
@@ -868,7 +1044,7 @@ struct MainContentCoordinatorTabSwitchTests {
         let checked = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
         let unchecked = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
         tabManager.tabs[index].filterState.filters = [checked, unchecked]
-        tabManager.tabs[index].filterState.commit = .all
+        tabManager.tabs[index].filterState.applied = .checkedRows(of: [checked, unchecked], logicMode: .and)
 
         let queryId = addQueryTab(to: tabManager)
         coordinator.handleTabChange(from: tableId, to: queryId, tabs: tabManager.tabs)
@@ -878,8 +1054,8 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(saved.map(\.isEnabled) == [true, false])
     }
 
-    @Test("Switching away from a soloed table tab saves every row with its own enabled flag")
-    func tabSwitchSavesSoloedFilterWorkingSet() {
+    @Test("Switching away from a tab with a row applied alone saves every row with its own enabled flag")
+    func tabSwitchSavesTheRowsAroundARowAppliedAlone() {
         let (coordinator, tabManager) = makeCoordinator()
         let tableId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: tableId)
@@ -890,16 +1066,17 @@ struct MainContentCoordinatorTabSwitchTests {
             return
         }
         let other = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
-        let soloed = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
-        tabManager.tabs[index].filterState.filters = [other, soloed]
-        tabManager.tabs[index].filterState.commit = .solo(soloed.id)
+        let alone = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
+        tabManager.tabs[index].filterState.filters = [other, alone]
+        tabManager.tabs[index].filterState.applied = .alone(alone, logicMode: .and)
 
         let queryId = addQueryTab(to: tabManager)
         coordinator.handleTabChange(from: tableId, to: queryId, tabs: tabManager.tabs)
 
-        let saved = savedUsersFilters(coordinator)
-        #expect(saved.map(\.id) == [other.id, soloed.id])
-        #expect(saved.map(\.isEnabled) == [true, false])
+        let saved = savedUsersFilterState(coordinator)
+        #expect(saved.filters.map(\.id) == [other.id, alone.id])
+        #expect(saved.filters.map(\.isEnabled) == [true, false])
+        #expect(saved.applied?.aloneFilterID == alone.id)
     }
 
     @Test("Switching away from a tab whose rows were never applied saves them as a draft")
@@ -916,7 +1093,7 @@ struct MainContentCoordinatorTabSwitchTests {
         let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
         let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
         tabManager.tabs[index].filterState.filters = [first, second]
-        tabManager.tabs[index].filterState.commit = nil
+        tabManager.tabs[index].filterState.applied = nil
 
         let queryId = addQueryTab(to: tabManager)
         coordinator.handleTabChange(from: tableId, to: queryId, tabs: tabManager.tabs)

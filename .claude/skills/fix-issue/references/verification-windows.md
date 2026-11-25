@@ -1,6 +1,6 @@
 # Verification traps: Windows
 
-Read this when a `verify.sh` verdict needs interpreting for the Windows app, before writing a test, or when a `windows` check is red. The usage line is `verify.sh [--platform windows] [--root <tree>] [--run <dir>] [--offline] <step> [args] [-- <test options>]`; on a Windows shell the platform is this one unless the option names another. The steps and their arguments are in the header of `.claude/skills/fix-issue/scripts/lib/platform-windows.sh`.
+Read this when a `verify.sh` verdict needs interpreting for the Windows app, before writing a test, or when a `windows` check is red. The usage line is `verify.sh [--platform windows] [--root <tree>] [--run <dir>] [--offline] [--jobs <n>] <step> [args] [-- <test options>]`; on a Windows shell the platform is this one unless the option names another. The steps and their arguments are in the header of `.claude/skills/fix-issue/scripts/lib/platform-windows.sh`.
 
 ## Why the wrapper, always
 

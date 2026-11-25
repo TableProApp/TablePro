@@ -74,9 +74,9 @@ struct PluginDriverAdapterStructureMappingTests {
         let adapter = makeAdapter()
         let fixtures = PluginStructureFixtures.columns
 
-        let current = try await adapter.fetchColumns(table: "orders")
+        let current = try await adapter.fetchColumns(table: "orders", schema: nil)
         let named = try await adapter.fetchColumns(table: "orders", schema: "app")
-        let bulk = try await adapter.fetchAllColumns()
+        let bulk = try await adapter.fetchAllColumns(schema: nil)
 
         expectCarried(fixtures, current)
         expectCarried(fixtures, named)
@@ -88,7 +88,7 @@ struct PluginDriverAdapterStructureMappingTests {
         let adapter = makeAdapter()
         let fixtures = PluginStructureFixtures.indexes
 
-        let current = try await adapter.fetchIndexes(table: "orders")
+        let current = try await adapter.fetchIndexes(table: "orders", schema: nil)
         let named = try await adapter.fetchIndexes(table: "orders", schema: "app")
 
         expectCarried(fixtures, current)
@@ -100,9 +100,9 @@ struct PluginDriverAdapterStructureMappingTests {
         let adapter = makeAdapter()
         let fixtures = PluginStructureFixtures.foreignKeys
 
-        let current = try await adapter.fetchForeignKeys(table: "orders")
+        let current = try await adapter.fetchForeignKeys(table: "orders", schema: nil)
         let named = try await adapter.fetchForeignKeys(table: "orders", schema: "app")
-        let bulk = try await adapter.fetchAllForeignKeys()
+        let bulk = try await adapter.fetchAllForeignKeys(schema: nil)
 
         expectCarried(fixtures, current)
         expectCarried(fixtures, named)
@@ -114,7 +114,7 @@ struct PluginDriverAdapterStructureMappingTests {
         let adapter = makeAdapter()
         let fixtures = PluginStructureFixtures.checkConstraints
 
-        let current = try await adapter.fetchCheckConstraints(table: "orders")
+        let current = try await adapter.fetchCheckConstraints(table: "orders", schema: nil)
         let named = try await adapter.fetchCheckConstraints(table: "orders", schema: "app")
 
         expectCarried(fixtures, current)
@@ -128,7 +128,7 @@ struct PluginDriverAdapterStructureMappingTests {
 
         var mapped: [TableMetadata] = []
         for fixture in fixtures {
-            mapped.append(try await adapter.fetchTableMetadata(tableName: fixture.tableName))
+            mapped.append(try await adapter.fetchTableMetadata(tableName: fixture.tableName, schema: nil))
         }
 
         expectCarried(fixtures, mapped, appOnly: [])

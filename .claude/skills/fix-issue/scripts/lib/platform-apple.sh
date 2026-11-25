@@ -20,6 +20,9 @@
 # `test` with no Test runs the Unit plan only; those two packages run with `package <Package>`.
 # A name no target declares exits 3 before anything builds. A Test that runs nothing is FAIL.
 # Here --no-wait skips the wait for another xcodebuild, and --offline pins SwiftPM to Package.resolved.
+# --jobs <n> passes -jobs to xcodebuild, -maximum-parallel-testing-workers to the test plans, --jobs and --num-workers
+# to swift test, and caps Cargo and Go in the core and bridge builds. abi caps only its core build:
+# apple/scripts/check-pluginkit-abi.sh runs its own xcodebuild uncapped.
 
 MAX_WAIT_SECONDS=1800
 APPLE_ROOT="$REPO_ROOT/apple"
@@ -113,6 +116,7 @@ wait_for_free_toolchain() {
 xcodebuild_flags() {
     printf '%s' "-skipPackagePluginValidation"
     is_offline && printf ' %s' "-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile"
+    [ -n "$JOBS" ] && printf ' -jobs %s' "$JOBS"
 }
 
 # ---------------------------------------------------------------------------- test selection
@@ -300,7 +304,8 @@ run_plan() {
     note "run: xcodebuild test -testPlan $plan${only[*]+ (${#only[@]} filter(s))}"
     # shellcheck disable=SC2046
     run_logged "$log" xcodebuild test -project "$APPLE_ROOT/TablePro.xcodeproj" -scheme TablePro \
-        -testPlan "$plan" -resultBundlePath "$bundle" $(xcodebuild_flags) ${only[@]+"${only[@]}"}
+        -testPlan "$plan" -resultBundlePath "$bundle" $(xcodebuild_flags) ${JOBS:+-maximum-parallel-testing-workers "$JOBS"} \
+        ${only[@]+"${only[@]}"}
     RUN_CODE=$?
     report_xcresult "$bundle" "$RUN_CODE" "$filters" "$log"
     ran_nothing_for_the_environment "$log" && RUN_STATUS=INCONCLUSIVE
@@ -316,6 +321,7 @@ run_plan() {
 run_swift_tests() {
     local package="$1" log="$2" filters="$3" dir="$APPLE_ROOT/Packages/$1" args=() label regex
     [ -f "$dir/Package.resolved" ] && args+=(--force-resolved-versions)
+    [ -n "$JOBS" ] && args+=(--jobs "$JOBS" --num-workers "$JOBS")
     while IFS=$'\t' read -r label regex _; do
         args+=(--filter "$regex")
     done < "$filters"
@@ -362,6 +368,30 @@ swiftlint_filtered_dirs() {
 }
 
 # ---------------------------------------------------------------------------- steps
+
+# The macOS project links the core (apple/project.yml, TableProFFI), and SwiftPM refuses to resolve it before
+# apple/scripts/build-core.sh has built its binary target. Rebuilt for this Mac's architecture when a file it is
+# built from changed after the last build. Fails the step when the core does not build.
+ensure_core() {
+    local log="$1" built="$APPLE_ROOT/Packages/TableProFFI/Build/TableProFFIC.xcframework" changed code
+    if [ -d "$built" ]; then
+        changed="$(cd "$REPO_ROOT" && find core Cargo.toml Cargo.lock rust-toolchain.toml apple/scripts/build-core.sh \
+            apple/scripts/lib/deployment-target.sh apple/scripts/lib/system-sqlite.sh \
+            -type f ! -name '*.md' -newer "$built" -print -quit 2> /dev/null)"
+        [ -z "$changed" ] && return 0
+        note "core: $changed changed after the last core build, so it is rebuilt first"
+    else
+        note "core: not built in this tree, so it is built first"
+    fi
+    require_tool cargo
+    echo "== apple/scripts/build-core.sh $(uname -m)" >> "$log"
+    nice -n 10 "$APPLE_ROOT/scripts/build-core.sh" "$(uname -m)" >> "$log" 2>&1
+    code=$?
+    [ $code -eq 0 ] && return 0
+    STATUS=FAIL
+    note "the core did not build: $(grep -E '^error|FATAL|❌' "$log" 2> /dev/null | head -5)"
+    emit "$log" "$code"
+}
 
 platform_parse() {
     local stem="${1%.log}" filters="${1%.log}.filters"
@@ -422,7 +452,8 @@ platform_step() {
             # Xcode copies the HANA helper into the plugin and never builds it.
             helper="$APPLE_ROOT/Native/HanaBridge/bin/tablepro-hana-helper"
             if [ "$scheme" = "AllPlugins" ] && [ ! -e "$helper" ] && command -v go > /dev/null; then
-                "$APPLE_ROOT/scripts/build-hana.sh" "$(uname -m)" >> "$log" 2>&1 \
+                # build-hana.sh clears GOFLAGS, so the cap reaches go build's -p through its default, GOMAXPROCS.
+                env ${JOBS:+GOMAXPROCS="$JOBS"} "$APPLE_ROOT/scripts/build-hana.sh" "$(uname -m)" >> "$log" 2>&1 \
                     && note "built the HANA helper first: $helper"
             fi
             helper="$APPLE_ROOT/Native/DamengBridge/lib/libdameng_bridge.a"
@@ -437,6 +468,7 @@ platform_step() {
                 fi
                 note "built the Dameng bridge first: $helper"
             fi
+            ensure_core "$log"
             # shellcheck disable=SC2046
             xcodebuild -project "$APPLE_ROOT/TablePro.xcodeproj" -scheme "$scheme" \
                 -configuration Debug build $(xcodebuild_flags) >> "$log" 2>&1
@@ -495,6 +527,7 @@ platform_step() {
             if [ "$runs_plan" -eq 1 ]; then
                 require_tool xcodebuild
                 wait_for_free_toolchain
+                ensure_core "$log"
                 run_log="$log"
                 printf '%s' "$plan_tests" > "${run_log%.log}.filters"
                 run_plan "$plan" "$run_log" "${run_log%.log}.filters"
@@ -525,6 +558,8 @@ platform_step() {
             require_tool xcodebuild
             require_tool xcodegen
             log="$(new_log abi)"
+            : > "$log"
+            ensure_core "$log"
             run_logged "$log" "$APPLE_ROOT/scripts/check-pluginkit-abi.sh" "$@"
             code=$?
             if [ $code -eq 0 ]; then
@@ -579,6 +614,8 @@ platform_step() {
             require_tool swift
             require_tool python3
             log="$(new_log "package-$1")"
+            : > "$log"
+            [ "$1" = TableProFFI ] && ensure_core "$log"
             : > "${log%.log}.filters"
             [ $# -ge 2 ] && printf '%s\t%s\n' "$2" "$2" > "${log%.log}.filters"
             run_swift_tests "$1" "$log" "${log%.log}.filters"
@@ -617,7 +654,7 @@ platform_step() {
             done
             xcodebuild test -project "$project" -scheme TableProMobile -destination "id=$simulator" \
                 -parallel-testing-enabled NO -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
-                -resultBundlePath "$bundle" "${filters[@]}" >> "$log" 2>&1
+                ${JOBS:+-jobs "$JOBS"} -resultBundlePath "$bundle" "${filters[@]}" >> "$log" 2>&1
             code=$?
             note "results: $bundle"
             report_xcresult "$bundle" "$code" "${log%.log}.filters" "$log"

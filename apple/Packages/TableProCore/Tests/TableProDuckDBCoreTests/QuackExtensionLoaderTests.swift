@@ -80,6 +80,19 @@ struct QuackExtensionLoaderTests {
         #expect(duckdb.ran == ["LOAD httpfs", "INSTALL httpfs", "LOAD httpfs"])
     }
 
+    @Test("An extension whose init threw is reported at once, with no INSTALL and no second LOAD")
+    func stopsAfterAFailedInit() async {
+        // Measured on DuckDB v2.0.1 with the extension installed and no route to api.motherduck.com.
+        let initFailed = "Invalid Input Error: Initialization function \"motherduck_duckdb_cpp_init\" from file "
+            + "\"/Users/me/.duckdb/extensions/v2.0.1/osx_arm64/motherduck.duckdb_extension\" threw an exception: "
+            + "\"Failed to download \"http://api.motherduck.com/extension_version\" (attempt 5): Could not establish connection\""
+        let duckdb = ScriptedDuckDB(failing: ["LOAD motherduck": [DuckDBText(text: initFailed)]])
+        await #expect(throws: QuackConnectError.extensionNotLoaded(name: "motherduck", detail: initFailed)) {
+            try await QuackExtensionLoader.load("motherduck") { try duckdb.execute($0) }
+        }
+        #expect(duckdb.ran == ["LOAD motherduck"])
+    }
+
     @Test("A cancelled connect stops at once and is rethrown as it is")
     func cancellationStops() async {
         let duckdb = ScriptedDuckDB(failing: ["LOAD quack": [CancellationError()]])

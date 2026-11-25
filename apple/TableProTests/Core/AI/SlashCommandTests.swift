@@ -95,6 +95,34 @@ struct SlashCommandTests {
         #expect(SlashCommand.match(prefix: "/re") == [.review])
     }
 
+    @Test("invocation splits any typed command into its name and the text after it")
+    func invocationSplitsNameAndBody() {
+        let custom = SlashCommand.invocation(in: "  /Summarize last week's orders  ")
+        #expect(custom?.name == "Summarize")
+        #expect(custom?.body == "last week's orders")
+
+        let bare = SlashCommand.invocation(in: "/summarize")
+        #expect(bare?.name == "summarize")
+        #expect(bare?.body == "")
+
+        let multiline = SlashCommand.invocation(in: "/summarize\norders\nby region")
+        #expect(multiline?.name == "summarize")
+        #expect(multiline?.body == "orders\nby region")
+    }
+
+    @Test("invocation returns nil without a name after the slash")
+    func invocationRejectsMissingName() {
+        #expect(SlashCommand.invocation(in: "summarize this") == nil)
+        #expect(SlashCommand.invocation(in: "/") == nil)
+        #expect(SlashCommand.invocation(in: "/ summarize") == nil)
+        #expect(SlashCommand.invocation(in: "") == nil)
+    }
+
+    @Test("A body on its own line reaches a built-in without the line break")
+    func parseDropsLeadingNewlineFromBody() {
+        #expect(SlashCommand.parse("/explain\nSELECT 1")?.body == "SELECT 1")
+    }
+
     @Test("Built-in names are recognised whatever their case or padding")
     func builtInNames() {
         #expect(SlashCommand.isBuiltIn(name: "review"))

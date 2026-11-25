@@ -98,6 +98,19 @@ struct ConnectionWarningTests {
         #expect(result == ConnectionTestResult(succeeded: true, warning: Self.warning))
     }
 
+    // A driver forgets its server's version when Test Connection disconnects it, before the result is read.
+    @Test("Test Connection reports the server version the login saw")
+    func testConnectionReturnsTheServerVersion() async throws {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        let connection = TestFixtures.makeConnection(name: "Versioned test", type: .mssql)
+        FakeMSSQLPlugin.reportServerVersion(for: connection.id, version: "16.0.1000")
+        defer { FakeMSSQLPlugin.clearServerVersion(for: connection.id) }
+
+        let result = try await DatabaseManager.shared.testConnection(connection)
+
+        #expect(result == ConnectionTestResult(succeeded: true, serverVersion: "16.0.1000"))
+    }
+
     @Test("A dismissed warning is a change windows hear about")
     func warningIsPartOfTheSessionContent() {
         let connection = TestFixtures.makeConnection()

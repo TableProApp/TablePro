@@ -15,7 +15,7 @@ internal enum EtcdTLSConfigurationError: Error, LocalizedError, Equatable {
         switch self {
         case .verifyCANeedsCertificate:
             return String(localized: """
-                Verify CA needs a CA certificate. In the etcd section of the Options tab, choose the CA Certificate \
+                Verify CA needs a CA certificate. In the etcd section of the connection's Advanced settings, choose the CA Certificate \
                 that signed the server's certificate, or set TLS Mode to Verify Identity.
                 """)
         case .unreadableCACertificate(let path):

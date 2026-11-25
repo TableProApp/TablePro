@@ -240,7 +240,7 @@ nonisolated enum ClipboardExporter {
             bitColumns = Set(written.filter { index in
                 readsBitAsNumber && ClipboardExporter.isBitType(declaredTypes[columns[index].name] ?? columns[index].typeName)
             })
-            firstWritableColumn = columnDetails.first { !$0.isServerOwned }?.name
+            firstWritableColumn = columnDetails.defaultsRowColumn
         }
 
         func statement(for row: [String?]) -> String {

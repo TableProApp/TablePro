@@ -91,10 +91,9 @@ private final class DatabaseCatalogDriver: DatabaseDriver, @unchecked Sendable {
         return snapshot
     }
 
-    func fetchTables() async throws -> [TableInfo] { [] }
-
+    // Only a one-schema read is recorded; the connection's own list is empty.
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        let schema = schema ?? ""
+        guard let schema else { return [] }
         tableFetches.append(schema)
         if let tablesError { throw tablesError }
         let snapshot = tablesBySchema[schema] ?? []
@@ -108,14 +107,13 @@ private final class DatabaseCatalogDriver: DatabaseDriver, @unchecked Sendable {
         return snapshot
     }
 
-    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
-    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
-    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
-    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
-    func fetchTableDDL(table: String) async throws -> String { "" }
-    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] { [] }
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] { [] }
+    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
 
-    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+    func fetchTableMetadata(tableName: String, schema: String?) async throws -> TableMetadata {
         TableMetadata(
             tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil,
             avgRowLength: nil, rowCount: nil, comment: nil, engine: nil,
@@ -335,11 +333,12 @@ struct SchemaServiceDatabaseSwitchTests {
         #expect(!service.allLoadedTables(for: connectionId).contains { $0.name == "ENTRIES" })
     }
 
-    @Test("A lazy load reads a kept catalog again until something has refreshed it")
+    @Test("A lazy load reads a kept catalog that can be stale again until something has refreshed it")
     func lazyLoadRefreshesAKeptCatalog() async {
         let service = SchemaService()
         let salesDriver = sales()
         await browse(service, database: "SALES", driver: salesDriver)
+        service.markAllStale(connectionId: connectionId)
         service.show(scope: scope("MARKETING"), type: connection.type)
         await browse(service, database: "MARKETING", driver: marketing())
         service.show(scope: scope("SALES"), type: connection.type)

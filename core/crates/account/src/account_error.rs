@@ -1,7 +1,11 @@
 use std::time::Duration;
 
+use tablepro_cloud_api::{ApiError, http_text};
+
 use crate::entitlement::EntitlementError;
+use crate::license::LicenseError;
 use crate::profile::Device;
+use crate::server::ServerError;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AccountError {
@@ -15,6 +19,8 @@ pub enum AccountError {
     SignInCanceled,
     #[error("the sign-in was refused: {error}")]
     SignInRefused { error: String, description: Option<String> },
+    #[error("the sign-in answer did not name the server it was sent to")]
+    SignInIssuerMismatch,
     #[error("not signed in")]
     SignedOut,
     #[error("this device was removed from the account")]
@@ -29,6 +35,10 @@ pub enum AccountError {
     RateLimited { retry_after: Option<Duration> },
     #[error(transparent)]
     Entitlement(#[from] EntitlementError),
+    #[error(transparent)]
+    Server(#[from] ServerError),
+    #[error(transparent)]
+    License(#[from] LicenseError),
     #[error("cannot keep the account's state in {path}: {detail}")]
     Storage { path: String, detail: String },
     #[error("unexpected answer from the account service: {0}")]
@@ -62,6 +72,7 @@ impl AccountError {
             Self::SignInTimedOut => "account.sign_in_timed_out",
             Self::SignInCanceled => "account.sign_in_canceled",
             Self::SignInRefused { .. } => "account.sign_in_refused",
+            Self::SignInIssuerMismatch => "account.sign_in_issuer_mismatch",
             Self::SignedOut => "account.signed_out",
             Self::DeviceRevoked => "account.device_revoked",
             Self::DeviceLimitReached { .. } => "account.device_limit_reached",
@@ -72,6 +83,8 @@ impl AccountError {
                 .map_or("account.refused", |(_, worded)| worded),
             Self::RateLimited { .. } => "account.rate_limited",
             Self::Entitlement(_) => "account.entitlement",
+            Self::Server(error) => error.code(),
+            Self::License(error) => error.code(),
             Self::Storage { .. } => "account.storage",
             Self::Protocol(_) => "account.protocol",
         }
@@ -82,17 +95,25 @@ impl AccountError {
     }
 }
 
-// Without the URL, whose path can hold a share token. reqwest keeps the cause, such as a refused connection, below.
-pub(crate) fn http_text(error: reqwest::Error) -> String {
-    let error = error.without_url();
-    let mut detail = error.to_string();
-    let mut source = std::error::Error::source(&error);
-    while let Some(cause) = source {
-        detail.push_str(": ");
-        detail.push_str(&cause.to_string());
-        source = cause.source();
+impl From<ApiError> for AccountError {
+    fn from(error: ApiError) -> Self {
+        match error {
+            ApiError::Unreachable(detail) => Self::Unreachable(detail),
+            ApiError::DeviceRevoked => Self::DeviceRevoked,
+            ApiError::DeviceLimitReached { devices } => Self::DeviceLimitReached {
+                devices: devices.into_iter().map(Into::into).collect(),
+            },
+            ApiError::Refused { status, code, detail } => Self::Refused { status, code, detail },
+            // Only a share's snapshot gets that large.
+            ApiError::TooLarge => Self::Refused {
+                status: 413,
+                code: "snapshot_too_large".to_owned(),
+                detail: "the request is larger than the server takes".to_owned(),
+            },
+            ApiError::RateLimited { retry_after } => Self::RateLimited { retry_after },
+            ApiError::Protocol(detail) => Self::Protocol(detail),
+        }
     }
-    detail
 }
 
 #[cfg(test)]

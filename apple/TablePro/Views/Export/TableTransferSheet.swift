@@ -8,11 +8,7 @@ import os
 import SwiftUI
 import TableProPluginKit
 
-/// Copies rows from the open connection into another one, with no file in between.
-///
-/// Rows only: the destination table has to exist. Creating it would mean translating one engine's
-/// DDL into another's, which is a different problem, and getting it half right would leave tables
-/// whose column types quietly disagree with the data now in them.
+// Rows only, into tables that exist: creating them means translating one engine's DDL into another's.
 struct TableTransferSheet: View {
     @ObservedObject private var databaseManager = DatabaseManager.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "TableTransferSheet")
@@ -29,16 +25,25 @@ struct TableTransferSheet: View {
     @State private var destinationDatabase = ""
     @State private var availableDestinations: [DatabaseConnection] = []
     @State private var destinationDatabases: [String] = []
+    @State private var destinationSchemas: [String] = []
+    @State private var destinationSchema = ""
+    // Loads of the destination's databases and schemas still running: until they end, the scope is not known.
+    @State private var resolvingDestination = 0
     @State private var sourceTables: [ExportObjectItem] = []
     @State private var deleteExistingRows = false
     @State private var wrapInTransaction = true
     @State private var isLoading = true
-    @State private var isRunning = false
+    @State private var phase: Phase = .form
     @State private var errorMessage: String?
     @State private var hostWindow: NSWindow?
 
-    /// Source and destination columns per table, plus the user's overrides, so the sheet can show
-    /// what will map before anything is written.
+    private enum Phase {
+        case form
+        case running
+        case finished(TransferResult)
+    }
+
+    // Read before anything is written, so the sheet can show what will map.
     @State private var sourceColumns: [String: [String]] = [:]
     @State private var destinationColumns: [String: [String]] = [:]
     @State private var overrides: [String: [String: String?]] = [:]
@@ -54,8 +59,13 @@ struct TableTransferSheet: View {
         sourceTables.filter(\.isSelected)
     }
 
+    private var isRunning: Bool {
+        if case .running = phase { return true }
+        return false
+    }
+
     private var canTransfer: Bool {
-        !isRunning && !selectedTables.isEmpty && destinationConnection != nil && !hasContestedMapping
+        !isRunning && !selectedTables.isEmpty && destinationScope != nil && !hasContestedMapping
     }
 
     /// Two source columns mapped to one destination column build an INSERT naming it twice, which
@@ -64,7 +74,34 @@ struct TableTransferSheet: View {
         selectedTables.contains { !resolvedMatch(for: $0.name).contestedDestinations.isEmpty }
     }
 
+    // A ZStack, not a Group, whose modifiers reach each phase view: a phase switch must not run onDisappear.
     var body: some View {
+        ZStack {
+            switch phase {
+            case .form:
+                formView
+            case .running:
+                TransferProgressSheet(progress: transferProgress, onStop: { service.cancel() })
+            case .finished(let result):
+                TransferResultView(result, onDone: { isPresented = false })
+            }
+        }
+        .background {
+            WindowAccessor { window in hostWindow = window }
+        }
+        .task { await load() }
+        // Stop owns Escape while the transfer runs.
+        .onExitCommand {
+            switch phase {
+            case .form, .finished:
+                isPresented = false
+            case .running:
+                break
+            }
+        }
+    }
+
+    private var formView: some View {
         VStack(spacing: 0) {
             header
 
@@ -83,17 +120,6 @@ struct TableTransferSheet: View {
         }
         .frame(minWidth: 460, minHeight: 420, idealHeight: 460, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
-        .background {
-            WindowAccessor { window in hostWindow = window }
-        }
-        .task { await load() }
-        .onExitCommand {
-            guard !isRunning else { return }
-            isPresented = false
-        }
-        .sheet(isPresented: $isRunning) {
-            TransferProgressSheet(progress: transferProgress) { service.cancel() }
-        }
     }
 
     private var header: some View {
@@ -127,16 +153,44 @@ struct TableTransferSheet: View {
                 }
             }
             .onChange(of: destinationConnectionId) { _ in
+                resolvingDestination += 1
                 Task {
+                    defer { resolvingDestination -= 1 }
                     await loadDestinationDatabases()
-                    await loadColumnsForSelection()
+                    await loadDestinationSchemas()
+                    await reloadDestinationColumns()
                 }
             }
 
             if !destinationDatabases.isEmpty {
-                Picker("Database", selection: $destinationDatabase) {
+                Picker("Database", selection: Binding(
+                    get: { destinationDatabase },
+                    set: { database in
+                        destinationDatabase = database
+                        resolvingDestination += 1
+                        Task {
+                            defer { resolvingDestination -= 1 }
+                            await loadDestinationSchemas()
+                            await reloadDestinationColumns()
+                        }
+                    }
+                )) {
                     ForEach(destinationDatabases, id: \.self) { database in
                         Text(database).tag(database)
+                    }
+                }
+            }
+
+            if !destinationSchemas.isEmpty {
+                Picker("Schema", selection: Binding(
+                    get: { destinationSchema },
+                    set: { schema in
+                        destinationSchema = schema
+                        Task { await reloadDestinationColumns() }
+                    }
+                )) {
+                    ForEach(destinationSchemas, id: \.self) { schema in
+                        Text(schema).tag(schema)
                     }
                 }
             }
@@ -295,7 +349,7 @@ struct TableTransferSheet: View {
                 guard let index = sourceTables.firstIndex(where: { $0.id == table.id }) else { return }
                 sourceTables[index].isSelected = isOn
                 guard isOn else { return }
-                Task { await loadColumnsForSelection() }
+                Task { await loadColumnsForSelection(on: destinationScope) }
             }
         )
     }
@@ -314,10 +368,11 @@ struct TableTransferSheet: View {
             .filter { !$0.safeModeLevel.blocksAllWrites }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         do {
+            let scope = sourceScope
             let tables = try await DatabaseManager.shared.withMetadataDriver(
-                scope: sourceScope, workload: .bulk
+                scope: scope, workload: .bulk
             ) { driver in
-                try await driver.fetchTables()
+                try await driver.fetchTables(schema: scope.schema)
             }
             sourceTables = tables.filter { $0.type != .sequence }.map { table in
                 ExportObjectItem(
@@ -349,6 +404,60 @@ struct TableTransferSheet: View {
         }
     }
 
+    // Without a schema the writes resolved to wherever the destination session was, often another table of that name.
+    @MainActor
+    private func loadDestinationSchemas() async {
+        destinationSchemas = []
+        destinationSchema = ""
+        guard let destinationConnection,
+              PluginManager.shared.supportsSchemaSwitching(for: destinationConnection.type) else { return }
+        let database = destinationDatabase.isEmpty ? destinationConnection.database : destinationDatabase
+        let scope = DatabaseScope(connectionId: destinationConnection.id, database: database, schema: nil)
+        do {
+            let schemas = try await DatabaseManager.shared.withMetadataDriver(
+                scope: scope, workload: .interactive
+            ) { driver in
+                try await driver.fetchSchemas()
+            }
+            guard destinationConnectionId == scope.connectionId, destinationDatabaseName == database else { return }
+            destinationSchemas = schemas
+            destinationSchema = Self.defaultDestinationSchema(
+                source: sourceScope.schema,
+                current: DatabaseManager.shared.resolvedScope(
+                    database: database, schema: nil, for: destinationConnection.id
+                )?.schema,
+                engineDefault: PluginManager.shared.defaultSchemaName(for: destinationConnection.type),
+                available: schemas
+            )
+        } catch {
+            Self.logger.warning("Failed to list destination schemas: \(error.localizedDescription)")
+        }
+    }
+
+    // The source's own schema when the destination has one of that name, then where the destination is browsing.
+    nonisolated static func defaultDestinationSchema(
+        source: String?,
+        current: String?,
+        engineDefault: String?,
+        available: [String]
+    ) -> String {
+        for candidate in [source, current, engineDefault] {
+            if let candidate, available.contains(candidate) { return candidate }
+        }
+        return available.first ?? ""
+    }
+
+    @MainActor
+    private func reloadDestinationColumns() async {
+        destinationColumns = [:]
+        await loadColumnsForSelection(on: Self.destinationScope(
+            connection: destinationConnection,
+            database: destinationDatabase,
+            schema: destinationSchema,
+            isResolving: false
+        ))
+    }
+
     private func transferTitle(destination: DatabaseConnection) -> String {
         let template = selectedTables.count == 1
             ? String(localized: "Transfer %1$lld table into %2$@?")
@@ -372,25 +481,32 @@ struct TableTransferSheet: View {
     /// before anything is written. Only the ticked ones, because a database of four hundred tables
     /// would otherwise pay for four hundred column reads to open a sheet.
     @MainActor
-    private func loadColumnsForSelection() async {
+    private func loadColumnsForSelection(on destinationScope: DatabaseScope?) async {
         let tables = selectedTables.map(\.name)
         guard !tables.isEmpty, let destinationConnection else { return }
         isMatching = true
         defer { isMatching = false }
 
         for table in tables where sourceColumns[table] == nil {
-            sourceColumns[table] = await columns(
-                of: table, on: sourceScope, schema: nil)
+            sourceColumns[table] = await columns(of: table, on: sourceScope)
         }
         guard let destinationScope else { return }
         for table in tables where destinationColumns[table] == nil {
-            let found = await columns(of: table, on: destinationScope, schema: nil)
+            let found = await columns(of: table, on: destinationScope)
+            // A schema or database picked while this read ran owns the columns now.
+            guard Self.destinationScope(
+                connection: destinationConnection,
+                database: destinationDatabase,
+                schema: destinationSchema,
+                isResolving: false
+            ) == destinationScope else { return }
             destinationColumns[table] = found.isEmpty ? nil : found
         }
     }
 
     @MainActor
-    private func columns(of table: String, on scope: DatabaseScope, schema: String?) async -> [String] {
+    private func columns(of table: String, on scope: DatabaseScope) async -> [String] {
+        let schema = scope.schema
         do {
             return try await DatabaseManager.shared.withMetadataDriver(
                 scope: scope, workload: .interactive
@@ -416,16 +532,34 @@ struct TableTransferSheet: View {
         )
     }
 
-    /// The database the user picked, not wherever the destination connection was last parked. Both
-    /// the column read and the write go through this: the picker used to bind to a value nothing
-    /// read, so choosing a database changed the label and sent the rows somewhere else.
     private var destinationScope: DatabaseScope? {
+        Self.destinationScope(
+            connection: destinationConnection,
+            database: destinationDatabase,
+            schema: destinationSchema,
+            isResolving: resolvingDestination > 0
+        )
+    }
+
+    private var destinationDatabaseName: String? {
         guard let destinationConnection else { return nil }
-        let database = destinationDatabase.isEmpty
-            ? destinationConnection.database
-            : destinationDatabase
+        return destinationDatabase.isEmpty ? destinationConnection.database : destinationDatabase
+    }
+
+    // The database and schema the user picked, not wherever the destination session was last parked. None while they
+    // are still loading: a scope taken then named no schema, and the writes went to the session's own.
+    nonisolated static func destinationScope(
+        connection: DatabaseConnection?,
+        database: String,
+        schema: String,
+        isResolving: Bool
+    ) -> DatabaseScope? {
+        guard let connection, !isResolving else { return nil }
         return DatabaseScope(
-            connectionId: destinationConnection.id, database: database, schema: nil)
+            connectionId: connection.id,
+            database: database.isEmpty ? connection.database : database,
+            schema: schema.isEmpty ? nil : schema
+        )
     }
 
     // MARK: - Running
@@ -442,7 +576,7 @@ struct TableTransferSheet: View {
 
         errorMessage = nil
         service.prepareForRun()
-        isRunning = true
+        phase = .running
         let transferService = service
         let job = SheetJob(
             .tableTransfer,
@@ -455,12 +589,25 @@ struct TableTransferSheet: View {
         ) {
             transferService.cancel()
         }
+        // Anything but a success returns to the form, which shows the error inline.
         defer {
-            isRunning = false
+            if isRunning {
+                phase = .form
+            }
             job.end()
         }
 
-        await loadColumnsForSelection()
+        await loadColumnsForSelection(on: destinationScope)
+        // The mapping is read from the scope this run writes to, or not at all.
+        guard Self.destinationScope(
+            connection: destinationConnection,
+            database: destinationDatabase,
+            schema: destinationSchema,
+            isResolving: false
+        ) == destinationScope else {
+            errorMessage = String(localized: "The destination changed while the transfer started. Check it and transfer again.")
+            return
+        }
 
         var mappings: [String: [String: String]] = [:]
         var unmapped: [String] = []
@@ -483,6 +630,7 @@ struct TableTransferSheet: View {
             objects: selectedTables,
             sourceType: sourceConnection.type,
             destinationType: destinationConnection.type,
+            destinationSchema: destinationScope.schema,
             columnMapping: mappings,
             sourceColumns: sourceColumns,
             deleteExistingRows: deleteExistingRows,
@@ -522,15 +670,12 @@ struct TableTransferSheet: View {
     // Counted from the run, since the selection is the form's and could differ from what ran.
     @MainActor
     private func presentResult(destination: DatabaseConnection) {
-        TransferResultAlert.presentTransferSuccess(
+        phase = .finished(TransferResults.transferSucceeded(
             tableCount: service.state.totalTables,
             rowCount: service.state.transferredRows,
             destinationName: destination.name,
-            warnings: service.state.warnings,
-            window: hostWindow
-        ) {
-            isPresented = false
-        }
+            warnings: service.state.warnings
+        ))
     }
 
     @MainActor

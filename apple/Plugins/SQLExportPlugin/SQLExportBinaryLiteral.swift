@@ -64,6 +64,11 @@ nonisolated internal enum SQLExportBinaryLiteral {
         }
         switch SqlDialect.from(databaseTypeId: databaseTypeId) {
         case .postgres:
+            // KingbaseES documents `decode` only as Oracle's DECODE, and Redshift has no bytea and reads
+            // VARBYTE, so both reject `decode('<hex>','hex')`. Spellings measured in the app's
+            // CompareSQLLiteral.postgresFamilyBinaryLiteral.
+            if databaseTypeId == "KingbaseES" { return "'\\x\(hex)'::bytea" }
+            if databaseTypeId == "Redshift" { return "from_hex('\(hex)')" }
             return "decode('\(hex)', 'hex')"
         default:
             return "X'\(hex)'"

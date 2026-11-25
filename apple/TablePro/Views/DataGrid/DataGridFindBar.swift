@@ -34,9 +34,13 @@ struct DataGridFindBar: View {
         }
         // The search field clears on the first Escape and hands the second on, which closes the bar.
         .onExitCommand { model.hideFind() }
+        // Read by the field as it is built; a later rebuild of the bar, as on a tab switch, takes no focus.
+        .onAppear { find.requestsFieldFocus = false }
         // Find while the bar is already open moves focus back to its field.
         .onReceive(find.$isVisible.dropFirst()) { isVisible in
-            if isVisible { focusRequest += 1 }
+            guard isVisible else { return }
+            find.requestsFieldFocus = false
+            focusRequest += 1
         }
         // Configuration changes bump this revision; the bar observes nothing else on the model.
         .onReceive(model.$editabilityRevision) { _ in
@@ -53,7 +57,7 @@ struct DataGridFindBar: View {
                 text: termBinding,
                 placeholder: String(localized: "Find"),
                 onSubmit: { step(forward: NSApp.currentEvent?.modifierFlags.contains(.shift) != true) },
-                focusOnAppear: true,
+                focusOnAppear: find.requestsFieldFocus,
                 focusTrigger: focusRequest,
                 accessibilityIdentifier: "grid-find-field"
             )
