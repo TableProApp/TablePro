@@ -47,25 +47,27 @@ A boolean key that is `true` or absent leaves the person's own setting. Each hos
 - A value of another type counts as absent, and the host logs why. The Mac already refuses a number where a boolean belongs.
 - On Windows each key is read from `HKLM`, then from `HKCU`. The first that has it wins, and a list is never merged across the two.
 - The ADMX gives a text box for a string, an enabled or disabled policy for a boolean, and a list box for a list. Its ADML names the values.
+- **A source the host refuses is not absence.** On Linux that is a policy file or directory with the wrong owner or mode, a person's copy that hides the system extension, or a file that does not parse. 0044 had such a source ignored, which a person could use to drop the organization's policy.
+  - The host passes a refused state instead of values, and the core withholds everything a key can: personal sync is off and locked, iCloud sync and usage data are off, no sign-in or account call starts, and the plugin registry, update checks, share-link reads and the catalog refresh make no request.
+  - The app says the organization's policy could not be read, and the host logs why.
 
 ## When a value applies
 
 - A host reads its channel at launch, and again whenever its OS reports a change while the app runs, and passes every value to the core again. A change the OS does not report applies at the next launch.
 - The core applies new values at once. The account's server still changes only at launch, as 0047 has it, but the rules below follow the values the core holds.
+- When those values no longer allow the server the account is signed in to, the account stops calling it and personal sync on it stops at once, until a launch switches the server. The confirmation a forced TablePro Sync asks for belongs to one server and account, so another server or account asks again.
 - A sync pass under a provider that stops being allowed commits nothing more. A push not yet sent is not sent, and an answer that arrives after the stop is dropped. The next pass on that provider starts from the last committed state, and its change tags and idempotency keys (0051) settle a push the server applied before the stop.
 
 ## PersonalSyncProvider
 
 - **Absent:** no restriction. Every provider the platform offers is a choice, and the person's choice is kept. A profile that drops the key returns to this, and the device stays on the provider it had.
 - **Values:** `off`, `icloud` and `tablepro-sync`, spelled exactly. An unknown value, or an entry that is not a string, is skipped and logged.
-- **The choices.** The entries this build and platform offer are the choices its picker shows: Linux and Windows have no `icloud`, and a build without TablePro Sync has no `tablepro-sync`. The list is a set, so order and repeats mean nothing.
+- **The choices.** The entries this build and platform offer, less `icloud` when `ICloudSyncAllowed=false`, are the choices its picker shows: Linux and Windows have no `icloud`, and a build without TablePro Sync has no `tablepro-sync`. The list is a set, so order and repeats mean nothing.
   - **One choice left:** it is the device's provider, and the picker is locked.
   - **Several:** the person picks among them. A device on a provider that is still allowed keeps it.
   - **None,** from a list that is set but empty or holds no entry that applies here: personal sync is off, and the picker is locked.
-- **What also removes a choice.**
-  - `ICloudSyncAllowed=false` removes `icloud`.
-  - A self-hosted server with `personalSync` off removes `tablepro-sync` while the device is signed in to it.
-- **Leaving a provider.** When the provider in use is no longer allowed, it stops at once with no last pass, and the device keeps its data and its unsent edits. A single remaining choice is then taken for the person; otherwise they pick one.
+- **The server's switch only takes its own provider away.** A self-hosted server with `personalSync` off makes `tablepro-sync` unavailable while the device is signed in to it. It never picks another provider: a device on it goes off, and the picker keeps showing what the profile allows.
+- **Leaving a provider.** When the provider in use is no longer allowed, it stops at once with no last pass, and the device keeps its data and its unsent edits. The device then moves to another provider only when the profile itself leaves one choice, or when the person picks one. A server's answer never starts another provider.
 - **Forced TablePro Sync still asks before its first upload.** The device stays off until the person signs in to a server that grants `service_sync`, confirms the upload (the move off iCloud in 0054, for a device on iCloud) and sets up the recovery key (0053). A forced iCloud starts as the person's own switch does.
 - **Team Library is not a personal provider.** No value of this key starts or stops a team scope.
 - **Which server.** TablePro Sync goes to the server the person is signed in to. An organization that wants personal data on its own server pairs `tablepro-sync` with `AccountServerURL` and `AllowOtherAccountServers=false`.
@@ -112,6 +114,8 @@ The pair does not block every TablePro host. The table lists each request the ap
 
 - The policy key list lives here, and 0044 keeps the channels. A key added later adds a row to the Keys table.
 - A build older than the one that reads a key ignores it. An organization that relies on a key requires that build through its MDM.
+- The keys bind TablePro's own builds. A person who runs a build of their own escapes them, as with any open source app, so what must hold against the person, such as `personalSync`, the server enforces.
+- A Linux device whose policy source is refused signs in nowhere until an administrator fixes the source.
 - A Mac held to a company server opens no share link from tablepro.app, and its AI catalog stays at the bundled or kept copy until the next app update.
 - A Mac without the registry has only bundled and installed plugins. An organization that needs a registry plugin installs it before it sets the key.
 - A forced TablePro Sync on a device that is not signed in leaves personal sync off, and the settings say why.
