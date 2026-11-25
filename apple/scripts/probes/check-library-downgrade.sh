@@ -7,8 +7,8 @@
 # Usage: check-library-downgrade.sh <this build's TablePro.app> <previous stable's TablePro.app>
 set -euo pipefail
 
-NEW_APP="$(cd "${1:?this build's TablePro.app}" && pwd)"
-OLD_APP="$(cd "${2:?the previous stable's TablePro.app}" && pwd)"
+NEW_APP="$(cd "${1:?the TablePro.app of this build}" && pwd)"
+OLD_APP="$(cd "${2:?the TablePro.app of the previous stable}" && pwd)"
 if pgrep -x TablePro >/dev/null; then
     echo "Quit every TablePro first: a run here must be the only one" >&2
     exit 2
