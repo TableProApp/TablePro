@@ -4,13 +4,13 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use secrecy::SecretString;
+use serde_json::Value;
 use tablepro_core::credentials::{SecretKind, SecretLookup, SecretVault};
 use tablepro_core::{
     AiPolicy, AuthMode, ClientIdentity, ConfigError, DriverError, ExternalAccess, NetworkOptions, SafeModeLevel,
     TlsConfig, TlsMode,
 };
 use tablepro_session::runtime::Tasks;
-use serde_json::Value;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionStore, ConnectionTag,
     ConnectionTagName, LibraryIcon, RemoteFileAccess, SavedConnection, SavedSshAuth, SavedSshConfig, SshJumpAuth,
@@ -772,16 +772,17 @@ impl ConnectionLibrary {
             .await
     }
 
-    pub async fn update_tag(&self, id: String, name: String, color: String) -> Result<(), CoreError> {
+    // None leaves the tag with no colour, as macOS can hold one.
+    pub async fn update_tag(&self, id: String, name: String, color: Option<String>) -> Result<(), CoreError> {
         let id = parse_id(&id)?;
         let name = tag_name(&name)?;
-        let color = tag_color(&color)?;
+        let color = color.as_deref().map(tag_color).transpose()?;
         self.blocking(move |store| {
             let is_preset = store.tags_blocking()?.iter().any(|tag| tag.id == id && tag.is_preset);
             Ok(store.update_tag_blocking(ConnectionTag {
                 id,
                 name,
-                color: Some(color),
+                color,
                 is_preset,
             })?)
         })
@@ -1076,11 +1077,7 @@ pub(crate) fn apply(
         Some(settings) => Some(edited_ssh(settings, saved.ssh.as_ref())),
         None => saved.ssh.take().map(|ssh| SavedSshConfig { enabled: false, ..ssh }),
     };
-    // A form that offers fewer levels sends the one a session runs for the stored level; that keeps the stored one.
-    let level = SafeModeLevel::from(record.safe_mode);
-    if level != saved.safe_mode.enforced() {
-        saved.safe_mode = level;
-    }
+    saved.safe_mode = SafeModeLevel::edited(saved.safe_mode, record.safe_mode.into());
     saved.query_timeout_secs = record.query_timeout_secs;
     saved.color = record.color.as_deref().and_then(ConnectionColor::from_id);
     saved.group_id = group_id;
@@ -1088,7 +1085,7 @@ pub(crate) fn apply(
         saved.external_access = access.into();
     }
     if let Some(policy) = record.ai_policy {
-        saved.ai_policy = policy.into();
+        saved.ai_policy = AiPolicy::edited(saved.ai_policy, policy.into(), AiPolicy::Ask);
     }
     if icon.is_some() {
         saved.icon = icon;
@@ -1150,7 +1147,10 @@ pub fn check_jump_hosts(list: String) -> Result<(), CoreError> {
 #[uniffi::export]
 pub fn parse_jump_hosts(list: String) -> Result<Vec<SshJumpHostRecord>, CoreError> {
     check_jump_hosts(list.clone())?;
-    Ok(SshJumpHost::parse_list(&list).iter().map(SshJumpHostRecord::from).collect())
+    Ok(SshJumpHost::parse_list(&list)
+        .iter()
+        .map(SshJumpHostRecord::from)
+        .collect())
 }
 
 // The hops as a form shows them, the way -J takes them.
@@ -1166,7 +1166,6 @@ pub fn jump_hosts_text(hops: Vec<SshJumpHostRecord>) -> String {
 pub(crate) fn edited_ssh(settings: &SshSettings, stored: Option<&SavedSshConfig>) -> SavedSshConfig {
     let mut ssh = SavedSshConfig {
         enabled: settings.enabled.or(stored.map(|ssh| ssh.enabled)).unwrap_or(true),
-        host: settings.host.trim().to_owned(),
         port: settings.port,
         username: settings
             .username
@@ -1182,20 +1181,11 @@ pub(crate) fn edited_ssh(settings: &SshSettings, stored: Option<&SavedSshConfig>
                 ..jump_host(hop)
             })
             .collect(),
-        auth: saved_auth(&settings.auth, true),
-        ..stored.cloned().unwrap_or_else(|| SavedSshConfig::new("", SavedSshAuth::Agent))
-    };
+        ..SavedSshConfig::new(settings.host.trim(), saved_auth(&settings.auth, false))
+    }
+    .kept_over(stored);
     if let Some(options) = &settings.options {
         apply_options(options, &mut ssh);
-    }
-    if let Some(stored) = stored {
-        ssh.keep_hops_from(stored);
-        // A switch away from a key keeps the key's file, as the macOS form does.
-        if let (SavedSshAuth::PrivateKey { path: Some(path), .. }, None) = (&stored.auth, &ssh.kept_key_path)
-            && !matches!(ssh.auth, SavedSshAuth::PrivateKey { .. })
-        {
-            ssh.kept_key_path = Some(path.clone());
-        }
     }
     if matches!(ssh.auth, SavedSshAuth::PrivateKey { .. }) {
         ssh.kept_key_path = None;
@@ -1211,7 +1201,7 @@ pub(crate) fn stored_ssh(settings: &SshSettings, unknown: BTreeMap<String, Value
         port: settings.port,
         username: settings.username.clone(),
         jump_hosts: settings.jump_hosts.iter().map(jump_host).collect(),
-        auth: saved_auth(&settings.auth, false),
+        auth: saved_auth(&settings.auth, true),
         unknown,
         ..SavedSshConfig::new("", SavedSshAuth::Agent)
     };

@@ -206,7 +206,7 @@ pub(crate) fn connection_look(saved: &SavedConnection, section: LibrarySection, 
     NodeLook {
         title: saved.name.clone(),
         subtitle,
-        icon_name: connection_icon(saved.icon, seen.file_based).to_owned(),
+        icon_name: connection_icon(saved.icon.as_ref().and_then(LibraryIcon::named), seen.file_based).to_owned(),
         color: saved.color,
         description,
         favourite: seen.favourite,
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn a_connection_shows_its_icon_or_its_engines() {
         let picked = SavedConnection {
-            icon: Some(ConnectionIcon::Cloud),
+            icon: Some(tablepro_storage::LibraryIcon::Named(ConnectionIcon::Cloud)),
             ..saved_connection("cloud")
         };
         let plain = saved_connection("plain");

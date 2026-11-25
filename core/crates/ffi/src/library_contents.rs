@@ -4,8 +4,8 @@ use chrono::DateTime;
 use tablepro_core::{AuthMode, ExternalAccess, NetworkOptions};
 use tablepro_records::cloudkit::library::{icon_for_symbol, symbol_for_icon};
 use tablepro_storage::{
-    ConnectionDetails, ConnectionGroup, ConnectionGroupName, ConnectionTag, ConnectionTagName,
-    DeviceOnly, LibraryWrite, SavedConnection,
+    ConnectionDetails, ConnectionGroup, ConnectionGroupName, ConnectionTag, ConnectionTagName, DeviceOnly,
+    LibraryWrite, SavedConnection,
 };
 use uuid::Uuid;
 
@@ -209,7 +209,9 @@ mod tests {
             })
         );
         assert_eq!(
-            library_icon_symbol(server.expect("an icon")).expect("a symbol").as_deref(),
+            library_icon_symbol(server.expect("an icon"))
+                .expect("a symbol")
+                .as_deref(),
             Some("server.rack")
         );
         assert_eq!(

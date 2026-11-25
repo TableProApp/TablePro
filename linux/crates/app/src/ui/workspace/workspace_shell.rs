@@ -1263,7 +1263,7 @@ fn tab_menu() -> gio::Menu {
 
 fn safe_mode_levels() -> gio::Menu {
     let levels = gio::Menu::new();
-    for level in tablepro_core::SafeModeLevel::ALL {
+    for level in tablepro_core::SafeModeLevel::ENFORCED {
         let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::menu_label(level)), None);
         item.set_action_and_target_value(
             Some("win.safe-mode"),

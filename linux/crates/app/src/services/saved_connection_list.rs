@@ -586,7 +586,7 @@ mod tests {
         assert_eq!(objects(&list), before, "an unchanged tag list rebuilt the rows");
 
         let recoloured = ConnectionTag {
-            color: tablepro_storage::ConnectionColor::Green,
+            color: Some(tablepro_storage::ConnectionColor::Green),
             ..zeta
         };
         list.apply(tagged(vec![recoloured, acme]));

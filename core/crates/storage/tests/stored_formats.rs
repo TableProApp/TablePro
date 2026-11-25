@@ -13,8 +13,8 @@ use chrono::{DateTime, Utc};
 use tablepro_core::{AiPolicy, AuthMode, ClientIdentity, ExternalAccess, SafeModeLevel, TlsConfig, TlsMode};
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionList, ConnectionStore,
-    ConnectionTag, ConnectionTagName, LibraryIcon, SavedConnection, SavedSshAuth, SavedSshConfig, StoragePaths,
-    SymbolName,
+    ConnectionTag, ConnectionTagName, LibraryIcon, SavedConnection, SavedSshAuth, SavedSshConfig, SshJumpHost,
+    StoragePaths, SymbolName,
 };
 use uuid::Uuid;
 
@@ -51,6 +51,7 @@ fn tls(mode: TlsMode) -> TlsConfig {
         ca_file: None,
         client_identity: None,
         server_name: None,
+        unknown: Default::default(),
     }
 }
 
@@ -96,6 +97,12 @@ fn ssh(host: &str, auth: SavedSshAuth) -> SavedSshConfig {
         username: None,
         jump_hosts: Vec::new(),
         auth,
+        enabled: true,
+        kept_key_path: None,
+        agent_socket: None,
+        totp: Default::default(),
+        remote_file: Default::default(),
+        unknown: Default::default(),
     }
 }
 
@@ -126,6 +133,7 @@ fn production_orders(group_id: Uuid, tag: Uuid) -> Result<SavedConnection, Box<d
                 key: "/home/me/certs/client.key".into(),
             }),
             server_name: Some("mysql.example.com".to_owned()),
+            unknown: Default::default(),
         },
         safe_mode: SafeModeLevel::ReadOnly,
         external_access: ExternalAccess::Blocked,
@@ -134,7 +142,10 @@ fn production_orders(group_id: Uuid, tag: Uuid) -> Result<SavedConnection, Box<d
         ssh: Some(SavedSshConfig {
             port: Some(2222),
             username: Some("deploy".to_owned()),
-            jump_hosts: vec!["jump1.example.com".to_owned(), "ops@jump2.example.com:2200".to_owned()],
+            jump_hosts: vec![
+                SshJumpHost::new("jump1.example.com", None, None),
+                SshJumpHost::new("jump2.example.com", Some(2200), Some("ops".to_owned())),
+            ],
             ..ssh(
                 "bastion",
                 SavedSshAuth::PrivateKey {
@@ -147,7 +158,7 @@ fn production_orders(group_id: Uuid, tag: Uuid) -> Result<SavedConnection, Box<d
         color: Some(ConnectionColor::Red),
         group_id: Some(group_id),
         tags: vec![tag],
-        icon: Some(ConnectionIcon::Shield),
+        icon: Some(LibraryIcon::Named(ConnectionIcon::Shield)),
         ..saved(
             "6f1e2d3c-4b5a-4968-8776-655443322110",
             "Production orders",
@@ -262,7 +273,8 @@ fn connections_v1_model() -> Result<ConnectionList, Box<dyn Error>> {
     let critical = ConnectionTag {
         id: Uuid::parse_str("b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e")?,
         name: ConnectionTagName::new("critical")?,
-        color: ConnectionColor::Red,
+        color: Some(ConnectionColor::Red),
+        is_preset: false,
     };
     let connections = vec![
         local_postgres()?,
@@ -358,6 +370,33 @@ fn a_version_1_list_writes_back_as_it_was_read() -> TestResult {
     assert_eq!(imported.groups.as_ref(), model.groups.as_ref());
     assert_eq!(imported.favorites.as_ref(), model.favorites.as_ref());
     assert!(String::from_utf8_lossy(&exported).contains("\"version\": 1"));
+    Ok(())
+}
+
+// A build that keeps hops as text and knows three Safe Mode levels reads what this one writes back.
+#[test]
+fn a_version_1_list_rewritten_keeps_the_spellings_earlier_builds_read() -> TestResult {
+    let root = tempfile::tempdir()?;
+    let list = list_from(root.path(), CONNECTIONS_V1)?;
+    let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+    let store = ConnectionStore::new(&paths);
+    let first = list.connections.first().ok_or("the fixture has no connections")?.id;
+
+    store.touch_last_opened_blocking(first)?;
+    let written: serde_json::Value = serde_json::from_slice(&std::fs::read(paths.connections_file())?)?;
+    let fixture: serde_json::Value = serde_json::from_slice(CONNECTIONS_V1)?;
+
+    let field = |file: &serde_json::Value, name: &str| -> Vec<serde_json::Value> {
+        file["connections"]
+            .as_array()
+            .map(|connections| connections.iter().map(|connection| connection[name].clone()).collect())
+            .unwrap_or_default()
+    };
+    for name in ["ssh", "safe_mode", "ai_policy", "icon", "tls", "name"] {
+        assert_eq!(field(&written, name), field(&fixture, name), "{name}");
+    }
+    assert_eq!(written["groups"], fixture["groups"]);
+    assert_eq!(written["tags"], fixture["tags"]);
     Ok(())
 }
 

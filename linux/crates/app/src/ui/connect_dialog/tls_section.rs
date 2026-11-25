@@ -387,6 +387,7 @@ pub fn mode_label(mode: TlsMode) -> String {
         TlsMode::Disable => crate::i18n::gettext("Disable"),
         TlsMode::Prefer => crate::i18n::gettext("Prefer"),
         TlsMode::Require => crate::i18n::gettext("Require"),
+        TlsMode::VerifyCa => crate::i18n::gettext("Verify CA"),
         TlsMode::VerifyFull => crate::i18n::gettext("Verify full"),
         TlsMode::Strict => crate::i18n::gettext("Strict"),
     }
@@ -402,6 +403,9 @@ pub fn mode_description(mode: TlsMode) -> String {
             "Encrypted if the server offers TLS, otherwise not. The server certificate is not checked.",
         ),
         TlsMode::Require => crate::i18n::gettext("Encrypted. The server certificate is not checked."),
+        TlsMode::VerifyCa => crate::i18n::gettext(
+            "Encrypted. The certificate must come from a trusted authority; its name is not checked.",
+        ),
         TlsMode::VerifyFull => crate::i18n::gettext("Encrypted. The certificate must be valid for the server name."),
         TlsMode::Strict => crate::i18n::gettext(
             "Encrypted from the first byte (TDS 8.0). The certificate must be valid for the server name.",

@@ -35,6 +35,7 @@ fn verified<E: TlsConformanceEngine>(engine: &E, ca: &Path) -> TlsConfig {
         ca_file: Some(ca.to_owned()),
         client_identity: None,
         server_name: overridable.then(|| engine.served_name().to_owned()),
+        unknown: Default::default(),
     }
 }
 
@@ -112,6 +113,7 @@ pub async fn require_connects_without_ca<E: TlsConformanceEngine>(engine: E) -> 
         ca_file: None,
         client_identity: None,
         server_name: None,
+        unknown: Default::default(),
     };
     connects::<E>(REQUIRE_CASE, engine.connect_options(tls)).await
 }
@@ -124,6 +126,7 @@ pub async fn require_with_ca_file_is_refused<E: TlsConformanceEngine>(engine: E)
         ca_file: Some(engine.ca_file().to_owned()),
         client_identity: None,
         server_name: None,
+        unknown: Default::default(),
     };
     let outcome = open::<E>(REQUIRE_CA_CASE, engine.connect_options(tls)).await?;
     let refused = matches!(&outcome, Err(DriverError::Config(ConfigError::CaFileUnsupported)));

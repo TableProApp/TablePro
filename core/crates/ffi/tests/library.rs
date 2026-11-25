@@ -190,6 +190,8 @@ fn record(name: &str, driver_id: &str, database: &str) -> ConnectionRecord {
         tags: Vec::new(),
         ai_policy: None,
         external_access: None,
+        icon: None,
+        order: 0,
     }
 }
 
@@ -798,6 +800,8 @@ fn through_ssh(port: u16) -> ConnectionRecord {
         username: Some("tester".to_owned()),
         jump_hosts: Vec::new(),
         auth: SshAuthTag::Password,
+        enabled: None,
+        options: None,
     });
     shop
 }
@@ -924,14 +928,14 @@ async fn a_tag_goes_on_several_connections_and_a_rename_reaches_all_of_them() {
         .await
         .unwrap();
     library
-        .update_tag(tag.id.clone(), "production".to_owned(), "orange".to_owned())
+        .update_tag(tag.id.clone(), "production".to_owned(), Some("orange".to_owned()))
         .await
         .unwrap();
     let snapshot = library.snapshot().await.unwrap();
 
     assert_eq!(snapshot.tags.len(), 1);
     assert_eq!(snapshot.tags[0].name, "production");
-    assert_eq!(snapshot.tags[0].color, "orange");
+    assert_eq!(snapshot.tags[0].color.as_deref(), Some("orange"));
     assert!(snapshot.connections.iter().all(|saved| saved.tags == [tag.id.clone()]));
 
     library

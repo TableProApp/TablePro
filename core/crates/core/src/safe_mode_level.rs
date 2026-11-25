@@ -49,7 +49,10 @@ impl SafeModeLevel {
     pub const ENFORCED: [SafeModeLevel; 3] = [Self::Silent, Self::Alert, Self::ReadOnly];
 
     pub fn strictness(self) -> usize {
-        Self::ALL.iter().position(|level| *level == self).unwrap_or(Self::ALL.len())
+        Self::ALL
+            .iter()
+            .position(|level| *level == self)
+            .unwrap_or(Self::ALL.len())
     }
 
     /// The level a session runs, rounded up to one in [`Self::ENFORCED`] and never down.
@@ -65,6 +68,11 @@ impl SafeModeLevel {
             .filter(|level| level.strictness() >= self.strictness())
             .min_by_key(|level| level.strictness())
             .unwrap_or(Self::ReadOnly)
+    }
+
+    // A form that offers only the enforced levels shows a stored one as the level it runs, and sending that back keeps it.
+    pub fn edited(stored: Self, picked: Self) -> Self {
+        if picked == stored.enforced() { stored } else { picked }
     }
 
     pub fn confirms_reads(self) -> bool {
@@ -163,6 +171,22 @@ mod tests {
         }
         assert_eq!(
             SafeModeLevel::SafeMode.at_least_in(&[SafeModeLevel::Silent]),
+            SafeModeLevel::ReadOnly
+        );
+    }
+
+    #[test]
+    fn a_form_that_shows_the_enforced_level_keeps_the_stored_one() {
+        assert_eq!(
+            SafeModeLevel::edited(SafeModeLevel::AlertFull, SafeModeLevel::ReadOnly),
+            SafeModeLevel::AlertFull
+        );
+        assert_eq!(
+            SafeModeLevel::edited(SafeModeLevel::AlertFull, SafeModeLevel::Alert),
+            SafeModeLevel::Alert
+        );
+        assert_eq!(
+            SafeModeLevel::edited(SafeModeLevel::Silent, SafeModeLevel::ReadOnly),
             SafeModeLevel::ReadOnly
         );
     }

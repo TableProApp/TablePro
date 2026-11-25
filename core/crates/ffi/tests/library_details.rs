@@ -89,6 +89,8 @@ fn record(name: &str) -> ConnectionRecord {
         tags: Vec::new(),
         ai_policy: None,
         external_access: None,
+        icon: None,
+        order: 0,
     }
 }
 
@@ -223,6 +225,8 @@ async fn profiles_are_created_replaced_and_deleted() {
                 username: Some("ops".to_owned()),
                 jump_hosts: Vec::new(),
                 auth: SshAuthTag::Agent,
+                enabled: None,
+                options: None,
             },
         })
         .await
@@ -361,6 +365,8 @@ async fn a_profile_save_never_takes_the_id_of_a_profile_this_build_cannot_read()
                 username: None,
                 jump_hosts: Vec::new(),
                 auth: SshAuthTag::Agent,
+                enabled: None,
+                options: None,
             },
         })
         .await

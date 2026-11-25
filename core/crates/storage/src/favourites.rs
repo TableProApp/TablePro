@@ -195,7 +195,9 @@ impl Favourites {
         .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed(JournalEntry::new(RecordKind::FavouriteDatabase).wrote([database_record(connection, database)]));
+            self.changed(
+                JournalEntry::new(RecordKind::FavouriteDatabase).wrote([database_record(connection, database)]),
+            );
         }
         Ok(())
     }
@@ -223,7 +225,9 @@ impl Favourites {
             .rows_affected();
         transaction.commit().await?;
         if affected > 0 {
-            self.changed(JournalEntry::new(RecordKind::FavouriteDatabase).deleted([database_record(connection, database)]));
+            self.changed(
+                JournalEntry::new(RecordKind::FavouriteDatabase).deleted([database_record(connection, database)]),
+            );
         }
         Ok(())
     }

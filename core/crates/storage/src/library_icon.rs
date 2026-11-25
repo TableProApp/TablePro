@@ -36,12 +36,20 @@ pub(crate) mod connection_field {
     }
 
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<LibraryIcon>, D::Error> {
-        Ok(
-            Option::<Stored>::deserialize(deserializer)?.map(|stored| match stored {
-                Stored::Named(named) => LibraryIcon::Named(named),
-                Stored::Tagged(icon) => icon,
-            }),
-        )
+        Ok(Option::<Stored>::deserialize(deserializer)?.map(|stored| match stored {
+            Stored::Named(named) => LibraryIcon::Named(named),
+            Stored::Tagged(icon) => icon,
+        }))
+    }
+}
+
+impl LibraryIcon {
+    // The named icon an app that draws no symbol shows.
+    pub fn named(&self) -> Option<ConnectionIcon> {
+        match self {
+            Self::Named(named) => Some(*named),
+            Self::Symbol(_) => None,
+        }
     }
 }
 
@@ -123,7 +131,10 @@ mod tests {
         assert_eq!(named_json, r#"{"named":"server"}"#);
         assert_eq!(symbol_json, r#"{"symbol":"server.rack"}"#);
         assert_eq!(serde_json::from_str::<LibraryIcon>(&named_json).expect("named"), named);
-        assert_eq!(serde_json::from_str::<LibraryIcon>(&symbol_json).expect("symbol"), symbol);
+        assert_eq!(
+            serde_json::from_str::<LibraryIcon>(&symbol_json).expect("symbol"),
+            symbol
+        );
     }
 
     #[test]

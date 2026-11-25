@@ -57,7 +57,10 @@ const SAVED_CONNECTION: &[(&str, Target)] = &[
     ("ssh.jump_hosts.port", Wire("ssh_config.jump_hosts.port")),
     ("ssh.jump_hosts.username", Wire("ssh_config.jump_hosts.username")),
     ("ssh.jump_hosts.auth", Wire("ssh_config.jump_hosts.auth_method")),
-    ("ssh.jump_hosts.key_path", Wire("ssh_config.jump_hosts.private_key_path")),
+    (
+        "ssh.jump_hosts.key_path",
+        Wire("ssh_config.jump_hosts.private_key_path"),
+    ),
     ("ssh.auth.kind", Wire("ssh_config.auth_method")),
     ("ssh.auth.path", Wire("ssh_config.private_key_path")),
     ("ssh.auth.has_passphrase", Wire("ssh_config.passphrase_stored")),

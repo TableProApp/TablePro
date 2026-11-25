@@ -31,7 +31,11 @@ impl<'a> WriteGuard<'a> {
     pub(super) fn changed(&mut self, entries: impl IntoIterator<Item = JournalEntry>) {
         for entry in entries {
             match self.changed.iter_mut().find(|held| held.kind == entry.kind) {
-                Some(held) => *held = std::mem::replace(held, JournalEntry::new(entry.kind)).wrote(entry.written).deleted(entry.deleted),
+                Some(held) => {
+                    *held = std::mem::replace(held, JournalEntry::new(entry.kind))
+                        .wrote(entry.written)
+                        .deleted(entry.deleted)
+                }
                 None => self.changed.push(entry),
             }
         }

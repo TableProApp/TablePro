@@ -25,7 +25,7 @@ use tablepro_foreign_import::{
 use tablepro_storage::saved_queries::NewSavedQuery;
 use tablepro_storage::{
     ConnectionColor, ConnectionList, ConnectionStore, QueryHistory, SavedConnection, SavedSshAuth, SavedSshConfig,
-    StorageError, StoragePaths,
+    SshJumpHost, StorageError, StoragePaths,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -1062,6 +1062,12 @@ fn each_ssh_sign_in_maps_and_carries_only_its_own_secret() {
                 username: Some("deploy".to_owned()),
                 jump_hosts: Vec::new(),
                 auth: expected,
+                enabled: true,
+                kept_key_path: None,
+                agent_socket: None,
+                totp: Default::default(),
+                remote_file: Default::default(),
+                unknown: Default::default(),
             })
         );
         assert!(row.carries_credentials);
@@ -1132,6 +1138,12 @@ fn an_agent_tunnel_keeps_no_password_a_blank_port_and_user_are_left_out_and_a_re
             username: None,
             jump_hosts: Vec::new(),
             auth: SavedSshAuth::Agent,
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         })
     );
     assert!(!review.connections()[0].carries_credentials);
@@ -1171,7 +1183,11 @@ fn jump_hosts_become_hops_and_what_a_hop_cannot_keep_is_noted() {
     });
 
     assert_eq!(
-        row.connection.and_then(|saved| saved.ssh).map(|ssh| ssh.jump_hosts),
+        row.connection.and_then(|saved| saved.ssh).map(|ssh| ssh
+            .jump_hosts
+            .iter()
+            .map(SshJumpHost::destination)
+            .collect::<Vec<_>>()),
         Some(vec![
             "ops@jump1:2200".to_owned(),
             "[fd00::1]".to_owned(),

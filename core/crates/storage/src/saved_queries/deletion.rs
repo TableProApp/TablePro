@@ -6,9 +6,9 @@ use sqlx::{AssertSqlSafe, Connection, Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 use crate::journal::{JournalEntry, RecordKind, RecordRef};
-use crate::{StorageError, TableRef};
 use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
 use crate::unix_time::to_unix;
+use crate::{StorageError, TableRef};
 
 use super::folders::folders;
 use super::{ordering, queries};
@@ -103,12 +103,11 @@ pub(super) async fn delete_connection(
         .fetch_all(&mut *transaction)
         .await?;
     delete_folder_rows(&mut transaction, &folder_ids.iter().copied().collect()).await?;
-    let tables: Vec<(String, String, String)> = sqlx::query_as(
-        "DELETE FROM favourite_tables WHERE connection_id = ? RETURNING database, schema, name",
-    )
-    .bind(&owner)
-    .fetch_all(&mut *transaction)
-    .await?;
+    let tables: Vec<(String, String, String)> =
+        sqlx::query_as("DELETE FROM favourite_tables WHERE connection_id = ? RETURNING database, schema, name")
+            .bind(&owner)
+            .fetch_all(&mut *transaction)
+            .await?;
     let databases: Vec<String> =
         sqlx::query_scalar("DELETE FROM favourite_databases WHERE connection_id = ? RETURNING database")
             .bind(&owner)
@@ -119,12 +118,11 @@ pub(super) async fn delete_connection(
             .bind(&owner)
             .fetch_all(&mut *transaction)
             .await?;
-    let items: Vec<(String, String, String)> = sqlx::query_as(
-        "DELETE FROM table_folder_items WHERE connection_id = ? RETURNING database, schema, name",
-    )
-    .bind(&owner)
-    .fetch_all(&mut *transaction)
-    .await?;
+    let items: Vec<(String, String, String)> =
+        sqlx::query_as("DELETE FROM table_folder_items WHERE connection_id = ? RETURNING database, schema, name")
+            .bind(&owner)
+            .fetch_all(&mut *transaction)
+            .await?;
     transaction.commit().await?;
     let table = |(database, schema, name): (String, String, String)| {
         RecordRef::Table(TableRef {

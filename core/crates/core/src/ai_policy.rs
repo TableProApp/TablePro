@@ -24,6 +24,15 @@ pub enum AiPolicy {
 impl AiPolicy {
     pub const ALL: [AiPolicy; 4] = [Self::Ask, Self::Allow, Self::Never, Self::AppDefault];
 
+    // A form with no App Default choice shows it as the app's default, and sending that back keeps it.
+    pub fn edited(stored: Self, picked: Self, app_default: Self) -> Self {
+        if picked == stored.or_app_default(app_default) {
+            stored
+        } else {
+            picked
+        }
+    }
+
     /// The policy in force, with `app_default` standing for the app's own setting.
     pub fn or_app_default(self, app_default: AiPolicy) -> AiPolicy {
         match (self, app_default) {
@@ -54,5 +63,13 @@ mod tests {
         assert_eq!(AiPolicy::AppDefault.or_app_default(AiPolicy::Never), AiPolicy::Never);
         assert_eq!(AiPolicy::AppDefault.or_app_default(AiPolicy::AppDefault), AiPolicy::Ask);
         assert_eq!(AiPolicy::Allow.or_app_default(AiPolicy::Never), AiPolicy::Allow);
+        assert_eq!(
+            AiPolicy::edited(AiPolicy::AppDefault, AiPolicy::Ask, AiPolicy::Ask),
+            AiPolicy::AppDefault
+        );
+        assert_eq!(
+            AiPolicy::edited(AiPolicy::AppDefault, AiPolicy::Never, AiPolicy::Ask),
+            AiPolicy::Never
+        );
     }
 }

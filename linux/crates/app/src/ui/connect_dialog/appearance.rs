@@ -66,7 +66,7 @@ impl ConnectDialog {
             .activatable_widget(&check)
             .build();
         row.add_prefix(&check);
-        row.add_suffix(&color_dot(Some(tag.color)));
+        row.add_suffix(&color_dot(tag.color));
         let weak = self.downgrade();
         check.connect_toggled(move |_| {
             if let Some(dialog) = weak.upgrade() {

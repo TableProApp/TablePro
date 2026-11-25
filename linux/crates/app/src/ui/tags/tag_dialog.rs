@@ -49,7 +49,9 @@ impl TagForm {
             .activates_default(true)
             .build();
         let color = color_row();
-        let picked = editing.map_or_else(|| unused_color(existing), |tag| tag.color);
+        let picked = editing
+            .and_then(|tag| tag.color)
+            .unwrap_or_else(|| unused_color(existing));
         color.set_selected(position(picked));
         let rows = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
         rows.add_css_class("boxed-list");
@@ -110,7 +112,7 @@ fn position(color: ConnectionColor) -> u32 {
 fn unused_color(existing: &[ConnectionTag]) -> ConnectionColor {
     ConnectionColor::ALL
         .into_iter()
-        .find(|color| existing.iter().all(|tag| tag.color != *color))
+        .find(|color| existing.iter().all(|tag| tag.color != Some(*color)))
         .unwrap_or(ConnectionColor::Blue)
 }
 

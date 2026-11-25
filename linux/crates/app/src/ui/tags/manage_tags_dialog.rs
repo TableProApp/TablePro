@@ -131,7 +131,7 @@ impl ManageTagsDialog {
             .subtitle(used_by(count))
             .activatable(true)
             .build();
-        row.add_prefix(&color_dot(Some(tag.color)));
+        row.add_prefix(&color_dot(tag.color));
         let delete = gtk::Button::builder()
             .icon_name(crate::ui::icons::USER_TRASH)
             .valign(gtk::Align::Center)
@@ -171,7 +171,11 @@ impl ManageTagsDialog {
         let (dialog, sender) = (self.dialog.clone(), self.sender.clone());
         glib::spawn_future_local(async move {
             if let Some((name, color)) = ask_tag_changes(dialog.upcast_ref(), &tags, &tag).await {
-                sender.deliver(SessionWindowInput::UpdateTag(ConnectionTag { name, color, ..tag }));
+                sender.deliver(SessionWindowInput::UpdateTag(ConnectionTag {
+                    name,
+                    color: Some(color),
+                    ..tag
+                }));
             }
         });
     }

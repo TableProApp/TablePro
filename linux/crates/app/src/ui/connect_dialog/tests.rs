@@ -1404,7 +1404,12 @@ fn the_tags_and_icon_picked_go_with_the_connection_a_connect_saves() {
 
     let saved = submissions.take().remove(0).pending_save.connection;
     assert_eq!(saved.tags, [production.id]);
-    assert_eq!(saved.icon, Some(tablepro_storage::ConnectionIcon::Shield));
+    assert_eq!(
+        saved.icon,
+        Some(tablepro_storage::LibraryIcon::Named(
+            tablepro_storage::ConnectionIcon::Shield
+        ))
+    );
 }
 
 #[gtk4::test]
@@ -1412,7 +1417,9 @@ fn an_edit_opens_on_its_tags_and_icon_and_saves_what_changed() {
     let (acme, production) = (tag("acme"), tag("production"));
     let saved = SavedConnection {
         tags: vec![acme.id],
-        icon: Some(tablepro_storage::ConnectionIcon::Cloud),
+        icon: Some(tablepro_storage::LibraryIcon::Named(
+            tablepro_storage::ConnectionIcon::Cloud,
+        )),
         ..shop()
     };
     let harness = open(Options {

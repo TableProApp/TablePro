@@ -49,6 +49,27 @@ impl SavedSshConfig {
         }
     }
 
+    // What a form that edits where the tunnel goes and how it signs in leaves out keeps its stored value.
+    pub fn kept_over(mut self, stored: Option<&Self>) -> Self {
+        if let Some(stored) = stored {
+            self.agent_socket.clone_from(&stored.agent_socket);
+            self.totp = stored.totp;
+            self.remote_file.clone_from(&stored.remote_file);
+            self.unknown.clone_from(&stored.unknown);
+            self.keep_hops_from(stored);
+            // A form with no None choice shows it as the agent, which both transports try after none.
+            if stored.auth == SavedSshAuth::None && self.auth == SavedSshAuth::Agent {
+                self.auth = SavedSshAuth::None;
+            }
+            self.kept_key_path = match (&self.auth, &stored.auth) {
+                (SavedSshAuth::PrivateKey { .. }, _) => None,
+                (_, SavedSshAuth::PrivateKey { path: Some(path), .. }) => Some(path.clone()),
+                _ => stored.kept_key_path.clone(),
+            };
+        }
+        self
+    }
+
     // A hop typed again as text has no id, auth or key; one that reaches the same place keeps the stored hop's.
     pub fn keep_hops_from(&mut self, stored: &Self) {
         for (index, hop) in self.jump_hosts.iter_mut().enumerate() {
@@ -435,6 +456,36 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&ssh).expect("json"),
             json!({"host": "bastion", "auth": {"kind": "agent"}})
+        );
+    }
+
+    #[test]
+    fn a_form_edit_keeps_what_the_form_does_not_show() {
+        let mut stored = SavedSshConfig::new(
+            "bastion",
+            SavedSshAuth::PrivateKey {
+                path: Some(PathBuf::from("/k")),
+                has_passphrase: false,
+            },
+        );
+        stored.agent_socket = Some(PathBuf::from("~/agent.sock"));
+        stored.totp.mode = SshTotpMode::PromptAtConnect;
+        stored.unknown.insert("compression".to_owned(), json!(true));
+
+        let edited = SavedSshConfig::new("other", SavedSshAuth::Password).kept_over(Some(&stored));
+
+        assert_eq!(edited.host, "other");
+        assert_eq!(edited.auth, SavedSshAuth::Password);
+        assert_eq!(edited.kept_key_path, Some(PathBuf::from("/k")));
+        assert_eq!(edited.agent_socket, stored.agent_socket);
+        assert_eq!(edited.totp, stored.totp);
+        assert_eq!(edited.unknown, stored.unknown);
+        let none = SavedSshConfig::new("bastion", SavedSshAuth::None);
+        assert_eq!(
+            SavedSshConfig::new("bastion", SavedSshAuth::Agent)
+                .kept_over(Some(&none))
+                .auth,
+            SavedSshAuth::None
         );
     }
 

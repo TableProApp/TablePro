@@ -31,12 +31,12 @@ mod store_tests;
 mod write_guard;
 
 pub use additions::ImportedConnection;
-pub use library::LibraryWrite;
 pub use details::{
     CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionOrigin,
     CredentialReference, DeviceOnly, KnownOrigin, LocalPasswordSource, SocksProxy, SshRoute, SshRouteHop,
     SshRouteTarget, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
 };
+pub use library::LibraryWrite;
 pub use profiles::{CredentialPassword, CredentialProfile, SshProfile};
 pub use ssh::{
     RemoteFileAccess, SavedSshAuth, SavedSshConfig, SshJumpAuth, SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm,
@@ -1143,25 +1143,28 @@ fn decode(path: &Path, bytes: Option<&[u8]>) -> Result<ConnectionsDocument, Docu
 }
 
 // A held entry and a readable one of the same id differ, so a record a build could not read and now can is a write.
+// Maps rather than scans: a crafted file of many entries must not make every write hold the store.
 fn lenient_changes<T: Identified + PartialEq>(kind: RecordKind, before: &Lenient<T>, after: &Lenient<T>) -> JournalEntry {
-    let ids = |list: &Lenient<T>| -> Vec<Uuid> { list.iter().map(Identified::id).chain(list.held_ids()).collect() };
-    let now: HashSet<Uuid> = ids(after).into_iter().collect();
-    let was: HashSet<Uuid> = ids(before).into_iter().collect();
+    let entries = |list: &Lenient<T>| -> Vec<(Uuid, Result<&T, &Value>)> {
+        list.iter()
+            .map(|entry| (entry.id(), Ok(entry)))
+            .chain(list.held_entries().map(|(id, entry)| (id, Err(entry))))
+            .collect()
+    };
+    let (was, now) = (entries(before), entries(after));
+    let was_at: HashMap<Uuid, Result<&T, &Value>> = was.iter().rev().copied().collect();
+    let now_at: HashSet<Uuid> = now.iter().map(|(id, _)| *id).collect();
     JournalEntry::new(kind)
         .wrote(
-            ids(after)
-                .into_iter()
-                .filter(|id| !was.contains(id) || entry_of(before, *id) != entry_of(after, *id))
-                .map(RecordRef::Id),
+            now.iter()
+                .filter(|(id, entry)| was_at.get(id) != Some(entry))
+                .map(|(id, _)| RecordRef::Id(*id)),
         )
-        .deleted(ids(before).into_iter().filter(|id| !now.contains(id)).map(RecordRef::Id))
-}
-
-fn entry_of<T: Identified>(list: &Lenient<T>, id: Uuid) -> Option<Result<&T, &Value>> {
-    list.iter()
-        .find(|entry| entry.id() == id)
-        .map(Ok)
-        .or_else(|| list.held_entry(id).map(Err))
+        .deleted(
+            was.iter()
+                .filter(|(id, _)| !now_at.contains(id))
+                .map(|(id, _)| RecordRef::Id(*id)),
+        )
 }
 
 fn list_changes<T: Identified + PartialEq>(kind: RecordKind, before: &[T], after: &[T]) -> JournalEntry {
@@ -1552,6 +1555,12 @@ mod tests {
                 username: Some("deploy".to_owned()),
                 jump_hosts: Vec::new(),
                 auth,
+                enabled: true,
+                kept_key_path: None,
+                agent_socket: None,
+                totp: Default::default(),
+                remote_file: Default::default(),
+                unknown: Default::default(),
             }),
             database: "shop".to_owned(),
             ..sample_connection()
@@ -1858,6 +1867,12 @@ mod tests {
                 path: Some(PathBuf::from("/home/u/.ssh/id_ed25519")),
                 has_passphrase: true,
             },
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         });
         let mut minimal = sample_connection();
         minimal.ssh = Some(SavedSshConfig {
@@ -1866,6 +1881,12 @@ mod tests {
             username: None,
             jump_hosts: Vec::new(),
             auth: SavedSshAuth::Agent,
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         });
 
         store.upsert_blocking(full.clone()).expect("upsert full");
@@ -1949,6 +1970,12 @@ mod tests {
                 path: Some(PathBuf::from("/home/me/.ssh/id_ed25519")),
                 has_passphrase: true,
             },
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         });
         store.upsert_blocking(connection).expect("upsert");
 

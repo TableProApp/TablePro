@@ -250,6 +250,8 @@ fn record(name: &str, path: &Path, access: Option<ExternalAccessTag>) -> Connect
         tags: Vec::new(),
         ai_policy: None,
         external_access: access,
+        icon: None,
+        order: 0,
     }
 }
 

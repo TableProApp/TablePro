@@ -138,13 +138,18 @@ pub(crate) fn show_icon(image: &gtk::Image, icon: Option<ConnectionIcon>) {
 /// so it reads in both styles.
 pub(crate) fn tag_pill(tag: &ConnectionTag) -> gtk::Label {
     let pill = gtk::Label::builder()
-        .label(tag.name.as_str())
+        .label(tag.name.shown())
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .max_width_chars(16)
         .valign(gtk::Align::Center)
-        .tooltip_text(tag.name.as_str())
+        .tooltip_text(tag.name.shown())
         .build();
-    pill.set_css_classes(&["tp-tag-pill", "caption", color_class(tag.color)]);
+    // A tag with no colour, which macOS can hold, takes the neutral one.
+    pill.set_css_classes(&[
+        "tp-tag-pill",
+        "caption",
+        color_class(tag.color.unwrap_or(ConnectionColor::Slate)),
+    ]);
     pill
 }
 

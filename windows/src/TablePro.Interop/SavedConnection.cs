@@ -9,6 +9,9 @@ public enum TlsMode
     Require,
     VerifyFull,
     Strict,
+
+    // Stored for a connection another app saved; no engine connects with it yet.
+    VerifyCa,
 }
 
 public enum SafeMode
@@ -94,7 +97,8 @@ public sealed record ConnectionSecrets(
 public sealed record ConnectionGroup(Guid Id, string Name, Guid? ParentId, int Order, string? Color);
 
 // A label several connections share. Color is one of the connection colours' ids.
-public sealed record ConnectionTag(Guid Id, string Name, string Color);
+// Color is null for a tag with no colour, which the macOS app can hold.
+public sealed record ConnectionTag(Guid Id, string Name, string? Color);
 
 // Connections come in each group's order, groups depth first in each parent's order, tags in the order they were made.
 public sealed record LibrarySnapshot(

@@ -59,15 +59,49 @@ fn every_field() -> SavedConnection {
     let profile = Uuid::new_v4();
     SavedConnection {
         ssh: Some(SavedSshConfig {
+            enabled: false,
             host: "bastion".to_owned(),
             port: Some(2222),
             username: Some("ops".to_owned()),
-            jump_hosts: vec!["jump@edge:22".to_owned()],
-            auth: SavedSshAuth::PrivateKey {
-                path: Some(PathBuf::from("/home/ops/.ssh/id_ed25519")),
-                has_passphrase: true,
+            jump_hosts: vec![
+                SshJumpHost::new("edge", Some(22), Some("jump".to_owned())),
+                SshJumpHost {
+                    id: Some(Uuid::new_v4()),
+                    auth: Some(SshJumpAuth::PrivateKey),
+                    key_path: Some(PathBuf::from("~/.ssh/hop")),
+                    ..SshJumpHost::new("inner", None, None)
+                },
+            ],
+            auth: SavedSshAuth::Password,
+            kept_key_path: Some(PathBuf::from("/home/ops/.ssh/id_ed25519")),
+            agent_socket: Some(PathBuf::from("~/.1password/agent.sock")),
+            totp: SshTotp {
+                mode: SshTotpMode::AutoGenerate,
+                algorithm: SshTotpAlgorithm::Sha256,
+                digits: 8,
+                period: 60,
             },
+            remote_file: SshRemoteFile {
+                path: Some("~/data/app.db".to_owned()),
+                access: RemoteFileAccess::OnServer,
+            },
+            unknown: BTreeMap::from([("compression".to_owned(), json!(true))]),
         }),
+        safe_mode: SafeModeLevel::SafeModeFull,
+        ai_policy: AiPolicy::AppDefault,
+        tls: TlsConfig {
+            mode: tablepro_core::TlsMode::VerifyCa,
+            ca_file: Some(PathBuf::from("ca.pem")),
+            client_identity: Some(tablepro_core::ClientIdentity {
+                certificate: PathBuf::from("client.pem"),
+                key: PathBuf::new(),
+            }),
+            server_name: None,
+            unknown: BTreeMap::from([("pinned".to_owned(), json!("sha256/abc"))]),
+        },
+        icon: Some(crate::LibraryIcon::Symbol(
+            crate::SymbolName::new("cylinder.split.1x2").expect("a symbol"),
+        )),
         color: Some(ConnectionColor::Red),
         details: ConnectionDetails {
             startup_sql: Some("SET search_path TO app".to_owned()),
@@ -349,8 +383,13 @@ fn profiles_are_saved_replaced_and_deleted_by_id() {
             username: None,
             jump_hosts: Vec::new(),
             auth: SavedSshAuth::Agent,
+            enabled: true,
+            kept_key_path: None,
+            agent_socket: None,
+            totp: Default::default(),
+            remote_file: Default::default(),
+            unknown: Default::default(),
         },
-        unknown: BTreeMap::new(),
     };
     let credential = CredentialProfile {
         id: Uuid::new_v4(),
@@ -491,14 +530,7 @@ fn ssh_profile() -> SshProfile {
     SshProfile {
         id: Uuid::new_v4(),
         name: "p".to_owned(),
-        ssh: SavedSshConfig {
-            host: "h".to_owned(),
-            port: None,
-            username: None,
-            jump_hosts: Vec::new(),
-            auth: SavedSshAuth::Agent,
-        },
-        unknown: BTreeMap::new(),
+        ssh: SavedSshConfig::new("h", SavedSshAuth::Agent),
     }
 }
 
@@ -728,4 +760,215 @@ fn deleting_an_unreadable_connection_or_profile_removes_it_from_the_file() {
     let list = ConnectionStore::new(&paths(&root)).list_blocking().expect("the list");
     assert!(list.unreadable.is_empty());
     assert!(list.favorites.is_empty());
+}
+
+fn tag(name: &str, color: Option<ConnectionColor>) -> ConnectionTag {
+    ConnectionTag {
+        id: Uuid::new_v4(),
+        name: ConnectionTagName::from_stored(name),
+        color,
+        is_preset: false,
+    }
+}
+
+// What another app's store holds, values no edit would write included.
+fn library_as_another_app_holds_it() -> LibraryWrite {
+    let missing = Uuid::new_v4();
+    let blank = ConnectionGroup {
+        id: Uuid::new_v4(),
+        name: ConnectionGroupName::from_stored(" "),
+        parent_id: Some(missing),
+        order: 9,
+        color: None,
+        icon: None,
+    };
+    let preset = ConnectionTag {
+        is_preset: true,
+        ..tag("production", Some(ConnectionColor::Red))
+    };
+    let long = tag(&"long tag name ".repeat(5), None);
+    let mut first = SavedConnection {
+        name: " Prod\t(EU) ".to_owned(),
+        group_id: Some(blank.id),
+        order: 7,
+        tags: vec![preset.id, Uuid::new_v4()],
+        last_opened_at: chrono::DateTime::from_timestamp_millis(1_700_000_000_123),
+        ..every_field()
+    };
+    first.host = " db.internal ".to_owned();
+    let second = SavedConnection {
+        group_id: Some(missing),
+        order: 3,
+        tags: vec![long.id],
+        ..plain("second")
+    };
+    LibraryWrite {
+        favorites: vec![second.id, first.id],
+        connections: vec![first, second],
+        groups: vec![blank],
+        tags: vec![preset, long],
+    }
+}
+
+#[test]
+fn a_library_write_keeps_every_id_and_value_as_given() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let library = library_as_another_app_holds_it();
+
+    store.replace_library_blocking(library.clone()).expect("write");
+    let reread = |store: &ConnectionStore| {
+        let list = store.list_blocking().expect("list");
+        LibraryWrite {
+            connections: list.connections.to_vec(),
+            groups: list.groups.to_vec(),
+            tags: list.tags.to_vec(),
+            favorites: list.favorites.to_vec(),
+        }
+    };
+
+    assert_eq!(reread(&store), library);
+    assert_eq!(reread(&ConnectionStore::new(&paths(&root))), library);
+    let touched = library.connections[1].id;
+    store.touch_last_opened_blocking(touched).expect("another write");
+    let after = reread(&store);
+    assert_eq!(after.groups, library.groups);
+    assert_eq!(after.tags, library.tags);
+    assert_eq!(after.connections[0], library.connections[0]);
+    assert_eq!(after.connections[1].order, 3);
+}
+
+#[test]
+fn a_missing_group_or_parent_reads_as_the_top_level_and_stays_stored() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let library = library_as_another_app_holds_it();
+    store.replace_library_blocking(library.clone()).expect("write");
+
+    let list = store.list_blocking().expect("list");
+
+    let top: Vec<Uuid> = list.connections_in(None).iter().map(|saved| saved.id).collect();
+    assert_eq!(top, [library.connections[1].id]);
+    assert_eq!(list.group_of(&list.connections[1]), None);
+    assert_eq!(list.connections[1].group_id, library.connections[1].group_id);
+    let tree = list.group_tree();
+    assert_eq!(tree.parent(library.groups[0].id), None);
+    assert_eq!(tree.walk().len(), 1);
+}
+
+#[test]
+fn a_library_write_is_one_journal_call_naming_each_record() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, journal) = journaled(&root);
+    let library = library_as_another_app_holds_it();
+    let ids = |list: &[RecordRef]| list.to_vec();
+    let refs = |ids: &[Uuid]| ids.iter().copied().map(RecordRef::Id).collect::<Vec<_>>();
+
+    store.replace_library_blocking(library.clone()).expect("write");
+    let calls = journal.take_entries();
+
+    assert_eq!(calls.len(), 1);
+    let kinds: Vec<RecordKind> = calls[0].iter().map(|entry| entry.kind).collect();
+    assert_eq!(kinds, [RecordKind::Connection, RecordKind::Group, RecordKind::Tag]);
+    let connection_ids: Vec<Uuid> = library.connections.iter().map(|saved| saved.id).collect();
+    assert_eq!(ids(&calls[0][0].written), refs(&connection_ids));
+    assert!(calls[0].iter().all(|entry| entry.deleted.is_empty()));
+
+    let kept = LibraryWrite {
+        connections: vec![library.connections[0].clone()],
+        favorites: vec![library.connections[0].id],
+        ..library.clone()
+    };
+    store.replace_library_blocking(kept).expect("drop one");
+    let calls = journal.take_entries();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0][0].kind, RecordKind::Connection);
+    assert_eq!(ids(&calls[0][0].deleted), refs(&[library.connections[1].id]));
+    assert_eq!(
+        ids(&calls[0][0].written),
+        refs(&[library.connections[0].id]),
+        "its favourite place moved"
+    );
+}
+
+#[test]
+fn a_library_write_refuses_an_id_named_twice_and_writes_nothing() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let library = library_as_another_app_holds_it();
+    let twice = LibraryWrite {
+        tags: vec![library.tags[0].clone(), library.tags[0].clone()],
+        ..library
+    };
+
+    let repeated = twice.tags[0].id;
+
+    let refused = store.replace_library_blocking(twice);
+
+    assert!(
+        matches!(refused, Err(StorageError::RepeatedId { id }) if id == repeated),
+        "{refused:?}"
+    );
+    assert!(store.list_blocking().expect("list").connections.is_empty());
+}
+
+#[test]
+fn a_library_write_keeps_a_connection_this_build_cannot_read_unless_it_names_it() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, held) = seeded_with_unreadable(&root, false);
+    let library = library_as_another_app_holds_it();
+
+    store.replace_library_blocking(library.clone()).expect("write");
+    let list = store.list_blocking().expect("list");
+    assert_eq!(list.unreadable.to_vec(), [held.id]);
+    assert_eq!(list.connections.len(), library.connections.len());
+
+    let mut named = library.clone();
+    named.connections.push(SavedConnection {
+        id: held.id,
+        ..plain("now readable")
+    });
+    store.replace_library_blocking(named).expect("write");
+    let list = store.list_blocking().expect("list");
+    assert!(list.unreadable.is_empty());
+    assert!(list.connections.iter().any(|saved| saved.id == held.id));
+}
+
+#[test]
+fn each_write_names_the_records_it_wrote_and_deleted() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, journal) = journaled(&root);
+    let connection = plain("a");
+    let entry = |kind, written: &[Uuid], deleted: &[Uuid]| {
+        JournalEntry::new(kind)
+            .wrote(written.iter().copied().map(RecordRef::Id))
+            .deleted(deleted.iter().copied().map(RecordRef::Id))
+    };
+
+    store.upsert_blocking(connection.clone()).expect("upsert");
+    store.add_favorites_blocking(&[connection.id], None).expect("favourite");
+    let tag = store
+        .create_tag_blocking(ConnectionTagName::new("prod").expect("a name"), ConnectionColor::Red)
+        .expect("tag");
+    store
+        .update_blocking(connection.id, |saved| saved.tags = vec![tag.id])
+        .expect("tagged");
+    store.delete_tag_blocking(tag.id).expect("untag");
+    store.remove_blocking(connection.id).expect("remove");
+
+    assert_eq!(
+        journal.take_entries(),
+        vec![
+            vec![entry(RecordKind::Connection, &[connection.id], &[])],
+            vec![entry(RecordKind::Connection, &[connection.id], &[])],
+            vec![entry(RecordKind::Tag, &[tag.id], &[])],
+            vec![entry(RecordKind::Connection, &[connection.id], &[])],
+            vec![
+                entry(RecordKind::Connection, &[connection.id], &[]),
+                entry(RecordKind::Tag, &[], &[tag.id]),
+            ],
+            vec![entry(RecordKind::Connection, &[], &[connection.id])],
+        ]
+    );
+    assert!(store.list_blocking().expect("list").tags.is_empty());
 }
