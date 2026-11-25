@@ -175,7 +175,7 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
 
 | Table | Columns | Holds |
 | --- | --- | --- |
-| `key_statements` | `scope`, `kind`, `record_id`; `seq`, `hash`, `bytes`, `receipt`, `first_verified`, `applied` | Each key object kept verbatim, one row per 0052 record id: the statements of the followed logs, the newest blob's ciphertext, and key objects not yet pushed. `seq` is null outside a log. `receipt` is the server's time receipt (0053), null until one arrives. `first_verified` is, for a revocation, removal or cancel, the head hash of the chain the holder first verified it on, else null. `applied` is set once the server answers `applied` |
+| `key_statements` | `scope`, `kind`, `record_id`; `seq`, `hash`, `bytes`, `receipt`, `applied` | Each key object kept verbatim, one row per 0052 record id: the statements of the followed logs, the newest blob's ciphertext, and key objects not yet pushed. `seq` is null outside a log. `receipt` is the server's time receipt (0053), null until one arrives. `applied` is set once the server answers `applied` |
 | `key_heads` | `scope`, `log`; `seq`, `hash`, `frozen` | Each followed log's head. A holder's own statement moves it only once applied. `frozen` is null, or the fork that froze the log: `u64(seq)` and the two statement hashes at that `seq`, in byte order |
 | `key_pins` | `scope`, `subject`; `seq`, `hash`, `ik`, `how` | The account heads it compared or verified under IK, and per team the team head and each confirmed member's IK and two chain heads, identity and device. `how` is `compared`, `verified` or `uncompared` |
 | `key_comparisons` | `session`; `role`, `peer`, `view`, `expires_at` | Open comparison sessions, with the view this side fixed |
