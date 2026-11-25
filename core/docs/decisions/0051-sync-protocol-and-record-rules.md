@@ -59,13 +59,13 @@ On 2026-11-25 the maintainer decided:
 ### Kinds
 
 - **Syntax.** Lowercase ASCII letters, digits and `_`, starting with a letter, with at most one `.` between two such parts, 1 to 64 bytes.
-- **Record ids.** 1 to 255 UTF-16 code units with no control character, plus the grammar 0052 gives the kind.
+- **Record ids.** Valid UTF-8 without U+0000, 1 to 255 UTF-16 code units, compared as bytes and never normalized or case-folded, plus the form 0052 gives the kind.
 - **Reserved:** every `key.*` kind, `secret_envelope`, `history_entry`, `library_connection`, `library_folder` and `library_query`. Any other kind that passes the syntax is an ordinary kind in the personal and team scopes, so a new data kind still needs no server release.
 
 | Kind | Scopes | Who writes | Server rule |
 | --- | --- | --- | --- |
-| `connection`, `group`, `tag`, `ssh_profile`, `credential_profile`, `saved_query`, `saved_query_folder`, `favourite_table`, `favourite_database`, `table_folder`, `table_folder_item`, `macos_settings`, `ios_settings`, `linux_settings`, `windows_settings`, and `connection_project` once #4376 ships | personal | The account's approved key holders | Patch and delete |
-| `library_connection`, `library_folder`, `library_query` | team | Owner, admin, editor | Patch and delete, also through the facade. The keys the facade projects are checked. Tombstones keep their fields until `/v1` sunsets |
+| `connection`, `group`, `tag`, `ssh_profile`, `credential_profile`, `saved_query`, `saved_query_folder`, `favourite_table`, `favourite_database`, `table_folder`, `table_folder_item`, `macos_settings`, `ios_settings`, `linux_settings`, `windows_settings`, `connection_project` (#4376's connection projects, on iCloud and TablePro Sync alike) | personal | The account's approved key holders | Patch and delete |
+| `library_connection`, `library_folder`, `library_query` | team | Owner, admin, editor | Patch and delete, also through the facade. Ids keep the case the library stored, lower case from shipped Macs (0052). No two ids of one kind in a team may match once lower-cased. The keys the facade projects are checked. Tombstones keep their fields until `/v1` sunsets |
 | `secret_envelope` | personal, team | Personal: approved key holders. Team: owner, admin, editor, from an approved key holder | Patch and delete, written whole. `kv` is checked against the floor |
 | `history_entry` | history | Approved key holders | Created once; a delete tombstones it. `kv` is checked against the floor |
 | `key.identity`, `key.device` | personal | The signers 0053 names | Create only. Each append is verified, and the server derives the account's device set from the two logs |
@@ -146,7 +146,8 @@ Under `/v2`, OAuth scope `app`, with clients generated from the OpenAPI document
 | `role` | The caller's role does not write this kind |
 | `policy` | An install or team policy turns the kind off (Policies) |
 | `create_only` | A patch of `history_entry`, or a patch, a delete or a second create of a create-only key kind |
-| `writer_bound` | The record id names another account or DPoP key |
+| `writer_bound` | A writer-bound id that does not name the caller: its account part differs, as bytes, from the caller's account id in upper case (0052), or its key part from the caller's DPoP key |
+| `id_case_collision` | A create of a library kind whose id matches another record of that kind in the team once both are lower-cased, tombstones included. Checked under the team lock |
 | `bad_statement` | A `key.identity`, `key.device` or `key.team` append that does not verify, a genesis or reset the account's state does not allow, a `key.member` that does not copy its identity record, or a `key.recovery` whose hash no identity statement names |
 | `key_version_stale` | `kv` below the scope's floor |
 | `quota_exceeded` | A create past the scope's quota; none today |
@@ -314,7 +315,7 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 **R1, one expand migration.**
 
 1. New tables: `sync_scopes`, `sync_records`, `sync_idempotency`, `sync_dpop_jti`, `sync_install` and `install_policies`, and `teams.password_sync`, default true.
-2. Every library row goes into `sync_records` as a `library_*` record with its `id`, `revision`, `version`, writers and `updated_via`, a random write tag and the current epoch as its written epoch.
+2. Every library row goes into `sync_records` as a `library_*` record with its `client_id` as the record id, byte for byte in its stored case, its `id`, `revision`, `version`, writers and `updated_via`, a random write tag and the current epoch as its written epoch.
    - A folder's columns become `name`, `parent_client_id` and `sort_order`; a query's become `name`, `query`, `keyword`, `folder_client_id`, `connection_client_id` and `sort_order` (0044).
    - `library_epochs` and `library_epoch_horizons` become `sync_epochs` and `sync_epoch_cuts` rows with their ids, start revisions and team horizons. Without any, R1 adds a first epoch with `start_revision` 1.
 3. The three tables are renamed aside, and views `library_connections`, `library_folders` and `library_queries` over `sync_records` take their names, with INSTEAD OF INSERT and UPDATE triggers.
@@ -332,7 +333,7 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 - `/v2/teams/{id}/library/changes` keeps its documented behavior for shipped Macs:
   - the change and result shapes;
   - `applied` and `conflict` only, compared on `base_version`;
-  - a whole-push 422 on a bad change;
+  - a whole-push 422 on a bad change, which now also covers a create whose client id matches another of that kind in the team once lower-cased (`id_case_collision` on `/v2/sync`);
   - 403 `feature_required`, `library_write_forbidden` and `license_expired`;
   - any 422 on a pull meaning a new snapshot;
   - its sequence-gap epoch.
