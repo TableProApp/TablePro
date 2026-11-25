@@ -67,12 +67,6 @@ pub async fn connect(endpoint: FileEndpoint, settings: WorkspaceSettings) -> Res
         .await
 }
 
-// SQLite 3.54.0 refuses a schema whose stored text runs past its statement's end; an older one reads the statement.
-pub fn sqlite_refuses_a_stored_tail() -> bool {
-    // SAFETY: reads a constant of the linked library.
-    unsafe { libsqlite3_sys::sqlite3_libversion_number() >= 3_054_000 }
-}
-
 pub async fn assert_refused_as_malformed(file: &TestFile) {
     let opened = connect(file.endpoint(), writable()).await.map(|_| ());
     assert!(
