@@ -144,7 +144,7 @@ async fn confirm_writes_on_a_saved_connection_asks_before_a_write_and_never_befo
     let path = dir.path().join("people.sqlite");
     let core = core(dir.path());
     people(&core, &path).await;
-    let session = saved(&core, &path, SafeModeTag::ConfirmWrites).await;
+    let session = saved(&core, &path, SafeModeTag::Alert).await;
 
     let write = gate(&session, "SELECT 1; UPDATE people SET name = 'Ada' WHERE id = 1");
     let read = gate(&session, "SELECT * FROM people");
@@ -162,7 +162,7 @@ async fn off_asks_only_before_a_statement_that_empties_a_table() {
     let path = dir.path().join("people.sqlite");
     let core = core(dir.path());
     people(&core, &path).await;
-    let session = saved(&core, &path, SafeModeTag::Off).await;
+    let session = saved(&core, &path, SafeModeTag::Silent).await;
 
     let insert = gate(&session, "INSERT INTO people (name) VALUES ('Ada')");
     let delete = gate(&session, "DELETE FROM people");
@@ -196,11 +196,11 @@ async fn a_level_set_on_an_open_session_applies_at_once_but_never_across_read_on
     let path = dir.path().join("people.sqlite");
     let core = core(dir.path());
     people(&core, &path).await;
-    let session = saved(&core, &path, SafeModeTag::Off).await;
+    let session = saved(&core, &path, SafeModeTag::Silent).await;
     let update = "UPDATE people SET name = 'Ada' WHERE id = 1";
 
     let at_off = gate(&session, update);
-    let confirmed = session.set_safe_mode(SafeModeTag::ConfirmWrites);
+    let confirmed = session.set_safe_mode(SafeModeTag::Alert);
     let asked = gate(&session, update);
     let read_only = session.set_safe_mode(SafeModeTag::ReadOnly);
     let still_asked = gate(&session, update);

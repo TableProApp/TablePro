@@ -162,7 +162,7 @@ impl ConnectForm {
             password: SecretString::from(String::new()),
             remember_password: true,
             tls: TlsFormState::new(caps.new_connection_tls(port, &NetworkOptions::default())),
-            safe_mode: SafeModeLevel::Off,
+            safe_mode: SafeModeLevel::Silent,
             external_access: ExternalAccess::default(),
             ai_policy: AiPolicy::default(),
             query_timeout_secs: None,
@@ -1304,7 +1304,7 @@ mod tests {
     fn connect_form_from_saved_prefills_without_secrets() {
         let mut typed = filled("postgres", postgres());
         typed.name = "Shop".to_owned();
-        typed.safe_mode = SafeModeLevel::ConfirmWrites;
+        typed.safe_mode = SafeModeLevel::Alert;
         let saved = saved_from(&typed, postgres());
 
         let form = ConnectForm::from_saved(&saved, postgres());
@@ -1313,7 +1313,7 @@ mod tests {
         assert_eq!(form.host, "db.example.com");
         assert_eq!(form.database, "sales");
         assert_eq!(form.username, "app");
-        assert_eq!(form.safe_mode, SafeModeLevel::ConfirmWrites);
+        assert_eq!(form.safe_mode, SafeModeLevel::Alert);
         assert_eq!(form.password.expose_secret(), "", "a secret reached the form");
     }
 

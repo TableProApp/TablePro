@@ -60,21 +60,48 @@ impl From<TlsModeTag> for TlsMode {
     }
 }
 
+// The macOS levels, weakest first. An app that offers fewer shows each as the one a session runs,
+// `safe_mode_enforced` gives it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum SafeModeTag {
-    Off,
-    ConfirmWrites,
+    Silent,
+    Alert,
+    AlertFull,
+    SafeMode,
+    SafeModeFull,
     ReadOnly,
 }
 
 impl From<SafeModeTag> for SafeModeLevel {
     fn from(tag: SafeModeTag) -> Self {
         match tag {
-            SafeModeTag::Off => Self::Off,
-            SafeModeTag::ConfirmWrites => Self::ConfirmWrites,
+            SafeModeTag::Silent => Self::Silent,
+            SafeModeTag::Alert => Self::Alert,
+            SafeModeTag::AlertFull => Self::AlertFull,
+            SafeModeTag::SafeMode => Self::SafeMode,
+            SafeModeTag::SafeModeFull => Self::SafeModeFull,
             SafeModeTag::ReadOnly => Self::ReadOnly,
         }
     }
+}
+
+impl From<SafeModeLevel> for SafeModeTag {
+    fn from(level: SafeModeLevel) -> Self {
+        match level {
+            SafeModeLevel::Silent => Self::Silent,
+            SafeModeLevel::Alert => Self::Alert,
+            SafeModeLevel::AlertFull => Self::AlertFull,
+            SafeModeLevel::SafeMode => Self::SafeMode,
+            SafeModeLevel::SafeModeFull => Self::SafeModeFull,
+            SafeModeLevel::ReadOnly => Self::ReadOnly,
+        }
+    }
+}
+
+// The level a session runs for one stored: rounded up, never down, to Silent, Alert or Read-Only.
+#[uniffi::export]
+pub fn safe_mode_enforced(level: SafeModeTag) -> SafeModeTag {
+    SafeModeLevel::from(level).enforced().into()
 }
 
 // What the AI assistant may send from the connection (core AiPolicy).
@@ -191,6 +218,8 @@ pub enum SshJumpAuthTag {
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SshOptionsRecord {
+    // A key file kept while auth is not a key; a key auth carries its own path.
+    pub kept_key_path: Option<String>,
     // None is the agent SSH_AUTH_SOCK names.
     pub agent_socket: Option<String>,
     pub totp: SshTotpRecord,
@@ -328,7 +357,8 @@ pub struct GroupRecord {
 pub struct TagRecord {
     pub id: String,
     pub name: String,
-    pub color: String,
+    // None for a tag with no colour.
+    pub color: Option<String>,
     // One of the tags macOS starts every library with.
     #[uniffi(default = false)]
     pub is_preset: bool,
@@ -751,7 +781,7 @@ impl ConnectionLibrary {
             Ok(store.update_tag_blocking(ConnectionTag {
                 id,
                 name,
-                color,
+                color: Some(color),
                 is_preset,
             })?)
         })
@@ -1046,7 +1076,11 @@ pub(crate) fn apply(
         Some(settings) => Some(edited_ssh(settings, saved.ssh.as_ref())),
         None => saved.ssh.take().map(|ssh| SavedSshConfig { enabled: false, ..ssh }),
     };
-    saved.safe_mode = record.safe_mode.into();
+    // A form that offers fewer levels sends the one a session runs for the stored level; that keeps the stored one.
+    let level = SafeModeLevel::from(record.safe_mode);
+    if level != saved.safe_mode.enforced() {
+        saved.safe_mode = level;
+    }
     saved.query_timeout_secs = record.query_timeout_secs;
     saved.color = record.color.as_deref().and_then(ConnectionColor::from_id);
     saved.group_id = group_id;
@@ -1156,6 +1190,15 @@ pub(crate) fn edited_ssh(settings: &SshSettings, stored: Option<&SavedSshConfig>
     }
     if let Some(stored) = stored {
         ssh.keep_hops_from(stored);
+        // A switch away from a key keeps the key's file, as the macOS form does.
+        if let (SavedSshAuth::PrivateKey { path: Some(path), .. }, None) = (&stored.auth, &ssh.kept_key_path)
+            && !matches!(ssh.auth, SavedSshAuth::PrivateKey { .. })
+        {
+            ssh.kept_key_path = Some(path.clone());
+        }
+    }
+    if matches!(ssh.auth, SavedSshAuth::PrivateKey { .. }) {
+        ssh.kept_key_path = None;
     }
     ssh
 }
@@ -1217,6 +1260,7 @@ fn jump_host(hop: &SshJumpHostRecord) -> SshJumpHost {
 }
 
 fn apply_options(options: &SshOptionsRecord, ssh: &mut SavedSshConfig) {
+    ssh.kept_key_path = options.kept_key_path.as_ref().map(PathBuf::from);
     ssh.agent_socket = options.agent_socket.as_ref().map(PathBuf::from);
     ssh.totp = SshTotp {
         mode: match options.totp.mode {
@@ -1259,6 +1303,7 @@ pub(crate) fn ssh_settings(ssh: &SavedSshConfig) -> SshSettings {
         },
         enabled: Some(ssh.enabled),
         options: Some(SshOptionsRecord {
+            kept_key_path: ssh.kept_key_path.as_deref().map(shown),
             agent_socket: ssh.agent_socket.as_deref().map(shown),
             totp: SshTotpRecord {
                 mode: match ssh.totp.mode {
@@ -1350,11 +1395,7 @@ impl From<&SavedConnection> for ConnectionRecord {
                 server_name: saved.tls.server_name.clone(),
             },
             ssh: saved.ssh.as_ref().map(ssh_settings),
-            safe_mode: match saved.safe_mode {
-                SafeModeLevel::Off => SafeModeTag::Off,
-                SafeModeLevel::ConfirmWrites => SafeModeTag::ConfirmWrites,
-                SafeModeLevel::ReadOnly => SafeModeTag::ReadOnly,
-            },
+            safe_mode: saved.safe_mode.into(),
             query_timeout_secs: saved.query_timeout_secs,
             color: saved.color.map(|color| color.id().to_owned()),
             group_id: saved.group_id.map(|id| id.to_string()),
@@ -1386,7 +1427,7 @@ impl From<&ConnectionTag> for TagRecord {
         Self {
             id: tag.id.to_string(),
             name: tag.name.as_str().to_owned(),
-            color: tag.color.id().to_owned(),
+            color: tag.color.map(|color| color.id().to_owned()),
             is_preset: tag.is_preset,
         }
     }

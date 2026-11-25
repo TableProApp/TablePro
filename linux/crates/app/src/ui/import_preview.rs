@@ -342,7 +342,7 @@ mod tests {
                 database: "orders".to_owned(),
                 username: "app".to_owned(),
                 tls,
-                safe_mode: SafeModeLevel::Off,
+                safe_mode: SafeModeLevel::Silent,
                 external_access: ExternalAccess::ReadOnly,
                 ai_policy: AiPolicy::Ask,
                 query_timeout_secs: None,

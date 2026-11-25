@@ -207,6 +207,7 @@ fn exhaustive_ssh(ssh: SavedSshConfig) {
         username: _,
         jump_hosts,
         auth,
+        kept_key_path: _,
         agent_socket: _,
         totp:
             SshTotp {
@@ -278,6 +279,7 @@ fn the_connection_table_names_every_member_the_store_holds() {
             "ssh.auth.kind",
             "ssh.auth.path",
             "ssh.auth.has_passphrase",
+            "ssh.kept_key_path",
             "ssh.agent_socket",
             "ssh.totp.mode",
             "ssh.totp.algorithm",
@@ -382,6 +384,7 @@ fn the_profile_and_table_folder_tables_name_every_member_the_store_holds() {
             "ssh.auth.kind",
             "ssh.auth.path",
             "ssh.auth.has_passphrase",
+            "ssh.kept_key_path",
             "ssh.agent_socket",
             "ssh.totp.mode",
             "ssh.totp.algorithm",

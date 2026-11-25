@@ -142,7 +142,7 @@ mod tests {
             database: "app".to_owned(),
             username: "admin".to_owned(),
             tls: TlsConfig::disabled(),
-            safe_mode: SafeModeLevel::Off,
+            safe_mode: SafeModeLevel::Silent,
             external_access: Default::default(),
             ai_policy: Default::default(),
             query_timeout_secs: None,

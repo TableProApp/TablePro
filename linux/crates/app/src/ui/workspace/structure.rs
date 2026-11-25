@@ -163,7 +163,7 @@ impl WorkspaceModel {
             .context
             .active
             .get()
-            .filter(|session| session.safe_mode() == SafeModeLevel::ConfirmWrites)?;
+            .filter(|session| session.safe_mode() == SafeModeLevel::Alert)?;
         let dialect = session.current_dialect()?;
         let plan = dialect.ddl()?.plan_drop_table(table, DROP_OPTIONS).ok()?;
         Some((session.metadata().name.clone(), plan.preview()))

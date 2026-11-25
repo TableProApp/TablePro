@@ -189,7 +189,7 @@ fn stored_tag(record: &TagRecord) -> Result<ConnectionTag, CoreError> {
     Ok(ConnectionTag {
         id: parse_id(&record.id)?,
         name: ConnectionTagName::from_stored(&record.name),
-        color: tag_color(&record.color)?,
+        color: record.color.as_deref().map(tag_color).transpose()?,
         is_preset: record.is_preset,
     })
 }
@@ -226,7 +226,7 @@ mod tests {
         let tag = TagRecord {
             id: Uuid::new_v4().to_string(),
             name: "prod".to_owned(),
-            color: "chartreuse".to_owned(),
+            color: Some("chartreuse".to_owned()),
             is_preset: false,
         };
 

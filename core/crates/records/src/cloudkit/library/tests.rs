@@ -24,7 +24,7 @@ fn saved(id: Uuid, name: &str) -> SavedConnection {
         database: "app".to_owned(),
         username: "postgres".to_owned(),
         tls: TlsConfig::verify_full(),
-        safe_mode: SafeModeLevel::Off,
+        safe_mode: SafeModeLevel::Silent,
         external_access: ExternalAccess::ReadOnly,
         ai_policy: AiPolicy::Ask,
         query_timeout_secs: None,

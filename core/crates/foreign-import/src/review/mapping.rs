@@ -135,7 +135,7 @@ pub(super) fn map(
         database,
         username,
         tls,
-        safe_mode: SafeModeLevel::Off,
+        safe_mode: SafeModeLevel::Silent,
         external_access: ExternalAccess::default(),
         ai_policy: AiPolicy::default(),
         query_timeout_secs: None,

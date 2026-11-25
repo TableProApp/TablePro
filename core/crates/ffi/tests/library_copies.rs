@@ -122,7 +122,7 @@ fn record(name: &str) -> ConnectionRecord {
             jump_hosts: Vec::new(),
             auth: SshAuthTag::Password,
         }),
-        safe_mode: SafeModeTag::ConfirmWrites,
+        safe_mode: SafeModeTag::Alert,
         query_timeout_secs: Some(30),
         color: None,
         group_id: None,
@@ -166,7 +166,7 @@ async fn a_copy_lands_after_its_original_with_a_new_id_and_every_secret() {
     assert_eq!(copy.group_id.as_deref(), Some(group.id.as_str()));
     assert_eq!((copy.host.as_str(), copy.port), ("db.example.com", 5432));
     assert_eq!(copy.ssh, shop.ssh);
-    assert_eq!(copy.safe_mode, SafeModeTag::ConfirmWrites);
+    assert_eq!(copy.safe_mode, SafeModeTag::Alert);
     assert_eq!(copy.last_opened_ms, None);
     let order: Vec<&str> = snapshot.connections.iter().map(|saved| saved.id.as_str()).collect();
     assert_eq!(order, [shop.id.as_str(), copy.id.as_str(), after.id.as_str()]);

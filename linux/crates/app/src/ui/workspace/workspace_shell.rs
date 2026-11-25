@@ -730,8 +730,8 @@ impl WorkspaceShell {
             return;
         };
         button.set_icon_name(match level {
-            tablepro_core::SafeModeLevel::Off => crate::ui::icons::CHANGES_ALLOW,
-            tablepro_core::SafeModeLevel::ConfirmWrites | tablepro_core::SafeModeLevel::ReadOnly => {
+            tablepro_core::SafeModeLevel::Silent => crate::ui::icons::CHANGES_ALLOW,
+            tablepro_core::SafeModeLevel::Alert | tablepro_core::SafeModeLevel::ReadOnly => {
                 crate::ui::icons::CHANGES_PREVENT
             }
         });

@@ -2,16 +2,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::sql_syntax::StatementAccess;
 
-/// What stands between a statement and the server on one connection.
+/// What stands between a statement and the server on one connection: the macOS levels.
 ///
-/// It is persisted with the connection, so a variant is never renamed:
-/// the stored spelling is the serde name.
+/// It is persisted with the connection, so a variant is never renamed: the stored spelling is the
+/// serde name. The three levels every app had first keep the names a build before the six levels
+/// wrote and reads.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum SafeModeLevel {
     #[default]
-    Off,
-    ConfirmWrites,
+    #[serde(rename = "off", alias = "silent")]
+    Silent,
+    #[serde(rename = "confirm_writes", alias = "alert")]
+    Alert,
+    // Every statement asks, reads included.
+    #[serde(rename = "alert_full")]
+    AlertFull,
+    // A write asks, and the person proves who they are.
+    #[serde(rename = "safe_mode")]
+    SafeMode,
+    #[serde(rename = "safe_mode_full")]
+    SafeModeFull,
+    #[serde(rename = "read_only")]
     ReadOnly,
 }
 
@@ -24,7 +35,45 @@ pub enum WriteGate {
 }
 
 impl SafeModeLevel {
-    pub const ALL: [SafeModeLevel; 3] = [Self::Off, Self::ConfirmWrites, Self::ReadOnly];
+    // Weakest first, as the macOS app orders them by what each one stops.
+    pub const ALL: [SafeModeLevel; 6] = [
+        Self::Silent,
+        Self::Alert,
+        Self::AlertFull,
+        Self::SafeMode,
+        Self::SafeModeFull,
+        Self::ReadOnly,
+    ];
+
+    // What a session here runs: no app on the core asks before a read or for the person's proof yet.
+    pub const ENFORCED: [SafeModeLevel; 3] = [Self::Silent, Self::Alert, Self::ReadOnly];
+
+    pub fn strictness(self) -> usize {
+        Self::ALL.iter().position(|level| *level == self).unwrap_or(Self::ALL.len())
+    }
+
+    /// The level a session runs, rounded up to one in [`Self::ENFORCED`] and never down.
+    pub fn enforced(self) -> Self {
+        self.at_least_in(&Self::ENFORCED)
+    }
+
+    /// The weakest of `offered` that stops at least what this level stops; Read-Only when none does.
+    pub fn at_least_in(self, offered: &[Self]) -> Self {
+        offered
+            .iter()
+            .copied()
+            .filter(|level| level.strictness() >= self.strictness())
+            .min_by_key(|level| level.strictness())
+            .unwrap_or(Self::ReadOnly)
+    }
+
+    pub fn confirms_reads(self) -> bool {
+        matches!(self, Self::AlertFull | Self::SafeModeFull)
+    }
+
+    pub fn asks_for_proof(self) -> bool {
+        matches!(self, Self::SafeMode | Self::SafeModeFull)
+    }
 
     /// Whether the connection opens read-only, so the server refuses a
     /// write the app did not recognize.
@@ -32,12 +81,14 @@ impl SafeModeLevel {
         self == Self::ReadOnly
     }
 
+    // Asking for proof is the app's, on top of the confirmation.
     pub fn gate(self, access: StatementAccess) -> WriteGate {
         match (self, access) {
+            (Self::AlertFull | Self::SafeModeFull, _) => WriteGate::Confirm,
             (_, StatementAccess::Read) => WriteGate::Run,
             (Self::ReadOnly, _) => WriteGate::Refuse,
-            (Self::Off, StatementAccess::Write) => WriteGate::Run,
-            (Self::Off | Self::ConfirmWrites, _) => WriteGate::Confirm,
+            (Self::Silent, StatementAccess::Write) => WriteGate::Run,
+            (Self::Silent | Self::Alert | Self::SafeMode, _) => WriteGate::Confirm,
         }
     }
 }
@@ -47,19 +98,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_stored_spelling_is_snake_case() {
+    fn the_first_three_keep_their_stored_spelling() {
+        let spelled: Vec<String> = SafeModeLevel::ALL
+            .into_iter()
+            .filter_map(|level| serde_json::to_string(&level).ok())
+            .collect();
+
         assert_eq!(
-            serde_json::to_string(&SafeModeLevel::ConfirmWrites).ok().as_deref(),
-            Some("\"confirm_writes\"")
+            spelled,
+            [
+                "\"off\"",
+                "\"confirm_writes\"",
+                "\"alert_full\"",
+                "\"safe_mode\"",
+                "\"safe_mode_full\"",
+                "\"read_only\""
+            ]
         );
-        assert_eq!(
-            serde_json::from_str::<SafeModeLevel>("\"read_only\"").ok(),
-            Some(SafeModeLevel::ReadOnly)
-        );
-        assert_eq!(
-            serde_json::from_str::<SafeModeLevel>("\"off\"").ok(),
-            Some(SafeModeLevel::Off)
-        );
+        for (spelling, level) in [
+            ("\"silent\"", SafeModeLevel::Silent),
+            ("\"alert\"", SafeModeLevel::Alert),
+            ("\"off\"", SafeModeLevel::Silent),
+        ] {
+            assert_eq!(serde_json::from_str::<SafeModeLevel>(spelling).ok(), Some(level));
+        }
     }
 
     #[test]
@@ -68,8 +130,11 @@ mod tests {
         use WriteGate::{Confirm, Refuse, Run};
 
         let table = [
-            (SafeModeLevel::Off, [Run, Run, Confirm]),
-            (SafeModeLevel::ConfirmWrites, [Run, Confirm, Confirm]),
+            (SafeModeLevel::Silent, [Run, Run, Confirm]),
+            (SafeModeLevel::Alert, [Run, Confirm, Confirm]),
+            (SafeModeLevel::AlertFull, [Confirm, Confirm, Confirm]),
+            (SafeModeLevel::SafeMode, [Run, Confirm, Confirm]),
+            (SafeModeLevel::SafeModeFull, [Confirm, Confirm, Confirm]),
             (SafeModeLevel::ReadOnly, [Run, Refuse, Refuse]),
         ];
         for (level, expected) in table {
@@ -79,9 +144,35 @@ mod tests {
     }
 
     #[test]
+    fn a_level_rounds_up_to_one_a_session_enforces_and_never_down() {
+        let enforced = SafeModeLevel::ALL.map(SafeModeLevel::enforced);
+
+        assert_eq!(
+            enforced,
+            [
+                SafeModeLevel::Silent,
+                SafeModeLevel::Alert,
+                SafeModeLevel::ReadOnly,
+                SafeModeLevel::ReadOnly,
+                SafeModeLevel::ReadOnly,
+                SafeModeLevel::ReadOnly,
+            ]
+        );
+        for level in SafeModeLevel::ALL {
+            assert!(level.enforced().strictness() >= level.strictness(), "{level:?}");
+        }
+        assert_eq!(
+            SafeModeLevel::SafeMode.at_least_in(&[SafeModeLevel::Silent]),
+            SafeModeLevel::ReadOnly
+        );
+    }
+
+    #[test]
     fn only_read_only_opens_the_connection_read_only() {
-        assert!(SafeModeLevel::ReadOnly.blocks_writes());
-        assert!(!SafeModeLevel::ConfirmWrites.blocks_writes());
-        assert!(!SafeModeLevel::Off.blocks_writes());
+        for level in SafeModeLevel::ALL {
+            assert_eq!(level.blocks_writes(), level == SafeModeLevel::ReadOnly, "{level:?}");
+        }
+        assert!(SafeModeLevel::SafeModeFull.confirms_reads() && SafeModeLevel::SafeModeFull.asks_for_proof());
+        assert!(!SafeModeLevel::Alert.confirms_reads() && !SafeModeLevel::Alert.asks_for_proof());
     }
 }
