@@ -103,6 +103,55 @@ struct QueryResultMappingTests {
         #expect(col.ordinalPosition == 2)
     }
 
+    @Test("A ClickHouse enum column keeps the labels the plugin read")
+    func mapPluginEnumLabels() {
+        let status = ColumnInfo(
+            from: PluginColumnInfo(
+                name: "status",
+                dataType: "Enum8('new' = 1, 'paid' = 2)",
+                isNullable: false,
+                allowedValues: ["new", "paid"]
+            )
+        )
+
+        #expect(status.allowedValues == ["new", "paid"])
+        #expect(!status.isServerOwned)
+    }
+
+    @Test("An always identity refuses written values; a by-default identity stays writable")
+    func mapPluginIdentityKinds() {
+        let always = ColumnInfo(
+            from: PluginColumnInfo(name: "ID", dataType: "NUMBER", isNullable: false, identityKind: .always)
+        )
+        let byDefault = ColumnInfo(
+            from: PluginColumnInfo(name: "SEQ", dataType: "NUMBER", isNullable: false, identityKind: .byDefault)
+        )
+
+        #expect(always.isAutoIncrement && always.rejectsWrittenValues && always.isServerOwned)
+        #expect(!always.isGenerated)
+        #expect(byDefault.isAutoIncrement)
+        #expect(!byDefault.rejectsWrittenValues && !byDefault.isServerOwned)
+    }
+
+    @Test("A virtual column is generated, not an identity")
+    func mapPluginVirtualColumn() {
+        let total = ColumnInfo(from: PluginColumnInfo(name: "TOTAL", dataType: "NUMBER", isGenerated: true))
+
+        #expect(total.isGenerated && total.isServerOwned)
+        #expect(!total.rejectsWrittenValues && !total.isAutoIncrement)
+    }
+
+    @Test("A row of only defaults names the first column that is not computed, an always identity included")
+    func defaultsRowColumn() {
+        let identity = ColumnInfo(name: "ID", typeName: "NUMBER", isAutoIncrement: true, rejectsWrittenValues: true)
+        let virtual = ColumnInfo(name: "TOTAL", typeName: "NUMBER", isGenerated: true)
+        let note = ColumnInfo(name: "NOTE", typeName: "VARCHAR2")
+
+        #expect([virtual, identity].defaultsRowColumn == "ID")
+        #expect([virtual, note, identity].defaultsRowColumn == "NOTE")
+        #expect([virtual].defaultsRowColumn == nil)
+    }
+
     @Test("Maps PluginIndexInfo to IndexInfo")
     func mapPluginIndexInfo() {
         let plugin = PluginIndexInfo(

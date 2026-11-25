@@ -144,8 +144,12 @@ struct OracleBackedDriverTests {
 
         let autoIncrementing = columns.map { $0.isAutoIncrement }
         let generated = columns.map { $0.isGenerated }
+        let rejectingWrites = columns.map { $0.rejectsWrittenValues }
+        let serverOwned = columns.map { $0.isServerOwned }
         #expect(autoIncrementing == [true, false, false])
         #expect(generated == [false, true, false])
+        #expect(rejectingWrites == [true, false, false])
+        #expect(serverOwned == [true, true, false])
     }
 
     @Test("Rows are edited through SQLBuilder, never the plugin's own writer")

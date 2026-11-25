@@ -519,6 +519,21 @@ struct SQLRowToStatementConverterTests {
         #expect(converter.generateInserts(rows: [staged]) == "INSERT INTO [Enterprise_App_Approved] DEFAULT VALUES;")
     }
 
+    @Test("An Oracle row of only server-filled columns names its identity with DEFAULT, never a virtual column")
+    func oracleRowOfOnlyDefaultsNamesTheIdentity() throws {
+        let converter = try SQLRowToStatementConverter(
+            tableName: "T",
+            columns: ["TOTAL", "ID"],
+            primaryKeyColumns: ["ID"],
+            databaseType: .oracle,
+            unwritableColumns: ["TOTAL", "ID"],
+            identityColumns: ["ID"],
+            quoteIdentifier: { "\"\($0)\"" },
+            escapeStringLiteral: { $0.replacingOccurrences(of: "'", with: "''") }
+        )
+        #expect(converter.generateInserts(rows: plain([["2", "1"]])) == "INSERT INTO \"T\" (\"ID\") VALUES (DEFAULT);")
+    }
+
     @Test
     func updateAssignsDefaultForADefaultMarkedCell() throws {
         let converter = try mssqlConverter(columns: ["code", "Status"], primaryKeyColumns: ["code"], unwritableColumns: [])

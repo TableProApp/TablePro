@@ -493,7 +493,7 @@ nonisolated final class MobileImportDataSink: PluginImportDataSink, @unchecked S
 nonisolated extension ImportTargetValues {
     init(columns: [ColumnInfo], databaseType: DatabaseType, binaryText: ImportBinaryText?) {
         self.init(
-            columns: columns.map { (name: $0.name, typeName: $0.typeName, isGenerated: $0.isServerOwned) },
+            columns: columns.map { (name: $0.name, typeName: $0.typeName, isGenerated: $0.isGenerated) },
             databaseTypeId: databaseType.rawValue,
             writesNumericBooleans: Self.writesNumericBooleans(databaseType),
             binaryText: binaryText
