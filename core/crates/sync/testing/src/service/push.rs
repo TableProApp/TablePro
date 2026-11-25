@@ -1,0 +1,391 @@
+// `POST /v2/sync/scopes/{scope}/changes` (0051, Push).
+
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use tablepro_keys::record_id::{KeyKind, KeyRecordId};
+use tablepro_records::{kind as kinds, limits, merge_patch, record_id};
+use tablepro_sync::api::ids::{KindName, ScopeName};
+use tablepro_sync::api::scopes::Role;
+use tablepro_sync::api::transport::{
+    AppliedStamp, Change, ChangeOp, ChangeOutcome, DeletedReason, PushAnswer, PushBatch, RejectedCode, StoredCopy,
+    StoredStamp, TransportError,
+};
+use uuid::Uuid;
+
+use super::{Approval, FakeClient, ScopeOwner, State, StoredAnswer, StoredRecord};
+
+const MAX_CHANGES: usize = 500;
+const MAX_CHANGE_SET: usize = 10_000;
+const REQUEST_LIFETIME_US: i64 = 600 * 1_000_000;
+const RESET_HOLD_US: i64 = 7 * 24 * 3600 * 1_000_000;
+
+// A switch that turns the kind off in the scope (0051, Policies).
+pub(crate) fn policy_refuses(state: &State, owner: ScopeOwner, kind: &KindName) -> bool {
+    let name = kind.as_str();
+    let policies = state.policies;
+    let team_password = match owner {
+        ScopeOwner::Team(team) => state.teams.get(&team).is_some_and(|data| !data.password_sync),
+        _ => false,
+    };
+    (name == "secret_envelope" && (!policies.password_sync || team_password))
+        || (name == "history_entry" && (!policies.history_sync || !policies.personal_sync))
+        || (matches!(owner, ScopeOwner::Personal(_)) && !kind.is_key() && !policies.personal_sync)
+}
+
+fn digest(batch: &PushBatch) -> [u8; 32] {
+    Sha256::digest(format!("{:?}|{:?}", batch.epoch, batch.changes).as_bytes()).into()
+}
+
+impl FakeClient {
+    pub(crate) fn push_batch(&self, batch: &PushBatch) -> Result<PushAnswer, TransportError> {
+        let mut state = self.server.lock();
+        self.admit(&mut state, Some(batch.scope))?;
+        let owner = ScopeOwner::of(batch.scope, self.account);
+        let key = batch.idempotency_key.as_ref().ok_or(TransportError::ValidationFailed)?;
+        let change_set = !batch.changes.is_empty() && batch.changes.iter().all(|change| change.kind.is_key());
+        let limit = if change_set { MAX_CHANGE_SET } else { MAX_CHANGES };
+        if batch.changes.is_empty() || batch.changes.len() > limit || named_twice(&batch.changes) {
+            return Err(TransportError::ValidationFailed);
+        }
+        self.gate(&state, batch)?;
+        if batch.epoch != Some(state.epoch()) {
+            return Err(TransportError::EpochChanged);
+        }
+        let digest = digest(batch);
+        let stored = state.idempotency.get(&(owner, self.account, key.0.clone())).cloned();
+        if let Some(stored) = &stored
+            && stored.digest != digest
+        {
+            return Err(TransportError::IdempotencyMismatch);
+        }
+        let before = state.clone();
+        let mut outcomes = Vec::with_capacity(batch.changes.len());
+        let mut applied = Vec::with_capacity(batch.changes.len());
+        for (index, change) in batch.changes.iter().enumerate() {
+            let replayed = stored
+                .as_ref()
+                .and_then(|stored| stored.applied.get(index).cloned().flatten());
+            let (outcome, wrote) = match replayed {
+                Some(outcome) => (outcome, false),
+                None => self.judge(&mut state, owner, change),
+            };
+            applied.push(wrote.then(|| outcome.clone()));
+            outcomes.push(outcome);
+        }
+        if change_set
+            && outcomes
+                .iter()
+                .any(|outcome| !matches!(outcome, ChangeOutcome::Applied { .. }))
+        {
+            *state = before;
+            return Ok(PushAnswer {
+                outcomes: whole_set_refused(outcomes),
+            });
+        }
+        if change_set && applied.iter().any(Option::is_some) {
+            mark_change_set(&mut state, owner, &applied);
+        }
+        if stored.is_none() && applied.iter().any(Option::is_some) {
+            state
+                .idempotency
+                .insert((owner, self.account, key.0.clone()), StoredAnswer { digest, applied });
+        }
+        Ok(PushAnswer { outcomes })
+    }
+
+    // Whole-push refusals: approval, a lapse and the scope's own rules before any change is judged.
+    fn gate(&self, state: &State, batch: &PushBatch) -> Result<(), TransportError> {
+        let approval = self.approval(state, &batch.proof);
+        let keyed = |change: &Change| change.kind.is_key() || change.kind.as_str() == "secret_envelope";
+        match batch.scope {
+            ScopeName::Personal | ScopeName::History => {
+                let only_keys = batch.changes.iter().all(|change| change.kind.is_key());
+                let allowed = match approval {
+                    Approval::Approved => true,
+                    Approval::Unapproved => only_keys && batch.scope == ScopeName::Personal,
+                    Approval::NoProof => false,
+                };
+                if !allowed {
+                    return Err(TransportError::DeviceNotApproved);
+                }
+            }
+            ScopeName::Team(_) => {
+                if batch.changes.iter().any(keyed) && approval != Approval::Approved {
+                    return Err(TransportError::DeviceNotApproved);
+                }
+            }
+        }
+        if state.lapsed && batch.changes.iter().any(|change| !change.kind.is_key()) {
+            return Err(TransportError::LicenseExpired);
+        }
+        Ok(())
+    }
+
+    // One change, in the order sent; the flag says whether it wrote.
+    fn judge(&self, state: &mut State, owner: ScopeOwner, change: &Change) -> (ChangeOutcome, bool) {
+        if let Err(code) = self.check(state, owner, change) {
+            return (ChangeOutcome::Rejected { code }, false);
+        }
+        let stored = state
+            .scopes
+            .get(&owner)
+            .and_then(|data| {
+                data.records
+                    .get(&(change.kind.as_str().to_owned(), change.record_id.clone()))
+            })
+            .cloned();
+        if change.kind.is_key() {
+            return self.judge_key(state, owner, change, stored);
+        }
+        match (&change.op, stored) {
+            (ChangeOp::Delete, None) => (applied(None), false),
+            (ChangeOp::Delete, Some(record)) if record.deleted.is_some() => (applied(Some(&record)), false),
+            (_, Some(record)) if change.base.as_ref() != Some(&record.change_tag()) => (conflict(Some(&record)), false),
+            (_, None) if change.base.is_some() => (conflict(None), false),
+            (ChangeOp::Delete, Some(record)) => self.tombstone(state, owner, record),
+            (ChangeOp::Write { patch, .. }, stored) => self.write(state, owner, change, patch, stored),
+        }
+    }
+
+    fn judge_key(
+        &self,
+        state: &mut State,
+        owner: ScopeOwner,
+        change: &Change,
+        stored: Option<StoredRecord>,
+    ) -> (ChangeOutcome, bool) {
+        let ChangeOp::Write { patch, .. } = &change.op else {
+            return rejected(RejectedCode::CreateOnly);
+        };
+        if change.base.is_some() {
+            return rejected(RejectedCode::CreateOnly);
+        }
+        match stored {
+            // The same object again, as a retry or a push-back, answers applied and writes nothing.
+            Some(record) if record.fields.as_ref() == Some(patch) => (applied(Some(&record)), false),
+            Some(_) => rejected(RejectedCode::CreateOnly),
+            None => self.write(state, owner, change, patch, None),
+        }
+    }
+
+    fn check(&self, state: &State, owner: ScopeOwner, change: &Change) -> Result<(), RejectedCode> {
+        let kind = change.kind.as_str();
+        let reserved = kinds::is_reserved(kind);
+        let id_fits = match change.kind.known() {
+            Some(known) if reserved => record_id::check(known, &change.record_id).is_ok(),
+            _ => record_id::well_formed(&change.record_id),
+        };
+        if !id_fits {
+            return Err(RejectedCode::BadRecordId);
+        }
+        if !kinds::admits(owner.scope().records_scope(), kind) {
+            return Err(RejectedCode::KindNotInScope);
+        }
+        if policy_refuses(state, owner, &change.kind) {
+            return Err(RejectedCode::Policy);
+        }
+        self.check_role(state, owner, &change.kind)?;
+        self.check_writer(change)?;
+        if let ChangeOp::Write { patch, .. } = &change.op
+            && let Err(refusal) = limits::check(patch)
+        {
+            return Err(RejectedCode::parse(refusal.code()));
+        }
+        Ok(())
+    }
+
+    // 0051, Roles in a team scope, without the holder checks a key object's statement carries.
+    fn check_role(&self, state: &State, owner: ScopeOwner, kind: &KindName) -> Result<(), RejectedCode> {
+        let ScopeOwner::Team(team) = owner else {
+            return Ok(());
+        };
+        let role = self.role(state, owner.scope()).ok_or(RejectedCode::Role)?;
+        let rotation_due = state.teams.get(&team).is_some_and(|data| data.rotation_due);
+        let allowed = match (role, kind.as_str()) {
+            (_, "key.member") | (Role::Owner | Role::Admin, _) => true,
+            (Role::Editor | Role::Member, "key.version" | "key.wrap" | "key.ring") => rotation_due,
+            (Role::Editor, name) => !name.starts_with("key."),
+            (Role::Member, _) => false,
+        };
+        if allowed { Ok(()) } else { Err(RejectedCode::Role) }
+    }
+
+    // A key object whose id names an account is bound to that account (0051, Writer binding).
+    fn check_writer(&self, change: &Change) -> Result<(), RejectedCode> {
+        let Ok(kind) = KeyKind::parse(change.kind.as_str()) else {
+            return Ok(());
+        };
+        let bound = KeyRecordId::parse(kind, &change.record_id)
+            .ok()
+            .and_then(|id| id.bound_account());
+        match bound {
+            Some(account) if account != self.account.0 => Err(RejectedCode::WriterBound),
+            _ => Ok(()),
+        }
+    }
+
+    fn write(
+        &self,
+        state: &mut State,
+        owner: ScopeOwner,
+        change: &Change,
+        patch: &Value,
+        stored: Option<StoredRecord>,
+    ) -> (ChangeOutcome, bool) {
+        let empty_patch = matches!(patch, Value::Object(members) if members.is_empty());
+        if let Some(record) = &stored
+            && empty_patch
+            && record.deleted.is_none()
+        {
+            return (applied(Some(record)), false);
+        }
+        if let Some(record) = &stored
+            && record.deleted.is_some()
+            && change.kind.as_str() == "history_entry"
+            && record.deleted != Some(DeletedReason::Policy)
+        {
+            return rejected(RejectedCode::CreateOnly);
+        }
+        if let Some(record) = &stored
+            && record.deleted.is_none()
+            && change.kind.as_str() == "history_entry"
+        {
+            return rejected(RejectedCode::CreateOnly);
+        }
+        let base = stored
+            .as_ref()
+            .and_then(|record| record.fields.clone())
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        let fields = merge_patch::apply(&base, patch);
+        if let Err(refusal) = limits::check(&fields) {
+            return rejected(RejectedCode::parse(refusal.code()));
+        }
+        let record = self.stamp(state, change, stored, Some(fields), None);
+        (self.commit(state, owner, record), true)
+    }
+
+    fn tombstone(&self, state: &mut State, owner: ScopeOwner, record: StoredRecord) -> (ChangeOutcome, bool) {
+        // Team library tombstones keep their fields until `/v1` sunsets (0051, Tombstones).
+        let keep = record.kind.known().is_some_and(tablepro_records::Kind::is_team_library);
+        let fields = if keep { record.fields.clone() } else { None };
+        let change = Change {
+            kind: record.kind.clone(),
+            record_id: record.record_id.clone(),
+            base: None,
+            op: ChangeOp::Delete,
+        };
+        let tombstone = self.stamp(state, &change, Some(record), fields, Some(DeletedReason::User));
+        (self.commit(state, owner, tombstone), true)
+    }
+
+    fn stamp(
+        &self,
+        state: &mut State,
+        change: &Change,
+        stored: Option<StoredRecord>,
+        fields: Option<Value>,
+        deleted: Option<DeletedReason>,
+    ) -> StoredRecord {
+        let revision = state.take_revision();
+        let now = state.clock_us;
+        StoredRecord {
+            kind: change.kind.clone(),
+            record_id: change.record_id.clone(),
+            version: stored.as_ref().map_or(1, |record| record.version + 1),
+            revision,
+            written_epoch: state.epoch(),
+            write_tag: *Uuid::new_v4().as_bytes(),
+            fields,
+            deleted,
+            taken_at_us: stored.as_ref().map_or(now, |record| record.taken_at_us),
+            updated_at_us: now,
+            updated_device: Some(self.device_row.clone()),
+        }
+    }
+
+    fn commit(&self, state: &mut State, owner: ScopeOwner, record: StoredRecord) -> ChangeOutcome {
+        let outcome = applied(Some(&record));
+        state
+            .scopes
+            .entry(owner)
+            .or_default()
+            .records
+            .insert((record.kind.as_str().to_owned(), record.record_id.clone()), record);
+        outcome
+    }
+}
+
+pub(crate) fn expires_at(record: &StoredRecord) -> Option<i64> {
+    (record.kind.as_str() == "key.request").then_some(record.taken_at_us + REQUEST_LIFETIME_US)
+}
+
+pub(crate) fn held_until(record: &StoredRecord) -> Option<i64> {
+    (record.kind.as_str() == "key.reset" && record.deleted.is_none()).then_some(record.taken_at_us + RESET_HOLD_US)
+}
+
+fn named_twice(changes: &[Change]) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    !changes
+        .iter()
+        .all(|change| seen.insert((change.kind.as_str(), change.record_id.as_str())))
+}
+
+fn applied(record: Option<&StoredRecord>) -> ChangeOutcome {
+    ChangeOutcome::Applied {
+        tag: record.map(StoredRecord::change_tag),
+        service: record.map(|record| AppliedStamp {
+            version: record.version,
+            revision: record.revision,
+        }),
+    }
+}
+
+fn conflict(record: Option<&StoredRecord>) -> ChangeOutcome {
+    ChangeOutcome::Conflict {
+        stored: record.map(|record| StoredCopy {
+            tag: record.change_tag(),
+            tombstone: record.deleted.is_some(),
+            service: Some(StoredStamp {
+                version: record.version,
+                revision: record.revision,
+                epoch: record.written_epoch,
+            }),
+            fields: None,
+        }),
+    }
+}
+
+fn rejected(code: RejectedCode) -> (ChangeOutcome, bool) {
+    (ChangeOutcome::Rejected { code }, false)
+}
+
+// A change set applies whole or not at all: the rejected change keeps its code, every other answers `change_set`.
+fn whole_set_refused(outcomes: Vec<ChangeOutcome>) -> Vec<ChangeOutcome> {
+    outcomes
+        .into_iter()
+        .map(|outcome| match outcome {
+            ChangeOutcome::Rejected { code } => ChangeOutcome::Rejected { code },
+            _ => ChangeOutcome::Rejected {
+                code: RejectedCode::ChangeSet,
+            },
+        })
+        .collect()
+}
+
+// The revisions the set wrote, which are consecutive since nothing else writes under the lock.
+fn mark_change_set(state: &mut State, owner: ScopeOwner, wrote: &[Option<ChangeOutcome>]) {
+    let revisions: Vec<u64> = wrote
+        .iter()
+        .filter_map(|outcome| match outcome {
+            Some(ChangeOutcome::Applied {
+                service: Some(stamp), ..
+            }) => Some(stamp.revision),
+            _ => None,
+        })
+        .collect();
+    if let (Some(first), Some(last)) = (revisions.iter().min(), revisions.iter().max())
+        && let Some(data) = state.scopes.get_mut(&owner)
+    {
+        data.change_sets.push((*first, *last));
+    }
+}

@@ -43,6 +43,7 @@ mod saved_queries;
 mod session;
 mod statement_at;
 mod structure;
+mod sync;
 mod syntax;
 #[cfg(test)]
 mod test_session;
@@ -130,6 +131,17 @@ pub use session::{
 };
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};
+pub use sync::{
+    AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, CloudKitAccount, CloudKitChanges, CloudKitDeletion,
+    CloudKitFailure, CloudKitFetched, CloudKitField, CloudKitOutcome, CloudKitRecord, CloudKitTransport, CloudKitValue,
+    ConflictChoiceTag, DeviceItemClassTag, DeviceItemTag, FingerprintInfo, GenesisOutcomeTag, HeldReasonTag,
+    HeldRecordInfo, HostDeviceStore, HostSettings, KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag,
+    LockCauseTag, MemberKeyStatusTag, MemberKeysInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
+    PassReasonTag, PendingApprovalInfo, PendingResetInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag,
+    ResetStateTag, ReviewedDeviceInfo, ReviewedMemberInfo, SessionEndTag, SessionPhaseTag, SessionRoleTag,
+    SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag, SyncConfig, SyncListener, SyncPhaseTag, SyncPlatformTag,
+    SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
+};
 pub use syntax::SqlGrammarTag;
 
 use secrecy::{ExposeSecret, SecretString};

@@ -1,0 +1,731 @@
+use async_trait::async_trait;
+use serde_json::Value;
+use tablepro_keys::encoding::{AccountId, KeyDeviceId, KeyPurpose, Origin, RequestId, ResetId, TeamId, Version};
+use tablepro_keys::keys::{Ed25519Public, X25519Public};
+use tablepro_keys::sas::{Role as ComparisonRole, SessionState};
+use tablepro_keys::trust::PinHow;
+use uuid::Uuid;
+
+use super::error::StateError;
+use super::ids::{ChangeTag, Cursor, EpochId, FileId, IdempotencyKey, KindName, RecordKey, ScopeName};
+use super::scopes::{LineageEpoch, Role, ScopePolicies};
+use super::transport::{DeletedReason, PulledRecord};
+
+// One state file per provider and account (0054, The state file): SQLite in WAL mode, its sync and key tables, the
+// state MAC over both digests, and the anchor in the device store. A pass reads and writes it through one transaction,
+// which commits whole: the tables, then the counter and MAC, with the anchor's two steps around it.
+#[async_trait]
+pub trait StateStore: Send + Sync {
+    // What the file is bound to; its `binding` row holds it with the file id, the counter and the MAC.
+    fn identity(&self) -> &StateIdentity;
+
+    // What opening found; it does not change while the file is open.
+    fn opened(&self) -> &Opened;
+
+    async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError>;
+}
+
+// Rows read and written in one commit. Dropping it uncommitted writes nothing.
+#[async_trait]
+pub trait StateTxn: Send {
+    async fn get(&mut self, key: &RowKey) -> Result<Option<Row>, StateError>;
+
+    // In the byte order of the encoded primary keys, as the digests read them.
+    async fn scan(&mut self, range: &RowRange) -> Result<Vec<Row>, StateError>;
+
+    async fn put(&mut self, row: Row) -> Result<(), StateError>;
+
+    async fn delete(&mut self, key: &RowKey) -> Result<(), StateError>;
+
+    // Erases every key table in this commit: Sign Out, or another account on this row (0054, The device's key state).
+    async fn clear_key_tables(&mut self) -> Result<(), StateError>;
+
+    async fn commit(self: Box<Self>) -> Result<Committed, StateError>;
+}
+
+// Opens the state file of one identity, refusing a file made for another, and deletes one whole.
+#[async_trait]
+pub trait StateFiles: Send + Sync {
+    async fn open(&self, identity: StateIdentity) -> Result<std::sync::Arc<dyn StateStore>, StateError>;
+
+    async fn delete(&self, identity: StateIdentity) -> Result<(), StateError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Provider {
+    Service,
+    ICloud,
+}
+
+// What a state file is bound to. Another identity opens another file, so nothing crosses accounts.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum StateIdentity {
+    Service {
+        origin: Origin,
+        // The sign-in key, which names the server and the account file (tablepro-account).
+        sign_in: String,
+        account: AccountId,
+        device_row: super::ids::DeviceRowId,
+    },
+    ICloud {
+        user_record_name: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Committed {
+    pub counter: u64,
+}
+
+// What the file and its anchor said at open (0054, On open).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Opened {
+    pub sync_tables: SyncTrust,
+    pub key_tables: KeyTrust,
+}
+
+impl Opened {
+    pub const FRESH: Self = Self {
+        sync_tables: SyncTrust::Trusted,
+        key_tables: KeyTrust::Trusted,
+    };
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncTrust {
+    Trusted,
+    // A restored, replaced or uncertain file: the pull wins, records the provider never saw go up as creates.
+    Refill,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeyTrust {
+    Trusted,
+    // A stale file, or an anchor with no file: rebuild from the server's key objects at or above this checkpoint,
+    // accepting no wrap or envelope and writing no secret until the server shows every anchored pin and version.
+    Rebuild { checkpoint: Box<Checkpoint> },
+    // A file with no anchor: it handles no secret until another device approves it again or the person recovers.
+    Unanchored,
+}
+
+// What only moves forward (0054, The checkpoint).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Checkpoint {
+    pub pins: Vec<KeyPinRow>,
+    pub versions: Vec<KeyVersionRow>,
+    pub envelopes: Vec<KeyEnvelopeRow>,
+}
+
+// The tables in digest order: the sync tables as 0054 lists them, then the key tables.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Table {
+    Binding,
+    Scopes,
+    Stores,
+    Bases,
+    Standing,
+    Held,
+    Deferred,
+    Outbox,
+    Approvals,
+    Conflicts,
+    LegacyMirror,
+    KeyObjects,
+    KeyPins,
+    KeyDevicePins,
+    KeyVersions,
+    KeyEnvelopes,
+    KeyComparisons,
+    KeyPending,
+    DeletedHistory,
+}
+
+impl Table {
+    pub const SYNC: [Self; 11] = [
+        Self::Binding,
+        Self::Scopes,
+        Self::Stores,
+        Self::Bases,
+        Self::Standing,
+        Self::Held,
+        Self::Deferred,
+        Self::Outbox,
+        Self::Approvals,
+        Self::Conflicts,
+        Self::LegacyMirror,
+    ];
+
+    pub const KEY: [Self; 8] = [
+        Self::KeyObjects,
+        Self::KeyPins,
+        Self::KeyDevicePins,
+        Self::KeyVersions,
+        Self::KeyEnvelopes,
+        Self::KeyComparisons,
+        Self::KeyPending,
+        Self::DeletedHistory,
+    ];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Binding => "binding",
+            Self::Scopes => "scopes",
+            Self::Stores => "stores",
+            Self::Bases => "bases",
+            Self::Standing => "standing",
+            Self::Held => "held",
+            Self::Deferred => "deferred",
+            Self::Outbox => "outbox",
+            Self::Approvals => "approvals",
+            Self::Conflicts => "conflicts",
+            Self::LegacyMirror => "legacy_mirror",
+            Self::KeyObjects => "key_objects",
+            Self::KeyPins => "key_pins",
+            Self::KeyDevicePins => "key_device_pins",
+            Self::KeyVersions => "key_versions",
+            Self::KeyEnvelopes => "key_envelopes",
+            Self::KeyComparisons => "key_comparisons",
+            Self::KeyPending => "key_pending",
+            Self::DeletedHistory => "deleted_history",
+        }
+    }
+
+    pub const fn is_key_table(self) -> bool {
+        matches!(
+            self,
+            Self::KeyObjects
+                | Self::KeyPins
+                | Self::KeyDevicePins
+                | Self::KeyVersions
+                | Self::KeyEnvelopes
+                | Self::KeyComparisons
+                | Self::KeyPending
+                | Self::DeletedHistory
+        )
+    }
+}
+
+// Each row's fields are its columns in order, the primary key first.
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindingRow {
+    pub provider: Provider,
+    // The server origin; None on iCloud.
+    pub origin: Option<Origin>,
+    // The account id, or the iCloud user record name.
+    pub account: String,
+    pub device: String,
+    pub schema_version: u32,
+    pub file_id: FileId,
+    // Raised by one on every commit; the store sets it.
+    pub counter: u64,
+    // Left out of the sync digest, since it is computed over it.
+    pub state_mac: [u8; 32],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeRow {
+    pub scope: ScopeName,
+    pub role: Option<Role>,
+    pub epoch: Option<EpochId>,
+    // The service's cursor, or the zone's change token on iCloud.
+    pub cursor: Option<Cursor>,
+    // The scope key version in force at `cursor`, moved only by applying a pull (0054, A pass).
+    pub key_version: Option<Version>,
+    pub horizon: Option<u64>,
+    pub policies: ScopePolicies,
+    // The lineage the device last read, against which a new epoch's cut is found (0051, Lost writes).
+    pub lineage: Vec<LineageEpoch>,
+    // The history scope's cursor for older entries, kept to page back on demand.
+    pub older_cursor: Option<Cursor>,
+    pub refill: bool,
+    pub rotation_due: bool,
+    // The last pull reached a page with no records; the roster is decided on only then (0051, `members`).
+    pub caught_up: bool,
+}
+
+impl ScopeRow {
+    pub fn new(scope: ScopeName) -> Self {
+        Self {
+            scope,
+            role: None,
+            epoch: None,
+            cursor: None,
+            key_version: None,
+            horizon: None,
+            policies: ScopePolicies::default(),
+            lineage: Vec::new(),
+            older_cursor: None,
+            refill: false,
+            rotation_due: false,
+            caught_up: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoreRow {
+    // The store's name, such as `connections` or `history`.
+    pub store: String,
+    pub generation: Uuid,
+    pub sequence: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BaseRow {
+    pub key: RecordKey,
+    pub tag: ChangeTag,
+    pub version: Option<u64>,
+    pub revision: Option<u64>,
+    // The epoch the copy was written in, which a new epoch's cut judges it against (0051, Lost writes).
+    pub epoch: Option<EpochId>,
+    // A policy tombstone's base, which a revival patches on.
+    pub deleted: Option<DeletedReason>,
+    // The fields as last agreed; None for create-once kinds.
+    pub fields: Option<Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Standing {
+    Syncs,
+    LocalOnly,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StandingRow {
+    pub key: RecordKey,
+    pub standing: Standing,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HeldReason {
+    Unreadable,
+    UnknownKind,
+    AwaitingApproval,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeldRow {
+    pub key: RecordKey,
+    pub reason: HeldReason,
+    // The change or deletion held.
+    pub record: PulledRecord,
+}
+
+// A deletion pulled for a category that is off, applied once the category is read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeferredRow {
+    pub key: RecordKey,
+    pub record: PulledRecord,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutboxRow {
+    pub scope: ScopeName,
+    pub idempotency_key: IdempotencyKey,
+    // SHA-256 of the body sent, so a rebuilt batch reuses the key only when it is the same request.
+    pub request_digest: [u8; 32],
+    pub created_at_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApprovalDecision {
+    // Waiting for the person, or not yet asked.
+    Waiting,
+    Approved,
+    // Kept as a device-local override.
+    Rejected { local: Value },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovalRow {
+    pub key: RecordKey,
+    pub field: String,
+    pub pulled: Value,
+    pub decision: ApprovalDecision,
+}
+
+// A team record whose field both sides changed; None is a deletion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConflictRow {
+    pub key: RecordKey,
+    pub base: Option<Value>,
+    pub mine: Option<Value>,
+    pub theirs: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyMirrorRow {
+    pub item: String,
+    pub value: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyObjectRow {
+    pub scope: ScopeName,
+    pub kind: KindName,
+    pub record_id: String,
+    // As the server served them or as this device wrote them.
+    pub fields: String,
+    // In force: served by the server, or written and applied by this device.
+    pub applied: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyPinRow {
+    pub account: AccountId,
+    pub ik: Ed25519Public,
+    pub av: Version,
+    pub how: PinHow,
+    pub alert: bool,
+    // In the order replaced; never gone back to.
+    pub replaced: Vec<Ed25519Public>,
+}
+
+// Own-device pins: never taken from a certificate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyDevicePinRow {
+    pub key_device: KeyDeviceId,
+    pub dek: X25519Public,
+    pub dsk: Ed25519Public,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeyVersionState {
+    Ok,
+    // A catch-up or a restore leaves the device waiting.
+    Stopped,
+    // Nothing clears it.
+    Ended,
+}
+
+impl KeyVersionState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Stopped => "stopped",
+            Self::Ended => "ended",
+        }
+    }
+}
+
+// One (account id, accepted IK) pair of a team row's holders, sorted by account then IK.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Holder {
+    pub account: AccountId,
+    pub ik: Ed25519Public,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyVersionRow {
+    pub scope: ScopeName,
+    pub purpose: KeyPurpose,
+    pub version: Version,
+    // SHA-256 of that version record's signed bytes.
+    pub record: [u8; 32],
+    // Empty for personal and history rows.
+    pub holders: Vec<Holder>,
+    pub state: KeyVersionState,
+    // The epoch it ended in; None unless ended.
+    pub epoch: Option<EpochId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyEnvelopeRow {
+    pub scope: ScopeName,
+    pub record_id: String,
+    pub kv: Version,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyComparisonRow {
+    pub session: RequestId,
+    pub role: ComparisonRole,
+    // The other side's key device id and keys, as this side's view fixed them; encoded by the approval flow.
+    pub peer: Vec<u8>,
+    pub view: Vec<u8>,
+    pub state: SessionState,
+    pub expires_at_us: i64,
+}
+
+// A key flow that spans pushes and must survive a crash.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PendingFlow {
+    // The team rotations an account rotation to this `av` still has to write, with its review's choices.
+    AccountRotation { av: Version },
+    Approval { request: RequestId },
+    ResetProposal { reset: ResetId },
+    // A stop report to withdraw, sent again after a restart until the server answers.
+    StopWithdrawal { team: TeamId },
+}
+
+impl PendingFlow {
+    pub fn key_text(self) -> String {
+        match self {
+            Self::AccountRotation { av } => format!("rotation/{av}"),
+            Self::Approval { request } => format!("approval/{}", request.to_wire()),
+            Self::ResetProposal { reset } => format!("reset/{}", reset.to_wire()),
+            Self::StopWithdrawal { team } => format!("withdraw/{}", team.to_wire()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyPendingRow {
+    pub flow: PendingFlow,
+    // The flow's own encoding.
+    pub state: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeletedHistoryRow {
+    pub record_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Row {
+    Binding(BindingRow),
+    Scope(ScopeRow),
+    Store(StoreRow),
+    Base(BaseRow),
+    Standing(StandingRow),
+    Held(HeldRow),
+    Deferred(DeferredRow),
+    Outbox(OutboxRow),
+    Approval(ApprovalRow),
+    Conflict(ConflictRow),
+    LegacyMirror(LegacyMirrorRow),
+    KeyObject(KeyObjectRow),
+    KeyPin(KeyPinRow),
+    KeyDevicePin(KeyDevicePinRow),
+    KeyVersion(KeyVersionRow),
+    KeyEnvelope(KeyEnvelopeRow),
+    KeyComparison(KeyComparisonRow),
+    KeyPending(KeyPendingRow),
+    DeletedHistory(DeletedHistoryRow),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RowKey {
+    Binding,
+    Scope(ScopeName),
+    Store(String),
+    Base(RecordKey),
+    Standing(RecordKey),
+    Held(RecordKey),
+    Deferred(RecordKey),
+    Outbox(ScopeName),
+    Approval(RecordKey, String),
+    Conflict(RecordKey),
+    LegacyMirror(String),
+    KeyObject(ScopeName, KindName, String),
+    KeyPin(AccountId),
+    KeyDevicePin(KeyDeviceId),
+    KeyVersion(ScopeName, KeyPurpose),
+    KeyEnvelope(ScopeName, String),
+    KeyComparison(RequestId),
+    KeyPending(PendingFlow),
+    DeletedHistory(String),
+}
+
+impl Row {
+    pub fn key(&self) -> RowKey {
+        match self {
+            Self::Binding(_) => RowKey::Binding,
+            Self::Scope(row) => RowKey::Scope(row.scope),
+            Self::Store(row) => RowKey::Store(row.store.clone()),
+            Self::Base(row) => RowKey::Base(row.key.clone()),
+            Self::Standing(row) => RowKey::Standing(row.key.clone()),
+            Self::Held(row) => RowKey::Held(row.key.clone()),
+            Self::Deferred(row) => RowKey::Deferred(row.key.clone()),
+            Self::Outbox(row) => RowKey::Outbox(row.scope),
+            Self::Approval(row) => RowKey::Approval(row.key.clone(), row.field.clone()),
+            Self::Conflict(row) => RowKey::Conflict(row.key.clone()),
+            Self::LegacyMirror(row) => RowKey::LegacyMirror(row.item.clone()),
+            Self::KeyObject(row) => RowKey::KeyObject(row.scope, row.kind.clone(), row.record_id.clone()),
+            Self::KeyPin(row) => RowKey::KeyPin(row.account),
+            Self::KeyDevicePin(row) => RowKey::KeyDevicePin(row.key_device),
+            Self::KeyVersion(row) => RowKey::KeyVersion(row.scope, row.purpose),
+            Self::KeyEnvelope(row) => RowKey::KeyEnvelope(row.scope, row.record_id.clone()),
+            Self::KeyComparison(row) => RowKey::KeyComparison(row.session),
+            Self::KeyPending(row) => RowKey::KeyPending(row.flow),
+            Self::DeletedHistory(row) => RowKey::DeletedHistory(row.record_id.clone()),
+        }
+    }
+}
+
+// 0054's value encoding of a present column: one byte 1, then `LP` of its bytes.
+fn column(out: &mut Vec<u8>, bytes: &[u8]) {
+    out.push(1);
+    let length = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
+    out.extend_from_slice(&length.to_be_bytes());
+    out.extend_from_slice(bytes);
+}
+
+fn record_columns(out: &mut Vec<u8>, key: &RecordKey) {
+    column(out, key.scope.wire().as_bytes());
+    column(out, key.kind.as_str().as_bytes());
+    column(out, key.record_id.as_bytes());
+}
+
+impl RowKey {
+    pub fn table(&self) -> Table {
+        match self {
+            Self::Binding => Table::Binding,
+            Self::Scope(_) => Table::Scopes,
+            Self::Store(_) => Table::Stores,
+            Self::Base(_) => Table::Bases,
+            Self::Standing(_) => Table::Standing,
+            Self::Held(_) => Table::Held,
+            Self::Deferred(_) => Table::Deferred,
+            Self::Outbox(_) => Table::Outbox,
+            Self::Approval(..) => Table::Approvals,
+            Self::Conflict(_) => Table::Conflicts,
+            Self::LegacyMirror(_) => Table::LegacyMirror,
+            Self::KeyObject(..) => Table::KeyObjects,
+            Self::KeyPin(_) => Table::KeyPins,
+            Self::KeyDevicePin(_) => Table::KeyDevicePins,
+            Self::KeyVersion(..) => Table::KeyVersions,
+            Self::KeyEnvelope(..) => Table::KeyEnvelopes,
+            Self::KeyComparison(_) => Table::KeyComparisons,
+            Self::KeyPending(_) => Table::KeyPending,
+            Self::DeletedHistory(_) => Table::DeletedHistory,
+        }
+    }
+
+    // The primary key's columns in 0054's value encoding, whose byte order orders a table's rows in its digest.
+    // Scopes are their wire text, ids of accounts, key devices and sessions their 16 bytes.
+    pub fn encoded(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        match self {
+            Self::Binding => {}
+            Self::Scope(scope) | Self::Outbox(scope) => column(&mut out, scope.wire().as_bytes()),
+            Self::Store(text) | Self::LegacyMirror(text) | Self::DeletedHistory(text) => {
+                column(&mut out, text.as_bytes());
+            }
+            Self::Base(key) | Self::Standing(key) | Self::Held(key) | Self::Deferred(key) | Self::Conflict(key) => {
+                record_columns(&mut out, key);
+            }
+            Self::Approval(key, field) => {
+                record_columns(&mut out, key);
+                column(&mut out, field.as_bytes());
+            }
+            Self::KeyObject(scope, kind, record_id) => {
+                column(&mut out, scope.wire().as_bytes());
+                column(&mut out, kind.as_str().as_bytes());
+                column(&mut out, record_id.as_bytes());
+            }
+            Self::KeyPin(account) => column(&mut out, account.0.as_bytes()),
+            Self::KeyDevicePin(key_device) => column(&mut out, key_device.0.as_bytes()),
+            Self::KeyVersion(scope, purpose) => {
+                column(&mut out, scope.wire().as_bytes());
+                column(&mut out, purpose.name().as_bytes());
+            }
+            Self::KeyEnvelope(scope, record_id) => {
+                column(&mut out, scope.wire().as_bytes());
+                column(&mut out, record_id.as_bytes());
+            }
+            Self::KeyComparison(session) => column(&mut out, session.0.as_bytes()),
+            Self::KeyPending(flow) => column(&mut out, flow.key_text().as_bytes()),
+        }
+        out
+    }
+}
+
+// The rows a scan reads: a whole table, or those whose leading key columns are one scope, or one scope and kind.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RowRange {
+    Table(Table),
+    Scope(Table, ScopeName),
+    ScopeKind(Table, ScopeName, KindName),
+}
+
+impl RowRange {
+    pub const fn table(&self) -> Table {
+        match self {
+            Self::Table(table) | Self::Scope(table, _) | Self::ScopeKind(table, ..) => *table,
+        }
+    }
+
+    // A byte prefix of `RowKey::encoded` for every row in range.
+    pub fn encoded_prefix(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        match self {
+            Self::Table(_) => {}
+            Self::Scope(_, scope) => column(&mut out, scope.wire().as_bytes()),
+            Self::ScopeKind(_, scope, kind) => {
+                column(&mut out, scope.wire().as_bytes());
+                column(&mut out, kind.as_str().as_bytes());
+            }
+        }
+        out
+    }
+
+    pub fn contains(&self, key: &RowKey) -> bool {
+        key.table() == self.table() && key.encoded().starts_with(&self.encoded_prefix())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_records::Kind;
+
+    use super::*;
+
+    fn base(scope: ScopeName, kind: Kind, id: &str) -> RowKey {
+        RowKey::Base(RecordKey::new(scope, kind, id))
+    }
+
+    #[test]
+    fn a_scope_range_holds_its_scope_s_rows_and_no_other() {
+        let range = RowRange::Scope(Table::Bases, ScopeName::Personal);
+
+        assert!(range.contains(&base(ScopeName::Personal, Kind::Connection, "A")));
+        assert!(!range.contains(&base(ScopeName::History, Kind::HistoryEntry, "A")));
+        assert!(!range.contains(&RowKey::Held(RecordKey::new(
+            ScopeName::Personal,
+            Kind::Connection,
+            "A"
+        ))));
+    }
+
+    #[test]
+    fn a_kind_range_is_not_fooled_by_a_kind_that_starts_another() {
+        let range = RowRange::ScopeKind(Table::Bases, ScopeName::Personal, KindName::of(Kind::SavedQuery));
+
+        assert!(range.contains(&base(ScopeName::Personal, Kind::SavedQuery, "A")));
+        assert!(!range.contains(&base(ScopeName::Personal, Kind::SavedQueryFolder, "A")));
+    }
+
+    #[test]
+    fn every_table_is_a_sync_or_a_key_table_in_digest_order() {
+        let all: Vec<Table> = Table::SYNC.into_iter().chain(Table::KEY).collect();
+        let mut sorted = all.clone();
+        sorted.sort();
+
+        assert_eq!(all, sorted);
+        assert!(Table::SYNC.iter().all(|table| !table.is_key_table()));
+        assert!(Table::KEY.iter().all(|table| table.is_key_table()));
+    }
+
+    #[test]
+    fn the_key_of_a_row_is_its_primary_key_columns() {
+        let key = RecordKey::new(ScopeName::Personal, Kind::Connection, "A");
+
+        let encoded = RowKey::Base(key).encoded();
+
+        assert_eq!(
+            encoded,
+            [
+                &[1, 0, 0, 0, 8][..],
+                b"personal",
+                &[1, 0, 0, 0, 10],
+                b"connection",
+                &[1, 0, 0, 0, 1],
+                b"A"
+            ]
+            .concat()
+        );
+    }
+}
