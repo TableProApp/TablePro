@@ -7,7 +7,7 @@
 
 [0044](0044-sync-through-one-service-run-by-us-or-on-premises.md) (Data model, Record ids) takes a record id from the CloudKit record name after its type prefix, so a move from iCloud keeps every id. The server compares record ids as bytes and reads no field. What it left open:
 
-- **Case.** Swift's `uuidString` and the core's CloudKit mapping write a UUID in upper case (`storage/src/cloudkit/values.rs`). serde writes it in lower case, in `connections.json` and in `history.db`. Team Library gives a new item its UUID in lower case (`TeamLibraryID.of`, 0.88 and later) and keeps an existing item's client id as the team stores it, in whatever case `/v1` received it.
+- **Case.** Swift's `uuidString` and the core's CloudKit mapping write a UUID in upper case (`storage/src/cloudkit/values.rs`). The core's stores write it in lower case, in `connections.json` and in `history.db`. Team Library gives a new item its UUID in lower case (`TeamLibraryID.of`, 0.88 and later) and keeps an existing item's client id as the team stores it, in whatever case `/v1` received it.
 - **Ids nobody stores.** A favourite table, a favourite database and a table folder item have no id of their own. The Mac hashes what each one names (`FavoriteTablesStorage.syncId`, `FavoriteDatabasesStorage.syncId`, `TableFolderItemKey.syncId`). Since 0.77 a favourite table whose names hold `|` or `\` has an escaped id and a legacy alias, and the Mac writes both. Settings records are named by their category, `theme.<id>` or `columnLayout.<table key>`.
 - **The core's saved queries.** [0017](0017-favourites.md) gave saved queries and folders `INTEGER` ids and a required connection, and a folder's subfolders go with it through `ON DELETE CASCADE`. The Mac's `SQLFavorite` and `SQLFavoriteFolder` have UUIDs and an optional connection: one without a connection is in every connection. An integer is unique on one device only, and a pulled query names a folder this device may not have yet.
 - **History** is keyed by an `INTEGER` rowid that its full-text index joins on (`content_rowid='id'`). The Mac's history entries have random UUIDs.
@@ -64,7 +64,7 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
 - **A favourite database.** The hex of the connection's UUID, `|` and the database, with no escaping, since the UUID has a fixed length and holds no `|`. The environment is not in it, so filing a database under another environment keeps its record.
 - **A table folder item.** The hex of the escaped path of the connection's UUID, the database, the schema and the table's name. It has no alias. For a table whose names need no escaping it equals that table's favourite id; the kinds differ, so the two records never meet.
 - **`columnLayout.<table key>`.** The connection's UUID, the database, the schema and the table, each percent-encoded as Foundation's `addingPercentEncoding(withAllowedCharacters: .alphanumerics)` does it, joined with `.`. That method ignores allowed characters outside ASCII, so every UTF-8 byte except an ASCII letter or digit becomes `%` and two upper-case hex digits, the UUID's hyphens included.
-- **`theme.<theme id>`.** A user theme's id is its file's own name in the Mac's theme catalog (`ThemeCatalog.syncCategory`).
+- **`theme.<theme id>`.** A user theme's id is the `id` its theme file declares, byte for byte, which the Mac's theme catalog keys it by (`ThemeCatalog.syncCategories`). The file's name plays no part.
 
 ### Secret envelopes
 
@@ -96,6 +96,7 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
   - a keyword among a connection's queries and those with no connection, and a keyword with no connection among all queries, since it expands in every connection, as the Mac's save check has it.
 - **Collisions.** A pull, a move from iCloud or the Mac's store moving into the core can put two records in one place under one name or one keyword. Every device settles it the same way:
   - The record created first keeps the place: the earliest `created_at`, then the lowest id compared as bytes, as `SavedQueryKeywordResolver.holdsKeywordFirst` orders them.
+  - `created_at` is kept in whole milliseconds since the Unix epoch, the precision a CloudKit date keeps, so every device compares the same value. The core's store keeps whole seconds today and moves to milliseconds with the record ids.
   - Each other record loses the keyword, or takes the first free name of `<name> (2)`, `<name> (3)` and on, in that order.
   - The device writes the cleared keyword or the new name as its own edit, so it syncs, as the Mac pushes a released keyword today. Two devices that write the same value meet no conflict.
 - **Deletes.** No synced table has `ON DELETE CASCADE` or `ON DELETE SET NULL`. Deleting a folder deletes its subfolders and moves its queries to the top in the store's own code (0017), so every row it changes is a write the change journal (0054) sees.
@@ -116,11 +117,12 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
 ## Consequences
 
 - 0017's integer ids are superseded, and its per-connection folders and keywords are amended. Its other rules stand.
-- `tablepro-records` computes every id here, tested against fixtures the Mac's code produces.
+- `tablepro-records` computes every id here, tested against fixtures the Mac's code produces. The collision fixtures include two records created in one second whose ids sort the other way, and a theme whose file name differs from its `id`.
 - `history.db` gets a new migration, never an edit to one that shipped, with the copy [0012](0012-copies-before-a-format-upgrade.md) makes before it runs. Linux 0.1.0 betas shipped that database, so theirs upgrade through the migration (`linux/docs/storage.md`, Changing a format). Landing it before the first stable Linux release gives that release the final format. The Windows app has not released, so its files need no step.
 - The FFI gives saved query and folder ids as UUID text. The Linux app, the Windows interop and its committed C# change with it.
 - A Mac with two favorites of one name in one place gets one renamed when its store moves into the core, and the rename syncs.
 - An older Mac's resolver contests only keywords held in one connection. The core also settles a keyword with no connection, which an older Mac applies as an ordinary edit.
+- An older Mac compares its own records' dates below the millisecond. For two records created within one millisecond it can pick the other one, and both then lose the keyword.
 - The settings ids `columnLayout.<table key>` and `theme.<theme id>` hold database, table and theme names, as readable to the operator as 0044 says.
 
 ## Alternatives considered
