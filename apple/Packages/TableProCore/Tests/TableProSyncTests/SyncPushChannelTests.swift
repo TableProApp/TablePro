@@ -36,6 +36,22 @@ struct SyncPushChannelTests {
         #expect(calls.unregistrations == 1)
     }
 
+    @Test("On the core engine, the account the transport found decides the subscription, not the Swift engine's record")
+    func subscriptionForAGivenAccount() async {
+        let channel = makeChannel()
+        channel.register()
+        channel.registrationDidFinish(registered: true)
+        var saves = 0
+
+        await channel.saveSubscriptionIfNeeded(account: "account-b") { saves += 1 }
+        await channel.saveSubscriptionIfNeeded(account: "account-b") { saves += 1 }
+
+        #expect(saves == 1)
+        #expect(channel.isLive(account: "account-b"))
+        #expect(!channel.isLive(account: "account-a"))
+        #expect(!channel.isLive(account: nil))
+    }
+
     @Test("Push is live only with a device registration and this account's subscription")
     func liveNeedsRegistrationAndSubscription() async {
         let channel = makeChannel()

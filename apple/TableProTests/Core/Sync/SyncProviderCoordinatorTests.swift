@@ -1,0 +1,399 @@
+import CloudKit
+import Combine
+import Foundation
+import os
+@testable import TablePro
+import TableProFFI
+import TableProSyncTransport
+import TableProTestSupport
+import Testing
+
+// The core engine as the coordinator drives it: what it was asked, and a script for what a pass does.
+final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
+    struct State {
+        var info = SyncStatusInfo(
+            provider: nil,
+            phase: .idle,
+            lastPassMs: nil,
+            problem: nil,
+            waitingApprovals: 0,
+            conflicts: 0,
+            held: 0,
+            queuedChanges: 0
+        )
+        var passes: [PassReasonTag] = []
+        var providers: [SyncProviderTag] = []
+        var uploadsAgain = 0
+        var pass: (@Sendable (PassReasonTag) async -> Void)?
+    }
+
+    let state = OSAllocatedUnfairLock(uncheckedState: State())
+
+    func update(_ change: (inout State) -> Void) {
+        state.withLockUnchecked { change(&$0) }
+    }
+
+    func read<Value>(_ value: (State) -> Value) -> Value {
+        state.withLockUnchecked { value($0) }
+    }
+
+    func status() -> SyncStatusInfo {
+        read { $0.info }
+    }
+
+    func syncNow(why: PassReasonTag) async throws {
+        let pass = state.withLockUnchecked { state in
+            state.passes.append(why)
+            return state.pass
+        }
+        await pass?(why)
+    }
+
+    func chooseProvider(provider: SyncProviderTag) async throws {
+        update { state in
+            state.providers.append(provider)
+            state.info.provider = provider
+        }
+    }
+
+    func uploadAgain() async throws {
+        update { $0.uploadsAgain += 1 }
+    }
+}
+
+@MainActor
+private final class Fixture {
+    let database = FakeCloudKitDatabase()
+    let transport: CloudKitCoreTransport
+    let engine = FakeSyncEngine()
+    let clock = ManualClock()
+    let policyChanges = PassthroughSubject<DisableReason?, Never>()
+    var enabled = true
+    var policy: DisableReason?
+    var opens = true
+    var listener: (any SyncListener)?
+    private let suite: EphemeralDefaults
+    let metadata: SyncMetadataStorage
+    private(set) var coordinator: SyncProviderCoordinator!
+
+    init() throws {
+        suite = try EphemeralDefaults("SyncProviderCoordinatorTests")
+        metadata = SyncMetadataStorage(userDefaults: suite.defaults)
+        transport = CloudKitCoreTransport(database: database)
+        let host = SyncEngineHost(transport: transport) { [unowned self] listener in
+            guard opens else { throw AccountError.network("the account did not open") }
+            self.listener = listener
+            return engine
+        }
+        coordinator = SyncProviderCoordinator(
+            host: host,
+            loadSettings: { [unowned self] in
+                var settings = SyncSettings.default
+                settings.enabled = enabled
+                return settings
+            },
+            licenseGate: { nil },
+            policyGate: { [unowned self] in policy },
+            policyChanges: policyChanges.eraseToAnyPublisher(),
+            licenseChanges: Empty().eraseToAnyPublisher(),
+            makeNetworkMonitor: { nil },
+            metadata: metadata,
+            pushRegistrar: .inert,
+            activationClock: clock
+        )
+    }
+
+    var passes: [PassReasonTag] {
+        engine.read { $0.passes }
+    }
+
+    var providers: [SyncProviderTag] {
+        engine.read { $0.providers }
+    }
+
+    // What the engine's pass sends: one batch, then another, as an upload of two batches does.
+    func uploadTwoBatches() {
+        let transport = transport
+        engine.update { state in
+            state.pass = { _ in
+                for name in ["Tag_A", "Tag_B"] {
+                    _ = try? await transport.modify(
+                        account: "_alice",
+                        saves: [CloudKitRecord(recordType: "ConnectionTag", name: name, systemFields: nil, fields: [])],
+                        deletes: []
+                    )
+                }
+            }
+        }
+    }
+
+    static func notice() -> [AnyHashable: Any] {
+        [
+            "aps": ["content-available": 1],
+            "ck": [
+                "ce": 2,
+                "cid": CloudKitSyncEngine.defaultContainerID,
+                "nid": UUID().uuidString,
+                "met": ["dbs": 1, "sid": SyncPushSubscription.id]
+            ] as [String: Any]
+        ]
+    }
+}
+
+@MainActor
+struct SyncProviderCoordinatorTests {
+    @Test("With the switch on, launch tells the engine iCloud and asks for a pass, with the transport open")
+    func launchRunsOnICloud() async throws {
+        let fixture = try Fixture()
+
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.providers == [.icloud])
+        #expect(fixture.passes == [.launch])
+        #expect(!fixture.transport.isClosed)
+        #expect(fixture.coordinator.syncStatus == .idle)
+    }
+
+    @Test("With the switch off, nothing opens the engine and the transport stays closed")
+    func switchOffOpensNothing() async throws {
+        let fixture = try Fixture()
+        fixture.enabled = false
+
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.coordinator.syncStatus == .disabled(.userDisabled))
+        #expect(fixture.passes.isEmpty)
+        #expect(fixture.listener == nil)
+        #expect(fixture.transport.isClosed)
+    }
+
+    @Test("A profile that leaves iCloud out keeps it off from launch, with the organization as the reason")
+    func managedAtLaunch() async throws {
+        let fixture = try Fixture()
+        fixture.policy = .managedPolicy
+
+        fixture.coordinator.start()
+        await fixture.coordinator.syncNow()
+
+        #expect(fixture.coordinator.syncStatus == .disabled(.managedPolicy))
+        #expect(fixture.passes.isEmpty)
+        #expect(fixture.transport.isClosed)
+    }
+
+    @Test("A profile that arrives during an upload stops it: the batch in flight is cancelled and no later one is sent")
+    func policyStopsAnUploadInFlight() async throws {
+        let fixture = try Fixture()
+        fixture.database.update { $0.modifiesToHold = 1 }
+        fixture.uploadTwoBatches()
+        fixture.coordinator.start()
+        try await waitUntil { fixture.database.modifyStarted == 1 }
+
+        fixture.policy = .managedPolicy
+        fixture.policyChanges.send(.managedPolicy)
+        await fixture.coordinator.passesFinished()
+        try await waitUntil { fixture.providers.last == .off }
+
+        #expect(fixture.coordinator.syncStatus == .disabled(.managedPolicy))
+        #expect(fixture.database.read { $0.modifiesCancelled } == 1)
+        #expect(fixture.database.modifyStarted == 1)
+        #expect(fixture.transport.isClosed)
+    }
+
+    @Test("Turning the switch off closes the transport and tells the engine iCloud is off")
+    func switchingOff() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.enabled = false
+        fixture.coordinator.disableSync()
+        try await waitUntil { fixture.providers.last == .off }
+
+        #expect(fixture.coordinator.syncStatus == .disabled(.userDisabled))
+        #expect(fixture.transport.isClosed)
+    }
+
+    @Test("Turning the switch on opens the transport and runs the person's pass")
+    func switchingOn() async throws {
+        let fixture = try Fixture()
+        fixture.enabled = false
+        fixture.coordinator.start()
+
+        fixture.enabled = true
+        fixture.coordinator.enableSync()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.passes == [.person])
+        #expect(fixture.providers == [.icloud])
+        #expect(!fixture.transport.isClosed)
+    }
+
+    @Test("A CloudKit notice asks the engine for a pass")
+    func noticeAsksForAPass() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.coordinator.handleRemoteNotification(Fixture.notice())
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.passes == [.launch, .cloudKitPush])
+    }
+
+    @Test("What arrives during a pass runs once after it, as the strongest of what arrived")
+    func requestsDuringAPassRunOnceAfter() async throws {
+        let fixture = try Fixture()
+        let gate = AsyncGate()
+        fixture.engine.update { $0.pass = { _ in await gate.wait() } }
+        fixture.coordinator.start()
+        await gate.arrived(1)
+
+        fixture.coordinator.handleRemoteNotification(Fixture.notice())
+        let asked = Task { await fixture.coordinator.syncNow() }
+        fixture.coordinator.handleRemoteNotification(Fixture.notice())
+        await gate.open()
+        await asked.value
+
+        #expect(fixture.passes == [.launch, .person])
+    }
+
+    @Test("After a pass, an activation waits out the interval and then runs once")
+    func activationIsHeldForTheInterval() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.coordinator.syncIfNeeded()
+        fixture.coordinator.syncIfNeeded()
+        #expect(fixture.passes == [.launch])
+
+        await fixture.clock.waitUntilSleeping()
+        fixture.clock.advance(by: SyncProviderCoordinator.activationInterval)
+        try await waitUntil { fixture.passes.count == 2 }
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.passes == [.launch, .foreground])
+    }
+
+    @Test("A removed zone shows as such, and Upload Again asks the engine before a pass")
+    func removedZoneAndUploadAgain() async throws {
+        let fixture = try Fixture()
+        fixture.engine.update { $0.info.phase = .zoneRemoved }
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        #expect(fixture.coordinator.syncStatus == .error(.blocked(.dataDeletedFromICloud)))
+
+        await fixture.coordinator.uploadAgain()
+
+        #expect(fixture.engine.read { $0.uploadsAgain } == 1)
+        #expect(fixture.passes == [.launch, .person])
+    }
+
+    @Test("Upload Again does nothing unless the zone was removed")
+    func uploadAgainNeedsARemovedZone() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        await fixture.coordinator.uploadAgain()
+
+        #expect(fixture.engine.read { $0.uploadsAgain } == 0)
+    }
+
+    @Test("An account whose core did not open leaves no engine, and the status says sync failed")
+    func engineThatDoesNotOpen() async throws {
+        let fixture = try Fixture()
+        fixture.opens = false
+
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.coordinator.syncStatus == .error(.unexpected))
+    }
+
+    @Test("The engine's signal reads its status again")
+    func listenerRefreshesStatus() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.engine.update { state in
+            state.info.problem = "sync.icloud.quota_exceeded"
+            state.info.lastPassMs = 1_764_000_000_000
+        }
+        try #require(fixture.listener).statusChanged()
+
+        try await waitUntil { fixture.coordinator.syncStatus == .error(.blocked(.storageFull)) }
+        #expect(fixture.coordinator.lastSyncDate == Date(timeIntervalSince1970: 1_764_000_000))
+    }
+
+    @Test("An iCloud account change cancels the call in flight, then asks for a pass")
+    func accountChange() async throws {
+        let fixture = try Fixture()
+        fixture.database.update { $0.modifiesToHold = 1 }
+        fixture.uploadTwoBatches()
+        fixture.coordinator.start()
+        try await waitUntil { fixture.database.modifyStarted == 1 }
+
+        NotificationCenter.default.post(name: .CKAccountChanged, object: nil)
+        try await waitUntil { fixture.database.read { $0.modifiesCancelled } == 1 }
+        try await waitUntil { fixture.passes.count == 2 }
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.passes == [.launch, .launch])
+        #expect(!fixture.transport.isClosed)
+    }
+}
+
+struct SyncProviderCoordinatorStatusTests {
+    private static func info(_ phase: SyncPhaseTag, problem: String? = nil) -> SyncStatusInfo {
+        SyncStatusInfo(
+            provider: .icloud,
+            phase: phase,
+            lastPassMs: nil,
+            problem: problem,
+            waitingApprovals: 0,
+            conflicts: 0,
+            held: 0,
+            queuedChanges: 0
+        )
+    }
+
+    @Test("Each phase of the engine reads as the status the app already shows")
+    func phases() {
+        #expect(SyncProviderCoordinator.status(Self.info(.idle)) == .idle)
+        #expect(SyncProviderCoordinator.status(Self.info(.syncing)) == .syncing)
+        #expect(SyncProviderCoordinator.status(Self.info(.zoneRemoved)) == .error(.blocked(.dataDeletedFromICloud)))
+        #expect(SyncProviderCoordinator.status(Self.info(.waiting(retryInMs: 500))) == .error(.busy))
+        #expect(SyncProviderCoordinator.status(Self.info(.off)) == .idle)
+        #expect(SyncProviderCoordinator.status(Self.info(.idle, problem: "sync.icloud.network")) == .error(.offline))
+    }
+
+    @Test("Each iCloud problem code is the condition the person can act on")
+    func problems() {
+        let expected: [String: SyncError] = [
+            "sync.icloud.no_account": .blocked(.signedOut),
+            "sync.icloud.restricted": .blocked(.accountRestricted),
+            "sync.icloud.account_temporarily_unavailable": .blocked(.accountNotReady),
+            "sync.icloud.quota_exceeded": .blocked(.storageFull),
+            "sync.icloud.zone_deleted_by_user": .blocked(.dataDeletedFromICloud),
+            "sync.icloud.network": .offline,
+            "sync.icloud.throttled": .busy,
+            "sync.adapter.store": .pullNotSaved,
+            "sync.unimplemented": .blocked(.unavailable),
+            "sync.icloud.other": .unexpected
+        ]
+        for (code, error) in expected {
+            #expect(SyncProviderCoordinator.error(forProblem: code) == error, "\(code)")
+        }
+    }
+
+    @Test("The person's pass stands in for any other")
+    func strongestPass() {
+        #expect(SyncProviderCoordinator.stronger(nil, .foreground) == .foreground)
+        #expect(SyncProviderCoordinator.stronger(.foreground, .person) == .person)
+        #expect(SyncProviderCoordinator.stronger(.person, .cloudKitPush) == .person)
+    }
+}

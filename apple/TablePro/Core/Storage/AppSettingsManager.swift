@@ -131,9 +131,9 @@ final class AppSettingsManager {
         switchSync: @escaping @MainActor (Bool) -> Void = { enabled in
             // Read at call time, so building the shared settings never builds the coordinator.
             if enabled {
-                SyncCoordinator.shared.enableSync()
+                SyncProviderCoordinator.shared.enableSync()
             } else {
-                SyncCoordinator.shared.disableSync()
+                SyncProviderCoordinator.shared.disableSync()
             }
         },
         applyHistoryRetention: @escaping @MainActor () -> Void = {

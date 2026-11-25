@@ -137,6 +137,11 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         return !types.isSubset(of: known)
     }
 
+    // Nil when no build recorded what it read.
+    public var readableRecordTypes: Set<String>? {
+        userDefaults.stringArray(forKey: key("readableRecordTypes")).map(Set.init)
+    }
+
     public func removeTombstone(_ id: String, type: SyncRecordType) {
         var current = tombstones(for: type)
         current.removeAll { $0.id == id }

@@ -309,6 +309,29 @@ struct SyncRecordCacheTests {
         #expect(defaults.object(forKey: "recordCache") == nil, "The oversized key must be released")
     }
 
+    @Test("Every cached record reads back, a pre-file cache's included, for the core engine's import")
+    func allRecordsReadsEveryRecord() throws {
+        let suite = ScratchDefaults.suiteName()
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let legacy = makeRecord("Connection_Legacy")
+        let archived = try NSKeyedArchiver.archivedData(withRootObject: legacy, requiringSecureCoding: true)
+        defaults.set(["Connection_Legacy": archived], forKey: "recordCache")
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SyncRecordCacheTests/\(UUID().uuidString)", isDirectory: true)
+        let cache = SyncRecordCache(directory: directory, defaults: defaults, storageKey: "recordCache")
+        #expect(cache.allRecords().map(\.recordID.recordName) == ["Connection_Legacy"])
+
+        cache.store([makeRecord("Connection_A")])
+
+        #expect(Set(cache.allRecords().map(\.recordID.recordName)) == ["Connection_Legacy", "Connection_A"])
+    }
+
+    @Test("An empty cache reads back no record")
+    func allRecordsOfAnEmptyCache() throws {
+        #expect(try makeCache().allRecords().isEmpty)
+    }
+
     @Test("Removing everything forgets every record, and storing works again afterwards")
     func removeAllForgetsEveryRecord() throws {
         let cache = try makeCache()

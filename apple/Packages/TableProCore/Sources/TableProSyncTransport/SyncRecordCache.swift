@@ -53,6 +53,16 @@ public final class SyncRecordCache {
         return unarchive(data)
     }
 
+    // Every record the cache holds, for the core engine's one-time import of the Swift engine's bases.
+    public func allRecords() -> [CKRecord] {
+        migrateIfNeeded()
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        return files
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .compactMap { try? Data(contentsOf: $0) }
+            .compactMap(unarchive)
+    }
+
     // MARK: - Writing
 
     /// Writes only the records handed in, so the cost of a push is the size of that push and not

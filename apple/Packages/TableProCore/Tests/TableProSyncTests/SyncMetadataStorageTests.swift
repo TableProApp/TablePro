@@ -45,6 +45,16 @@ struct SyncMetadataStorageTests {
         #expect(storage.adoptReadableRecordTypes(["Connection", "TableFolder"]))
     }
 
+    @Test("The record types a build read come back as recorded, and none before any build recorded them")
+    func readableRecordTypesReadBack() {
+        let storage = makeStorage()
+        #expect(storage.readableRecordTypes == nil)
+
+        _ = storage.adoptReadableRecordTypes(["Connection", "TableFolder"])
+
+        #expect(storage.readableRecordTypes == ["Connection", "TableFolder"])
+    }
+
     @Test("Removing tombstones in a batch keeps the others")
     func removeTombstonesKeepsOthers() {
         let storage = makeStorage()

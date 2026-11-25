@@ -87,7 +87,7 @@ final class SyncCoordinator: ObservableObject {
 
     init(
         services: AppServices = .live,
-        recordCache: SyncRecordCache = SyncCoordinator.makeRecordCache(),
+        recordCache: SyncRecordCache = SyncProviderCoordinator.makeRecordCache(),
         transport: @escaping @autoclosure () -> any SyncTransport = CloudKitSyncEngine(),
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { SyncNetworkMonitor() },
         columnLayouts: @escaping @autoclosure () -> FileColumnLayoutPersister = .shared,
@@ -118,7 +118,7 @@ final class SyncCoordinator: ObservableObject {
         self.themeCatalog = themeCatalog
         let featureAccess = services.featureAccess
         self.licenseGate = licenseGate ?? {
-            SyncCoordinator.licenseDisableReason(for: featureAccess.check(.iCloudSync))
+            SyncProviderCoordinator.licenseDisableReason(for: featureAccess.check(.iCloudSync))
         }
         self.policyGate = policyGate
         self.policyChanges = policyChanges
