@@ -2,16 +2,16 @@ use std::ops::{Deref, DerefMut};
 use std::sync::MutexGuard;
 
 use super::StoreState;
-use crate::journal::{JournalSlot, RecordKind};
+use crate::journal::{JournalEntry, JournalSlot};
 
-// Holds the store's mutex and the lock file from the re-read to the rename. The kinds a commit
-// changed reach the journal once both are released, so a journal that calls into another
+// Holds the store's mutex and the lock file from the re-read to the rename. What a commit changed
+// reaches the journal once both are released, in one call, so a journal that calls into another
 // language never runs under them.
 pub(super) struct WriteGuard<'a> {
     state: Option<MutexGuard<'a, StoreState>>,
     file: Option<std::fs::File>,
     journal: &'a JournalSlot,
-    changed: Vec<RecordKind>,
+    changed: Vec<JournalEntry>,
 }
 
 impl<'a> WriteGuard<'a> {
@@ -28,10 +28,11 @@ impl<'a> WriteGuard<'a> {
         }
     }
 
-    pub(super) fn changed(&mut self, kinds: impl IntoIterator<Item = RecordKind>) {
-        for kind in kinds {
-            if !self.changed.contains(&kind) {
-                self.changed.push(kind);
+    pub(super) fn changed(&mut self, entries: impl IntoIterator<Item = JournalEntry>) {
+        for entry in entries {
+            match self.changed.iter_mut().find(|held| held.kind == entry.kind) {
+                Some(held) => *held = std::mem::replace(held, JournalEntry::new(entry.kind)).wrote(entry.written).deleted(entry.deleted),
+                None => self.changed.push(entry),
             }
         }
     }
@@ -63,7 +64,7 @@ impl Drop for WriteGuard<'_> {
         drop(self.file.take());
         // A panic mid-write leaves nothing committed to tell about.
         if !std::thread::panicking() {
-            self.changed.sort();
+            self.changed.sort_by_key(|entry| entry.kind);
             self.journal.notify(&self.changed);
         }
     }

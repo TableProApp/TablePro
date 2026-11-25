@@ -5,14 +5,16 @@ use std::time::SystemTime;
 use sqlx::{AssertSqlSafe, Connection, Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
-use crate::StorageError;
-use crate::journal::RecordKind;
+use crate::journal::{JournalEntry, RecordKind, RecordRef};
+use crate::{StorageError, TableRef};
 use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
 use crate::unix_time::to_unix;
 
-use super::ordering;
+use super::folders::folders;
+use super::{ordering, queries};
 
-pub(super) async fn delete_folder(pool: &SqlitePool, path: &Path, id: i64) -> Result<(), StorageError> {
+// Its subfolders go and its queries move to the top, which writes them too.
+pub(super) async fn delete_folder(pool: &SqlitePool, path: &Path, id: i64) -> Result<Vec<JournalEntry>, StorageError> {
     let mut connection = pool.acquire().await?;
     let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
     let row = sqlx::query("SELECT connection_id, parent_id FROM saved_query_folders WHERE id = ?")
@@ -45,30 +47,36 @@ pub(super) async fn delete_folder(pool: &SqlitePool, path: &Path, id: i64) -> Re
     .bind(&owner)
     .fetch_one(&mut *transaction)
     .await?;
+    let mut freed = Vec::new();
     for row in rows {
         if !doomed.contains(&row.try_get::<i64, _>("folder_id")?) {
             continue;
         }
+        let query: i64 = row.try_get("id")?;
         sqlx::query("UPDATE saved_queries SET folder_id = NULL, sort_order = ?, updated_at = ? WHERE id = ?")
             .bind(position)
             .bind(to_unix(SystemTime::now()))
-            .bind(row.try_get::<i64, _>("id")?)
+            .bind(query)
             .execute(&mut *transaction)
             .await?;
+        freed.push(query);
         position += 1;
     }
     delete_folder_rows(&mut transaction, &doomed).await?;
-    ordering::compact_folders(&mut transaction, &owner, parent).await?;
+    let moved = ordering::compact_folders(&mut transaction, &owner, parent).await?;
     transaction.commit().await?;
-    Ok(())
+    Ok([queries(freed, []), folders(moved, ids)]
+        .into_iter()
+        .filter(|entry| !entry.is_empty())
+        .collect())
 }
 
-// The number of queries deleted, and the kinds of record that changed.
+// The number of queries deleted, and what changed of each kind.
 pub(super) async fn delete_connection(
     pool: &SqlitePool,
     path: &Path,
     connection: Uuid,
-) -> Result<(usize, Vec<RecordKind>), StorageError> {
+) -> Result<(usize, Vec<JournalEntry>), StorageError> {
     let mut database = pool.acquire().await?;
     let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
     let owner = connection.to_string();
@@ -86,52 +94,68 @@ pub(super) async fn delete_connection(
         binds: vec![Bind::Text(owner.clone())],
     });
     trim_upgrade_copies(path, &copies).await?;
-    let queries = sqlx::query("DELETE FROM saved_queries WHERE connection_id = ?")
-        .bind(&owner)
-        .execute(&mut *transaction)
-        .await?
-        .rows_affected();
-    let folders: Vec<i64> = sqlx::query_scalar("SELECT id FROM saved_query_folders WHERE connection_id = ?")
+    let removed: Vec<i64> = sqlx::query_scalar("DELETE FROM saved_queries WHERE connection_id = ? RETURNING id")
         .bind(&owner)
         .fetch_all(&mut *transaction)
         .await?;
-    let mut changed = Vec::new();
-    if queries > 0 {
-        changed.push(RecordKind::SavedQuery);
-    }
-    if !folders.is_empty() {
-        changed.push(RecordKind::SavedQueryFolder);
-    }
-    delete_folder_rows(&mut transaction, &folders.into_iter().collect()).await?;
-    for (statement, kind) in [
-        (
-            "DELETE FROM favourite_tables WHERE connection_id = ?",
-            RecordKind::FavouriteTable,
-        ),
-        (
-            "DELETE FROM favourite_databases WHERE connection_id = ?",
-            RecordKind::FavouriteDatabase,
-        ),
-        (
-            "DELETE FROM table_folders WHERE connection_id = ?",
-            RecordKind::TableFolder,
-        ),
-        (
-            "DELETE FROM table_folder_items WHERE connection_id = ?",
-            RecordKind::TableFolderItem,
-        ),
-    ] {
-        let removed = sqlx::query(statement)
+    let folder_ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM saved_query_folders WHERE connection_id = ?")
+        .bind(&owner)
+        .fetch_all(&mut *transaction)
+        .await?;
+    delete_folder_rows(&mut transaction, &folder_ids.iter().copied().collect()).await?;
+    let tables: Vec<(String, String, String)> = sqlx::query_as(
+        "DELETE FROM favourite_tables WHERE connection_id = ? RETURNING database, schema, name",
+    )
+    .bind(&owner)
+    .fetch_all(&mut *transaction)
+    .await?;
+    let databases: Vec<String> =
+        sqlx::query_scalar("DELETE FROM favourite_databases WHERE connection_id = ? RETURNING database")
             .bind(&owner)
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
-        if removed > 0 {
-            changed.push(kind);
-        }
-    }
+            .fetch_all(&mut *transaction)
+            .await?;
+    let table_folders: Vec<String> =
+        sqlx::query_scalar("DELETE FROM table_folders WHERE connection_id = ? RETURNING id")
+            .bind(&owner)
+            .fetch_all(&mut *transaction)
+            .await?;
+    let items: Vec<(String, String, String)> = sqlx::query_as(
+        "DELETE FROM table_folder_items WHERE connection_id = ? RETURNING database, schema, name",
+    )
+    .bind(&owner)
+    .fetch_all(&mut *transaction)
+    .await?;
     transaction.commit().await?;
-    Ok((queries as usize, changed))
+    let table = |(database, schema, name): (String, String, String)| {
+        RecordRef::Table(TableRef {
+            connection_id: connection,
+            database,
+            schema,
+            name,
+        })
+    };
+    let changed = [
+        queries([], removed.iter().copied()),
+        folders([], folder_ids),
+        JournalEntry::new(RecordKind::FavouriteTable).deleted(tables.into_iter().map(table)),
+        JournalEntry::new(RecordKind::FavouriteDatabase).deleted(databases.into_iter().map(|database| {
+            RecordRef::Database {
+                connection_id: connection,
+                database,
+            }
+        })),
+        JournalEntry::new(RecordKind::TableFolder).deleted(
+            table_folders
+                .iter()
+                .filter_map(|id| Uuid::parse_str(id).ok())
+                .map(RecordRef::Id),
+        ),
+        JournalEntry::new(RecordKind::TableFolderItem).deleted(items.into_iter().map(table)),
+    ]
+    .into_iter()
+    .filter(|entry| !entry.is_empty())
+    .collect();
+    Ok((removed.len(), changed))
 }
 
 fn folder_deletes(ids: &[i64]) -> Vec<CopyDelete> {

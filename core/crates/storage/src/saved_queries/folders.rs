@@ -7,7 +7,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
-use crate::journal::{RecordKind, Signals};
+use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
 use crate::name_rules::{self, NameFault};
 use crate::unix_time::{from_unix, to_unix};
 
@@ -23,6 +23,12 @@ pub struct SavedQueryFolder {
 }
 
 const MAX_NAME_CHARS: usize = 200;
+
+pub(super) fn folders(written: impl IntoIterator<Item = i64>, deleted: impl IntoIterator<Item = i64>) -> JournalEntry {
+    JournalEntry::new(RecordKind::SavedQueryFolder)
+        .wrote(written.into_iter().map(RecordRef::Row))
+        .deleted(deleted.into_iter().map(RecordRef::Row))
+}
 
 #[derive(Debug, Clone)]
 pub struct SavedQueryFolders {
@@ -40,8 +46,8 @@ impl SavedQueryFolders {
         self.signals.subscribe()
     }
 
-    fn changed(&self) {
-        self.signals.changed(&[RecordKind::SavedQueryFolder]);
+    fn wrote(&self, written: impl IntoIterator<Item = i64>) {
+        self.signals.changed(&[folders(written, [])]);
     }
 
     pub async fn create(&self, connection: Uuid, name: &str, parent: Option<i64>) -> Result<i64, StorageError> {
@@ -68,7 +74,7 @@ impl SavedQueryFolders {
         .map_err(name_taken)?
         .try_get("id")?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote([id]);
         Ok(id)
     }
 
@@ -95,7 +101,7 @@ impl SavedQueryFolders {
             .await
             .map_err(name_taken)?;
         transaction.commit().await?;
-        self.changed();
+        self.wrote([id]);
         Ok(())
     }
 
@@ -127,17 +133,16 @@ impl SavedQueryFolders {
         .execute(&mut *transaction)
         .await
         .map_err(name_taken)?;
-        super::ordering::compact_folders(&mut transaction, &owner, previous).await?;
+        let mut moved = vec![id];
+        moved.extend(super::ordering::compact_folders(&mut transaction, &owner, previous).await?);
         transaction.commit().await?;
-        self.changed();
+        self.wrote(moved);
         Ok(())
     }
 
     pub async fn delete(&self, id: i64) -> Result<(), StorageError> {
-        super::deletion::delete_folder(&self.pool, &self.path, id).await?;
-        // Its queries move to the top, which changes them too.
-        self.signals
-            .changed(&[RecordKind::SavedQuery, RecordKind::SavedQueryFolder]);
+        let entries = super::deletion::delete_folder(&self.pool, &self.path, id).await?;
+        self.signals.changed(&entries);
         Ok(())
     }
 

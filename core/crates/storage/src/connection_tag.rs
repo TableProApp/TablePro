@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::lenient::Identified;
+
 use crate::{ConnectionColor, ConnectionTagName};
 
 /// A label several connections can share. Connections name it by id, so
@@ -23,6 +25,12 @@ impl ConnectionTag {
             color,
             is_preset: false,
         }
+    }
+}
+
+impl Identified for ConnectionTag {
+    fn id(&self) -> Uuid {
+        self.id
     }
 }
 

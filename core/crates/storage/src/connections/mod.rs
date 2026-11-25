@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::document_problem::{DocumentProblem, DocumentProblemKind};
 use crate::error::StorageError;
-use crate::journal::{ChangeJournal, JournalSlot, RecordKind};
+use crate::journal::{ChangeJournal, JournalEntry, JournalSlot, RecordKind, RecordRef};
 use crate::lenient::{Identified, Lenient};
 use crate::store_identity::StoreIdentity;
 use crate::{ConnectionGroup, ConnectionTag, ConnectionTagName, GroupTree};
@@ -293,25 +293,35 @@ impl ConnectionsDocument {
             .collect()
     }
 
-    /// The kinds whose records differ between the two.
-    fn changed_kinds(&self, before: &Self) -> Vec<RecordKind> {
-        let mut kinds = Vec::new();
-        if self.connections != before.connections || self.favorites != before.favorites {
-            kinds.push(RecordKind::Connection);
-        }
-        if self.groups != before.groups {
-            kinds.push(RecordKind::Group);
-        }
-        if self.tags != before.tags {
-            kinds.push(RecordKind::Tag);
-        }
-        if self.ssh_profiles != before.ssh_profiles {
-            kinds.push(RecordKind::SshProfile);
-        }
-        if self.credential_profiles != before.credential_profiles {
-            kinds.push(RecordKind::CredentialProfile);
-        }
-        kinds
+    // Each kind whose records differ between the two, with the records written and deleted.
+    fn changes(&self, before: &Self) -> Vec<JournalEntry> {
+        // A favourite is a field of its connection's record, so a change to the list writes those connections.
+        let listed = |favorites: &[Uuid]| -> HashMap<Uuid, usize> {
+            favorites.iter().enumerate().map(|(rank, id)| (*id, rank)).collect()
+        };
+        let (was, now) = (listed(&before.favorites), listed(&self.favorites));
+        let saved = self.connection_ids();
+        let favourites_moved = self
+            .favorites
+            .iter()
+            .chain(&before.favorites)
+            .filter(|id| was.get(id) != now.get(id) && saved.contains(id))
+            .map(|id| RecordRef::Id(*id))
+            .collect::<Vec<_>>();
+        [
+            lenient_changes(RecordKind::Connection, &before.connections, &self.connections).wrote(favourites_moved),
+            list_changes(RecordKind::Group, &before.groups, &self.groups),
+            list_changes(RecordKind::Tag, &before.tags, &self.tags),
+            lenient_changes(RecordKind::SshProfile, &before.ssh_profiles, &self.ssh_profiles),
+            lenient_changes(
+                RecordKind::CredentialProfile,
+                &before.credential_profiles,
+                &self.credential_profiles,
+            ),
+        ]
+        .into_iter()
+        .filter(|entry| !entry.is_empty())
+        .collect()
     }
 
     /// What an export writes: the connections as a file carries them, with their groups, tags and
@@ -1074,10 +1084,8 @@ impl ConnectionStore {
     fn commit(&self, state: &mut WriteGuard<'_>, mut document: ConnectionsDocument) -> Result<(), StorageError> {
         document.tidy();
         let changed = match &**state {
-            StoreState::Ready(before, _) => document.changed_kinds(before),
-            StoreState::Unloaded | StoreState::Unavailable(..) => {
-                document.changed_kinds(&ConnectionsDocument::default())
-            }
+            StoreState::Ready(before, _) => document.changes(before),
+            StoreState::Unloaded | StoreState::Unavailable(..) => document.changes(&ConnectionsDocument::default()),
         };
         document.store = Some(StoreIdentity::after_write(document.store));
         let bytes = crate::document::encode_document(&document)?;
@@ -1132,6 +1140,46 @@ fn decode(path: &Path, bytes: Option<&[u8]>) -> Result<ConnectionsDocument, Docu
     let mut document = crate::document::decode_document::<ConnectionsDocument>(path, bytes)?;
     document.tidy();
     Ok(document)
+}
+
+// A held entry and a readable one of the same id differ, so a record a build could not read and now can is a write.
+fn lenient_changes<T: Identified + PartialEq>(kind: RecordKind, before: &Lenient<T>, after: &Lenient<T>) -> JournalEntry {
+    let ids = |list: &Lenient<T>| -> Vec<Uuid> { list.iter().map(Identified::id).chain(list.held_ids()).collect() };
+    let now: HashSet<Uuid> = ids(after).into_iter().collect();
+    let was: HashSet<Uuid> = ids(before).into_iter().collect();
+    JournalEntry::new(kind)
+        .wrote(
+            ids(after)
+                .into_iter()
+                .filter(|id| !was.contains(id) || entry_of(before, *id) != entry_of(after, *id))
+                .map(RecordRef::Id),
+        )
+        .deleted(ids(before).into_iter().filter(|id| !now.contains(id)).map(RecordRef::Id))
+}
+
+fn entry_of<T: Identified>(list: &Lenient<T>, id: Uuid) -> Option<Result<&T, &Value>> {
+    list.iter()
+        .find(|entry| entry.id() == id)
+        .map(Ok)
+        .or_else(|| list.held_entry(id).map(Err))
+}
+
+fn list_changes<T: Identified + PartialEq>(kind: RecordKind, before: &[T], after: &[T]) -> JournalEntry {
+    let was: HashMap<Uuid, &T> = before.iter().map(|entry| (entry.id(), entry)).collect();
+    let now: HashSet<Uuid> = after.iter().map(Identified::id).collect();
+    JournalEntry::new(kind)
+        .wrote(
+            after
+                .iter()
+                .filter(|entry| was.get(&entry.id()).is_none_or(|held| *held != *entry))
+                .map(|entry| RecordRef::Id(entry.id())),
+        )
+        .deleted(
+            before
+                .iter()
+                .filter(|entry| !now.contains(&entry.id()))
+                .map(|entry| RecordRef::Id(entry.id())),
+        )
 }
 
 /// Bring the file's tags into `local` and say which local tag each of
