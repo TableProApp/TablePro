@@ -1,3 +1,4 @@
+import Foundation
 @testable import TableProUtilities
 import Testing
 
@@ -108,5 +109,62 @@ struct SidebarNameFilterTests {
         #expect(query.isEmpty)
         #expect(query.tier(of: "anything") == .exact)
         #expect(SidebarNameFilter.ranked(["b", "a"], query: query, name: { $0 }) == ["b", "a"])
+    }
+
+    // MARK: - Folding
+
+    // What the locale-aware search answered before ASCII names took the byte search, pinned so neither path drifts.
+    @Test(
+        "A name or query outside ASCII keeps the locale-aware answer",
+        arguments: [
+            ("strasse", "straße", SidebarNameMatchTier?.some(.exact)),
+            ("STRASSE", "Straße", .exact),
+            ("straße", "strasse", .exact),
+            ("fi", "\u{FB01}le", .prefix),
+            ("file", "\u{FB01}le", .exact),
+            ("\u{FB01}", "file", .prefix),
+            ("i", "İstanbul", .prefix),
+            ("istanbul", "İSTANBUL", .exact),
+            ("I", "ılık", nil),
+            ("cafe", "café", .exact),
+            ("café", "CAFE", .exact),
+            ("cafe", "cafe\u{301}", .exact),
+            ("ae", "æther", nil),
+            ("o", "Ørsted", nil),
+        ]
+    )
+    func nonASCIIKeepsLocaleAnswer(query: String, candidate: String, tier: SidebarNameMatchTier?) {
+        #expect(SidebarNameQuery(query).tier(of: candidate) == tier)
+    }
+
+    @Test("Every ASCII query ranks every ASCII name as the locale-aware search does")
+    func asciiMatchesLocaleAwareSearch() {
+        let names = [
+            "users", "USERS", "User_Log", "audit_user", "a", "A", "orders2024", "order-items", "x.y", "ab ab",
+            "~tilde", "^caret", "`tick`", "[bracket]", "{brace}", "back\\slash", "q\"uote", "tab\tname", "e^", "",
+        ]
+        let queries = ["u", "U", "user", "USER_L", "log", "a", "2024", "-", ".", " ab", "~", "^", "`", "]", "\\", "\"", "e", "zz"]
+        for query in queries {
+            let prepared = SidebarNameQuery(query)
+            for name in names {
+                #expect(prepared.tier(of: name) == Self.localeAwareTier(prepared.text, name), "\(query) in \(name)")
+            }
+        }
+    }
+
+    @Test("A locale that folds I to a dotless i sends ASCII names to the locale-aware search")
+    func turkishFoldsByLocale() {
+        #expect(!AsciiFolding.matchesLocale(Locale(identifier: "tr_TR")))
+        #expect(!AsciiFolding.matchesLocale(Locale(identifier: "az_AZ")))
+        #expect(AsciiFolding.matchesLocale(Locale(identifier: "en_US")))
+    }
+
+    private static func localeAwareTier(_ query: String, _ candidate: String) -> SidebarNameMatchTier? {
+        guard !query.isEmpty else { return .exact }
+        let candidateString = candidate as NSString
+        let range = candidateString.localizedStandardRange(of: query)
+        guard range.location != NSNotFound else { return nil }
+        guard range.location == 0 else { return .substring }
+        return range.length == candidateString.length ? .exact : .prefix
     }
 }

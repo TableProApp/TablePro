@@ -50,6 +50,41 @@ private func makeRef(_ name: String, database: String? = nil, schema: String? = 
 
 struct SidebarViewModelTests {
 
+    // SidebarView hands the bindings over on every evaluation of its parent, so a publish here redraws the sidebar.
+    @Test("Handing over new bindings publishes nothing, and reads go through the new ones")
+    @MainActor
+    func updateBindingsPublishesNothing() {
+        let (vm, _, _, _) = makeSUT()
+        var published = 0
+        let observation = vm.objectWillChange.sink { published += 1 }
+        let table = makeRef("users")
+        var truncates: Set<DatabaseTreeTableRef> = [table]
+        vm.updateBindings(
+            pendingTruncates: Binding(get: { truncates }, set: { truncates = $0 }),
+            pendingDeletes: .constant([]),
+            tableOperationOptions: .constant([:])
+        )
+        observation.cancel()
+        #expect(published == 0)
+        #expect(vm.pendingTruncates == [table])
+    }
+
+    @Test("A container's remembered verdict follows its query")
+    @MainActor
+    func containerBucketsMemoizeBySource() {
+        let (vm, _, _, _) = makeSUT()
+        let tables = [TestFixtures.makeTableInfo(name: "users"), TestFixtures.makeTableInfo(name: "orders")]
+        func source(_ rows: [TableInfo], _ query: String) -> DatabaseTreeBucketSource {
+            DatabaseTreeBucketSource(tables: rows, routines: [], triggers: [], userTypes: [], searchText: query, database: "db")
+        }
+        let first = vm.containerBuckets(database: "db", schema: nil, source: source(tables, "us"))
+        #expect(first.tables.values.flatMap { $0 }.map(\.name) == ["users"])
+        let again = vm.containerBuckets(database: "db", schema: nil, source: source(tables, "us"))
+        #expect(again.tables.values.flatMap { $0 }.map(\.name) == ["users"])
+        let narrowed = vm.containerBuckets(database: "db", schema: nil, source: source(tables, "ord"))
+        #expect(narrowed.tables.values.flatMap { $0 }.map(\.name) == ["orders"])
+    }
+
     // MARK: - Batch Toggle Truncate
 
     @Test("batchToggleTruncate asks the window for new tables")

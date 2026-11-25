@@ -197,9 +197,11 @@ final class SidebarViewModel: ObservableObject {
 
     // MARK: - Binding Storage
 
-    @Published private var pendingTruncatesBinding: Binding<Set<DatabaseTreeTableRef>>
-    @Published private var pendingDeletesBinding: Binding<Set<DatabaseTreeTableRef>>
-    @Published private var tableOperationOptionsBinding: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
+    // Plumbing, not drawn state: `SidebarView.init` hands them over on every evaluation of its parent, and a publish
+    // there would redraw the sidebar, and repeat its search, each time.
+    private var pendingTruncatesBinding: Binding<Set<DatabaseTreeTableRef>>
+    private var pendingDeletesBinding: Binding<Set<DatabaseTreeTableRef>>
+    private var tableOperationOptionsBinding: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     let databaseType: DatabaseType
 
     // MARK: - Dependencies
@@ -460,6 +462,14 @@ final class SidebarViewModel: ObservableObject {
     }
 
     // MARK: - Filtering
+
+    // The bodies around the outline ask for the same container verdicts on every evaluation; each filters a container
+    // once per query and catalog buffer. Plain storage, since a verdict is derived and never drawn by itself.
+    private var containerBucketMemo = DatabaseTreeBucketMemo<DatabaseTreeContainerSlot>()
+
+    func containerBuckets(database: String, schema: String?, source: DatabaseTreeBucketSource) -> DatabaseTreeObjectBuckets {
+        containerBucketMemo.buckets(for: DatabaseTreeContainerSlot(database: database, schema: schema), source: source)
+    }
 
     // Keyed by the rows themselves: a catalog commits its side lists before the generation moves.
     private struct FilterKey<Element>: Equatable {
