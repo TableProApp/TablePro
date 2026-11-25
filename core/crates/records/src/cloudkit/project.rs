@@ -10,7 +10,7 @@ use super::registry::{Carries, CloudField, CloudType, RECORD_TYPES, RecordType, 
 use crate::kind::Kind;
 use crate::record_id::{self, IdError};
 use crate::schema::{self, Type};
-use crate::settings;
+use crate::settings::{self, Document};
 
 // As the Mac's mapper stamps every record.
 pub const SCHEMA_VERSION: i64 = 1;
@@ -335,13 +335,18 @@ fn settings_entries(wire: &mut serde_json::Map<String, Value>, direction: Direct
     else {
         return Ok(());
     };
-    let fields = known.document.options();
-    let Value::Object(members) = options else {
-        let conforms = options
-            .as_array()
-            .is_some_and(|items| items.iter().all(|item| schema::conforms(&Type::Object(fields), item)));
-        return if conforms { Ok(()) } else { Err(refused) };
+    let members = match (known.document, options) {
+        (Document::List(fields), Value::Array(items)) => {
+            return if items.iter().all(|item| schema::conforms(&Type::Object(fields), item)) {
+                Ok(())
+            } else {
+                Err(refused)
+            };
+        }
+        (Document::Object(_), Value::Object(members)) => members,
+        _ => return Err(refused),
     };
+    let fields = known.document.options();
     for option in fields {
         let Some(value) = members.get(option.key) else {
             continue;

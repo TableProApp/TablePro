@@ -492,6 +492,8 @@ fn a_settings_document_with_a_malformed_option_writes_nothing() {
         keyboard(json!({"executeQuery": {"keyCode": 36}})),
         json!({"category": "editor", "options": {"tabWidth": "4"}}),
         json!({"category": "customSlashCommands", "options": [{"id": "a", "name": 1}]}),
+        json!({"category": "keyboard", "options": []}),
+        json!({"category": "customSlashCommands", "options": {"a": {"id": "a"}}}),
     ] {
         let category = fields["category"].as_str().expect("a category").to_owned();
         assert_eq!(

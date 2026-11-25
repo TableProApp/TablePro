@@ -159,3 +159,74 @@ fn a_content_change_is_any_change_outside_placement() {
         &json!({"sort_order": 1, "schema_version": 1})
     ));
 }
+
+// A secret edited here while another device rotated the key: the fields never mix (0051, Conflict rules).
+#[test]
+fn an_envelope_changed_here_is_sealed_again_rather_than_merged() {
+    let base = json!({"suite": "tp1", "kv": 1, "nonce": "AAAA", "ct": "BBBB"});
+    let local = json!({"suite": "tp1", "kv": 1, "nonce": "CCCC", "ct": "DDDD"});
+    let rotated = json!({"suite": "tp1", "kv": 2, "nonce": "EEEE", "ct": "FFFF"});
+    let sides = |base, local, server| Sides { base, local, server };
+
+    assert_eq!(
+        merge(
+            Kind::SecretEnvelope,
+            Mode::Personal,
+            sides(Some(&base), Some(&local), Some(&rotated))
+        ),
+        Merged::Reseal
+    );
+    assert_eq!(
+        merge(Kind::SecretEnvelope, Mode::Team, sides(Some(&base), Some(&local), None)),
+        Merged::Reseal
+    );
+    assert_eq!(
+        merge(
+            Kind::SecretEnvelope,
+            Mode::Personal,
+            sides(Some(&base), Some(&base), Some(&rotated))
+        ),
+        Merged::Record(rotated.clone())
+    );
+    assert_eq!(
+        merge(
+            Kind::SecretEnvelope,
+            Mode::Personal,
+            sides(Some(&base), Some(&base), None)
+        ),
+        Merged::Deleted
+    );
+    assert_eq!(
+        merge(
+            Kind::SecretEnvelope,
+            Mode::Personal,
+            sides(Some(&base), None, Some(&rotated))
+        ),
+        Merged::Deleted
+    );
+    assert_eq!(
+        merge(Kind::SecretEnvelope, Mode::Personal, sides(None, Some(&local), None)),
+        Merged::Reseal
+    );
+}
+
+#[test]
+fn a_history_entry_or_key_object_keeps_the_stored_copy() {
+    let stored = json!({"suite": "tp1", "kv": 2, "nonce": "AAAA", "ct": "BBBB"});
+    let mine = json!({"suite": "tp1", "kv": 2, "nonce": "CCCC", "ct": "DDDD"});
+    for kind in [Kind::HistoryEntry, Kind::KeyVersion] {
+        let sides = |base, local, server| Sides { base, local, server };
+        assert_eq!(
+            merge(kind, Mode::Personal, sides(None, Some(&mine), Some(&stored))),
+            Merged::Record(stored.clone())
+        );
+        assert_eq!(
+            merge(kind, Mode::Personal, sides(None, Some(&mine), None)),
+            Merged::Record(mine.clone())
+        );
+        assert_eq!(
+            merge(kind, Mode::Personal, sides(Some(&stored), Some(&stored), None)),
+            Merged::Deleted
+        );
+    }
+}

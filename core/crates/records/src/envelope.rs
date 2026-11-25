@@ -100,11 +100,13 @@ pub fn destination_paths(parent: Kind, secret: &SecretKind) -> &'static [&'stati
         "network_options",
         "additional_fields",
     ];
+    // The published route's target is the SSH server a Mac dials when it resolved one.
     const CONNECTION_SSH: &[&str] = &[
         "ssh_config.host",
         "ssh_config.port",
         "ssh_config.username",
         "ssh_config.private_key_path",
+        "ssh_route",
     ];
     const LIBRARY_CONNECTION: &[&str] = &[
         "type",
@@ -382,6 +384,34 @@ mod tests {
             for (pointer, value) in &changes {
                 let mut moved = held.clone();
                 *moved.pointer_mut(pointer).expect("a member") = value.clone();
+                assert_ne!(
+                    destination(Kind::Connection, &secret, &moved),
+                    sealed,
+                    "{secret} {pointer}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_ssh_secret_follows_the_route_target_a_mac_dials() {
+        let held = json!({
+            "ssh_config": {"enabled": true, "host": "bastion", "port": 22, "username": "ops"},
+            "ssh_route": {"basis": "b", "hops": [], "target": {"alias": "bastion", "host": "10.0.0.5", "port": 22, "username": "ops"}}
+        });
+        for secret in [
+            SecretKind::SshPassword,
+            SecretKind::SshKeyPassphrase,
+            SecretKind::SshTotpSecret,
+        ] {
+            let sealed = destination(Kind::Connection, &secret, &held);
+            for (pointer, value) in [
+                ("/ssh_route/target/host", json!("evil")),
+                ("/ssh_route/target/port", json!(2222)),
+                ("/ssh_route/target/username", json!("root")),
+            ] {
+                let mut moved = held.clone();
+                *moved.pointer_mut(pointer).expect("a member") = value;
                 assert_ne!(
                     destination(Kind::Connection, &secret, &moved),
                     sealed,

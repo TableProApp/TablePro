@@ -38,9 +38,18 @@ pub enum Merged {
     Contested { record: Value, fields: Vec<String> },
     // Team only: a content edit met a deletion. Keep Mine revives the record, Keep Theirs lets the deletion stand.
     DeletionContested { kept: Value, deleted_here: bool },
+    // An envelope this device changed: ciphertext does not merge, so the device seals its secret again under the
+    // newest key version and pushes it on the stored tag, and the later pusher wins (0051, Conflict rules).
+    Reseal,
 }
 
 pub fn merge(kind: Kind, mode: Mode, sides: Sides<'_>) -> Merged {
+    if kind == Kind::SecretEnvelope {
+        return whole(sides);
+    }
+    if kind.is_create_once() {
+        return created_once(sides);
+    }
     let schema = schema(kind);
     match (sides.base, sides.local, sides.server) {
         (_, None, None) => Merged::Deleted,
@@ -49,6 +58,26 @@ pub fn merge(kind: Kind, mode: Mode, sides: Sides<'_>) -> Merged {
         (base, Some(local), Some(server)) => fields(&schema, mode, base, local, server),
         (Some(base), None, Some(server)) => against_deletion(&schema, mode, base, server, true),
         (Some(base), Some(local), None) => against_deletion(&schema, mode, base, local, false),
+    }
+}
+
+fn whole(sides: Sides<'_>) -> Merged {
+    match (sides.base, sides.local, sides.server) {
+        (_, None, _) => Merged::Deleted,
+        (base, Some(local), server) if base == Some(local) => {
+            server.map_or(Merged::Deleted, |server| Merged::Record(server.clone()))
+        }
+        (_, Some(_), _) => Merged::Reseal,
+    }
+}
+
+// History entries and key objects are never patched: the stored copy stands, and one the provider no longer holds
+// after this device took it was deleted (a `user` tombstone of a history entry is final).
+fn created_once(sides: Sides<'_>) -> Merged {
+    match (sides.base, sides.local, sides.server) {
+        (_, _, Some(server)) => Merged::Record(server.clone()),
+        (None, Some(local), None) => Merged::Record(local.clone()),
+        _ => Merged::Deleted,
     }
 }
 
