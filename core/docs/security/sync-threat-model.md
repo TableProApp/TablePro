@@ -193,7 +193,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 - A device refuses any log that does not extend its stored head.
 - A device refuses a second statement at a position it already holds with a different signing input, and raises a fork alarm. A fork ends only through a statement the key in force at the fork signs, or k signers for a team.
 - Key versions, envelope counters and floors only move forward.
-- A stale state file, edited or older than its anchor, is not trusted, and neither is an anchor with no file. The key tables are rebuilt from the server's logs, taking only what extends the anchored checkpoint, and no secret is written until a log extends the anchored heads. No comparison pins a head older than one the holder has anchored.
+- A stale state file, edited or older than its anchor, is not trusted, and neither is an anchor with no file. The key tables are rebuilt from the server's logs, taking only what extends the anchored checkpoint, or the pending one a crash left, and no secret is written until a log extends the anchored heads. No comparison pins a head older than one the holder has anchored.
 - Every comparison covers the log heads, so two devices that compare also check that they see one history. A device approval also compares the team logs and member bundles, and the new device starts from the approving device's checkpoints.
 
 **What does not hold.**

@@ -559,7 +559,7 @@ A holder's security state is what it has verified, apart from its keys. It lives
 | `envelope_counters` | Per envelope, the highest (`kv`, `n`) it accepted and that ciphertext's hash |
 | `deleted_history` | The ids of history entries with a `user` tombstone |
 
-**Stale state, or an anchor with no file.** 0054 rebuilds the key tables from the server's logs. The holder keeps its keys and accepts only what extends the anchored checkpoint, and writes no secret until a log extends the anchored heads. No comparison makes it pin a head older than one it has anchored.
+**Stale state, or an anchor with no file.** 0054 rebuilds the key tables from the server's logs. The holder keeps its keys and accepts only what extends the anchored checkpoint, or the pending one that 0054's two-step anchor write left after a crash. It writes no secret until a log extends the anchored heads. No comparison makes it pin a head older than one it has anchored.
 
 **A file with no anchor** pins again, in one of two ways:
 
