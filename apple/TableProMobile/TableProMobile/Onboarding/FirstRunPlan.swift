@@ -18,6 +18,9 @@ nonisolated struct FirstRunPlan: Sendable {
     let hasConnections: Bool?
     let syncChoice: Bool?
     let usageDataChoice: Bool?
+    // False when the organization's managed configuration answers the question for the person.
+    var iCloudSyncAllowed = true
+    var usageDataAllowed = true
     let lastSeenVersion: String?
     let currentVersion: String
     let hasHighlightsForCurrentVersion: Bool
@@ -42,11 +45,11 @@ nonisolated struct FirstRunPlan: Sendable {
             if hasConnections == false {
                 pages.append(.origin)
             }
-            if syncChoice == nil {
+            if syncChoice == nil, iCloudSyncAllowed {
                 pages.append(.iCloud)
             }
         }
-        if usageDataChoice == nil {
+        if usageDataChoice == nil, usageDataAllowed {
             pages.append(.usageData)
         }
         return pages

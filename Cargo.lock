@@ -7998,6 +7998,7 @@ dependencies = [
  "tablepro-foreign-import",
  "tablepro-mcp",
  "tablepro-net",
+ "tablepro-records",
  "tablepro-session",
  "tablepro-ssh",
  "tablepro-storage",
@@ -8121,6 +8122,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tablepro-records"
+version = "0.0.0"
+dependencies = [
+ "hex",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tablepro-core",
+ "tablepro-storage",
+ "tempfile",
+ "thiserror 2.0.20",
+ "unicode-normalization",
+ "uuid",
+]
+
+[[package]]
 name = "tablepro-session"
 version = "0.0.0"
 dependencies = [
@@ -8176,7 +8194,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "hex",
- "proptest",
  "secrecy",
  "serde",
  "serde_json",

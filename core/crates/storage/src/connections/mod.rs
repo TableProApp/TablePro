@@ -35,7 +35,6 @@ pub use details::{
     CredentialReference, DeviceOnly, KnownOrigin, LocalPasswordSource, SocksProxy, SshRoute, SshRouteHop,
     SshRouteTarget, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
 };
-pub(crate) use placement::cyclic;
 pub use profiles::{CredentialPassword, CredentialProfile, SshProfile};
 use write_guard::WriteGuard;
 

@@ -682,10 +682,8 @@ fn seeded_with_unreadable(root: &TempDir, favourite: bool) -> (ConnectionStore, 
 fn a_pulled_deletion_removes_a_connection_this_build_cannot_read() {
     let root = TempDir::new().expect("tempdir");
     let (store, held) = seeded_with_unreadable(&root, true);
-    let mut pull = crate::cloudkit::CloudPull::default();
-    pull.deleted.connections.push(held.id);
 
-    store.apply_cloud_pull_blocking(&pull).expect("pull");
+    store.lay_out_blocking(&[held.id], ConnectionList::clone).expect("pull");
 
     let list = ConnectionStore::new(&paths(&root)).list_blocking().expect("the list");
     assert!(list.unreadable.is_empty());
@@ -699,9 +697,17 @@ fn a_pull_keeps_the_favourite_of_a_connection_this_build_cannot_read() {
     let readable = plain("readable");
     store.upsert_blocking(readable.clone()).expect("save");
 
-    store
-        .apply_cloud_pull_blocking(&crate::cloudkit::CloudPull::default())
-        .expect("pull");
+    // As the CloudKit layout does, which places only the connections this build reads.
+    let readable_only = |list: &ConnectionList| ConnectionList {
+        favorites: list
+            .favorites
+            .iter()
+            .copied()
+            .filter(|id| list.connections.iter().any(|saved| saved.id == *id))
+            .collect(),
+        ..list.clone()
+    };
+    store.lay_out_blocking(&[], readable_only).expect("pull");
 
     let list = store.list_blocking().expect("the list");
     assert_eq!(list.favorites.to_vec(), vec![held.id]);

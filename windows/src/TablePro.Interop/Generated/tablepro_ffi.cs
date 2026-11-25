@@ -23723,7 +23723,8 @@ class FfiConverterTypeAiStopTag: FfiConverterRustBuffer<AiStopTag> {
 internal enum AppClientTag: int {
     Linux,
     Windows,
-    Macos
+    Macos,
+    Ios
 }
 
 class FfiConverterTypeAppClientTag: FfiConverterRustBuffer<AppClientTag> {
@@ -23735,6 +23736,7 @@ class FfiConverterTypeAppClientTag: FfiConverterRustBuffer<AppClientTag> {
             case 1: return AppClientTag.Linux;
             case 2: return AppClientTag.Windows;
             case 3: return AppClientTag.Macos;
+            case 4: return AppClientTag.Ios;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAppClientTag.Read()", value));
         }
     }
@@ -23748,6 +23750,7 @@ class FfiConverterTypeAppClientTag: FfiConverterRustBuffer<AppClientTag> {
             case AppClientTag.Linux: stream.WriteInt(1); break;
             case AppClientTag.Windows: stream.WriteInt(2); break;
             case AppClientTag.Macos: stream.WriteInt(3); break;
+            case AppClientTag.Ios: stream.WriteInt(4); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAppClientTag.Write()", value));
         }
     }
