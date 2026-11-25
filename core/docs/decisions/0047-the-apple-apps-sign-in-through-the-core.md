@@ -1,6 +1,6 @@
 # 0047: The Apple apps sign in through the core
 
-- **Status**: Accepted
+- **Status**: Accepted; past grace amended by 0051; share-link reads amended by 0055
 - **Date**: 2026-11-24
 
 ## Context
