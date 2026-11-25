@@ -133,7 +133,6 @@ private struct OriginPage: View {
                 .disabled(isAdvancing)
                 .accessibilityIdentifier("first-run-origin-skip")
         }
-        .background(Color(.systemGroupedBackground))
     }
 
     private func group<Cards: View>(

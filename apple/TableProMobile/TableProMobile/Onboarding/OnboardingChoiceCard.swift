@@ -36,7 +36,7 @@ private struct OnboardingChoiceCardBody: View {
             .opacity(isEnabled ? 1 : 0.5)
             .padding(16)
             .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground), in: shape)
+            .background(Color(.secondarySystemBackground), in: shape)
             .overlay {
                 shape
                     .fill(.fill.tertiary)

@@ -541,6 +541,7 @@
                                     </child>
                                     <child>
                                       <object class="GtkFlowBox" id="style_scheme_box">
+                                        <property name="margin-top">12</property>
                                         <property name="selection-mode">none</property>
                                         <property name="homogeneous">true</property>
                                         <property name="column-spacing">12</property>
