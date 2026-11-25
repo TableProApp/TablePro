@@ -866,7 +866,8 @@ fn an_exported_empty_project_is_imported_with_its_groups_and_a_second_import_wri
     let library = Library::new();
     let acme = library.project("Acme");
     library.group_in("Work", &acme);
-    let bytes = library.store.export_scoped_blocking(Some(acme.id)).expect("the export");
+    let (bytes, count) = library.store.export_scoped_blocking(Some(acme.id)).expect("the export");
+    assert_eq!(count, 0);
     let fresh = Library::new();
 
     let preview = fresh
@@ -898,7 +899,8 @@ fn a_projects_export_holds_its_members_and_no_other_project() {
         .library
         .store
         .export_scoped_blocking(Some(two.acme.id))
-        .expect("the export");
+        .expect("the export")
+        .0;
     let fresh = Library::new();
 
     fresh
@@ -911,12 +913,13 @@ fn a_projects_export_holds_its_members_and_no_other_project() {
     assert_eq!(names(&list), ["eu", "loose", "prod"]);
     assert_eq!(group_names(&list), ["EU", "Production"]);
     let whole = two.library.store.export_blocking().expect("the export");
-    let unknown = two.library.store.export_scoped_blocking(Some(Uuid::new_v4()));
+    let gone = Uuid::new_v4();
+    let unknown = two.library.store.export_scoped_blocking(Some(gone));
     assert_eq!(
-        two.library.store.export_scoped_blocking(None).expect("the export"),
+        two.library.store.export_scoped_blocking(None).expect("the export").0,
         whole
     );
-    assert_eq!(unknown.expect("the export"), whole);
+    assert!(matches!(unknown, Err(StorageError::ProjectNotFound { id }) if id == gone));
 }
 
 #[test]

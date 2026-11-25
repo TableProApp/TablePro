@@ -901,8 +901,7 @@ impl ConnectionLibrary {
     pub async fn export_file(&self, path: String, project_id: Option<String>) -> Result<u32, CoreError> {
         let project = optional_id(project_id.as_deref())?;
         self.blocking(move |store| {
-            let count = store.list_blocking()?.scoped(project).connections.len();
-            let bytes = store.export_scoped_blocking(project)?;
+            let (bytes, count) = store.export_scoped_blocking(project)?;
             write_whole_file(&path, &bytes)?;
             Ok(u32::try_from(count).unwrap_or(u32::MAX))
         })

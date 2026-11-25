@@ -363,6 +363,25 @@ async fn a_save_places_a_new_connection_and_an_edit_without_a_project_keeps_it()
 }
 
 #[tokio::test]
+async fn an_export_of_a_project_deleted_meanwhile_is_refused_and_writes_no_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = core(&dir.path().join("one")).library().unwrap();
+    let acme = library.create_project("Acme".to_owned(), None).await.unwrap();
+    saved(&library, "inside", Some(&acme.id), None).await;
+    saved(&library, "outside", None, None).await;
+    library.delete_project(acme.id.clone()).await.unwrap();
+    let file = dir.path().join("acme.json");
+
+    let refused = library
+        .export_file(file.display().to_string(), Some(acme.id.clone()))
+        .await
+        .unwrap_err();
+
+    assert_eq!(refused.code(), "storage.project_not_found");
+    assert!(!file.exists(), "nothing of the library is written");
+}
+
+#[tokio::test]
 async fn a_projects_export_holds_its_own_and_an_import_lands_in_the_project_given() {
     let dir = tempfile::tempdir().unwrap();
     let library = core(&dir.path().join("one")).library().unwrap();

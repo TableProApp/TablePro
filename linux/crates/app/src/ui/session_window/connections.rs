@@ -920,7 +920,7 @@ impl SessionWindow {
         let reading = state
             .services
             .tasks
-            .spawn_blocking_task(move || connections.export_scoped_blocking(project));
+            .spawn_blocking_task(move || connections.export_scoped_blocking(project).map(|(bytes, _)| bytes));
         let window = self.downgrade();
         glib::spawn_future_local(async move {
             let error = match reading.await {

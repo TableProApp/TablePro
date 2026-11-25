@@ -97,13 +97,17 @@ impl ConnectionStore {
         })
     }
 
-    // A project's export names no other project and no tag only another one uses; `None` is the whole list.
-    pub fn export_scoped_blocking(&self, project: Option<Uuid>) -> Result<Vec<u8>, StorageError> {
+    // A project's export names no other project and no tag only another one uses; `None` is the whole list. A project
+    // the list no longer holds is refused rather than widened to the whole list. Gives the bytes and their connections.
+    pub fn export_scoped_blocking(&self, project: Option<Uuid>) -> Result<(Vec<u8>, usize), StorageError> {
         let mut state = self.lock();
         let document = self.ensure_loaded(&mut state)?;
         let list = document.list();
-        let Some(project) = list.resolved_scope(project) else {
-            return Ok(crate::document::encode_document(&document)?);
+        let Some(asked) = project else {
+            return Ok((crate::document::encode_document(&document)?, list.connections.len()));
+        };
+        let Some(project) = list.resolved_scope(Some(asked)) else {
+            return Err(StorageError::ProjectNotFound { id: asked });
         };
         let scoped = list.scoped(Some(project));
         let used: HashSet<Uuid> = scoped
@@ -128,7 +132,7 @@ impl ConnectionStore {
                 .cloned()
                 .collect(),
         };
-        Ok(crate::document::encode_document(&part)?)
+        Ok((crate::document::encode_document(&part)?, part.connections.len()))
     }
 
     // A grouped connection is refused: moving its top-level group would take the ones beside it along.
