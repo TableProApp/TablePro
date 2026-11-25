@@ -255,6 +255,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// carrying its own schema. Nil means the host asks each schema in turn.
     func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]?
 
+    /// The side kinds of a catalog load in as few round trips as the engine allows, one answer per kind asked.
+    /// The default asks each kind in turn.
+    func fetchCatalogSideObjects(_ request: PluginCatalogSideRequest) async -> PluginCatalogSideObjects
+
     /// Reads one type again, definition included. The type must be one this driver listed,
     /// because its `identity` is the driver's own key for finding it.
     func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo
@@ -937,6 +941,10 @@ public extension PluginDatabaseDriver {
     func fetchUserDefinedTypes(schema: String?) async throws -> [PluginUserDefinedTypeInfo] { [] }
 
     func fetchUserDefinedTypes(inSchemas schemas: [String]) async throws -> [PluginUserDefinedTypeInfo]? { nil }
+
+    func fetchCatalogSideObjects(_ request: PluginCatalogSideRequest) async -> PluginCatalogSideObjects {
+        await fetchCatalogSideObjectsOneByOne(request)
+    }
 
     func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo {
         guard let definition = type.definition, !definition.isEmpty else {

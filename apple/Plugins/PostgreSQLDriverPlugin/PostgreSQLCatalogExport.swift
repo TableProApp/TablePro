@@ -69,20 +69,22 @@ nonisolated struct PostgreSQLCatalogExport: Sendable {
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
         let resolvedSchema = schema ?? currentSchema
         let query = PostgreSQLObjectQueries.routineList(schema: resolvedSchema, capabilities: catalogCapabilities)
-        return try await rows(query).compactMap { row -> PluginRoutineInfo? in
-            guard let name = row[safe: 1]?.asText else { return nil }
-            let kind: PluginRoutineKind = row[safe: 6]?.asText == "p" ? .procedure : .function
-            return PluginRoutineInfo(
-                name: name,
-                kind: kind,
-                schema: row[safe: 2]?.asText ?? resolvedSchema,
-                returnType: row[safe: 4]?.asText,
-                language: row[safe: 5]?.asText,
-                argumentSignature: row[safe: 3]?.asText,
-                identity: row[safe: 0]?.asText,
-                attributes: Self.routineAttributes(row)
-            )
-        }
+        return try await rows(query).compactMap { Self.routine(from: $0, fallbackSchema: resolvedSchema) }
+    }
+
+    static func routine(from row: [PluginCellValue], fallbackSchema: String) -> PluginRoutineInfo? {
+        guard let name = row[safe: 1]?.asText else { return nil }
+        let kind: PluginRoutineKind = row[safe: 6]?.asText == "p" ? .procedure : .function
+        return PluginRoutineInfo(
+            name: name,
+            kind: kind,
+            schema: row[safe: 2]?.asText ?? fallbackSchema,
+            returnType: row[safe: 4]?.asText,
+            language: row[safe: 5]?.asText,
+            argumentSignature: row[safe: 3]?.asText,
+            identity: row[safe: 0]?.asText,
+            attributes: routineAttributes(row)
+        )
     }
 
     func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String {
