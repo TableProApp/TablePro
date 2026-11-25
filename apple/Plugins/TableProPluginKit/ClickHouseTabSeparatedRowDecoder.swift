@@ -81,9 +81,11 @@ public struct ClickHouseTabSeparatedRowDecoder: Sendable {
             return nil
         }
         guard !line.isEmpty else { return nil }
-        return ClickHouseTabSeparatedBytes.fields(line).enumerated().map { index, field in
+        // `indices`, not `enumerated()`: before the OS 26 standard library the enumerated map cannot reserve its count.
+        let fields = ClickHouseTabSeparatedBytes.fields(line)
+        return fields.indices.map { index in
             Self.cellValue(
-                field,
+                fields[index],
                 writesLiteralSyntax: index < literalSyntaxColumns.count && literalSyntaxColumns[index]
             )
         }

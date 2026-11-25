@@ -146,7 +146,8 @@ public enum ClickHouseResponseClassifier {
     ) -> [[PluginCellValue]] {
         guard !binaryColumns.isEmpty else { return rows }
         return rows.map { row in
-            row.enumerated().map { column, value in
+            row.indices.map { column in
+                let value = row[column]
                 guard binaryColumns.contains(column), case .text(let text) = value else { return value }
                 return .bytes(Data(text.utf8))
             }
