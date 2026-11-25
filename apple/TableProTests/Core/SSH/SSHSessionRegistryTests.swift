@@ -123,13 +123,13 @@ struct SSHSessionRegistryTests {
         let registry = Registry()
         let signIns = SignIns(failing: SignInRefused())
 
-        async let first = registry.acquire("bastion") { try await signIns.make() }
-        async let second = registry.acquire("bastion") { try await signIns.make() }
-        try await waitUntil { signIns.started == 1 }
+        let first = Task { try await registry.acquire("bastion") { try await signIns.make() } }
+        let second = Task { try await registry.acquire("bastion") { try await signIns.make() } }
+        try await waitUntil { await registry.waiterCount("bastion") == 2 }
         await signIns.gate.open()
 
-        await #expect(throws: SignInRefused.self) { try await first }
-        await #expect(throws: SignInRefused.self) { try await second }
+        await #expect(throws: SignInRefused.self) { try await first.value }
+        await #expect(throws: SignInRefused.self) { try await second.value }
 
         await #expect(throws: SignInRefused.self) {
             try await registry.acquire("bastion") { try await signIns.make() }
