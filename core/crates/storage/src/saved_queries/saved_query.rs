@@ -4,13 +4,15 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavedQuery {
-    pub id: i64,
+    pub id: Uuid,
     pub name: String,
     pub query: String,
-    pub connection_id: Uuid,
+    // None puts the query in every connection.
+    pub connection_id: Option<Uuid>,
     pub connection_name: String,
     pub keyword: Option<String>,
-    pub folder_id: Option<i64>,
+    // A folder this store may not hold yet, which reads as the top level.
+    pub folder_id: Option<Uuid>,
     pub order: i64,
     pub created_at: SystemTime,
     pub updated_at: SystemTime,
@@ -32,10 +34,10 @@ mod tests {
 
     fn saved(query: &str) -> SavedQuery {
         SavedQuery {
-            id: 1,
+            id: Uuid::nil(),
             name: "daily".to_owned(),
             query: query.to_owned(),
-            connection_id: Uuid::nil(),
+            connection_id: None,
             connection_name: "local".to_owned(),
             keyword: None,
             folder_id: None,

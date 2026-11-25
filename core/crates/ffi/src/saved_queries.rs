@@ -9,7 +9,8 @@ use crate::history::millis;
 use crate::library::parse_id;
 use crate::runtime::on_runtime;
 
-// A connection's saved queries and their folders, in the query history's database (core ADR 0017).
+// A connection's saved queries and their folders, in the query history's database (core ADRs 0017 and 0052). Each is
+// named by its record id, UUID text.
 #[derive(uniffi::Object)]
 pub struct SavedQueryStore {
     queries: SavedQueries,
@@ -19,12 +20,14 @@ pub struct SavedQueryStore {
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SavedQueryInfo {
-    pub id: i64,
+    pub id: String,
     pub name: String,
     pub sql: String,
     pub keyword: Option<String>,
-    // None at the top, outside every folder.
-    pub folder_id: Option<i64>,
+    // None for a query in every connection.
+    pub connection_id: Option<String>,
+    // None at the top, outside every folder; a folder the snapshot does not hold reads as the top too.
+    pub folder_id: Option<String>,
     // Dense from 0 within its folder.
     pub order: i64,
     pub updated_at_ms: i64,
@@ -32,9 +35,11 @@ pub struct SavedQueryInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SavedQueryFolderInfo {
-    pub id: i64,
+    pub id: String,
     pub name: String,
-    pub parent_id: Option<i64>,
+    // None for a folder in every connection.
+    pub connection_id: Option<String>,
+    pub parent_id: Option<String>,
     pub order: i64,
 }
 
@@ -47,7 +52,8 @@ pub struct SavedQueriesInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SavedQueryDraft {
-    pub connection_id: String,
+    // None keeps the query in every connection.
+    pub connection_id: Option<String>,
     pub connection_name: String,
     pub name: String,
     pub sql: String,
@@ -77,36 +83,41 @@ impl SavedQueryStore {
 
     // A name the connection already uses is replaced only when `replace` says so, keeping the query's keyword and
     // place; otherwise None comes back and nothing is written.
-    pub async fn save(&self, draft: SavedQueryDraft, replace: bool) -> Result<Option<i64>, CoreError> {
+    pub async fn save(&self, draft: SavedQueryDraft, replace: bool) -> Result<Option<String>, CoreError> {
         let query = NewSavedQuery {
-            connection_id: parse_id(&draft.connection_id)?,
+            connection_id: draft.connection_id.as_deref().map(parse_id).transpose()?,
             connection_name: draft.connection_name,
             name: draft.name,
             query: draft.sql,
         };
         let queries = self.queries.clone();
         on_runtime(&self.tasks, async move {
-            match replace {
-                true => Ok(Some(queries.save(query).await?.id)),
-                false => Ok(queries.save_if_new(query).await?),
-            }
+            let id = match replace {
+                true => Some(queries.save(query).await?.id),
+                false => queries.save_if_new(query).await?,
+            };
+            Ok(id.map(|id| id.to_string()))
         })
         .await
     }
 
-    pub async fn rename(&self, id: i64, name: String) -> Result<(), CoreError> {
+    pub async fn rename(&self, id: String, name: String) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
         let queries = self.queries.clone();
         on_runtime(&self.tasks, async move { Ok(queries.rename(id, &name).await?) }).await
     }
 
     // By id, so an edit from a list read before a rename elsewhere still changes the query it showed.
-    pub async fn set_sql(&self, id: i64, sql: String) -> Result<(), CoreError> {
+    pub async fn set_sql(&self, id: String, sql: String) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
         let queries = self.queries.clone();
         on_runtime(&self.tasks, async move { Ok(queries.set_query(id, &sql).await?) }).await
     }
 
-    // None or blank clears it. One word of at most 64 characters, unique among the connection's queries in any case.
-    pub async fn set_keyword(&self, id: i64, keyword: Option<String>) -> Result<(), CoreError> {
+    // None or blank clears it. One word of at most 64 characters, in any case unique among the queries of every
+    // connection the query shows in.
+    pub async fn set_keyword(&self, id: String, keyword: Option<String>) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
         let queries = self.queries.clone();
         on_runtime(&self.tasks, async move {
             Ok(queries.set_keyword(id, keyword.as_deref()).await?)
@@ -115,7 +126,15 @@ impl SavedQueryStore {
     }
 
     // Into `folder_id`, None for the top, before the query `before` names there, or at the end.
-    pub async fn move_query(&self, id: i64, folder_id: Option<i64>, before: Option<i64>) -> Result<(), CoreError> {
+    pub async fn move_query(
+        &self,
+        id: String,
+        folder_id: Option<String>,
+        before: Option<String>,
+    ) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
+        let folder_id = folder_id.as_deref().map(parse_id).transpose()?;
+        let before = before.as_deref().map(parse_id).transpose()?;
         let queries = self.queries.clone();
         on_runtime(&self.tasks, async move {
             Ok(queries.move_to_folder(id, folder_id, before).await?)
@@ -123,42 +142,50 @@ impl SavedQueryStore {
         .await
     }
 
-    pub async fn delete(&self, id: i64) -> Result<(), CoreError> {
+    pub async fn delete(&self, id: String) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
         let queries = self.queries.clone();
         on_runtime(&self.tasks, async move { Ok(queries.delete(id).await?) }).await
     }
 
+    // None for a folder in every connection.
     pub async fn create_folder(
         &self,
-        connection_id: String,
+        connection_id: Option<String>,
         name: String,
-        parent_id: Option<i64>,
-    ) -> Result<i64, CoreError> {
-        let connection = parse_id(&connection_id)?;
+        parent_id: Option<String>,
+    ) -> Result<String, CoreError> {
+        let connection = connection_id.as_deref().map(parse_id).transpose()?;
+        let parent_id = parent_id.as_deref().map(parse_id).transpose()?;
         let folders = self.folders.clone();
         on_runtime(&self.tasks, async move {
-            Ok(folders.create(connection, &name, parent_id).await?)
+            Ok(folders.create(connection, &name, parent_id).await?.to_string())
         })
         .await
     }
 
-    pub async fn rename_folder(&self, id: i64, name: String) -> Result<(), CoreError> {
+    pub async fn rename_folder(&self, id: String, name: String) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
         let folders = self.folders.clone();
         on_runtime(&self.tasks, async move { Ok(folders.rename(id, &name).await?) }).await
     }
 
-    pub async fn move_folder(&self, id: i64, parent_id: Option<i64>) -> Result<(), CoreError> {
+    pub async fn move_folder(&self, id: String, parent_id: Option<String>) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
+        let parent_id = parent_id.as_deref().map(parse_id).transpose()?;
         let folders = self.folders.clone();
         on_runtime(&self.tasks, async move { Ok(folders.move_to(id, parent_id).await?) }).await
     }
 
     // The folders inside go too; their queries move to the top.
-    pub async fn delete_folder(&self, id: i64) -> Result<(), CoreError> {
+    pub async fn delete_folder(&self, id: String) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
         let folders = self.folders.clone();
         on_runtime(&self.tasks, async move { Ok(folders.delete(id).await?) }).await
     }
 
-    // The connection's queries, folders and favourite tables and databases, for a connection deleted.
+    // The connection's queries, folders and favourite tables and databases, for a connection deleted. Those with no
+    // connection stay.
     pub async fn delete_for_connection(&self, connection_id: String) -> Result<u64, CoreError> {
         let connection = parse_id(&connection_id)?;
         let queries = self.queries.clone();
@@ -182,11 +209,12 @@ impl From<SavedQueriesSnapshot> for SavedQueriesInfo {
 impl From<SavedQuery> for SavedQueryInfo {
     fn from(query: SavedQuery) -> Self {
         Self {
-            id: query.id,
+            id: query.id.to_string(),
             name: query.name,
             sql: query.query,
             keyword: query.keyword,
-            folder_id: query.folder_id,
+            connection_id: query.connection_id.map(|id| id.to_string()),
+            folder_id: query.folder_id.map(|id| id.to_string()),
             order: query.order,
             updated_at_ms: millis(query.updated_at),
         }
@@ -196,9 +224,10 @@ impl From<SavedQuery> for SavedQueryInfo {
 impl From<SavedQueryFolder> for SavedQueryFolderInfo {
     fn from(folder: SavedQueryFolder) -> Self {
         Self {
-            id: folder.id,
+            id: folder.id.to_string(),
             name: folder.name,
-            parent_id: folder.parent_id,
+            connection_id: folder.connection_id.map(|id| id.to_string()),
+            parent_id: folder.parent_id.map(|id| id.to_string()),
             order: folder.order,
         }
     }

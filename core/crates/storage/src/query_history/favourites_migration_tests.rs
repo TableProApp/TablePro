@@ -1,24 +1,6 @@
+use super::fixtures::old_database;
 use super::*;
 use crate::unix_time::from_unix;
-
-async fn old_database(root: &tempfile::TempDir, migrations: usize) -> (StoragePaths, SqlitePool) {
-    let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
-    crate::fs::create_private_file_if_missing(&paths.history_database()).expect("file");
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(
-            SqliteConnectOptions::new()
-                .filename(paths.history_database())
-                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal),
-        )
-        .await
-        .expect("pool");
-    sqlx::migrate::Migrator::with_migrations(schema::MIGRATOR.iter().take(migrations).cloned().collect())
-        .run(&pool)
-        .await
-        .expect("old migrations");
-    (paths, pool)
-}
 
 async fn insert_queries(pool: &SqlitePool, connection: Uuid, other: Uuid) {
     for (id, owner, name) in [(42, connection, "z"), (9, connection, "A"), (51, other, "other")] {
@@ -67,10 +49,19 @@ async fn original_schema_upgrade_preserves_queries_and_assigns_connection_scoped
     pool.close().await;
 
     let history = QueryHistory::open(&paths).await.expect("upgrade");
-    let queries = history.saved_queries().list(Some(connection)).await.expect("queries");
+    let mut queries = history
+        .saved_queries()
+        .snapshot(connection)
+        .await
+        .expect("queries")
+        .queries;
+    queries.sort_by_key(|query| query.order);
     assert_eq!(
-        queries.iter().map(|query| (query.id, query.order)).collect::<Vec<_>>(),
-        [(9, 0), (42, 1)]
+        queries
+            .iter()
+            .map(|query| (query.name.as_str(), query.order))
+            .collect::<Vec<_>>(),
+        [("A", 0), ("z", 1)]
     );
     for query in &queries {
         assert_eq!(query.query, "SELECT 42");
@@ -86,7 +77,7 @@ async fn original_schema_upgrade_preserves_queries_and_assigns_connection_scoped
         .await
         .expect("other connection");
     assert_eq!(other.len(), 1);
-    assert_eq!((other[0].id, other[0].order), (51, 0));
+    assert_eq!((other[0].name.as_str(), other[0].order), ("other", 0));
     assert_copy_kept(&paths, 1).await.close().await.expect("close copy");
 }
 
@@ -136,30 +127,42 @@ async fn favorites_schema_upgrade_preserves_filing_and_metadata_and_normalizes_p
 
     let history = QueryHistory::open(&paths).await.expect("upgrade");
     let snapshot = history.saved_queries().snapshot(connection).await.expect("snapshot");
+    let folder = |name: &str| {
+        snapshot
+            .folders
+            .iter()
+            .find(|folder| folder.name == name)
+            .expect("folder")
+    };
     let filed = snapshot
         .queries
         .iter()
-        .find(|query| query.id == 42)
+        .find(|query| query.name == "z")
         .expect("filed query");
     assert_eq!(
         (filed.folder_id, filed.keyword.as_deref(), filed.order),
-        (Some(3), Some("daily"), 0)
+        (Some(folder("Monthly").id), Some("daily"), 0)
     );
     assert_eq!(filed.query, "SELECT 42");
     assert_eq!(filed.connection_name, "Original connection");
     assert_eq!(filed.created_at, from_unix(11));
     assert_eq!(filed.updated_at, from_unix(12));
-    let root_query = snapshot.queries.iter().find(|query| query.id == 9).expect("root query");
+    let root_query = snapshot
+        .queries
+        .iter()
+        .find(|query| query.name == "A")
+        .expect("root query");
     assert_eq!((root_query.folder_id, root_query.order), (None, 0));
-    for (id, parent, order) in [(1, None, 1), (2, None, 0), (3, Some(1), 0)] {
-        let folder = snapshot.folders.iter().find(|folder| folder.id == id).expect("folder");
+    let reports = folder("Reports").id;
+    for (name, parent, order) in [("Reports", None, 1), ("Archive", None, 0), ("Monthly", Some(reports), 0)] {
+        let folder = folder(name);
         assert_eq!((folder.parent_id, folder.order), (parent, order));
         assert_eq!(folder.created_at, from_unix(21));
         assert_eq!(folder.updated_at, from_unix(22));
     }
     let other = history.saved_queries().snapshot(other).await.expect("other connection");
-    assert_eq!((other.queries[0].id, other.queries[0].order), (51, 0));
-    assert_eq!((other.folders[0].id, other.folders[0].order), (4, 0));
+    assert_eq!((other.queries[0].name.as_str(), other.queries[0].order), ("other", 0));
+    assert_eq!((other.folders[0].name.as_str(), other.folders[0].order), ("Other", 0));
     assert_eq!(
         history.favourites().tables(connection).await.expect("tables")[0].name,
         "orders"

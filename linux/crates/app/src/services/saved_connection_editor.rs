@@ -1475,7 +1475,7 @@ mod tests {
                 query: tablepro_storage::saved_queries::NewSavedQuery {
                     name: "Report".to_owned(),
                     query: "SELECT 1".to_owned(),
-                    connection_id: id,
+                    connection_id: Some(id),
                     connection_name: "Prod".to_owned(),
                 },
             }],

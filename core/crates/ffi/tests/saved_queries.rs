@@ -65,7 +65,7 @@ fn started(dir: &Path) -> Arc<Core> {
 
 fn draft(connection: &str, name: &str, sql: &str) -> SavedQueryDraft {
     SavedQueryDraft {
-        connection_id: connection.to_owned(),
+        connection_id: Some(connection.to_owned()),
         connection_name: "shop".to_owned(),
         name: name.to_owned(),
         sql: sql.to_owned(),
@@ -96,7 +96,7 @@ async fn a_saved_query_comes_back_for_its_connection_only() {
     assert_eq!(query.name, "Orders today");
     assert_eq!(query.sql, "SELECT * FROM orders");
     assert_eq!(
-        (query.folder_id, query.keyword.as_deref(), query.order),
+        (query.folder_id.as_deref(), query.keyword.as_deref(), query.order),
         (None, None, 0)
     );
     assert!(query.updated_at_ms > 0);
@@ -132,11 +132,11 @@ async fn folders_nest_hold_queries_in_order_and_give_them_back_to_the_top_when_d
     let core = started(dir.path());
     let queries = core.history().await.unwrap().saved_queries();
     let reports = queries
-        .create_folder(SHOP.to_owned(), "Reports".to_owned(), None)
+        .create_folder(Some(SHOP.to_owned()), "Reports".to_owned(), None)
         .await
         .unwrap();
     let monthly = queries
-        .create_folder(SHOP.to_owned(), "Monthly".to_owned(), Some(reports))
+        .create_folder(Some(SHOP.to_owned()), "Monthly".to_owned(), Some(reports.clone()))
         .await
         .unwrap();
     let a = queries
@@ -150,21 +150,30 @@ async fn folders_nest_hold_queries_in_order_and_give_them_back_to_the_top_when_d
         .unwrap()
         .unwrap();
 
-    queries.move_query(a, Some(monthly), None).await.unwrap();
-    queries.move_query(b, Some(monthly), Some(a)).await.unwrap();
+    queries
+        .move_query(a.clone(), Some(monthly.clone()), None)
+        .await
+        .unwrap();
+    queries
+        .move_query(b.clone(), Some(monthly.clone()), Some(a.clone()))
+        .await
+        .unwrap();
     let filed = queries.snapshot(SHOP.to_owned()).await.unwrap();
-    queries.delete_folder(reports).await.unwrap();
+    queries.delete_folder(reports.clone()).await.unwrap();
     let after = queries.snapshot(SHOP.to_owned()).await.unwrap();
 
     assert_eq!(filed.folders.len(), 2);
     let inner = filed.folders.iter().find(|folder| folder.id == monthly).unwrap();
     assert_eq!(inner.parent_id, Some(reports));
-    let order: Vec<(i64, Option<i64>, i64)> = filed
+    let order: Vec<(String, Option<String>, i64)> = filed
         .queries
         .iter()
-        .map(|query| (query.id, query.folder_id, query.order))
+        .map(|query| (query.id.clone(), query.folder_id.clone(), query.order))
         .collect();
-    assert_eq!(order, [(b, Some(monthly), 0), (a, Some(monthly), 1)]);
+    assert_eq!(
+        order,
+        [(b, Some(monthly.clone()), 0), (a, Some(monthly), 1)]
+    );
     assert!(after.folders.is_empty());
     assert!(after.queries.iter().all(|query| query.folder_id.is_none()));
     assert_eq!(after.queries.len(), 2);
@@ -187,22 +196,29 @@ async fn a_rename_a_keyword_or_a_folder_name_already_taken_is_refused_by_code() 
         .unwrap();
     queries.set_keyword(one, Some("sel".to_owned())).await.unwrap();
     queries
-        .create_folder(SHOP.to_owned(), "Reports".to_owned(), None)
+        .create_folder(Some(SHOP.to_owned()), "Reports".to_owned(), None)
         .await
         .unwrap();
 
-    let name = queries.rename(two, "One".to_owned()).await.unwrap_err();
-    let keyword = queries.set_keyword(two, Some("SEL".to_owned())).await.unwrap_err();
+    let name = queries.rename(two.clone(), "One".to_owned()).await.unwrap_err();
+    let keyword = queries
+        .set_keyword(two.clone(), Some("SEL".to_owned()))
+        .await
+        .unwrap_err();
     let spaced = queries
         .set_keyword(two, Some("two words".to_owned()))
         .await
         .unwrap_err();
     let folder = queries
-        .create_folder(SHOP.to_owned(), "reports".to_owned(), None)
+        .create_folder(Some(SHOP.to_owned()), "reports".to_owned(), None)
         .await
         .unwrap_err();
     let empty = queries.save(draft(SHOP, "  ", "SELECT 3"), false).await.unwrap_err();
-    let unknown = queries.delete(9_999).await.unwrap_err();
+    let unknown = queries
+        .delete("8f1d3a52-7c6b-4e1f-9a2d-5b4c3e2f1a09".to_owned())
+        .await
+        .unwrap_err();
+    let malformed = queries.delete("9999".to_owned()).await.unwrap_err();
 
     assert_eq!(name.code(), "storage.name_taken");
     assert_eq!(keyword.code(), "storage.keyword_taken");
@@ -210,9 +226,43 @@ async fn a_rename_a_keyword_or_a_folder_name_already_taken_is_refused_by_code() 
     assert_eq!(folder.code(), "storage.folder_name_taken");
     assert_eq!(empty.code(), "storage.empty_name");
     assert_eq!(unknown.code(), "storage.not_found");
+    assert_eq!(malformed.code(), "library.invalid_id");
     let snapshot = queries.snapshot(SHOP.to_owned()).await.unwrap();
     let keywords: Vec<Option<&str>> = snapshot.queries.iter().map(|query| query.keyword.as_deref()).collect();
     assert_eq!(keywords, [Some("sel"), None]);
+}
+
+// Core ADR 0052: the FFI names a query or a folder by its record id, UUID text.
+#[tokio::test]
+async fn ids_are_uuid_text_and_a_query_with_no_connection_shows_in_every_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let queries = core.history().await.unwrap().saved_queries();
+    let mut everywhere = draft(SHOP, "Everywhere", "SELECT 1");
+    everywhere.connection_id = None;
+
+    let id = queries.save(everywhere, false).await.unwrap().unwrap();
+    let folder = queries
+        .create_folder(None, "Shared".to_owned(), None)
+        .await
+        .unwrap();
+    queries
+        .move_query(id.clone(), Some(folder.clone()), None)
+        .await
+        .unwrap();
+
+    assert!(uuid::Uuid::parse_str(&id).is_ok() && uuid::Uuid::parse_str(&folder).is_ok());
+    for connection in [SHOP, OTHER] {
+        let shown = queries.snapshot(connection.to_owned()).await.unwrap();
+        let [query] = shown.queries.as_slice() else {
+            panic!("{:?}", shown.queries)
+        };
+        assert_eq!(
+            (&query.id, &query.connection_id, &query.folder_id),
+            (&id, &None, &Some(folder.clone()))
+        );
+        assert_eq!(shown.folders[0].connection_id, None);
+    }
 }
 
 #[tokio::test]
@@ -224,7 +274,7 @@ async fn deleting_a_connections_data_takes_its_queries_folders_and_favourites_on
     let favourites = history.favourites();
     queries.save(draft(SHOP, "Mine", "SELECT 1"), false).await.unwrap();
     queries
-        .create_folder(SHOP.to_owned(), "Reports".to_owned(), None)
+        .create_folder(Some(SHOP.to_owned()), "Reports".to_owned(), None)
         .await
         .unwrap();
     queries.save(draft(OTHER, "Theirs", "SELECT 2"), false).await.unwrap();
@@ -368,18 +418,21 @@ async fn an_edit_by_id_reaches_the_query_after_a_rename_elsewhere() {
         .await
         .unwrap()
         .unwrap();
-    queries.rename(id, "Weekly".to_owned()).await.unwrap();
+    queries.rename(id.clone(), "Weekly".to_owned()).await.unwrap();
 
-    queries.set_sql(id, "SELECT 7".to_owned()).await.unwrap();
-    let gone = queries.set_sql(9_999, "SELECT 2".to_owned()).await.unwrap_err();
+    queries.set_sql(id.clone(), "SELECT 7".to_owned()).await.unwrap();
+    let gone = queries
+        .set_sql("8f1d3a52-7c6b-4e1f-9a2d-5b4c3e2f1a09".to_owned(), "SELECT 2".to_owned())
+        .await
+        .unwrap_err();
 
     let snapshot = queries.snapshot(SHOP.to_owned()).await.unwrap();
     let [query] = snapshot.queries.as_slice() else {
         panic!("{:?}", snapshot.queries)
     };
     assert_eq!(
-        (query.id, query.name.as_str(), query.sql.as_str()),
-        (id, "Weekly", "SELECT 7")
+        (query.id.as_str(), query.name.as_str(), query.sql.as_str()),
+        (id.as_str(), "Weekly", "SELECT 7")
     );
     assert_eq!(gone.code(), "storage.not_found");
 }
