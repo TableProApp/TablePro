@@ -175,14 +175,17 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
 
 | Table | Columns | Holds |
 | --- | --- | --- |
-| `key_objects` | `scope`, `kind`, `record_id`; `bytes`, `applied` | Each key object kept verbatim, one row per 0052 record id, as the server served it or as this device wrote it. The device republishes them byte for byte after a new epoch ([0051](0051-sync-protocol-and-record-rules.md), Republishing). At an id it holds, a different object of a create-only kind is refused with an alarm (0056, Rollback), a wrap or a ring takes its writer's new bytes, and a cancel replaces the one before it. A held reset's rows are dropped once a cancel names its IK, so a later reset at that `av` is new. `applied` is unset on an object this device wrote until the server applies it, and the device pushes it again meanwhile |
+| `key_objects` | `scope`, `kind`, `record_id`; `bytes`, `applied` | Each key object kept verbatim, one row per 0052 record id, as the server served it or as this device wrote it. The device republishes them byte for byte after a new epoch ([0051](0051-sync-protocol-and-record-rules.md), Republishing). `applied` is set once an object is in force: served with no hold, or written by this device and applied by the server. At the id of an applied object, a different create-only object is refused with an alarm (0056, Rollback), a wrap or a ring takes its writer's new bytes, and a cancel replaces the one before it. An object not applied, this device's own candidate or a held reset's record, gives way to whatever the server later serves at its id, and a held reset's rows go once a cancel or another reset at that `av` shows it ended. The device pushes its own candidates again until they apply or give way |
 | `key_pins` | `account`; `ik`, `av`, `how`, `alert`, `replaced` | Per account the device meets, its own included: the pinned IK, the newest `av` verified under it, how it pinned (`first_use`, `compared` or `replaced`), whether an alert is open, and the IKs it saw replaced, 32 bytes each in the order replaced, which it never goes back to |
 | `key_device_pins` | `device`; `dek`, `dsk` | Own-device pins: each device of the account this device compared with, with the DEK and DSK the words covered, never taken from a certificate (0056, Approving a device) |
 | `key_versions` | `scope`, `purpose`; `version` | The newest version of each scope key the device verified. It refuses a version record below it and never writes below it |
+| `key_envelopes` | `scope`, `record_id`; `kv` | Per envelope, the highest `kv` the device accepted. It never takes a copy under a lower one (0056, Rollback) |
 | `key_comparisons` | `session`; `role`, `peer`, `view`, `expires_at` | Open comparison sessions, with the view this side fixed |
 | `deleted_history` | `record_id` | The ids of history entries with a `user` tombstone |
 
-`scope` is the scope id, `account` and `device` the 16 bytes of an account or device id, and `purpose` `personal`, `history` or `team` (0056). The per-envelope rule (0056, Rollback) reads the `kv` of the copy in `bases`.
+`scope` is the scope id, `account` and `device` the 16 bytes of an account or device id, and `purpose` `personal`, `history` or `team` (0056).
+
+A device that erases its keys, on Sign Out or on a verified rotation that leaves it out (0056), clears its key tables in the same commit, so its next checkpoint is empty and it joins again as a new device would.
 
 ### Integrity and freshness
 
@@ -197,10 +200,11 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
   - **The root** holds the file id, a current entry and at most one pending entry. An entry holds the counter, the MAC, the key tables' digest and the digest of its checkpoint.
   - **The checkpoint** holds what only moves forward:
     - each `key_pins` row, so a restored file cannot forget a newer `av`, an IK it saw replaced or an open alert;
-    - each `key_versions` row, so it cannot forget a newer scope key version.
+    - each `key_versions` row, so it cannot forget a newer scope key version;
+    - each `key_envelopes` row, so it cannot take an envelope it held back under an older version.
 
     `key_objects`, own-device pins, comparisons and `deleted_history` stay in the file alone.
-  - **Size.** A checkpoint is written to items of its own only when it changes, before the entry that names it, and items no entry names are deleted once the entry settles. Each commit rewrites only the root. A checkpoint grows with the accounts pinned and the scope keys held, about 100 bytes each.
+  - **Size.** A checkpoint is written to items of its own only when it changes, before the entry that names it, and items no entry names are deleted once the entry settles. Each commit rewrites only the root. A checkpoint grows with the accounts pinned, the scope keys held and the envelopes held, about 60 bytes an envelope.
   - **A commit writes its anchor in two steps.** Before the commit, the engine writes the new checkpoint when it changed, then adds a pending entry to the root with the next counter, its MAC and its digests. After the commit, the pending entry becomes the current one. A commit starts only when no pending entry is left; while one cannot be settled, the engine stops.
   - **Apple platforms:** Keychain items in the data protection keychain, `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` and not synchronizable. Apple Platform Security, "Keychain data protection", says items of that class don't sync to iCloud Keychain, aren't backed up and aren't in escrow keybags. Other ThisDeviceOnly classes do not serve: "Keybags for Data Protection" (Backup keybag) has them restored to the device they were backed up from. The anchor reads only while the device is unlocked, so a pass that starts locked waits. Turning the passcode off deletes every item of that class (Apple's `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` documentation), so the device then has a file with no anchor, which is approved again as below. A device with no passcode keeps its anchor in `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, which a backup restores to the same device, and falls under the limit below.
   - **Windows:** Credential Manager items with local machine persistence. A checkpoint is split over numbered items, since one item's blob holds at most 2,560 bytes. **Linux:** Secret Service items.
@@ -213,7 +217,8 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
   - Its sync tables go into refill, as a restored store does: the pull wins, records the provider has never seen go up as creates, then the diff runs again.
   - Its key tables are not trusted, and the device keys stay, so it is the same device. It rebuilds the key tables from the key objects the server holds, accepting only what is at or above the anchor's checkpoint, the pending entry's when one is left:
     - for each anchored pin, a certificate under that IK at the anchored `av` or above, or under an IK that it endorsed, never under an IK the anchor lists as replaced. An alert the anchor holds stays open until the person re-confirms;
-    - for each anchored scope key, a version record at the anchored version or above. Older versions still open what they sealed, through the newest version's ring.
+    - for each anchored scope key, a version record at the anchored version or above. Older versions still open what they sealed, through the newest version's ring;
+    - for each anchored envelope, a copy at the anchored `kv` or above.
 
     Until the server shows every anchored pin and version, it accepts no wrap or envelope and writes no secret.
   - An anchor with no file, as after a reinstall that kept the device store, rebuilds the same way.
@@ -338,8 +343,8 @@ A copy whose content changed after the move is kept, since a content edit wins. 
   - an older copy of a state file with a valid MAC, its anchor intact, opens stale: its sync tables refill, and its key tables rebuild from key objects at or above the anchored checkpoint, with no comparison;
   - a crash at each step of a commit and its anchor opens as the rules say. A restore of the copy before a commit whose anchor did not settle leaves the key tables untrusted when that commit changed them, and rebuilds them on the pending checkpoint;
   - an anchor with no file rebuilds from key objects at or above its checkpoint; a file with no anchor handles no secret until it is approved again or recovered;
-  - after a restore, a certificate below an anchored `av`, a version record below an anchored version, and a certificate under an IK the anchor lists as replaced are refused, and an alert the anchor holds stays open;
-  - each key object kept is republished byte for byte after a new epoch; a different create-only object at an id the device holds is refused, a wrap or ring its writer replaced and a newer cancel are taken, and a reset after a cancelled one at the same `av` is taken;
+  - after a restore, a certificate below an anchored `av`, a version record below an anchored version, an envelope below its anchored `kv`, and a certificate under an IK the anchor lists as replaced are refused, and an alert the anchor holds stays open;
+  - each key object kept is republished byte for byte after a new epoch; a different create-only object at the id of an applied one is refused, while a wrap or ring its writer replaced, a newer cancel, the winner over this device's own candidate, and a reset after two cancelled ones at the same `av` that the device was offline for are taken; a device that a rotation leaves out clears its key tables and joins again;
   - digest vectors cover a null, an empty value and a key object at the record limit;
   - a key table row copied from another copy of the file fails the MAC, and so does a base, approval, cursor or outbox row swapped in while the binding, counter and key tables stay current; writing the MAC changes neither digest;
   - after a restore, envelopes and history sealed under older key versions still open through the newest version's ring;
