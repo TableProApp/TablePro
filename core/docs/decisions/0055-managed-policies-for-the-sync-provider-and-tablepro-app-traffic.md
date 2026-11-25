@@ -1,6 +1,6 @@
 # 0055: Managed policies for the sync provider and tablepro.app traffic
 
-- **Status**: Accepted
+- **Status**: Accepted; what `personalSync` off refuses and tombstones amended by 0051, which keeps the `key.*` kinds
 - **Date**: 2026-11-25
 
 ## Context
