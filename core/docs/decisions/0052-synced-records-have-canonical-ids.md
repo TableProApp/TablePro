@@ -83,6 +83,7 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
 - The library's `connection`, `folder` and `query` keep the client id the library stores, byte for byte and in its case. Shipped Macs hold unsent edits under that exact id and push them through the facade, and the library's move into the record store (0051) copies ids unchanged.
 - A device that adds an entity to a team takes the stored id of the record of that kind whose id matches the entity's UUID when both are lower-cased. With none, it takes the UUID in lower case, as `TeamLibraryID.of` gives it.
 - `parent_client_id`, `folder_client_id` and `connection_client_id` match a record id when both are lower-cased, as `TeamLibraryID.same` matches them.
+- Within one team, no two records of one of these kinds have ids that match when lower-cased, tombstones included. The server refuses a create that would make such a pair, through `/v2/sync` and the facade alike (0051 gives the refusal code). For a pair written before that, a client applies neither record, resolves no reference to either, and logs it: picking one would let a member's tombstone on the other hide a live record.
 - Any other kind in a team scope follows the rules above.
 
 ### Saved queries, folders and history in the core
