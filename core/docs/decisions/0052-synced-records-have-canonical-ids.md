@@ -19,7 +19,7 @@ Every synced kind has one id form, fixed below, that every device computes the s
 
 ### Every id
 
-- A record id is valid UTF-8 without U+0000, 1 to 255 UTF-16 code units long, compared as bytes. Nobody normalizes or case-folds it.
+- A record id meets the syntax of [0051](0051-sync-protocol-and-record-rules.md) (Kinds) and is compared as bytes. Nobody normalizes or case-folds it.
 - A UUID in a record id is 8-4-4-4-12 hexadecimal digits in upper case, as `uuidString` writes it. The team library's kinds are the one exception (Team scope, below).
 - A field that names another record carries that record's id in the same form, as the CloudKit fields already do.
 - A device gives a new entity a new UUIDv4. A pulled record keeps its id, and so does one that the Mac's or the iOS app's own store brings into the core.
@@ -40,7 +40,7 @@ Every synced kind has one id form, fixed below, that every device computes the s
 | `saved_query` | personal | `Favorite_` | The query's UUID | `E9BFE8BE-525F-4F8A-9E9C-F795A5F09A8B` |
 | `saved_query_folder` | personal | `FavoriteFolder_` | The folder's UUID | `380CB783-4B26-48F3-8F84-1468967A9FA3` |
 | `table_folder` | personal | `TableFolder_` | The folder's UUID | `3D7F338F-27B8-4E35-9CFA-C88CE07131EF` |
-| The connection project kind (#4376) | personal | `Project_` | The project's UUID | `CBCAF15E-97D4-4B75-8D5D-01D586CADC97` |
+| `connection_project` (#4376) | personal | `Project_` | The project's UUID | `CBCAF15E-97D4-4B75-8D5D-01D586CADC97` |
 | `favourite_table` | personal | `FavoriteTable_` | Derived ids, below | `689915518ef07ed442508df9d8938612b7835aaef1759e217a9a1f0ec1527bfd` |
 | `favourite_database` | personal | `FavoriteDatabase_` | Derived ids, below | `cdf7849ae0e1748faad83bd8417480daac3b3b322224f4aeefd1977345b7f979` |
 | `table_folder_item` | personal | `TableFolderItem_` | Derived ids, below | `689915518ef07ed442508df9d8938612b7835aaef1759e217a9a1f0ec1527bfd` |
@@ -49,7 +49,7 @@ Every synced kind has one id form, fixed below, that every device computes the s
 | `history_entry` | history | none | A random UUIDv4 | `07D0575D-F499-463A-AB54-2852D631B0B4` |
 | `secret_envelope` | personal, team | none | Secret envelopes, below | `connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/password` |
 | `key.*` | personal, team | none | Key objects, below | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/7` |
-| The library's `connection`, `folder` and `query` | team | none | Team scope, below | `6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44` |
+| `library_connection`, `library_folder`, `library_query` | team | none | Team scope, below | `6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44` |
 
 The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its table `shop.public.orders`. A `columnLayout` category for an SQLite file deep in the file system passes the limit and takes the long form, `sha256-` and 64 hex digits.
 
@@ -68,7 +68,8 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
 
 ### Secret envelopes
 
-- An envelope's id is its parent record's kind, the parent's record id and the secret kind, joined with `/`. 0053 names the secret kinds. Neither a kind nor a secret kind holds a `/`, so the parent's id is what lies between the first and the last `/`.
+- An envelope's id is its parent record's kind, the parent's record id and the secret kind, joined with `/`, such as `connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/ssh_key_passphrase`, `library_connection/6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44/password` or `macos_settings/ai/ai_key.<provider id>`.
+- 0053's table lists the secret kinds and their parents. A kind holds no `/` (0051, Kinds), and a secret kind holds none either: a plugin field whose id has one does not sync. So the parent's id is what lies between the first and the last `/`.
 - One secret of one record has one envelope. Two devices that seal it at once meet on one id, and the last push wins (0044, Conflict rules).
 
 ### Key objects
@@ -83,21 +84,21 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
 | `key.recovery` | `<account>/<rk_v>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1` |
 | `key.request` | `<request id>` | `5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357` |
 | `key.sas` | `<session id>/<step>`, the step `commit`, `nonce` or `reveal`; a device approval's session id is its request's id | `5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357/nonce` |
-| `key.wrap` | `<owner>/<purpose>/<version>/<recipient type>/<recipient id>/<recipient version>`, the owner an account or a team, the purpose `account-key`, `account-signing-key`, `sharing-key` or `team-key`, the recipient `holder` (its id, version 0), `recovery` (the account, `rk_v`) or `member` (the account, `sk_v`) | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/account-key/3/holder/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/0`; `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team-key/2/member/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/1` |
+| `key.wrap` | `<owner>/<purpose>/<version>/<recipient type>/<recipient id>/<recipient version>`, the owner an account or a team, the purpose `account-key`, `sharing-key` or `team-key`, the recipient `holder` (its id, version 0), `recovery` (the account, `rk_v`) or `member` (the account, `sk_v`) | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/account-key/3/holder/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/0`; `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team-key/2/member/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/1` |
 | `key.ring` | `<owner>/<version>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/3` |
 | `key.team` | `<team>/<seq>` | `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/12` |
-| `key.member` | `<account>/<seq>` | `019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/0` |
+| `key.member` | `<account>/<log>/<seq>`, the log `identity` or `device` | `019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/identity/0` |
 
-- One id per log position, version or step, so two writers of one meet on one id: the create-only rule (0051) keeps the first, and only the writer 0053 names replaces a wrap or a ring.
-- Where the bound writer is an account the id names, the server compares that part as bytes with the caller's account id in upper case: the account of `key.identity`, `key.device`, `key.recovery` and `key.member`, and the owner of a personal `key.wrap` or `key.ring`. 0051 gives the refusal code.
+- One id per log position, version or step, so two writers of one meet on one id: the create-only rule ([0051](0051-sync-protocol-and-record-rules.md)) keeps the first, and only the writer 0053 names replaces a wrap or a ring.
+- Where the bound writer is an account the id names, the server compares that part as bytes with the caller's account id in upper case: the account of `key.identity`, `key.device`, `key.recovery` and `key.member`, and the owner of a personal `key.wrap` or `key.ring`. A mismatch is refused with `writer_bound`.
 - A key kind added later writes its parts the same way.
 
 ### Team scope
 
-- The library's `connection`, `folder` and `query` keep the client id the library stores, byte for byte and in its case. Shipped Macs hold unsent edits under that exact id and push them through the facade, and the library's move into the record store (0051) copies ids unchanged.
+- `library_connection`, `library_folder` and `library_query` keep the client id the library stores, byte for byte and in its case. Shipped Macs hold unsent edits under that exact id and push them through the facade, and the library's move into the record store (0051) copies ids unchanged.
 - A device that adds an entity to a team takes the stored id of the record of that kind whose id matches the entity's UUID when both are lower-cased. With none, it takes the UUID in lower case, as `TeamLibraryID.of` gives it.
 - `parent_client_id`, `folder_client_id` and `connection_client_id` match a record id when both are lower-cased, as `TeamLibraryID.same` matches them.
-- Within one team, no two records of one of these kinds have ids that match when lower-cased, tombstones included. The server refuses a create that would make such a pair, through `/v2/sync` and the facade alike (0051 gives the refusal code). For a pair written before that, a client applies neither record, resolves no reference to either, and logs it: picking one would let a member's tombstone on the other hide a live record.
+- Within one team, no two records of one of these kinds have ids that match when lower-cased, tombstones included. The server refuses a create that would make such a pair, through `/v2/sync` and the facade alike, with `id_case_collision`. For a pair written before that, a client applies neither record, resolves no reference to either, and logs it: picking one would let a member's tombstone on the other hide a live record.
 - Any other kind in a team scope follows the rules above.
 
 ### Saved queries, folders and history in the core
