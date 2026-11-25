@@ -67,8 +67,8 @@ extension DataFileController {
         commitFilterState(filterState.removingAllFilters())
     }
 
-    // Once a running row names a column the file no longer has, after a header row is toggled for
-    // instance, the filter stops rather than run without it under a panel that says it applies.
+    // Once a running row names a column the file no longer has, the filter stops rather than run
+    // without it under a panel that says it applies.
     private func dropFiltersTheFileCannotRun() {
         guard let applied = filterState.applied,
               !applied.filters.allSatisfy({ cellPredicate(for: $0) != nil }) else { return }

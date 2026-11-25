@@ -164,22 +164,28 @@ internal extension TabFilterState {
 
     // The draft and what runs both follow a renamed column, or a rerun would look for the old name.
     mutating func renameFilterColumn(from oldName: String, to newName: String) {
-        let rename = { (rows: [TableFilter]) -> [TableFilter] in
-            rows.map { row in
-                guard !row.isRawSQL, row.columnName == oldName else { return row }
-                var renamed = row
-                renamed.columnName = newName
-                return renamed
-            }
-        }
-        filters = rename(filters)
-        applied = applied?.mapFilters(rename)
+        remapColumns { $0 == oldName ? newName : $0 }
     }
 
     mutating func removeFilters(onColumns names: Set<String>) {
-        let keeps = { (row: TableFilter) in row.isRawSQL || !names.contains(row.columnName) }
-        filters = filters.filter(keeps)
-        applied = applied?.mapFilters { $0.filter(keeps) }
+        remapColumns { names.contains($0) ? nil : $0 }
+    }
+
+    // One pass, so two columns that trade names move together instead of landing on the same one.
+    // A nil name removes the row.
+    mutating func remapColumns(_ newName: (String) -> String?) {
+        filters = Self.remapping(filters, newName)
+        applied = applied?.mapFilters { Self.remapping($0, newName) }
+    }
+
+    private static func remapping(_ rows: [TableFilter], _ newName: (String) -> String?) -> [TableFilter] {
+        rows.compactMap { row in
+            guard !row.isRawSQL else { return row }
+            guard let name = newName(row.columnName) else { return nil }
+            var moved = row
+            moved.columnName = name
+            return moved
+        }
     }
 
     mutating func setAllFiltersEnabled(_ isEnabled: Bool) {

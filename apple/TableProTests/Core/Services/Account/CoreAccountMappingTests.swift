@@ -54,6 +54,12 @@ struct CoreAccountMappingTests {
         #expect(Self.mapped("account.sign_in_canceled", .signIn) == .canceled)
     }
 
+    @Test("A sign-in answer from another issuer has a reason of its own, which the sign-in window words")
+    func otherIssuer() {
+        #expect(Self.mapped("account.sign_in_issuer_mismatch", .signIn) == .otherIssuer)
+        #expect(Self.mapped("account.sign_in_issuer_mismatch", .signIn).friendlyDescription != nil)
+    }
+
     @Test("Past the device limit a sign-in or a key's exchange stands, with the limit in the status; other refusals do not")
     func deviceLimitKeepsTheSignIn() {
         #expect(CoreAccountMapping.signInError(Self.failure("account.device_limit_reached"), during: .signIn) == nil)

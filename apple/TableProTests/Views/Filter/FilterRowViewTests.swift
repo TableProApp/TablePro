@@ -38,7 +38,7 @@ private final class FilterRowHost {
         hosting.rootView = AnyView(
             FilterRowView(
                 filter: binding,
-                columns: ["id", "name", "email"],
+                columnMenu: FilterColumnMenu.build(columns: ["id", "name", "email"], fieldPaths: [], order: .table),
                 completions: [],
                 onAdd: {},
                 onDuplicate: {},

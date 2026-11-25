@@ -8,9 +8,8 @@ use tablepro_core::ddl::{GeneratedStorage, IdentityStyle, SchemaObjectKind};
 use tablepro_core::meta::{ObjectScope, TableRef};
 use tablepro_core::{DriverError, ServerCode, Value};
 
-use crate::support::{
-    TestFile, apply, assert_refused_as_malformed, call, connect, sqlite_refuses_a_stored_tail, writable,
-};
+use crate::crafted_schema::{allow_writable_schema, sqlite_refuses_a_stored_tail};
+use crate::support::{TestFile, apply, assert_refused_as_malformed, call, connect, writable};
 
 #[tokio::test]
 async fn strict_table_is_not_dynamic() {
@@ -520,8 +519,8 @@ async fn a_create_statement_past_ten_million_bytes_does_not_open() {
     );
 }
 
-// SQLite before 3.54.0 parses a stored CREATE text only to its statement's end, so a crafted file can carry any tail
-// after it; the catalog reads that parse the text refuse it past the same cap, before parsing it.
+// A SQLite without the stored tail check parses a stored CREATE text only to its statement's end, so a crafted file can
+// carry any tail after it; the catalog reads that parse the text refuse it past the same cap, before parsing it.
 #[tokio::test]
 async fn a_stored_create_text_past_the_cap_is_refused_before_it_is_parsed() {
     let file = TestFile::new().await;
@@ -529,6 +528,7 @@ async fn a_stored_create_text_past_the_cap_is_refused_before_it_is_parsed() {
     let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
         .await
         .unwrap();
+    allow_writable_schema(&mut writer).await.unwrap();
     writer.execute("PRAGMA writable_schema = ON").await.unwrap();
     writer
         .execute(
@@ -538,7 +538,7 @@ async fn a_stored_create_text_past_the_cap_is_refused_before_it_is_parsed() {
         .await
         .unwrap();
     writer.close().await.unwrap();
-    if sqlite_refuses_a_stored_tail() {
+    if sqlite_refuses_a_stored_tail(file.directory()).await.unwrap() {
         assert_refused_as_malformed(&file).await;
         return;
     }
@@ -579,6 +579,7 @@ async fn a_stored_text_is_read_to_its_first_statement() {
     let mut writer = SqliteConnection::connect_with(&SqliteConnectOptions::new().filename(&file.path))
         .await
         .unwrap();
+    allow_writable_schema(&mut writer).await.unwrap();
     writer.execute("PRAGMA writable_schema = ON").await.unwrap();
     writer
         .execute("UPDATE sqlite_schema SET sql = sql || '; DROP TABLE p' WHERE name = 'c'")
@@ -592,7 +593,7 @@ async fn a_stored_text_is_read_to_its_first_statement() {
         .await
         .unwrap();
     writer.close().await.unwrap();
-    if sqlite_refuses_a_stored_tail() {
+    if sqlite_refuses_a_stored_tail(file.directory()).await.unwrap() {
         assert_refused_as_malformed(&file).await;
         return;
     }

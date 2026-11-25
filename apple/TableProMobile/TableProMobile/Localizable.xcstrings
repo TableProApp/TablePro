@@ -7067,6 +7067,9 @@
         }
       }
     },
+    "Could not confirm the sign-in came from the server TablePro asked. Sign in again." : {
+
+    },
     "Could not connect to the database: %@" : {
       "localizations" : {
         "ko" : {

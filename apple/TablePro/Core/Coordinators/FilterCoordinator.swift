@@ -407,7 +407,7 @@ final class FilterCoordinator: ObservableObject {
     }
 
     func addFilterForColumn(_ columnName: String) {
-        let settings = FilterSettingsStorage.shared.loadSettings()
+        let settings = FilterSettingsStorage.shared.settings
         mutateSelectedTabFilterState { state in
             state.addFilter(forColumn: columnName, settings: settings)
         }
@@ -466,7 +466,7 @@ final class FilterCoordinator: ObservableObject {
         guard !tab.tableContext.isTemporary, let tableName = tab.tableContext.tableName else { return }
         /// Turning saving off stops writing, and leaves what is already on disk alone. Falling
         /// through to an empty write would delete it, so the setting could never be turned back on.
-        guard FilterSettingsStorage.shared.loadSettings().restoreBehavior.savesToDisk else { return }
+        guard FilterSettingsStorage.shared.settings.restoreBehavior.savesToDisk else { return }
         let persisted = tab.filterState.persistedState
         FilterSettingsStorage.shared.saveLastFilters(
             persisted,
@@ -478,7 +478,7 @@ final class FilterCoordinator: ObservableObject {
     }
 
     private func restoreLastFilters(for tableName: String, at index: Int) {
-        let settings = FilterSettingsStorage.shared.loadSettings()
+        let settings = FilterSettingsStorage.shared.settings
         guard index < parent.tabManager.tabs.count else { return }
         let tab = parent.tabManager.tabs[index]
 

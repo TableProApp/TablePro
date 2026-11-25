@@ -17,6 +17,8 @@ pub enum AccountError {
     SignInCanceled,
     #[error("the sign-in was refused: {error}")]
     SignInRefused { error: String, description: Option<String> },
+    #[error("the sign-in answer did not name the server it was sent to")]
+    SignInIssuerMismatch,
     #[error("not signed in")]
     SignedOut,
     #[error("this device was removed from the account")]
@@ -68,6 +70,7 @@ impl AccountError {
             Self::SignInTimedOut => "account.sign_in_timed_out",
             Self::SignInCanceled => "account.sign_in_canceled",
             Self::SignInRefused { .. } => "account.sign_in_refused",
+            Self::SignInIssuerMismatch => "account.sign_in_issuer_mismatch",
             Self::SignedOut => "account.signed_out",
             Self::DeviceRevoked => "account.device_revoked",
             Self::DeviceLimitReached { .. } => "account.device_limit_reached",

@@ -11,6 +11,7 @@ import TableProPluginKit
 /// the search field doubles as free-text entry for a field the sample never saw.
 struct NestedFieldPathPicker: View {
     let fieldPaths: [PluginFieldPath]
+    let order: FilterColumnOrder
     let currentValue: String
     let onCommit: (String) -> Void
     let onDismiss: () -> Void
@@ -22,22 +23,8 @@ struct NestedFieldPathPicker: View {
     private static let searchAreaHeight: CGFloat = 44
     private static let maxTotalHeight: CGFloat = 360
 
-    private var visibleGroups: [(parent: String, paths: [PluginFieldPath])] {
-        var order: [String] = []
-        var byParent: [String: [PluginFieldPath]] = [:]
-
-        for path in fieldPaths where path.depth > 1 && matches(path.path) {
-            let parent = FilterColumnMenu.topLevelParent(of: path.path)
-            if byParent[parent] == nil {
-                order.append(parent)
-            }
-            byParent[parent, default: []].append(path)
-        }
-
-        return order.compactMap { parent in
-            guard let paths = byParent[parent] else { return nil }
-            return (parent: parent, paths: paths)
-        }
+    private var visibleGroups: [FilterColumnMenu.Group] {
+        FilterColumnMenu.grouped(fieldPaths.filter { $0.depth > 1 && matches($0.path) }, order: order)
     }
 
     private func matches(_ path: String) -> Bool {

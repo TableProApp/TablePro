@@ -708,8 +708,41 @@ async fn an_answer_naming_another_issuer_is_refused_and_one_naming_this_one_take
         .sign_in(std::future::pending())
         .await;
 
-    assert_eq!(refused.expect_err("another issuer").code(), "account.server_mismatch");
+    assert_eq!(
+        refused.expect_err("another issuer").code(),
+        "account.sign_in_issuer_mismatch"
+    );
     assert!(taken.is_ok(), "{taken:?} for {issuer}");
+}
+
+// tablepro.app names itself in every answer, so the build requires it there without asking its metadata.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn tablepro_app_s_answer_without_its_issuer_is_refused_before_any_exchange() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let authenticator = Authenticator::answering(approved);
+    let account = mac(
+        dir.path(),
+        Endpoints::production(),
+        Keyring::holding(None),
+        Some(authenticator.clone()),
+    );
+
+    let refused = account.sign_in(std::future::pending()).await;
+
+    assert_eq!(
+        refused.expect_err("no issuer").code(),
+        "account.sign_in_issuer_mismatch"
+    );
+    let asked = authenticator.asked();
+    assert!(
+        asked.len() == 1
+            && asked[0]
+                .0
+                .as_str()
+                .starts_with("https://account.tablepro.app/oauth/authorize?"),
+        "{asked:?}"
+    );
+    assert!(matches!(&*account.status().borrow(), AccountStatus::SignedOut));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
