@@ -48,13 +48,20 @@ A boolean key that is `true` or absent leaves the person's own setting. Each hos
 - On Windows each key is read from `HKLM`, then from `HKCU`. The first that has it wins, and a list is never merged across the two.
 - The ADMX gives a text box for a string, an enabled or disabled policy for a boolean, and a list box for a list. Its ADML names the values.
 
+## When a value applies
+
+- A host reads its channel at launch, and again whenever its OS reports a change while the app runs, and passes every value to the core again. A change the OS does not report applies at the next launch.
+- The core applies new values at once. The account's server still changes only at launch, as 0047 has it, but the rules below follow the values the core holds.
+- A sync pass under a provider that stops being allowed commits nothing more. A push not yet sent is not sent, and an answer that arrives after the stop is dropped. The next pass on that provider starts from the last committed state, and its change tags and idempotency keys (0051) settle a push the server applied before the stop.
+
 ## PersonalSyncProvider
 
-- **Values:** `off`, `icloud` and `tablepro-sync`, spelled exactly. An unknown value is skipped and logged.
+- **Absent:** no restriction. Every provider the platform offers is a choice, and the person's choice is kept. A profile that drops the key returns to this, and the device stays on the provider it had.
+- **Values:** `off`, `icloud` and `tablepro-sync`, spelled exactly. An unknown value, or an entry that is not a string, is skipped and logged.
 - **The choices.** The entries this build and platform offer are the choices its picker shows: Linux and Windows have no `icloud`, and a build without TablePro Sync has no `tablepro-sync`. The list is a set, so order and repeats mean nothing.
   - **One choice left:** it is the device's provider, and the picker is locked.
   - **Several:** the person picks among them. A device on a provider that is still allowed keeps it.
-  - **None,** from an empty list or entries that do not apply here: personal sync is off, and the picker is locked.
+  - **None,** from a list that is set but empty or holds no entry that applies here: personal sync is off, and the picker is locked.
 - **What also removes a choice.**
   - `ICloudSyncAllowed=false` removes `icloud`.
   - A self-hosted server with `personalSync` off removes `tablepro-sync` while the device is signed in to it.
@@ -66,12 +73,14 @@ A boolean key that is `true` or absent leaves the person's own setting. Each hos
 
 ## Requests to TablePro hosts
 
-The core's server resolution decides one case, and the account reports it to the host: `AllowOtherAccountServers` is `false`, and `AccountServerURL` is a valid origin that is not tablepro.app's. That is the case in which 0047 refuses `choose_server`. In it, the apps make no request to a tablepro.app host:
+The core decides one case from the values it holds and reports it to the host: `AllowOtherAccountServers` is `false`, and `AccountServerURL` is a valid origin that is not tablepro.app's. That is the case in which 0047 refuses `choose_server`. In it, the account reaches only the company server (0047), and two more requests stop:
 
 - **Share links.** A share-link read fails with `account.server_managed` before any request, and the app says the organization does not allow links from tablepro.app.
 - **AI catalog.** The refresh is skipped, and the newer of the bundled and kept copies serves (0049).
 
-`AllowOtherAccountServers=false` alone, or with tablepro.app's own origin, stops nothing more, since 0047 ignores the key alone. A host whose read is still its own code, as the Mac's share client and catalog are today, asks the account rather than reading the keys again.
+`AllowOtherAccountServers=false` alone, or with tablepro.app's own origin, stops nothing more, since 0047 ignores the key alone. A host whose read is still its own code, as the Mac's share client and catalog are today, asks the core rather than reading the keys again.
+
+The pair does not block every TablePro host. The table lists each request the apps make to one and what stops it; the plugin registry and the update feeds have keys of their own.
 
 | Request | Apps | Stopped by |
 | --- | --- | --- |
@@ -94,7 +103,8 @@ The core's server resolution decides one case, and the account reports it to the
 ## The self-hosted `personalSync` switch
 
 - **What it is.** A third install-wide setting beside `passwordSync` and `historySync`, on by default. The owner or an admin sets it in the portal, and each change is audited, as with the other two (0044, Policies).
-- **Off.** The personal and history scopes answer pushes with `rejected` (`policy`) and their records are tombstoned for policy, whatever `historySync` says. Devices keep what they hold. The install then serves Team Library only. 0051 gives the wire for all three switches.
+- **Off.** The personal and history scopes answer pushes with `rejected` (`policy`), and their records are tombstoned, whatever `historySync` says. The install then serves Team Library only.
+- **Devices keep what they hold.** Each tombstone a policy writes says so on the record, and a client that pulls one keeps its local copy, whenever it pulls it and whatever policy state it last read. No client before 0051 reads a personal or history scope, so every reader knows the rule. 0051 gives the field and the wire for all three switches, and how records go up again when a switch comes back on.
 - **The apps.** `tablepro-sync` leaves the personal choices while the device is signed in to that server, so a device on it stops as Leaving a provider says.
 - **The SaaS has no such switch.** Personal and history scopes belong to the account, which can be in several teams (0044, Policies).
 
