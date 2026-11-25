@@ -8235,12 +8235,19 @@ name = "tablepro-sync"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "hex",
  "secrecy",
  "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
  "tablepro-keys",
  "tablepro-records",
+ "tablepro-storage",
+ "tablepro-sync-testing",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "tracing",
  "uuid",
  "zeroize",
 ]

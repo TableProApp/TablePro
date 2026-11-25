@@ -1,0 +1,113 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+use super::scheduler::Wake;
+use crate::api::control::PassReason;
+use crate::api::ids::{EpochId, ScopeName};
+use crate::api::key_flows::{KeyHooks, KeyNotice, LockCause, StopCause};
+
+// What the app is told: it only schedules a read (core ADR 0002).
+pub trait EngineEvents: Send + Sync {
+    fn status_changed(&self);
+
+    fn keys_changed(&self);
+}
+
+// The engine's side of the key flows: a lock, and the scopes whose secrets wait, which every pass reads.
+#[derive(Default)]
+pub struct EngineHooks {
+    state: Mutex<HookState>,
+    wake: Wake,
+    events: Option<Arc<dyn EngineEvents>>,
+}
+
+#[derive(Debug, Default)]
+struct HookState {
+    lock: Option<LockCause>,
+    stopped: HashMap<ScopeName, StopCause>,
+    ended: HashMap<ScopeName, Option<EpochId>>,
+    notices: Vec<KeyNotice>,
+}
+
+impl std::fmt::Debug for EngineHooks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineHooks")
+            .field("state", &self.state())
+            .finish_non_exhaustive()
+    }
+}
+
+impl EngineHooks {
+    pub fn new(wake: Wake, events: Option<Arc<dyn EngineEvents>>) -> Self {
+        Self {
+            state: Mutex::default(),
+            wake,
+            events,
+        }
+    }
+
+    fn state(&self) -> MutexGuard<'_, HookState> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn keys_changed(&self) {
+        if let Some(events) = &self.events {
+            events.keys_changed();
+        }
+    }
+
+    pub fn locked(&self) -> Option<LockCause> {
+        self.state().lock
+    }
+
+    // An approval or a recovery merged into the key tables.
+    pub fn unlock(&self) {
+        self.state().lock = None;
+        self.keys_changed();
+    }
+
+    // The scope writes no secret under its key: stopped until what it waits for is back, or ended for good.
+    pub fn holds_secrets(&self, scope: ScopeName) -> bool {
+        let state = self.state();
+        state.stopped.contains_key(&scope) || state.ended.contains_key(&scope)
+    }
+
+    pub fn take_notices(&self) -> Vec<KeyNotice> {
+        std::mem::take(&mut self.state().notices)
+    }
+}
+
+impl KeyHooks for EngineHooks {
+    fn lock(&self, cause: LockCause) {
+        self.state().lock = Some(cause);
+        self.keys_changed();
+    }
+
+    fn stop_scope(&self, scope: ScopeName, cause: StopCause) {
+        self.state().stopped.insert(scope, cause);
+        self.keys_changed();
+    }
+
+    fn resume_scope(&self, scope: ScopeName) {
+        self.state().stopped.remove(&scope);
+        self.keys_changed();
+        self.wake.pass_soon(PassReason::Journal);
+    }
+
+    fn end_scope(&self, scope: ScopeName, epoch: Option<EpochId>) {
+        let mut state = self.state();
+        state.stopped.remove(&scope);
+        state.ended.insert(scope, epoch);
+        drop(state);
+        self.keys_changed();
+    }
+
+    fn notice(&self, notice: KeyNotice) {
+        self.state().notices.push(notice);
+        self.keys_changed();
+    }
+
+    fn pass_soon(&self) {
+        self.wake.pass_soon(PassReason::Journal);
+    }
+}

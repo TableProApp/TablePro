@@ -1,0 +1,177 @@
+use serde_json::Value;
+use tablepro_records::Kind;
+use tablepro_records::merge::{self, Merged, Mode, Sides};
+
+use crate::api::adapter::{LocalChange, LocalRecord};
+use crate::api::ids::{RecordKey, ScopeName};
+use crate::api::state::{BaseRow, ConflictRow};
+use crate::api::transport::{DeletedReason, PulledRecord};
+
+// How a pulled copy meets the device's: by the conflict rules, or, in a refill, the provider's copy or the device's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Judgement {
+    Merge,
+    // A restored store or state file: the pull wins (0054, Store identity).
+    PullWins,
+    // A base the server lost in a restore and a copy not written since: the device pushes its own on the copy's tag
+    // (0051, Refill).
+    LocalWins,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Settled {
+    pub store: Option<LocalChange>,
+    pub base: Option<BaseRow>,
+    pub conflict: Option<ConflictRow>,
+}
+
+impl Settled {
+    const NOTHING: Self = Self {
+        store: None,
+        base: None,
+        conflict: None,
+    };
+}
+
+pub fn mode(scope: ScopeName) -> Mode {
+    match scope {
+        ScopeName::Team(_) => Mode::Team,
+        ScopeName::Personal | ScopeName::History => Mode::Personal,
+    }
+}
+
+// The base a pulled copy leaves: its tag and server columns, and its fields unless the kind is created once.
+pub fn base_of(key: &RecordKey, create_once: bool, pulled: &PulledRecord) -> BaseRow {
+    let service = pulled.service.as_ref();
+    BaseRow {
+        key: key.clone(),
+        tag: pulled.tag.clone(),
+        version: service.map(|meta| meta.version),
+        revision: service.map(|meta| meta.revision),
+        epoch: service.map(|meta| meta.epoch),
+        deleted: pulled.deleted,
+        fields: if create_once || pulled.deleted.is_some() {
+            None
+        } else {
+            pulled.fields.clone()
+        },
+    }
+}
+
+fn put_if_changed(local: Option<&LocalRecord>, record_id: &str, fields: &Value) -> Option<LocalChange> {
+    (local.map(|local| &local.fields) != Some(fields)).then(|| LocalChange::Put {
+        record_id: record_id.to_owned(),
+        fields: fields.clone(),
+    })
+}
+
+fn delete_if_held(local: Option<&LocalRecord>, record_id: &str) -> Option<LocalChange> {
+    local.map(|_| LocalChange::Delete {
+        record_id: record_id.to_owned(),
+    })
+}
+
+// One pulled record against its base and the store's copy. The store writes what this returns, then the bases.
+pub fn settle(
+    key: &RecordKey,
+    kind: Kind,
+    judgement: Judgement,
+    base: Option<&BaseRow>,
+    local: Option<&LocalRecord>,
+    pulled: &PulledRecord,
+) -> Settled {
+    if judgement == Judgement::Merge && base.is_some_and(|base| base.tag == pulled.tag) {
+        return Settled::NOTHING;
+    }
+    let next = Some(base_of(key, kind.is_create_once(), pulled));
+    let id = key.record_id.as_str();
+    // A device keeps its copy of what a policy removed, whatever it pulls (0051, Tombstones).
+    if pulled.deleted == Some(DeletedReason::Policy) {
+        return Settled {
+            base: next,
+            ..Settled::NOTHING
+        };
+    }
+    let server = if pulled.deleted.is_some() {
+        None
+    } else {
+        pulled.fields.as_ref()
+    };
+    match judgement {
+        Judgement::LocalWins => Settled {
+            base: next,
+            ..Settled::NOTHING
+        },
+        Judgement::PullWins => Settled {
+            store: match server {
+                Some(fields) => put_if_changed(local, id, fields),
+                None => delete_if_held(local, id),
+            },
+            base: next,
+            conflict: None,
+        },
+        Judgement::Merge => merged(key, kind, base, local, pulled, server),
+    }
+}
+
+fn merged(
+    key: &RecordKey,
+    kind: Kind,
+    base: Option<&BaseRow>,
+    local: Option<&LocalRecord>,
+    pulled: &PulledRecord,
+    server: Option<&Value>,
+) -> Settled {
+    let id = key.record_id.as_str();
+    let mine = local.map(|local| &local.fields);
+    // A created-once base keeps no fields: only that it exists counts.
+    let held = base.and_then(|base| {
+        if base.deleted.is_some() {
+            None
+        } else if kind.is_create_once() {
+            Some(&Value::Null)
+        } else {
+            base.fields.as_ref()
+        }
+    });
+    let sides = Sides {
+        base: held,
+        local: mine,
+        server,
+    };
+    let next = Some(base_of(key, kind.is_create_once(), pulled));
+    let conflict = || ConflictRow {
+        key: key.clone(),
+        base: held.cloned().filter(|value| !value.is_null()),
+        mine: mine.cloned(),
+        theirs: server.cloned(),
+    };
+    match merge::merge(kind, mode(key.scope), sides) {
+        Merged::Record(record) => Settled {
+            store: put_if_changed(local, id, &record),
+            base: next,
+            conflict: None,
+        },
+        Merged::Deleted => Settled {
+            store: delete_if_held(local, id),
+            base: next,
+            conflict: None,
+        },
+        Merged::Contested { record, .. } => Settled {
+            store: put_if_changed(local, id, &record),
+            base: next,
+            conflict: Some(conflict()),
+        },
+        // The device's side stays as it is until the person picks Keep Mine or Keep Theirs.
+        Merged::DeletionContested { .. } => Settled {
+            store: None,
+            base: next,
+            conflict: Some(conflict()),
+        },
+        // Ciphertext does not merge: the device's envelope goes up again on the stored tag.
+        Merged::Reseal => Settled {
+            base: next,
+            ..Settled::NOTHING
+        },
+    }
+}
