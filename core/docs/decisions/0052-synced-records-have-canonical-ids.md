@@ -1,6 +1,6 @@
 # 0052: Synced records have canonical ids; saved queries and folders have UUIDs and may have no connection
 
-- **Status**: Proposed until G0 passes
+- **Status**: Accepted
 - **Date**: 2026-11-25
 
 ## Context
