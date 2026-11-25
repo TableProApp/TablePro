@@ -1,6 +1,6 @@
 # 0044: Sync goes through one TablePro service, run by us or entirely on a customer's servers
 
-- **Status**: Accepted; the license types and the calls to tablepro.app amended by 0045; SSO amended by 0048; who opens a license request amended by 0050
+- **Status**: Accepted; the license types and the calls to tablepro.app amended by 0045; the grace after `exp` amended by 0046; the Apple apps' sign-in amended by 0047; SSO amended by 0048; who opens a license request amended by 0050; the record store, the protocol, the conflict rules, what syncs, the policies' wire and past grace amended by 0051, and restore superseded by it; record ids amended by 0052; secrets amended by 0053; the client in the core, the iCloud engine and the moves between providers amended by 0054; app configuration, policies and a refused Linux policy source amended by 0055
 - **Date**: 2026-11-24
 
 ## Context
