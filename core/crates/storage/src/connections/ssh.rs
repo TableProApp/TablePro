@@ -49,6 +49,11 @@ impl SavedSshConfig {
         }
     }
 
+    // A tunnel to a database file on the SSH host, which only the macOS app opens.
+    pub fn opens_remote_file(&self) -> bool {
+        self.enabled && self.remote_file.path.as_deref().is_some_and(|path| !path.is_empty())
+    }
+
     // What a form that edits where the tunnel goes and how it signs in leaves out keeps its stored value.
     pub fn kept_over(mut self, stored: Option<&Self>) -> Self {
         if let Some(stored) = stored {

@@ -723,7 +723,10 @@ fn an_insert_after_an_entry_the_list_lacks_is_saved_as_an_upsert_would_save_it()
         .iter()
         .find(|saved| saved.id == copy.id)
         .expect("the copy");
-    assert!(stored.tags.is_empty(), "a tag the list lacks was kept");
+    assert_eq!(
+        stored.tags, copy.tags,
+        "a tag the list lacks stays, as a pull can bring it later"
+    );
 }
 
 #[test]
@@ -763,21 +766,24 @@ fn a_crafted_tree_reads_without_cycles_strays_or_doubles() {
 
     let list = ConnectionStore::new(&paths).list_blocking().expect("the list");
 
+    // Each reads at the top in its stored place, and keeps the parent, group and place it was stored with.
     let tops: Vec<(&str, u32)> = list
         .group_tree()
         .children(None)
         .iter()
         .map(|group| (group.name.as_str(), group.order))
         .collect();
-    assert_eq!(tops, [("First", 0), ("Second", 1), ("Stray", 2), ("Selfish", 3)]);
+    assert_eq!(tops, [("First", 0), ("Second", 0), ("Stray", 0), ("Selfish", 7)]);
     assert_eq!(list.groups.len(), 4, "a doubled id was kept");
-    assert_eq!(list.connections[0].group_id, None);
+    assert_eq!(list.groups.to_vec(), document.groups[..4].to_vec());
+    assert_eq!(list.connections[0].group_id, a.group_id);
+    assert_eq!(list.group_of(&list.connections[0]), None);
     let orders: Vec<(&str, u32)> = list
         .connections_in(None)
         .iter()
         .map(|saved| (saved.name.as_str(), saved.order))
         .collect();
-    assert_eq!(orders, [("a", 0), ("b", 1)]);
+    assert_eq!(orders, [("a", 9), ("b", 9)]);
     assert_eq!(list.favorites.to_vec(), [b.id]);
 }
 

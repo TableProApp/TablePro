@@ -14,6 +14,28 @@ public enum TlsMode
     VerifyCa,
 }
 
+// The core's TlsMode::BY_STRICTNESS: each mode checks at least what the one before it does.
+public static class TlsModes
+{
+    private static readonly TlsMode[] ByStrictness =
+        [TlsMode.Disable, TlsMode.Prefer, TlsMode.Require, TlsMode.VerifyCa, TlsMode.VerifyFull, TlsMode.Strict];
+
+    public static int Strictness(TlsMode mode) => Array.IndexOf(ByStrictness, mode);
+
+    // The weakest offered mode at least as strict as mode, or the strictest offered when none is, so a form never weakens one.
+    public static TlsMode AtLeastIn(TlsMode mode, IReadOnlyList<TlsMode> offered)
+    {
+        ArgumentNullException.ThrowIfNull(offered);
+        var stricter = offered.Where(candidate => Strictness(candidate) >= Strictness(mode)).ToList();
+        if (stricter.Count > 0)
+        {
+            return stricter.MinBy(Strictness);
+        }
+
+        return offered.Count > 0 ? offered.MaxBy(Strictness) : mode;
+    }
+}
+
 public enum SafeMode
 {
     Off,

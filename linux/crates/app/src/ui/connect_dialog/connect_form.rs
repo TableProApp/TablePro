@@ -234,9 +234,15 @@ impl ConnectForm {
         let Some(tls) = caps.tls.as_ref() else {
             return;
         };
-        if !self.tls.mode_chosen || !tls.modes.contains(&self.tls.mode) {
-            self.tls.mode = caps.new_connection_tls(self.port, &self.options);
+        let default = caps.new_connection_tls(self.port, &self.options);
+        if !self.tls.mode_chosen
+            || (!tls.modes.contains(&self.tls.mode) && default.strictness() >= self.tls.mode.strictness())
+        {
+            self.tls.mode = default;
             self.tls.mode_chosen = false;
+        } else if !tls.modes.contains(&self.tls.mode) {
+            // A mode this engine does not offer, such as Verify CA from a Mac, rounds up, never to a weaker default.
+            self.tls.mode = self.tls.mode.at_least_in(tls.modes);
         }
     }
 
@@ -469,9 +475,7 @@ impl ConnectForm {
         Ok(form)
     }
 
-    /// How the entry is named in the connection list: the name typed,
-    /// or where it connects.
-    // As the list shows it, so a typed name that looks like a saved one is that name.
+    // The name typed, as the list shows it so one that looks like a saved name is that name, or where it connects.
     pub fn display_name(&self, caps: &DriverCapabilities) -> String {
         match tablepro_storage::shown_name(&self.name).as_str() {
             "" => self.label(caps),
@@ -682,6 +686,14 @@ impl ConnectForm {
                 password_left_unused(original_ssh),
                 passphrase_left_unused(original, &saved.auth),
             ),
+            // A tunnel the form leaves as stored keeps its secrets.
+            None if original
+                .ssh
+                .as_ref()
+                .is_some_and(|ssh| !ssh.enabled || ssh.opens_remote_file()) =>
+            {
+                (SecretChange::Keep, SecretChange::Keep)
+            }
             None => (
                 password_left_unused(original_ssh),
                 if original.has_stored_passphrase() {
@@ -738,6 +750,8 @@ impl ConnectForm {
 fn edited_tunnel(valid: &ValidatedForm, stored: Option<&SavedSshConfig>) -> Option<SavedSshConfig> {
     match (valid.ssh.as_ref(), stored) {
         (Some((saved, _)), stored) => Some(saved.clone().kept_over(stored)),
+        // The form shows no tunnel to a file on the SSH host, nor one already off.
+        (None, Some(stored)) if !stored.enabled || stored.opens_remote_file() => Some(stored.clone()),
         // The switch takes the passphrase out of the keyring, so the settings no longer say one is kept.
         (None, Some(stored)) => Some(SavedSshConfig {
             enabled: false,
@@ -928,6 +942,18 @@ mod tests {
         form.switch_driver("mssql", mssql());
         assert_eq!(form.tls.mode, TlsMode::VerifyFull, "a mode SQL Server lacks was kept");
         assert!(!form.tls.mode_chosen);
+    }
+
+    #[test]
+    fn a_mode_the_engine_does_not_offer_rounds_up_rather_than_to_a_weaker_default() {
+        let mut form = ConnectForm::new("postgres", postgres());
+        form.tls.mode = TlsMode::VerifyCa;
+        form.tls.mode_chosen = true;
+
+        form.follow_tls_default(postgres());
+
+        assert_eq!(form.tls.mode, TlsMode::VerifyFull);
+        assert!(form.tls.mode_chosen);
     }
 
     #[test]

@@ -386,14 +386,29 @@ fn a_version_1_list_rewritten_keeps_the_spellings_earlier_builds_read() -> TestR
     let written: serde_json::Value = serde_json::from_slice(&std::fs::read(paths.connections_file())?)?;
     let fixture: serde_json::Value = serde_json::from_slice(CONNECTIONS_V1)?;
 
-    let field = |file: &serde_json::Value, name: &str| -> Vec<serde_json::Value> {
+    let field = |file: &serde_json::Value, path: &[&str]| -> Vec<serde_json::Value> {
         file["connections"]
             .as_array()
-            .map(|connections| connections.iter().map(|connection| connection[name].clone()).collect())
+            .map(|connections| {
+                connections
+                    .iter()
+                    .map(|connection| path.iter().fold(connection.clone(), |value, key| value[*key].clone()))
+                    .collect()
+            })
             .unwrap_or_default()
     };
-    for name in ["ssh", "safe_mode", "ai_policy", "icon", "tls", "name"] {
-        assert_eq!(field(&written, name), field(&fixture, name), "{name}");
+    for path in [
+        &["name"][..],
+        &["safe_mode"],
+        &["ai_policy"],
+        &["icon"],
+        &["tls", "mode"],
+        &["ssh", "enabled"],
+        &["ssh", "jump_hosts"],
+        &["ssh", "auth", "kind"],
+        &["ssh", "auth", "path"],
+    ] {
+        assert_eq!(field(&written, path), field(&fixture, path), "{path:?}");
     }
     assert_eq!(written["groups"], fixture["groups"]);
     assert_eq!(written["tags"], fixture["tags"]);

@@ -44,6 +44,35 @@ impl TlsMode {
     pub fn requires_tls(self) -> bool {
         !matches!(self, Self::Disable | Self::Prefer)
     }
+
+    // Weakest first: each one checks at least what the one before it does.
+    pub const BY_STRICTNESS: [TlsMode; 6] = [
+        Self::Disable,
+        Self::Prefer,
+        Self::Require,
+        Self::VerifyCa,
+        Self::VerifyFull,
+        Self::Strict,
+    ];
+
+    pub fn strictness(self) -> usize {
+        Self::BY_STRICTNESS
+            .iter()
+            .position(|mode| *mode == self)
+            .unwrap_or(Self::BY_STRICTNESS.len())
+    }
+
+    // The mode a form that offers only `offered` shows for this one: never a weaker one while a mode at least as strict is
+    // offered, and the strictest offered when none is.
+    pub fn at_least_in(self, offered: &[TlsMode]) -> TlsMode {
+        offered
+            .iter()
+            .copied()
+            .filter(|mode| mode.strictness() >= self.strictness())
+            .min_by_key(|mode| mode.strictness())
+            .or_else(|| offered.iter().copied().max_by_key(|mode| mode.strictness()))
+            .unwrap_or(self)
+    }
 }
 
 #[cfg(test)]
@@ -73,6 +102,18 @@ mod tests {
             serde_json::to_string(&TlsMode::VerifyCa).ok().as_deref(),
             Some("\"verify_ca\"")
         );
+    }
+
+    #[test]
+    fn a_mode_an_engine_does_not_offer_rounds_up() {
+        let postgres = [TlsMode::Disable, TlsMode::Prefer, TlsMode::Require, TlsMode::VerifyFull];
+        let mssql = [TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull, TlsMode::Strict];
+
+        assert_eq!(TlsMode::VerifyCa.at_least_in(&postgres), TlsMode::VerifyFull);
+        assert_eq!(TlsMode::Prefer.at_least_in(&mssql), TlsMode::Require);
+        assert_eq!(TlsMode::Strict.at_least_in(&postgres), TlsMode::VerifyFull);
+        assert_eq!(TlsMode::Require.at_least_in(&postgres), TlsMode::Require);
+        assert_eq!(TlsMode::VerifyCa.at_least_in(&[]), TlsMode::VerifyCa);
     }
 
     #[test]

@@ -189,8 +189,7 @@ pub struct SshSettings {
     pub username: Option<String>,
     pub jump_hosts: Vec<SshJumpHostRecord>,
     pub auth: SshAuthTag,
-    // Always set on a record read back. Off keeps the settings. A save that leaves it out turns a new tunnel on and
-    // keeps a stored one as it is.
+    // Always set on a record read back. Off keeps the settings. A save that leaves it out turns the tunnel on.
     #[uniffi(default = None)]
     pub enabled: Option<bool>,
     // Always set on a record read back; a save that leaves it out keeps the stored ones.
@@ -619,17 +618,22 @@ impl ConnectionLibrary {
             let mut groups = Vec::new();
             for group in tree.walk() {
                 groups.push(GroupRecord {
+                    name: group.name.shown(),
                     parent_id: tree.parent(group.id).map(|id| id.to_string()),
                     ..GroupRecord::from(group)
                 });
             }
+            // As the list shows them: names cleaned, and a group the list lacks read as the top.
             let listed = |saved: &SavedConnection| ConnectionRecord {
+                name: shown_name(&saved.name),
                 group_id: list.group_of(saved).map(|id| id.to_string()),
                 ..ConnectionRecord::from(saved)
             };
-            let mut connections: Vec<ConnectionRecord> = list.connections_in(None).into_iter().map(listed).collect();
+            let by_group = list.connections_by_group();
+            let place = |group: Option<Uuid>| by_group.get(&group).into_iter().flatten().copied();
+            let mut connections: Vec<ConnectionRecord> = place(None).map(listed).collect();
             for group in tree.walk() {
-                connections.extend(list.connections_in(Some(group.id)).into_iter().map(listed));
+                connections.extend(place(Some(group.id)).map(listed));
             }
             Ok(LibrarySnapshot {
                 connections,
@@ -640,7 +644,14 @@ impl ConnectionLibrary {
                     .into_iter()
                     .map(|saved| saved.id.to_string())
                     .collect(),
-                tags: list.tags.iter().map(TagRecord::from).collect(),
+                tags: list
+                    .tags
+                    .iter()
+                    .map(|tag| TagRecord {
+                        name: tag.name.shown(),
+                        ..TagRecord::from(tag)
+                    })
+                    .collect(),
             })
         })
         .await
@@ -673,6 +684,12 @@ impl ConnectionLibrary {
         };
         let (saved, before) = self
             .blocking(move |store| {
+                // A snapshot files a connection whose group has not arrived at the top; saving that keeps its group.
+                let list = store.list_blocking()?;
+                let group_id = match id.and_then(|id| list.connections.iter().find(|saved| saved.id == id)) {
+                    Some(stored) if list.group_of(stored) == group_id => stored.group_id,
+                    _ => group_id,
+                };
                 if let Some(id) = id {
                     let mut before = None;
                     let updated = store.update_blocking(id, |saved| {
@@ -1075,7 +1092,11 @@ pub(crate) fn apply(
     saved.tls = TlsConfig { unknown, ..tls.clone() };
     saved.ssh = match &record.ssh {
         Some(settings) => Some(edited_ssh(settings, saved.ssh.as_ref())),
-        None => saved.ssh.take().map(|ssh| SavedSshConfig { enabled: false, ..ssh }),
+        // A form shows no tunnel to a database file on the SSH host, which only the Mac opens, so it stays as it is.
+        None => saved.ssh.take().map(|ssh| match ssh.opens_remote_file() {
+            true => ssh,
+            false => SavedSshConfig { enabled: false, ..ssh },
+        }),
     };
     saved.safe_mode = SafeModeLevel::edited(saved.safe_mode, record.safe_mode.into());
     saved.query_timeout_secs = record.query_timeout_secs;
@@ -1165,7 +1186,8 @@ pub fn jump_hosts_text(hops: Vec<SshJumpHostRecord>) -> String {
 // A form's settings over the stored tunnel: what the form leaves out keeps its stored value.
 pub(crate) fn edited_ssh(settings: &SshSettings, stored: Option<&SavedSshConfig>) -> SavedSshConfig {
     let mut ssh = SavedSshConfig {
-        enabled: settings.enabled.or(stored.map(|ssh| ssh.enabled)).unwrap_or(true),
+        // A save that carries the tunnel means it is on, unless it says otherwise: a form with no switch sends none.
+        enabled: settings.enabled.unwrap_or(true),
         port: settings.port,
         username: settings
             .username
@@ -1376,12 +1398,19 @@ impl From<&SavedConnection> for ConnectionRecord {
             tls: TlsSettings {
                 mode: saved.tls.mode.into(),
                 ca_file: saved.tls.ca_file.as_deref().map(shown),
+                // Half an identity, which a library can hold, reads back with its empty side as none.
                 client_certificate: saved
                     .tls
                     .client_identity
                     .as_ref()
-                    .map(|identity| shown(&identity.certificate)),
-                client_key: saved.tls.client_identity.as_ref().map(|identity| shown(&identity.key)),
+                    .map(|identity| shown(&identity.certificate))
+                    .filter(|path| !path.is_empty()),
+                client_key: saved
+                    .tls
+                    .client_identity
+                    .as_ref()
+                    .map(|identity| shown(&identity.key))
+                    .filter(|path| !path.is_empty()),
                 server_name: saved.tls.server_name.clone(),
             },
             ssh: saved.ssh.as_ref().map(ssh_settings),

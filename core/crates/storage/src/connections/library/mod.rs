@@ -72,7 +72,7 @@ impl ConnectionStore {
     pub fn rename_group_blocking(&self, id: Uuid, name: ConnectionGroupName) -> Result<(), StorageError> {
         self.edit(|document| {
             let index = document.group_index(id)?;
-            if document.name_taken(document.groups[index].parent_id, &name, &[id]) {
+            if document.name_taken(GroupTree::new(&document.groups).parent(id), &name, &[id]) {
                 return Err(StorageError::GroupNameTaken {
                     name: name.as_str().to_owned(),
                 });
@@ -235,14 +235,17 @@ impl ConnectionsDocument {
             .ok_or(StorageError::GroupNotFound { id })
     }
 
+    // Siblings as the tree files them: a group whose parent the list lacks sits at the top.
     fn name_taken(&self, parent: Option<Uuid>, name: &ConnectionGroupName, except: &[Uuid]) -> bool {
-        self.groups
+        GroupTree::new(&self.groups)
+            .children(parent)
             .iter()
-            .any(|group| group.parent_id == parent && !except.contains(&group.id) && group.name.same_name(name))
+            .any(|group| !except.contains(&group.id) && group.name.same_name(name))
     }
 
     pub(super) fn group_named(&self, parent: Option<Uuid>, name: &ConnectionGroupName) -> Option<ConnectionGroup> {
-        let siblings: Vec<&ConnectionGroup> = self.groups.iter().filter(|group| group.parent_id == parent).collect();
+        let tree = GroupTree::new(&self.groups);
+        let siblings: Vec<&ConnectionGroup> = tree.children(parent);
         siblings
             .iter()
             .find(|group| group.name == *name)
@@ -265,7 +268,7 @@ impl ConnectionsDocument {
         let arriving: Vec<&ConnectionGroup> = moving
             .iter()
             .filter_map(|id| tree.get(*id))
-            .filter(|group| group.parent_id != parent)
+            .filter(|group| tree.parent(group.id) != parent)
             .collect();
         for group in &arriving {
             tree.check_place(Some(group.id), parent)?;

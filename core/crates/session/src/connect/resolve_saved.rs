@@ -32,16 +32,19 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
     let driver = drivers
         .get(&saved.driver_id)
         .ok_or_else(|| ConnectError::UnknownDriver(saved.driver_id.clone()))?;
+    // The file is on the SSH host, so opening the local path of the same name would open another database.
+    if saved.ssh.as_ref().is_some_and(SavedSshConfig::opens_remote_file) {
+        return Err(DriverError::from(ConfigError::RemoteFileOverSsh).into());
+    }
     let target = if driver.capabilities().is_file_based() {
         let endpoint = FileEndpoint::open_existing(PathBuf::from(&saved.database)).map_err(DriverError::from)?;
         RequestTarget::File(endpoint)
     } else {
         let endpoint = NetworkEndpoint::new(&saved.host, saved.port).map_err(DriverError::from)?;
-        let tunnel = saved.ssh.as_ref().filter(|ssh| ssh.enabled);
-        if tunnel.is_some_and(|ssh| ssh.remote_file.path.as_deref().is_some_and(|path| !path.is_empty())) {
-            return Err(DriverError::from(ConfigError::RemoteFileOverSsh).into());
-        }
-        let ssh = tunnel
+        let ssh = saved
+            .ssh
+            .as_ref()
+            .filter(|ssh| ssh.enabled)
             .map(ssh_config)
             .transpose()
             .map_err(|problem| DriverError::from(tablepro_core::TransportError::Ssh(problem.into())))?;
@@ -476,6 +479,35 @@ mod tests {
             panic!("a file driver resolved to a network target");
         };
         assert_eq!(endpoint.path(), std::path::Path::new("/srv/app.db"));
+    }
+
+    #[tokio::test]
+    async fn a_file_on_the_ssh_host_is_refused_rather_than_opened_here() {
+        let mut drivers = DriverRegistry::new();
+        drivers.register(Arc::new(FakeDriver::connecting(
+            &FakeDriver::FILE_CAPABILITIES,
+            ConnectionScript::default(),
+        )));
+        let mut remote = saved(Some(bastion(SavedSshAuth::Agent)));
+        remote.database = "/srv/app.db".to_owned();
+        if let Some(ssh) = remote.ssh.as_mut() {
+            ssh.remote_file.path = Some("/srv/app.db".to_owned());
+        }
+
+        let refused = resolve_saved(
+            &remote,
+            &drivers,
+            &NoStoredCredentials,
+            CredentialInteraction::Unattended,
+            CredentialDemand::default(),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(
+            refused,
+            ConnectError::Driver(DriverError::Config(ConfigError::RemoteFileOverSsh))
+        );
     }
 
     #[test]

@@ -183,10 +183,11 @@ impl TlsSection {
         let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
         imp.encryption_modes.splice(0, imp.encryption_modes.n_items(), &labels);
         imp.modes.replace(caps.modes.to_vec());
-        let mode = if caps.modes.contains(&state.mode) {
-            state.mode
-        } else {
-            caps.default_mode
+        // A mode the engine does not offer rounds up, never to a weaker default.
+        let mode = match caps.modes.contains(&state.mode) {
+            true => state.mode,
+            false if caps.default_mode.strictness() >= state.mode.strictness() => caps.default_mode,
+            false => state.mode.at_least_in(caps.modes),
         };
         imp.mode_chosen.set(state.mode_chosen && mode == state.mode);
         let index = caps.modes.iter().position(|candidate| *candidate == mode).unwrap_or(0);

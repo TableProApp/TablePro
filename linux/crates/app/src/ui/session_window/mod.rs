@@ -1987,7 +1987,7 @@ fn connect_saved(
             .get(&saved.driver_id)
             .as_deref()
             .map(DatabaseDriver::capabilities),
-        route(saved.ssh.is_some()),
+        route(saved.ssh.as_ref().is_some_and(|ssh| ssh.enabled)),
     );
     async move {
         let connected = connect_flow::connect_saved(

@@ -84,7 +84,7 @@ mod tests {
         let name = "é".repeat(1_000);
 
         assert_eq!(ConnectionGroupName::new(&name).map(String::from), Ok(name.clone()));
-        assert_eq!(ConnectionGroupName::from_stored(&name).map(String::from), Some(name));
+        assert_eq!(String::from(ConnectionGroupName::from_stored(&name)), name);
     }
 
     #[test]

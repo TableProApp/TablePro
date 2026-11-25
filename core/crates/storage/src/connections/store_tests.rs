@@ -559,7 +559,7 @@ fn every_connection_and_tag_write_tells_the_journal() {
         .expect("tag");
     store
         .update_tag_blocking(ConnectionTag {
-            color: ConnectionColor::Blue,
+            color: Some(ConnectionColor::Blue),
             ..tag.clone()
         })
         .expect("retag");
@@ -971,4 +971,42 @@ fn each_write_names_the_records_it_wrote_and_deleted() {
         ]
     );
     assert!(store.list_blocking().expect("list").tags.is_empty());
+}
+
+#[test]
+fn an_edit_keeps_a_group_that_has_not_arrived_and_an_orphan_group_reorders_at_the_top() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let mut library = library_as_another_app_holds_it();
+    let orphan = ConnectionGroup {
+        id: Uuid::new_v4(),
+        name: ConnectionGroupName::from_stored("Orphan"),
+        parent_id: Some(Uuid::new_v4()),
+        order: 0,
+        color: None,
+        icon: None,
+    };
+    library.groups.push(orphan.clone());
+    store.replace_library_blocking(library.clone()).expect("write");
+    let waiting = library.connections[1].clone();
+
+    let edited = store
+        .update_blocking(waiting.id, |saved| saved.color = Some(ConnectionColor::Teal))
+        .expect("edit")
+        .expect("the entry");
+    store
+        .move_groups_blocking(&[orphan.id], None, None)
+        .expect("an orphan moves within the top");
+
+    assert_eq!(
+        edited.group_id, waiting.group_id,
+        "a group that has not arrived was dropped"
+    );
+    let list = store.list_blocking().expect("list");
+    let moved = list
+        .groups
+        .iter()
+        .find(|group| group.id == orphan.id)
+        .expect("the orphan");
+    assert_eq!(moved.parent_id, None);
 }

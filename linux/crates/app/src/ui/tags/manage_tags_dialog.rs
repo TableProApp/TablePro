@@ -8,7 +8,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_storage::{ConnectionTag, SavedConnection};
 
-use super::tag_dialog::{ask_new_tag, ask_tag_changes};
+use super::tag_dialog::{ask_new_tag, ask_tag_changes, preselected};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::saved_connection_list::SavedConnectionList;
 use crate::ui::SessionWindowInput;
@@ -171,11 +171,11 @@ impl ManageTagsDialog {
         let (dialog, sender) = (self.dialog.clone(), self.sender.clone());
         glib::spawn_future_local(async move {
             if let Some((name, color)) = ask_tag_changes(dialog.upcast_ref(), &tags, &tag).await {
-                sender.deliver(SessionWindowInput::UpdateTag(ConnectionTag {
-                    name,
-                    color: Some(color),
-                    ..tag
-                }));
+                let color = match tag.color {
+                    None if color == preselected(&tags, Some(&tag)) => None,
+                    _ => Some(color),
+                };
+                sender.deliver(SessionWindowInput::UpdateTag(ConnectionTag { name, color, ..tag }));
             }
         });
     }
