@@ -135,8 +135,13 @@ lemma envelopes_executable:
   "Ex rec n1 n2 c1 c2 w1 w2 #i #j. Accepted(rec, %1, n1, c1, w1)@i & Accepted(rec, %1 %+ %1, n2, c2, w2)@j & #i < #j
      & not (Ex #s. Stolen(rec)@s)"
 
+// What C refuses an envelope for is the last one it accepted.
+lemma refusal_names_an_accepted_envelope [reuse, use_induction]:
+  "All rec kv n c sc #i. Refused(rec, kv, n, c, sc)@i ==>
+     sc = 'none' | (Ex skv sn w #j. Accepted(rec, skv, sn, sc, w)@j & #j < #i)"
+
 // A server cannot hand back an envelope that an honest write already superseded at C.
-lemma no_superseded_envelope:
+lemma no_superseded_envelope [use_induction]:
   "All rec co cn kvo no wo kvn nn wn #s #i #j. Supersedes(rec, co, cn)@s & Accepted(rec, kvn, nn, cn, wn)@i
      & Accepted(rec, kvo, no, co, wo)@j & #i < #j ==> F"
 
@@ -145,7 +150,7 @@ lemma nothing_from_the_removed_holder_after_removal:
   "All rec xpub kv n c #r #i. Removal(rec, xpub)@r & CSawRemoval(rec)@r & Accepted(rec, kv, n, c, xpub)@i & #r < #i ==> F"
 
 // 0053's claim: once version 2 exists, C refuses an honest write under it only because of another honest write.
-lemma stolen_holder_cannot_pin_the_counter:
+lemma stolen_holder_cannot_pin_the_counter [use_induction]:
   "All rec n c sc #i #w. Refused(rec, %1 %+ %1, n, c, sc)@i & HonestWrite(rec, %1 %+ %1, n, c)@w ==>
      Ex kv sn #h. HonestWrite(rec, kv, sn, sc)@h"
 

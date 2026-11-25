@@ -14,15 +14,17 @@ rule Log:
   in
   [ Fr(~l), Fr(~k) ]
   --[ OnlyOnce('log'), Appended(~l, %1, h(<gp, sign(gp, ~k)>)) ]->
-  [ !LogKey(~l, ~k), Signer(~l, %1, h(<gp, sign(gp, ~k)>)), Out(<gp, sign(gp, ~k)>) ]
+  [ !LogKey(~l, ~k), Signer(~l, %1, h(<gp, sign(gp, ~k)>)), !SignedHead(~l, %1, h(<gp, sign(gp, ~k)>))
+  , Out(<gp, sign(gp, ~k)>) ]
 
 rule Append:
   let
-    sp = <'statement', l, %n %+ %1, prev, ~x>
+    sp = <'statement', l, %n %+ %1, h(pst), ~x>
   in
-  [ Signer(l, %n, prev), !LogKey(l, k), Fr(~x) ]
+  [ Signer(l, %n, h(pst)), !LogKey(l, k), Fr(~x) ]
   --[ Appended(l, %n %+ %1, h(<sp, sign(sp, k)>)) ]->
-  [ Signer(l, %n %+ %1, h(<sp, sign(sp, k)>)), Out(<sp, sign(sp, k)>) ]
+  [ Signer(l, %n %+ %1, h(<sp, sign(sp, k)>)), !SignedHead(l, %n %+ %1, h(<sp, sign(sp, k)>))
+  , Out(<sp, sign(sp, k)>) ]
 
 rule C_Start:
   let
@@ -35,9 +37,9 @@ rule C_Start:
 // C takes only the statement at its head's seq plus one that names its head as prev.
 rule C_Extend:
   let
-    sp = <'statement', l, %n %+ %1, hd, x>
+    sp = <'statement', l, %n %+ %1, h(pst), x>
   in
-  [ C(c, l, %n, hd), !LogKey(l, k), In(<sp, sign(sp, k)>) ]
+  [ C(c, l, %n, h(pst)), !LogKey(l, k), In(<sp, sign(sp, k)>) ]
   --[ CHead(c, l, %n %+ %1, h(<sp, sign(sp, k)>)) ]->
   [ C(c, l, %n %+ %1, h(<sp, sign(sp, k)>)), !Held(c, l, %n %+ %1, <sp, sign(sp, k)>) ]
 
@@ -55,14 +57,14 @@ rule C_Fork:
   [ ]
 
 // The state went stale: C keeps the anchor's head and pins again through a comparison with another holder, which
-// gives it that holder's head.
+// gives it a head that holder verified.
 rule C_Stale:
   [ C(c, l, %n, hd) ] --[ Stale(c, l, %n) ]-> [ CStale(c, l, %n) ]
 
 rule C_Repin:
-  [ CStale(c, l, %a), Signer(l, %m, hd) ]
+  [ CStale(c, l, %a), !SignedHead(l, %m, hd) ]
   --[ NotBelow(%a, %m), Repinned(c, l, %m), CHead(c, l, %m, hd) ]->
-  [ C(c, l, %m, hd), Signer(l, %m, hd) ]
+  [ C(c, l, %m, hd) ]
 
 restriction NotBelow:
   "All a m #i. NotBelow(a, m)@i ==> a = m | a << m"
@@ -81,13 +83,20 @@ lemma repin_executable:
   exists-trace
   "Ex c l m #i. Repinned(c, l, m)@i"
 
-// 0053's claim: rollback is refused through chained heads, re-pins included.
-lemma no_rollback:
-  "All c l n m h1 h2 #i #j. CHead(c, l, n, h1)@i & CHead(c, l, m, h2)@j & #i < #j ==> n << m | (n = m & h1 = h2)"
+// The signer's seq only grows, so it signs one statement per seq.
+lemma appended_seq_grows [reuse, use_induction]:
+  "All l n m h1 h2 #i #j. Appended(l, n, h1)@i & Appended(l, m, h2)@j & #i < #j ==> n << m"
+
+lemma appended_once_per_seq [reuse]:
+  "All l n h1 h2 #i #j. Appended(l, n, h1)@i & Appended(l, n, h2)@j ==> #i = #j"
 
 // Every head C pins is one the signer appended, at that seq.
-lemma heads_are_the_signers:
+lemma heads_are_the_signers [reuse]:
   "All c l n hd #i. CHead(c, l, n, hd)@i ==> Ex #a. Appended(l, n, hd)@a & #a < #i"
+
+// 0053's claim: rollback is refused through chained heads, re-pins included.
+lemma no_rollback [use_induction]:
+  "All c l n m h1 h2 #i #j. CHead(c, l, n, h1)@i & CHead(c, l, m, h2)@j & #i < #j ==> n << m | (n = m & h1 = h2)"
 
 // The honest signer never forks its own log, so C never raises a false alarm on it.
 lemma no_false_fork_alarm:

@@ -25,7 +25,7 @@ rule Genesis:
   --[ OnlyOnce(<'genesis', $a>), Genesis($a, ~ak), ViewAdd($a, pk(~vsig), <'root', ~vid>) ]->
   [ !IdentityKey($a, ~ik)
   , !HolderKeys($a, ~vsig, ~vhpke)
-  , View($a, ~ak)
+  , !VKey($a, ~ak)
   , !VMem($a, pk(~vsig), pk(~vhpke), <'root', ~vid>)
   , Out(gst), Out(dst) ]
 
@@ -48,49 +48,43 @@ rule V_Add:
   let
     dp = <'add', a, 'approval', pk(nsig), pk(nhpke), nid, pk(bysig)>
   in
-  [ View(a, ak), !VMem(a, pk(bysig), byhpke, blin), In(<dp, sign(dp, bysig)>) ]
+  [ !VMem(a, pk(bysig), byhpke, blin), In(<dp, sign(dp, bysig)>) ]
   --[ UseMem(a, pk(bysig), blin), ViewAdd(a, pk(nsig), <'lin', nid, blin>), ViewAddBy(a, bysig, blin), Unique(nid) ]->
-  [ View(a, ak), !VMem(a, pk(nsig), pk(nhpke), <'lin', nid, blin>) ]
+  [ !VMem(a, pk(nsig), pk(nhpke), <'lin', nid, blin>) ]
 
 rule V_Leave:
   let
     lp = <'leave', a, pk(hsig)>
   in
-  [ View(a, ak), !VMem(a, pk(hsig), hpke, lin), In(<lp, sign(lp, hsig)>) ]
-  --[ UseMem(a, pk(hsig), lin), Left(a, pk(hsig)), ViewLeave(a, pk(hsig), lin) ]->
-  [ View(a, ak) ]
+  [ !VMem(a, pk(hsig), hpke, lin), In(<lp, sign(lp, hsig)>) ]
+  --[ UseMem(a, pk(hsig), lin), Left(a, pk(hsig)), ViewLeave(a, pk(hsig), lin), Once(<'leave', pk(hsig)>) ]->
+  [ ]
 
-// Removal: the person enters S on V, which names holders in its set at its current head.
-rule V_RemoveStart:
-  [ View(a, ak), !IdentityKey(a, ik) ]
-  -->
-  [ Removing(a, ak) ]
-
+// Removal: the person enters S on V and signs a rotate that names a holder and brings AK v+1.
 #ifdef OLDLEAVE
-rule V_RemoveName:
-  [ Removing(a, ak), !VMem(a, hk, hpke, lin) ]
-  --[ UseMem(a, hk, lin), Cut(a, lin) ]->
-  [ Removing(a, ak) ]
+rule V_Rotate:
+  let
+    rst = <<'rotate', a, hk, kid(~ak2)>, sign(<'rotate', a, hk, kid(~ak2)>, ik)>
+  in
+  [ !VMem(a, hk, hpke, lin), !IdentityKey(a, ik), Fr(~ak2) ]
+  --[ UseMem(a, hk, lin), Cut(a, lin), NewAK(a, ~ak2) ]->
+  [ !VKey(a, ~ak2), Out(rst) ]
 #else
-rule V_RemoveName:
-  [ Removing(a, ak), !VMem(a, hk, hpke, lin) ]
-  --[ Cut(a, lin) ]->
-  [ Removing(a, ak) ]
+rule V_Rotate:
+  let
+    rst = <<'rotate', a, hk, kid(~ak2)>, sign(<'rotate', a, hk, kid(~ak2)>, ik)>
+  in
+  [ !VMem(a, hk, hpke, lin), !IdentityKey(a, ik), Fr(~ak2) ]
+  --[ Cut(a, lin), NewAK(a, ~ak2) ]->
+  [ !VKey(a, ~ak2), Out(rst) ]
 #endif
 
-rule V_RemoveFinish:
-  let
-    rst = <<'rotate', a, kid(~ak2)>, sign(<'rotate', a, kid(~ak2)>, ik)>
-  in
-  [ Removing(a, ak), !IdentityKey(a, ik), Fr(~ak2) ]
-  --[ NewAK(a, ~ak2) ]->
-  [ View(a, ~ak2), Out(rst) ]
-
-// V seals the current AK to holders in its set. This also stands for approvals and restore seals it makes later.
+// V seals any AK version it holds to a holder in its set, as a wrap or in the ring. This also stands for the
+// approvals and restore seals it makes later.
 rule V_Seal:
-  [ View(a, ak), !VMem(a, hk, pk(hpke), lin) ]
+  [ !VKey(a, ak), !VMem(a, hk, pk(hpke), lin) ]
   --[ UseMem(a, hk, lin), SealTo(a, ak, lin) ]->
-  [ View(a, ak), Out(aenc(<wrapinfo(a, ak, pk(hpke)), ak>, pk(hpke))) ]
+  [ Out(aenc(<wrapinfo(a, ak, pk(hpke)), ak>, pk(hpke))) ]
 
 // A holder that left, or that a rotate took out, or that descends from one a rotate took out, is not in the set.
 restriction InSet:
@@ -101,13 +95,16 @@ restriction InSet:
 restriction OnlyOnce:
   "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
 
+restriction Once:
+  "All x #i #j. Once(x)@i & Once(x)@j ==> #i = #j"
+
 restriction Unique:
   "All x #i #j. Unique(x)@i & Unique(x)@j ==> #i = #j"
 
 lemma removal_executable:
   exists-trace
-  "Ex a hk lin ak slin #c #k #x #i #s. Compromise(a, hk)@c & ViewAdd(a, hk, lin)@k & Cut(a, lin)@x
-     & NewAK(a, ak)@i & SealTo(a, ak, slin)@s & #x < #i"
+  "Ex a hk lin ak slin #c #k #i #s. Compromise(a, hk)@c & ViewAdd(a, hk, lin)@k & Cut(a, lin)@i
+     & NewAK(a, ak)@i & SealTo(a, ak, slin)@s"
 
 // Every add the attacker could sign traces back to a stolen holder: approvals are signed by the approving holder.
 lemma attacker_approvals_descend_from_stolen [reuse, use_induction]:

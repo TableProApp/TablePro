@@ -12,12 +12,12 @@ builtins: hashing, signing
 rule Setup:
   [ Fr(~a), Fr(~x) ]
   --[ Added(~a, pk(~x), 'h1'), OnlyOnce('setup') ]->
-  [ V(~a, 'none'), !Holder(~a, ~x), Out(~a) ]
+  [ !V(~a, 'none'), !Holder(~a, ~x), Out(~a) ]
 
 rule Rotate:
-  [ V(a, 'none'), !Holder(a, x) ]
-  --[ Cut(a, pk(x), 'h2') ]->
-  [ V(a, 'h2') ]
+  [ !V(a, 'none'), !Holder(a, x) ]
+  --[ Cut(a, pk(x), 'h2'), OnlyOnce(<'rotate', a>) ]->
+  [ !V(a, 'h2') ]
 
 rule Steal:
   [ !Holder(a, x) ] --[ Stolen(a, pk(x)) ]-> [ Out(x) ]
@@ -29,18 +29,22 @@ rule SeeReset:
   let
     rp = <'reset', a, e, pk(ik2), pk(x)>
   in
-  [ V(a, l), In(<rp, sign(rp, ik2), sign(<'endorse', h(<rp, sign(rp, ik2)>)>, x)>) ]
-  --[ Head(e), InSetAt(a, pk(x), e), AcceptReset(a, pk(x)) ]->
-  [ V(a, l) ]
+  [ !V(a, l), In(<rp, sign(rp, ik2), sign(<'endorse', h(<rp, sign(rp, ik2)>)>, x)>) ]
+  --[ Head(e), Latest(a, l), InSetAt(a, pk(x), e), AcceptReset(a, pk(x)) ]->
+  [ ]
 #else
 rule SeeReset:
   let
     rp = <'reset', a, e, pk(ik2), pk(x)>
   in
-  [ V(a, l), In(<rp, sign(rp, ik2), sign(<'endorse', h(<rp, sign(rp, ik2)>)>, x)>) ]
-  --[ Head(e), NotBefore(e, l), InSetAt(a, pk(x), e), AcceptReset(a, pk(x)) ]->
-  [ V(a, l) ]
+  [ !V(a, l), In(<rp, sign(rp, ik2), sign(<'endorse', h(<rp, sign(rp, ik2)>)>, x)>) ]
+  --[ Head(e), Latest(a, l), NotBefore(e, l), InSetAt(a, pk(x), e), AcceptReset(a, pk(x)) ]->
+  [ ]
 #endif
+
+// The client uses the newest identity statement it holds.
+restriction Latest:
+  "All a l x d #i #c. Latest(a, l)@i & Cut(a, x, d)@c & #c < #i ==> l = d"
 
 restriction Heads:
   "All e #i. Head(e)@i ==> e = 'h1' | e = 'h2'"

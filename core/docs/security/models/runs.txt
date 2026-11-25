@@ -13,6 +13,8 @@ identity-heads.spthy      -             removed_holder_cannot_endorse_a_reset   
 identity-heads.spthy      OLDDH         removed_holder_cannot_endorse_a_reset               falsified
 log-chain.spthy           -             chain_executable                                    verified
 log-chain.spthy           -             repin_executable                                    verified
+log-chain.spthy           -             appended_seq_grows                                  verified
+log-chain.spthy           -             appended_once_per_seq                               verified
 log-chain.spthy           -             no_rollback                                         verified
 log-chain.spthy           -             heads_are_the_signers                               verified
 log-chain.spthy           -             no_false_fork_alarm                                 verified
@@ -36,9 +38,11 @@ replace-recovery.spthy    OLDREPLACE    old_recovery_key_gives_no_identity      
 replace-recovery.spthy    OLDREPLACE    old_recovery_key_gives_no_account_key               falsified
 replace-recovery.spthy    OLDREPLACE    old_recovery_key_extends_no_log                     falsified
 envelopes.spthy           -             envelopes_executable                                verified
+envelopes.spthy           -             refusal_names_an_accepted_envelope                  verified
 envelopes.spthy           -             no_superseded_envelope                              verified
 envelopes.spthy           -             nothing_from_the_removed_holder_after_removal       verified
 envelopes.spthy           -             stolen_holder_cannot_pin_the_counter                verified
+envelopes.spthy           OLDCOUNTER    refusal_names_an_accepted_envelope                  verified
 envelopes.spthy           OLDCOUNTER    stolen_holder_cannot_pin_the_counter                falsified
 device-approval.spthy     -             approval_executable                                 verified
 device-approval.spthy     -             commitment_leaves_one_guess                         verified
@@ -65,7 +69,6 @@ device-removal.spthy      -             attacker_approvals_descend_from_stolen  
 device-removal.spthy      -             ak_after_removal_secret                             verified
 device-removal.spthy      -             can_remove_stolen_holder_after_it_signed_out        verified
 device-removal.spthy      OLDLEAVE      can_remove_stolen_holder_after_it_signed_out        falsified
-server-enforcement.spthy  -             ik_in_force_was_taken                               verified
 server-enforcement.spthy  -             members_are_honest_or_a_break_in                    verified
 server-enforcement.spthy  -             enforcement_executable                              verified
 server-enforcement.spthy  -             write_needs_approved_holder                         verified

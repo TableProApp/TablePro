@@ -1,11 +1,12 @@
 theory SyncServerEnforcement
 begin
 
-// ADR 0053: Server enforcement (D8), Key objects as records, the compare-and-set on heads, Flows: Reset.
+// ADR 0053: Server enforcement (D8), Key objects as records, Flows: Reset with its delay and cancel.
 // The server is honest. The attacker holds a bearer token for every account (a phished session or IdP), can
 // steal holders and can learn a recovery key. Clients reach the server over TLS: the attacker cannot read their
 // requests, but sends its own.
-// The server names each new log head with a fresh value: the heads' hash chain is not what these claims rest on.
+// The heads' compare-and-set is in identity-heads.spthy and log-chain.spthy. Here the server keeps the IK in force
+// and the device set, and checks DPoP proofs against the set.
 // A reset waits 7 days as pending, and any holder in the set or S can cancel it. The model has no clock: an
 // activation may come at any time after the reset, so "the full delay" means a pending reset nobody cancelled.
 // Flag OLDRESET models 0053 before G0 round 1 (e8879f95ee), where a reset applied at once.
@@ -24,167 +25,150 @@ rule SignUp:
 // Genesis is trust on first use: the server takes it from any session while the account has no identity log.
 rule P_Genesis:
   let
-    gp  = <'genesis', a, pk(~ik)>
-    gst = <gp, sign(gp, ~ik)>
-    ap  = <'add', a, 'zero', h(gst), 'genesis', pk(~hsig), ~hid>
-    ast = <ap, sign(ap, ~ik)>
+    gp  = <'genesis', a, pk(~ik), pk(~hsig), ~hid>
     dp  = dpop(~jti, 'genesis', a)
   in
   [ !PersonAccount(a), Fr(~ik), Fr(~hsig), Fr(~hid), Fr(~jti) ]
   --[ OnlyOnce(<'genesis', a>), PersonIK(a, pk(~ik)), HonestKey(a, pk(~hsig))
-    , HolderSent(a, pk(~hsig), <'genesis', gst, ast>) ]->
-  [ !IK(a, ~ik), !Holder(a, ~hsig), ToServer(<'genesis', gst, ast, <dp, sign(dp, ~hsig)>>) ]
+    , HolderSent(a, pk(~hsig), <'genesis', gp>) ]->
+  [ !IK(a, ~ik), !Holder(a, ~hsig), ToServer(<'genesis', <gp, sign(gp, ~ik)>, <dp, sign(dp, ~hsig)>>) ]
 
 rule Srv_Genesis:
   let
-    gp  = <'genesis', a, pk(ik)>
-    gst = <gp, sign(gp, ik)>
-    ap  = <'add', a, 'zero', h(gst), 'genesis', pk(hsig), hid>
-    ast = <ap, sign(ap, ik)>
+    gp  = <'genesis', a, pk(ik), pk(hsig), hid>
     dp  = dpop(jti, 'genesis', a)
   in
-  [ SrvEmpty(a), ToServer(<'genesis', gst, ast, <dp, sign(dp, hsig)>>), Fr(~ih), Fr(~dh) ]
+  [ SrvEmpty(a), ToServer(<'genesis', <gp, sign(gp, ik)>, <dp, sign(dp, hsig)>>) ]
   --[ JtiUsed(jti), Unique(hid), SrvIK(a, pk(ik)), SrvMember(a, pk(hsig), <'root', hid>)
-    , Accepted(a, pk(hsig), <'genesis', gst, ast>) ]->
-  [ SrvAcct(a, ~ih, ~dh, pk(ik)), !SMem(a, pk(hsig), <'root', hid>, pk(ik)), Out(<~ih, ~dh>) ]
-
-// An honest client reads the current heads from the honest server; they may be stale when it pushes.
-rule Srv_Heads:
-  [ SrvAcct(a, ih, dh, ik) ] --[ AcctIK(a, ik) ]-> [ SrvAcct(a, ih, dh, ik), Heads(a, ih, dh) ]
+    , Accepted(a, pk(hsig), <'genesis', gp>) ]->
+  [ !IKTaken(a, pk(ik)), !SMem(a, pk(hsig), <'root', hid>, pk(ik)) ]
 
 // An approved holder approves an honest new holder after a comparison (device-approval.spthy).
 rule H_Approve:
   let
-    ap = <'add', a, dh, ih, 'approval', pk(~nsig), ~nid, pk(hsig)>
+    ap = <'add', a, 'approval', pk(~nsig), ~nid, pk(hsig)>
     dp = dpop(~jti, 'append', a)
   in
-  [ !Holder(a, hsig), Heads(a, ih, dh), Fr(~nsig), Fr(~nid), Fr(~jti) ]
-  --[ HonestKey(a, pk(~nsig)), HolderSent(a, pk(hsig), <'add', <ap, sign(ap, hsig)>>) ]->
+  [ !Holder(a, hsig), Fr(~nsig), Fr(~nid), Fr(~jti) ]
+  --[ HonestKey(a, pk(~nsig)), HolderSent(a, pk(hsig), <'add', ap>) ]->
   [ !Holder(a, ~nsig), ToServer(<'add', <ap, sign(ap, hsig)>, <dp, sign(dp, hsig)>>) ]
 
-// Compare-and-set both ways: the add names the current device head as prev and the current identity head as ih.
-// The approver signs it with its own key and proves that key with DPoP; it must be in the set.
+// The approver signs the add with its own key and proves that key with DPoP; it must be in the set under the IK
+// in force.
 rule Srv_Add:
   let
-    ap = <'add', a, dh, ih, 'approval', pk(nk), nid, pk(bysig)>
+    ap = <'add', a, 'approval', pk(nk), nid, pk(bysig)>
     dp = dpop(jti, 'append', a)
   in
-  [ SrvAcct(a, ih, dh, ik), !SMem(a, pk(bysig), blin, ik)
-  , ToServer(<'add', <ap, sign(ap, bysig)>, <dp, sign(dp, bysig)>>), Fr(~dh2) ]
-  --[ AcctIK(a, ik), JtiUsed(jti), Unique(nid), UseMem(a, blin), SrvMember(a, pk(nk), <'lin', nid, blin>)
-    , Accepted(a, pk(bysig), <'add', <ap, sign(ap, bysig)>>) ]->
-  [ SrvAcct(a, ih, ~dh2, ik), !SMem(a, pk(nk), <'lin', nid, blin>, ik), Out(~dh2) ]
+  [ !IKTaken(a, ik), !SMem(a, pk(bysig), blin, ik), ToServer(<'add', <ap, sign(ap, bysig)>, <dp, sign(dp, bysig)>>) ]
+  --[ InForce(a, ik), JtiUsed(jti), Unique(nid), UseMem(a, blin), SrvMember(a, pk(nk), <'lin', nid, blin>)
+    , Accepted(a, pk(bysig), <'add', ap>) ]->
+  [ !SMem(a, pk(nk), <'lin', nid, blin>, ik) ]
 
 // Recovery with S: the new holder signs its own add with IK and proves its own key.
 rule P_Recover:
   let
-    ap = <'add', a, dh, ih, 'recovery', pk(~nsig), ~nid>
+    ap = <'add', a, 'recovery', pk(~nsig), ~nid>
     dp = dpop(~jti, 'append', a)
   in
-  [ !IK(a, ik), Heads(a, ih, dh), Fr(~nsig), Fr(~nid), Fr(~jti) ]
-  --[ HonestKey(a, pk(~nsig)), HolderSent(a, pk(~nsig), <'add-recovery', <ap, sign(ap, ik)>>) ]->
+  [ !IK(a, ik), Fr(~nsig), Fr(~nid), Fr(~jti) ]
+  --[ HonestKey(a, pk(~nsig)), HolderSent(a, pk(~nsig), <'add-recovery', ap>) ]->
   [ !Holder(a, ~nsig), ToServer(<'add-recovery', <ap, sign(ap, ik)>, <dp, sign(dp, ~nsig)>>) ]
 
 rule Srv_Recover:
   let
-    ap = <'add', a, dh, ih, 'recovery', pk(nsig), nid>
+    ap = <'add', a, 'recovery', pk(nsig), nid>
     dp = dpop(jti, 'append', a)
   in
-  [ SrvAcct(a, ih, dh, pk(ik)), ToServer(<'add-recovery', <ap, sign(ap, ik)>, <dp, sign(dp, nsig)>>), Fr(~dh2) ]
-  --[ AcctIK(a, pk(ik)), JtiUsed(jti), Unique(nid), SrvMember(a, pk(nsig), <'root', nid>)
-    , Accepted(a, pk(nsig), <'add-recovery', <ap, sign(ap, ik)>>) ]->
-  [ SrvAcct(a, ih, ~dh2, pk(ik)), !SMem(a, pk(nsig), <'root', nid>, pk(ik)), Out(~dh2) ]
+  [ !IKTaken(a, pk(ik)), ToServer(<'add-recovery', <ap, sign(ap, ik)>, <dp, sign(dp, nsig)>>) ]
+  --[ InForce(a, pk(ik)), JtiUsed(jti), Unique(nid), SrvMember(a, pk(nsig), <'root', nid>)
+    , Accepted(a, pk(nsig), <'add-recovery', ap>) ]->
+  [ !SMem(a, pk(nsig), <'root', nid>, pk(ik)) ]
 
-// Reset when S is lost: a new IK, endorsed by the holder it names, which must be in the set.
+// Reset when S is lost: a new IK, endorsed by the holder it names, which must be in the set. Its place in the log
+// makes each reset statement unique, which the nonce stands for.
 rule H_Reset:
   let
-    rp  = <'reset', a, ih, dh, pk(~ik2), pk(hsig)>
-    rst = <rp, sign(rp, ~ik2)>
-    ep  = <'endorse', h(rst)>
-    dp  = dpop(~jti, 'append', a)
+    rp = <'reset', a, pk(~ik2), pk(hsig), ~n>
+    dp = dpop(~jti, 'append', a)
   in
-  [ !Holder(a, hsig), Heads(a, ih, dh), Fr(~ik2), Fr(~jti) ]
-  --[ PersonIK(a, pk(~ik2)), HolderSent(a, pk(hsig), <'reset', rst>) ]->
-  [ !IK(a, ~ik2), !PersonReset(a, ~ik2), ToServer(<'reset', rst, <ep, sign(ep, hsig)>, <dp, sign(dp, hsig)>>) ]
+  [ !Holder(a, hsig), Fr(~ik2), Fr(~n), Fr(~jti) ]
+  --[ PersonIK(a, pk(~ik2)), HolderSent(a, pk(hsig), <'reset', rp>) ]->
+  [ !IK(a, ~ik2), !PersonReset(a, ~ik2, h(rp))
+  , ToServer(<'reset', <rp, sign(rp, ~ik2)>, sign(<'endorse', rp>, hsig), <dp, sign(dp, hsig)>>) ]
 
 #ifdef OLDRESET
 rule Srv_Reset:
   let
-    rp  = <'reset', a, ih, dh, pk(ik2), pk(hsig)>
-    rst = <rp, sign(rp, ik2)>
-    ep  = <'endorse', h(rst)>
-    dp  = dpop(jti, 'append', a)
+    rp = <'reset', a, pk(ik2), pk(hsig), n>
+    dp = dpop(jti, 'append', a)
   in
-  [ SrvAcct(a, ih, dh, ikold), !SMem(a, pk(hsig), hlin, ikold)
-  , ToServer(<'reset', rst, <ep, sign(ep, hsig)>, <dp, sign(dp, hsig)>>), Fr(~ih2) ]
-  --[ AcctIK(a, ikold), JtiUsed(jti), UseMem(a, hlin), SrvIK(a, pk(ik2)), ResetBy(a, pk(hsig))
-    , Accepted(a, pk(hsig), <'reset', rst>) ]->
-  [ SrvAcct(a, ~ih2, dh, pk(ik2)), !SMem(a, pk(hsig), hlin, pk(ik2)), Out(~ih2) ]
+  [ !IKTaken(a, ik), !SMem(a, pk(hsig), hlin, ik)
+  , ToServer(<'reset', <rp, sign(rp, ik2)>, sign(<'endorse', rp>, hsig), <dp, sign(dp, hsig)>>) ]
+  --[ InForce(a, ik), JtiUsed(jti), Unique(h(rp)), UseMem(a, hlin), SrvIK(a, pk(ik2)), ResetBy(a, pk(hsig))
+    , Accepted(a, pk(hsig), <'reset', rp>) ]->
+  [ !IKTaken(a, pk(ik2)), !SMem(a, pk(hsig), hlin, pk(ik2)) ]
 #else
 rule Srv_Reset:
   let
-    rp  = <'reset', a, ih, dh, pk(ik2), pk(hsig)>
-    rst = <rp, sign(rp, ik2)>
-    ep  = <'endorse', h(rst)>
-    dp  = dpop(jti, 'append', a)
+    rp = <'reset', a, pk(ik2), pk(hsig), n>
+    dp = dpop(jti, 'append', a)
   in
-  [ SrvAcct(a, ih, dh, ikold), !SMem(a, pk(hsig), hlin, ikold)
-  , ToServer(<'reset', rst, <ep, sign(ep, hsig)>, <dp, sign(dp, hsig)>>), Fr(~ih2) ]
-  --[ AcctIK(a, ikold), JtiUsed(jti), UseMem(a, hlin), ResetPending(a, pk(ik2)), ResetBy(a, pk(hsig))
-    , Accepted(a, pk(hsig), <'reset', rst>) ]->
-  [ SrvAcct(a, ~ih2, dh, ikold), PendingReset(a, pk(ik2), pk(hsig), hlin), Out(~ih2) ]
+  [ !IKTaken(a, ik), !SMem(a, pk(hsig), hlin, ik)
+  , ToServer(<'reset', <rp, sign(rp, ik2)>, sign(<'endorse', rp>, hsig), <dp, sign(dp, hsig)>>) ]
+  --[ InForce(a, ik), JtiUsed(jti), Unique(h(rp)), UseMem(a, hlin), ResetPending(a, pk(ik2), h(rp)), ResetBy(a, pk(hsig))
+    , Accepted(a, pk(hsig), <'reset', rp>) ]->
+  [ PendingReset(a, pk(ik2), h(rp), pk(hsig), hlin) ]
 
-// Any holder of the person's in the set cancels a reset the person did not make, as does S through any statement
-// the IK in force signs.
+// Any holder in the set cancels a reset the person did not make, as does S through any statement the IK in force
+// signs.
 rule H_Cancel:
   let
-    cp = <'cancel', a, ik2pub, pk(hsig)>
+    cp = <'cancel', a, rid>
     dp = dpop(~jti, 'append', a)
   in
-  [ !Holder(a, hsig), In(ik2pub), Fr(~jti) ]
+  [ !Holder(a, hsig), In(rid), Fr(~jti) ]
   --[ HolderSent(a, pk(hsig), <'cancel', cp>) ]->
   [ ToServer(<'cancel', <cp, sign(cp, hsig)>, <dp, sign(dp, hsig)>>) ]
 
 rule Srv_CancelByHolder:
   let
-    cp = <'cancel', a, ik2pub, pk(hsig)>
+    cp = <'cancel', a, rid>
     dp = dpop(jti, 'append', a)
   in
-  [ SrvAcct(a, ih, dh, ik), !SMem(a, pk(hsig), lin, ik), PendingReset(a, ik2pub, rh, rlin)
+  [ !IKTaken(a, ik), !SMem(a, pk(hsig), lin, ik), PendingReset(a, ik2pub, rid, rh, rlin)
   , ToServer(<'cancel', <cp, sign(cp, hsig)>, <dp, sign(dp, hsig)>>) ]
-  --[ AcctIK(a, ik), JtiUsed(jti), UseMem(a, lin), Cancelled(a, ik2pub), Accepted(a, pk(hsig), <'cancel', cp>) ]->
-  [ SrvAcct(a, ih, dh, ik) ]
+  --[ InForce(a, ik), JtiUsed(jti), UseMem(a, lin), Cancelled(a, rid), Accepted(a, pk(hsig), <'cancel', cp>) ]->
+  [ ]
 
 rule P_CancelWithS:
   let
-    cp = <'cancel', a, ik2pub>
+    cp = <'cancel', a, rid>
   in
-  [ !IK(a, ik), In(ik2pub) ]
-  -->
-  [ ToServer(<'cancel-ik', <cp, sign(cp, ik)>>) ]
+  [ !IK(a, ik), In(rid) ] --> [ ToServer(<'cancel-ik', <cp, sign(cp, ik)>>) ]
 
 rule Srv_CancelByIK:
   let
-    cp = <'cancel', a, ik2pub>
+    cp = <'cancel', a, rid>
   in
-  [ SrvAcct(a, ih, dh, pk(ik)), PendingReset(a, ik2pub, rh, rlin), ToServer(<'cancel-ik', <cp, sign(cp, ik)>>) ]
-  --[ AcctIK(a, pk(ik)), Cancelled(a, ik2pub) ]->
-  [ SrvAcct(a, ih, dh, pk(ik)) ]
+  [ !IKTaken(a, pk(ik)), PendingReset(a, ik2pub, rid, rh, rlin), ToServer(<'cancel-ik', <cp, sign(cp, ik)>>) ]
+  --[ InForce(a, pk(ik)), Cancelled(a, rid) ]->
+  [ ]
 
 // After the delay, the reset's own IK signs `activate`, and the set becomes the holder it named.
 rule Srv_Activate:
   let
-    ap = <'activate', a, pk(ik2)>
+    ap = <'activate', a, rid>
   in
-  [ SrvAcct(a, ih, dh, ikold), PendingReset(a, pk(ik2), rh, rlin), ToServer(<'activate', <ap, sign(ap, ik2)>>), Fr(~ih2) ]
-  --[ AcctIK(a, ikold), SrvIK(a, pk(ik2)), Activated(a, pk(ik2)) ]->
-  [ SrvAcct(a, ~ih2, dh, pk(ik2)), !SMem(a, rh, rlin, pk(ik2)), Out(~ih2) ]
+  [ PendingReset(a, pk(ik2), rid, rh, rlin), ToServer(<'activate', <ap, sign(ap, ik2)>>) ]
+  --[ SrvIK(a, pk(ik2)), Activated(a, rid) ]->
+  [ !IKTaken(a, pk(ik2)), !SMem(a, rh, rlin, pk(ik2)) ]
 
 rule H_Activate:
   let
-    ap = <'activate', a, pk(ik2)>
+    ap = <'activate', a, rid>
   in
-  [ !PersonReset(a, ik2) ] --> [ ToServer(<'activate', <ap, sign(ap, ik2)>>) ]
+  [ !PersonReset(a, ik2, rid) ] --> [ ToServer(<'activate', <ap, sign(ap, ik2)>>) ]
 #endif
 
 // Any other key-object or envelope write, and every personal read, passes the same check.
@@ -200,9 +184,9 @@ rule Srv_Write:
   let
     dp = dpop(jti, 'write', a)
   in
-  [ SrvAcct(a, ih, dh, ik), !SMem(a, pk(hsig), lin, ik), ToServer(<'write', body, <dp, sign(dp, hsig)>>) ]
-  --[ AcctIK(a, ik), JtiUsed(jti), UseMem(a, lin), Accepted(a, pk(hsig), <'write', body>) ]->
-  [ SrvAcct(a, ih, dh, ik) ]
+  [ !IKTaken(a, ik), !SMem(a, pk(hsig), lin, ik), ToServer(<'write', body, <dp, sign(dp, hsig)>>) ]
+  --[ InForce(a, ik), JtiUsed(jti), UseMem(a, lin), Accepted(a, pk(hsig), <'write', body>) ]->
+  [ ]
 
 // An admin's portal removal, or the person's removal of the device row: the holder and those it approved.
 rule AdminRemove:
@@ -213,6 +197,10 @@ rule Compromise:
 
 rule RevealIK:
   [ !IK(a, ik) ] --[ RevealIK(a) ]-> [ Out(ik) ]
+
+// The IK in force is the one the server took last.
+restriction InForce:
+  "All a ik ik2 #i #g #h. InForce(a, ik)@i & SrvIK(a, ik)@g & SrvIK(a, ik2)@h & #g < #h & #h < #i ==> F"
 
 restriction NotCut:
   "All a lin linX #i #j. UseMem(a, lin)@i & Cut(a, linX)@j & #j < #i ==> not (linX = lin) & not (linX << lin)"
@@ -226,10 +214,6 @@ restriction Unique:
 
 restriction OnlyOnce:
   "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
-
-// The identity key in force is one the server took in a genesis or a reset.
-lemma ik_in_force_was_taken [reuse, use_induction]:
-  "All a ik #i. AcctIK(a, ik)@i ==> Ex #g. SrvIK(a, ik)@g & #g < #i"
 
 lemma members_are_honest_or_a_break_in [reuse, use_induction]:
   "All a hk lin #i. SrvMember(a, hk, lin)@i ==>
@@ -252,21 +236,21 @@ lemma write_needs_approved_holder:
      | (Ex #r. RevealIK(a)@r)
      | (Ex ik #g. SrvIK(a, ik)@g & not (Ex #p. PersonIK(a, ik)@p))"
 
-// D7, G0 round 1 H1: once the person's identity is in force, another identity takes effect only with S, or after a
-// reset that stayed pending with no cancel.
+// D7, G0 round 1 H1, 0053's claim: once the person's identity is in force, another identity takes effect only with
+// S, or after a reset that stayed pending with no cancel.
 lemma reset_needs_s_or_full_delay:
   "All a ik0 ik #g #p #i. SrvIK(a, ik0)@g & PersonIK(a, ik0)@p & SrvIK(a, ik)@i & #g < #i ==>
      (Ex #q. PersonIK(a, ik)@q)
      | (Ex #r. RevealIK(a)@r)
-     | (Ex #w. ResetPending(a, ik)@w & #w < #i & not (Ex #c. Cancelled(a, ik)@c))"
+     | (Ex rid #w. ResetPending(a, ik, rid)@w & #w < #i & not (Ex #c. Cancelled(a, rid)@c))"
 
 #ifdef OLDRESET
 #else
 // A thief's reset, cancelled by one of the person's holders, never takes effect.
 lemma stolen_holder_reset_cancelled:
   exists-trace
-  "Ex a h ik #c #p #x. Compromise(a, h)@c & ResetBy(a, h)@p & ResetPending(a, ik)@p & Cancelled(a, ik)@x
-     & not (Ex #q. PersonIK(a, ik)@q) & not (Ex #v. Activated(a, ik)@v)"
+  "Ex a h ik rid #c #p #x. Compromise(a, h)@c & ResetBy(a, h)@p & ResetPending(a, ik, rid)@p & Cancelled(a, rid)@x
+     & not (Ex #q. PersonIK(a, ik)@q) & not (Ex #v. Activated(a, rid)@v)"
 #endif
 
 end
