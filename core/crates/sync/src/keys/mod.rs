@@ -4,9 +4,15 @@
 // the service runs on, the drafts a flow keeps between two calls, and the key objects the state file holds.
 
 mod account;
+mod account_apply;
 mod account_flows;
+mod account_genesis;
+mod account_replace;
+mod account_sign_out;
 pub mod personal;
+mod personal_envelopes;
 pub mod pins;
+mod pins_alerts;
 
 use std::any::Any;
 use std::collections::HashMap;
@@ -73,6 +79,9 @@ pub struct KeyService {
     serial: AsyncMutex<()>,
     notices: Mutex<Vec<KeyNotice>>,
     rosters: Rosters,
+    // A stale file takes no wrap or envelope and writes no secret until its rebuild has seen every anchored pin and
+    // version (0054, A stale file).
+    rebuilding: AtomicBool,
     // A file opened with no anchor handles no secret until an approval or a recovery applies (0054, A stale file).
     unanchored: AtomicBool,
 }
@@ -80,6 +89,7 @@ pub struct KeyService {
 impl KeyService {
     pub fn new(parts: KeyServiceParts) -> Self {
         let unanchored = parts.state.opened().key_tables == KeyTrust::Unanchored;
+        let rebuilding = matches!(parts.state.opened().key_tables, KeyTrust::Rebuild { .. });
         Self {
             origin: parts.origin,
             account: parts.account,
@@ -94,6 +104,7 @@ impl KeyService {
             notices: Mutex::new(Vec::new()),
             unanchored: AtomicBool::new(unanchored),
             rosters: Rosters::default(),
+            rebuilding: AtomicBool::new(rebuilding),
         }
     }
 
@@ -155,6 +166,15 @@ impl KeyService {
         self.unanchored.store(false, Ordering::SeqCst);
     }
 
+    pub fn is_rebuilding(&self) -> bool {
+        self.rebuilding.load(Ordering::SeqCst)
+    }
+
+    // The rebuild of a stale file's key tables has seen every anchored pin and version.
+    pub fn rebuilt(&self) {
+        self.rebuilding.store(false, Ordering::SeqCst);
+    }
+
     // Records a notice for `notices` and tells the app. Every lane raises its notices here.
     pub fn raise_notice(&self, kind: KeyNoticeKind) -> Result<NoticeId, SyncError> {
         let notice = KeyNotice {
@@ -168,6 +188,10 @@ impl KeyService {
 
     pub fn held_notices(&self) -> Vec<KeyNotice> {
         lock(&self.notices).clone()
+    }
+
+    pub(crate) fn clear_notices(&self) {
+        lock(&self.notices).clear();
     }
 
     pub fn dismiss(&self, notice: NoticeId) -> bool {
@@ -406,5 +430,10 @@ impl Drafts {
 
     pub fn remove(&self, id: DraftId) {
         self.lock().remove(&id);
+    }
+
+    // Sign Out drops every draft, and with them any recovery key a flow still held.
+    pub(crate) fn clear(&self) {
+        self.lock().clear();
     }
 }

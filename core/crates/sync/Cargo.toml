@@ -17,6 +17,8 @@ uuid.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+hex.workspace = true
+tablepro-sync-testing.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]
