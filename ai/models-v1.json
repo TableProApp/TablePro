@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-24T14:09:07Z",
+  "generated": "2026-11-25T20:27:41Z",
   "providers": {
     "anthropic": {
       "default": "claude-opus-5-5",
@@ -54,6 +54,7 @@
           "name": "Claude Fable 5.2",
           "output": 128000,
           "reasoning": {
+            "default": "high",
             "efforts": [
               "low",
               "medium",
@@ -104,6 +105,7 @@
           "name": "Claude Haiku 5.5",
           "output": 128000,
           "reasoning": {
+            "default": "medium",
             "efforts": [
               "low",
               "medium",
@@ -251,6 +253,7 @@
           "name": "Claude Opus 5.5",
           "output": 128000,
           "reasoning": {
+            "default": "medium",
             "efforts": [
               "low",
               "medium",
@@ -345,6 +348,7 @@
           "name": "Claude Sonnet 5.5",
           "output": 128000,
           "reasoning": {
+            "default": "high",
             "efforts": [
               "low",
               "medium",
@@ -389,7 +393,7 @@
             "budget_min": 512,
             "toggle": true
           },
-          "released": "2025-06-17"
+          "released": "2025-07-22"
         },
         {
           "apis": [
@@ -606,7 +610,9 @@
           "images": true,
           "name": "Gemini Flash-Lite Latest",
           "output": 65536,
-          "reasoning": {},
+          "reasoning": {
+            "default": "minimal"
+          },
           "released": "2026-07-21"
         },
         {
@@ -1322,6 +1328,25 @@
           "apis": [
             "responses"
           ],
+          "id": "gpt-6-astra-healthcare",
+          "images": true,
+          "name": "GPT-6 Astra Healthcare",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-24"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
           "id": "gpt-6-cyber",
           "images": true,
           "name": "GPT-6 Cyber",
@@ -1401,6 +1426,25 @@
         },
         {
           "apis": [
+            "responses"
+          ],
+          "id": "gpt-6.1-sol-healthcare",
+          "images": true,
+          "name": "GPT-6.1 Sol Healthcare",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-24"
+        },
+        {
+          "apis": [
             "responses",
             "chat-completions"
           ],
@@ -1442,6 +1486,25 @@
         },
         {
           "apis": [
+            "responses"
+          ],
+          "id": "gpt-6.2-astra-healthcare",
+          "images": true,
+          "name": "GPT-6.2 Astra Healthcare",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-24"
+        },
+        {
+          "apis": [
             "responses",
             "chat-completions"
           ],
@@ -1459,6 +1522,25 @@
             ]
           },
           "released": "2026-11-17"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-6.2-sol-healthcare",
+          "images": true,
+          "name": "GPT-6.2 Sol Healthcare",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-24"
         },
         {
           "apis": [
