@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
@@ -49,6 +50,37 @@ enum FilterDefaultOperator: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .equal: return .equal
         case .contains: return .contains
+        }
+    }
+}
+
+// Only the column picker follows it: a new row's default column and the value completions keep table order.
+enum FilterColumnOrder: String, CaseIterable, Identifiable, Codable {
+    case table = "table"
+    case alphabetical = "alphabetical"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .table: return String(localized: "Table Order")
+        case .alphabetical: return String(localized: "Alphabetical")
+        }
+    }
+
+    func ordered(_ names: [String]) -> [String] {
+        switch self {
+        case .table: return names
+        case .alphabetical: return names.sorted(by: Self.precedesAlphabetically)
+        }
+    }
+
+    // Finder order, so col2 lands before col10; the ordinal compare keeps names the locale ties in a fixed order.
+    static func precedesAlphabetically(_ lhs: String, _ rhs: String) -> Bool {
+        switch lhs.localizedStandardCompare(rhs) {
+        case .orderedAscending: return true
+        case .orderedDescending: return false
+        case .orderedSame: return lhs < rhs
         }
     }
 }
@@ -106,21 +138,24 @@ struct FilterSettings: Codable, Equatable {
     var defaultOperator: FilterDefaultOperator
     var restoreBehavior: FilterRestoreBehavior
     var alwaysShowPanel: Bool
+    var columnOrder: FilterColumnOrder
 
     init(
         defaultColumn: FilterDefaultColumn = .rawSQL,
         defaultOperator: FilterDefaultOperator = .equal,
         restoreBehavior: FilterRestoreBehavior = .restoreAndApply,
-        alwaysShowPanel: Bool = false
+        alwaysShowPanel: Bool = false,
+        columnOrder: FilterColumnOrder = .table
     ) {
         self.defaultColumn = defaultColumn
         self.defaultOperator = defaultOperator
         self.restoreBehavior = restoreBehavior
         self.alwaysShowPanel = alwaysShowPanel
+        self.columnOrder = columnOrder
     }
 
     private enum CodingKeys: String, CodingKey {
-        case defaultColumn, defaultOperator, restoreBehavior, alwaysShowPanel, panelState
+        case defaultColumn, defaultOperator, restoreBehavior, alwaysShowPanel, columnOrder, panelState
     }
 
     /// Reads the split fields, and falls back to the single `panelState` a file written before the
@@ -140,6 +175,8 @@ struct FilterSettings: Codable, Equatable {
         self.alwaysShowPanel = try container.decodeIfPresent(
             Bool.self, forKey: .alwaysShowPanel
         ) ?? legacy?.alwaysShowPanel ?? false
+        // An order a later build added must not throw here, or every filter setting falls back to its default.
+        self.columnOrder = (try? container.decodeIfPresent(FilterColumnOrder.self, forKey: .columnOrder)) ?? .table
     }
 
     /// `panelState` goes back in as the nearest of the three old cases. A build from before the
@@ -152,6 +189,7 @@ struct FilterSettings: Codable, Equatable {
         try container.encode(defaultOperator, forKey: .defaultOperator)
         try container.encode(restoreBehavior, forKey: .restoreBehavior)
         try container.encode(alwaysShowPanel, forKey: .alwaysShowPanel)
+        try container.encode(columnOrder, forKey: .columnOrder)
         try container.encode(legacyPanelState, forKey: .panelState)
     }
 
@@ -162,7 +200,7 @@ struct FilterSettings: Codable, Equatable {
 }
 
 @MainActor
-final class FilterSettingsStorage: TableScopedSettingsStore {
+final class FilterSettingsStorage: ObservableObject, TableScopedSettingsStore {
     static let shared = FilterSettingsStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "FilterSettingsStorage")
 
@@ -180,7 +218,8 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
     private let decoder = JSONDecoder()
     private let ioQueue = DispatchQueue(label: "com.TablePro.FilterSettingsStorage.io", qos: .utility)
 
-    private var cachedSettings: FilterSettings?
+    // Published so an open filter bar and the Settings page follow a change made in the other.
+    @Published private(set) var settings: FilterSettings
     private var lastFiltersCache: [String: PersistedFilterState] = [:]
     private var browseSearchCache: [String: BrowseSearchState] = [:]
 
@@ -191,6 +230,7 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
     init(filterStateDirectory: URL, defaults: UserDefaults) {
         self.filterStateDirectory = filterStateDirectory
         self.defaults = defaults
+        self.settings = Self.decodedSettings(from: defaults)
 
         do {
             try FileManager.default.createDirectory(
@@ -205,35 +245,30 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
         Self.performCompositeKeyMigrationIfNeeded(filterStateDirectory: filterStateDirectory, defaults: defaults)
     }
 
-    func loadSettings() -> FilterSettings {
-        if let cached = cachedSettings { return cached }
-
-        guard let data = defaults.data(forKey: Self.settingsKey) else {
-            let defaultSettings = FilterSettings()
-            cachedSettings = defaultSettings
-            return defaultSettings
-        }
-
+    private static func decodedSettings(from defaults: UserDefaults) -> FilterSettings {
+        guard let data = defaults.data(forKey: settingsKey) else { return FilterSettings() }
         do {
-            let decoded = try decoder.decode(FilterSettings.self, from: data)
-            cachedSettings = decoded
-            return decoded
+            return try JSONDecoder().decode(FilterSettings.self, from: data)
         } catch {
-            Self.logger.error("Failed to decode filter settings: \(error)")
-            let defaultSettings = FilterSettings()
-            cachedSettings = defaultSettings
-            return defaultSettings
+            logger.error("Failed to decode filter settings: \(error)")
+            return FilterSettings()
         }
     }
 
-    func saveSettings(_ settings: FilterSettings) {
-        cachedSettings = settings
+    func saveSettings(_ newSettings: FilterSettings) {
+        guard newSettings != settings else { return }
+        settings = newSettings
         do {
-            let data = try encoder.encode(settings)
+            let data = try encoder.encode(newSettings)
             defaults.set(data, forKey: Self.settingsKey)
         } catch {
             Self.logger.error("Failed to encode filter settings: \(error)")
         }
+    }
+
+    func resetSettings() {
+        defaults.removeObject(forKey: Self.settingsKey)
+        settings = FilterSettings()
     }
 
     func loadLastFilters(

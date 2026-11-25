@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import Testing
@@ -372,8 +373,8 @@ struct FilterSettingsStorageTests {
     func defaultSettingsRestoreAndApply() {
         let (storage, directory) = makeStorage()
         defer { try? FileManager.default.removeItem(at: directory) }
-        #expect(storage.loadSettings().restoreBehavior == .restoreAndApply)
-        #expect(!storage.loadSettings().alwaysShowPanel)
+        #expect(storage.settings.restoreBehavior == .restoreAndApply)
+        #expect(!storage.settings.alwaysShowPanel)
     }
 
     @Test(
@@ -399,7 +400,7 @@ struct FilterSettingsStorageTests {
         """
         defaults.set(Data(legacy.utf8), forKey: "com.TablePro.filter.settings")
 
-        let settings = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).loadSettings()
+        let settings = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).settings
 
         #expect(settings.restoreBehavior == behavior)
         #expect(settings.alwaysShowPanel == alwaysShowPanel)
@@ -419,10 +420,92 @@ struct FilterSettingsStorageTests {
         """
         defaults.set(Data(legacy.utf8), forKey: "com.TablePro.filter.settings")
 
-        _ = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).loadSettings()
-        let second = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).loadSettings()
+        _ = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).settings
+        let second = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).settings
 
         #expect(second.restoreBehavior == .dontSave)
+    }
+
+    private func storage(reading json: String) throws -> (FilterSettingsStorage, URL) {
+        let defaults = try pool.make().defaults
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defaults.set(Data(json.utf8), forKey: "com.TablePro.filter.settings")
+        return (FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults), directory)
+    }
+
+    @Test("The column picker keeps table order on a new install and on a file written before the setting")
+    func columnOrderDefaultsToTableOrder() throws {
+        let (fresh, freshDirectory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: freshDirectory) }
+        #expect(fresh.settings.columnOrder == .table)
+
+        let (older, olderDirectory) = try storage(reading: """
+        {"defaultColumn":"primaryKey","defaultOperator":"contains","restoreBehavior":"dontSave","alwaysShowPanel":true}
+        """)
+        defer { try? FileManager.default.removeItem(at: olderDirectory) }
+        #expect(older.settings == FilterSettings(
+            defaultColumn: .primaryKey, defaultOperator: .contains, restoreBehavior: .dontSave, alwaysShowPanel: true
+        ))
+    }
+
+    @Test("An order this build does not know keeps every other filter setting")
+    func unknownColumnOrderKeepsOtherSettings() throws {
+        let (storage, directory) = try storage(reading: """
+        {"defaultColumn":"primaryKey","defaultOperator":"contains","columnOrder":"byType"}
+        """)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        #expect(storage.settings.defaultColumn == .primaryKey)
+        #expect(storage.settings.defaultOperator == .contains)
+        #expect(storage.settings.columnOrder == .table)
+    }
+
+    @Test("A saved column order survives a fresh storage instance and still writes the legacy panel state")
+    func columnOrderRoundTrips() throws {
+        let defaults = try pool.make().defaults
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+            .saveSettings(FilterSettings(columnOrder: .alphabetical))
+
+        #expect(FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).settings.columnOrder == .alphabetical)
+        let data = try #require(defaults.data(forKey: "com.TablePro.filter.settings"))
+        let stored = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(stored["panelState"] as? String == "restoreLast")
+    }
+
+    @Test("Saving publishes the change once and skips a value that did not change")
+    func savePublishesChanges() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var published = 0
+        let subscription = storage.objectWillChange.sink { published += 1 }
+        defer { subscription.cancel() }
+
+        storage.saveSettings(FilterSettings(columnOrder: .alphabetical))
+        storage.saveSettings(FilterSettings(columnOrder: .alphabetical))
+
+        #expect(published == 1)
+        #expect(storage.settings.columnOrder == .alphabetical)
+    }
+
+    @Test("Resetting the settings brings back every default, for this session and the next")
+    func resetSettingsRestoresDefaults() throws {
+        let defaults = try pool.make().defaults
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults)
+        storage.saveSettings(FilterSettings(
+            defaultColumn: .primaryKey, restoreBehavior: .dontSave, alwaysShowPanel: true, columnOrder: .alphabetical
+        ))
+
+        storage.resetSettings()
+
+        #expect(storage.settings == FilterSettings())
+        #expect(FilterSettingsStorage(filterStateDirectory: directory, defaults: defaults).settings == FilterSettings())
     }
 
     @Test("A draft saved with nothing applied round-trips as a draft")

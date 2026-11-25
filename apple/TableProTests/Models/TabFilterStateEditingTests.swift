@@ -422,6 +422,23 @@ struct TabFilterStateEditingTests {
         #expect(state.filters.map(\.columnName) == ["town"])
     }
 
+    @Test("Columns that trade names move in one pass, and a column that is gone takes its rows")
+    func remapColumnsSwapsNamesTogether() {
+        let rows = [
+            TableFilter(columnName: "Column 2", value: "a"),
+            TableFilter(columnName: "Column 3", value: "b"),
+            TableFilter(columnName: "Column 1", value: "c"),
+            TableFilter.rawCondition("1 = 1"),
+        ]
+        var state = state(rows).applyingCheckedRows()
+        let moves = ["Column 2": "Column 3", "Column 3": "Column 2"]
+
+        state.remapColumns { moves[$0] ?? ($0 == "Column 1" ? nil : $0) }
+
+        #expect(state.filters.map(\.columnName) == ["Column 3", "Column 2", TableFilter.rawSQLColumn])
+        #expect(state.applied?.filters.map(\.columnName) == ["Column 3", "Column 2", TableFilter.rawSQLColumn])
+    }
+
     @Test("A cross-column search ignores case, like the find that offers it")
     func crossColumnSearchIgnoresCase() {
         let filters = TabFilterState.crossColumnSearchFilters(term: "ana", columns: ["name", "email"])

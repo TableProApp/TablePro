@@ -501,12 +501,47 @@ final class DataFileController: ObservableObject {
 
     // Every edit, mutation and undo lands here, so find searches the file again.
     func replaceTable(_ newTable: TabularTable) {
+        let previousNames = columnNames
         table = newTable
         if sheets.indices.contains(selectedSheetIndex) {
             sheets[selectedSheetIndex].table = newTable
         }
         refreshColumnNames()
+        carryColumnState(from: previousNames)
         gridModel.findDatasetDidChange()
+    }
+
+    // A display name depends on position (`Column 2`, `name (2)`), so inserting or deleting a column renames
+    // its neighbours. Filter rows, the layout and Display As follow the column by id instead. Not on a sheet
+    // switch: column ids repeat across sheets.
+    private func carryColumnState(from previous: DataFileColumnNames) {
+        let current = columnNames
+        guard previous != current else { return }
+        let newName = { (name: String) in previous.carrying(name, to: current) }
+
+        var carried = filterState
+        carried.remapColumns(newName)
+        if carried != filterState {
+            filterState = carried
+        }
+        columnLayout = columnLayout.remappingColumns(newName)
+
+        let formats = gridModel.store.displayFormats
+        if formats.contains(where: { $0 != nil }) {
+            gridModel.store.displayFormats = current.ids.map { id in
+                previous.index(of: id).flatMap { formats.indices.contains($0) ? formats[$0] : nil }
+            }
+        }
+    }
+
+    // Whether `updated` lacks a column a filter row names, so committing it drops that row.
+    func dropsFilterRows(_ updated: TabularTable, appliedOnly: Bool = false) -> Bool {
+        let applied = filterState.applied?.filters ?? []
+        let rows = appliedOnly ? applied : filterState.filters + applied
+        return rows.contains { row in
+            guard !row.isRawSQL, let id = columnNames.id(forName: row.columnName) else { return false }
+            return updated.columnIndex(of: id) == nil
+        }
     }
 
     func setInferredKind(_ kind: TabularInferredKind, for id: TabularColumnID) {

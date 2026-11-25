@@ -27381,6 +27381,9 @@
         }
       }
     },
+    "Alphabetical" : {
+
+    },
     "Already in the target." : {
       "localizations" : {
         "fr" : {
@@ -51165,6 +51168,9 @@
           }
         }
       }
+    },
+    "Column Picker" : {
+
     },
     "Column Reorder Failed" : {
       "localizations" : {
@@ -118145,6 +118151,9 @@
           }
         }
       }
+    },
+    "List Columns Alphabetically" : {
+
     },
     "List Connections" : {
       "localizations" : {
@@ -204940,6 +204949,9 @@
           }
         }
       }
+    },
+    "Table Order" : {
+
     },
     "Table rebuild" : {
       "localizations" : {
