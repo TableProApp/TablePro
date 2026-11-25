@@ -1,6 +1,6 @@
 # 0051: Sync protocol and record rules
 
-- **Status**: Accepted; amends 0044 and 0047
+- **Status**: Accepted; amends 0044, 0047 and 0055
 - **Date**: 2026-11-25
 
 ## Context
@@ -298,7 +298,7 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 | `personalSync` | Every kind in the personal scope except `key.*`, and `history_entry` |
 | A SaaS team's `password_sync` | `secret_envelope` in that team's scope |
 
-- `personalSync` off neither rejects nor tombstones any `key.*` kind, since team secrets and device approval rest on the account's identity, device log and sharing key. Key objects sync whatever personal provider the device uses, so Team Library's envelopes keep working on an install that serves only Team Library (0055).
+- `personalSync` off neither rejects nor tombstones any `key.*` kind, since team secrets and device approval rest on the account's identity, device log and sharing key. Key objects sync whatever personal provider the device uses, so Team Library's envelopes keep working on an install that serves only Team Library. This amends 0055's Off line, which tombstoned every personal and history record.
 - When a switch turns off, a job tombstones the records it covers with `deleted_reason: policy` and no writer. Devices keep their copies (Tombstones).
 - **`policies` in the scopes body:** the switches that apply to each scope, as booleans, true when on. The personal scope has `personal_sync` and `password_sync`, the history scope `personal_sync` and `history_sync`, and a team scope `password_sync`, the install's and the team's together. Clients stop pushing what is off and shape their UI with it; the server enforces.
 - **No provider change.** `personal_sync` false makes TablePro Sync unavailable for personal data on that server, so a device on it stops syncing personal data there, while its key objects keep syncing for Team Library. Neither it, a `policy` answer nor a policy tombstone moves a device to another provider; only the device's own managed policy or the person does (0055).
