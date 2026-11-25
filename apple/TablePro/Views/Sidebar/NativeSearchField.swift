@@ -11,11 +11,13 @@ private final class IntrinsicHeightSearchField: NSSearchField {
         return NSSize(width: NSView.noIntrinsicMetric, height: cellHeight)
     }
 
+    // Once per field: a pane moved out and back into the window, as a connection switch does, is not appearing again.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         removeWindowKeyObserver()
         guard focusOnAppear, acceptsFirstResponder, let window else { return }
         if window.isKeyWindow {
+            focusOnAppear = false
             window.makeFirstResponder(self)
             return
         }
@@ -27,6 +29,7 @@ private final class IntrinsicHeightSearchField: NSSearchField {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.removeWindowKeyObserver()
+                self.focusOnAppear = false
                 self.window?.makeFirstResponder(self)
             }
         }

@@ -83,6 +83,9 @@ internal final class ToolbarSwitcherPresenter {
         presentedSubject = subject
 
         if let item = Self.anchor(in: window, identifier, hiddenBy: visibility) {
+            // Lets the popover's search field take focus; AppKit hands it back when the popover closes. The panel
+            // is a key window of its own and leaves this window's first responder alone, since nothing restores it.
+            window?.makeFirstResponder(nil)
             /// `.transient`, not `PopoverPresenter`'s `.semitransient` default: a semitransient
             /// popover ignores interaction outside its own window, so moving to another window or
             /// another app would leave the chooser floating over a window it no longer belongs to.

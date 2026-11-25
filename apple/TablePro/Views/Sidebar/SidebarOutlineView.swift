@@ -5,18 +5,9 @@
 
 import AppKit
 
-/// The focus contract both sidebar lists need, stated once.
-///
-/// AppKit expects a view that can hold the keyboard to say so when it is clicked, which is why the
-/// data grid's table view opens `mouseDown` with exactly this line (`KeyHandlingTableView`). The
-/// sidebar lists were leaving it to `NSTableView`'s own promotion, and in the running app that
-/// intermittently did not happen: the click moved the selection while the filter field kept the
-/// keyboard, so the row drew unemphasized and the arrow keys went to the field rather than the list.
-///
-/// Painting the row emphasized instead would be a lie, because the keyboard really was elsewhere.
-/// `FieldDrivenList` may force emphasis on because its table refuses focus by design and its search
-/// field forwards the keys; these lists are meant to hold focus, so they take it.
+// The focus contract every sidebar list shares: take the keyboard on click, and fill a window nobody holds yet.
 internal class SidebarOutlineView: NSOutlineView {
+    // NSTableView's own promotion on click intermittently left the filter field holding the keyboard.
     override internal func mouseDown(with event: NSEvent) {
         claimFirstResponder()
         super.mouseDown(with: event)
@@ -27,9 +18,15 @@ internal class SidebarOutlineView: NSOutlineView {
         super.keyDown(with: event)
     }
 
+    // NSTableView stops observing the window's first responder for the whole of its move into a window, so focus
+    // taken in here leaves every row unemphasized (grey) until the window's key state next changes.
     override internal func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        adoptFirstResponderIfVacant()
+        guard let window else { return }
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let self, let window, self.window === window else { return }
+            self.adoptFirstResponderIfVacant()
+        }
     }
 
     private func claimFirstResponder() {
@@ -37,15 +34,10 @@ internal class SidebarOutlineView: NSOutlineView {
         window.makeFirstResponder(self)
     }
 
-    /// A window whose `firstResponder` is the window itself has nobody to hand a key event to, so
-    /// every keystroke beeps and every list draws its selection unemphasized.
-    ///
-    /// AppKit fills that vacancy when a window is first placed on screen, from
-    /// `initialFirstResponder` or the key view loop. Neither can reach a list SwiftUI has not built
-    /// yet, so the vacancy outlives the only chance AppKit had to fill it. Only the vacancy is
-    /// taken: a window that already has a first responder keeps it.
+    // AppKit fills a vacant window only when it is first placed on screen, before SwiftUI has built this list.
+    // A hidden list never takes it: a collapsed sidebar would open tables the user cannot see.
     private func adoptFirstResponderIfVacant() {
-        guard let window, window.firstResponder === window else { return }
+        guard let window, window.firstResponder === window, !isHiddenOrHasHiddenAncestor else { return }
         window.makeFirstResponder(self)
     }
 }
