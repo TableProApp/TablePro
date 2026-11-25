@@ -103,6 +103,50 @@ struct QueryResultMappingTests {
         #expect(col.ordinalPosition == 2)
     }
 
+    @Test("Carries plugin allowed values and marks only always-identity columns as rejecting writes")
+    func mapPluginColumnAllowedValuesAndIdentity() {
+        let alwaysIdentity = ColumnInfo(
+            from: PluginColumnInfo(
+                name: "status_id",
+                dataType: "Enum8('new' = 1, 'paid' = 2)",
+                isNullable: false,
+                identityKind: .always,
+                allowedValues: ["new", "paid"]
+            )
+        )
+        #expect(alwaysIdentity.allowedValues == ["new", "paid"])
+        #expect(alwaysIdentity.isAutoIncrement)
+        #expect(alwaysIdentity.rejectsWrittenValues)
+        #expect(alwaysIdentity.isServerOwned)
+        #expect(!alwaysIdentity.isGenerated)
+
+        let byDefaultIdentity = ColumnInfo(
+            from: PluginColumnInfo(
+                name: "id",
+                dataType: "NUMBER",
+                isNullable: false,
+                identityKind: .byDefault
+            )
+        )
+        #expect(byDefaultIdentity.isAutoIncrement)
+        #expect(!byDefaultIdentity.rejectsWrittenValues)
+        #expect(!byDefaultIdentity.isServerOwned)
+        #expect(!byDefaultIdentity.isGenerated)
+        #expect(byDefaultIdentity.allowedValues == nil)
+
+        let virtualColumn = ColumnInfo(
+            from: PluginColumnInfo(
+                name: "total",
+                dataType: "NUMBER",
+                isGenerated: true
+            )
+        )
+        #expect(virtualColumn.isGenerated)
+        #expect(!virtualColumn.rejectsWrittenValues)
+        #expect(virtualColumn.isServerOwned)
+        #expect(!virtualColumn.isAutoIncrement)
+    }
+
     @Test("Maps PluginIndexInfo to IndexInfo")
     func mapPluginIndexInfo() {
         let plugin = PluginIndexInfo(

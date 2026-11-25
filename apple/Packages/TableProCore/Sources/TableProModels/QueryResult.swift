@@ -320,7 +320,9 @@ public extension ColumnInfo {
             comment: plugin.comment,
             ordinalPosition: ordinalPosition,
             isAutoIncrement: plugin.isIdentity,
-            isGenerated: plugin.isGenerated
+            isGenerated: plugin.isGenerated,
+            rejectsWrittenValues: plugin.identityKind == .always,
+            allowedValues: plugin.allowedValues
         )
     }
 }
