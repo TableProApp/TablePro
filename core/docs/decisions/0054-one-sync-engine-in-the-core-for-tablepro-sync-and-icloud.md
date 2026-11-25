@@ -192,7 +192,7 @@ pub enum CloudKitFailure {
     - each key's floor: the highest version seen on any branch, a dropped branch's included. 0053 allocates the next version above every branch's and burns a dropped branch's versions, so a floor never has to move back after a fork ends;
     - each envelope's highest counter, with the hash of that ciphertext.
 
-    Each only moves forward. The one exception is a head on a branch that a fork resolution drops: once 0053 has verified the resolution, the head moves to the kept branch, as 0053's stored-head rule allows. The deleted history ids stay in the file alone.
+    Each only moves forward. The one exception is a head on a branch that a fork resolution drops: once 0053 has verified the resolution, and the dropped branch's statements chain from the fork point it names to that head, the head moves to the kept branch, as 0053's stored-head rule allows. The deleted history ids stay in the file alone.
   - **A commit writes its anchor in two steps.** Before the commit, the engine adds a pending entry to the anchor with the next counter, its MAC and its digest. After the commit, the pending entry becomes the current one. A commit starts only when no pending entry is left; while one cannot be settled, the engine stops.
   - **Apple platforms:** a Keychain item in the data protection keychain, `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` and not synchronizable. Apple Platform Security, "Keychain data protection", says items of that class don't sync to iCloud Keychain, aren't backed up and aren't in escrow keybags. Other ThisDeviceOnly classes do not serve: "Keybags for Data Protection" (Backup keybag) has them restored to the device they were backed up from. The anchor reads only while the device is unlocked, so a pass that starts locked waits. A device with no passcode uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and falls under the limit below.
   - **Windows:** Credential Manager items with local machine persistence. An entry past one item's 2,560-byte blob is split over numbered items, written before the item that names them. **Linux:** a Secret Service item.
@@ -203,7 +203,11 @@ pub enum CloudKitFailure {
     - anything else is stale: an older counter, another file id, a file with no anchor, or an anchor with no file.
 - **A stale file** is trusted for nothing.
   - Its sync tables go into refill, as a restored store does: the pull wins, records the provider has never seen go up as creates, then the diff runs again.
-  - Its key tables are not trusted, and the holder keys stay, so it is the same holder. It rebuilds the key tables from the logs the server holds, accepting only what extends the anchor's checkpoint, the pending entry's when one is left: a log that holds each anchored head at its `seq` with the same hash, or a verified fork resolution that names that hash as dropped; no key version below an anchored floor, and no envelope counter below an anchored one. Until a log extends the anchored heads, it accepts no wrap or envelope and writes no secret. A comparison never pins a head older than the anchor's, so a holder that missed a removal cannot hand the device its older view.
+  - Its key tables are not trusted, and the holder keys stay, so it is the same holder. It rebuilds the key tables from the logs the server holds, accepting only what extends the anchor's checkpoint, the pending entry's when one is left:
+    - a log must hold each anchored head at its `seq` with the same hash. Otherwise a fork resolution 0053 verifies must drop the branch that head is on, and the dropped branch's statements must chain from the hash the resolution names at the fork point to the anchored `seq` and hash, each checked as 0053 checks a log. A missing or substituted link keeps the holder blocked;
+    - no key version below an anchored floor, and no envelope counter below an anchored one.
+
+    Until a log extends the anchored heads, it accepts no wrap or envelope and writes no secret. A comparison never pins a head older than the anchor's, so a holder that missed a removal cannot hand the device its older view.
   - An anchor with no file, as after a reinstall that kept the device store, rebuilds the same way.
   - A file with no anchor has no checkpoint. Its holder pins again through a comparison with another holder of the account or with S, as 0053's device approval does, and falls under the limit below.
 - **The limit.** Nothing on the device then proves a newer head than the one it holds:
@@ -327,7 +331,7 @@ A copy whose content changed after the move is kept, since a content edit wins. 
   - a crash at each step of a commit and its anchor opens as the rules say. A restore of the copy before a commit whose anchor did not settle leaves the key tables untrusted when that commit changed them, and rebuilds them on the pending checkpoint;
   - an anchor with no file rebuilds from logs that extend its checkpoint; a file with no anchor needs a comparison before any log is trusted;
   - a comparison never pins a head older than an anchored one: a partner that missed a removal the anchor recorded ends the session as a mismatch;
-  - a fork resolution moves an anchored head off the dropped branch, and the next key version comes above every version either branch reached;
+  - a fork resolution moves an anchored head off the dropped branch, also when the head sits several statements past the fork point, and the next key version comes above every version either branch reached. A missing or substituted link between the fork point and the anchored head keeps the holder blocked;
   - a statement the holder signed whose push was refused never enters the anchored checkpoint, so a rebuild after it still completes;
   - a log, floor or envelope counter below the anchored checkpoint is refused after a restore, from the server or a partner;
   - a key table row copied from another copy of the file fails the MAC;
