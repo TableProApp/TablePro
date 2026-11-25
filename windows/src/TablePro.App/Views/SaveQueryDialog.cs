@@ -278,7 +278,8 @@ internal static class SaveQueryDialog
         {
             var deferral = args.GetDeferral();
             draft.Name = name.Text.Trim();
-            if (folder is not null)
+            // A folder the list does not hold yet shows as No Folder, so only a pick moves the query.
+            if (folder is not null && draft.FolderChosen)
             {
                 draft.FolderId = (folder.SelectedItem as ComboBoxItem)?.Tag as Guid?;
             }
