@@ -234,13 +234,18 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
 
         let ceiling = MongoDBFindLimitPolicy.fetchLimit(parsedLimit: nil, rowCap: rowCap)
         do {
-            let outcome = try await runtime.evaluate(
-                statement: MongoShellCommandLine.rewrite(statement),
-                database: currentDb,
-                valueCeiling: ceiling,
-                access: MongoScriptAccess(context),
-                shell: MongoScriptRuntime.Shell(context)
-            )
+            let shell = MongoReadTrace.signposter.beginInterval("Shell")
+            let outcome: MongoScriptStatementResult
+            do {
+                defer { MongoReadTrace.signposter.endInterval("Shell", shell) }
+                outcome = try await runtime.evaluate(
+                    statement: MongoShellCommandLine.rewrite(statement),
+                    database: currentDb,
+                    valueCeiling: ceiling,
+                    access: MongoScriptAccess(context),
+                    shell: MongoScriptRuntime.Shell(context)
+                )
+            }
             if let switched = outcome.databaseSwitch { currentDb = switched }
             let declared = try await declaredColumns(for: outcome)
             return capToRowCap(
@@ -1062,6 +1067,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         recordsKinds: Bool = false,
         filteredFields: Set<String> = []
     ) -> PluginQueryResult {
+        let interval = MongoReadTrace.signposter.beginInterval("Build result", "\(read.dictionaries.count) documents")
+        defer { MongoReadTrace.signposter.endInterval("Build result", interval) }
         let documents = read.dictionaries
         if documents.isEmpty {
             return PluginQueryResult(
@@ -1092,7 +1099,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             + unseen.map { declaredTypeName(of: $0, in: declared) }
         let rows = BsonDocumentFlattener.flatten(
             documents: documents, columns: columns, kinds: kinds,
-            representation: uuidRepresentation, storedTexts: read.texts
+            representation: uuidRepresentation, stored: read.canonical
         )
 
         var result = PluginQueryResult(

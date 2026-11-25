@@ -35,15 +35,24 @@ nonisolated enum BsonValueKind: Hashable {
     }
 }
 
-/// Documents as Swift values beside the canonical Extended JSON each was read from. The
-/// dictionaries have lost the stored field order and which numeric type each number was; the text
+/// Documents as Swift values beside the canonical Extended JSON tree each was read with. The
+/// dictionaries have lost the stored field order and which numeric type each number was; the tree
 /// has not.
 nonisolated struct MongoReadDocuments {
     let dictionaries: [[String: Any]]
-    let texts: [String]
-    // Each document's row locator, when the read already took them, so the number kinds reuse them instead of
-    // parsing every document's text again.
+    let canonical: [MongoDocumentText?]
+    /// Each document's compact canonical `_id`, the row locator when the documents are stored ones.
+    let identifiers: [String?]
+    let bsonSizes: [Int?]
+    // The row locators the grid gets, set only when the documents are whole stored ones.
     var locators: [String?]?
+
+    init(_ documents: [MongoReadDocument]) {
+        dictionaries = documents.map(\.dictionary)
+        canonical = documents.map(\.canonical)
+        identifiers = documents.map(\.identifier)
+        bsonSizes = documents.map(\.bsonSize)
+    }
 }
 
 nonisolated struct BsonDocumentFlattener {
@@ -85,14 +94,14 @@ nonisolated struct BsonDocumentFlattener {
         columns: [String],
         kinds: [BsonValueKind],
         representation: MongoDBUuidRepresentation,
-        storedTexts: [String] = []
+        stored canonical: [MongoDocumentText?] = []
     ) -> [[PluginCellValue]] {
         documents.enumerated().map { offset, doc in
             var stored: [String: MongoDocumentText.Value]?
             return columns.enumerated().map { index, column in
                 guard let value = doc[column] else { return PluginCellValue.null }
-                if isNestedValue(value), offset < storedTexts.count {
-                    if stored == nil { stored = storedMembers(of: storedTexts[offset]) }
+                if isNestedValue(value), offset < canonical.count, let document = canonical[offset] {
+                    if stored == nil { stored = storedMembers(of: document) }
                     if let member = stored?[column] { return .text(nestedDisplayText(member)) }
                 }
                 let kind = index < kinds.count ? kinds[index] : .string
@@ -117,9 +126,8 @@ nonisolated struct BsonDocumentFlattener {
         value is [Any] || value is [String: Any]
     }
 
-    private static func storedMembers(of text: String) -> [String: MongoDocumentText.Value] {
-        guard case .object(let members) = try? MongoDocumentText.Value(parsing: text) else { return [:] }
-        return Dictionary(members.map { ($0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
+    private static func storedMembers(of document: MongoDocumentText) -> [String: MongoDocumentText.Value] {
+        Dictionary(document.members.map { ($0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
     }
 
     static func nestedDisplayText(_ canonical: MongoDocumentText.Value) -> String {
