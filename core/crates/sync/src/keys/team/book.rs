@@ -213,12 +213,10 @@ impl TeamBook {
                 && let Some(item) = self.versions.get(&row.version).cloned()
                 && item.value.digest(&self.origin)? != row.record
             {
-                // Another signed record at the version held is a fork, which ends the team. One that no certificate
-                // signs is refused as an alarm and ends nothing, so a server cannot end a team with junk alone.
+                // At the version held only the anchored record counts (0056, Rollback, Per scope key). Another is an
+                // alarm, and the device moves no further on it; ending the team is the restore flow's, for a fork it
+                // can prove, since an account the server invents can sign a record of its own.
                 progress.refuse(&item, KeysError::Conflict);
-                if record_signed(&self.origin, facts, &item.value).await? {
-                    self.end(&mut progress);
-                }
                 break;
             }
             let moved = match (row.state, row.stopped_cause) {
@@ -254,28 +252,9 @@ impl TeamBook {
         Ok(())
     }
 
-    // Whether this account holds the version the device advanced to, under its current IK.
     pub(crate) async fn own_holds(&self, facts: &mut dyn TeamFacts) -> Result<bool, SyncError> {
         let Some(row) = &self.row else { return Ok(false) };
         account_holds(&self.origin, facts, &row.holders, self.me).await
-    }
-
-    // Another record at an id the device holds: a fork, which ends the team on the device whatever its state.
-    pub(crate) fn end_now(&mut self) -> bool {
-        match &mut self.row {
-            Some(row) if row.state != KeyVersionState::Ended => {
-                row.state = KeyVersionState::Ended;
-                row.stopped_cause = None;
-                true
-            }
-            _ => false,
-        }
-    }
-
-    fn end(&mut self, progress: &mut Progress) {
-        if self.end_now() {
-            progress.events.push(TeamEvent::Ended);
-        }
     }
 
     fn stop(&mut self, record_id: &str, error: KeysError, progress: &mut Progress) {
@@ -321,7 +300,7 @@ impl TeamBook {
             let Some(item) = self.versions.get(&version).cloned() else {
                 continue;
             };
-            let signer = match usable_signer(facts, item.value.signer, item.value.signer_av).await? {
+            let signer = match signer_check(facts, item.value.signer, item.value.signer_av, true).await? {
                 Check::Pass((certificate, _)) => certificate,
                 Check::Wait => {
                     progress.hold(&item);
@@ -361,7 +340,7 @@ impl TeamBook {
 
     // The wrap a person confirmed, taken on first use: its wrapper's certificate and signature, under no holder rule.
     async fn first_use_wrap(&self, facts: &mut dyn TeamFacts, wrap: &Wrap) -> Result<Check<Holder>, SyncError> {
-        let wrapper = match usable_signer(facts, wrap.wrapper.account, wrap.wrapper.av).await? {
+        let wrapper = match signer_check(facts, wrap.wrapper.account, wrap.wrapper.av, true).await? {
             Check::Pass((certificate, _)) => certificate,
             Check::Wait => return Ok(Check::Wait),
             Check::Fail(error) => return Ok(Check::Fail(error)),
@@ -619,23 +598,48 @@ impl TeamBook {
     }
 }
 
-// A signer's certificate at the `av` it names and its pin, when neither is missing nor under an alert.
+// For what advances: a certificate missing or under an alert waits.
 async fn usable_signer(
     facts: &mut dyn TeamFacts,
     account: AccountId,
     av: Version,
 ) -> Result<Check<(AccountCertificate, PinFacts)>, SyncError> {
-    let certificate = match facts.certificate(account, av).await? {
+    signer_check(facts, account, av, false).await
+}
+
+// `historical` takes a certificate under a replaced IK when its `av` is below the newest known, for a wrap a person
+// confirmed before its wrapper replaced its key, which still verifies (0056, Pins, Replace). Anything that advances
+// never takes one: below the newest it is `keys.stale`, at or above it `keys.retired_ik`.
+async fn signer_check(
+    facts: &mut dyn TeamFacts,
+    account: AccountId,
+    av: Version,
+    historical: bool,
+) -> Result<Check<(AccountCertificate, PinFacts)>, SyncError> {
+    let (certificate, retired) = match facts.certificate(account, av).await? {
         None | Some(Certificate::Alerted(_)) => return Ok(Check::Wait),
         Some(Certificate::Invalid(error)) => return Ok(Check::Fail(error)),
-        // An IK seen replaced verifies the past and never advances: whatever it signs now is forged or stale.
-        Some(Certificate::Retired(_)) => return Ok(Check::Fail(KeysError::RetiredIk)),
-        Some(Certificate::Usable(certificate)) => certificate,
+        Some(Certificate::Usable(certificate)) => (certificate, false),
+        Some(Certificate::Retired(certificate)) => (certificate, true),
     };
-    Ok(match known_pin(facts, account).await? {
-        Some(pin) if !pin.alert => Check::Pass((certificate, pin)),
-        _ => Check::Wait,
-    })
+    let Some(pin) = known_pin(facts, account).await? else {
+        return Ok(Check::Wait);
+    };
+    if pin.alert {
+        return Ok(Check::Wait);
+    }
+    if retired {
+        if certificate.av >= pin.av {
+            return Ok(Check::Fail(KeysError::RetiredIk));
+        }
+        if !historical {
+            return Ok(Check::Fail(KeysError::Stale {
+                held: pin.av.get(),
+                offered: certificate.av.get(),
+            }));
+        }
+    }
+    Ok(Check::Pass((certificate, pin)))
 }
 
 // A recipient's certificate, for the AEK a wrap names and the IK its holder pair records. A recipient under an alert
@@ -756,7 +760,7 @@ pub(crate) async fn account_holds(
     }
 }
 
-// Whether a version record verifies under its signer's certificate at the `av` it names: verifying only.
+// Verifying only: a certificate under a replaced IK or an open alert still verifies what it signed.
 pub(crate) async fn record_signed(
     origin: &Origin,
     facts: &mut dyn TeamFacts,

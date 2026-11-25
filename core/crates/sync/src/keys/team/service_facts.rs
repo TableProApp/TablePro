@@ -24,10 +24,18 @@ pub(crate) struct FactsCache {
 }
 
 impl FactsCache {
-    pub(crate) fn forget(&mut self, account: AccountId) {
+    // A certificate the device just took for an account: its judgments and pin are read again, and the chain gains
+    // it without reading every other account's again.
+    pub(crate) fn learn(&mut self, certificate: &AccountCertificate) {
+        let account = certificate.account;
         self.certificates.retain(|(held, _), _| *held != account);
         self.pins.remove(&account);
-        self.chains = None;
+        if let Some(chains) = &mut self.chains {
+            let chain = chains.entry(account).or_default();
+            chain.retain(|held| held.av != certificate.av);
+            chain.push(certificate.clone());
+            chain.sort_by_key(|held| held.av);
+        }
     }
 }
 
@@ -39,8 +47,22 @@ pub(crate) struct ServiceFacts<'a> {
 }
 
 impl ServiceFacts<'_> {
+    // The newest certificate of the account to pin on first use or offer as its newest: one the pins refuse, such as
+    // one under an IK seen replaced, is passed over so it cannot block a confirmation for good.
     pub(crate) async fn chain_newest(&mut self, account: AccountId) -> Result<Option<AccountCertificate>, SyncError> {
-        Ok(self.chain(account).await?.pop())
+        let chain = self.chain(account).await?;
+        if TeamFacts::pin(self, account).await?.is_none() {
+            return Ok(chain.last().cloned());
+        }
+        for certificate in chain.into_iter().rev() {
+            if matches!(
+                self.certificate(account, certificate.av).await?,
+                Some(Certificate::Usable(_) | Certificate::Alerted(_))
+            ) {
+                return Ok(Some(certificate));
+            }
+        }
+        Ok(None)
     }
 
     // Offers a certificate as its account's newest, which pins it on first use or moves the pin (0056, Pins).
@@ -49,7 +71,7 @@ impl ServiceFacts<'_> {
             .service
             .offer_certificate(&mut *self.txn, self.scope, certificate)
             .await?;
-        self.cache.forget(certificate.account);
+        self.cache.learn(certificate);
         Ok(change)
     }
 

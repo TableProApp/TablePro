@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use tablepro_keys::cert::{AccountCertificate, CertKind};
-use tablepro_keys::encoding::{AccountId, Origin};
+use tablepro_keys::encoding::{AccountId, Origin, Version};
 
 use super::book::{TeamBook, account_holds};
 use super::facts::{Certificate, TeamFacts, known_pin};
@@ -141,17 +141,18 @@ pub(crate) async fn rotation_recipients(
     Ok(recipients)
 }
 
-// A team due a rotation because a member's account rotated after a device removal or a recovery is rotated by that
-// member's own app, after its review of whom to leave out; a holder that rotated first would keep them. A replace, a
-// reset or a member's removal leaves it to any holder (0056, Teams, Removing a member; A member's account keys rotate).
+// A team due a rotation because a member's account rotated after a device removal or a recovery is rotated by the
+// device of that member that ran the review of whom to leave out, through its own pending flow; any other holder,
+// another device of the same account included, would keep them. A replace, a reset or a member's removal leaves it to
+// any holder (0056, Teams, Removing a member; A member's account keys rotate). Only certificates the pins accept
+// count, so one a server makes up for a member cannot hold the rotation back.
 pub(crate) async fn rotation_left_to_a_member(
     book: &TeamBook,
     facts: &mut dyn TeamFacts,
     roster: &Roster,
-    me: AccountId,
 ) -> Result<bool, SyncError> {
     let Some(row) = book.row() else { return Ok(false) };
-    for member in roster.members.iter().filter(|member| member.account != me) {
+    for member in &roster.members {
         let signed = book
             .version_record(row.version)
             .filter(|record| record.signer == member.account)
@@ -162,13 +163,20 @@ pub(crate) async fn rotation_left_to_a_member(
             .map(|wrap| wrap.target.recipient_version)
             .max();
         let Some(held_at) = signed.max(wrapped) else { continue };
-        if facts
+        let later: Vec<Version> = facts
             .chain(member.account)
             .await?
             .iter()
-            .any(|certificate| certificate.av > held_at && certificate.kind == CertKind::GenesisOrRotation)
-        {
-            return Ok(true);
+            .filter(|certificate| certificate.av > held_at && certificate.kind == CertKind::GenesisOrRotation)
+            .map(|certificate| certificate.av)
+            .collect();
+        for av in later {
+            if matches!(
+                facts.certificate(member.account, av).await?,
+                Some(Certificate::Usable(_))
+            ) {
+                return Ok(true);
+            }
         }
     }
     Ok(false)

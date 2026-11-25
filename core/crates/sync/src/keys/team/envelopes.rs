@@ -16,7 +16,7 @@ use tablepro_keys::json;
 use tablepro_keys::wrap::Recipient;
 
 use super::book::TeamBook;
-use super::facts::{TeamFacts, known_pin};
+use super::facts::TeamFacts;
 use super::roster::holder_accounts;
 use super::secrets;
 use super::service_facts::{FactsCache, ServiceFacts};
@@ -273,7 +273,14 @@ async fn read_by_removed(
         readers.push((record.signer, record.signer_av));
     }
     for (account, av) in readers {
-        if !current.contains(&account) || known_pin(facts, account).await?.is_some_and(|pin| av < pin.av) {
+        // Any certificate the team holds counts, whatever its IK, so a reset still under an open alert shows too.
+        let newest = facts
+            .chain(account)
+            .await?
+            .iter()
+            .map(|certificate| certificate.av)
+            .max();
+        if !current.contains(&account) || newest.is_some_and(|newest| av < newest) {
             return Ok(true);
         }
     }

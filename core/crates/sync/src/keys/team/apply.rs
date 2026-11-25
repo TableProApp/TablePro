@@ -1,5 +1,7 @@
 // What a pull brings into a team (0056, Rollback, In order and Snapshots) and what the device decides on its roster.
 
+use std::collections::BTreeMap;
+
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{KeyBody, KeyObject};
 use tablepro_keys::encoding::{TeamId, Version};
@@ -79,6 +81,7 @@ impl KeyService {
         // In order; 0054, `scopes`).
         let mut in_force = self.scope_row(&mut *txn, arrival.scope).await?.key_version;
         let mut own_member_av = self.own_member_av(&mut *txn, arrival.scope).await?;
+        let mut served: BTreeMap<Version, KeyObject> = BTreeMap::new();
         let mut cache = FactsCache::default();
         let mut progress = Progress::default();
         let mut outcome = Outcome::default();
@@ -113,8 +116,13 @@ impl KeyService {
                 }
                 KeyRecordId::Version(key) => {
                     pending = true;
-                    if book.check_shape(&object).is_ok() {
-                        in_force = in_force.max(Some(key.version));
+                    if kept {
+                        served.insert(key.version, object.clone());
+                        if arrival.order == ArrivalOrder::InOrder {
+                            in_force = self
+                                .replay(&mut *txn, &mut cache, arrival.scope, in_force, &served)
+                                .await?;
+                        }
                     }
                 }
                 KeyRecordId::Wrap(target) => {
@@ -133,6 +141,11 @@ impl KeyService {
                 _ => pending = true,
             }
         }
+        if arrival.order == ArrivalOrder::Snapshot {
+            in_force = self
+                .replay(&mut *txn, &mut cache, arrival.scope, in_force, &served)
+                .await?;
+        }
         let step = self.advance_team(&mut *txn, &mut book, &mut cache).await?;
         merge(&mut progress, step);
         let mut applied = self
@@ -140,6 +153,38 @@ impl KeyService {
             .await?;
         applied.in_force = in_force;
         Ok(applied)
+    }
+
+    // The replay position moves one version at a time, to each next version record served that verifies under its
+    // signer's certificate, as the honest server writes them; a record far above or one no certificate signs leaves
+    // it where it is.
+    async fn replay(
+        &self,
+        txn: &mut dyn StateTxn,
+        cache: &mut FactsCache,
+        scope: ScopeName,
+        mut in_force: Option<Version>,
+        served: &BTreeMap<Version, KeyObject>,
+    ) -> Result<Option<Version>, SyncError> {
+        let mut facts = ServiceFacts {
+            service: self,
+            txn,
+            scope,
+            cache,
+        };
+        loop {
+            let next = match in_force {
+                Some(version) => version.next()?,
+                None => Version::FIRST,
+            };
+            let Some(record) = served.get(&next).and_then(KeyObject::version_record) else {
+                return Ok(in_force);
+            };
+            if !record_signed(self.origin(), &mut facts, &record).await? {
+                return Ok(in_force);
+            }
+            in_force = Some(next);
+        }
     }
 
     async fn own_member_av(&self, txn: &mut dyn StateTxn, scope: ScopeName) -> Result<Option<Version>, SyncError> {
@@ -193,16 +238,21 @@ impl KeyService {
             refuse(progress, &record_id, error);
             return Ok(());
         }
+        // At the version held only the anchored record counts, so another is never kept where it would take the
+        // anchored record's id (0056, Rollback, Per scope key).
+        if let (Some(row), Some(record)) = (book.row(), object.version_record())
+            && record.key.version == row.version
+            && record.digest(self.origin())? != row.record
+        {
+            refuse(progress, &record_id, KeysError::Conflict);
+            outcome.conflict = true;
+            return Ok(());
+        }
         match self.hold_object(txn, scope, object, true).await {
             Ok(()) => {}
             Err(SyncError::Keys(KeysError::Conflict)) => {
                 refuse(progress, &record_id, KeysError::Conflict);
                 outcome.conflict = true;
-                // Two signed version records at one id are a fork of the team's keys, which ends it; junk at a held
-                // id is only an alarm, so a server cannot end a team without a signer's key.
-                if self.is_fork(txn, cache, scope, object).await? && book.end_now() {
-                    progress.events.push(TeamEvent::Ended);
-                }
                 return Ok(());
             }
             Err(other) => return Err(other),
@@ -215,7 +265,7 @@ impl KeyService {
                     Err(SyncError::Keys(error)) => refuse(progress, &record_id, error),
                     Err(other) => return Err(other),
                 }
-                cache.forget(*account);
+                cache.learn(&certificate);
             }
             _ => {
                 if let Err(error) = book.insert(object, true) {
@@ -224,34 +274,6 @@ impl KeyService {
             }
         }
         Ok(())
-    }
-
-    async fn is_fork(
-        &self,
-        txn: &mut dyn StateTxn,
-        cache: &mut FactsCache,
-        scope: ScopeName,
-        offered: &KeyObject,
-    ) -> Result<bool, SyncError> {
-        let Some(offered) = offered.version_record() else {
-            return Ok(false);
-        };
-        let id = KeyRecordId::Version(offered.key).to_wire();
-        let Some(held) = self
-            .held_object(txn, scope, KeyKind::Version, &id)
-            .await?
-            .and_then(|held| held.object.version_record())
-        else {
-            return Ok(false);
-        };
-        let mut facts = ServiceFacts {
-            service: self,
-            txn,
-            scope,
-            cache,
-        };
-        Ok(record_signed(self.origin(), &mut facts, &held).await?
-            && record_signed(self.origin(), &mut facts, &offered).await?)
     }
 
     async fn commit_team(
@@ -416,7 +438,7 @@ impl KeyService {
             scope: ScopeName::Team(team),
             cache: &mut cache,
         };
-        if roster::rotation_left_to_a_member(&book, &mut facts, roster, self.account()).await? {
+        if roster::rotation_left_to_a_member(&book, &mut facts, roster).await? {
             return Ok(false);
         }
         book.own_holds(&mut facts).await

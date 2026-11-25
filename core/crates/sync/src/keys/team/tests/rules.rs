@@ -209,7 +209,7 @@ fn team_id() -> tablepro_keys::encoding::TeamId {
 }
 
 #[tokio::test]
-async fn another_record_at_the_version_held_is_a_fork_that_ends_the_team() {
+async fn another_record_at_the_version_held_is_an_alarm_and_the_device_moves_no_further_on_it() {
     let mut t = five();
     let objects = version(5, Start::Next, &key(), Some(&key()), (&t.a, 1), &[]);
     let mut held = row(5, &[t.a.holder(1)], KeyVersionState::Ok);
@@ -220,8 +220,9 @@ async fn another_record_at_the_version_held_is_a_fork_that_ends_the_team() {
     let progress = team.advance(&mut t.facts).await.unwrap();
 
     assert_eq!(refusal(&progress, &objects, "key.version"), Some("keys.conflict"));
-    assert_eq!(progress.events, [TeamEvent::Ended]);
-    assert_eq!(team.row().unwrap().state, KeyVersionState::Ended);
+    assert!(progress.events.is_empty());
+    assert_eq!(team.row().unwrap().state, KeyVersionState::Ok);
+    assert_eq!(team.check_anchor().unwrap_err().code(), "keys.conflict");
 
     let later = version(6, Start::Next, &key(), Some(&key()), (&t.a, 1), &[(&t.me, 1)]);
     insert_all(&mut team, &later);
@@ -776,7 +777,7 @@ async fn a_rotation_wraps_to_holders_on_the_roster_less_alerts_and_removals_and_
 }
 
 #[tokio::test]
-async fn a_team_due_after_a_members_own_account_rotation_is_left_to_that_member_and_any_other_cause_to_anyone() {
+async fn a_team_due_after_a_members_own_account_rotation_is_left_to_its_review_and_any_other_cause_to_anyone() {
     let mut t = five();
     let six = key();
     let mut team = book(
@@ -801,7 +802,7 @@ async fn a_team_due_after_a_members_own_account_rotation_is_left_to_that_member_
     let on_roster = members(&[(&t.a, Role::Admin), (&t.m, Role::Member), (&t.me, Role::Editor)]);
 
     assert!(
-        !roster::rotation_left_to_a_member(&team, &mut t.facts, &on_roster, t.me.id)
+        !roster::rotation_left_to_a_member(&team, &mut t.facts, &on_roster)
             .await
             .unwrap()
     );
@@ -812,13 +813,14 @@ async fn a_team_due_after_a_members_own_account_rotation_is_left_to_that_member_
     t.m.sign_rotation(2);
     t.facts.know(&t.m, 2);
     assert!(
-        roster::rotation_left_to_a_member(&team, &mut t.facts, &on_roster, t.me.id)
+        roster::rotation_left_to_a_member(&team, &mut t.facts, &on_roster)
             .await
             .unwrap()
     );
-    // This device's own rotation is its own pending flow's, never a reason to wait on itself.
+    // M's other devices wait for the one that ran the review too; the pins refusing the certificate holds nothing back.
+    t.facts.alert(&t.m, 2);
     assert!(
-        !roster::rotation_left_to_a_member(&team, &mut t.facts, &on_roster, t.m.id)
+        !roster::rotation_left_to_a_member(&team, &mut t.facts, &on_roster)
             .await
             .unwrap()
     );
@@ -841,7 +843,7 @@ async fn a_team_due_after_a_members_own_account_rotation_is_left_to_that_member_
     );
     let on_roster = members(&[(&replaced.a, Role::Admin), (&replaced.me, Role::Editor)]);
     assert!(
-        !roster::rotation_left_to_a_member(&team, &mut replaced.facts, &on_roster, replaced.me.id)
+        !roster::rotation_left_to_a_member(&team, &mut replaced.facts, &on_roster)
             .await
             .unwrap()
     );
@@ -1001,9 +1003,69 @@ async fn a_forged_version_below_the_join_point_opens_nothing_the_ring_chain_does
 
     let read = secrets::team_key(&keyring, super::team(), &team, &mut facts, v(3), v(5)).await;
 
-    assert_eq!(read.unwrap_err().code(), "sync.not_allowed");
+    // The genuine ring of 4 opens the real key of 3, which the forged record's `kid` does not match.
+    assert_eq!(read.unwrap_err().code(), "keys.kid");
     let four_read = secrets::team_key(&keyring, super::team(), &team, &mut facts, v(4), v(5))
         .await
         .unwrap();
     assert_eq!(four_read.expose(), four.expose());
+}
+
+#[tokio::test]
+async fn a_member_joins_from_a_wrap_its_wrapper_signed_before_replacing_its_key() {
+    let (mut a, me) = (Account::generated(1, 1), Account::generated(3, 1));
+    let five = key();
+    let objects = version(5, Start::Next, &five, Some(&key()), (&a, 1), &[(&a, 1), (&me, 1)]);
+    let before_replace = a.certificates[&1].clone();
+    a.change_ik(2, true);
+    let mut facts = TestFacts::default();
+    facts.know(&a, 2);
+    facts
+        .certificates
+        .insert((a.id, v(1)), Certificate::Retired(before_replace));
+    facts.know(&me, 1);
+    let mut team = book(&me, None);
+    insert_all(&mut team, &objects);
+
+    let progress = team.advance(&mut facts).await.unwrap();
+
+    assert_eq!(progress.events, [TeamEvent::Joined { version: v(5) }]);
+}
+
+#[tokio::test]
+async fn a_version_signed_before_its_signers_replace_is_stale_and_one_after_it_retired() {
+    let (mut a, me) = (Account::generated(1, 1), Account::generated(3, 1));
+    let holder = a.holder(1);
+    let before_replace = a.certificates[&1].clone();
+    let old_ik = a.change_ik(2, true);
+    let mut facts = TestFacts::default();
+    facts.know(&a, 2);
+    facts
+        .certificates
+        .insert((a.id, v(1)), Certificate::Retired(before_replace));
+    facts.know(&me, 1);
+    let before = version(6, Start::Next, &key(), Some(&key()), (&a, 1), &[(&me, 1)]);
+    let mut team = book(&me, Some(row(5, &[holder, me.holder(1)], KeyVersionState::Ok)));
+    insert_all(&mut team, &before);
+
+    let progress = team.advance(&mut facts).await.unwrap();
+
+    assert_eq!(refusal(&progress, &before, "key.version"), Some("keys.stale"));
+
+    let mut attacker = a.clone();
+    attacker.ik = old_ik;
+    attacker
+        .keys
+        .insert(3, tablepro_keys::keys::AccountKeys::generate().unwrap());
+    attacker.sign_rotation(3);
+    facts
+        .certificates
+        .insert((a.id, v(3)), Certificate::Retired(attacker.certificates[&3].clone()));
+    let after = version(6, Start::Next, &key(), Some(&key()), (&attacker, 3), &[(&me, 1)]);
+    let mut team = book(&me, Some(row(5, &[holder, me.holder(1)], KeyVersionState::Ok)));
+    insert_all(&mut team, &after);
+
+    let progress = team.advance(&mut facts).await.unwrap();
+
+    assert_eq!(refusal(&progress, &after, "key.version"), Some("keys.retired_ik"));
 }
