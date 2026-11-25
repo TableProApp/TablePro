@@ -19,6 +19,8 @@
 #                   is this repository, else the checkout this script lives in)
 #   --no-wait       do not wait for a concurrent build of the same checkout to finish
 #   --offline       resolve dependencies without the network
+#   --jobs <n>      run at most <n> build jobs and test processes at once; the platform's header says where it
+#                   reaches (default: each tool's own)
 #   --              ends the options: what follows goes to the step as it is, such as a test filter option
 #
 # Exit: 0 pass, 1 fail, 2 inconclusive (a named environment cause, not the change), 3 usage error.
@@ -42,6 +44,7 @@ BACKEND=""
 HELP=0
 WAIT_FOR_BUILD=1
 OFFLINE=0
+JOBS=""
 
 # -h exits 0; any other usage error exits 3, which a caller can tell apart from a verdict.
 header_of() {
@@ -72,6 +75,14 @@ while [ $# -gt 0 ]; do
         --platform) need_value $# "--platform"; PLATFORM="$2"; PLATFORM_GIVEN=1; shift 2 ;;
         --no-wait) WAIT_FOR_BUILD=0; shift ;;
         --offline) OFFLINE=1; shift ;;
+        --jobs)
+            need_value $# "--jobs"
+            case "$2" in
+                '' | 0* | *[!0-9]*) echo "--jobs needs a whole number above 0: $2" >&2; exit 3 ;;
+            esac
+            JOBS="$2"
+            shift 2
+            ;;
         -h | --help) HELP=1; shift ;;
         --) shift; POSITIONAL+=("$@"); break ;;
         --*) echo "unknown option: $1" >&2; usage ;;
@@ -80,6 +91,9 @@ while [ $# -gt 0 ]; do
 done
 # bash 3.2 treats an unset array as unbound under `set -u`, so an options-only run needs the guard.
 set -- ${POSITIONAL[@]+"${POSITIONAL[@]}"}
+
+# Every Cargo build a step starts reads it, including the ones Meson, MSBuild and the Apple core scripts start.
+[ -z "$JOBS" ] || export CARGO_BUILD_JOBS="$JOBS"
 
 # The default platform is the one this machine can build, which is its operating system.
 if [ -z "$PLATFORM" ]; then
@@ -120,6 +134,7 @@ emit() {
     {
         echo "step: $STEP ${STEP_DETAIL:-}"
         echo "root: $REPO_ROOT"
+        [ -n "$JOBS" ] && echo "jobs: $JOBS"
         echo "status: $STATUS"
         [ "$exit_code" != "-" ] && echo "exit: $exit_code"
         if [ -n "$log" ]; then

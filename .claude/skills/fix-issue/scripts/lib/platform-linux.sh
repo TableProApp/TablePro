@@ -15,6 +15,7 @@
 #   verify.sh [options] dist                       # the source tarball of the last commit
 #
 # Here --offline keeps Cargo off the network. --no-wait changes nothing: Cargo waits for its own lock.
+# --jobs <n> passes -j to meson compile, --num-processes to meson test and --test-threads to nextest, and caps Cargo.
 
 # Sourced by verify.sh, which owns the options, the log and the verdict. STEP_DETAIL is read by
 # emit over there, which is all SC2034 is off for.
@@ -257,7 +258,7 @@ platform_step() {
             prepare
             require_configured
             log="$(new_log build)"
-            run_logged "$log" meson compile -C "$BUILD_DIR"
+            run_logged "$log" meson compile -C "$BUILD_DIR" ${JOBS:+-j "$JOBS"}
             code=$?
             if [ $code -eq 0 ]; then
                 STATUS=PASS
@@ -278,7 +279,7 @@ platform_step() {
                 log="$(new_log test-suites)"
                 local wrapper=()
                 mapfile -t wrapper < <(test_wrapper)
-                run_appending "$log" ${wrapper[@]+"${wrapper[@]}"} meson test -C "$BUILD_DIR" --print-errorlogs
+                run_appending "$log" ${wrapper[@]+"${wrapper[@]}"} meson test -C "$BUILD_DIR" --print-errorlogs ${JOBS:+--num-processes "$JOBS"}
                 code=$?
                 append_meson_testlog "$log"
                 note "suites: $(meson_summary "$log")"
@@ -351,7 +352,8 @@ platform_step() {
             prepare
             require_configured
             log="$(new_log data)"
-            run_logged "$log" meson test -C "$BUILD_DIR" --no-rebuild --suite data --print-errorlogs
+            run_logged "$log" meson test -C "$BUILD_DIR" --no-rebuild --suite data --print-errorlogs \
+                ${JOBS:+--num-processes "$JOBS"}
             code=$?
             note "suites: $(meson_summary "$log")"
             if [ $code -ne 0 ]; then
@@ -408,7 +410,8 @@ platform_step() {
             # CI runs these through nextest, whose test groups keep one container engine busy at a
             # time. Without nextest, one thread does the same.
             if cargo nextest --version > /dev/null 2>&1; then
-                run_logged "$log" in_devenv cargo nextest run --locked --profile ci -p "$package" --run-ignored only
+                run_logged "$log" in_devenv cargo nextest run --locked --profile ci -p "$package" --run-ignored only \
+                    ${JOBS:+--test-threads "$JOBS"}
             else
                 run_logged "$log" in_devenv cargo test --locked --no-fail-fast -p "$package" -- --ignored --test-threads=1
                 note "cargo-nextest is not installed, so this ran through cargo test on one thread"
