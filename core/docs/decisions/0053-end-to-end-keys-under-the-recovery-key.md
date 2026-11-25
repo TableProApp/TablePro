@@ -23,6 +23,7 @@ On 2026-11-25 the maintainer decided:
 - **D15.** Any owner or admin signs team trust. Removing a signer needs k = min(2, n-1) signers, and a signer may always remove itself. A team re-root happens only when no signer is left, is visible to every member, and support can never perform it.
 - **Linux without a keyring** gets team records only.
 - **Review.** No external audit now. Whether to commission one is decided before end-to-end encryption leaves beta.
+- **Consequences accepted the same day:** team secrets need the recovery key; an account with no holder and no recovery key left resets after the server deletes its personal and history records; changing the API origin loses the history written under the old one.
 
 The threat model is [`core/docs/security/sync-threat-model.md`](../security/sync-threat-model.md). The formal model is in `core/docs/security/models/`.
 
@@ -285,11 +286,11 @@ Key objects are records of reserved kinds under 0051's record rules. Ids are wri
 
 Device approval and member confirmation compare a short authenticated string. The two devices exchange it through records, with a hash commitment that leaves an attacker one guess. Without the commitment, a server that controls both sides' views can search for two views with equal words: about 2^32 work for 64-bit words and 2^52 for 103-bit words. RFC 6189 §4.4.1.1 describes that birthday attack, and the commitment closes it (Vaudenay, CRYPTO 2005; Matrix's SAS verification; Apple's contact key verification).
 
-**The exchange.** The initiator I and the responder R are both online, and both poll every 1-2 s while the sheet is open. Each step is a `key.sas` record written by its party's account, except that a device approval's commitment sits in the request. The steps need no signature, since the commitment and the comparison authenticate them.
+**The exchange.** The initiator I and the responder R are both online, and both poll every 1-2 s while the sheet is open. Each step is a `key.sas` record named `commit`, `nonce` or `reveal` and written by its party's account, except that a device approval's commitment sits in its request, whose id is the session id. The steps need no signature, since the commitment and the comparison authenticate them.
 
-1. I picks a random 32-byte `r_I` and publishes `c = SHA-256(LP("tablepro/v1/sas-commit") || LP(session) || LP(r_I))`.
-2. R, after it has `c`, publishes a random 32-byte `r_R`.
-3. I, after it has `r_R`, publishes `r_I`. R refuses an `r_I` that does not open `c`.
+1. `commit`: I picks a random 32-byte `r_I` and publishes `c = SHA-256(LP("tablepro/v1/sas-commit") || LP(session) || LP(r_I))`.
+2. `nonce`: R, after it has `c`, publishes a random 32-byte `r_R`.
+3. `reveal`: I, after it has `r_R`, publishes `r_I`. R refuses an `r_I` that does not open `c`.
 4. Each side computes `d = SHA-256(LP(label) || ctx || LP(r_I) || LP(r_R))` from its own view of `ctx`. The words are the first five base-7776 digits of d read as a big-endian integer, least significant first, each picking a word of the EFF large word list.
 
 - The person compares the five words on both screens and confirms on both.
@@ -452,7 +453,7 @@ A key holder belongs to (origin, account id, device row id), not to a session (F
 
 - `info = LP("tablepro/v1/wrap") || LP("tp1") || scope || LP(purpose) || u32(version) || LP(recipient type) || LP(recipient id) || u32(recipient version)`;
 - `purpose` is `account-key`, `account-signing-key`, `sharing-key` or `team-key`;
-- the recipient is a holder (its id, version 0), the recovery key (the account, `rk_v`) or a member (the account, `sk_v`);
+- the recipient type is `holder` (the holder's id, version 0), `recovery` (the account, `rk_v`) or `member` (the account, `sk_v`), spelled as in the record id (0052);
 - `pt` is the 32-byte key, seed or scalar;
 - the fields are `suite`, `purpose`, `version`, `recipient`, `enc` and `ct`.
 
@@ -627,13 +628,13 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 
 ## Consequences
 
-- **A recovery key comes first.** It is needed before any personal sync and before any team secret, since both need an identity. Team plaintext records need none.
+- **A recovery key comes first** (decided). It is needed before any personal sync and before any team secret, since both need an identity. Team plaintext records need none.
 - **Device approval and member confirmation need both devices online at once,** or in the same room for the QR code. An asynchronous member compare is not offered: it would need about 200 bits to resist the birthday search.
 - **A lost device is removed only with the recovery key.** An admin's portal removal stops the device at once. The person's personal floor holds new secret and history writes in the local queue until they enter the key.
-- **Losing every holder and the recovery key loses the personal and history scopes on the server.** The account starts again with a reset, which first deletes those records.
+- **Losing every holder and the recovery key loses the personal and history scopes on the server** (decided). The account starts again with a reset, which first deletes those records.
 - **Team secrets wait during rotation pending** until a signer's app opens. Members keep reading under the versions they hold.
 - **The server reads more than versions.** It reads the key-object fields its table lists, DPoP proofs and `kv`, and verifies the account and team logs. It reads no secret and no history.
-- **An install that changes its API origin** is a new server for keys too, as it already is for tokens and the license (0047). People enroll again and devices seal the secrets they hold again. History written under the old origin is not readable there.
+- **An install that changes its API origin** (decided) is a new server for keys too, as it already is for tokens and the license (0047). People enroll again and devices seal the secrets they hold again. History written under the old origin is not readable there.
 - **Teammates see each other's identity logs** through member bundles: when a person removed devices, how many, and when they replaced or reset their recovery key.
 - **The threat model's residual risks hold:** trust on first use at genesis and at a reset with no holder left, split views, withholding, a full rollback for a device that never saw the newer head, a confirmed member writing a team secret with the server's help, and data under `tp1` key versions against a future quantum computer.
 - **Docs.** The cloud repository's `SECURITY.md` links the threat model. No text claims third-party verification. Whether to commission an external audit is decided before end-to-end encryption leaves beta.
