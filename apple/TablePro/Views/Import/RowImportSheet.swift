@@ -29,6 +29,12 @@ struct RowImportSheet: View {
 
     private typealias Destination = RowImportDestination
 
+    private enum Phase {
+        case form
+        case running
+        case finished(TransferResult)
+    }
+
     private struct SourceRead: Hashable {
         let destination: Destination
         let scope: DatabaseScope?
@@ -77,14 +83,9 @@ struct RowImportSheet: View {
     @State private var importSucceeded = false
 
     @State private var importService: ImportService?
-    @State private var importResult: PluginImportResult?
-    @State private var importTally: ImportRowTally?
     @State private var importedRows: DatabaseObjectChange?
-    @State private var importError: (any Error)?
-    @State private var showProgressDialog = false
-    @State private var showSuccessDialog = false
-    @State private var showErrorDialog = false
     @State private var importTask: Task<Void, Never>?
+    @State private var phase: Phase = .form
 
     @State private var newTablePlanner = NewTableImportPlanner()
 
@@ -143,32 +144,35 @@ struct RowImportSheet: View {
         return nil
     }
 
+    // A ZStack, not a Group, whose modifiers reach each phase view: a phase switch must not run onDisappear.
     var body: some View {
-        VStack(spacing: 0) {
-            headerView
-                .padding()
-            Divider()
-
-            destinationForm
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-            Divider()
-
-            contentArea
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider()
-
-            if edit == nil {
-                optionsForm
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
-                Divider()
+        ZStack {
+            switch phase {
+            case .form:
+                formView
+            case .running:
+                if let service = importService {
+                    ImportProgressView(service: service)
+                }
+            case .finished(let result):
+                TransferResultView(
+                    result,
+                    onBack: result.returnsToForm ? { phase = .form } : nil,
+                    onDone: { closeAfterRun() }
+                ) {
+                    if let report = result.errorReport {
+                        Button("Save Report…") {
+                            TransferResults.saveErrorReport(
+                                report,
+                                sourceFileName: sourceName,
+                                targetTable: importedRows?.name ?? selectedTargetTable,
+                                window: hostWindow
+                            )
+                        }
+                    }
+                }
             }
-
-            footerView
-                .padding()
         }
-        .frame(minWidth: 720, minHeight: 560, idealHeight: 640, maxHeight: .infinity)
         .background {
             WindowAccessor { window in
                 hostWindow = window
@@ -197,38 +201,50 @@ struct RowImportSheet: View {
         .onChange(of: currentPlugin?.fieldDetectionSignature) { newValue in
             detectionSignature = newValue ?? ""
         }
+        // The form's Cancel and, while running, the Stop button own Escape; Stop asks first.
+        .onExitCommand {
+            guard case .finished = phase else { return }
+            closeAfterRun()
+        }
         .onDisappear {
             importTask?.cancel()
             if !importSucceeded { settingsSnapshot?.restore() }
             settingsSnapshot = nil
         }
-        .sheet(isPresented: $showProgressDialog) {
-            if let service = importService {
-                ImportProgressView(service: service)
+    }
+
+    private var formView: some View {
+        VStack(spacing: 0) {
+            headerView
+                .padding()
+            Divider()
+
+            destinationForm
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+            Divider()
+
+            contentArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+
+            if edit == nil {
+                optionsForm
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                Divider()
             }
+
+            footerView
+                .padding()
         }
-        .onChange(of: showSuccessDialog) { isShowing in
-            guard isShowing else { return }
-            TransferResultAlert.presentImportSuccess(
-                result: importResult,
-                rowTally: importTally,
-                runResult: importService?.stopResult,
-                window: hostWindow,
-                sourceFileName: sourceName,
-                targetTable: selectedTargetTable
-            ) {
-                showSuccessDialog = false
-                isPresented = false
-                if let importedRows {
-                    AppCommands.shared.objectChanged.send(importedRows)
-                }
-            }
-        }
-        .onChange(of: showErrorDialog) { isShowing in
-            guard isShowing else { return }
-            TransferResultAlert.presentImportFailure(error: importError, result: importService?.stopResult, window: hostWindow) {
-                showErrorDialog = false
-            }
+        .frame(minWidth: 720, minHeight: 560, idealHeight: 640, maxHeight: .infinity)
+    }
+
+    private func closeAfterRun() {
+        isPresented = false
+        if let importedRows {
+            AppCommands.shared.objectChanged.send(importedRows)
         }
     }
 
@@ -879,8 +895,7 @@ struct RowImportSheet: View {
             return
         }
         guard let scope else {
-            importError = DatabaseError.notConnected
-            showErrorDialog = true
+            phase = .finished(TransferResults.importFailed(error: DatabaseError.notConnected))
             return
         }
         guard currentReadIsReady else {
@@ -906,8 +921,7 @@ struct RowImportSheet: View {
         case .newTable:
             let name = newTableName.trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty, let definition = newTable.definition(tableName: name) else {
-                importError = RowImportTableMaker.statementError
-                showErrorDialog = true
+                phase = .finished(TransferResults.importFailed(error: RowImportTableMaker.statementError))
                 return
             }
             let columnMapping = newTable.columnMapping
@@ -951,7 +965,7 @@ struct RowImportSheet: View {
     private func runImport(_ plan: ImportPlan, scope: DatabaseScope) {
         let service = ImportService(connection: connection)
         importService = service
-        showProgressDialog = true
+        phase = .running
         let targetTable = plan.targetTable
 
         importTask = Task {
@@ -986,33 +1000,28 @@ struct RowImportSheet: View {
                     authorization: authorization
                 )
                 await MainActor.run {
-                    showProgressDialog = false
                     importSucceeded = true
-                    importResult = result
-                    importTally = service.state.rowTally
                     importedRows = DatabaseObjectChange(
                         connectionId: connection.id,
                         scope: scope,
                         name: targetTable,
                         kind: .rows
                     )
-                    showSuccessDialog = true
+                    phase = .finished(TransferResults.importSucceeded(
+                        result: result,
+                        rowTally: service.state.rowTally,
+                        runResult: service.stopResult
+                    ))
                 }
             } catch is PluginImportCancellationError {
                 await MainActor.run {
-                    showProgressDialog = false
-                    TransferResultAlert.presentImportCancelled(
-                        result: service.stopResult,
-                        window: hostWindow
-                    ) {}
+                    phase = .finished(TransferResults.importStopped(service.stopResult))
                 }
             } catch ExecutionGateError.cancelledByUser {
-                await MainActor.run { showProgressDialog = false }
+                await MainActor.run { phase = .form }
             } catch {
                 await MainActor.run {
-                    showProgressDialog = false
-                    importError = error
-                    showErrorDialog = true
+                    phase = .finished(TransferResults.importFailed(error: error, result: service.stopResult))
                 }
             }
         }

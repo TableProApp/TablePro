@@ -16,6 +16,47 @@ struct ExportProgressSheet: View {
     }
 }
 
+// The export sheet's root while an offered format's plugin installs, in place of a panel on top of the sheet.
+struct PluginInstallProgressSheet: View {
+    @ObservedObject var install: PluginInstallRun
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(install.display.message)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                bar
+                    .accessibilityLabel(install.display.message)
+            }
+            HStack {
+                Spacer()
+                Button(String(localized: "Cancel")) {
+                    install.cancel()
+                }
+                .keyboardShortcut(.cancelAction)
+                .disabled(!install.canCancel)
+            }
+        }
+        .controlSize(.regular)
+        .padding(20)
+        .frame(width: TransferProgressView.sheetWidth)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("plugin-install-progress")
+    }
+
+    @ViewBuilder
+    private var bar: some View {
+        if let fraction = install.display.fraction {
+            ProgressView(value: min(max(fraction, 0), 1))
+                .progressViewStyle(.linear)
+        } else {
+            ProgressView()
+                .progressViewStyle(.linear)
+        }
+    }
+}
+
 extension ExportState {
     // A streaming query has no current table, so it is named by the file it is written to.
     func transferProgress(fileName: String) -> TransferProgress {
