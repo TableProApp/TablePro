@@ -69,6 +69,8 @@ impl KeyService {
         let mut cache = FactsCache::default();
         let mut progress = Progress::default();
         let mut outcome = Outcome::default();
+        // Versions, rings or wraps taken since the last advance: a certificate in order is judged after them only.
+        let mut pending = false;
         for record in arrival_order(&arrival) {
             let object = match parse(record) {
                 Ok(object) => object,
@@ -77,17 +79,26 @@ impl KeyService {
                     continue;
                 }
             };
-            if let KeyRecordId::Member { account, av } = object.id
-                && arrival.order == ArrivalOrder::InOrder
-            {
-                let step = self.advance_team(&mut *txn, &mut book, &mut cache).await?;
-                merge(&mut progress, step);
-                if account == self.account() {
-                    own_member_av = own_member_av.max(Some(av));
+            if let KeyRecordId::Member { .. } = object.id {
+                if arrival.order == ArrivalOrder::InOrder && pending {
+                    let step = self.advance_team(&mut *txn, &mut book, &mut cache).await?;
+                    merge(&mut progress, step);
+                    pending = false;
                 }
+            } else {
+                pending = true;
             }
             self.take_object(&mut *txn, &mut book, &mut cache, &object, &mut progress, &mut outcome)
                 .await?;
+            if let KeyRecordId::Member { account, av } = object.id
+                && account == self.account()
+                && !progress
+                    .refused
+                    .iter()
+                    .any(|refused| refused.record_id == record.record_id)
+            {
+                own_member_av = own_member_av.max(Some(av));
+            }
             if arrival.order == ArrivalOrder::InOrder
                 && let KeyRecordId::Wrap(target) = object.id
                 && target.recipient == Recipient::Account(self.account())
@@ -145,6 +156,18 @@ impl KeyService {
     ) -> Result<(), SyncError> {
         let scope = book.scope();
         let record_id = object.id.to_wire();
+        // An object that is no key object of this team, or a certificate its own IK does not sign, is never kept, so
+        // it can neither take an id a real object needs nor be pushed back after a restore.
+        if let Err(error) = book.check_shape(object) {
+            refuse(progress, &record_id, error);
+            return Ok(());
+        }
+        if let (KeyRecordId::Member { account, av }, KeyBody::Member(body)) = (&object.id, &object.body)
+            && let Err(error) = body.certificate(*account, *av).verify(self.origin())
+        {
+            refuse(progress, &record_id, error);
+            return Ok(());
+        }
         match self.hold_object(txn, scope, object, true).await {
             Ok(()) => {}
             Err(SyncError::Keys(KeysError::Conflict)) => {
@@ -161,10 +184,6 @@ impl KeyService {
         match (&object.id, &object.body) {
             (KeyRecordId::Member { account, av }, KeyBody::Member(body)) => {
                 let certificate = body.certificate(*account, *av);
-                if let Err(error) = certificate.verify(self.origin()) {
-                    refuse(progress, &record_id, error);
-                    return Ok(());
-                }
                 match self.offer_certificate(txn, scope, &certificate).await {
                     Ok(_) => {}
                     Err(SyncError::Keys(error)) => refuse(progress, &record_id, error),

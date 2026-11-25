@@ -31,7 +31,7 @@ impl KeyService {
         };
         let holders = book.row().map(|row| row.holders.clone()).unwrap_or_default();
         let holder =
-            book.row().is_some_and(|row| row.state != KeyVersionState::Ended) && book.own_holds(&mut facts).await?;
+            book.row().is_some_and(|row| row.state == KeyVersionState::Ok) && book.own_holds(&mut facts).await?;
         let manages = roster
             .as_ref()
             .and_then(|roster| roster.role)

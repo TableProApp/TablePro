@@ -135,11 +135,34 @@ impl TeamBook {
     }
 
     // A team's `key.version`, `key.ring` or scope-key `key.wrap`; `key.member` goes to the pins instead. An object of
-    // another scope or purpose is `keys.encoding`.
+    // another scope or purpose is `keys.encoding`, and the device keeps none of it.
+    pub(crate) fn check_shape(&self, object: &KeyObject) -> Result<(), KeysError> {
+        let fits = match (&object.id, &object.body) {
+            (KeyRecordId::Version(key), KeyBody::Version(_)) | (KeyRecordId::Ring(key), KeyBody::Ring(_)) => {
+                self.is_team_key(key.owner, key.purpose)
+            }
+            (KeyRecordId::Wrap(target), KeyBody::Wrap(_)) => {
+                target.owner == self.team.0
+                    && target.purpose == WrapPurpose::Key(KeyPurpose::Team)
+                    && matches!(target.recipient, Recipient::Account(_))
+            }
+            (KeyRecordId::Member { .. }, KeyBody::Member(_)) => true,
+            _ => false,
+        };
+        if fits {
+            Ok(())
+        } else {
+            Err(KeysError::Encoding {
+                what: "not a key object of this team",
+            })
+        }
+    }
+
     pub(crate) fn insert(&mut self, object: &KeyObject, fresh: bool) -> Result<(), KeysError> {
+        self.check_shape(object)?;
         let record_id = object.id.to_wire();
         match (&object.id, &object.body) {
-            (KeyRecordId::Version(key), KeyBody::Version(_)) if self.is_team_key(key.owner, key.purpose) => {
+            (KeyRecordId::Version(key), KeyBody::Version(_)) => {
                 let value = object
                     .version_record()
                     .ok_or(KeysError::Encoding { what: "version record" })?;
@@ -152,14 +175,10 @@ impl TeamBook {
                     },
                 );
             }
-            (KeyRecordId::Ring(key), KeyBody::Ring(ring)) if self.is_team_key(key.owner, key.purpose) => {
+            (KeyRecordId::Ring(key), KeyBody::Ring(ring)) => {
                 self.rings.insert(key.version, ring.clone());
             }
-            (KeyRecordId::Wrap(target), KeyBody::Wrap(_))
-                if target.owner == self.team.0
-                    && target.purpose == WrapPurpose::Key(KeyPurpose::Team)
-                    && matches!(target.recipient, Recipient::Account(_)) =>
-            {
+            (KeyRecordId::Wrap(target), KeyBody::Wrap(_)) => {
                 let value = object.wrap().ok_or(KeysError::Encoding { what: "wrap" })?;
                 let held = self.wraps.entry(target.version).or_default();
                 match held.iter_mut().find(|item| item.record_id == record_id) {
@@ -173,7 +192,7 @@ impl TeamBook {
             }
             _ => {
                 return Err(KeysError::Encoding {
-                    what: "not a key object of this team",
+                    what: "a certificate is no version, ring or wrap",
                 });
             }
         }
