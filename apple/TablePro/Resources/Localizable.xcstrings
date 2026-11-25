@@ -19935,6 +19935,9 @@
         }
       }
     },
+    "A small music store database in SQLite" : {
+
+    },
     "A small query on each open connection catches a drop early. For a database that sleeps when idle or bills per query, pick Only when used: it checks when you next use the connection." : {
       "localizations" : {
         "fr" : {
@@ -19974,9 +19977,6 @@
           }
         }
       }
-    },
-    "A small SQLite database to look around in" : {
-
     },
     "A SQL condition, such as status = 'active'" : {
       "localizations" : {
@@ -35162,6 +35162,9 @@
         }
       }
     },
+    "AWS Account" : {
+
+    },
     "AWS answered without the Redshift user and password." : {
 
     },
@@ -37573,7 +37576,7 @@
     "Bring an open tab to the front, using a tab id from list_recent_tabs. TablePro asks the user about the tab's connection first, as it does for any call that names a connection." : {
 
     },
-    "Bring Your Connections" : {
+    "Bring your connections, or start with a new one." : {
 
     },
     "Broadcast" : {
@@ -56700,6 +56703,9 @@
         }
       }
     },
+    "Connections and saved queries from apps on this Mac" : {
+
+    },
     "Connections are reached without asking." : {
       "localizations" : {
         "fr" : {
@@ -56709,6 +56715,9 @@
           }
         }
       }
+    },
+    "Connections File" : {
+
     },
     "Connections found in %@" : {
       "localizations" : {
@@ -56791,9 +56800,6 @@
       }
     },
     "Connections on this profile share one database user. TablePro renews its lease while in use, revokes it once the last connection disconnects or after 10 minutes unused, and never saves the generated password." : {
-
-    },
-    "Connections saved by another database app on this Mac" : {
 
     },
     "Connections set to Local only are left out." : {
@@ -57063,6 +57069,9 @@
 
     },
     "Connects to %@. The port names the socket file in the folder." : {
+
+    },
+    "Connects when you finish" : {
 
     },
     "Consistency" : {
@@ -57430,6 +57439,9 @@
           }
         }
       }
+    },
+    "Continue to add a connection or open the sample database." : {
+
     },
     "Continue Without Account" : {
 
@@ -64187,9 +64199,6 @@
     "Counters Near Their Limit" : {
 
     },
-    "Counting connections…" : {
-
-    },
     "Counting rows" : {
       "localizations" : {
         "fr" : {
@@ -64474,9 +64483,6 @@
     "create a document in %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
-    },
-    "Create a new connection" : {
-
     },
     "Create all columns" : {
       "localizations" : {
@@ -95052,6 +95058,9 @@
     "Finish in %@" : {
 
     },
+    "Finish on the Welcome window" : {
+
+    },
     "Finish Signing In" : {
       "localizations" : {
         "fr" : {
@@ -97328,6 +97337,9 @@
         }
       }
     },
+    "Found on this Mac: %@" : {
+
+    },
     "Free" : {
 
     },
@@ -98670,9 +98682,6 @@
           }
         }
       }
-    },
-    "Get Started" : {
-
     },
     "Get Table DDL" : {
       "localizations" : {
@@ -104770,6 +104779,9 @@
           }
         }
       }
+    },
+    "Import from Another App" : {
+
     },
     "Import from AWS" : {
       "localizations" : {
@@ -139939,6 +139951,9 @@
         }
       }
     },
+    "Not found on this Mac: %@" : {
+
+    },
     "Not found: %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -141193,7 +141208,7 @@
     "Notes on the whole report, such as when the usage counters started" : {
 
     },
-    "Nothing for now" : {
+    "Nothing for Now" : {
 
     },
     "Nothing got at least %1$lld%% slower than the period before. A query needs %2$lld runs in both periods, and has to have grown by at least %3$@." : {
@@ -146640,6 +146655,9 @@
         }
       }
     },
+    "Open Sample" : {
+
+    },
     "Open Sample Database" : {
       "localizations" : {
         "fr" : {
@@ -147027,9 +147045,6 @@
         }
       }
     },
-    "Open the connection you imported" : {
-
-    },
     "Open the File Read-Only" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -147042,7 +147057,7 @@
         }
       }
     },
-    "Open the sample database" : {
+    "Open the Imported Connection" : {
 
     },
     "Open this query in a new tab and run it" : {
@@ -148527,6 +148542,9 @@
     "Other sessions using the package lose its state, and their next call to it fails once with ORA-04068." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Other Ways to Import" : {
+
     },
     "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
 
@@ -158561,6 +158579,9 @@
     "Project %@ has no Bigtable instance." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Project Folder" : {
+
     },
     "Project ID" : {
       "extractionState" : "manual",
@@ -184744,9 +184765,6 @@
     "Select the apps to import from. You review each one before anything is saved." : {
 
     },
-    "Select to count its connections. macOS may ask for access first." : {
-
-    },
     "Selected" : {
       "localizations" : {
         "fr" : {
@@ -184932,6 +184950,9 @@
           }
         }
       }
+    },
+    "Selects them on the Welcome window" : {
+
     },
     "Self Cost" : {
       "localizations" : {
@@ -190673,7 +190694,7 @@
     "Show the connection this conversation works on, with its status." : {
 
     },
-    "Show the connections you imported" : {
+    "Show the Imported Connections" : {
 
     },
     "Show the messages that arrived while paused" : {
@@ -198324,9 +198345,6 @@
     "Start a new %@ session to load it." : {
 
     },
-    "Start Fresh" : {
-
-    },
     "Start one to ask about this connection." : {
       "localizations" : {
         "fr" : {
@@ -198388,9 +198406,6 @@
           }
         }
       }
-    },
-    "Start with a new connection or the sample database, or bring the connections you have." : {
-
     },
     "Starting service…" : {
       "localizations" : {
@@ -199986,6 +200001,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "步驟"
+          }
+        }
+      }
+    },
+    "Step %1$lld of %2$lld, %3$@" : {
+
+    },
+    "Step %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Step %1$lld of %2$lld"
           }
         }
       }

@@ -6,108 +6,378 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     AutomationProperties.AutomationId="SetupView">
 
-    <Grid Padding="36,24,36,24" RowSpacing="12">
+    <UserControl.Resources>
+        <!-- One card for every choice and app list (windows/docs/decisions/0026). -->
+        <Style x:Key="SetupCardItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="MinHeight" Value="72" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style x:Key="SetupCardTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="SetupCardDetailStyle" TargetType="TextBlock" BasedOn="{StaticResource SecondaryCaptionTextBlockStyle}">
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="SetupCautionIconStyle" TargetType="FontIcon">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Glyph" Value="&#xE7BA;" />
+        </Style>
+
+        <!-- The theme tiles draw a small window in the theme they stand for, from that theme's own brushes. -->
+        <Style x:Key="ThemeThumbnailStyle" TargetType="Grid">
+            <Setter Property="Width" Value="144" />
+            <Setter Property="Height" Value="88" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Background" Value="{ThemeResource SolidBackgroundFillColorBaseBrush}" />
+        </Style>
+        <Style x:Key="ThemeThumbnailRailStyle" TargetType="Border">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="CornerRadius" Value="4,0,0,4" />
+            <Setter Property="Background" Value="{ThemeResource SolidBackgroundFillColorSecondaryBrush}" />
+        </Style>
+        <Style x:Key="ThemeThumbnailCardStyle" TargetType="Border">
+            <Setter Property="Margin" Value="44,8,8,8" />
+            <Setter Property="Padding" Value="8" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        </Style>
+        <Style x:Key="ThemeThumbnailAccentStyle" TargetType="Border">
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="6" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+        </Style>
+        <Style x:Key="ThemeThumbnailLineStyle" TargetType="Border">
+            <Setter Property="Height" Value="4" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="CornerRadius" Value="2" />
+            <Setter Property="Background" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock
-            x:Name="StepTitle"
-            AutomationProperties.AutomationId="SetupTitle"
-            AutomationProperties.HeadingLevel="Level1"
-            Style="{StaticResource TitleTextBlockStyle}" />
-        <TextBlock
-            x:Name="StepDescription"
-            Grid.Row="1"
-            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-            TextWrapping="Wrap" />
-        <InfoBar
-            x:Name="MessageBar"
-            Grid.Row="2"
-            AutomationProperties.AutomationId="SetupMessageBar"
-            IsOpen="False" />
-
-        <ScrollViewer Grid.Row="3">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" MaxWidth="1000" />
-                </Grid.ColumnDefinitions>
-
-                <!-- Cards are the commands here, so the step has no Continue (Win32 wizards, command links). -->
-                <StackPanel x:Name="OriginStep" Spacing="{StaticResource SettingsCardSpacing}">
-                    <toolkit:SettingsCard x:Uid="SetupOtherAppCard" AutomationProperties.AutomationId="SetupOtherAppCard" IsClickEnabled="True" Click="OnOtherApp">
-                        <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Import" /></toolkit:SettingsCard.HeaderIcon>
-                    </toolkit:SettingsCard>
-                    <toolkit:SettingsCard x:Uid="SetupFileCard" AutomationProperties.AutomationId="SetupFileCard" IsClickEnabled="True" Click="OnImportFile">
-                        <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="OpenFile" /></toolkit:SettingsCard.HeaderIcon>
-                    </toolkit:SettingsCard>
-                    <toolkit:SettingsCard x:Uid="SetupNewCard" AutomationProperties.AutomationId="SetupNewCard" IsClickEnabled="True" Click="OnStartNew">
-                        <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Add" /></toolkit:SettingsCard.HeaderIcon>
-                    </toolkit:SettingsCard>
+        <ScrollViewer>
+            <!-- Stretched under a MaxWidth, so the column keeps one width on every step and centres on a wide window. -->
+            <StackPanel x:Name="Column" MaxWidth="680" Padding="36,32,36,24" Spacing="24">
+                <StackPanel Spacing="8">
+                    <Grid Margin="0,0,0,8" HorizontalAlignment="Left">
+                        <Image
+                            x:Name="HeroAppIcon"
+                            Width="64"
+                            Height="64"
+                            AutomationProperties.AccessibilityView="Raw"
+                            Source="ms-appx:///Assets/AppIcon.png" />
+                        <Viewbox x:Name="HeroGlyph" Width="48" Height="48" Visibility="Collapsed">
+                            <SymbolIcon x:Name="HeroSymbol" Symbol="Import" />
+                        </Viewbox>
+                        <Image
+                            x:Name="HeroSourceIcon"
+                            Width="40"
+                            Height="40"
+                            AutomationProperties.AccessibilityView="Raw"
+                            Visibility="Collapsed" />
+                    </Grid>
+                    <TextBlock
+                        x:Name="StepLabel"
+                        AutomationProperties.AutomationId="SetupStepLabel"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                    <TextBlock
+                        x:Name="StepTitle"
+                        AutomationProperties.AutomationId="SetupTitle"
+                        AutomationProperties.HeadingLevel="Level1"
+                        AutomationProperties.LiveSetting="Polite"
+                        Style="{StaticResource TitleTextBlockStyle}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        x:Name="StepDescription"
+                        MaxWidth="560"
+                        HorizontalAlignment="Left"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource BodyTextBlockStyle}"
+                        TextWrapping="Wrap" />
                 </StackPanel>
 
-                <StackPanel x:Name="ImportStep" Spacing="12" Visibility="Collapsed">
-                    <StackPanel x:Name="ImportChoose" Spacing="12">
+                <InfoBar
+                    x:Name="MessageBar"
+                    AutomationProperties.AutomationId="SetupMessageBar"
+                    Closed="OnMessageClosed"
+                    IsOpen="False"
+                    Visibility="Collapsed" />
+
+                <Grid>
+                    <Grid.Resources>
+                        <ResourceDictionary>
+                            <!-- The item draws these brushes in place of its own background, which would drop the card fill. -->
+                            <ResourceDictionary.ThemeDictionaries>
+                                <ResourceDictionary x:Key="Default">
+                                    <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="CardBackgroundFillColorSecondaryBrush" />
+                                    <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="CardBackgroundFillColorTertiaryBrush" />
+                                </ResourceDictionary>
+                                <ResourceDictionary x:Key="Light">
+                                    <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="CardBackgroundFillColorSecondaryBrush" />
+                                    <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="CardBackgroundFillColorTertiaryBrush" />
+                                </ResourceDictionary>
+                                <ResourceDictionary x:Key="HighContrast">
+                                    <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+                                    <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="{ThemeResource SystemColorHighlightColor}" />
+                                </ResourceDictionary>
+                            </ResourceDictionary.ThemeDictionaries>
+                            <!-- The item template reads its corners from this resource, not from the item's CornerRadius. -->
+                            <StaticResource x:Key="ListViewItemCornerRadius" ResourceKey="OverlayCornerRadius" />
+                        </ResourceDictionary>
+                    </Grid.Resources>
+
+                    <ListView
+                        x:Name="OriginList"
+                        x:Uid="SetupOriginList"
+                        IsItemClickEnabled="False"
+                        ItemContainerStyle="{StaticResource SetupCardItemStyle}"
+                        SelectionChanged="OnOriginChanged"
+                        SelectionMode="Single">
+                        <ListViewItem x:Name="OtherAppItem" AutomationProperties.AutomationId="SetupOtherAppCard" Style="{StaticResource SetupCardItemStyle}" Tag="OtherApp">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Viewbox Width="24" Height="24"><SymbolIcon Symbol="Import" /></Viewbox>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock x:Name="OtherAppTitle" x:Uid="SetupOtherAppTitle" Style="{StaticResource SetupCardTitleStyle}" />
+                                    <TextBlock x:Name="OtherAppDetail" x:Uid="SetupOtherAppDetail" Style="{StaticResource SetupCardDetailStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </ListViewItem>
+                        <ListViewItem x:Name="FileItem" AutomationProperties.AutomationId="SetupFileCard" Style="{StaticResource SetupCardItemStyle}" Tag="File">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Viewbox Width="24" Height="24"><SymbolIcon Symbol="OpenFile" /></Viewbox>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock x:Name="FileTitle" x:Uid="SetupFileTitle" Style="{StaticResource SetupCardTitleStyle}" />
+                                    <TextBlock x:Name="FileDetail" x:Uid="SetupFileDetail" Style="{StaticResource SetupCardDetailStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </ListViewItem>
+                        <ListViewItem x:Name="StartItem" AutomationProperties.AutomationId="SetupNewCard" Style="{StaticResource SetupCardItemStyle}" Tag="New">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Viewbox Width="24" Height="24"><SymbolIcon Symbol="Add" /></Viewbox>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock x:Name="StartTitle" x:Uid="SetupStartTitle" Style="{StaticResource SetupCardTitleStyle}" />
+                                    <TextBlock x:Name="StartDetail" x:Uid="SetupStartDetail" Style="{StaticResource SetupCardDetailStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </ListViewItem>
+                    </ListView>
+
+                    <StackPanel x:Name="ImportStep" Spacing="12" Visibility="Collapsed">
                         <StackPanel x:Name="ImportLooking" Orientation="Horizontal" Spacing="12">
                             <ProgressRing Width="20" Height="20" IsActive="True" />
                             <TextBlock x:Uid="SetupLooking" VerticalAlignment="Center" />
                         </StackPanel>
-                        <TextBlock x:Uid="SetupSourcesHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
-                        <ListView x:Name="SourceList" AutomationProperties.AutomationId="SetupSources" SelectionMode="None" />
-                        <TextBlock x:Name="NoSourcesText" x:Uid="SetupNoSources" Visibility="Collapsed" />
-                        <CheckBox x:Name="PasswordsBox" x:Uid="SetupPasswords" AutomationProperties.AutomationId="SetupPasswords" IsChecked="True" />
-                        <CheckBox x:Name="QueriesBox" x:Uid="SetupQueries" AutomationProperties.AutomationId="SetupQueries" IsChecked="True" />
+                        <ListView
+                            x:Name="SourceList"
+                            AutomationProperties.AutomationId="SetupSources"
+                            ItemContainerStyle="{StaticResource SetupCardItemStyle}"
+                            SelectionChanged="OnSourcesChanged"
+                            SelectionMode="Multiple"
+                            Visibility="Collapsed" />
+                        <TextBlock
+                            x:Name="NotFoundText"
+                            AutomationProperties.AutomationId="SetupNotFound"
+                            Style="{StaticResource SetupCardDetailStyle}"
+                            Visibility="Collapsed" />
+                        <StackPanel x:Name="NoSources" Spacing="4" Visibility="Collapsed">
+                            <TextBlock x:Uid="SetupNoSources" TextWrapping="Wrap" />
+                            <TextBlock x:Uid="SetupNoSourcesHint" Style="{StaticResource SecondaryTextBlockStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel x:Name="ImportOptions" Orientation="Horizontal" Spacing="24">
+                            <CheckBox x:Name="PasswordsBox" x:Uid="SetupPasswords" AutomationProperties.AutomationId="SetupPasswords" IsChecked="True" />
+                            <CheckBox x:Name="QueriesBox" x:Uid="SetupQueries" AutomationProperties.AutomationId="SetupQueries" IsChecked="True" />
+                        </StackPanel>
                     </StackPanel>
-                    <ContentControl
-                        x:Name="ImportPanelHost"
-                        HorizontalContentAlignment="Stretch"
-                        IsTabStop="False"
-                        Visibility="Collapsed" />
-                </StackPanel>
 
-                <StackPanel x:Name="FirstConnectionStep" Spacing="{StaticResource SettingsCardSpacing}" Visibility="Collapsed">
-                    <toolkit:SettingsCard x:Name="NewConnectionChoice" x:Uid="NewConnectionCard" AutomationProperties.AutomationId="SetupNewConnectionCard" IsClickEnabled="True" Click="OnRecordNewConnection">
-                        <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Add" /></toolkit:SettingsCard.HeaderIcon>
-                    </toolkit:SettingsCard>
-                    <toolkit:SettingsCard x:Name="SampleChoice" x:Uid="SampleCard" AutomationProperties.AutomationId="SetupSampleCard" IsClickEnabled="True" Click="OnRecordSample">
-                        <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Library" /></toolkit:SettingsCard.HeaderIcon>
-                    </toolkit:SettingsCard>
-                </StackPanel>
+                    <ListView
+                        x:Name="FirstConnectionList"
+                        x:Uid="SetupFirstConnectionList"
+                        IsItemClickEnabled="False"
+                        ItemContainerStyle="{StaticResource SetupCardItemStyle}"
+                        SelectionChanged="OnFirstConnectionChanged"
+                        SelectionMode="Single"
+                        SingleSelectionFollowsFocus="False"
+                        Visibility="Collapsed">
+                        <ListViewItem x:Name="NewConnectionItem" AutomationProperties.AutomationId="SetupNewConnectionCard" Style="{StaticResource SetupCardItemStyle}" Tag="NewConnection">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Viewbox Width="24" Height="24"><SymbolIcon Symbol="Add" /></Viewbox>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock x:Name="NewConnectionTitle" x:Uid="SetupNewConnectionTitle" Style="{StaticResource SetupCardTitleStyle}" />
+                                    <TextBlock x:Name="NewConnectionDetail" x:Uid="SetupNewConnectionDetail" Style="{StaticResource SetupCardDetailStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </ListViewItem>
+                        <ListViewItem x:Name="SampleItem" AutomationProperties.AutomationId="SetupSampleCard" Style="{StaticResource SetupCardItemStyle}" Tag="Sample">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Viewbox Width="24" Height="24"><SymbolIcon Symbol="Library" /></Viewbox>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock x:Name="SampleTitle" x:Uid="SetupSampleTitle" Style="{StaticResource SetupCardTitleStyle}" />
+                                    <TextBlock x:Name="SampleDetail" x:Uid="SetupSampleDetail" Style="{StaticResource SetupCardDetailStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </ListViewItem>
+                    </ListView>
 
-                <StackPanel x:Name="OptionsStep" Spacing="{StaticResource SettingsCardSpacing}" Visibility="Collapsed">
-                    <toolkit:SettingsCard x:Uid="ThemeCard">
-                        <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="FontColor" /></toolkit:SettingsCard.HeaderIcon>
-                        <ComboBox x:Name="ThemeBox" x:Uid="ThemeBox" AutomationProperties.AutomationId="SetupThemeBox" MinWidth="200" SelectionChanged="OnThemeChanged">
-                            <ComboBoxItem x:Uid="ThemeLight" Tag="Light" />
-                            <ComboBoxItem x:Uid="ThemeDark" Tag="Dark" />
-                            <ComboBoxItem x:Uid="ThemeSystem" Tag="System" />
-                        </ComboBox>
-                    </toolkit:SettingsCard>
-                    <toolkit:SettingsCard x:Uid="ShortcutsCard">
-                        <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
-                        <ComboBox x:Name="ShortcutsBox" x:Uid="ShortcutsBox" AutomationProperties.AutomationId="SetupShortcutsBox" MinWidth="200" SelectionChanged="OnShortcutsChanged" />
-                    </toolkit:SettingsCard>
-                    <toolkit:SettingsCard x:Uid="VimCard">
-                        <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
-                        <ToggleSwitch x:Name="VimSwitch" x:Uid="VimSwitch" AutomationProperties.AutomationId="SetupVimSwitch" Toggled="OnVimToggled" />
-                    </toolkit:SettingsCard>
-                </StackPanel>
-            </Grid>
+                    <StackPanel x:Name="OptionsStep" Spacing="24" Visibility="Collapsed">
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Uid="SetupThemeHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <GridView
+                                x:Name="ThemeTiles"
+                                x:Uid="SetupThemeTiles"
+                                AutomationProperties.AutomationId="SetupThemeBox"
+                                IsItemClickEnabled="False"
+                                SelectionChanged="OnThemeChanged"
+                                SelectionMode="Single">
+                                <GridViewItem x:Name="ThemeLightTile" AutomationProperties.AutomationId="SetupTheme_Light" Tag="Light">
+                                    <StackPanel Margin="4" Spacing="8">
+                                        <Grid RequestedTheme="Light">
+                                            <Grid Style="{StaticResource ThemeThumbnailStyle}">
+                                                <Border Style="{StaticResource ThemeThumbnailRailStyle}" />
+                                                <Border Style="{StaticResource ThemeThumbnailCardStyle}">
+                                                    <StackPanel Spacing="8">
+                                                        <Border Style="{StaticResource ThemeThumbnailAccentStyle}" />
+                                                        <Border Width="72" Style="{StaticResource ThemeThumbnailLineStyle}" />
+                                                        <Border Width="48" Style="{StaticResource ThemeThumbnailLineStyle}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </Grid>
+                                        </Grid>
+                                        <TextBlock x:Name="ThemeLightLabel" x:Uid="SetupThemeLight" />
+                                    </StackPanel>
+                                </GridViewItem>
+                                <GridViewItem x:Name="ThemeDarkTile" AutomationProperties.AutomationId="SetupTheme_Dark" Tag="Dark">
+                                    <StackPanel Margin="4" Spacing="8">
+                                        <Grid RequestedTheme="Dark">
+                                            <Grid Style="{StaticResource ThemeThumbnailStyle}">
+                                                <Border Style="{StaticResource ThemeThumbnailRailStyle}" />
+                                                <Border Style="{StaticResource ThemeThumbnailCardStyle}">
+                                                    <StackPanel Spacing="8">
+                                                        <Border Style="{StaticResource ThemeThumbnailAccentStyle}" />
+                                                        <Border Width="72" Style="{StaticResource ThemeThumbnailLineStyle}" />
+                                                        <Border Width="48" Style="{StaticResource ThemeThumbnailLineStyle}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </Grid>
+                                        </Grid>
+                                        <TextBlock x:Name="ThemeDarkLabel" x:Uid="SetupThemeDark" />
+                                    </StackPanel>
+                                </GridViewItem>
+                                <GridViewItem x:Name="ThemeSystemTile" AutomationProperties.AutomationId="SetupTheme_System" Tag="System">
+                                    <StackPanel Margin="4" Spacing="8">
+                                        <!-- Each half is clipped to its column: the light window's left, the dark window's right. -->
+                                        <Grid Width="144" Height="88">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid RequestedTheme="Light">
+                                                <Grid HorizontalAlignment="Left" Style="{StaticResource ThemeThumbnailStyle}">
+                                                    <Border Style="{StaticResource ThemeThumbnailRailStyle}" />
+                                                    <Border Style="{StaticResource ThemeThumbnailCardStyle}">
+                                                        <StackPanel Spacing="8">
+                                                            <Border Style="{StaticResource ThemeThumbnailAccentStyle}" />
+                                                            <Border Width="72" Style="{StaticResource ThemeThumbnailLineStyle}" />
+                                                            <Border Width="48" Style="{StaticResource ThemeThumbnailLineStyle}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Grid>
+                                            </Grid>
+                                            <Grid Grid.Column="1" RequestedTheme="Dark">
+                                                <Grid HorizontalAlignment="Right" Style="{StaticResource ThemeThumbnailStyle}">
+                                                    <Border Style="{StaticResource ThemeThumbnailRailStyle}" />
+                                                    <Border Style="{StaticResource ThemeThumbnailCardStyle}">
+                                                        <StackPanel Spacing="8">
+                                                            <Border Style="{StaticResource ThemeThumbnailAccentStyle}" />
+                                                            <Border Width="72" Style="{StaticResource ThemeThumbnailLineStyle}" />
+                                                            <Border Width="48" Style="{StaticResource ThemeThumbnailLineStyle}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Grid>
+                                            </Grid>
+                                        </Grid>
+                                        <TextBlock x:Name="ThemeSystemLabel" x:Uid="SetupThemeSystem" />
+                                    </StackPanel>
+                                </GridViewItem>
+                            </GridView>
+                        </StackPanel>
+
+                        <StackPanel Spacing="{StaticResource SettingsCardSpacing}">
+                            <toolkit:SettingsCard x:Uid="ShortcutsCard">
+                                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
+                                <ComboBox x:Name="ShortcutsBox" x:Uid="ShortcutsBox" AutomationProperties.AutomationId="SetupShortcutsBox" MinWidth="200" SelectionChanged="OnShortcutsChanged" />
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="VimCard">
+                                <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Edit" /></toolkit:SettingsCard.HeaderIcon>
+                                <ToggleSwitch x:Name="VimSwitch" x:Uid="VimSwitch" AutomationProperties.AutomationId="SetupVimSwitch" Toggled="OnVimToggled" />
+                            </toolkit:SettingsCard>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+
+                <ContentControl
+                    x:Name="ImportPanelHost"
+                    HorizontalContentAlignment="Stretch"
+                    IsTabStop="False"
+                    Visibility="Collapsed" />
+            </StackPanel>
         </ScrollViewer>
 
-        <Grid Grid.Row="4" ColumnSpacing="8">
+        <Grid
+            Grid.Row="1"
+            MaxWidth="680"
+            Padding="36,16,36,24"
+            ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Button x:Name="SkipButton" x:Uid="SetupSkip" AutomationProperties.AutomationId="SetupSkip" Click="OnSkip" />
+            <Button
+                x:Name="SkipButton"
+                x:Uid="SetupSkip"
+                MinWidth="120"
+                AutomationProperties.AutomationId="SetupSkip"
+                Click="OnSkip" />
             <Button
                 x:Name="PrimaryButton"
                 Grid.Column="1"
+                MinWidth="120"
                 AutomationProperties.AutomationId="SetupPrimary"
                 Click="OnPrimary"
                 Style="{StaticResource AccentButtonStyle}" />

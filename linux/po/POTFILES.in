@@ -583,6 +583,8 @@ crates/app/src/ui/session_window/tests/other_databases.rs
 crates/app/src/ui/session_window/tests/sessions.rs
 crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/session_window/work_notifier.rs
+crates/app/src/ui/setup_guide/app_icon.rs
+crates/app/src/ui/setup_guide/hero.rs
 crates/app/src/ui/setup_guide/imp.rs
 crates/app/src/ui/setup_guide/mod.rs
 crates/app/src/ui/setup_guide/tests.rs
@@ -841,6 +843,7 @@ data/resources/ui/saved-queries-dialog.ui
 data/resources/ui/saved-query-row.ui
 data/resources/ui/session-window.ui
 data/resources/ui/setup-guide.ui
+data/resources/ui/setup-hero.ui
 data/resources/ui/sql-editor.ui
 data/resources/ui/ssh-section.ui
 data/resources/ui/structure-tab.ui

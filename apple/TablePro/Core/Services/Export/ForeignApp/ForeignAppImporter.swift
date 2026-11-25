@@ -60,8 +60,6 @@ protocol ForeignAppImporter: Sendable {
     func installedAppURL() -> URL?
     // The launch probe runs it, so it looks only in the app's own ~/Library folder, where no privacy prompt fires.
     func hasDataAtDefaultLocation() -> Bool
-    // True when `isAvailable()` or `inventory()` can reach a folder macOS guards with a prompt; a scan nobody clicked skips both.
-    var readsGuardedLocations: Bool { get }
     // Declared here so an override dispatches through `any ForeignAppImporter`.
     func isAvailable() -> Bool
     // Files only, never the Keychain; data that is there but unreadable throws, so it never reads as zero.
@@ -86,8 +84,6 @@ extension ForeignAppImporter {
     var importOrigin: ImportOrigin {
         importFileTypes == nil ? .ownMachineOrAccount : .fileOrLink
     }
-
-    var readsGuardedLocations: Bool { false }
 
     mutating func setSelectedFile(_ url: URL) {}
 }

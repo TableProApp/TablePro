@@ -2,7 +2,19 @@
 <interface>
   <requires lib="gtk" version="4.22"/>
   <requires lib="libadwaita" version="1.9"/>
-  <template class="TableProSetupGuide" parent="AdwBin">
+  <template class="TableProSetupGuide" parent="AdwBreakpointBin">
+    <property name="width-request">360</property>
+    <property name="height-request">294</property>
+    <!-- On a short screen the steps' choices matter more than their art, as in GNOME Initial Setup. -->
+    <child>
+      <object class="AdwBreakpoint">
+        <condition>max-height: 520sp</condition>
+        <setter object="origin_hero" property="show-art">false</setter>
+        <setter object="import_hero" property="show-art">false</setter>
+        <setter object="first_hero" property="show-art">false</setter>
+        <setter object="options_hero" property="show-art">false</setter>
+      </object>
+    </child>
     <property name="child">
       <object class="AdwToastOverlay" id="toasts">
         <property name="child">
@@ -10,11 +22,12 @@
             <child>
               <object class="AdwNavigationPage">
                 <property name="tag">setup-origin</property>
-                <property name="title" translatable="yes">Set Up TablePro</property>
+                <property name="title" translatable="yes">Welcome to TablePro</property>
                 <property name="child">
                   <object class="AdwToolbarView">
                     <child type="top">
                       <object class="AdwHeaderBar">
+                        <property name="show-title">false</property>
                         <child type="end">
                           <object class="GtkButton" id="origin_skip">
                             <property name="label" translatable="yes">_Skip</property>
@@ -24,47 +37,121 @@
                       </object>
                     </child>
                     <property name="content">
-                      <object class="AdwPreferencesPage">
-                        <property name="description" translatable="yes">Where are the connections you use now?</property>
+                      <object class="GtkScrolledWindow">
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="child">
+                          <object class="AdwClamp">
+                            <property name="maximum-size">560</property>
+                            <property name="tightening-threshold">400</property>
+                            <property name="child">
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">24</property>
+                                <property name="margin-top">24</property>
+                                <property name="margin-bottom">24</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <child>
+                                  <object class="TableProSetupHero" id="origin_hero">
+                                    <property name="pixel-size">96</property>
+                                    <property name="step">1</property>
+                                    <property name="title" translatable="yes">Welcome to TablePro</property>
+                                    <property name="description" translatable="yes">Bring your connections, or start with a new one.</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <property name="separate-rows">true</property>
+                                    <child>
+                                      <object class="AdwActionRow" id="from_app_row">
+                                        <property name="title" translatable="yes">Import from Another App</property>
+                                        <property name="subtitle" translatable="yes">Connections and saved queries from apps on this computer</property>
+                                        <property name="subtitle-lines">2</property>
+                                        <property name="use-markup">false</property>
+                                        <property name="activatable-widget">from_app_check</property>
+                                        <child type="prefix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">view-app-grid-symbolic</property>
+                                            <property name="pixel-size">32</property>
+                                            <property name="accessible-role">presentation</property>
+                                          </object>
+                                        </child>
+                                        <child type="suffix">
+                                          <object class="GtkCheckButton" id="from_app_check">
+                                            <property name="valign">center</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow" id="from_file_row">
+                                        <property name="title" translatable="yes">Import a Connections File</property>
+                                        <property name="subtitle" translatable="yes">A file exported from TablePro</property>
+                                        <property name="subtitle-lines">2</property>
+                                        <property name="activatable-widget">from_file_check</property>
+                                        <child type="prefix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">document-open-symbolic</property>
+                                            <property name="pixel-size">32</property>
+                                            <property name="accessible-role">presentation</property>
+                                          </object>
+                                        </child>
+                                        <child type="suffix">
+                                          <object class="GtkCheckButton" id="from_file_check">
+                                            <property name="valign">center</property>
+                                            <property name="group">from_app_check</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow" id="start_row">
+                                        <property name="title" translatable="yes">Start Fresh</property>
+                                        <property name="subtitle" translatable="yes">Add a connection or open the sample database</property>
+                                        <property name="subtitle-lines">2</property>
+                                        <property name="activatable-widget">start_check</property>
+                                        <child type="prefix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">list-add-symbolic</property>
+                                            <property name="pixel-size">32</property>
+                                            <property name="accessible-role">presentation</property>
+                                          </object>
+                                        </child>
+                                        <child type="suffix">
+                                          <object class="GtkCheckButton" id="start_check">
+                                            <property name="valign">center</property>
+                                            <property name="group">from_app_check</property>
+                                            <property name="active">true</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </property>
+                          </object>
+                        </property>
+                      </object>
+                    </property>
+                    <child type="bottom">
+                      <object class="GtkBox">
+                        <property name="halign">center</property>
+                        <property name="margin-top">12</property>
+                        <property name="margin-bottom">18</property>
                         <child>
-                          <object class="AdwPreferencesGroup">
-                            <child>
-                              <object class="AdwActionRow" id="from_app_row">
-                                <property name="title" translatable="yes">In Another App</property>
-                                <property name="subtitle" translatable="yes">Bring them over from a database app on this computer</property>
-                                <property name="activatable">true</property>
-                                <child type="suffix">
-                                  <object class="GtkImage">
-                                    <property name="icon-name">go-next-symbolic</property>
-                                    <property name="accessible-role">presentation</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="AdwActionRow" id="from_file_row">
-                                <property name="title" translatable="yes">In a TablePro File</property>
-                                <property name="subtitle" translatable="yes">Import connections someone exported from TablePro</property>
-                                <property name="activatable">true</property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="AdwActionRow" id="start_row">
-                                <property name="title" translatable="yes">Nowhere Yet</property>
-                                <property name="subtitle" translatable="yes">Add a connection, or look around a sample database</property>
-                                <property name="activatable">true</property>
-                                <child type="suffix">
-                                  <object class="GtkImage">
-                                    <property name="icon-name">go-next-symbolic</property>
-                                    <property name="accessible-role">presentation</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
+                          <object class="GtkButton" id="origin_continue">
+                            <property name="label" translatable="yes">_Continue</property>
+                            <property name="use-underline">true</property>
+                            <property name="width-request">200</property>
+                            <style>
+                              <class name="pill"/>
+                              <class name="suggested-action"/>
+                            </style>
                           </object>
                         </child>
                       </object>
-                    </property>
+                    </child>
                   </object>
                 </property>
               </object>
@@ -72,20 +159,12 @@
             <child>
               <object class="AdwNavigationPage">
                 <property name="tag">setup-import</property>
-                <property name="title" translatable="yes">Import Connections</property>
+                <property name="title" translatable="yes">Import from Other Apps</property>
                 <property name="child">
                   <object class="AdwToolbarView">
                     <child type="top">
                       <object class="AdwHeaderBar">
-                        <child type="end">
-                          <object class="GtkButton" id="import_continue">
-                            <property name="label" translatable="yes">_Continue</property>
-                            <property name="use-underline">true</property>
-                            <style>
-                              <class name="suggested-action"/>
-                            </style>
-                          </object>
-                        </child>
+                        <property name="show-title">false</property>
                         <child type="end">
                           <object class="GtkButton" id="import_skip">
                             <property name="label" translatable="yes">_Skip</property>
@@ -95,61 +174,202 @@
                       </object>
                     </child>
                     <property name="content">
-                      <object class="GtkStack" id="import_stack">
-                        <child>
-                          <object class="GtkStackPage">
-                            <property name="name">loading</property>
+                      <object class="GtkScrolledWindow">
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="child">
+                          <object class="AdwClamp">
+                            <property name="maximum-size">560</property>
+                            <property name="tightening-threshold">400</property>
                             <property name="child">
-                              <object class="AdwSpinner">
-                                <property name="halign">center</property>
-                                <property name="valign">center</property>
-                                <property name="width-request">32</property>
-                                <property name="height-request">32</property>
-                              </object>
-                            </property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkStackPage">
-                            <property name="name">sources</property>
-                            <property name="child">
-                              <object class="AdwPreferencesPage">
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">24</property>
+                                <property name="margin-top">24</property>
+                                <property name="margin-bottom">24</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
                                 <child>
-                                  <object class="AdwPreferencesGroup" id="import_apps_group">
-                                    <property name="title" translatable="yes">Apps</property>
-                                    <property name="description" translatable="yes">Each app you tick is read and reviewed in turn. Nothing is changed in its files.</property>
+                                  <object class="TableProSetupHero" id="import_hero">
+                                    <property name="icon-name">view-app-grid-symbolic</property>
+                                    <property name="dimmed">true</property>
+                                    <property name="step">2</property>
+                                    <property name="title" translatable="yes">Import from Other Apps</property>
+                                    <property name="description" translatable="yes">Select the apps to import from. You review each one before anything is saved.</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkStack" id="import_stack">
+                                    <property name="vhomogeneous">false</property>
+                                    <child>
+                                      <object class="GtkStackPage">
+                                        <property name="name">loading</property>
+                                        <property name="child">
+                                          <object class="GtkBox">
+                                            <property name="orientation">vertical</property>
+                                            <property name="spacing">12</property>
+                                            <property name="halign">center</property>
+                                            <child>
+                                              <object class="AdwSpinner">
+                                                <property name="halign">center</property>
+                                                <property name="width-request">32</property>
+                                                <property name="height-request">32</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel">
+                                                <property name="label" translatable="yes">Looking for other apps…</property>
+                                                <property name="wrap">true</property>
+                                                <property name="justify">center</property>
+                                                <style>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkStackPage">
+                                        <property name="name">sources</property>
+                                        <property name="child">
+                                          <object class="GtkBox">
+                                            <property name="orientation">vertical</property>
+                                            <property name="spacing">12</property>
+                                            <child>
+                                              <object class="AdwPreferencesGroup" id="import_apps_group">
+                                                <property name="separate-rows">true</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel" id="not_found_label">
+                                                <property name="visible">false</property>
+                                                <property name="wrap">true</property>
+                                                <property name="xalign">0</property>
+                                                <property name="margin-start">12</property>
+                                                <property name="margin-end">12</property>
+                                                <style>
+                                                  <class name="caption"/>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkStackPage">
+                                        <property name="name">empty</property>
+                                        <property name="child">
+                                          <object class="GtkBox">
+                                            <property name="orientation">vertical</property>
+                                            <property name="spacing">6</property>
+                                            <property name="halign">center</property>
+                                            <child>
+                                              <object class="GtkImage">
+                                                <property name="icon-name">system-search-symbolic</property>
+                                                <property name="pixel-size">48</property>
+                                                <property name="margin-bottom">6</property>
+                                                <property name="accessible-role">presentation</property>
+                                                <style>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel">
+                                                <property name="label" translatable="yes">No Other Apps Found</property>
+                                                <property name="wrap">true</property>
+                                                <property name="justify">center</property>
+                                                <style>
+                                                  <class name="heading"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel">
+                                                <property name="label" translatable="yes">Continue to add a connection or open the sample database.</property>
+                                                <property name="wrap">true</property>
+                                                <property name="justify">center</property>
+                                                <style>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkStackPage">
+                                        <property name="name">failed</property>
+                                        <property name="child">
+                                          <object class="GtkBox">
+                                            <property name="orientation">vertical</property>
+                                            <property name="spacing">6</property>
+                                            <property name="halign">center</property>
+                                            <child>
+                                              <object class="GtkImage">
+                                                <property name="icon-name">dialog-warning-symbolic</property>
+                                                <property name="pixel-size">48</property>
+                                                <property name="margin-bottom">6</property>
+                                                <property name="accessible-role">presentation</property>
+                                                <style>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel">
+                                                <property name="label" translatable="yes">Other Apps Could Not Be Looked For</property>
+                                                <property name="wrap">true</property>
+                                                <property name="justify">center</property>
+                                                <style>
+                                                  <class name="heading"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkLabel">
+                                                <property name="label" translatable="yes">The search stopped before it finished. Continue to add a connection instead.</property>
+                                                <property name="wrap">true</property>
+                                                <property name="justify">center</property>
+                                                <style>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
                               </object>
                             </property>
                           </object>
-                        </child>
+                        </property>
+                      </object>
+                    </property>
+                    <child type="bottom">
+                      <object class="GtkBox">
+                        <property name="halign">center</property>
+                        <property name="margin-top">12</property>
+                        <property name="margin-bottom">18</property>
                         <child>
-                          <object class="GtkStackPage">
-                            <property name="name">empty</property>
-                            <property name="child">
-                              <object class="AdwStatusPage">
-                                <property name="icon-name">system-search-symbolic</property>
-                                <property name="title" translatable="yes">No Other Apps Found</property>
-                                <property name="description" translatable="yes">Continue to add a connection or open the sample database.</property>
-                              </object>
-                            </property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkStackPage">
-                            <property name="name">failed</property>
-                            <property name="child">
-                              <object class="AdwStatusPage">
-                                <property name="icon-name">dialog-warning-symbolic</property>
-                                <property name="title" translatable="yes">Other Apps Could Not Be Looked For</property>
-                                <property name="description" translatable="yes">The search stopped before it finished. Continue to add a connection instead.</property>
-                              </object>
-                            </property>
+                          <object class="GtkButton" id="import_continue">
+                            <property name="label" translatable="yes">_Continue</property>
+                            <property name="use-underline">true</property>
+                            <property name="width-request">200</property>
+                            <style>
+                              <class name="pill"/>
+                              <class name="suggested-action"/>
+                            </style>
                           </object>
                         </child>
                       </object>
-                    </property>
+                    </child>
                   </object>
                 </property>
               </object>
@@ -162,15 +382,7 @@
                   <object class="AdwToolbarView">
                     <child type="top">
                       <object class="AdwHeaderBar">
-                        <child type="end">
-                          <object class="GtkButton" id="first_continue">
-                            <property name="label" translatable="yes">_Continue</property>
-                            <property name="use-underline">true</property>
-                            <style>
-                              <class name="suggested-action"/>
-                            </style>
-                          </object>
-                        </child>
+                        <property name="show-title">false</property>
                         <child type="end">
                           <object class="GtkButton" id="first_skip">
                             <property name="label" translatable="yes">_Skip</property>
@@ -180,39 +392,99 @@
                       </object>
                     </child>
                     <property name="content">
-                      <object class="AdwPreferencesPage">
+                      <object class="GtkScrolledWindow">
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="child">
+                          <object class="AdwClamp">
+                            <property name="maximum-size">560</property>
+                            <property name="tightening-threshold">400</property>
+                            <property name="child">
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">24</property>
+                                <property name="margin-top">24</property>
+                                <property name="margin-bottom">24</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <child>
+                                  <object class="TableProSetupHero" id="first_hero">
+                                    <property name="icon-name">network-server-symbolic</property>
+                                    <property name="dimmed">true</property>
+                                    <property name="step">3</property>
+                                    <property name="title" translatable="yes">First Connection</property>
+                                    <property name="description" translatable="yes">Choose what opens when you finish.</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <property name="separate-rows">true</property>
+                                    <child>
+                                      <object class="AdwActionRow" id="new_connection_row">
+                                        <property name="title" translatable="yes">New Connection</property>
+                                        <property name="subtitle" translatable="yes">Enter a server’s address or a connection URL, or open a database file</property>
+                                        <property name="subtitle-lines">2</property>
+                                        <property name="activatable-widget">new_connection_check</property>
+                                        <child type="prefix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">network-server-symbolic</property>
+                                            <property name="pixel-size">32</property>
+                                            <property name="accessible-role">presentation</property>
+                                          </object>
+                                        </child>
+                                        <child type="suffix">
+                                          <object class="GtkCheckButton" id="new_connection_check">
+                                            <property name="valign">center</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow" id="sample_row">
+                                        <property name="title" translatable="yes">Sample Database</property>
+                                        <property name="subtitle" translatable="yes">A small music store database in SQLite</property>
+                                        <property name="subtitle-lines">2</property>
+                                        <property name="activatable-widget">sample_check</property>
+                                        <child type="prefix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">drive-harddisk-symbolic</property>
+                                            <property name="pixel-size">32</property>
+                                            <property name="accessible-role">presentation</property>
+                                          </object>
+                                        </child>
+                                        <child type="suffix">
+                                          <object class="GtkCheckButton" id="sample_check">
+                                            <property name="valign">center</property>
+                                            <property name="group">new_connection_check</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </property>
+                          </object>
+                        </property>
+                      </object>
+                    </property>
+                    <child type="bottom">
+                      <object class="GtkBox">
+                        <property name="halign">center</property>
+                        <property name="margin-top">12</property>
+                        <property name="margin-bottom">18</property>
                         <child>
-                          <object class="AdwPreferencesGroup">
-                            <property name="description" translatable="yes">It opens when you finish.</property>
-                            <child>
-                              <object class="AdwActionRow" id="new_connection_row">
-                                <property name="title" translatable="yes">New Connection</property>
-                                <property name="subtitle" translatable="yes">Enter a server’s address or a connection URL, or open a database file</property>
-                                <property name="activatable-widget">new_connection_check</property>
-                                <child type="prefix">
-                                  <object class="GtkCheckButton" id="new_connection_check">
-                                    <property name="valign">center</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="AdwActionRow" id="sample_row">
-                                <property name="title" translatable="yes">Sample Database</property>
-                                <property name="subtitle" translatable="yes">A small music store to look around in</property>
-                                <property name="activatable-widget">sample_check</property>
-                                <child type="prefix">
-                                  <object class="GtkCheckButton" id="sample_check">
-                                    <property name="valign">center</property>
-                                    <property name="group">new_connection_check</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
+                          <object class="GtkButton" id="first_continue">
+                            <property name="label" translatable="yes">_Continue</property>
+                            <property name="use-underline">true</property>
+                            <property name="width-request">200</property>
+                            <style>
+                              <class name="pill"/>
+                              <class name="suggested-action"/>
+                            </style>
                           </object>
                         </child>
                       </object>
-                    </property>
+                    </child>
                   </object>
                 </property>
               </object>
@@ -220,20 +492,12 @@
             <child>
               <object class="AdwNavigationPage">
                 <property name="tag">setup-options</property>
-                <property name="title" translatable="yes">Editor</property>
+                <property name="title" translatable="yes">Appearance and Keys</property>
                 <property name="child">
                   <object class="AdwToolbarView">
                     <child type="top">
                       <object class="AdwHeaderBar">
-                        <child type="end">
-                          <object class="GtkButton" id="finish_button">
-                            <property name="label" translatable="yes">_Done</property>
-                            <property name="use-underline">true</property>
-                            <style>
-                              <class name="suggested-action"/>
-                            </style>
-                          </object>
-                        </child>
+                        <property name="show-title">false</property>
                         <child type="end">
                           <object class="GtkButton" id="options_skip">
                             <property name="label" translatable="yes">_Skip</property>
@@ -243,46 +507,90 @@
                       </object>
                     </child>
                     <property name="content">
-                      <object class="AdwPreferencesPage">
-                        <child>
-                          <object class="AdwPreferencesGroup">
-                            <property name="title" translatable="yes">Keyboard</property>
-                            <child>
-                              <object class="AdwComboRow" id="shortcuts_row">
-                                <property name="title" translatable="yes">Shortcuts</property>
-                                <property name="subtitle" translatable="yes">Use the keys of an app you know</property>
+                      <object class="GtkScrolledWindow">
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="child">
+                          <object class="AdwClamp">
+                            <property name="maximum-size">560</property>
+                            <property name="tightening-threshold">400</property>
+                            <property name="child">
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">24</property>
+                                <property name="margin-top">24</property>
+                                <property name="margin-bottom">24</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <child>
+                                  <object class="TableProSetupHero" id="options_hero">
+                                    <property name="icon-name">preferences-system-symbolic</property>
+                                    <property name="dimmed">true</property>
+                                    <property name="step">4</property>
+                                    <property name="title" translatable="yes">Appearance and Keys</property>
+                                    <property name="description" translatable="yes">Changes apply now. You can change them later in Preferences.</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <property name="title" translatable="yes">Style Scheme</property>
+                                    <child>
+                                      <object class="AdwSwitchRow" id="system_style_row">
+                                        <property name="title" translatable="yes">Follow System Style</property>
+                                        <property name="subtitle" translatable="yes">Use Adwaita in the desktop’s light or dark style</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkFlowBox" id="style_scheme_box">
+                                        <property name="selection-mode">none</property>
+                                        <property name="homogeneous">true</property>
+                                        <property name="column-spacing">12</property>
+                                        <property name="row-spacing">12</property>
+                                        <property name="max-children-per-line">3</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <property name="title" translatable="yes">Keyboard</property>
+                                    <child>
+                                      <object class="AdwComboRow" id="shortcuts_row">
+                                        <property name="title" translatable="yes">Shortcuts</property>
+                                        <property name="subtitle" translatable="yes">Use the keys of an app you know</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwSwitchRow" id="vim_row">
+                                        <property name="title" translatable="yes">Vim Keybindings</property>
+                                        <property name="subtitle" translatable="yes">Normal, insert and visual modes, and commands such as :w and :q</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
                               </object>
-                            </child>
-                            <child>
-                              <object class="AdwSwitchRow" id="vim_row">
-                                <property name="title" translatable="yes">Vim Keybindings</property>
-                                <property name="subtitle" translatable="yes">Normal, insert and visual modes, and commands such as :w and :q</property>
-                              </object>
-                            </child>
+                            </property>
                           </object>
-                        </child>
+                        </property>
+                      </object>
+                    </property>
+                    <child type="bottom">
+                      <object class="GtkBox">
+                        <property name="halign">center</property>
+                        <property name="margin-top">12</property>
+                        <property name="margin-bottom">18</property>
                         <child>
-                          <object class="AdwPreferencesGroup">
-                            <property name="title" translatable="yes">Style Scheme</property>
-                            <child>
-                              <object class="AdwSwitchRow" id="system_style_row">
-                                <property name="title" translatable="yes">Follow System Style</property>
-                                <property name="subtitle" translatable="yes">Use Adwaita in the desktop’s light or dark style</property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkFlowBox" id="style_scheme_box">
-                                <property name="selection-mode">none</property>
-                                <property name="homogeneous">true</property>
-                                <property name="column-spacing">12</property>
-                                <property name="row-spacing">12</property>
-                                <property name="max-children-per-line">3</property>
-                              </object>
-                            </child>
+                          <object class="GtkButton" id="finish_button">
+                            <property name="label" translatable="yes">_Done</property>
+                            <property name="use-underline">true</property>
+                            <property name="width-request">200</property>
+                            <style>
+                              <class name="pill"/>
+                              <class name="suggested-action"/>
+                            </style>
                           </object>
                         </child>
                       </object>
-                    </property>
+                    </child>
                   </object>
                 </property>
               </object>

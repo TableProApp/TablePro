@@ -1,9 +1,10 @@
 use std::time::Duration;
 
-use tablepro_foreign_import::ForeignPlatform;
+use tablepro_foreign_import::{ForeignPlatform, Inventory, PasswordOffer};
 use tablepro_storage::StoragePaths;
 
 use super::*;
+use crate::services::setup_guide::PROBE_LIMIT;
 use crate::test_support::{MemorySettings, OwnedWindow, assert_labelled, descendants, test_runtime, wait_until};
 use crate::ui::import_from_app::tests::{dbeaver_home, drivers};
 
@@ -18,7 +19,7 @@ struct Guide {
     ended: Rc<RefCell<Vec<SetupEnding>>>,
     imported: Rc<RefCell<Vec<usize>>>,
     files: Rc<Cell<usize>>,
-    _window: OwnedWindow<adw::Window>,
+    window: OwnedWindow<adw::Window>,
 }
 
 impl Guide {
@@ -65,7 +66,7 @@ impl Guide {
             ended,
             imported,
             files,
-            _window: window,
+            window,
         }
     }
 
@@ -96,6 +97,40 @@ impl Guide {
             .expect("the guide's flow")
     }
 
+    fn source_check(&self, counted: bool) -> gtk::CheckButton {
+        self.guide
+            .parts()
+            .and_then(|parts| {
+                parts
+                    .sources
+                    .borrow()
+                    .iter()
+                    .find(|source| source.row.is_sensitive() && (source.connections > 0) == counted)
+                    .map(|source| source.check.clone())
+            })
+            .expect("a source row")
+    }
+
+    fn default_widget(&self) -> Option<gtk::Widget> {
+        self.window.default_widget()
+    }
+
+    fn other_app_subtitle(&self) -> Option<String> {
+        self.imp().from_app_row.subtitle().map(|subtitle| subtitle.to_string())
+    }
+
+    // The probe only selects the other-app card; the pill goes on to the list.
+    fn to_import(&self) {
+        wait_until(WAIT, || self.imp().from_app_check.is_active()).expect("the probe to select the other-app card");
+        assert_eq!(self.page().as_deref(), Some(ORIGIN), "the probe left the origin");
+        self.imp().origin_continue.emit_clicked();
+        assert_eq!(self.page().as_deref(), Some(IMPORT));
+        wait_until(WAIT, || {
+            self.imp().import_stack.visible_child_name().as_deref() == Some("sources")
+        })
+        .expect("the apps with their counts");
+    }
+
     fn import_button(&self) -> gtk::Button {
         descendants(&self.guide)
             .into_iter()
@@ -105,19 +140,22 @@ impl Guide {
     }
 }
 
+// As a click does: the row hands the activation to its radio, which selects the card.
 fn activate(row: &adw::ActionRow) {
-    row.emit_by_name::<()>("activated", &[]);
+    ActionRowExt::activate(row);
 }
 
 #[gtk4::test]
 fn with_no_app_found_the_guide_starts_on_the_origin_and_records_the_sample_for_the_end() {
     let guide = Guide::new(false);
-    let moved = wait_until(Duration::from_millis(500), || guide.page().as_deref() == Some(IMPORT));
-    assert!(moved.is_err(), "the guide left the origin with no app found");
+    let selected = wait_until(Duration::from_millis(500), || guide.imp().from_app_check.is_active());
+    assert!(selected.is_err(), "the other-app card was selected with no app found");
+    assert!(guide.imp().start_check.is_active());
     assert_eq!(guide.page().as_deref(), Some(ORIGIN));
     assert!(!guide.flow().can_go_back());
 
     activate(&guide.imp().start_row);
+    guide.imp().origin_continue.emit_clicked();
     assert_eq!(guide.page().as_deref(), Some(FIRST_CONNECTION));
     assert_eq!(
         guide.stack(),
@@ -131,6 +169,7 @@ fn with_no_app_found_the_guide_starts_on_the_origin_and_records_the_sample_for_t
     assert_eq!(guide.flow().step(), SetupStep::Origin, "Back did not reach the flow");
 
     activate(&guide.imp().start_row);
+    guide.imp().origin_continue.emit_clicked();
     guide.imp().sample_check.set_active(true);
     guide.imp().first_continue.emit_clicked();
     assert_eq!(guide.page().as_deref(), Some(OPTIONS));
@@ -154,14 +193,26 @@ fn with_no_app_found_the_guide_starts_on_the_origin_and_records_the_sample_for_t
 }
 
 #[gtk4::test]
-fn an_app_found_at_launch_opens_the_import_step_and_its_ids_decide_the_end() {
+fn an_app_found_at_launch_is_selected_on_the_origin_and_its_ids_decide_the_end() {
     let guide = Guide::new(true);
-    wait_until(WAIT, || guide.page().as_deref() == Some(IMPORT)).expect("the probe to open the import step");
-    wait_until(WAIT, || {
-        guide.imp().import_stack.visible_child_name().as_deref() == Some("sources")
-    })
-    .expect("the apps with their counts");
-    assert!(!guide.flow().can_go_back(), "the first step shown offers Back");
+    wait_until(WAIT, || guide.imp().from_app_check.is_active()).expect("the probe to select the other-app card");
+    assert_eq!(guide.page().as_deref(), Some(ORIGIN), "the probe left the origin");
+    let found = guide.flow().found().to_vec();
+    assert!(!found.is_empty(), "the probe named no app");
+    let subtitle = guide.other_app_subtitle().unwrap_or_default();
+    assert_eq!(subtitle, found_subtitle(&found));
+    for app in &found {
+        assert!(
+            subtitle.contains(app.display_name()),
+            "{subtitle} does not name {app:?}"
+        );
+    }
+
+    guide.to_import();
+    assert!(
+        guide.flow().can_go_back(),
+        "the import step cannot go back to the origin"
+    );
     let ticked: Vec<ForeignApp> = guide
         .guide
         .parts()
@@ -185,7 +236,7 @@ fn an_app_found_at_launch_opens_the_import_step_and_its_ids_decide_the_end() {
     wait_until(WAIT, || guide.page().as_deref() == Some(IMPORT_REVIEW)).expect("the review");
     assert_eq!(
         guide.stack(),
-        [IMPORT, IMPORT_REVIEW],
+        [ORIGIN, IMPORT, IMPORT_REVIEW],
         "Back from the review leaves the guide"
     );
 
@@ -194,7 +245,7 @@ fn an_app_found_at_launch_opens_the_import_step_and_its_ids_decide_the_end() {
     assert_eq!(*guide.imported.borrow(), [2]);
     assert_eq!(
         guide.stack(),
-        [IMPORT, FIRST_CONNECTION],
+        [ORIGIN, IMPORT, FIRST_CONNECTION],
         "the import pages stayed under the step"
     );
 
@@ -212,6 +263,7 @@ fn an_app_found_at_launch_opens_the_import_step_and_its_ids_decide_the_end() {
 fn skip_on_the_first_connection_step_runs_the_choice_made_there() {
     let guide = Guide::new(false);
     activate(&guide.imp().start_row);
+    guide.imp().origin_continue.emit_clicked();
     assert_eq!(guide.page().as_deref(), Some(FIRST_CONNECTION));
 
     guide.imp().sample_check.set_active(true);
@@ -239,7 +291,14 @@ fn a_tablepro_file_leaves_the_guide_for_the_file_import() {
     let guide = Guide::new(false);
 
     activate(&guide.imp().from_file_row);
+    assert!(
+        guide.imp().from_file_check.is_active(),
+        "the file card was not selected"
+    );
+    assert_eq!(guide.files.get(), 0, "selecting the card left the guide");
+    guide.imp().origin_continue.emit_clicked();
     activate(&guide.imp().start_row);
+    guide.imp().origin_continue.emit_clicked();
 
     assert_eq!(guide.files.get(), 1);
     assert!(guide.ended.borrow().is_empty());
@@ -268,4 +327,126 @@ fn the_options_apply_at_once_and_every_control_is_named() {
     assert_labelled(&imp.shortcuts_row.get()).unwrap_or_else(|problem| panic!("{problem:?}"));
     assert_labelled(&imp.vim_row.get()).unwrap_or_else(|problem| panic!("{problem:?}"));
     assert_labelled(&imp.system_style_row.get()).unwrap_or_else(|problem| panic!("{problem:?}"));
+}
+
+#[gtk4::test]
+fn the_import_pill_counts_the_connections_of_the_ticked_apps() {
+    let guide = Guide::new(true);
+    guide.to_import();
+    let cards = guide
+        .guide
+        .parts()
+        .map(|parts| parts.sources.borrow().len())
+        .unwrap_or_default();
+    let apps = ForeignApp::ALL
+        .into_iter()
+        .filter(|app| app.runs_on(ForeignPlatform::Linux))
+        .count();
+    assert!(cards < apps, "an app that is not there got a card");
+    assert!(
+        guide.imp().not_found_label.is_visible(),
+        "the apps not found are not named"
+    );
+    let label = || guide.imp().import_continue.label().map(|label| label.to_string());
+    assert_eq!(label().as_deref(), Some("_Import 3 Connections"));
+
+    guide.source_check(true).set_active(false);
+    assert_eq!(label().as_deref(), Some("_Continue"));
+    guide.source_check(false).set_active(true);
+    assert_eq!(
+        label().as_deref(),
+        Some("_Import"),
+        "an app with no count promised a number"
+    );
+    guide.source_check(true).set_active(true);
+    assert_eq!(label().as_deref(), Some("_Import 3 Connections"));
+    assert_eq!(import_label(1, 1), "_Import 1 Connection");
+}
+
+#[gtk4::test]
+fn return_runs_the_step_pill_and_never_reaches_under_a_pushed_import_page() {
+    let guide = Guide::new(true);
+    wait_until(WAIT, || guide.imp().from_app_check.is_active()).expect("the probe to select the other-app card");
+    assert_eq!(
+        guide.default_widget(),
+        Some(guide.imp().origin_continue.get().upcast()),
+        "the origin's pill is not the default"
+    );
+
+    guide.to_import();
+    assert_eq!(
+        guide.default_widget(),
+        Some(guide.imp().import_continue.get().upcast()),
+        "the import step's pill is not the default"
+    );
+
+    guide.imp().import_continue.emit_clicked();
+    wait_until(WAIT, || guide.page().as_deref() == Some(IMPORT_REVIEW)).expect("the review");
+    assert_eq!(guide.default_widget(), None, "Return reaches the step under the review");
+
+    guide.import_button().emit_clicked();
+    wait_until(WAIT, || guide.page().as_deref() == Some(FIRST_CONNECTION)).expect("the next step");
+    assert_eq!(
+        guide.default_widget(),
+        Some(guide.imp().first_continue.get().upcast()),
+        "the next step's pill is not the default"
+    );
+}
+
+fn found_on_this_computer() -> Vec<ForeignSource> {
+    ForeignApp::ALL
+        .into_iter()
+        .filter(|app| app.runs_on(ForeignPlatform::Linux) && app.picked_file_extensions().is_none())
+        .take(2)
+        .map(|app| ForeignSource {
+            app,
+            availability: SourceAvailability::Available,
+            inventory: Inventory::default(),
+            password_offer: PasswordOffer::DecryptedWhileReading,
+            offers_saved_queries: false,
+        })
+        .collect()
+}
+
+// The home is empty, so the launch's own probe finds nothing and the answer given here is the only one.
+#[gtk4::test]
+fn the_probe_keeps_a_card_the_user_selected_first_and_ignores_a_late_answer() {
+    let found = found_on_this_computer();
+    let apps: Vec<ForeignApp> = found.iter().map(|source| source.app).collect();
+    assert_eq!(apps.len(), 2, "two apps that keep their own data on Linux");
+
+    let untouched = Guide::new(false);
+    let shipped = untouched.other_app_subtitle();
+    untouched.guide.probe_answered(Ok(found.clone()));
+    assert!(untouched.imp().from_app_check.is_active());
+    assert_eq!(untouched.page().as_deref(), Some(ORIGIN), "the probe left the origin");
+    assert_eq!(untouched.other_app_subtitle(), Some(found_subtitle(&apps)));
+
+    let kept_start = Guide::new(false);
+    activate(&kept_start.imp().start_row);
+    kept_start.guide.probe_answered(Ok(found.clone()));
+    assert!(
+        kept_start.imp().start_check.is_active(),
+        "the probe replaced the card the user selected again"
+    );
+    assert_eq!(kept_start.other_app_subtitle(), shipped);
+
+    let kept_file = Guide::new(false);
+    activate(&kept_file.imp().from_file_row);
+    kept_file.guide.probe_answered(Ok(found.clone()));
+    assert!(
+        kept_file.imp().from_file_check.is_active(),
+        "the probe replaced the card the user selected"
+    );
+    assert_eq!(kept_file.files.get(), 0, "selecting the card left the guide");
+
+    let late = Guide::new(false);
+    if let Some(parts) = late.guide.parts() {
+        parts
+            .opened
+            .set(Instant::now().checked_sub(PROBE_LIMIT + Duration::from_secs(1)));
+    }
+    late.guide.probe_answered(Ok(found));
+    assert!(late.imp().start_check.is_active(), "a late answer changed the card");
+    assert_eq!(late.other_app_subtitle(), shipped);
 }

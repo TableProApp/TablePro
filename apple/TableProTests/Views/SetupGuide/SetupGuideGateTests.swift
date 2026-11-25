@@ -7,7 +7,7 @@ import Foundation
 @testable import TablePro
 import Testing
 
-// The macOS rows of the gate table in core/docs/decisions/0051-a-setup-guide-shows-on-an-empty-library.md.
+// The macOS rows of the gate table in core/docs/decisions/0056-a-setup-guide-shows-on-an-empty-library.md.
 struct SetupGuideGateRow: Sendable, CustomTestStringConvertible {
     let name: String
     let inputs: SetupGuideGate.Inputs

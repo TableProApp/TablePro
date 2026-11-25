@@ -1,4 +1,4 @@
-# 0052: Shortcut presets come from one file
+# 0057: Shortcut presets come from one file
 
 - **Status**: Accepted
 - **Date**: 2026-11-24

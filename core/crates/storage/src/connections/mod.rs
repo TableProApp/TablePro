@@ -357,7 +357,7 @@ pub struct ImportReport {
     /// Connections already in the list that the file only renamed,
     /// recoloured, regrouped, retagged or gave another icon.
     pub updated: usize,
-    // Each connection written, added or updated, once and in file order, for the app to open or select (core ADR 0051).
+    // Each connection written, added or updated, once and in file order, for the app to open or select (core ADR 0056).
     pub connection_ids: Vec<Uuid>,
 }
 

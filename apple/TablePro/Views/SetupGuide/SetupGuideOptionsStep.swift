@@ -1,10 +1,6 @@
-//
-//  SetupGuideOptionsStep.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
+import TableProTheme
 
 // The pop-up shows what the shortcuts are now, so Keep Current puts back the ones the guide found.
 internal struct SetupGuideShortcuts: Equatable {
@@ -74,35 +70,74 @@ internal struct SetupGuideOptionsStep: View {
     }
 
     var body: some View {
-        Form {
-            AppearanceChoicesView(settings: $appearance.value, appearanceMode: $appearanceMode.value)
-
-            Section {
-                Picker("Key bindings", selection: $editor.value.keyBindings) {
-                    Text("Standard").tag(EditorKeyBindings.standard)
-                    Text(verbatim: "Vim").tag(EditorKeyBindings.vim)
-                    Text(verbatim: "Emacs").tag(EditorKeyBindings.emacs)
+        VStack(alignment: .leading, spacing: 20) {
+            section(String(localized: "Appearance")) {
+                SetupGuideAppearanceTiles(mode: $appearanceMode.value)
+                Text(verbatim: String(localized: "Controls, sidebars and Settings follow this. Applies to this Mac."))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            section(String(localized: "Themes")) {
+                SetupGuideSettingsCard {
+                    ThemeSlotPicker(slot: .light, settings: $appearance.value, placement: .labeled)
+                    ThemeSlotPicker(slot: .dark, settings: $appearance.value, placement: .labeled)
                 }
-                .pickerStyle(.menu)
-                .accessibilityIdentifier("setup-guide-key-bindings")
-
-                if let shortcuts = model.shortcuts {
-                    Picker(selection: shortcutBinding(shortcuts)) {
-                        ForEach(shortcuts.options, id: \.self) { option in
-                            Text(verbatim: shortcuts.title(of: option)).tag(option)
+                .labeledContentStyle(SettingsRowStyle())
+            }
+            section(String(localized: "Keyboard")) {
+                SetupGuideSettingsCard {
+                    LabeledContent {
+                        Picker(String(localized: "Key bindings"), selection: $editor.value.keyBindings) {
+                            Text(verbatim: String(localized: "Standard")).tag(EditorKeyBindings.standard)
+                            Text(verbatim: "Vim").tag(EditorKeyBindings.vim)
+                            Text(verbatim: "Emacs").tag(EditorKeyBindings.emacs)
                         }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                        .accessibilityIdentifier("setup-guide-key-bindings")
                     } label: {
-                        Text("Shortcuts")
-                        Text("Menu and editor keys. Pick the app you used before to keep its keys.")
+                        rowLabel(String(localized: "Key bindings"))
                     }
-                    .pickerStyle(.menu)
-                    .accessibilityIdentifier("setup-guide-shortcut-preset")
+                    if let shortcuts = model.shortcuts {
+                        LabeledContent {
+                            Picker(String(localized: "Shortcuts"), selection: shortcutBinding(shortcuts)) {
+                                ForEach(shortcuts.options, id: \.self) { option in
+                                    Text(verbatim: shortcuts.title(of: option)).tag(option)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .fixedSize()
+                            .accessibilityIdentifier("setup-guide-shortcut-preset")
+                        } label: {
+                            rowLabel(String(localized: "Shortcuts"))
+                        }
+                    }
+                    Text(verbatim: String(localized: "Menu and editor keys. Pick the app you used before to keep its keys."))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-            } header: {
-                Text("Keyboard")
+                .labeledContentStyle(SettingsRowStyle())
             }
         }
-        .formStyle(.grouped)
+    }
+
+    // The pop-up carries the same name, so VoiceOver reads it once.
+    private func rowLabel(_ title: String) -> some View {
+        Text(verbatim: title)
+            .accessibilityHidden(true)
+    }
+
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(verbatim: title)
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            content()
+        }
     }
 
     private func shortcutBinding(_ shortcuts: SetupGuideShortcuts) -> Binding<SetupGuideShortcuts.Option> {
@@ -126,5 +161,15 @@ internal struct SetupGuideOptionsStep: View {
         }
         keyboard.value = shortcuts.settings(for: option, isSystemHotkey: { SystemHotkeyChecker.shared.isReserved($0) })
         model.selectShortcut(option)
+    }
+}
+
+private struct SettingsRowStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.label
+            Spacer(minLength: 0)
+            configuration.content
+        }
     }
 }

@@ -1048,7 +1048,7 @@ fn import_failure_message(error: tablepro_storage::StorageError, file: &std::pat
     }
 }
 
-// The toast and how the import ends (core ADR 0051): a file anyone could have sent only shows what it wrote.
+// The toast and how the import ends (core ADR 0056): a file anyone could have sent only shows what it wrote.
 fn applied_import(
     imported: Result<tablepro_storage::ImportReport, tablepro_storage::StorageError>,
 ) -> (String, SetupEnding) {

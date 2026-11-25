@@ -22,13 +22,10 @@ struct RecordingImporter: ForeignAppImporter {
     }
 
     let id: String
-    var readsGuardedLocations = false
-    var isInstalled = true
-    var connections = 2
-    var isDamaged = false
     let calls = Calls()
 
-    var displayName: String { id }
+    // Differs from the id, so a test sees which one a caller shows.
+    var displayName: String { id.capitalized }
     var symbolName: String { "cylinder" }
     var appBundleIdentifier: String { "test.\(id)" }
     var readsPasswordsFromKeychain: Bool { false }
@@ -36,7 +33,7 @@ struct RecordingImporter: ForeignAppImporter {
 
     func installedAppURL() -> URL? {
         calls.record("installedAppURL")
-        return isInstalled ? URL(fileURLWithPath: "/Applications/\(id).app") : nil
+        return URL(fileURLWithPath: "/Applications/\(id).app")
     }
 
     func hasDataAtDefaultLocation() -> Bool {
@@ -46,15 +43,12 @@ struct RecordingImporter: ForeignAppImporter {
 
     func isAvailable() -> Bool {
         calls.record("isAvailable")
-        return isInstalled
+        return true
     }
 
     func inventory() throws -> ForeignAppInventory {
         calls.record("inventory")
-        if isDamaged {
-            throw ForeignAppImportError.unreadable("\(id) is damaged")
-        }
-        return ForeignAppInventory(connections: connections, savedQueries: 0)
+        return ForeignAppInventory(connections: 2, savedQueries: 0)
     }
 
     func collect(_ request: ForeignImportRequest) throws -> CollectedImport {

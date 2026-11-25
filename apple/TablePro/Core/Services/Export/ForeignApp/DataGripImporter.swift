@@ -14,7 +14,6 @@ struct DataGripImporter: ForeignAppImporter {
     let symbolName = "cylinder.split.1x2"
     let appBundleIdentifier = "com.jetbrains.datagrip"
     let readsPasswordsFromKeychain = true
-    let readsGuardedLocations = true
 
     var jetBrainsRoot: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/JetBrains")

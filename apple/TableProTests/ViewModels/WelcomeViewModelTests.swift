@@ -443,7 +443,7 @@ final class WelcomeViewModelTests {
 
         try ForeignFixture.write("<plist version=\"1.0\"><array/></plist>", to: root.appendingPathComponent("Connections.plist"))
 
-        #expect(await ForeignSourceScanner.probe([tablePlus, NavicatImporter()]) == ["tableplus"])
+        #expect(await ForeignSourceScanner.probe([tablePlus, NavicatImporter()]).map { $0.id } == ["tableplus"])
     }
 
     // MARK: - Import Handoff

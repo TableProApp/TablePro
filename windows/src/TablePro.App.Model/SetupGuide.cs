@@ -10,11 +10,12 @@ public enum SetupStep
     Options,
 }
 
-// Where the user comes from, picked on the first step; a connections file goes through File > Import instead.
+// The card selected on the first step; File leaves the guide through File > Import.
 public enum SetupOrigin
 {
     New,
     OtherApp,
+    File,
 }
 
 public enum FirstConnectionChoice
@@ -23,8 +24,8 @@ public enum FirstConnectionChoice
     Sample,
 }
 
-// Connections counts the sample; groups do not count (core 0051, The gate).
-// LaunchWork: a file the launch opened waits on the Connections page, and the guide must not cover it (ADR 0051, G8).
+// Connections counts the sample; groups do not count (core 0056, The gate).
+// LaunchWork: a file the launch opened waits on the Connections page, and the guide must not cover it (ADR 0056, G8).
 public sealed record SetupGate(bool FromMenu, bool LibraryRead, int Connections, bool Seen, bool LaunchWork = false);
 
 public enum ImportSource
@@ -68,10 +69,10 @@ public abstract record SetupEnding
     }
 }
 
-// The setup guide's steps, its recorded first connection and the ids its imports wrote (core 0051, Steps).
+// The setup guide's steps, its recorded first connection and the ids its imports wrote (core 0056, Steps).
 public sealed class SetupGuide
 {
-    // How long the launch's look for other apps may take before the guide stays on its first step.
+    // How long the launch's look for other apps may take before its answer is dropped.
     public static readonly TimeSpan ProbeLimit = TimeSpan.FromSeconds(2);
 
     private readonly IForeignImporter _importer;
@@ -79,18 +80,23 @@ public sealed class SetupGuide
     private readonly HashSet<ForeignApp> _ticked = [];
     private readonly List<Guid> _imported = [];
     private ImportSource _importSource = ImportSource.ThisComputer;
-    private bool _moved;
+    private bool _originChosen;
 
-    public SetupGuide(IForeignImporter importer, SetupStep first)
+    // The guide always opens on its first step (core 0056, Steps).
+    public SetupGuide(IForeignImporter importer)
     {
         ArgumentNullException.ThrowIfNull(importer);
         _importer = importer;
-        Step = first;
     }
 
     public event EventHandler? Changed;
 
     public SetupStep Step { get; private set; }
+
+    public SetupOrigin Origin { get; private set; }
+
+    // The apps the launch probe found with data, by the core's names and in its order.
+    public IReadOnlyList<string> Found { get; private set; } = [];
 
     public bool CanGoBack => _history.Count > 0;
 
@@ -126,35 +132,27 @@ public sealed class SetupGuide
         };
     }
 
-    // True when an app other than a picked file is there; a failure or an answer past the limit reads as none.
-    public static async Task<bool> ProbeAsync(IForeignImporter importer, TimeSpan limit)
+    // A picked file's app is always there, so it is not counted; a failure or an answer past the limit does nothing.
+    public async Task ProbeAsync(TimeSpan limit)
     {
-        ArgumentNullException.ThrowIfNull(importer);
-        var probe = Task.Run(() => importer.GetSourcesAsync(ForeignScanDepth.Presence));
+        var probe = Task.Run(() => _importer.GetSourcesAsync(ForeignScanDepth.Presence));
         if (await Task.WhenAny(probe, Task.Delay(limit)).ConfigureAwait(true) != probe)
         {
             _ = probe.ContinueWith(task => task.Exception, TaskScheduler.Default);
-            return false;
+            return;
         }
 
+        IReadOnlyList<ForeignSource> sources;
         try
         {
-            return (await probe.ConfigureAwait(true)).Any(source => source.IsAvailable && !source.PicksFile);
+            sources = await probe.ConfigureAwait(true);
         }
         catch (TableProException)
         {
-            return false;
+            return;
         }
-    }
 
-    // The probe's answer moves a guide still on its first step, untouched, to the import step.
-    public void Probed(bool found)
-    {
-        if (found && !_moved && Step == SetupStep.Origin && _history.Count == 0)
-        {
-            Step = SetupStep.Import;
-            Raise();
-        }
+        Probed([.. sources.Where(source => source.IsAvailable && !source.PicksFile).Select(source => source.Name)]);
     }
 
     // Inventory reads the counts; a source starts ticked when the core says so.
@@ -199,10 +197,24 @@ public sealed class SetupGuide
         return true;
     }
 
+    // Only a change counts as the user's choice, so the probe still decides while the default stands.
+    public void Select(SetupOrigin origin)
+    {
+        if (Step == SetupStep.Origin && origin != Origin)
+        {
+            _originChosen = true;
+            Origin = origin;
+            Raise();
+        }
+    }
+
+    // Continue on the first step; File has no step here, since File > Import takes it out of the guide.
     public void Choose(SetupOrigin origin)
     {
-        if (Step == SetupStep.Origin)
+        if (Step == SetupStep.Origin && origin != SetupOrigin.File)
         {
+            _originChosen = true;
+            Origin = origin;
             GoTo(origin == SetupOrigin.OtherApp ? SetupStep.Import : SetupStep.FirstConnection);
         }
     }
@@ -219,7 +231,6 @@ public sealed class SetupGuide
     {
         if (_history.TryPop(out var previous))
         {
-            _moved = true;
             Step = previous;
             Raise();
         }
@@ -227,7 +238,6 @@ public sealed class SetupGuide
 
     public void Record(FirstConnectionChoice choice)
     {
-        _moved = true;
         Recorded = choice;
         Raise();
     }
@@ -255,9 +265,25 @@ public sealed class SetupGuide
         _ => Handoff(_imported, _importSource),
     };
 
+    // The apps are named either way; they select their card only while the user has picked none.
+    private void Probed(IReadOnlyList<string> found)
+    {
+        if (found.Count == 0)
+        {
+            return;
+        }
+
+        Found = found;
+        if (!_originChosen && Step == SetupStep.Origin)
+        {
+            Origin = SetupOrigin.OtherApp;
+        }
+
+        Raise();
+    }
+
     private void GoTo(SetupStep step)
     {
-        _moved = true;
         _history.Push(Step);
         Step = step;
         Raise();

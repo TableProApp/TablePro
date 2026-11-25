@@ -57,7 +57,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     // The connection whose cue the title bar shows, painted again when the theme changes.
     private OpenConnection? _cue;
 
-    // The setup guide while it is the page in front; leaving it by any route ends it (core 0051).
+    // The setup guide while it is the page in front; leaving it by any route ends it (core 0056).
     private SetupView? _setup;
     private bool _launchGateAsked;
     private bool _choosingRail;
@@ -425,7 +425,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         await HandOffAsync(SetupGuide.Handoff(ending.ConnectionIds, ending.Source));
     }
 
-    // Help > Setup Guide and the Connections page's card open it whatever the library holds (core 0051, G6).
+    // Help > Setup Guide and the Connections page's card open it whatever the library holds (core 0056, G6).
     public void ShowSetupGuide()
     {
         if (_home is null)
@@ -442,7 +442,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         var importer = new CoreForeignImporter(_workbench.Core, ForeignAppDirs.ForCurrentUser());
-        var guide = new SetupGuide(importer, SetupStep.Origin);
+        var guide = new SetupGuide(importer);
         var setup = new SetupView(_workbench, this, importer, guide);
         setup.Ended += async (_, ending) => await FinishSetupAsync(setup, ending);
         setup.BackChanged += (_, _) => ShowSetupBack();
@@ -456,12 +456,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         Show(setup);
-        _ = ProbeAsync(guide, importer);
+        _ = guide.ProbeAsync(SetupGuide.ProbeLimit);
     }
-
-    // The guide opens on its first step and moves to Import if the quick look finds an app in time.
-    private static async Task ProbeAsync(SetupGuide guide, IForeignImporter importer) =>
-        guide.Probed(await SetupGuide.ProbeAsync(importer, SetupGuide.ProbeLimit));
 
     // The launch's first read of the library decides whether the guide shows, while the Connections page is in front.
     private void OnLibraryRead(object? sender, LibrarySnapshot snapshot)

@@ -106,7 +106,7 @@ public sealed record LibrarySnapshot(
     public IReadOnlyList<ConnectionTag> Tags { get; init; } = [];
 }
 
-// ConnectionIds: the saved connections the file wrote, added or updated, once each in file order (core 0051).
+// ConnectionIds: the saved connections the file wrote, added or updated, once each in file order (core 0056).
 public sealed record ImportSummary(int Added, int Updated, IReadOnlyList<Guid> ConnectionIds);
 
 public sealed record ParsedConnectionUrl(

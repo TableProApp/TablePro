@@ -110,7 +110,7 @@
                 <toolkit:SettingsCard x:Uid="NewConnectionCard" x:Name="NewConnectionCard" AutomationProperties.AutomationId="NewConnectionCard" IsClickEnabled="True" Click="OnNewConnection">
                     <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="Add" /></toolkit:SettingsCard.HeaderIcon>
                 </toolkit:SettingsCard>
-                <!-- Importing, a connections file and the sample are the setup guide's steps (core 0051). -->
+                <!-- Importing, a connections file and the sample are the setup guide's steps (core 0056). -->
                 <toolkit:SettingsCard x:Uid="SetupGuideCard" x:Name="SetupGuideCard" AutomationProperties.AutomationId="SetupGuideCard" IsClickEnabled="True" Click="OnSetupGuide">
                     <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE82D;" /></toolkit:SettingsCard.HeaderIcon>
                 </toolkit:SettingsCard>

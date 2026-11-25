@@ -8,13 +8,16 @@ import Foundation
 import TableProImport
 import TableProTestSupport
 import Testing
+import UniformTypeIdentifiers
 
 @MainActor
 struct SetupGuideModelTests {
     private struct StubImporter: ForeignAppImporter {
         let id: String
         var readsPasswordsFromKeychain = false
+        var fileTypes: [UTType]?
         var displayName: String { id }
+        var importFileTypes: [UTType]? { fileTypes }
         var symbolName: String { "cylinder" }
         var appBundleIdentifier: String { "test.\(id)" }
         var savedQuerySupport: ForeignSavedQuerySupport { .unavailable(reason: "none") }
@@ -38,6 +41,7 @@ struct SetupGuideModelTests {
         var requests: [ForeignImportRequest] = []
         var announcements: [String] = []
         var endings: [SetupGuideEnding] = []
+        var scans = 0
         var failing: Set<String> = []
     }
 
@@ -45,10 +49,11 @@ struct SetupGuideModelTests {
         _ id: String,
         connections: Int,
         availability: ForeignSourceAvailability = .available,
-        keychain: Bool = false
+        keychain: Bool = false,
+        picksFile: Bool = false
     ) -> ForeignSourceRow {
         ForeignSourceRow(
-            importer: StubImporter(id: id, readsPasswordsFromKeychain: keychain),
+            importer: StubImporter(id: id, readsPasswordsFromKeychain: keychain, fileTypes: picksFile ? [.data] : nil),
             availability: availability,
             inventory: ForeignAppInventory(connections: connections, savedQueries: 0, keychainPrompts: keychain ? connections : 0)
         )
@@ -73,26 +78,25 @@ struct SetupGuideModelTests {
 
     private static func model(
         _ recorder: Recorder,
-        probe: @escaping @Sendable () async -> Set<String> = { [] },
+        probe: @escaping @Sendable () async -> [any ForeignAppImporter] = { [] },
         rows: [ForeignSourceRow] = [],
         importers: [any ForeignAppImporter]? = nil,
-        count: @escaping @Sendable (any ForeignAppImporter) async -> ForeignSourceRow = {
-            await ForeignSourceScanner.countedRow(for: $0)
-        },
         keyboard: KeyboardSettings = .default,
         catalog: KeyboardPresetCatalog? = nil,
-        clock: any Clock<Duration> = ContinuousClock()
+        clock: any Clock<Duration> = ContinuousClock(),
+        readGate: AsyncGate? = nil
     ) -> SetupGuideModel {
         let model = SetupGuideModel(dependencies: SetupGuideModel.Dependencies(
             probe: probe,
-            scan: { reach in
+            scan: {
+                await MainActor.run { recorder.scans += 1 }
                 guard let importers else { return rows }
-                return await ForeignSourceScanner.scan(importers, reach: reach)
+                return await ForeignSourceScanner.scan(importers)
             },
-            count: count,
             read: { importer, request in
                 recorder.reads.append(importer.id)
                 recorder.requests.append(request)
+                await readGate?.wait()
                 if recorder.failing.contains(importer.id) {
                     throw ReadFailure()
                 }
@@ -123,19 +127,43 @@ struct SetupGuideModelTests {
         return false
     }
 
+    // Continue on the other app card is the only way into import.
+    private static func openImport(_ model: SetupGuideModel) async throws {
+        model.choose(.command(.otherApp))
+        model.primary()
+        try await waitUntil { model.hasScanned }
+    }
+
     // MARK: - First step
 
-    @Test("An app found by the probe opens the guide on import, with no Back to a step never shown")
-    func probeOpensOnImport() async throws {
+    @Test("Apps the probe finds select the other app card and are named on origin; nothing is read until Continue")
+    func probeSelectsOtherAppOnOrigin() async throws {
         let recorder = Recorder()
-        let model = Self.model(recorder, probe: { ["alpha"] }, rows: [Self.row("alpha", connections: 3)])
+        let alpha = RecordingImporter(id: "alpha")
+        let beta = RecordingImporter(id: "beta")
+        let model = Self.model(recorder, probe: { [alpha, beta] }, importers: [alpha, beta])
 
         await model.start().value
 
-        #expect(model.step == .import)
+        #expect(model.step == .origin)
         #expect(!model.canGoBack)
+        #expect(model.origin == .command(.otherApp))
+        #expect(model.foundApps == ["Alpha", "Beta"])
+        #expect(SetupGuideOriginStep.detail(for: .command(.otherApp), foundApps: model.foundApps) == String(
+            format: String(localized: "Found on this Mac: %@"),
+            ListFormatter.localizedString(byJoining: ["Alpha", "Beta"])
+        ))
+        #expect(recorder.scans == 0)
+        #expect(alpha.calls.count(of: "inventory") == 0)
+
+        model.primary()
+
+        #expect(model.step == .import)
         try await waitUntil { model.hasScanned }
-        #expect(model.ticked == ["alpha"])
+        #expect(recorder.scans == 1)
+        #expect(alpha.calls.count(of: "inventory") == 1)
+        #expect(beta.calls.count(of: "inventory") == 1)
+        #expect(model.ticked == ["alpha", "beta"])
     }
 
     @Test("With nothing found the guide stays on origin")
@@ -157,7 +185,7 @@ struct SetupGuideModelTests {
         let clock = ManualClock()
         let model = Self.model(recorder, probe: {
             await gate.wait()
-            return ["alpha"]
+            return [StubImporter(id: "alpha")]
         }, clock: clock)
 
         let probe = model.start()
@@ -168,26 +196,47 @@ struct SetupGuideModelTests {
         await probe.value
 
         #expect(model.step == .origin)
-        #expect(!model.hasScanned, "No scan starts for an answer nobody waited for")
+        #expect(model.origin == .newConnection, "An answer nobody waited for selects nothing")
+        #expect(model.foundApps.isEmpty)
     }
 
-    @Test("A choice made while the probe runs stays, and the probe's answer moves nothing")
+    @Test("A choice made while the probe runs stays; the probe only names what it found")
     func choiceDuringProbeWins() async {
         let recorder = Recorder()
         let gate = AsyncGate()
         let model = Self.model(recorder, probe: {
             await gate.wait()
-            return ["alpha"]
-        }, rows: [Self.row("alpha", connections: 3)])
+            return [StubImporter(id: "alpha")]
+        })
 
         let probe = model.start()
-        model.origin = .sample
+        model.choose(.sample)
         await gate.open()
         await probe.value
 
         #expect(model.step == .origin)
         #expect(model.origin == .sample)
-        #expect(!model.hasScanned)
+        #expect(model.foundApps == ["alpha"])
+        #expect(recorder.scans == 0)
+    }
+
+    @Test("Continue on the default card is a choice too, so Back finds it as the user left it")
+    func continueBeforeProbeWins() async {
+        let recorder = Recorder()
+        let gate = AsyncGate()
+        let model = Self.model(recorder, probe: {
+            await gate.wait()
+            return [StubImporter(id: "alpha")]
+        })
+
+        let probe = model.start()
+        model.primary()
+        model.back()
+        await gate.open()
+        await probe.value
+
+        #expect(model.step == .origin)
+        #expect(model.origin == .newConnection)
     }
 
     // MARK: - Steps, Back, Skip
@@ -197,7 +246,7 @@ struct SetupGuideModelTests {
         let recorder = Recorder()
         let model = Self.model(recorder)
 
-        model.origin = .newConnection
+        model.choose(.newConnection)
         model.primary()
 
         #expect(model.step == .options)
@@ -217,7 +266,7 @@ struct SetupGuideModelTests {
         let recorder = Recorder()
         let model = Self.model(recorder)
 
-        model.origin = .command(.url)
+        model.choose(.command(.url))
         model.primary()
 
         #expect(recorder.endings == [.command(.url)])
@@ -230,7 +279,7 @@ struct SetupGuideModelTests {
         let recorder = Recorder()
         let model = Self.model(recorder, rows: [Self.row("beta", connections: 0)])
 
-        model.origin = .command(.otherApp)
+        model.choose(.command(.otherApp))
         model.primary()
         #expect(model.step == .import)
         try await waitUntil { model.hasScanned }
@@ -255,7 +304,7 @@ struct SetupGuideModelTests {
     func skipEnds() {
         let recorder = Recorder()
         let model = Self.model(recorder)
-        model.origin = .sample
+        model.choose(.sample)
         model.primary()
 
         model.skip()
@@ -313,9 +362,8 @@ struct SetupGuideModelTests {
             Self.row("gamma", connections: 0),
             Self.row("delta", connections: 4, availability: .unreadable(reason: "damaged")),
         ]
-        let model = Self.model(recorder, probe: { ["alpha"] }, rows: rows)
-        await model.start().value
-        try await waitUntil { model.hasScanned }
+        let model = Self.model(recorder, rows: rows)
+        try await Self.openImport(model)
         #expect(model.ticked == ["alpha", "beta"])
         #expect(model.primaryTitle == String(format: String(localized: "Import %lld Connections"), 3))
 
@@ -352,13 +400,8 @@ struct SetupGuideModelTests {
     func readFailureMovesOn() async throws {
         let recorder = Recorder()
         recorder.failing = ["alpha"]
-        let model = Self.model(
-            recorder,
-            probe: { ["alpha"] },
-            rows: [Self.row("alpha", connections: 2), Self.row("beta", connections: 1)]
-        )
-        await model.start().value
-        try await waitUntil { model.hasScanned }
+        let model = Self.model(recorder, rows: [Self.row("alpha", connections: 2), Self.row("beta", connections: 1)])
+        try await Self.openImport(model)
 
         model.primary()
         try await waitUntil { Self.isReviewing(model) }
@@ -371,9 +414,8 @@ struct SetupGuideModelTests {
     @Test("A cancelled review imports nothing from that source and ends the queue")
     func cancelledReview() async throws {
         let recorder = Recorder()
-        let model = Self.model(recorder, probe: { ["alpha"] }, rows: [Self.row("alpha", connections: 2)])
-        await model.start().value
-        try await waitUntil { model.hasScanned }
+        let model = Self.model(recorder, rows: [Self.row("alpha", connections: 2)])
+        try await Self.openImport(model)
 
         model.primary()
         try await waitUntil { Self.isReviewing(model) }
@@ -389,9 +431,8 @@ struct SetupGuideModelTests {
     func keychainNotice() async throws {
         let recorder = Recorder()
         let source = Self.row("alpha", connections: 2, keychain: true)
-        let model = Self.model(recorder, probe: { ["alpha"] }, rows: [source])
-        await model.start().value
-        try await waitUntil { model.hasScanned }
+        let model = Self.model(recorder, rows: [source])
+        try await Self.openImport(model)
         #expect(!model.request(for: source).includePasswords)
 
         model.setIncludePasswords(true, for: source)
@@ -409,122 +450,46 @@ struct SetupGuideModelTests {
         #expect(recorder.requests.first?.includePasswords == true)
     }
 
-    // MARK: - Guarded sources
-
-    private static func source(_ model: SetupGuideModel, _ id: String) -> ForeignSourceRow? {
-        model.sources.first { $0.id == id }
-    }
-
-    @Test("The scan the probe started reads no guarded source, and counts and ticks the others")
-    func probeScanSkipsGuardedReads() async throws {
-        let recorder = Recorder()
-        let guarded = RecordingImporter(id: "guarded", readsGuardedLocations: true)
-        let open = RecordingImporter(id: "open")
-        let model = Self.model(recorder, probe: { ["guarded"] }, importers: [guarded, open])
-
-        await model.start().value
-        try await waitUntil { model.hasScanned }
-
-        #expect(guarded.calls.count(of: "isAvailable") == 0)
-        #expect(guarded.calls.count(of: "inventory") == 0)
-        #expect(open.calls.count(of: "inventory") == 1)
-        #expect(model.sources.map { $0.availability } == [.available, .available])
-        #expect(model.sources.map { $0.isCounted } == [false, true])
-        #expect(model.ticked == ["open"])
-    }
-
-    @Test("Choosing the other app card reads every source, guarded or not")
-    func userScanReadsGuardedSources() async throws {
-        let recorder = Recorder()
-        let guarded = RecordingImporter(id: "guarded", readsGuardedLocations: true)
-        let open = RecordingImporter(id: "open")
-        let model = Self.model(recorder, importers: [guarded, open])
-
-        model.origin = .command(.otherApp)
-        model.primary()
-        try await waitUntil { model.hasScanned }
-
-        #expect(guarded.calls.count(of: "isAvailable") == 1)
-        #expect(guarded.calls.count(of: "inventory") == 1)
-        #expect(open.calls.count(of: "inventory") == 1)
-        #expect(model.sources.map { $0.isCounted } == [true, true])
-        #expect(model.ticked == ["guarded", "open"])
-    }
-
-    @Test("Ticking an uncounted source reads it once and replaces its row with the count")
-    func tickCountsOnce() async throws {
-        let recorder = Recorder()
-        let guarded = RecordingImporter(id: "guarded", readsGuardedLocations: true, connections: 3)
-        let open = RecordingImporter(id: "open")
-        let model = Self.model(recorder, probe: { ["guarded"] }, importers: [guarded, open])
-        await model.start().value
-        try await waitUntil { model.hasScanned }
-        let uncounted = try #require(Self.source(model, "guarded"))
-
-        model.setTicked(true, for: uncounted)
-        #expect(model.ticked.contains("guarded"))
-        try await waitUntil { Self.source(model, "guarded")?.isCounted == true }
-
-        #expect(guarded.calls.count(of: "inventory") == 1)
-        #expect(model.counting.isEmpty)
-        #expect(Self.source(model, "guarded")?.inventory.connections == 3)
-        #expect(model.ticked == ["guarded", "open"])
-        #expect(model.primaryTitle == String(format: String(localized: "Import %lld Connections"), 5))
-
-        model.setTicked(false, for: uncounted)
-        model.setTicked(true, for: uncounted)
-        #expect(guarded.calls.count(of: "inventory") == 1, "A counted row is never read again")
-    }
-
-    @Test("Continue waits while a ticked source is counted, and ticking it again meanwhile reads nothing more")
-    func continueWaitsForCount() async throws {
+    @Test("The current source follows the queue through its notice, read, review and file prompt")
+    func currentSourceFollowsTheQueue() async throws {
         let recorder = Recorder()
         let gate = AsyncGate()
-        let guarded = RecordingImporter(id: "guarded", readsGuardedLocations: true)
-        let model = Self.model(recorder, probe: { ["guarded"] }, importers: [guarded], count: { importer in
-            await gate.wait()
-            return await ForeignSourceScanner.countedRow(for: importer)
-        })
-        await model.start().value
-        try await waitUntil { model.hasScanned }
-        let uncounted = try #require(Self.source(model, "guarded"))
+        let keychain = Self.row("alpha", connections: 2, keychain: true)
+        let file = Self.row("export", connections: 0, picksFile: true)
+        let model = Self.model(recorder, rows: [keychain, file], readGate: gate)
+        try await Self.openImport(model)
+        #expect(model.currentSourceId == nil)
+        model.setIncludePasswords(true, for: keychain)
+        model.setTicked(true, for: file)
 
-        model.setTicked(true, for: uncounted)
-        model.setTicked(false, for: uncounted)
-        model.setTicked(true, for: uncounted)
-        #expect(model.counting == ["guarded"])
-        #expect(!model.canContinue)
         model.primary()
-        #expect(Self.isChoosing(model), "No import starts while a count is out")
-        #expect(recorder.reads.isEmpty)
+        guard case .notice = model.importPhase else {
+            Issue.record("Passwords from the Keychain need the notice first")
+            return
+        }
+        #expect(model.currentSourceId == "alpha")
+
+        model.confirmKeychainNotice()
+        guard case .reading = model.importPhase else {
+            Issue.record("The notice's Continue starts the read")
+            return
+        }
+        #expect(model.currentSourceId == "alpha")
 
         await gate.open()
-        try await waitUntil { model.counting.isEmpty }
+        try await waitUntil { Self.isReviewing(model) }
+        #expect(model.currentSourceId == "alpha")
 
-        #expect(guarded.calls.count(of: "inventory") == 1)
-        #expect(model.canContinue)
-    }
-
-    @Test("A ticked source that turns out unreadable shows why and unticks; one with no connection shows 0")
-    func countedSourceStates() async throws {
-        let recorder = Recorder()
-        let damaged = RecordingImporter(id: "damaged", readsGuardedLocations: true, isDamaged: true)
-        let empty = RecordingImporter(id: "empty", readsGuardedLocations: true, connections: 0)
-        let model = Self.model(recorder, probe: { ["damaged", "empty"] }, importers: [damaged, empty])
-        await model.start().value
-        try await waitUntil { model.hasScanned }
-
-        for id in ["damaged", "empty"] {
-            let uncounted = try #require(Self.source(model, id))
-            model.setTicked(true, for: uncounted)
+        model.reviewFinished(ImportOutcome(connectionIds: [UUID()], connectionsAdded: 1))
+        guard case .pickingFile = model.importPhase else {
+            Issue.record("A source that picks a file asks for it next")
+            return
         }
-        try await waitUntil { model.counting.isEmpty }
+        #expect(model.currentSourceId == "export")
 
-        #expect(Self.source(model, "damaged")?.availability == .unreadable(reason: "damaged is damaged"))
-        #expect(Self.source(model, "empty")?.availability == .available)
-        #expect(Self.source(model, "empty")?.isCounted == true)
-        #expect(Self.source(model, "empty")?.inventory.connections == 0)
-        #expect(model.ticked == ["empty"])
+        model.skipCurrentSource()
+        #expect(Self.isChoosing(model))
+        #expect(model.currentSourceId == nil)
     }
 
     // MARK: - Options
@@ -533,14 +498,8 @@ struct SetupGuideModelTests {
     func shortcutListing() async throws {
         let recorder = Recorder()
         let catalog = try Self.catalog()
-        let model = Self.model(
-            recorder,
-            probe: { ["beta"] },
-            rows: [Self.row("beta", connections: 1)],
-            catalog: catalog
-        )
-        await model.start().value
-        try await waitUntil { model.hasScanned }
+        let model = Self.model(recorder, rows: [Self.row("beta", connections: 1)], catalog: catalog)
+        try await Self.openImport(model)
         model.primary()
         try await waitUntil { Self.isReviewing(model) }
         model.reviewFinished(ImportOutcome(connectionIds: [UUID()], connectionsAdded: 1))
@@ -559,7 +518,7 @@ struct SetupGuideModelTests {
         customized.setShortcut(BoundKey(keyCode: 3, command: true, shift: true, option: true), for: .formatQuery)
         let recorder = Recorder()
         let model = Self.model(recorder, keyboard: customized, catalog: try Self.catalog())
-        model.origin = .newConnection
+        model.choose(.newConnection)
         model.primary()
 
         var shortcuts = try #require(model.shortcuts)
@@ -576,6 +535,39 @@ struct SetupGuideModelTests {
         model.back()
         model.primary()
         #expect(model.shortcuts?.original == customized, "Coming back keeps the shortcuts the guide first found")
+    }
+
+    @Test("Options names a recorded choice on its primary, and Done when nothing opens")
+    func optionsPrimaryNamesTheRecordedChoice() {
+        let recorder = Recorder()
+        let model = Self.model(recorder)
+        model.choose(.newConnection)
+        model.primary()
+        #expect(model.step == .options)
+
+        #expect(model.primaryTitle == String(localized: "Add Connection"))
+        model.recorded = .sample
+        #expect(model.primaryTitle == String(localized: "Open Sample"))
+        model.recorded = nil
+        #expect(model.primaryTitle == String(localized: "Done"))
+    }
+
+    @Test("Options names what the import hands off: one connection opens, several are shown", arguments: [1, 2])
+    func optionsPrimaryNamesTheHandoff(imported: Int) async throws {
+        let recorder = Recorder()
+        let model = Self.model(recorder, rows: [Self.row("alpha", connections: imported)])
+        try await Self.openImport(model)
+        model.primary()
+        try await waitUntil { Self.isReviewing(model) }
+        let ids = (0..<imported).map { _ in UUID() }
+        model.reviewFinished(ImportOutcome(connectionIds: ids, connectionsAdded: imported))
+        model.primary()
+        model.primary()
+        #expect(model.step == .options)
+
+        #expect(model.primaryTitle == (imported == 1
+            ? String(localized: "Open Connection")
+            : String(localized: "Show Connections")))
     }
 
     private static func catalog() throws -> KeyboardPresetCatalog {

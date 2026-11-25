@@ -14241,3 +14241,66 @@ msgstr "Cơ sở dữ liệu mẫu"
 
 msgid "Set Up…"
 msgstr "Thiết lập…"
+
+msgid "Welcome to TablePro"
+msgstr "Chào mừng đến với TablePro"
+
+msgid "Bring your connections, or start with a new one."
+msgstr "Mang theo các kết nối của bạn, hoặc bắt đầu với một kết nối mới."
+
+msgid "Connections and saved queries from apps on this computer"
+msgstr "Kết nối và truy vấn đã lưu từ các ứng dụng trên máy tính này"
+
+msgid "Import a Connections File"
+msgstr "Nhập tệp kết nối"
+
+msgid "A file exported from TablePro"
+msgstr "Tệp được xuất từ TablePro"
+
+msgid "Start Fresh"
+msgstr "Bắt đầu mới"
+
+msgid "Add a connection or open the sample database"
+msgstr "Thêm kết nối hoặc mở cơ sở dữ liệu mẫu"
+
+msgid "Import from Other Apps"
+msgstr "Nhập từ các ứng dụng khác"
+
+msgid "Select the apps to import from. You review each one before anything is saved."
+msgstr "Chọn các ứng dụng để nhập. Bạn xem lại từng ứng dụng trước khi lưu bất cứ thứ gì."
+
+msgid "Looking for other apps…"
+msgstr "Đang tìm các ứng dụng khác…"
+
+msgid "Choose what opens when you finish."
+msgstr "Chọn thứ sẽ mở khi bạn hoàn tất."
+
+msgid "A small music store database in SQLite"
+msgstr "Cơ sở dữ liệu cửa hàng nhạc nhỏ trên SQLite"
+
+msgid "Appearance and Keys"
+msgstr "Giao diện và phím"
+
+msgid "Changes apply now. You can change them later in Preferences."
+msgstr "Thay đổi được áp dụng ngay. Bạn có thể đổi lại sau trong Tùy chỉnh."
+
+#, rust-format
+msgid "Step {n} of {total}"
+msgstr "Bước {n}/{total}"
+
+#, rust-format
+msgid "Not found on this computer: {apps}"
+msgstr "Không tìm thấy trên máy tính này: {apps}"
+
+#, rust-format
+msgid "_Import {n} Connection"
+msgid_plural "_Import {n} Connections"
+msgstr[0] "_Nhập {n} kết nối"
+
+#, rust-format
+msgid "Found on this computer: {apps}"
+msgstr "Đã tìm thấy trên máy tính này: {apps}"
+
+#, rust-format
+msgid "{names} and {last}"
+msgstr "{names} và {last}"

@@ -1,8 +1,3 @@
-//
-//  SetupGuideWindowController.swift
-//  TablePro
-//
-
 import AppKit
 import os
 import SwiftUI
@@ -12,7 +7,8 @@ import TableProImport
 @MainActor
 internal final class SetupGuideWindowController: NSWindowController, NSWindowDelegate {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SetupGuide")
-    private static let contentSize = NSSize(width: 620, height: 560)
+    private static let contentSize = NSSize(width: 640, height: 660)
+    private static let minimumContentSize = NSSize(width: 600, height: 560)
     private static var shared: SetupGuideWindowController?
 
     private let model: SetupGuideModel
@@ -38,11 +34,16 @@ internal final class SetupGuideWindowController: NSWindowController, NSWindowDel
         }
         let window = NSWindow.titled(String(localized: "Setup Guide"), contentViewController: hosting)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.setupGuide)
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        // The title stays set: the Window menu and VoiceOver read it.
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.isRestorable = false
         window.tabbingMode = .disallowed
         window.collectionBehavior.insert([.fullScreenNone, .fullScreenDisallowsTiling])
+        window.contentMinSize = Self.minimumContentSize
         window.setContentSize(Self.contentSize)
         super.init(window: window)
         window.delegate = self

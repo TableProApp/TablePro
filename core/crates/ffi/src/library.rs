@@ -252,7 +252,7 @@ pub struct LibrarySnapshot {
 pub struct ImportSummary {
     pub added: u32,
     pub updated: u32,
-    // The saved connections the file wrote, added or updated, once each in file order (core 0051).
+    // The saved connections the file wrote, added or updated, once each in file order (core 0056).
     pub connection_ids: Vec<String>,
 }
 

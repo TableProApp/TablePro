@@ -1,4 +1,4 @@
-# 0051: A setup guide shows on an empty library
+# 0056: A setup guide shows on an empty library
 
 - **Status**: Accepted; amends 0008
 - **Date**: 2026-11-24
@@ -38,7 +38,7 @@ The seen flag is stored on the device and never synced. Each app tests its rows 
 ### Steps
 
 - `origin`, `import`, `firstConnection`, `options`. iOS has `origin` only, before its iCloud and usage pages.
-- The guide opens on `import` when a launch probe finds an app with data, else on `origin`. The probe reads no count and no path the system guards; `origin` shows until it answers, and an answer after its time limit is ignored. The source list the probe opens reads no guarded path either: such a source is counted when the user selects it, so a system prompt follows the user's action.
+- The guide always opens on `origin`. A launch probe that reads no count and no path the system guards looks for other apps with data; when it finds one, `origin` selects the other-app choice and names the apps found, and the user goes on to `import` with the primary. An answer after the probe's time limit is ignored, and a choice the user made first is kept. The source list is read only after that click, so any system prompt follows the user's action.
 - Back works from the second step shown. Skip ends the guide from any step.
 - `import` takes the ticked sources one at a time, in list order: read, review, apply. Each read checks the library the previous apply left.
 - `firstConnection` records a new connection or the sample; nothing runs until the guide ends.

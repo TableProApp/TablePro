@@ -44,6 +44,7 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/saved-query-row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/session-window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/setup-guide.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/setup-hero.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/sql-editor.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/database-file-row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/ssh-section.ui</file>

@@ -2,7 +2,7 @@ using TablePro.Interop;
 
 namespace TablePro.App.Model.Tests;
 
-// The Windows rows of core 0051's gate table, the step order and how the guide ends.
+// The Windows rows of core 0056's gate table, the step order and how the guide ends.
 public sealed class SetupGuideFlowTests
 {
     public static TheoryData<string, SetupGate, bool> GateRows => new()
@@ -27,7 +27,7 @@ public sealed class SetupGuideFlowTests
     [Fact]
     public void TheStepsRunInOrderAndBackStartsFromTheSecondShown()
     {
-        var guide = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
+        var guide = new SetupGuide(new FakeImporter([]));
         var steps = new List<SetupStep> { guide.Step };
         guide.Changed += (_, _) => steps.Add(guide.Step);
 
@@ -53,7 +53,7 @@ public sealed class SetupGuideFlowTests
     [Fact]
     public void ANewUserSkipsTheImportStepAndBackReturnsToTheOrigin()
     {
-        var guide = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
+        var guide = new SetupGuide(new FakeImporter([]));
 
         guide.Choose(SetupOrigin.New);
         Assert.Equal(SetupStep.FirstConnection, guide.Step);
@@ -64,54 +64,104 @@ public sealed class SetupGuideFlowTests
     }
 
     [Fact]
-    public void AGuideOpenedOnImportHasNoBack()
-    {
-        var guide = new SetupGuide(new FakeImporter([]), SetupStep.Import);
-
-        Assert.False(guide.CanGoBack);
-        guide.Back();
-        Assert.Equal(SetupStep.Import, guide.Step);
-    }
-
-    [Fact]
     public async Task TheProbeFindsAnAppWithDataAndLeavesOutAPickedFile()
     {
         var found = new FakeImporter([Source(ForeignApp.Navicat, picksFile: true), Source(ForeignApp.DBeaver)]);
         var onlyFile = new FakeImporter([Source(ForeignApp.Navicat, picksFile: true)]);
+        var withApp = new SetupGuide(found);
+        var withFile = new SetupGuide(onlyFile);
 
-        Assert.True(await SetupGuide.ProbeAsync(found, SetupGuide.ProbeLimit));
-        Assert.False(await SetupGuide.ProbeAsync(onlyFile, SetupGuide.ProbeLimit));
+        await withApp.ProbeAsync(SetupGuide.ProbeLimit);
+        await withFile.ProbeAsync(SetupGuide.ProbeLimit);
+
+        Assert.Equal(["DBeaver"], withApp.Found);
+        Assert.Empty(withFile.Found);
+        Assert.Equal(SetupOrigin.New, withFile.Origin);
         Assert.Equal([ForeignScanDepth.Presence], found.Scans);
     }
 
     [Fact]
-    public async Task AProbePastItsLimitOrFailingReadsAsNothingFound()
+    public async Task TheProbeSelectsAnotherAppAndNamesTheAppsFoundWithoutLeavingTheOrigin()
+    {
+        var guide = new SetupGuide(new FakeImporter(
+        [
+            Source(ForeignApp.TablePlus, available: false),
+            Source(ForeignApp.DBeaver),
+            Source(ForeignApp.Navicat, picksFile: true),
+            Source(ForeignApp.Dbx),
+        ]));
+        var changes = 0;
+        guide.Changed += (_, _) => changes++;
+
+        await guide.ProbeAsync(SetupGuide.ProbeLimit);
+
+        Assert.Equal(1, changes);
+        Assert.Equal(SetupStep.Origin, guide.Step);
+        Assert.False(guide.CanGoBack);
+        Assert.Equal(SetupOrigin.OtherApp, guide.Origin);
+        Assert.Equal(["DBeaver", "Dbx"], guide.Found);
+
+        guide.Choose(guide.Origin);
+        Assert.Equal(SetupStep.Import, guide.Step);
+    }
+
+    [Fact]
+    public async Task AChoiceTheUserMadeBeforeTheProbeAnsweredIsKept()
+    {
+        var importer = new FakeImporter([Source(ForeignApp.DBeaver)]);
+        var file = new SetupGuide(importer);
+        var backToNew = new SetupGuide(importer);
+        var wentOn = new SetupGuide(importer);
+        var defaultClicked = new SetupGuide(importer);
+        file.Select(SetupOrigin.File);
+        backToNew.Select(SetupOrigin.File);
+        backToNew.Select(SetupOrigin.New);
+        wentOn.Choose(SetupOrigin.New);
+        defaultClicked.Select(SetupOrigin.New);
+
+        foreach (var guide in new[] { file, backToNew, wentOn, defaultClicked })
+        {
+            await guide.ProbeAsync(SetupGuide.ProbeLimit);
+            Assert.Equal(["DBeaver"], guide.Found);
+        }
+
+        Assert.Equal(SetupOrigin.File, file.Origin);
+        Assert.Equal(SetupOrigin.New, backToNew.Origin);
+        Assert.Equal(SetupStep.FirstConnection, wentOn.Step);
+        wentOn.Back();
+        Assert.Equal(SetupOrigin.New, wentOn.Origin);
+        // Only a change is a choice, so the default card selected again leaves the probe to decide.
+        Assert.Equal(SetupOrigin.OtherApp, defaultClicked.Origin);
+        file.Choose(SetupOrigin.File);
+        Assert.Equal(SetupStep.Origin, file.Step);
+    }
+
+    [Fact]
+    public async Task AnAnswerPastTheLimitOrAFailureDoesNothing()
     {
         var slow = new FakeImporter([]) { PendingSources = new TaskCompletionSource<IReadOnlyList<ForeignSource>>() };
         var failing = new FakeImporter([])
         {
             SourcesFailure = new CoreError("storage.io", ["storage.io"], "io", null, null),
         };
+        var late = new SetupGuide(slow);
+        var failed = new SetupGuide(failing);
+        var changes = 0;
+        late.Changed += (_, _) => changes++;
+        failed.Changed += (_, _) => changes++;
 
-        Assert.False(await SetupGuide.ProbeAsync(slow, TimeSpan.FromMilliseconds(20)));
-        Assert.False(await SetupGuide.ProbeAsync(failing, SetupGuide.ProbeLimit));
+        await late.ProbeAsync(TimeSpan.FromMilliseconds(20));
+        await failed.ProbeAsync(SetupGuide.ProbeLimit);
         slow.PendingSources.SetResult([Source(ForeignApp.DBeaver)]);
-    }
+        await Task.Yield();
 
-    [Fact]
-    public void TheProbeMovesOnlyAnUntouchedOriginToImport()
-    {
-        var waiting = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
-        var moved = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
-        moved.Choose(SetupOrigin.New);
-        moved.Back();
-
-        waiting.Probed(found: true);
-        moved.Probed(found: true);
-
-        Assert.Equal(SetupStep.Import, waiting.Step);
-        Assert.False(waiting.CanGoBack);
-        Assert.Equal(SetupStep.Origin, moved.Step);
+        Assert.Equal(0, changes);
+        foreach (var guide in new[] { late, failed })
+        {
+            Assert.Equal(SetupStep.Origin, guide.Step);
+            Assert.Equal(SetupOrigin.New, guide.Origin);
+            Assert.Empty(guide.Found);
+        }
     }
 
     [Fact]
@@ -125,7 +175,8 @@ public sealed class SetupGuideFlowTests
             Source(ForeignApp.Dbx),
             Source(ForeignApp.DataGrip, available: false),
         ]);
-        var guide = new SetupGuide(importer, SetupStep.Import);
+        var guide = new SetupGuide(importer);
+        guide.Choose(SetupOrigin.OtherApp);
 
         await guide.LoadSourcesAsync();
 
@@ -141,7 +192,7 @@ public sealed class SetupGuideFlowTests
     [Fact]
     public void ARecordedFirstConnectionRunsAtTheEndAndWinsOverImports()
     {
-        var guide = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
+        var guide = new SetupGuide(new FakeImporter([]));
         guide.AddImported(Outcome(Guid.NewGuid()), ImportSource.ThisComputer);
 
         guide.Record(FirstConnectionChoice.Sample);
@@ -155,9 +206,9 @@ public sealed class SetupGuideFlowTests
     {
         var first = Guid.NewGuid();
         var second = Guid.NewGuid();
-        var none = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
-        var one = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
-        var several = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
+        var none = new SetupGuide(new FakeImporter([]));
+        var one = new SetupGuide(new FakeImporter([]));
+        var several = new SetupGuide(new FakeImporter([]));
 
         one.AddImported(Outcome(first), ImportSource.ThisComputer);
         several.AddImported(Outcome(first), ImportSource.ThisComputer);
@@ -174,9 +225,9 @@ public sealed class SetupGuideFlowTests
     {
         var first = Guid.NewGuid();
         var second = Guid.NewGuid();
-        var picked = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
-        var mixed = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
-        var emptyExport = new SetupGuide(new FakeImporter([]), SetupStep.Origin);
+        var picked = new SetupGuide(new FakeImporter([]));
+        var mixed = new SetupGuide(new FakeImporter([]));
+        var emptyExport = new SetupGuide(new FakeImporter([]));
 
         picked.AddImported(Outcome(first), ImportSource.FileOrLink);
         mixed.AddImported(Outcome(first), ImportSource.ThisComputer);

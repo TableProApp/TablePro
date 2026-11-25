@@ -157,7 +157,8 @@ struct ForeignSourceScannerTests {
 
         let found = await ForeignSourceScanner.probe(importers(installed: ["beekeeperstudio"]))
 
-        #expect(found == ["tableplus", "dbeaver", "beekeeperstudio"])
+        #expect(found.map { $0.id } == ["tableplus", "dbeaver", "beekeeperstudio"])
+        #expect(found.map { $0.displayName } == ["TablePlus", "DBeaver", "Beekeeper Studio"], "The guide names the apps it found")
     }
 
     @Test("The probe never reads Sequel Ace's container: only an installed app counts there")
@@ -165,7 +166,7 @@ struct ForeignSourceScannerTests {
         try writeSequelAce()
 
         #expect(await ForeignSourceScanner.probe(importers()).isEmpty)
-        #expect(await ForeignSourceScanner.probe(importers(installed: ["sequelace"])) == ["sequelace"])
+        #expect(await ForeignSourceScanner.probe(importers(installed: ["sequelace"])).map { $0.id } == ["sequelace"])
     }
 
     // MARK: - Full scan
@@ -197,75 +198,6 @@ struct ForeignSourceScannerTests {
         }
         #expect(reason.contains("Connections.plist"))
         #expect(!ForeignSourceRule.ticked([row.summary]).contains("tableplus"))
-    }
-
-    // MARK: - Guarded sources
-
-    @Test("A scan nobody clicked finds a guarded source by presence alone and leaves it uncounted and unticked")
-    func unguardedScanSkipsGuardedReads() async {
-        let guarded = RecordingImporter(id: "guarded", readsGuardedLocations: true)
-        let missing = RecordingImporter(id: "missing", readsGuardedLocations: true, isInstalled: false)
-        let open = RecordingImporter(id: "open")
-
-        let rows = await ForeignSourceScanner.scan([guarded, missing, open], reach: .unguarded)
-
-        for importer in [guarded, missing] {
-            #expect(importer.calls.count(of: "isAvailable") == 0, "\(importer.id)")
-            #expect(importer.calls.count(of: "inventory") == 0, "\(importer.id)")
-        }
-        #expect(rows.map { $0.availability } == [.available, .notFound, .available])
-        #expect(rows.map { $0.isCounted } == [false, false, true])
-        #expect(rows.map { $0.inventory.connections } == [0, 0, 2])
-        #expect(open.calls.count(of: "inventory") == 1)
-        #expect(ForeignSourceRule.ticked(rows.map { $0.summary }) == ["open"])
-    }
-
-    @Test("A scan the user started reads and counts every source, guarded or not")
-    func fullScanReadsGuardedSources() async {
-        let guarded = RecordingImporter(id: "guarded", readsGuardedLocations: true)
-        let open = RecordingImporter(id: "open")
-
-        let rows = await ForeignSourceScanner.scan([guarded, open])
-
-        #expect(guarded.calls.count(of: "isAvailable") == 1)
-        #expect(guarded.calls.count(of: "inventory") == 1)
-        #expect(open.calls.count(of: "inventory") == 1)
-        #expect(rows.map { $0.isCounted } == [true, true])
-        #expect(rows.map { $0.inventory.connections } == [2, 2])
-        #expect(ForeignSourceRule.ticked(rows.map { $0.summary }) == ["guarded", "open"])
-    }
-
-    @Test("Importers that read another app's container or recent projects declare it, as does one whose settings move a folder")
-    func guardedImporters() {
-        let guarded = importers().filter { $0.readsGuardedLocations }.map { $0.id }
-        #expect(guarded == ["sequelace", "datagrip"])
-
-        for key in ["SharedConnectionPath", "SharedQueryPath", "Favorites"] {
-            var tablePlus = TablePlusImporter()
-            tablePlus.dataDirectoryOverride = root.appendingPathComponent("TablePlus", isDirectory: true)
-            tablePlus.resolveAppURL = Self.appLookup(installed: true)
-            tablePlus.readViewSetting = { _ -> [String: Any]? in
-                if key == "Favorites" {
-                    return [key: [["path": "~/Downloads/Shared"] as [String: Any]]]
-                }
-                return [key: "~/Documents/Shared"]
-            }
-            #expect(tablePlus.readsGuardedLocations, "\(key)")
-        }
-    }
-
-    @Test("An unguarded scan never opens another app's container, and a full scan counts it")
-    func sequelAceContainerWaitsForTheUser() async throws {
-        try writeSequelAce()
-        let sources = importers(installed: ["sequelace"])
-
-        let quiet = try #require(await ForeignSourceScanner.scan(sources, reach: .unguarded).first { $0.id == "sequelace" })
-        let full = try #require(await ForeignSourceScanner.scan(sources).first { $0.id == "sequelace" })
-
-        #expect(quiet.availability == .available)
-        #expect(!quiet.isCounted)
-        #expect(full.isCounted)
-        #expect(full.inventory.connections == 1)
     }
 
     // MARK: - Menu picker

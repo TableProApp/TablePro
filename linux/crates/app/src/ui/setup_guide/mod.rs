@@ -1,5 +1,7 @@
-// The setup guide, a page of the session window that ends with a connection open (core ADR 0051).
+// The setup guide, a page of the session window that ends with a connection open (core ADR 0056).
 
+mod app_icon;
+mod hero;
 mod imp;
 #[cfg(test)]
 mod tests;
@@ -27,12 +29,13 @@ use uuid::Uuid;
 
 use super::handler_guard::HandlerGuard;
 use super::import_from_app::{ImportPages, ImportPagesInit, ImportPagesMode, source_subtitle};
-use crate::i18n::gettext;
+use crate::i18n::{gettext, gettext_f, ngettext_f, pgettext};
 use crate::runtime::spawn_and_deliver;
 use crate::services::foreign_import::look_for_apps_blocking;
 use crate::services::setup_guide::{
-    FirstConnectionChoice, SetupEnding, SetupFlow, SetupStep, first_step, import_source, probe_answer_applies,
+    FirstConnectionChoice, OriginChoice, SetupEnding, SetupFlow, SetupStep, found_subtitle, import_source,
 };
+use crate::ui::icons;
 
 const ORIGIN: &str = "setup-origin";
 const IMPORT: &str = "setup-import";
@@ -55,7 +58,7 @@ pub(crate) struct SetupGuideInit {
 
 glib::wrapper! {
     pub struct SetupGuide(ObjectSubclass<imp::SetupGuide>)
-        @extends adw::Bin, gtk::Widget,
+        @extends adw::BreakpointBin, gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
@@ -73,8 +76,16 @@ pub(super) struct Parts {
 
 struct SourceRow {
     app: ForeignApp,
+    connections: usize,
     check: gtk::CheckButton,
     row: adw::ActionRow,
+}
+
+impl SourceRow {
+    // A row the guide could not read stays out of the queue whatever its box says.
+    fn is_queued(&self) -> bool {
+        self.row.is_sensitive() && self.check.is_active()
+    }
 }
 
 fn tag(step: SetupStep) -> &'static str {
@@ -96,13 +107,49 @@ fn step_of(tag: &str) -> Option<SetupStep> {
     }
 }
 
+// A picked file or an uncounted app has no total to promise, so the pill says Import alone.
+fn import_label(ticked: usize, connections: usize) -> String {
+    match (ticked, connections) {
+        (0, _) => gettext("_Continue"),
+        (_, 0) => gettext("_Import"),
+        (_, n) => ngettext_f(
+            "_Import {n} Connection",
+            "_Import {n} Connections",
+            n,
+            &[("n", &n.to_string())],
+        ),
+    }
+}
+
+// The fallback glyph keeps the icon's 40 px slot, so every card's title starts at the same place.
+fn app_art(app: ForeignApp) -> gtk::Image {
+    let image = gtk::Image::builder()
+        .pixel_size(40)
+        .width_request(40)
+        .height_request(40)
+        .accessible_role(gtk::AccessibleRole::Presentation)
+        .build();
+    match app_icon::app_icon(app) {
+        Some(icon) => {
+            image.set_from_gicon(&icon);
+            image.add_css_class("icon-dropshadow");
+        }
+        None => {
+            image.set_icon_name(Some(icons::APPLICATION_X_EXECUTABLE));
+            image.set_pixel_size(32);
+            image.add_css_class("dimmed");
+        }
+    }
+    image
+}
+
 impl SetupGuide {
     pub(crate) fn new(init: SetupGuideInit) -> Self {
         let guide: Self = glib::Object::new();
         let settings = init.settings.clone();
         let _ = guide.imp().parts.set(Parts {
             init,
-            flow: RefCell::new(SetupFlow::new(SetupStep::Origin)),
+            flow: RefCell::new(SetupFlow::new()),
             opened: Cell::new(None),
             sources: RefCell::new(Vec::new()),
             scanned: Cell::new(false),
@@ -111,6 +158,7 @@ impl SetupGuide {
             ended: Cell::new(false),
             scheme: RefCell::new(None),
         });
+        guide.imp().origin_hero.set_icon_name(crate::config::APP_ID);
         guide.bind_options(&settings);
         guide.connect_signals();
         guide
@@ -124,13 +172,14 @@ impl SetupGuide {
         self.imp().toasts.get()
     }
 
-    // Opens on the origin; the probe moves it to the import step when it finds an app with data in time.
+    // Opens on the origin, where a probe that finds an app with data in time selects the other-app card.
     pub(crate) fn start(&self) {
         let Some(parts) = self.parts() else {
             return;
         };
         parts.opened.set(Some(Instant::now()));
         self.sync_stack();
+        self.update_default_widget();
         let dirs = parts.init.dirs.clone();
         let blocking = parts.init.tasks.clone();
         let guide = self.downgrade();
@@ -172,12 +221,16 @@ impl SetupGuide {
             }
         };
         let elapsed = parts.opened.get().map_or(Duration::MAX, |opened| opened.elapsed());
-        if !probe_answer_applies(elapsed, &parts.flow.borrow()) || first_step(&probed) != SetupStep::Import {
-            return;
-        }
-        parts.flow.replace(SetupFlow::new(SetupStep::Import));
-        self.sync_stack();
-        self.entered(SetupStep::Import);
+        let subtitle = {
+            let mut flow = parts.flow.borrow_mut();
+            if !flow.probe_answered(elapsed, &probed) {
+                return;
+            }
+            found_subtitle(flow.found())
+        };
+        let imp = self.imp();
+        imp.from_app_row.set_subtitle(&subtitle);
+        imp.from_app_check.set_active(true);
     }
 
     fn connect_signals(&self) {
@@ -194,20 +247,35 @@ impl SetupGuide {
             self,
             move |_| guide.finish()
         ));
-        imp.from_app_row.connect_activated(glib::clone!(
+        for (row, check, origin) in [
+            (imp.from_app_row.get(), imp.from_app_check.get(), OriginChoice::OtherApp),
+            (
+                imp.from_file_row.get(),
+                imp.from_file_check.get(),
+                OriginChoice::ConnectionsFile,
+            ),
+            (imp.start_row.get(), imp.start_check.get(), OriginChoice::StartFresh),
+        ] {
+            check.connect_toggled(glib::clone!(
+                #[weak(rename_to = guide)]
+                self,
+                move |check| {
+                    if check.is_active() {
+                        guide.origin_toggled(origin);
+                    }
+                }
+            ));
+            // Activating the card already selected changes nothing on screen, yet it is still the user's choice.
+            row.connect_activated(glib::clone!(
+                #[weak(rename_to = guide)]
+                self,
+                move |_| guide.choose_origin(origin)
+            ));
+        }
+        imp.origin_continue.connect_clicked(glib::clone!(
             #[weak(rename_to = guide)]
             self,
-            move |_| guide.go_to(SetupStep::Import)
-        ));
-        imp.start_row.connect_activated(glib::clone!(
-            #[weak(rename_to = guide)]
-            self,
-            move |_| guide.go_to(SetupStep::FirstConnection)
-        ));
-        imp.from_file_row.connect_activated(glib::clone!(
-            #[weak(rename_to = guide)]
-            self,
-            move |_| guide.import_file()
+            move |_| guide.on_origin_continue()
         ));
         imp.import_continue.connect_clicked(glib::clone!(
             #[weak(rename_to = guide)]
@@ -232,6 +300,65 @@ impl SetupGuide {
             self,
             move |_, page| guide.on_popped(page)
         ));
+        imp.navigation.connect_visible_page_notify(glib::clone!(
+            #[weak(rename_to = guide)]
+            self,
+            move |_| guide.update_default_widget()
+        ));
+    }
+
+    // The probe writes the flow before it selects the card, so only a toggle by the user differs from it.
+    fn origin_toggled(&self, origin: OriginChoice) {
+        let Some(parts) = self.parts() else {
+            return;
+        };
+        let mut flow = parts.flow.borrow_mut();
+        if flow.origin() != origin {
+            flow.choose_origin(origin);
+        }
+    }
+
+    fn choose_origin(&self, origin: OriginChoice) {
+        if let Some(parts) = self.parts() {
+            parts.flow.borrow_mut().choose_origin(origin);
+        }
+    }
+
+    // A click on a card only selects it, so the pill alone moves on, and Return has one target.
+    fn on_origin_continue(&self) {
+        let Some(parts) = self.parts() else {
+            return;
+        };
+        let origin = parts.flow.borrow_mut().continue_from_origin();
+        match origin.next_step() {
+            Some(step) => self.go_to(step),
+            None => self.import_file(),
+        }
+    }
+
+    // Return runs the pill of the step on screen; an import page pushed on top has buttons of its own.
+    fn update_default_widget(&self) {
+        let Some(window) = self.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+        let pill = self
+            .imp()
+            .navigation
+            .visible_page()
+            .and_then(|page| page.tag())
+            .and_then(|tag| step_of(&tag))
+            .map(|step| self.pill(step));
+        window.set_default_widget(pill.as_ref());
+    }
+
+    fn pill(&self, step: SetupStep) -> gtk::Button {
+        let imp = self.imp();
+        match step {
+            SetupStep::Origin => imp.origin_continue.get(),
+            SetupStep::Import => imp.import_continue.get(),
+            SetupStep::FirstConnection => imp.first_continue.get(),
+            SetupStep::Options => imp.finish_button.get(),
+        }
     }
 
     // The options apply as they change, as Preferences does, so Skip on the last step loses nothing.
@@ -336,37 +463,71 @@ impl SetupGuide {
         for old in parts.sources.take() {
             imp.import_apps_group.remove(&old.row);
         }
-        let mut rows = Vec::with_capacity(sources.len());
-        for source in &sources {
-            let available = source.availability == SourceAvailability::Available;
-            let check = gtk::CheckButton::builder()
-                .valign(gtk::Align::Center)
-                .active(source.starts_ticked())
-                .build();
-            let row = adw::ActionRow::builder()
-                .title(source.app.display_name())
-                .subtitle(source_subtitle(source))
-                .use_markup(false)
-                .activatable_widget(&check)
-                .sensitive(available)
-                .build();
-            if let SourceAvailability::Unreadable(reason) = &source.availability {
-                row.set_tooltip_text(Some(&reason.detail));
-            }
-            row.add_prefix(&check);
-            imp.import_apps_group.add(&row);
-            rows.push(SourceRow {
-                app: source.app,
-                check,
-                row,
-            });
-        }
-        let any = sources
+        // An unreadable app keeps its card so a missing count is never hidden (core ADR 0056); an absent app is named.
+        let (missing, found): (Vec<&ForeignSource>, Vec<&ForeignSource>) = sources
             .iter()
-            .any(|source| source.availability == SourceAvailability::Available);
+            .partition(|source| source.availability == SourceAvailability::NotFound);
+        let rows: Vec<SourceRow> = found.into_iter().map(|source| self.source_row(source)).collect();
+        for source in &rows {
+            imp.import_apps_group.add(&source.row);
+        }
+        let names: Vec<&str> = missing.iter().map(|source| source.app.display_name()).collect();
+        imp.not_found_label.set_label(&gettext_f(
+            "Not found on this computer: {apps}",
+            &[("apps", &names.join(&pgettext("list separator", ", ")))],
+        ));
+        imp.not_found_label.set_visible(!names.is_empty());
+        let any = !rows.is_empty();
         parts.sources.replace(rows);
+        self.update_import_label();
         imp.import_stack
             .set_visible_child_name(if any { "sources" } else { "empty" });
+    }
+
+    fn source_row(&self, source: &ForeignSource) -> SourceRow {
+        let check = gtk::CheckButton::builder()
+            .valign(gtk::Align::Center)
+            .active(source.starts_ticked())
+            .build();
+        let row = adw::ActionRow::builder()
+            .title(source.app.display_name())
+            .subtitle(source_subtitle(source))
+            .subtitle_lines(2)
+            .use_markup(false)
+            .activatable_widget(&check)
+            .sensitive(source.availability == SourceAvailability::Available)
+            .build();
+        if let SourceAvailability::Unreadable(reason) = &source.availability {
+            row.set_tooltip_text(Some(&reason.detail));
+        }
+        row.add_prefix(&app_art(source.app));
+        row.add_suffix(&check);
+        check.connect_toggled(glib::clone!(
+            #[weak(rename_to = guide)]
+            self,
+            move |_| guide.update_import_label()
+        ));
+        SourceRow {
+            app: source.app,
+            connections: source.inventory.connections,
+            check,
+            row,
+        }
+    }
+
+    fn update_import_label(&self) {
+        let Some(parts) = self.parts() else {
+            return;
+        };
+        let (ticked, connections) = parts
+            .sources
+            .borrow()
+            .iter()
+            .filter(|source| source.is_queued())
+            .fold((0, 0), |(ticked, connections), source| {
+                (ticked + 1, connections + source.connections)
+            });
+        self.imp().import_continue.set_label(&import_label(ticked, connections));
     }
 
     fn on_import_continue(&self) {
@@ -377,7 +538,7 @@ impl SetupGuide {
             .sources
             .borrow()
             .iter()
-            .filter(|source| source.row.is_sensitive() && source.check.is_active())
+            .filter(|source| source.is_queued())
             .map(|source| source.app)
             .collect();
         if apps.is_empty() {

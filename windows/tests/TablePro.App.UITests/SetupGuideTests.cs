@@ -3,7 +3,7 @@ using FlaUI.Core.Tools;
 
 namespace TablePro.App.UITests;
 
-// The setup guide of core 0051 on Windows: shown on an empty library the user has not seen it on, one screenshot a step.
+// The setup guide of core 0056 on Windows: shown on an empty library the user has not seen it on, one screenshot a step.
 public sealed partial class ShellTests
 {
     [Theory]
@@ -17,8 +17,10 @@ public sealed partial class ShellTests
         Assert.True(app.TryFind("HomeItem") is null or { IsOffscreen: true });
         app.Screenshot("192-setup-origin");
 
-        app.Click(app.Find("SetupOtherAppCard"), () => app.TryFind("SetupSources") is { IsOffscreen: false }
-            || app.TryFind("SetupPrimary") is { IsEnabled: true });
+        // Changed on purpose: a card is selected, and Continue goes on (windows/docs/decisions/0026).
+        app.Click(app.Find("SetupOtherAppCard"), () => IsCardSelected(app, "SetupOtherAppCard"));
+        app.Click(app.Find("SetupPrimary"), () => app.TryFind("SetupSources") is { IsOffscreen: false }
+            || app.TryFind("SetupNotFound") is { IsOffscreen: false });
         Assert.True(Retry.WhileFalse(
             () => app.TryFind("SetupPrimary") is { IsEnabled: true },
             AppSession.Wait,
@@ -29,7 +31,8 @@ public sealed partial class ShellTests
         app.Click(app.Find("SetupPrimary"), () => app.TryFind("SetupSampleCard") is { IsOffscreen: false });
         app.Screenshot("194-setup-first-connection");
 
-        app.Click(app.Find("SetupSampleCard"), () => app.TryFind("SetupShortcutsBox") is { IsOffscreen: false });
+        app.Click(app.Find("SetupSampleCard"), () => IsCardSelected(app, "SetupSampleCard"));
+        app.Click(app.Find("SetupPrimary"), () => app.TryFind("SetupShortcutsBox") is { IsOffscreen: false });
         Assert.Equal("TablePro", app.Find("SetupShortcutsBox").AsComboBox().SelectedItem?.Text);
         app.Screenshot("195-setup-options");
 
@@ -56,7 +59,8 @@ public sealed partial class ShellTests
 
             app.Click(app.Find("HelpMenu"), () => app.TryFind("MenuSetupGuide") is { IsEnabled: true });
             app.Click(app.Find("MenuSetupGuide"), () => app.TryFind("SetupTitle") is { IsOffscreen: false });
-            app.Click(app.Find("SetupNewCard"), () => app.TryFind("SetupSampleCard") is { IsOffscreen: false });
+            app.Click(app.Find("SetupNewCard"), () => IsCardSelected(app, "SetupNewCard"));
+            app.Click(app.Find("SetupPrimary"), () => app.TryFind("SetupSampleCard") is { IsOffscreen: false });
             app.Close();
         }
 
@@ -65,4 +69,7 @@ public sealed partial class ShellTests
         again.Find("SetupGuideCard");
         Assert.True(again.TryFind("SetupTitle") is null or { IsOffscreen: true });
     }
+
+    private static bool IsCardSelected(AppSession app, string card) => AppSession.Holds(() =>
+        app.TryFind(card)?.Patterns.SelectionItem.PatternOrDefault?.IsSelected.ValueOrDefault == true);
 }

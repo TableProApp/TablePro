@@ -5,7 +5,7 @@
 
 ## Context
 
-Import from Another App and the setup guide ([core ADR 0051](../../../core/docs/decisions/0051-a-setup-guide-shows-on-an-empty-library.md)) read another database app's connections from its files. For three of the apps they import from, the core's importers (`core/crates/foreign-import/src/apps/`) also look in the folder the app's Flathub build keeps under `~/.var/app`.
+Import from Another App and the setup guide ([core ADR 0056](../../../core/docs/decisions/0056-a-setup-guide-shows-on-an-empty-library.md)) read another database app's connections from its files. For three of the apps they import from, the core's importers (`core/crates/foreign-import/src/apps/`) also look in the folder the app's Flathub build keeps under `~/.var/app`.
 
 [0008](0008-flatpak-sandbox-permissions.md) grants the home folder and nothing else of the user's. Flatpak's `home` grant leaves out `~/.var/app`: an app reaches only its own folder there (https://docs.flatpak.org/en/latest/sandbox-permissions.html). So the Flatpak build of TablePro never found those apps when they came from Flathub, and said they were not on the computer, while the .deb and .rpm found them.
 

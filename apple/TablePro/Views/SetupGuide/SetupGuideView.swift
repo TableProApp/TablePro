@@ -1,58 +1,77 @@
-//
-//  SetupGuideView.swift
-//  TablePro
-//
-
 import SwiftUI
+
+internal enum SetupGuideImportSheet: Identifiable {
+    case notice(KeychainNotice)
+    case review(ForeignAppRead, UUID)
+
+    var id: String {
+        switch self {
+        case .notice(let notice): "notice-\(notice.id)"
+        case .review(_, let id): "review-\(id.uuidString)"
+        }
+    }
+
+    init?(step: SetupGuideStep, phase: SetupGuideImportPhase) {
+        guard step == .import else { return nil }
+        switch phase {
+        case .notice(let notice): self = .notice(notice)
+        case .review(let read, let id): self = .review(read, id)
+        case .scanning, .choosing, .pickingFile, .reading: return nil
+        }
+    }
+}
 
 // Buttons sit in a footer inside the content: a toolbar would bridge into the title bar.
 internal struct SetupGuideView: View {
     @ObservedObject var model: SetupGuideModel
 
     @AccessibilityFocusState private var headingFocused: Bool
+    @State private var shownStep: SetupGuideStep
+    @State private var movesForward = true
+    @State private var presentedSheetId: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
-        VStack(spacing: 0) {
-            heading
-            stepContent
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .id(model.step)
-                .transition(.opacity)
-            if !model.isRunningImport {
-                Divider()
-                footer
-            }
-        }
-        .motionAnimation(.easeInOut(duration: 0.2), value: model.step)
-        .importSheetFrame()
-        .onValueChange(of: model.step) { _, _ in
-            headingFocused = true
-            if #unavailable(macOS 14) {
-                AccessibilityAnnouncement.post(Self.title(of: model.step))
-            }
-        }
+    init(model: SetupGuideModel) {
+        self.model = model
+        _shownStep = State(initialValue: model.step)
     }
 
-    private var heading: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(verbatim: Self.title(of: model.step))
-                .font(.title2.weight(.semibold))
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityFocused($headingFocused)
-                .accessibilityIdentifier("setup-guide-heading")
-            Text(verbatim: Self.subtitle(of: model.step))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+    var body: some View {
+        // The footer sits below the scroll view, not in a safe area bar over it: the scroll view under a bar answers the bar's accessibility hit tests.
+        VStack(spacing: 0) {
+            ZStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        SetupGuideHero(step: shownStep, headingFocused: $headingFocused)
+                        stepContent
+                    }
+                    .padding(.horizontal, 40)
+                    .padding(.top, 12)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: 560 + 80)
+                    .frame(maxWidth: .infinity)
+                }
+                .scrollBounceBasedOnSize()
+                .id(shownStep)
+                .transition(stepTransition)
+            }
+            .modifier(TitlebarClip())
+            SetupGuideFooter(model: model)
+                .modifier(FooterBackground())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
-        .padding(.bottom, 12)
+        .frame(minWidth: 600, idealWidth: 640, minHeight: 560, idealHeight: 660)
+        .sheet(item: importSheet) { sheet in
+            sheetContent(sheet)
+                .onAppear { presentedSheetId = sheet.id }
+        }
+        .onValueChange(of: model.step) { old, new in
+            stepDidChange(from: old, to: new)
+        }
     }
 
     @ViewBuilder
     private var stepContent: some View {
-        switch model.step {
+        switch shownStep {
         case .origin:
             SetupGuideOriginStep(model: model)
                 .accessibilityElement(children: .contain)
@@ -72,44 +91,97 @@ internal struct SetupGuideView: View {
         }
     }
 
-    private var footer: some View {
-        HStack(spacing: 12) {
-            if model.canGoBack {
-                Button(String(localized: "Back")) { model.back() }
-                    .accessibilityIdentifier("setup-guide-back")
+    private var stepTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        let offset: CGFloat = movesForward ? 24 : -24
+        return .asymmetric(
+            insertion: .offset(x: offset).combined(with: .opacity),
+            removal: .offset(x: -offset).combined(with: .opacity)
+        )
+    }
+
+    // Reduce Motion keeps a short fade, which withMotion would drop along with the slide.
+    private var stepAnimation: Animation {
+        if reduceMotion {
+            return .easeInOut(duration: 0.15)
+        }
+        if #available(macOS 14.0, *) {
+            return .smooth(duration: 0.28)
+        }
+        return .easeInOut(duration: 0.25)
+    }
+
+    // The outgoing step leaves with the transition it last rendered, so the direction lands one turn before the step.
+    private func stepDidChange(from old: SetupGuideStep, to new: SetupGuideStep) {
+        movesForward = SetupGuideHero.index(of: new) > SetupGuideHero.index(of: old)
+        Task { @MainActor in
+            withTransaction(Transaction(animation: stepAnimation)) {
+                shownStep = model.step
             }
-            Spacer()
-            Button(String(localized: "Skip")) { model.skip() }
-                .accessibilityIdentifier("setup-guide-skip")
-            Button(model.primaryTitle) { model.primary() }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(!model.canContinue)
-                .accessibilityIdentifier("setup-guide-primary")
-        }
-        .padding(12)
-        .focusSection()
-    }
-
-    private static func title(of step: SetupGuideStep) -> String {
-        switch step {
-        case .origin: String(localized: "Get Started")
-        case .import: String(localized: "Import from Other Apps")
-        case .firstConnection: String(localized: "First Connection")
-        case .options: String(localized: "Appearance and Keys")
+            headingFocused = true
+            if #unavailable(macOS 14) {
+                AccessibilityAnnouncement.post(SetupGuideHero.announcement(of: model.step))
+            }
         }
     }
 
-    private static func subtitle(of step: SetupGuideStep) -> String {
-        switch step {
-        case .origin:
-            String(localized: "Start with a new connection or the sample database, or bring the connections you have.")
-        case .import:
-            String(localized: "Select the apps to import from. You review each one before anything is saved.")
-        case .firstConnection:
-            String(localized: "Choose what opens when you finish.")
-        case .options:
-            String(localized: "Changes apply now. You can change them later in Settings.")
+    private var importSheet: Binding<SetupGuideImportSheet?> {
+        Binding(
+            get: { SetupGuideImportSheet(step: model.step, phase: model.importPhase) },
+            set: { sheet in
+                guard sheet == nil else { return }
+                // A dismissal the sheet's own buttons did not make still moves the queue on, once.
+                let current = SetupGuideImportSheet(step: model.step, phase: model.importPhase)
+                guard let current, current.id == presentedSheetId else { return }
+                presentedSheetId = nil
+                model.skipCurrentSource()
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func sheetContent(_ sheet: SetupGuideImportSheet) -> some View {
+        switch sheet {
+        case .notice(let notice):
+            KeychainNoticeView(
+                notice: notice,
+                onContinue: { model.confirmKeychainNotice() },
+                onCancel: { model.skipCurrentSource() }
+            )
+            .frame(width: 480)
+        case .review(let read, let id):
+            ImportReviewStep(
+                title: read.title,
+                banner: read.banner,
+                preview: read.preview,
+                onBack: nil,
+                onCancel: { model.skipCurrentSource() },
+                onFinished: { model.reviewFinished($0) }
+            )
+            .importSheetFrame()
+            .id(id)
+        }
+    }
+}
+
+// Before macOS 26 nothing fades content under the transparent title bar, so the scroll view stops below it.
+private struct TitlebarClip: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+        } else {
+            content.clipped()
+        }
+    }
+}
+
+// macOS 26 puts its glass buttons straight on the window; earlier versions mark the bar with its material.
+private struct FooterBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+        } else {
+            content.background(.bar)
         }
     }
 }

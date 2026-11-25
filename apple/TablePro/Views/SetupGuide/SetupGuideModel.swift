@@ -1,8 +1,3 @@
-//
-//  SetupGuideModel.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 import TableProImport
@@ -70,9 +65,8 @@ internal enum SetupGuideImportPhase {
 @MainActor
 internal final class SetupGuideModel: ObservableObject {
     internal struct Dependencies {
-        var probe: @Sendable () async -> Set<String>
-        var scan: @Sendable (ForeignSourceScanReach) async -> [ForeignSourceRow]
-        var count: @Sendable (any ForeignAppImporter) async -> ForeignSourceRow
+        var probe: @Sendable () async -> [any ForeignAppImporter]
+        var scan: @Sendable () async -> [ForeignSourceRow]
         var read: @MainActor (any ForeignAppImporter, ForeignImportRequest) async throws -> ForeignAppRead
         var announce: @MainActor (String) -> Void
         var keyboard: @MainActor () -> KeyboardSettings
@@ -83,8 +77,7 @@ internal final class SetupGuideModel: ObservableObject {
         @MainActor internal static var live: Dependencies {
             Dependencies(
                 probe: { await ForeignSourceScanner.probe() },
-                scan: { await ForeignSourceScanner.scan(reach: $0) },
-                count: { await ForeignSourceScanner.countedRow(for: $0) },
+                scan: { await ForeignSourceScanner.scan() },
                 read: { importer, request in try await ForeignAppImportReader.read(importer, request: request) },
                 announce: { AccessibilityAnnouncement.post($0) },
                 keyboard: { AppSettingsManager.shared.keyboard },
@@ -104,14 +97,13 @@ internal final class SetupGuideModel: ObservableObject {
 
     @Published internal private(set) var step: SetupGuideStep = .origin
     @Published private var history: [SetupGuideStep] = []
-    @Published internal var origin: SetupGuideOrigin = .newConnection {
-        didSet { hasChosenOrigin = true }
-    }
+    @Published internal private(set) var origin: SetupGuideOrigin = .newConnection
+    // Display names of the apps the launch probe found, in registry order.
+    @Published internal private(set) var foundApps: [String] = []
     @Published internal var recorded: SetupGuideFirstConnection?
     @Published internal private(set) var sources: [ForeignSourceRow] = []
     @Published internal private(set) var importPhase: SetupGuideImportPhase = .scanning
     @Published internal private(set) var ticked: Set<String> = []
-    @Published internal private(set) var counting: Set<String> = []
     @Published private var choices: [String: ForeignImportRequest] = [:]
     @Published internal private(set) var results: [String: SetupGuideImportResult] = [:]
     @Published internal private(set) var importedIds: [UUID] = []
@@ -128,7 +120,6 @@ internal final class SetupGuideModel: ObservableObject {
     private var probeTask: Task<Void, Never>?
     private var probeDeadline: Task<Void, Never>?
     private var scanTask: Task<Void, Never>?
-    private var countTasks: [String: Task<Void, Never>] = [:]
     private var readTask: Task<Void, Never>?
     private var queue: [ForeignSourceRow] = []
     private var pending: PendingRead?
@@ -151,11 +142,6 @@ internal final class SetupGuideModel: ObservableObject {
         }
     }
 
-    // An import started before a ticked source is counted would skip its Keychain notice.
-    internal var canContinue: Bool {
-        step != .import || counting.isEmpty
-    }
-
     internal var ending: SetupGuideEnding {
         .resolve(recorded: recorded, importedIds: importedIds, origin: importOrigin)
     }
@@ -167,8 +153,26 @@ internal final class SetupGuideModel: ObservableObject {
         case .import:
             importTitle
         case .options:
-            String(localized: "Done")
+            finishTitle
         }
+    }
+
+    private var finishTitle: String {
+        switch ending {
+        case .sample: String(localized: "Open Sample")
+        case .newConnection: String(localized: "Add Connection")
+        case .handOff(.open): String(localized: "Open Connection")
+        case .handOff(.select): String(localized: "Show Connections")
+        case .handOff(.stay), .command: String(localized: "Done")
+        }
+    }
+
+    // The source the import queue is on, from its file prompt through its review.
+    internal var currentSourceId: String? {
+        if case .pickingFile(let row) = importPhase {
+            return row.id
+        }
+        return pending?.row.id
     }
 
     private var importTitle: String {
@@ -181,7 +185,7 @@ internal final class SetupGuideModel: ObservableObject {
         }
     }
 
-    // The probe picks the first step; an answer after its limit leaves the guide on origin.
+    // The guide stays on origin either way; an answer after the probe's limit changes nothing.
     @discardableResult
     internal func start() -> Task<Void, Never> {
         if let probeTask { return probeTask }
@@ -205,21 +209,24 @@ internal final class SetupGuideModel: ObservableObject {
         return task
     }
 
-    private func probeDidAnswer(_ found: Set<String>) {
+    private func probeDidAnswer(_ found: [any ForeignAppImporter]) {
         probeDeadline?.cancel()
         probeDeadline = nil
         guard isWaitingForProbe else { return }
         isWaitingForProbe = false
-        // A choice the user made on origin while the probe ran is theirs to keep.
-        guard !found.isEmpty, !hasEnded, !hasChosenOrigin, step == .origin, history.isEmpty else { return }
+        guard !found.isEmpty, !hasEnded else { return }
+        foundApps = found.map { $0.displayName }
+        // A choice the user made while the probe ran is theirs to keep; Continue counts as one.
+        guard !hasChosenOrigin else { return }
         origin = .command(.otherApp)
-        step = .import
-        // Nobody has clicked yet, so this scan must raise no privacy prompt.
-        beginScan(.unguarded)
+    }
+
+    internal func choose(_ origin: SetupGuideOrigin) {
+        hasChosenOrigin = true
+        self.origin = origin
     }
 
     internal func primary() {
-        guard canContinue else { return }
         switch step {
         case .origin:
             continueFromOrigin()
@@ -252,16 +259,13 @@ internal final class SetupGuideModel: ObservableObject {
         for task in [probeTask, probeDeadline, scanTask, readTask] {
             task?.cancel()
         }
-        for task in countTasks.values {
-            task.cancel()
-        }
         probeDeadline = nil
         scanTask = nil
-        countTasks = [:]
         readTask = nil
     }
 
     private func continueFromOrigin() {
+        hasChosenOrigin = true
         switch origin {
         case .command(.otherApp):
             recorded = nil
@@ -292,7 +296,7 @@ internal final class SetupGuideModel: ObservableObject {
         history.append(step)
         step = next
         switch next {
-        case .import: beginScan(.everything)
+        case .import: beginScan()
         case .options: prepareShortcuts()
         case .origin, .firstConnection: break
         }
@@ -313,13 +317,10 @@ internal final class SetupGuideModel: ObservableObject {
     internal func setTicked(_ isTicked: Bool, for row: ForeignSourceRow) {
         let current = sources.first { $0.id == row.id } ?? row
         guard current.availability == .available else { return }
-        guard isTicked else {
+        if isTicked {
+            ticked.insert(current.id)
+        } else {
             ticked.remove(current.id)
-            return
-        }
-        ticked.insert(current.id)
-        if !current.isCounted {
-            countSource(current)
         }
     }
 
@@ -347,36 +348,14 @@ internal final class SetupGuideModel: ObservableObject {
         choices[row.id] = request
     }
 
-    private func beginScan(_ reach: ForeignSourceScanReach) {
+    // Only Continue on origin reaches import, so a privacy prompt the scan raises follows that click.
+    private func beginScan() {
         guard !hasScanned, scanTask == nil else { return }
         importPhase = .scanning
         let scan = dependencies.scan
         scanTask = Task { [weak self] in
-            let rows = await scan(reach)
+            let rows = await scan()
             self?.scanDidFinish(rows)
-        }
-    }
-
-    // Read only on the user's tick, so a privacy prompt it raises follows that click.
-    private func countSource(_ row: ForeignSourceRow) {
-        guard countTasks[row.id] == nil else { return }
-        counting.insert(row.id)
-        let counter = dependencies.count
-        let importer = row.importer
-        countTasks[row.id] = Task { [weak self] in
-            let counted = await counter(importer)
-            self?.countDidFinish(counted)
-        }
-    }
-
-    private func countDidFinish(_ counted: ForeignSourceRow) {
-        guard !hasEnded else { return }
-        countTasks[counted.id] = nil
-        counting.remove(counted.id)
-        guard let index = sources.firstIndex(where: { $0.id == counted.id }) else { return }
-        sources[index] = counted
-        if counted.availability != .available {
-            ticked.remove(counted.id)
         }
     }
 

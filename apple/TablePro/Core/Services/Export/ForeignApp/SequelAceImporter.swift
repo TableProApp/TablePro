@@ -14,7 +14,6 @@ struct SequelAceImporter: ForeignAppImporter {
     let symbolName = "cylinder.split.1x2"
     let appBundleIdentifier = "com.sequel-ace.sequel-ace"
     let readsPasswordsFromKeychain = true
-    let readsGuardedLocations = true
 
     private static let socketType = 1
     private static let awsIAMType = 3

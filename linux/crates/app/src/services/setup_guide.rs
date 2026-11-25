@@ -1,11 +1,13 @@
-// The setup guide's rules (core ADR 0051), apart from GTK so the gate and the steps are tested as data.
+// The setup guide's rules (core ADR 0056), apart from GTK so the gate and the steps are tested as data.
 
 use std::time::Duration;
 
 use tablepro_foreign_import::{ForeignApp, ForeignSource, SourceAvailability};
 use uuid::Uuid;
 
-// An answer later than this would move a page the user is already reading.
+use crate::i18n::{gettext_f, pgettext};
+
+// An answer later than this would change a choice the user is already reading.
 pub(crate) const PROBE_LIMIT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,16 +58,48 @@ pub(crate) enum SetupEnding {
     Stay,
 }
 
-// What the launch probe found picks the first step; an app read from a picked file is always there.
-pub(crate) fn first_step(probed: &[ForeignSource]) -> SetupStep {
-    let found = probed
-        .iter()
-        .any(|source| source.availability == SourceAvailability::Available && !source.picks_file());
-    if found { SetupStep::Import } else { SetupStep::Origin }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OriginChoice {
+    OtherApp,
+    ConnectionsFile,
+    StartFresh,
 }
 
-pub(crate) fn probe_answer_applies(elapsed: Duration, flow: &SetupFlow) -> bool {
-    elapsed <= PROBE_LIMIT && flow.shown == [SetupStep::Origin]
+impl OriginChoice {
+    // The file card leaves the guide for the file import, which is no step of the guide.
+    pub(crate) fn next_step(self) -> Option<SetupStep> {
+        match self {
+            Self::OtherApp => Some(SetupStep::Import),
+            Self::ConnectionsFile => None,
+            Self::StartFresh => Some(SetupStep::FirstConnection),
+        }
+    }
+}
+
+// An app read from a picked file is available on every computer, so it says nothing about this one.
+fn apps_with_data(probed: &[ForeignSource]) -> Vec<ForeignApp> {
+    probed
+        .iter()
+        .filter(|source| source.availability == SourceAvailability::Available && !source.picks_file())
+        .map(|source| source.app)
+        .collect()
+}
+
+pub(crate) fn found_subtitle(apps: &[ForeignApp]) -> String {
+    let names: Vec<&str> = apps.iter().map(|app| app.display_name()).collect();
+    gettext_f("Found on this computer: {apps}", &[("apps", &name_list(&names))])
+}
+
+fn name_list(names: &[&str]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => (*one).to_owned(),
+        [rest @ .., last] => {
+            let rest = rest.join(&pgettext("list separator", ", "));
+            // Translators: {names} is one or more names joined by the list separator, {last} the final one.
+            gettext_f("{names} and {last}", &[("names", &rest), ("last", last)])
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,19 +129,55 @@ pub(crate) fn handoff(ids: &[Uuid], source: ImportSource) -> SetupEnding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SetupFlow {
     shown: Vec<SetupStep>,
+    origin: OriginChoice,
+    origin_chosen: bool,
+    found: Vec<ForeignApp>,
     recorded: Option<FirstConnectionChoice>,
     imported: Vec<Uuid>,
     imported_from: ImportSource,
 }
 
 impl SetupFlow {
-    pub(crate) fn new(first: SetupStep) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            shown: vec![first],
+            shown: vec![SetupStep::Origin],
+            origin: OriginChoice::StartFresh,
+            origin_chosen: false,
+            found: Vec::new(),
             recorded: None,
             imported: Vec::new(),
             imported_from: ImportSource::ThisComputer,
         }
+    }
+
+    pub(crate) fn origin(&self) -> OriginChoice {
+        self.origin
+    }
+
+    pub(crate) fn choose_origin(&mut self, origin: OriginChoice) {
+        self.origin = origin;
+        self.origin_chosen = true;
+    }
+
+    // Pressing the pill chooses the card it runs, even the one selected from the start.
+    pub(crate) fn continue_from_origin(&mut self) -> OriginChoice {
+        self.origin_chosen = true;
+        self.origin
+    }
+
+    // Only a suggestion: the user still presses the pill, and a card they chose first stays chosen.
+    pub(crate) fn probe_answered(&mut self, elapsed: Duration, probed: &[ForeignSource]) -> bool {
+        let found = apps_with_data(probed);
+        if elapsed > PROBE_LIMIT || self.origin_chosen || self.shown != [SetupStep::Origin] || found.is_empty() {
+            return false;
+        }
+        self.origin = OriginChoice::OtherApp;
+        self.found = found;
+        true
+    }
+
+    pub(crate) fn found(&self) -> &[ForeignApp] {
+        &self.found
     }
 
     pub(crate) fn step(&self) -> SetupStep {
@@ -193,7 +263,7 @@ mod tests {
         }
     }
 
-    // The Linux rows of ADR 0051's gate table, by their numbers there.
+    // The Linux rows of ADR 0056's gate table, by their numbers there.
     #[test]
     fn the_gate_follows_the_linux_rows_of_the_table() {
         let rows = [
@@ -234,41 +304,132 @@ mod tests {
         }
     }
 
+    // Two apps that keep their data in their own store, and one the user picks an export file for.
+    fn apps() -> (ForeignApp, ForeignApp, ForeignApp) {
+        let mut stores = ForeignApp::ALL
+            .into_iter()
+            .filter(|app| app.picked_file_extensions().is_none());
+        let picked = ForeignApp::ALL
+            .into_iter()
+            .find(|app| app.picked_file_extensions().is_some());
+        match (stores.next(), stores.next(), picked) {
+            (Some(first), Some(second), Some(picked)) => (first, second, picked),
+            _ => panic!("the apps the tests need"),
+        }
+    }
+
     #[test]
-    fn the_guide_opens_on_import_only_when_an_app_with_data_is_found() {
+    fn the_probe_selects_another_app_on_the_origin_and_names_the_apps_it_found() {
+        let (first, second, picked) = apps();
         let unreadable = SourceAvailability::Unreadable(UnreadableReason {
             code: "foreign_import.parse",
             detail: "bad".to_owned(),
         });
-        assert_eq!(first_step(&[]), SetupStep::Origin);
+        let probed = [
+            source(first, SourceAvailability::Available),
+            source(picked, SourceAvailability::Available),
+            source(second, SourceAvailability::Available),
+        ];
+        let mut flow = SetupFlow::new();
+        assert_eq!(flow.origin(), OriginChoice::StartFresh);
+
+        assert!(flow.probe_answered(Duration::from_millis(300), &probed));
+        assert_eq!(flow.origin(), OriginChoice::OtherApp);
+        assert_eq!(flow.shown(), [SetupStep::Origin], "the probe left the origin");
+        assert_eq!(flow.found(), [first, second], "an export file the user picks was named");
         assert_eq!(
-            first_step(&[
-                source(ForeignApp::DBeaver, SourceAvailability::NotFound),
-                source(ForeignApp::Navicat, SourceAvailability::Available),
-                source(ForeignApp::DataGrip, unreadable),
-            ]),
-            SetupStep::Origin,
-            "an export file the user picks, or data that cannot be read, is no app with data"
+            found_subtitle(flow.found()),
+            format!(
+                "Found on this computer: {} and {}",
+                first.display_name(),
+                second.display_name()
+            )
+        );
+        assert_eq!(flow.continue_from_origin().next_step(), Some(SetupStep::Import));
+
+        let mut nothing = SetupFlow::new();
+        let none_with_data = [
+            source(first, SourceAvailability::NotFound),
+            source(picked, SourceAvailability::Available),
+            source(second, unreadable),
+        ];
+        assert!(
+            !nothing.probe_answered(Duration::from_millis(300), &none_with_data),
+            "data that is missing or cannot be read is no app with data"
+        );
+        assert_eq!(nothing.origin(), OriginChoice::StartFresh);
+        assert!(nothing.found().is_empty());
+    }
+
+    #[test]
+    fn the_found_apps_read_as_a_sentence() {
+        let (first, second, third) = apps();
+        let name = |app: ForeignApp| app.display_name();
+        assert_eq!(
+            found_subtitle(&[first]),
+            format!("Found on this computer: {}", name(first))
         );
         assert_eq!(
-            first_step(&[source(ForeignApp::DBeaver, SourceAvailability::Available)]),
-            SetupStep::Import
+            found_subtitle(&[first, second, third]),
+            format!(
+                "Found on this computer: {}, {} and {}",
+                name(first),
+                name(second),
+                name(third)
+            )
         );
     }
 
     #[test]
-    fn a_late_probe_answer_or_one_after_the_user_moved_is_ignored() {
-        let mut flow = SetupFlow::new(SetupStep::Origin);
-        assert!(probe_answer_applies(Duration::from_millis(300), &flow));
-        assert!(probe_answer_applies(PROBE_LIMIT, &flow));
-        assert!(!probe_answer_applies(PROBE_LIMIT + Duration::from_millis(1), &flow));
-        flow.advance();
-        assert!(!probe_answer_applies(Duration::from_millis(300), &flow));
+    fn a_choice_the_user_made_first_is_kept() {
+        let (first, _, _) = apps();
+        let probed = [source(first, SourceAvailability::Available)];
+        let mut chosen = SetupFlow::new();
+        chosen.choose_origin(OriginChoice::ConnectionsFile);
+        assert!(!chosen.probe_answered(Duration::from_millis(300), &probed));
+        assert_eq!(chosen.origin(), OriginChoice::ConnectionsFile);
+        assert!(chosen.found().is_empty(), "the probe named apps over the user's choice");
+
+        let mut kept_the_first_card = SetupFlow::new();
+        kept_the_first_card.choose_origin(OriginChoice::StartFresh);
+        assert!(!kept_the_first_card.probe_answered(Duration::from_millis(300), &probed));
+        assert_eq!(kept_the_first_card.origin(), OriginChoice::StartFresh);
+
+        let mut went_on = SetupFlow::new();
+        let next = went_on.continue_from_origin().next_step();
+        assert_eq!(next, Some(SetupStep::FirstConnection));
+        went_on.go_to(SetupStep::FirstConnection);
+        went_on.back();
+        assert!(
+            !went_on.probe_answered(Duration::from_millis(300), &probed),
+            "the card the pill ran was replaced after Back"
+        );
+        assert_eq!(went_on.origin(), OriginChoice::StartFresh);
+    }
+
+    #[test]
+    fn a_late_probe_answer_does_nothing() {
+        let (first, _, _) = apps();
+        let probed = [source(first, SourceAvailability::Available)];
+        let mut flow = SetupFlow::new();
+        let before = flow.clone();
+        assert!(!flow.probe_answered(PROBE_LIMIT + Duration::from_millis(1), &probed));
+        assert_eq!(flow, before);
+
+        let mut at_the_limit = SetupFlow::new();
+        assert!(at_the_limit.probe_answered(PROBE_LIMIT, &probed));
+    }
+
+    #[test]
+    fn the_origin_cards_lead_to_their_steps() {
+        assert_eq!(OriginChoice::OtherApp.next_step(), Some(SetupStep::Import));
+        assert_eq!(OriginChoice::ConnectionsFile.next_step(), None);
+        assert_eq!(OriginChoice::StartFresh.next_step(), Some(SetupStep::FirstConnection));
     }
 
     #[test]
     fn steps_go_forward_in_order_and_back_only_from_the_second_shown() {
-        let mut flow = SetupFlow::new(SetupStep::Origin);
+        let mut flow = SetupFlow::new();
         assert!(!flow.can_go_back());
         flow.back();
         assert_eq!(flow.step(), SetupStep::Origin);
@@ -281,18 +442,11 @@ mod tests {
         assert_eq!(flow.step(), SetupStep::Options, "the last step has no next");
         flow.back();
         assert_eq!(flow.step(), SetupStep::FirstConnection);
-
-        let mut from_import = SetupFlow::new(SetupStep::Import);
-        assert!(!from_import.can_go_back(), "the probe's first step is the first shown");
-        from_import.advance();
-        assert!(from_import.can_go_back());
-        from_import.back();
-        assert_eq!(from_import.shown(), [SetupStep::Import]);
     }
 
     #[test]
     fn the_origin_can_go_past_import_and_back_returns_to_it() {
-        let mut flow = SetupFlow::new(SetupStep::Origin);
+        let mut flow = SetupFlow::new();
         flow.go_to(SetupStep::FirstConnection);
         assert_eq!(flow.shown(), [SetupStep::Origin, SetupStep::FirstConnection]);
         flow.back();
@@ -302,7 +456,7 @@ mod tests {
     #[test]
     fn the_ending_runs_the_recorded_choice_first_then_the_imported_ids() {
         let (first, second) = (Uuid::new_v4(), Uuid::new_v4());
-        let mut flow = SetupFlow::new(SetupStep::Origin);
+        let mut flow = SetupFlow::new();
         assert_eq!(flow.end(), SetupEnding::Stay);
 
         flow.add_imported(&[first], ImportSource::ThisComputer);
@@ -371,16 +525,16 @@ mod tests {
     #[test]
     fn a_connection_from_a_picked_export_makes_the_guide_select_instead_of_open() {
         let (first, second) = (Uuid::new_v4(), Uuid::new_v4());
-        let mut picked = SetupFlow::new(SetupStep::Import);
+        let mut picked = SetupFlow::new();
         picked.add_imported(&[first], ImportSource::FileOrLink);
         assert_eq!(picked.end(), SetupEnding::Select(vec![first]));
 
-        let mut mixed = SetupFlow::new(SetupStep::Import);
+        let mut mixed = SetupFlow::new();
         mixed.add_imported(&[first], ImportSource::ThisComputer);
         mixed.add_imported(&[second], ImportSource::FileOrLink);
         assert_eq!(mixed.end(), SetupEnding::Select(vec![first, second]));
 
-        let mut empty_export = SetupFlow::new(SetupStep::Import);
+        let mut empty_export = SetupFlow::new();
         empty_export.add_imported(&[first], ImportSource::ThisComputer);
         empty_export.add_imported(&[], ImportSource::FileOrLink);
         assert_eq!(

@@ -339,12 +339,6 @@
   <data name="NewConnectionCard.Description" xml:space="preserve">
     <value>Connect to PostgreSQL, MySQL, SQL Server, MongoDB, Redis and more</value>
   </data>
-  <data name="SampleCard.Header" xml:space="preserve">
-    <value>Try the sample database</value>
-  </data>
-  <data name="SampleCard.Description" xml:space="preserve">
-    <value>Chinook, a small music store in SQLite</value>
-  </data>
   <data name="ConnectionTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Saved connections</value>
   </data>
@@ -5858,6 +5852,14 @@ New fingerprint: {2}</value>
     <value>, </value>
     <comment>Between the items of a list of names, such as columns or tags.</comment>
   </data>
+  <data name="ListAndTwo" xml:space="preserve">
+    <value>{0} and {1}</value>
+    <comment>Two names, such as the apps found on this PC.</comment>
+  </data>
+  <data name="ListAndLast" xml:space="preserve">
+    <value>{0}, and {1}</value>
+    <comment>Three or more names: the last, {1}, after the others, {0}, which are joined with ListSeparator.</comment>
+  </data>
   <data name="ImportCsvReviewShown_one" xml:space="preserve">
     <value>The first is shown.</value>
     <comment>{0} is the number of statements the review shows.</comment>
@@ -6084,55 +6086,34 @@ New fingerprint: {2}</value>
     <value>Import from another app, open the sample database and pick your keyboard shortcuts</value>
   </data>
   <data name="SetupTitle_Origin" xml:space="preserve">
-    <value>Set up TablePro</value>
+    <value>Welcome to TablePro</value>
   </data>
   <data name="SetupTitle_Import" xml:space="preserve">
-    <value>Bring your connections</value>
+    <value>Import from other apps</value>
   </data>
   <data name="SetupTitle_FirstConnection" xml:space="preserve">
-    <value>Connect to a database</value>
+    <value>First connection</value>
   </data>
   <data name="SetupTitle_Options" xml:space="preserve">
-    <value>Theme and shortcuts</value>
+    <value>Appearance and keys</value>
   </data>
   <data name="SetupDescription_Origin" xml:space="preserve">
-    <value>Start from the connections you already have, or from a new one.</value>
+    <value>Bring your connections, or start with a new one.</value>
   </data>
   <data name="SetupDescription_Import" xml:space="preserve">
-    <value>Each ticked app is read and reviewed in turn before anything is saved.</value>
+    <value>Select the apps to import from. You review each one before anything is saved.</value>
   </data>
   <data name="SetupDescription_FirstConnection" xml:space="preserve">
-    <value>What you pick opens when you finish.</value>
+    <value>Choose what opens when you finish.</value>
   </data>
   <data name="SetupDescription_Options" xml:space="preserve">
-    <value>These apply at once, and Settings has them too.</value>
-  </data>
-  <data name="SetupOtherAppCard.Header" xml:space="preserve">
-    <value>Import from another app</value>
-  </data>
-  <data name="SetupOtherAppCard.Description" xml:space="preserve">
-    <value>Connections and saved queries from apps on this PC</value>
-  </data>
-  <data name="SetupFileCard.Header" xml:space="preserve">
-    <value>Import a connections file</value>
-  </data>
-  <data name="SetupFileCard.Description" xml:space="preserve">
-    <value>A file TablePro exported. Each connection asks for its password the first time.</value>
-  </data>
-  <data name="SetupNewCard.Header" xml:space="preserve">
-    <value>Start with a new connection</value>
-  </data>
-  <data name="SetupNewCard.Description" xml:space="preserve">
-    <value>A server, a database file or the sample database</value>
+    <value>Changes apply now. You can change them later in Settings.</value>
   </data>
   <data name="SetupLooking.Text" xml:space="preserve">
     <value>Looking for apps on this PC...</value>
   </data>
-  <data name="SetupSourcesHeader.Text" xml:space="preserve">
-    <value>Apps on this PC</value>
-  </data>
   <data name="SetupNoSources.Text" xml:space="preserve">
-    <value>No other app was found on this PC.</value>
+    <value>No other database apps found on this PC.</value>
   </data>
   <data name="SetupPasswords.Content" xml:space="preserve">
     <value>Import passwords</value>
@@ -6147,17 +6128,17 @@ New fingerprint: {2}</value>
     <value>Continue</value>
   </data>
   <data name="SetupFinish_Open" xml:space="preserve">
-    <value>Open the connection</value>
+    <value>Open connection</value>
     <comment>The guide's last button when it ends by opening the one connection it imported.</comment>
   </data>
   <data name="SetupFinish_SelectInLibrary" xml:space="preserve">
-    <value>Show the imported connections</value>
+    <value>Show connections</value>
   </data>
   <data name="SetupFinish_NewConnection" xml:space="preserve">
-    <value>New connection</value>
+    <value>Add connection</value>
   </data>
   <data name="SetupFinish_Sample" xml:space="preserve">
-    <value>Open the sample database</value>
+    <value>Open sample</value>
   </data>
   <data name="SetupFinish_Stay" xml:space="preserve">
     <value>Done</value>
@@ -6184,5 +6165,82 @@ New fingerprint: {2}</value>
   </data>
   <data name="SetupSourcesName" xml:space="preserve">
     <value>Apps to import from</value>
+  </data>
+  <data name="SetupStepOf" xml:space="preserve">
+    <value>Step {0} of {1}</value>
+    <comment>Above the setup guide's title: the step shown, {0}, and the number of steps, {1}.</comment>
+  </data>
+  <data name="SetupStepTitleName" xml:space="preserve">
+    <value>{0}, step {1} of {2}</value>
+    <comment>What Narrator reads for the setup guide's title: the title, {0}, the step, {1}, and the number of steps, {2}.</comment>
+  </data>
+  <data name="SetupOriginList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>How to start</value>
+  </data>
+  <data name="SetupOtherAppTitle.Text" xml:space="preserve">
+    <value>Import from another app</value>
+  </data>
+  <data name="SetupOtherAppDetail.Text" xml:space="preserve">
+    <value>Connections and saved queries from apps on this PC</value>
+  </data>
+  <data name="SetupFoundApps" xml:space="preserve">
+    <value>Found on this PC: {0}</value>
+    <comment>The Import from another app card's detail once the guide finds apps with data: their names, {0}, joined with ListAndTwo or ListAndLast.</comment>
+  </data>
+  <data name="SetupFileTitle.Text" xml:space="preserve">
+    <value>Import a connections file</value>
+  </data>
+  <data name="SetupFileDetail.Text" xml:space="preserve">
+    <value>A file exported from TablePro. Each connection asks for its password the first time.</value>
+  </data>
+  <data name="SetupStartTitle.Text" xml:space="preserve">
+    <value>Start fresh</value>
+  </data>
+  <data name="SetupStartDetail.Text" xml:space="preserve">
+    <value>Add a connection or open the sample database</value>
+  </data>
+  <data name="SetupFirstConnectionList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>What opens when you finish</value>
+  </data>
+  <data name="SetupNewConnectionTitle.Text" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="SetupNewConnectionDetail.Text" xml:space="preserve">
+    <value>Enter a server's address or a connection URL, or open a database file</value>
+  </data>
+  <data name="SetupSampleTitle.Text" xml:space="preserve">
+    <value>Sample database</value>
+  </data>
+  <data name="SetupSampleDetail.Text" xml:space="preserve">
+    <value>A small music store database in SQLite</value>
+  </data>
+  <data name="SetupNoSourcesHint.Text" xml:space="preserve">
+    <value>Continue to add a connection or open the sample database.</value>
+  </data>
+  <data name="SetupNotFound" xml:space="preserve">
+    <value>Not found on this PC: {0}</value>
+    <comment>Under the apps found: the apps TablePro imports from that are not on this PC, {0}, joined with ListSeparator.</comment>
+  </data>
+  <data name="SetupImportConnections_one" xml:space="preserve">
+    <value>Import {0:N0} connection</value>
+    <comment>The import step's button: the connections the ticked apps hold.</comment>
+  </data>
+  <data name="SetupImportConnections_other" xml:space="preserve">
+    <value>Import {0:N0} connections</value>
+  </data>
+  <data name="SetupThemeHeader.Text" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="SetupThemeTiles.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="SetupThemeLight.Text" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="SetupThemeDark.Text" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="SetupThemeSystem.Text" xml:space="preserve">
+    <value>Use system setting</value>
   </data>
 </root>

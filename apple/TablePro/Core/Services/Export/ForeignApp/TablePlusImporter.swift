@@ -76,15 +76,6 @@ struct TablePlusImporter: ForeignAppImporter {
         FileManager.default.fileExists(atPath: directory.appendingPathComponent("Connections.plist").path)
     }
 
-    // A folder chosen in the app's settings often sits in Documents or a cloud folder; the paths are read, never visited.
-    var readsGuardedLocations: Bool {
-        let viewSetting = resolveLocations().viewSetting
-        let favorites = viewSetting["Favorites"] as? [[String: Any]] ?? []
-        return Self.sharedPath(viewSetting["SharedConnectionPath"]) != nil
-            || Self.sharedPath(viewSetting["SharedQueryPath"]) != nil
-            || favorites.contains { Self.sharedPath($0["path"]) != nil }
-    }
-
     func inventory() throws -> ForeignAppInventory {
         let locations = resolveLocations()
         let named = try storedEntries(in: connectionsDirectory(locations)).filter { Self.connectionName($0) != nil }

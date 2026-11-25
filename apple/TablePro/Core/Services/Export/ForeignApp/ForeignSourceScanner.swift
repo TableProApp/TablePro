@@ -18,18 +18,10 @@ struct ForeignSourceSummary: Sendable, Equatable {
     let picksFile: Bool
 }
 
-// A scan nobody clicked must raise no privacy prompt, so it only checks a guarded source for presence.
-enum ForeignSourceScanReach: Sendable {
-    case everything
-    case unguarded
-}
-
 struct ForeignSourceRow: Sendable, Identifiable {
     let importer: any ForeignAppImporter
     let availability: ForeignSourceAvailability
     let inventory: ForeignAppInventory
-    // False for a guarded source an unguarded scan found without reading it; its inventory stays empty until read.
-    var isCounted = true
 
     var id: String { importer.id }
 
@@ -57,45 +49,24 @@ enum ForeignSourceRule {
 }
 
 enum ForeignSourceScanner {
+    // Runs before anyone clicks, so it checks presence only and reads no folder macOS guards with a prompt.
     @concurrent
-    nonisolated static func probe(_ importers: [any ForeignAppImporter] = ForeignAppImporterRegistry.all) async -> Set<String> {
-        var found: Set<String> = []
-        for importer in importers where importer.importFileTypes == nil {
-            if importer.installedAppURL() != nil || importer.hasDataAtDefaultLocation() {
-                found.insert(importer.id)
-            }
+    nonisolated static func probe(
+        _ importers: [any ForeignAppImporter] = ForeignAppImporterRegistry.all
+    ) async -> [any ForeignAppImporter] {
+        importers.filter { importer in
+            importer.importFileTypes == nil && (importer.installedAppURL() != nil || importer.hasDataAtDefaultLocation())
         }
-        return found
     }
 
     @concurrent
-    nonisolated static func scan(
-        _ importers: [any ForeignAppImporter] = ForeignAppImporterRegistry.all,
-        reach: ForeignSourceScanReach = .everything
-    ) async -> [ForeignSourceRow] {
-        importers.map { row(for: $0, reach: reach) }
+    nonisolated static func scan(_ importers: [any ForeignAppImporter] = ForeignAppImporterRegistry.all) async -> [ForeignSourceRow] {
+        importers.map { row(for: $0) }
     }
 
-    @concurrent
-    nonisolated static func countedRow(for importer: any ForeignAppImporter) async -> ForeignSourceRow {
-        row(for: importer)
-    }
-
-    nonisolated static func row(
-        for importer: any ForeignAppImporter,
-        reach: ForeignSourceScanReach = .everything
-    ) -> ForeignSourceRow {
+    nonisolated static func row(for importer: any ForeignAppImporter) -> ForeignSourceRow {
         if importer.importFileTypes != nil {
             return ForeignSourceRow(importer: importer, availability: .available, inventory: .empty)
-        }
-        if reach == .unguarded, importer.readsGuardedLocations {
-            let found = importer.installedAppURL() != nil || importer.hasDataAtDefaultLocation()
-            return ForeignSourceRow(
-                importer: importer,
-                availability: found ? .available : .notFound,
-                inventory: .empty,
-                isCounted: false
-            )
         }
         guard importer.isAvailable() else {
             return ForeignSourceRow(importer: importer, availability: .notFound, inventory: .empty)

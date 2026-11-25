@@ -1,148 +1,77 @@
-//
-//  SetupGuideImportStep.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 
 internal struct SetupGuideImportStep: View {
     @ObservedObject var model: SetupGuideModel
 
-    var body: some View {
-        switch model.importPhase {
-        case .scanning:
-            progress(String(localized: "Looking for other database apps…"), caption: nil, cancel: nil)
-        case .choosing:
-            sourceList
-        case .pickingFile(let row):
-            filePrompt(for: row)
-        case .notice(let notice):
-            VStack {
-                Spacer()
-                KeychainNoticeView(
-                    notice: notice,
-                    onContinue: { model.confirmKeychainNotice() },
-                    onCancel: { model.skipCurrentSource() }
-                )
-                .frame(maxWidth: 480)
-                Spacer()
-            }
-            .frame(maxWidth: .infinity)
-        case .reading(let appName):
-            progress(
-                String(format: String(localized: "Reading connections from %@…"), appName),
-                caption: String(localized: "If macOS asks for your login password, click Always Allow on each prompt."),
-                cancel: { model.skipCurrentSource() }
-            )
-        case .review(let read, let id):
-            ImportReviewStep(
-                title: read.title,
-                banner: read.banner,
-                preview: read.preview,
-                onBack: nil,
-                onCancel: { model.skipCurrentSource() },
-                onFinished: { model.reviewFinished($0) }
-            )
-            .id(id)
-        }
+    private var cards: [ForeignSourceRow] {
+        model.sources.filter { $0.availability != .notFound }
     }
 
-    @ViewBuilder
-    private var sourceList: some View {
-        if model.sources.isEmpty {
-            VStack(spacing: 8) {
-                Spacer()
-                Text("No other database apps found on this Mac.")
+    private var notFound: [String] {
+        model.sources.filter { $0.availability == .notFound }.map(\.importer.displayName)
+    }
+
+    private var foundNoApp: Bool {
+        !model.sources.contains { !$0.picksFile && $0.availability != .notFound }
+    }
+
+    var body: some View {
+        if case .scanning = model.importPhase {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(verbatim: String(localized: "Looking for other database apps…"))
                     .foregroundStyle(.secondary)
-                Spacer()
             }
-            .frame(maxWidth: .infinity)
         } else {
-            List {
-                ForEach(model.sources) { row in
-                    SetupGuideSourceRow(model: model, row: row)
+            VStack(alignment: .leading, spacing: 10) {
+                if foundNoApp {
+                    emptyNote
+                        .padding(.bottom, 6)
+                }
+                ForEach(cards) { row in
+                    SetupGuideSourceCard(model: model, row: row)
+                }
+                if !notFound.isEmpty {
+                    Text(verbatim: String(
+                        format: String(localized: "Not found on this Mac: %@"),
+                        ListFormatter.localizedString(byJoining: notFound)
+                    ))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("setup-guide-not-found")
                 }
             }
-            .listStyle(.inset)
         }
     }
 
-    private func progress(_ title: String, caption: String?, cancel: (() -> Void)?) -> some View {
-        VStack(spacing: 12) {
-            Spacer()
-            ProgressView()
-                .controlSize(.large)
-            Text(verbatim: title)
+    private var emptyNote: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label {
+                Text(verbatim: String(localized: "No other database apps found on this Mac."))
+            } icon: {
+                Image(systemName: "magnifyingglass")
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(.secondary)
+            Text(verbatim: String(localized: "Continue to add a connection or open the sample database."))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            if let caption {
-                Text(verbatim: caption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
-            Spacer()
-            if let cancel {
-                HStack {
-                    Spacer()
-                    Button(String(localized: "Cancel"), action: cancel)
-                        .keyboardShortcut(.cancelAction)
-                }
-                .padding(12)
-            }
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func filePrompt(for row: ForeignSourceRow) -> some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: row.importer.symbolName)
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text(String(format: String(localized: "Choose a %@ export file to import"), row.importer.displayName))
-                .multilineTextAlignment(.center)
-            Spacer()
-            HStack {
-                Spacer()
-                Button(String(localized: "Skip This App")) { model.skipCurrentSource() }
-                    .keyboardShortcut(.cancelAction)
-                Button(String(localized: "Choose File…")) { chooseFile(for: row) }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(12)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func chooseFile(for row: ForeignSourceRow) {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        if let types = row.importer.importFileTypes {
-            panel.allowedContentTypes = types
-        }
-        panel.message = String(format: String(localized: "Choose a %@ export file to import"), row.importer.displayName)
-        let completion: (NSApplication.ModalResponse) -> Void = { response in
-            guard response == .OK, let url = panel.url else { return }
-            model.fileChosen(url)
-        }
-        if let window = NSApp.keyWindow {
-            panel.beginSheetModal(for: window, completionHandler: completion)
-        } else {
-            panel.begin(completionHandler: completion)
-        }
+        .accessibilityElement(children: .combine)
     }
 }
 
-private struct SetupGuideSourceRow: View {
+private struct SetupGuideSourceCard: View {
     @ObservedObject var model: SetupGuideModel
     let row: ForeignSourceRow
+
+    @State private var isHovered = false
+    @State private var isPressed = false
 
     private var isAvailable: Bool {
         row.availability == .available
@@ -153,87 +82,148 @@ private struct SetupGuideSourceRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             Toggle(isOn: Binding(get: { isTicked }, set: { model.setTicked($0, for: row) })) {
-                HStack(spacing: 10) {
-                    appIcon
-                        .frame(width: 28, height: 28)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: row.importer.displayName)
-                        status
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                SetupGuideSourceLabel(model: model, row: row)
             }
-            .toggleStyle(.checkbox)
+            .toggleStyle(SetupGuideCardToggleStyle(showsIndicator: isAvailable, isPressed: $isPressed))
             .disabled(!isAvailable)
             .accessibilityIdentifier("setup-guide-source-\(row.id)")
 
             if isTicked {
                 options
-                    .padding(.leading, 58)
+                    .padding(.leading, 16 + 48)
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 12)
             }
         }
-        .padding(.vertical, 4)
-    }
-
-    @ViewBuilder
-    private var status: some View {
-        if let result = model.results[row.id] {
-            Label {
-                Text(verbatim: result.message)
-                    .lineLimit(3)
-            } icon: {
-                Image(systemName: Self.symbol(for: result))
-                    .accessibilityHidden(true)
-            }
-        } else if row.picksFile {
-            Text("Imports from an export file you choose")
-        } else {
-            switch row.availability {
-            case .available where model.counting.contains(row.id):
-                Text(verbatim: String(localized: "Counting connections…"))
-            case .available where !row.isCounted:
-                Text(verbatim: String(localized: "Select to count its connections. macOS may ask for access first."))
-            case .available:
-                Text(verbatim: ImportFromAppSourcePicker.connectionsFound(row.inventory.connections))
-                if let queries = ImportFromAppSourcePicker.savedQueriesFound(row.inventory.savedQueries) {
-                    Text(verbatim: queries)
-                }
-            case .notFound:
-                Text("Not installed")
-            case .unreadable(let reason):
-                Label {
-                    Text(verbatim: reason)
-                        .lineLimit(2)
-                } icon: {
-                    Image(systemName: "exclamationmark.triangle")
-                        .accessibilityHidden(true)
-                }
-                .help(reason)
-            }
-        }
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+        .modifier(SetupGuideCardBackground(
+            isSelected: isTicked,
+            isHovered: isHovered && isAvailable && !model.isRunningImport,
+            isPressed: isPressed
+        ))
+        .onHover { isHovered = $0 }
+        .disabled(model.isRunningImport)
     }
 
     private var options: some View {
         let request = model.request(for: row)
         return VStack(alignment: .leading, spacing: 4) {
             Toggle(isOn: Binding(get: { request.includePasswords }, set: { model.setIncludePasswords($0, for: row) })) {
-                Text(row.importer.readsPasswordsFromKeychain
+                Text(verbatim: row.importer.readsPasswordsFromKeychain
                     ? String(localized: "Include passwords (macOS asks for each one)")
                     : String(localized: "Include passwords"))
             }
             .accessibilityIdentifier("setup-guide-passwords-\(row.id)")
             if model.offersSavedQueries(row) {
                 Toggle(isOn: Binding(get: { request.includeSavedQueries }, set: { model.setIncludeSavedQueries($0, for: row) })) {
-                    Text("Include saved queries")
+                    Text(verbatim: String(localized: "Include saved queries"))
                 }
                 .accessibilityIdentifier("setup-guide-queries-\(row.id)")
             }
         }
         .toggleStyle(.checkbox)
         .controlSize(.small)
+    }
+}
+
+private struct SetupGuideSourceLabel: View {
+    @ObservedObject var model: SetupGuideModel
+    let row: ForeignSourceRow
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    private var isCurrent: Bool {
+        model.currentSourceId == row.id
+    }
+
+    // A disabled card dims, but the line saying why it cannot be ticked, or what the queue is doing, stays legible.
+    private var dimming: Double {
+        isEnabled || isCurrent ? 1 : 0.5
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            appIcon
+                .frame(width: 36, height: 36)
+                .opacity(dimming)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: row.importer.displayName)
+                    .font(.headline)
+                    .opacity(dimming)
+                status
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(minHeight: 36, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        if isCurrent, case .pickingFile = model.importPhase {
+            Text(verbatim: String(format: String(localized: "Choose a %@ export file to import"), row.importer.displayName))
+        } else if isCurrent, case .reading(let appName) = model.importPhase {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(verbatim: String(format: String(localized: "Reading connections from %@…"), appName))
+                }
+                Text(verbatim: String(localized: "If macOS asks for your login password, click Always Allow on each prompt."))
+                    .font(.footnote)
+            }
+        } else if let result = model.results[row.id] {
+            outcome(result)
+                .opacity(dimming)
+        } else if row.picksFile {
+            Text(verbatim: String(localized: "Imports from an export file you choose"))
+                .opacity(dimming)
+        } else {
+            availability
+        }
+    }
+
+    @ViewBuilder
+    private var availability: some View {
+        switch row.availability {
+        case .available:
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: ImportFromAppSourcePicker.connectionsFound(row.inventory.connections))
+                    .contentTransition(.numericText())
+                if let queries = ImportFromAppSourcePicker.savedQueriesFound(row.inventory.savedQueries) {
+                    Text(verbatim: queries)
+                        .contentTransition(.numericText())
+                }
+            }
+            .opacity(dimming)
+        case .notFound:
+            EmptyView()
+        case .unreadable(let reason):
+            Label {
+                Text(verbatim: reason)
+                    .lineLimit(2)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .symbolRenderingMode(.multicolor)
+                    .accessibilityHidden(true)
+            }
+            .help(reason)
+        }
+    }
+
+    private func outcome(_ result: SetupGuideImportResult) -> some View {
+        Label {
+            Text(verbatim: result.message)
+                .lineLimit(3)
+        } icon: {
+            Image(systemName: Self.symbol(for: result))
+                .symbolRenderingMode(.multicolor)
+                .accessibilityHidden(true)
+        }
     }
 
     @ViewBuilder
@@ -242,19 +232,17 @@ private struct SetupGuideSourceRow: View {
             Image(nsImage: NSWorkspace.shared.icon(forFile: appURL.path))
                 .resizable()
                 .scaledToFit()
-                .accessibilityHidden(true)
         } else {
             Image(systemName: row.importer.symbolName)
-                .font(.title2)
+                .font(.system(size: 22))
                 .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
         }
     }
 
     private static func symbol(for result: SetupGuideImportResult) -> String {
         switch result {
-        case .imported: "checkmark.circle"
-        case .failed: "exclamationmark.triangle"
+        case .imported: "checkmark.circle.fill"
+        case .failed: "exclamationmark.triangle.fill"
         }
     }
 }
