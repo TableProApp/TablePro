@@ -173,7 +173,7 @@ pub enum CloudKitFailure {
 | `key_heads` | Each log's head |
 | `key_pins` | The holder's own identity head, and per team the team head and the confirmed members |
 | `key_comparisons` | Comparisons opened and not yet finished |
-| `key_floors` | Key version floors and rotations pending |
+| `key_floors` | Each key's floor, the highest version seen on any branch, and rotations pending |
 | `envelope_counters` | Per envelope, the highest counter accepted and the hash of that ciphertext |
 | `deleted_history` | History entry ids this device saw deleted |
 | `legacy_mirror` | What the downgrade mirror last wrote |
@@ -187,7 +187,12 @@ pub enum CloudKitFailure {
   - One MAC covers the whole snapshot, so rows from two copies of the file cannot be mixed.
 - **Freshness.** A MAC proves the file is this device's, not that it is the latest. Sealed state needs a monotonic counter kept apart from what it seals; this follows ROTE (Matetic et al., "ROTE: Rollback Protection for Trusted Execution", USENIX Security 2017), with the device store in place of a trusted counter.
   - Every commit raises the counter by one. The file's **anchor**, an item in the device store, holds the file id and a current entry. A new file writes its anchor first.
-  - **An entry** holds the counter, the MAC, the key tables' digest and the **checkpoint**: each followed log's head (`seq` and hash), each key version floor, and each envelope's highest counter with the hash of that ciphertext. Each of them only moves forward. The deleted history ids stay in the file alone.
+  - **An entry** holds the counter, the MAC, the key tables' digest and the **checkpoint**:
+    - each followed log's head (`seq` and hash), as read from the server or confirmed by an `applied` answer. A statement this holder signed that is not applied yet stays in the file alone, so a refused or lost push never leaves an anchored head that no server log extends;
+    - each key's floor: the highest version seen on any branch, a dropped branch's included. 0053 allocates the next version above every branch's and burns a dropped branch's versions, so a floor never has to move back after a fork ends;
+    - each envelope's highest counter, with the hash of that ciphertext.
+
+    Each only moves forward. The one exception is a head on a branch that a fork resolution drops: once 0053 has verified the resolution, the head moves to the kept branch, as 0053's stored-head rule allows. The deleted history ids stay in the file alone.
   - **A commit writes its anchor in two steps.** Before the commit, the engine adds a pending entry to the anchor with the next counter, its MAC and its digest. After the commit, the pending entry becomes the current one. A commit starts only when no pending entry is left; while one cannot be settled, the engine stops.
   - **Apple platforms:** a Keychain item in the data protection keychain, `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` and not synchronizable. Apple Platform Security, "Keychain data protection", says items of that class don't sync to iCloud Keychain, aren't backed up and aren't in escrow keybags. Other ThisDeviceOnly classes do not serve: "Keybags for Data Protection" (Backup keybag) has them restored to the device they were backed up from. The anchor reads only while the device is unlocked, so a pass that starts locked waits. A device with no passcode uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and falls under the limit below.
   - **Windows:** Credential Manager items with local machine persistence. An entry past one item's 2,560-byte blob is split over numbered items, written before the item that names them. **Linux:** a Secret Service item.
@@ -198,7 +203,7 @@ pub enum CloudKitFailure {
     - anything else is stale: an older counter, another file id, a file with no anchor, or an anchor with no file.
 - **A stale file** is trusted for nothing.
   - Its sync tables go into refill, as a restored store does: the pull wins, records the provider has never seen go up as creates, then the diff runs again.
-  - Its key tables are not trusted, and the holder keys stay, so it is the same holder. It rebuilds the key tables from the logs the server holds, accepting only what extends the anchor's checkpoint, the pending entry's when one is left: a log that holds each anchored head at its `seq` with the same hash, no key version below an anchored floor, and no envelope counter below an anchored one. Until a log extends the anchored heads, it accepts no wrap or envelope and writes no secret. A comparison never pins a head older than the anchor's, so a holder that missed a removal cannot hand the device its older view.
+  - Its key tables are not trusted, and the holder keys stay, so it is the same holder. It rebuilds the key tables from the logs the server holds, accepting only what extends the anchor's checkpoint, the pending entry's when one is left: a log that holds each anchored head at its `seq` with the same hash, or a verified fork resolution that names that hash as dropped; no key version below an anchored floor, and no envelope counter below an anchored one. Until a log extends the anchored heads, it accepts no wrap or envelope and writes no secret. A comparison never pins a head older than the anchor's, so a holder that missed a removal cannot hand the device its older view.
   - An anchor with no file, as after a reinstall that kept the device store, rebuilds the same way.
   - A file with no anchor has no checkpoint. Its holder pins again through a comparison with another holder of the account or with S, as 0053's device approval does, and falls under the limit below.
 - **The limit.** Nothing on the device then proves a newer head than the one it holds:
@@ -297,7 +302,7 @@ A copy whose content changed after the move is kept, since a content edit wins. 
 - **CloudKit deletions stay unconditional.** CloudKit has no change tag on a deletion, so the content-edit rule holds on iCloud only when the deletion reaches CloudKit first, as today.
 - **Every CloudKit call crosses the FFI.** A pass makes a few calls per page or batch, not one per record.
 - **Until an app runs the engine,** a fix to one of its sync rules lands in Swift, and again in Rust once that rule is ported.
-- **A restored state file costs a comparison.** After a restore, a reinstall that kept the device store, or a copied-in file, the device asks another device or S once before it handles secrets again, and its sync data refills.
+- **A restored state file refills.** After a restore, a reinstall that kept the device store, or a copied-in file, the device's sync data refills. With its anchor, the device rebuilds its key tables from the server's logs on top of the anchored checkpoint, with no comparison. With no anchor, it asks another device or S once before it handles secrets again.
 - **This amends 0010.**
   - Swift keeps the container, zone operations, subscriptions and the account status.
   - The record cache, dirty and deleted tracking, push batches and the rebase move into the core.
@@ -318,10 +323,12 @@ A copy whose content changed after the move is kept, since a content edit wins. 
   - both crash windows, and a restored store going into refill;
   - a history prune followed by a pass pushes nothing, and a history entry the person deleted goes up after a restart;
   - an iCloud account change between `account_status` and `modify`, and while a fetch completes, saves nothing to either account;
-  - an older copy of a state file with a valid MAC opens stale: its sync tables refill, and its key tables are trusted only after a comparison;
-  - a crash at each step of a commit and its anchor opens as the rules say. A restore of the copy before a commit whose anchor did not settle leaves the key tables untrusted when that commit changed them;
+  - an older copy of a state file with a valid MAC, its anchor intact, opens stale: its sync tables refill, and its key tables rebuild from logs that extend the anchored checkpoint, with no comparison;
+  - a crash at each step of a commit and its anchor opens as the rules say. A restore of the copy before a commit whose anchor did not settle leaves the key tables untrusted when that commit changed them, and rebuilds them on the pending checkpoint;
   - an anchor with no file rebuilds from logs that extend its checkpoint; a file with no anchor needs a comparison before any log is trusted;
-  - a stale file whose only comparison partner missed a removal its anchor recorded keeps secret writes blocked and does not pin the older head;
+  - a comparison never pins a head older than an anchored one: a partner that missed a removal the anchor recorded ends the session as a mismatch;
+  - a fork resolution moves an anchored head off the dropped branch, and the next key version comes above every version either branch reached;
+  - a statement the holder signed whose push was refused never enters the anchored checkpoint, so a rebuild after it still completes;
   - a log, floor or envelope counter below the anchored checkpoint is refused after a restore, from the server or a partner;
   - a key table row copied from another copy of the file fails the MAC;
   - the first run keeps every consent decision and refusal, and leaves an unapproved synced connection unapproved;
