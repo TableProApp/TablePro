@@ -862,6 +862,36 @@ fn an_export_holds_the_projects_and_imports_back_with_every_member() {
 }
 
 #[test]
+fn an_exported_empty_project_is_imported_with_its_groups_and_a_second_import_writes_nothing() {
+    let library = Library::new();
+    let acme = library.project("Acme");
+    library.group_in("Work", &acme);
+    let bytes = library.store.export_scoped_blocking(Some(acme.id)).expect("the export");
+    let fresh = Library::new();
+
+    let preview = fresh
+        .store
+        .preview_import_blocking(Path::new("/tmp/c.json"), &bytes)
+        .expect("the preview");
+    assert!(preview.entries().is_empty());
+    assert!(preview.changes_library());
+    let report = fresh.store.apply_import_blocking(&preview).expect("the import");
+
+    assert_eq!(report.total(), 0);
+    assert_eq!(fresh.projects(), ["Acme"]);
+    let list = fresh.list();
+    assert_eq!(
+        group_names(&list.scoped(list.projects.first().map(|project| project.id))),
+        ["Work"]
+    );
+    let again = fresh
+        .store
+        .preview_import_blocking(Path::new("/tmp/c.json"), &bytes)
+        .expect("the preview");
+    assert!(!again.changes_library());
+}
+
+#[test]
 fn a_projects_export_holds_its_members_and_no_other_project() {
     let two = two_projects();
     let bytes = two

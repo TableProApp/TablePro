@@ -982,7 +982,7 @@ impl SessionWindow {
                 .spawn_blocking_task(move || connections.preview_import_into_blocking(&path, &bytes, project))
                 .await;
             let message = match previewed {
-                Ok(Ok(preview)) if preview.entries().is_empty() => {
+                Ok(Ok(preview)) if preview.entries().is_empty() && !preview.changes_library() => {
                     crate::i18n::gettext("That file has no connections in it.")
                 }
                 Ok(Ok(preview)) => {
@@ -1007,6 +1007,11 @@ impl SessionWindow {
         let Some(state) = self.state() else {
             return;
         };
+        // Projects and groups alone carry no host to check, so there is nothing to ask about.
+        if preview.entries().is_empty() {
+            self.apply_import(preview);
+            return;
+        }
         let dialog = crate::ui::import_preview::import_preview_dialog(&preview, &state.services.drivers);
         let window = self.downgrade();
         dialog.connect_response(None, move |_, response| {

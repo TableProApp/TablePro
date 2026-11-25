@@ -399,6 +399,11 @@ impl ImportPreview {
         &self.entries
     }
 
+    // A file of projects or groups and no connections still changes the list.
+    pub fn changes_library(&self) -> bool {
+        self.after != self.before
+    }
+
     pub fn report(&self) -> ImportReport {
         let added = self
             .entries
@@ -766,7 +771,12 @@ impl ConnectionStore {
             .map(|saved| (saved.name.clone(), saved.id))
             .collect();
         let mut entries = Vec::with_capacity(incoming.connections.len());
-        let same_tags = merge_tags(&mut document.tags, incoming.tags);
+        // Tags ride on the connections that carry them, so a file of tags alone adds none.
+        let same_tags = if incoming.connections.is_empty() {
+            HashMap::new()
+        } else {
+            merge_tags(&mut document.tags, incoming.tags)
+        };
         let into = project.filter(|id| document.projects.iter().any(|held| held.id == *id));
         let same_projects = library::merge_projects(&mut document.projects, incoming.projects);
         let landing = library::Landing {
@@ -853,9 +863,8 @@ impl ConnectionStore {
         if current != preview.before {
             return Err(StorageError::ImportOutdated);
         }
-        // Nothing to write for an empty file, and writing anyway would
-        // rewrite the list for no reason.
-        if report.total() == 0 {
+        // Writing a list the file left as it was would rewrite it for no reason.
+        if !preview.changes_library() {
             return Ok(report);
         }
         self.commit(&mut state, preview.after.clone())?;
