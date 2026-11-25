@@ -432,6 +432,22 @@
     to docs/logo/mlx_logo.pdf and mlx_logo_dark.pdf at 9ab3913567df. The PDFs, not the SVGs beside them, because
     the SVGs draw their glyphs through <use> and render empty in AppKit. No code ships. The original LICENSE
     writes the copyright sign; this YAML is ASCII-folded.
+- id: models-dev
+  name: Models.dev
+  version: data as of 2026-11-24, refreshed nightly
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2025 models.dev
+  homepageURL: https://models.dev
+  licenseTextURL: https://github.com/anomalyco/models.dev/blob/6e1fdc3970250bedb034bcacfa6d92451063a504/LICENSE
+  textFile: texts/models-dev.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: Model metadata only, for the AI model catalog the app bundles (core/crates/ai/ai-models.json). It holds the
+    names, release dates, output limits, image input, chat APIs and reasoning options of chat models, trimmed from
+    https://models.dev/experimental/v2.0/api.json by scripts/ai-models/generate.py. The app also reads the nightly
+    copy at https://updates.tablepro.app/ai/models-v1.json. No code or file from the project ships.
 - id: mongo-c-driver
   name: MongoDB C Driver (libmongoc / libbson)
   version: 1.28.1
@@ -744,6 +760,20 @@
     SQLite and libSQL driver plugins, with its symbols hidden. The app itself still uses the macOS
     libsqlite3 for its own storage. Public domain; the SPDX id "blessing" names the notice the sources
     carry in place of a license.'
+- id: tablepro-core-crates
+  name: TablePro core's Rust crates
+  version: Cargo.lock
+  spdx: MIT AND Apache-2.0 AND ISC AND BSD-3-Clause AND MPL-2.0 AND OpenSSL AND Unicode-3.0 AND Zlib
+  copyrights:
+  - Each crate's own, in the license text that lists it
+  homepageURL: https://crates.io
+  licenseTextURL: https://github.com/TableProApp/TablePro/blob/main/apple/TablePro/Resources/ThirdPartyLicenses/texts/tablepro-core-crates.txt
+  textFile: texts/tablepro-core-crates.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: The crates the core library links (scripts/build-core.sh, no engines). scripts/update-core-licenses.sh writes
+    the text from Cargo.lock with cargo-about, and core.yml fails while it is out of date.
 - id: swift-argument-parser
   name: swift-argument-parser
   version: 1.8.2

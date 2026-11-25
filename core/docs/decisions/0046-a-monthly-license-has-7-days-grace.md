@@ -1,6 +1,6 @@
 # 0046: A monthly self-hosted license has 7 days' grace
 
-- **Status**: Accepted
+- **Status**: Accepted; the 7 days of a monthly file superseded by 0050
 - **Date**: 2026-11-24
 
 ## Context

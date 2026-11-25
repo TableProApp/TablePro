@@ -327,7 +327,7 @@ impl SessionWindow {
             presenter.abort();
         }
         self.stop_state_file_watches();
-        // Closing the window is quitting: the guide ends unseen (core ADR 0049).
+        // Closing the window is quitting: the guide ends unseen (core ADR 0051).
         if let Some(guide) = self.state().and_then(|state| state.setup.take()) {
             guide.shutdown();
         }
@@ -2213,7 +2213,7 @@ fn file_display_name(uri: &str) -> String {
 }
 
 impl SessionWindow {
-    // The gate's launch rows, read once the first picker window's library has an answer (core ADR 0049).
+    // The gate's launch rows, read once the first picker window's library has an answer (core ADR 0051).
     fn offer_setup_guide(&self) {
         let Some(state) = self.state().filter(|state| state.offer_guide.get()) else {
             return;

@@ -44,7 +44,7 @@ internal struct DeviceLimitSheet: View {
 
             DialogFooter {
                 Button(String(localized: "Manage Devices…")) {
-                    openURL(model.services.configuration.portalDevices)
+                    openURL(model.services.portal.portalDevices)
                 }
             } actions: {
                 Button(String(localized: "Not Now")) { dismiss() }

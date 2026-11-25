@@ -2,30 +2,39 @@ import Combine
 import Foundation
 
 enum AIModelSelection: Hashable {
-    case curated(String)
-    case fetched(String)
+    case model(String)
     case custom
 }
 
+// The provider's models as the merge ordered them: the default first, deprecated ones apart.
 struct AIModelChoices: Equatable {
-    let curated: [CuratedModel]
-    let fetched: [String]
+    let active: [AIModelInfo]
+    let deprecated: [AIModelInfo]
+    private let titles: [String: String]
 
-    init(curated: [CuratedModel], fetched: [AIModelInfo]) {
-        self.curated = curated
-        let curatedIDs = Set(curated.map(\.id))
-        self.fetched = fetched.map(\.id).filter { !curatedIDs.contains($0) }
+    init(models: [AIModelInfo]) {
+        active = models.filter { !$0.isDeprecated }
+        deprecated = models.filter(\.isDeprecated)
+        titles = AIModelInfo.titles(for: models)
+    }
+
+    func title(for model: AIModelInfo) -> String {
+        let title = titles[model.id] ?? model.label
+        guard model.isDeprecated else { return title }
+        guard let retiresAt = model.retiresAt else {
+            return String(format: String(localized: "%@ (deprecated)"), title)
+        }
+        let date = retiresAt.formatted(.dateTime.year().month(.abbreviated).day())
+        return String(format: String(localized: "%@ (retires %@)"), title, date)
     }
 
     func contains(_ modelID: String) -> Bool {
-        curated.contains { $0.id == modelID } || fetched.contains(modelID)
+        active.contains { $0.id == modelID } || deprecated.contains { $0.id == modelID }
     }
 
     func selection(for modelID: String, choseOther: Bool) -> AIModelSelection {
-        if choseOther { return .custom }
-        if curated.contains(where: { $0.id == modelID }) { return .curated(modelID) }
-        if fetched.contains(modelID) { return .fetched(modelID) }
-        return .custom
+        if choseOther || !contains(modelID) { return .custom }
+        return .model(modelID)
     }
 }
 
@@ -103,11 +112,6 @@ final class AIProviderEditorModel: ObservableObject {
         case failure(String)
     }
 
-    private struct FetchInputs: Equatable {
-        let endpoint: String
-        let apiKey: String
-    }
-
     let loader: AIModelListLoader
 
     @Published var draft: AIProviderConfig
@@ -122,7 +126,7 @@ final class AIProviderEditorModel: ObservableObject {
 
     private let savedEndpoint: String
     private var savedAPIKey = ""
-    private var lastFetch: FetchInputs?
+    private var lastFetch: AIModelListInputs?
     private var connectionRevision = 0
     private var testTask: Task<Void, Never>?
 
@@ -177,12 +181,8 @@ final class AIProviderEditorModel: ObservableObject {
         return String(localized: "Your API key is sent unencrypted over http to this host.")
     }
 
-    var curatedModels: [CuratedModel] {
-        descriptor?.curatedModels(for: draft.preset) ?? []
-    }
-
     var choices: AIModelChoices {
-        AIModelChoices(curated: curatedModels, fetched: loader.models)
+        AIModelChoices(models: loader.models)
     }
 
     var modelSelection: AIModelSelection {
@@ -194,11 +194,9 @@ final class AIProviderEditorModel: ObservableObject {
     }
 
     func reasoning(forModelID id: String) -> AIReasoningSupport {
-        descriptor?.reasoning(
-            forModelID: id,
-            fetched: loader.models.first { $0.id == id },
-            preset: draft.preset
-        ) ?? .unsupported
+        let info = loader.models.first { $0.id == id }
+            ?? AIModelReference.shared.info(source: AIModelSource(config: draft), modelID: id)
+        return descriptor?.reasoning(for: info) ?? .unsupported
     }
 
     var reasoningForCurrentModel: AIReasoningSupport {
@@ -206,15 +204,32 @@ final class AIProviderEditorModel: ObservableObject {
     }
 
     var showsReasoningPicker: Bool {
-        descriptor?.supportsReasoning == true && !reasoningForCurrentModel.effortLevels.isEmpty
+        descriptor?.supportsReasoning == true
+            && (!reasoningForCurrentModel.effortLevels.isEmpty || reasoningForCurrentModel.canTurnOff)
     }
 
     var needsModelChoice: Bool {
         AIProviderDraftRules.needsModelChoice(model: draft.model, fetched: loader.models)
     }
 
+    // Until the list answers for the key and Base URL on screen there is nothing to start the model on.
+    var modelListSettled: Bool {
+        guard fetchesModelList,
+              AIProviderDraftRules.modelListBlocker(descriptor: descriptor, draft: draft, apiKey: apiKey) == nil
+        else { return true }
+        return !loader.isLoading && loader.answeredFor == fetchInputs
+    }
+
+    // What the automatic fetch sends: the Base URL as typed, trimmed, never the default an empty field saves as.
+    private var fetchInputs: AIModelListInputs {
+        let endpoint = allowsEndpoint
+            ? draft.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+            : normalizedDraft.endpoint
+        return AIModelListInputs(endpoint: endpoint, apiKey: apiKey)
+    }
+
     var canAdd: Bool {
-        guard !needsModelChoice else { return false }
+        guard modelListSettled, !needsModelChoice else { return false }
         guard draft.authStyle == .apiKey else { return true }
         return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -250,7 +265,7 @@ final class AIProviderEditorModel: ObservableObject {
 
     func select(_ selection: AIModelSelection) {
         switch selection {
-        case .curated(let id), .fetched(let id):
+        case .model(let id):
             choseOtherModel = false
             selectModel(id, picked: true)
         case .custom:
@@ -271,23 +286,19 @@ final class AIProviderEditorModel: ObservableObject {
         var next = draft
         next.model = id
         next.reasoningEffort = picked
-            ? AIProviderDraftRules.effort(
-                afterPicking: draft.reasoningEffort,
-                reasoning: reasoning(forModelID: id),
-                curated: curatedModels.first { $0.id == id }
-            )
+            ? AIProviderDraftRules.effort(afterPicking: draft.reasoningEffort, reasoning: reasoning(forModelID: id))
             : AIProviderDraftRules.effort(keeping: draft.reasoningEffort, reasoning: reasoning(forModelID: id))
         draft = next
     }
 
     func selectInitialModel() {
         guard draft.model.isEmpty, !choseOtherModel,
-              let initial = AIProviderDraftRules.initialModel(curated: curatedModels, fetched: loader.models)
+              let initial = AIProviderDraftRules.initialModel(fetched: loader.models)
         else { return }
         selectModel(initial, picked: false)
     }
 
-    // Before any fetch, so a provider whose list cannot load yet still starts on its curated default.
+    // Before any fetch, so the effort fits a model already saved or typed.
     func prepare() {
         selectInitialModel()
         selectModel(draft.model, picked: false)
@@ -296,10 +307,8 @@ final class AIProviderEditorModel: ObservableObject {
     // The automatic fetch reads the Base URL as typed: resolving an empty field to the default would send the key elsewhere.
     func fetchModels(force: Bool = false) async {
         var config = normalizedDraft
-        if allowsEndpoint {
-            config.endpoint = draft.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        let inputs = FetchInputs(endpoint: config.endpoint, apiKey: apiKey)
+        let inputs = fetchInputs
+        config.endpoint = inputs.endpoint
         guard force || inputs != lastFetch else { return }
         lastFetch = inputs
         let revision = connectionRevision
@@ -359,8 +368,7 @@ final class AIProviderEditorModel: ObservableObject {
             AIModelCatalog.shared.remove(providerID: saved.id)
             guard fetchesModelList else { return }
             let transport = AIProviderFactory.makeUncachedProvider(for: saved, apiKey: apiKey)
-            let providerID = saved.id
-            Task { await AIModelCatalog.shared.refresh(providerID: providerID, using: transport) }
+            Task { await AIModelCatalog.shared.refresh(config: saved, using: transport) }
         case .keep:
             break
         }

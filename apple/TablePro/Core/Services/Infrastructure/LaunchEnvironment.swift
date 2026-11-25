@@ -16,6 +16,8 @@ internal protocol LaunchEnvironment: AnyObject {
     /// Runs `body` on the next pass of the main run loop, in common modes so a tracking or modal
     /// loop cannot hold it back.
     func scheduleNextTurn(_ body: @escaping @MainActor () -> Void)
+    /// Returns once the account the core restores after launch is published, since a connection's gates read it.
+    func accountRestored() async
     func route(_ intent: LaunchIntent) async
     func closeWelcome()
     func dismissWelcomeIfMainWindowVisible()
@@ -71,6 +73,12 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
         RunLoop.main.perform(inModes: [.common]) {
             MainActor.assumeIsolated(body)
         }
+    }
+
+    /// Every path of the core's restore ends in a status, a failed open included, as the synchronous Keychain read
+    /// before it did; no timeout, since one would route intents through gates that still read signed out.
+    internal func accountRestored() async {
+        await AccountServices.shared.waitUntilRestored()
     }
 
     internal func route(_ intent: LaunchIntent) async {

@@ -14,10 +14,18 @@ use url::Url;
 use crate::account_error::AccountError;
 use crate::account_settings::{AppClient, DeviceDescription, Endpoints};
 use crate::cloud_api::rate_limited;
+use crate::machine_id::MachineId;
+use crate::server::read_capped;
 
 const SCOPES: [&str; 4] = ["openid", "email", "offline_access", "app"];
 // The server's access token lifetime, for an answer without expires_in.
 const ACCESS_TOKEN_LIFETIME: Duration = Duration::from_secs(15 * 60);
+// RFC 8693, with tablepro-cloud's own subject token type (api.md, Legacy key exchange).
+const TOKEN_EXCHANGE: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
+const LICENSE_KEY_TOKEN_TYPE: &str = "https://account.tablepro.app/token-types/license-key";
+// A token answer is a few kilobytes, and a refused revocation's text is only logged.
+const TOKEN_ANSWER_LIMIT: usize = 64 * 1024;
+const REVOKE_DETAIL_LIMIT: usize = 4 * 1024;
 
 type Client = BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
 
@@ -25,6 +33,7 @@ pub(crate) struct OAuth {
     client: Client,
     app: AppClient,
     http: reqwest::Client,
+    token: String,
     revoke: String,
 }
 
@@ -50,6 +59,7 @@ impl OAuth {
             client,
             app,
             http,
+            token: endpoints.token.clone(),
             revoke: endpoints.revoke.clone(),
         })
     }
@@ -97,6 +107,45 @@ impl OAuth {
         answer.map(tokens).map_err(|error| grant_error(error, limited.get()))
     }
 
+    // A license key stored by a Mac from before accounts, traded for tokens already bound to this machine's device.
+    pub(crate) async fn exchange_license_key(
+        &self,
+        key: &SecretString,
+        machine_id: &MachineId,
+        device: &DeviceDescription,
+    ) -> Result<Tokens, AccountError> {
+        let scope = SCOPES.join(" ");
+        let form = [
+            ("grant_type", TOKEN_EXCHANGE),
+            ("client_id", self.app.client_id),
+            ("subject_token", key.expose_secret()),
+            ("subject_token_type", LICENSE_KEY_TOKEN_TYPE),
+            ("scope", &scope),
+            ("machine_id", machine_id.as_str()),
+            ("machine_name", &device.name),
+            ("platform", &self.app.platform.to_string()),
+            ("app_version", &device.app_version),
+            ("os_version", &device.os_version),
+        ];
+        let response = self
+            .http
+            .post(&self.token)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .form(&form)
+            .send()
+            .await
+            .map_err(AccountError::unreachable)?;
+        let status = response.status();
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(rate_limited(response.headers()));
+        }
+        let body = read_capped(response, TOKEN_ANSWER_LIMIT).await?;
+        match status.is_success() {
+            true => exchanged(&body),
+            false => Err(exchange_refused(status.as_u16(), &body)),
+        }
+    }
+
     pub(crate) async fn refresh(&self, refresh: &SecretString) -> Result<Tokens, AccountError> {
         let limited = Arc::new(OnceLock::new());
         let http = |request| execute(self.http.clone(), request, limited.clone());
@@ -121,11 +170,18 @@ impl OAuth {
             .map_err(AccountError::unreachable)?;
         match response.status().is_success() {
             true => Ok(()),
-            false => Err(AccountError::Refused {
-                status: response.status().as_u16(),
-                code: "revoke".to_owned(),
-                detail: response.text().await.unwrap_or_default(),
-            }),
+            false => {
+                let status = response.status().as_u16();
+                let detail = read_capped(response, REVOKE_DETAIL_LIMIT)
+                    .await
+                    .map(|body| String::from_utf8_lossy(&body).into_owned())
+                    .unwrap_or_default();
+                Err(AccountError::Refused {
+                    status,
+                    code: "revoke".to_owned(),
+                    detail,
+                })
+            }
         }
     }
 }
@@ -137,7 +193,7 @@ async fn execute(
     limited: Arc<OnceLock<AccountError>>,
 ) -> Result<HttpResponse, HttpClientError<reqwest::Error>> {
     let (parts, body) = request.into_parts();
-    let response = client
+    let mut response = client
         .request(parts.method, parts.uri.to_string())
         .headers(parts.headers)
         .body(body)
@@ -151,8 +207,59 @@ async fn execute(
     if let Some(headers) = answer.headers_mut() {
         headers.extend(response.headers().clone());
     }
-    let body = response.bytes().await.map_err(Box::new)?;
-    Ok(answer.body(body.to_vec())?)
+    // A server the person typed in answers here before anything vouches for it, so its answer is cut off at the cap.
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(Box::new)? {
+        if body.len() + chunk.len() > TOKEN_ANSWER_LIMIT {
+            return Err(HttpClientError::Other(format!(
+                "the answer is larger than {TOKEN_ANSWER_LIMIT} bytes"
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(answer.body(body)?)
+}
+
+#[derive(serde::Deserialize)]
+struct ExchangeAnswer {
+    access_token: String,
+    expires_in: Option<u64>,
+    refresh_token: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct ExchangeRefusal {
+    error: String,
+    error_description: Option<String>,
+}
+
+fn exchanged(body: &[u8]) -> Result<Tokens, AccountError> {
+    let answer: ExchangeAnswer = serde_json::from_slice(body)
+        .map_err(|error| AccountError::Protocol(crate::cloud_api::schema_mismatch(&error)))?;
+    if answer.access_token.is_empty() {
+        return Err(AccountError::Protocol("the exchange gave no access token".to_owned()));
+    }
+    Ok(Tokens {
+        access: SecretString::from(answer.access_token),
+        lifetime: answer.expires_in.map_or(ACCESS_TOKEN_LIFETIME, Duration::from_secs),
+        refresh: answer.refresh_token.map(SecretString::from),
+    })
+}
+
+// invalid_grant here is the key: unknown, its license revoked or its account locked.
+fn exchange_refused(status: u16, body: &[u8]) -> AccountError {
+    match serde_json::from_slice::<ExchangeRefusal>(body) {
+        Ok(refusal) if refusal.error == "invalid_grant" => AccountError::SignInRefused {
+            error: refusal.error,
+            description: refusal.error_description,
+        },
+        Ok(refusal) => AccountError::Refused {
+            status,
+            code: refusal.error,
+            detail: refusal.error_description.unwrap_or_default(),
+        },
+        Err(_) => AccountError::Protocol(format!("HTTP {status} without an OAuth error")),
+    }
 }
 
 fn tokens(response: BasicTokenResponse) -> Tokens {
@@ -183,6 +290,7 @@ fn grant_error(
             detail: answer.error_description().cloned().unwrap_or_default(),
         },
         RequestTokenError::Request(HttpClientError::Reqwest(error)) => AccountError::unreachable(*error),
+        RequestTokenError::Request(HttpClientError::Other(detail)) => AccountError::Protocol(detail),
         other => AccountError::Protocol(other.to_string()),
     }
 }

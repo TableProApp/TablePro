@@ -2,7 +2,7 @@ using TablePro.Interop;
 
 namespace TablePro.App.Model.Tests;
 
-// The Windows rows of core 0049's gate table, the step order and how the guide ends.
+// The Windows rows of core 0051's gate table, the step order and how the guide ends.
 public sealed class SetupGuideFlowTests
 {
     public static TheoryData<string, SetupGate, bool> GateRows => new()

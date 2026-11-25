@@ -10,28 +10,19 @@ import Testing
 struct FeatureAccessTests {
     private static let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private static func entitlement(features: Set<String>, expiresIn: TimeInterval = 3_600, licensed: Bool = true) -> Entitlement {
+    private static func entitlement(licensed: Bool = true) -> Entitlement {
         Entitlement(
-            token: "token",
             accountID: "acct_test",
-            deviceID: "dev_test",
-            machineID: "mid",
-            features: features,
+            features: ["icloud_sync"],
             licenses: licensed
                 ? [EntitlementLicense(id: "lic", plan: "starter", cycle: "lifetime", source: "order",
                                       status: "active", renewsAt: nil, endsAt: nil, team: nil)]
                 : [],
             email: "ada@m16.example",
             name: nil,
-            issuedAt: now.addingTimeInterval(-60),
-            notBefore: now.addingTimeInterval(-60),
-            expiresAt: now.addingTimeInterval(expiresIn),
+            expiresAt: now.addingTimeInterval(3_600),
             isOffline: false
         )
-    }
-
-    private static func resolve(_ state: AccountState, feature: ProFeature = .iCloudSync) -> ProFeatureAccess {
-        FeatureAccess.resolve(feature, state: state, now: now)
     }
 
     @Test("The raw values are the server's feature codes")
@@ -42,101 +33,46 @@ struct FeatureAccessTests {
         ])
     }
 
-    @Test("A valid entitlement unlocks exactly the codes it carries")
-    func validEntitlementGatesByCode() {
-        let state = AccountState(isSignedIn: true, entitlement: Self.entitlement(features: ["icloud_sync"]))
-        #expect(Self.resolve(state, feature: .iCloudSync) == .available)
-        #expect(Self.resolve(state, feature: .teamLibrary) == .notIncluded)
-    }
-
-    @Test("A free account's entitlement carries no codes and locks every feature as not included")
-    func freeAccountIsNotIncluded() {
-        let state = AccountState(isSignedIn: true, entitlement: Self.entitlement(features: [], licensed: false))
-        for feature in ProFeature.allCases {
-            #expect(Self.resolve(state, feature: feature) == .notIncluded)
-        }
-    }
-
-    @Test("No session and no entitlement is signed out")
-    func nothingIsSignedOut() {
-        #expect(Self.resolve(AccountState()) == .signedOut)
-    }
-
-    @Test("An entitlement past its exp that carried the code is expired, signed in or not")
-    func lapsedEntitlementIsExpired() {
-        let lapsed = Self.entitlement(features: ["icloud_sync"], expiresIn: -1)
-        #expect(Self.resolve(AccountState(isSignedIn: true, entitlement: lapsed)) == .expired)
-        #expect(Self.resolve(AccountState(isSignedIn: false, entitlement: lapsed)) == .expired)
-    }
-
-    @Test("Signed in without a valid entitlement, after a failed refresh, is refreshFailed")
-    func failedRefreshIsRefreshFailed() {
-        let state = AccountState(isSignedIn: true, refresh: .failed(.network("offline")))
-        #expect(Self.resolve(state) == .refreshFailed)
-    }
-
-    @Test("A device over the limit stays on the free tier")
-    func deviceLimitIsNotIncluded() {
-        let state = AccountState(isSignedIn: true, refresh: .deviceLimitReached([]))
-        #expect(Self.resolve(state) == .notIncluded)
-    }
-
-    @Test("An offline file works without a session")
-    func offlineFileWorksSignedOut() {
-        let state = AccountState(isSignedIn: false, entitlement: Self.entitlement(features: ["icloud_sync"]))
-        #expect(Self.resolve(state) == .available)
-    }
-
-    @Test("A license an older build activated keeps its tier's features until it lapses")
-    func legacyPayloadKeepsWorking() throws {
-        let payload = LicensePayloadData(
-            billingCycle: nil, licenseKey: "KEY", email: "ada@m16.example", status: "active",
-            expiresAt: nil, issuedAt: "2027-01-01T00:00:00Z", tier: "starter"
+    @Test("Each gate is the core's answer for the feature")
+    func gateIsTheCoresAnswer() {
+        let state = AccountState(
+            isSignedIn: true,
+            entitlement: Self.entitlement(),
+            features: [.iCloudSync: .available, .teamLibrary: .notIncluded, .dataRewind: .expired]
         )
-        let legacy = try #require(LegacyEntitlement(payload: payload))
-        let state = AccountState(legacy: legacy)
-        let inGrace = try #require(legacy.issuedAt).addingTimeInterval(86_400)
-        #expect(FeatureAccess.resolve(.iCloudSync, state: state, now: inGrace) == .available)
-        #expect(FeatureAccess.resolve(.teamLibrary, state: state, now: inGrace) == .notIncluded)
-
-        let pastGrace = try #require(legacy.issuedAt).addingTimeInterval(LegacyEntitlement.gracePeriod + 1)
-        #expect(FeatureAccess.resolve(.iCloudSync, state: state, now: pastGrace) == .expired)
+        #expect(FeatureAccess.resolve(.iCloudSync, state: state) == .available)
+        #expect(FeatureAccess.resolve(.teamLibrary, state: state) == .notIncluded)
+        #expect(FeatureAccess.resolve(.dataRewind, state: state) == .expired)
     }
 
-    @Test("A payload that is not active, or ran past its expiry, grants nothing")
-    func legacyPayloadLapses() throws {
-        let suspended = LicensePayloadData(
-            billingCycle: nil, licenseKey: "KEY", email: "a@m16.example", status: "suspended",
-            expiresAt: nil, issuedAt: "2026-01-01T00:00:00Z", tier: "team"
-        )
-        #expect(LegacyEntitlement(payload: suspended) == nil)
-
-        let ended = LicensePayloadData(
-            billingCycle: "yearly", licenseKey: "KEY", email: "a@m16.example", status: "active",
-            expiresAt: "2026-01-02T00:00:00.000000Z", issuedAt: "2026-01-01T00:00:00Z", tier: "team"
-        )
-        let legacy = try #require(LegacyEntitlement(payload: ended))
-        #expect(legacy.features == LegacyEntitlement.teamFeatures)
-        #expect(!legacy.isValid(at: Date(timeIntervalSince1970: 1_767_400_000)))
+    @Test("A feature the core gave no answer for reads as signed out, or as a failed check when signed in")
+    func missingAnswer() {
+        #expect(FeatureAccess.resolve(.iCloudSync, state: AccountState()) == .signedOut)
+        #expect(FeatureAccess.resolve(.iCloudSync, state: AccountState(isSignedIn: true)) == .refreshFailed)
     }
 
     @Test("Anyone holding a license, even a lapsed one, is a supporter")
-    func supportAudience() {
+    func supporters() {
+        #expect(FeatureAccess.resolveSupportAudience(state: AccountState(entitlement: Self.entitlement())) == .supporter)
+        #expect(FeatureAccess.resolveSupportAudience(state: AccountState(entitlement: Self.entitlement(licensed: false))) == .prospect)
         #expect(FeatureAccess.resolveSupportAudience(state: AccountState()) == .prospect)
-        let free = AccountState(isSignedIn: true, entitlement: Self.entitlement(features: [], licensed: false))
-        #expect(FeatureAccess.resolveSupportAudience(state: free) == .prospect)
-        let lapsed = AccountState(entitlement: Self.entitlement(features: ["icloud_sync"], expiresIn: -1))
-        #expect(FeatureAccess.resolveSupportAudience(state: lapsed) == .supporter)
+    }
+
+    @Test("Someone on a company server is never asked to buy: the organization's license covers them")
+    func companyServerIsCovered() {
+        let state = AccountState(server: AccountSettingsContentTests.companyServer)
+        #expect(FeatureAccess.resolveSupportAudience(state: state) == .supporter)
     }
 
     @Test("Past the device limit the gates point at Settings instead of a purchase")
     @MainActor
-    func pastDeviceLimit() {
-        let access = FeatureAccess(state: AccountState(isSignedIn: true, refresh: .deviceLimitReached([])), now: { Self.now })
+    func deviceLimit() {
+        let access = FeatureAccess(state: AccountState(
+            isSignedIn: true,
+            refresh: .deviceLimitReached([]),
+            features: [.iCloudSync: .notIncluded]
+        ))
         #expect(access.isPastDeviceLimit)
-        #expect(access.check(.iCloudSync) == .notIncluded)
-
-        access.update(AccountState(isSignedIn: true, refresh: .failed(.network("offline"))))
-        #expect(!access.isPastDeviceLimit)
+        #expect(LicensePresentation.gate(for: .iCloudSync, state: access.state)?.action == .openAccountSettings(page: .accountDevices))
     }
 }

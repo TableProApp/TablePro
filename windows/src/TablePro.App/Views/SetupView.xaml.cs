@@ -8,7 +8,7 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// The setup guide, a page swapped into the window as Settings is (core 0049, windows/docs/decisions/0025).
+// The setup guide, a page swapped into the window as Settings is (core 0051, windows/docs/decisions/0025).
 public sealed partial class SetupView : UserControl, IDisposable
 {
     private readonly Workbench _workbench;
@@ -372,7 +372,7 @@ public sealed partial class SetupView : UserControl, IDisposable
 
     private void OnOtherApp(object sender, RoutedEventArgs e) => Guide.Choose(SetupOrigin.OtherApp);
 
-    // File > Import's own flow: a file picked leaves the guide, and the import selects what it wrote (core 0049).
+    // File > Import's own flow: a file picked leaves the guide, and the import selects what it wrote (core 0051).
     private async void OnImportFile(object sender, RoutedEventArgs e) =>
         await _shell.ImportAsync().ConfigureAwait(true);
 

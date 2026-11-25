@@ -23,7 +23,13 @@ internal sealed partial class Workbench : IDisposable
         Sessions = new SessionStore(Path.Combine(folder, "session.json"));
         TableFilters = new TableFilterMemory(Path.Combine(folder, "table-filters.json"));
         ColumnLayouts = new ColumnLayoutMemory(Path.Combine(folder, "table-columns.json"));
-        Settings = _settings.Load();
+        var loaded = _settings.Load();
+        Settings = loaded.WithDefaultModel(Core.Assistant.DefaultModel);
+        if (Settings != loaded)
+        {
+            SaveSettings();
+        }
+
         DisplaySettings.Update(Settings);
     }
 
@@ -126,7 +132,7 @@ internal sealed partial class Workbench : IDisposable
     public void UpdateSettings(Func<AppSettings, AppSettings> change)
     {
         ArgumentNullException.ThrowIfNull(change);
-        var next = change(Settings).Normalized();
+        var next = change(Settings).WithDefaultModel(Core.Assistant.DefaultModel).Normalized();
         if (next == Settings)
         {
             return;

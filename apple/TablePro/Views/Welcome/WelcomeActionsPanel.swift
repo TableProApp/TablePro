@@ -135,11 +135,7 @@ struct WelcomeActionsPanel: View {
     // Only a state that needs the person: a working plan says nothing, and neither does a free account.
     @ViewBuilder
     private var licenseLine: some View {
-        if let line = LicensePresentation.welcomeLine(
-            state: featureAccess.state,
-            configuration: AccountServices.shared.configuration,
-            now: Date()
-        ) {
+        if let line = LicensePresentation.welcomeLine(state: featureAccess.state, now: Date()) {
             Button(line.title) {
                 perform(line.action)
             }

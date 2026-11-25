@@ -5,7 +5,6 @@
 
 import Combine
 import Foundation
-import TableProCloudAPI
 
 // The devices holding the license's 3 slots when the entitlement answered device_limit_reached (clients.md,
 // Settings > Account). The app stays on the free tier until one is removed here or in the portal.
@@ -70,9 +69,8 @@ internal final class DeviceLimitModel: ObservableObject {
 
     private static func rows(state: AccountState, now: Date) -> [Row] {
         guard case .deviceLimitReached(let holders) = state.refresh else { return [] }
-        return holders.map { holder in
-            let device = AccountDevice(holder)
-            return Row(
+        return holders.map { device in
+            Row(
                 id: device.id,
                 name: device.name,
                 system: AccountCodes.systemName(platform: device.platform, osVersion: device.osVersion),

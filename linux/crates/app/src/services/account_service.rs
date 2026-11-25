@@ -6,7 +6,7 @@ use chrono::Utc;
 use secrecy::SecretString;
 use tablepro_account::{
     Account, AccountError, AccountSettings, AccountStatus, AppClient, BrowserLauncher, CallbackPage, DeviceDescription,
-    Endpoints, EntitlementKeys, FeatureAccess, MachineId, RefreshTokenVault, Url,
+    Endpoints, EntitlementKeys, FeatureAccess, FixedServer, MachineId, RefreshTokenVault, ServerSettings, Url,
 };
 use tablepro_core::credentials::SecretError;
 use tablepro_linux_platform::{MACHINE_ID_FILES, SecretStore, read_machine_id};
@@ -119,8 +119,8 @@ impl AccountService {
                     return;
                 }
             };
-            let (endpoints, keys) = match cloud.and_then(|cloud| cloud.keys().map(|keys| (cloud.endpoints, keys))) {
-                Ok(settings) => settings,
+            let server = match cloud.and_then(|cloud| cloud.server()) {
+                Ok(server) => server,
                 Err(detail) => {
                     tracing::error!(%detail, "the development build's account settings are not valid");
                     started.send_replace(AccountStart::Misconfigured(detail));
@@ -129,12 +129,12 @@ impl AccountService {
             };
             let settings = AccountSettings {
                 client: AppClient::LINUX,
-                endpoints,
+                server,
                 device: this_device(),
                 machine_id,
-                keys,
                 account_file,
                 callback_page,
+                legacy_entitlement_file: None,
             };
             match Account::new(settings, vault, browser, sender) {
                 Ok(account) => {
@@ -173,6 +173,19 @@ impl Cloud {
             return Ok(EntitlementKeys::release());
         }
         EntitlementKeys::from_public_keys(self.keys_x.iter().map(String::as_str)).map_err(|error| error.to_string())
+    }
+
+    // tablepro.app, or a development stack that signs with its own keys and names its API origin.
+    fn server(self) -> Result<ServerSettings, String> {
+        if self.endpoints == Endpoints::production() && self.keys_x.is_empty() {
+            return Ok(ServerSettings::production());
+        }
+        let keys = self.keys()?;
+        Ok(ServerSettings::Fixed(FixedServer {
+            issuer: self.endpoints.api_origin(),
+            endpoints: self.endpoints,
+            keys,
+        }))
     }
 }
 
@@ -302,6 +315,7 @@ mod tests {
             entitlement: None,
             problem: Some(EntitlementProblem::DeviceLimitReached(Vec::new())),
             remembered: true,
+            session_id: None,
         })));
 
         assert!(!signed_out);

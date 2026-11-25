@@ -150,7 +150,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         AccountServices.shared.start()
         SyncCoordinator.shared.start()
-        LinkedFolderWatcher.shared.start()
+        // Its gate reads the sign-in the core restores after launch.
+        Task {
+            await AccountServices.shared.waitUntilRestored()
+            LinkedFolderWatcher.shared.start()
+        }
         TeamLibrarySync.shared.start()
         SupportAskCoordinator.shared.start()
     }
@@ -185,25 +189,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Task {
-            // Before anything the app could not take back if it stays open.
-            guard await QuitApproval.commitBeforeQuitting(plan) else {
+            // Team Library edits not uploaded live only in memory, so they are asked about while a Cancel changes nothing.
+            let quits = await TeamLibraryUnsentChanges.quit {
+                // Before anything the app could not take back if it stays open.
+                guard await QuitApproval.commitBeforeQuitting(plan) else { return false }
+                RunningWorkRegistry.shared.cancel(plan.work)
+                // While the drivers are open: a debug stop rolls back the routine's transaction.
+                await AppModuleTermination.stopModuleWork()
+                await MCPServerManager.shared.stop()
+                await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
+                // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
+                await VaultDatabaseCredentials.shared.revokeAllLeases()
+                return true
+            }
+            guard quits else {
                 NSApp.reply(toApplicationShouldTerminate: false)
                 AppRelauncher.shared.terminationWasCancelled()
                 return
             }
-            RunningWorkRegistry.shared.cancel(plan.work)
-            // While the drivers are open: a debug stop rolls back the routine's transaction.
-            await AppModuleTermination.stopModuleWork()
-            await MCPServerManager.shared.stop()
-            await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
-            // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
-            await VaultDatabaseCredentials.shared.revokeAllLeases()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // The quit is committed: what its question said to discard goes now, not before a step that could stop it.
+        TeamLibrarySync.shared.discardHeld()
         ConnectionEditorWindowController.closeAllForTermination()
         SessionRecoveryTracker.saveOnQuit()
         // Synchronously: an actor hop at terminate may never run, which lost a killed session's last turn.

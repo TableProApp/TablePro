@@ -26,7 +26,7 @@ internal struct SignInPrompt {
             uiTestRequestsPrompt: UITestLaunchEnvironment.requestsSignInPrompt,
             isUserSession: { AppActivationPolicyController.shared.origin == .user },
             setupGuidePending: { SetupGuidePresenter.shared.isPending },
-            isSignedIn: { AccountServices.shared.session.isSignedIn },
+            isSignedIn: { AccountServices.shared.isSignedIn },
             hasStoredLicenseKey: { AccountServices.shared.hasLicenseKeyToExchange },
             present: { SignInWindowController.present(purpose: .firstLaunch) }
         )

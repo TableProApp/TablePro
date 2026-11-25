@@ -1,4 +1,4 @@
-// The keys in force: ACCELERATORS with the chosen preset's Linux rows applied by core ADR 0050's rule.
+// The keys in force: ACCELERATORS with the chosen preset's Linux rows applied by core ADR 0052's rule.
 
 use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -274,7 +274,7 @@ fn refusal(target: &Accelerator, chord: &Chord, wanted: Keystroke) -> Option<Ref
         })
         .find(|entry| entry.triggers.iter().any(|accel| keystroke(accel) == Some(wanted)))
         .map(|entry| Refusal::Held(entry.action));
-    // Core ADR 0050: the editor keeps its own key, which the command would take from it or never see.
+    // Core ADR 0052: the editor keeps its own key, which the command would take from it or never see.
     held.or_else(|| (meets_the_editor(target) && editor_binds(wanted)).then_some(Refusal::EditorKey))
 }
 

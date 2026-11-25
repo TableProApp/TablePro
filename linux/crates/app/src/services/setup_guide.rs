@@ -1,4 +1,4 @@
-// The setup guide's rules (core ADR 0049), apart from GTK so the gate and the steps are tested as data.
+// The setup guide's rules (core ADR 0051), apart from GTK so the gate and the steps are tested as data.
 
 use std::time::Duration;
 
@@ -193,7 +193,7 @@ mod tests {
         }
     }
 
-    // The Linux rows of ADR 0049's gate table, by their numbers there.
+    // The Linux rows of ADR 0051's gate table, by their numbers there.
     #[test]
     fn the_gate_follows_the_linux_rows_of_the_table() {
         let rows = [

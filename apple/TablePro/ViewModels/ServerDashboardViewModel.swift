@@ -15,11 +15,12 @@ final class ServerDashboardViewModel: ObservableObject {
 
     // MARK: - Data
 
-    @Published var sessions: [DashboardSession] = [] {
+    @Published var board = DashboardBoard() {
         didSet { dropEndedSessionsFromSelection() }
     }
-    @Published var metrics: [DashboardMetric] = []
-    @Published var slowQueries: [DashboardSlowQuery] = []
+
+    // Held apart so the spinner and the clock redraw the toolbar alone, not every pane.
+    let refreshStatus = DashboardRefreshStatus()
 
     // MARK: - Refresh State
 
@@ -33,9 +34,6 @@ final class ServerDashboardViewModel: ObservableObject {
     @Published var isPaused: Bool = false {
         didSet { updateTileActivity() }
     }
-    @Published var isRefreshing: Bool = false
-    @Published var lastRefreshDate: Date?
-    @Published var panelErrors: [DashboardPanel: String] = [:]
 
     // MARK: - Sort State
 
@@ -68,6 +66,7 @@ final class ServerDashboardViewModel: ObservableObject {
     private let services: AppServices
     private var providerServerVersion: String?
     private var hasAdoptedServerVersion = false
+    private var hasPublishedBoard = false
 
     // MARK: - Computed Properties
 
@@ -89,7 +88,7 @@ final class ServerDashboardViewModel: ObservableObject {
 
     // A server hands a freed session id to its next connection, so a kept id would select that one.
     private func dropEndedSessionsFromSelection() {
-        let kept = sessionSelection.ids.intersection(sessions.map(\.id))
+        let kept = sessionSelection.ids.intersection(board.sessions.map(\.id))
         guard kept != sessionSelection.ids else { return }
         sessionSelection.ids = kept
     }
@@ -128,7 +127,7 @@ final class ServerDashboardViewModel: ObservableObject {
     func stopAutoRefresh() {
         isOnScreen = false
         restartRefreshLoop()
-        isRefreshing = false
+        refreshStatus.isRefreshing = false
     }
 
     // A hidden, minimized or fully covered window shows nothing, so the server is not asked; coming back refreshes at once.
@@ -234,7 +233,7 @@ final class ServerDashboardViewModel: ObservableObject {
     }
 
     private func refresh(forcingTiles: Bool) async {
-        guard !isRefreshing else { return }
+        guard !refreshStatus.isRefreshing else { return }
         guard provider != nil else {
             Self.logger.warning("No query provider available for \(self.databaseType.rawValue)")
             return
@@ -244,55 +243,56 @@ final class ServerDashboardViewModel: ObservableObject {
         adoptProvider(forServerVersion: liveDriver.serverVersion)
         guard let provider else { return }
 
-        isRefreshing = true
-        defer { isRefreshing = false }
+        refreshStatus.isRefreshing = true
+        defer { refreshStatus.isRefreshing = false }
 
         let execute = Self.readExecutor(connectionId: connectionId, services: services)
 
-        var newPanelErrors: [DashboardPanel: String] = [:]
+        // The first load shows each panel as it arrives. Later refreshes publish once, so the panes redraw once.
+        let publishesEarly = !hasPublishedBoard
+        var next = board
+        next.panelErrors = [:]
 
         if provider.supportedPanels.contains(.activeSessions) {
             do {
                 var fetched = try await provider.fetchSessions(execute: execute)
                 fetched.sort(using: sessionSortOrder)
-                if fetched != sessions {
-                    sessions = fetched
-                }
+                next.sessions = fetched
             } catch {
                 Self.logger.warning("Failed to fetch sessions: \(error.localizedDescription)")
-                newPanelErrors[.activeSessions] = error.localizedDescription
+                next.panelErrors[.activeSessions] = error.localizedDescription
             }
+            if publishesEarly { publish(next) }
         }
 
         if provider.supportedPanels.contains(.serverMetrics) {
             do {
-                let fetched = try await provider.fetchMetrics(execute: execute)
-                if fetched != metrics {
-                    metrics = fetched
-                }
+                next.metrics = try await provider.fetchMetrics(execute: execute)
             } catch {
                 Self.logger.warning("Failed to fetch metrics: \(error.localizedDescription)")
-                newPanelErrors[.serverMetrics] = error.localizedDescription
+                next.panelErrors[.serverMetrics] = error.localizedDescription
             }
+            if publishesEarly { publish(next) }
         }
 
         if provider.supportedPanels.contains(.slowQueries) {
             do {
-                let fetched = try await provider.fetchSlowQueries(execute: execute)
-                if !fetched.elementsEqual(slowQueries, by: { $0.hasSameContent(as: $1) }) {
-                    slowQueries = fetched
-                }
+                next.slowQueries = try await provider.fetchSlowQueries(execute: execute)
             } catch {
                 Self.logger.warning("Failed to fetch slow queries: \(error.localizedDescription)")
-                newPanelErrors[.slowQueries] = error.localizedDescription
+                next.panelErrors[.slowQueries] = error.localizedDescription
             }
         }
 
-        if panelErrors != newPanelErrors {
-            panelErrors = newPanelErrors
-        }
+        publish(next)
+        hasPublishedBoard = true
         await tileBoard.refresh(force: forcingTiles)
-        lastRefreshDate = Date()
+        refreshStatus.lastRefreshDate = Date()
+    }
+
+    private func publish(_ next: DashboardBoard) {
+        guard !next.hasSameContent(as: board) else { return }
+        board = next
     }
 
     // MARK: - Kill Session

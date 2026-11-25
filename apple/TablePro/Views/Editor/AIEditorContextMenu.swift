@@ -97,7 +97,8 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
             item.image = NSImage(systemSymbolName: "star", accessibilityDescription: nil)
             items.append(item)
         }
-        if onShareQuery != nil {
+        // AppKit fills a menu on the main thread.
+        if onShareQuery != nil, MainActor.assumeIsolated({ ShareAvailability.isAvailable }) {
             let item = NSMenuItem(
                 title: String(localized: "Share Query…"),
                 action: #selector(handleShareQuery),

@@ -40,6 +40,10 @@ public enum AiRole
 
 public sealed record AiProviderInfo(AiProvider Provider, string DefaultBaseUrl, bool RequiresKey, bool TakesAddress);
 
+// A model the provider offers, merged with TablePro's model catalog. Name is null when neither names it; IsOffline
+// when it comes from the catalog only, because the provider's own list was not read.
+public sealed record AiModelInfo(string Id, string? Name, bool IsDeprecated, bool IsDefault, bool IsOffline);
+
 // Address is read for OpenAICompatible only, where null is its default; the hosted providers go to their own.
 public sealed record AiSettings(AiProvider Provider, string Model, string? Address = null);
 
@@ -103,16 +107,26 @@ public sealed class AiAssistant
         return CoreCall.RunAsync(() => _assistant.SetKey(Mapping.Provider(provider), key));
     }
 
-    // Sorted. Throws TableProException with an ai.* code, or a secret.* one when the key cannot be read.
-    public async Task<IReadOnlyList<string>> ListModelsAsync(
+    // In the order to show them, the default first and deprecated ones last. Throws TableProException with an ai.*
+    // code, or a secret.* one when the key cannot be read; OfflineModels then gives the catalog's.
+    public async Task<IReadOnlyList<AiModelInfo>> ListModelsAsync(
         AiSettings settings,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
         var native = Mapping.Settings(settings);
-        return await CoreCall.RunAsync(token => _assistant.ListModels(native, token), cancellationToken)
+        var models = await CoreCall.RunAsync(token => _assistant.ListModels(native, token), cancellationToken)
             .ConfigureAwait(false);
+        return [.. models.Select(Mapping.ModelInfo)];
     }
+
+    // The catalog's models for the provider, each offline; none for OpenAICompatible.
+    public IReadOnlyList<AiModelInfo> OfflineModels(AiProvider provider) =>
+        [.. CoreCall.Run(() => _assistant.OfflineModels(Mapping.Provider(provider))).Select(Mapping.ModelInfo)];
+
+    // The model an empty setting takes on first use; null for OpenAICompatible.
+    public string? DefaultModel(AiProvider provider) =>
+        CoreCall.Run(() => _assistant.DefaultModel(Mapping.Provider(provider)));
 
     // Reads the catalog, never a row. Throws TableProException with ai.blocked when the connection's policy is Never.
     public async Task<AiConversationStart> StartConversationAsync(

@@ -138,7 +138,7 @@ enum FileMenuBuilder {
                 String(localized: "Manage Shared Links…"),
                 action: #selector(AppDelegate.manageSharedLinks(_:))
             ),
-            MenuItemFactory.separator,
+            sharingSeparator(),
             MenuItemFactory.item(
                 String(localized: "Backup Dump…"),
                 action: #selector(MainSplitViewController.backupDatabase(_:))
@@ -150,6 +150,12 @@ enum FileMenuBuilder {
         ])
         file.submenu?.delegate = closeTitleDelegate
         return file
+    }
+
+    private static func sharingSeparator() -> NSMenuItem {
+        let separator = MenuItemFactory.separator
+        separator.identifier = SharingMenuGroup.separatorIdentifier
+        return separator
     }
 
     // A session and a conversation are things this window opens and closes. Each item leaves `target` nil, so the

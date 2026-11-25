@@ -171,7 +171,11 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Generate Rows settings per table | UserDefaults, device-local | `RowGenerationSettingsStore` |
 | Row inspector field heights, per column name | UserDefaults, device-local | `InspectorFieldHeightStore` |
 | Favorite tables (iCloud-synced) | UserDefaults | `FavoriteTablesStorage` |
-| Team library, per team: pull cursor, items, unpushed edits, conflicts (synced with tablepro-cloud's `/v2`, never iCloud) | JSON, one file per team | `TeamLibraryStateStore` through `TeamLibrarySync` |
+| Team library read cache, per server and account: each team's pull cursor and items (synced with tablepro-cloud's `/v2`, never iCloud). Unsent edits stay in memory only; the library 0.88 and earlier kept, with its unsent edits, is read once for the tablepro.app sign-in the core restores, behind the UserDefaults flag `com.TablePro.teamLibrary.earlierLibraryConsidered`, then deleted; its edits are uploaded once (`TeamLibrarySync` has the rules) | JSON, one file per team in `TeamLibraryCache/<digest of server and account>/`; 0.88 and earlier: `TeamLibrary/` and `team_library.json` | `TeamLibraryStorage` through `TeamLibrarySync` |
+| TablePro account: the device, the entitlement, the chosen server, a company server's license and entitlement keys | `Account/account.json` in Application Support, device-local, never synced | the core's `tablepro-account` through `AccountServices` |
+| The account's refresh token: tablepro.app's in the item earlier builds read, each company server's in its own | Keychain `com.TablePro.account.refreshToken`, and one item per company server, device-only | the core through `KeychainHostSecrets` |
+| The entitlement builds before the core kept, read once when `account.json` is missing so the update stays signed in | `Account/entitlement.jwt` in Application Support | the core (`legacy_entitlement_file`) |
+| A license key an older build stored, until the key exchange trades it for an account; the digest of one the server refused | Keychain `com.TablePro.license.key`, UserDefaults `com.TablePro.license.setAside` | `StoredLicenseKey` |
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Server Dashboard tiles, per connection | UserDefaults, device-local | `ServerDashboardTileStorage` |
@@ -184,6 +188,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Reopen the last session once after Relaunch to Update | UserDefaults, device-local, never synced, cleared by the next launch | `AppRelauncher` |
 | Highest plugin manifest `serial` accepted, so an older signed manifest is refused | UserDefaults, device-local, never synced | `RegistryManifestVerifier` through `RegistryClient` |
+| The AI model catalog last accepted from `updates.tablepro.app`, used over the bundled copy when its `generated` is newer; its HTTP cache only revalidates | `AIModels/models-v1.json` and `AIModels/URLCache` in the support directory, device-local, never synced | `AIModelReference` |
 | Approved environment variable references, per connection, names and destination digest | UserDefaults, device-local, never synced | `ConnectionApprovalStore.envVarReferences` |
 | Approved sign-ins with this Mac's own credentials (Entra, AWS profile or SSO, Google ADC or OAuth, Kerberos, `~/.pgpass`), per connection, field values and destination digest | UserDefaults `com.TablePro.localCredentialApprovals`, plus `com.TablePro.localCredentialApprovalsMigrated` for the one-time approval of this Mac's rows; device-local, never synced | `ConnectionApprovalStore.localCredentials` |
 | Snowflake SSO and MFA tokens, per host and user. A bare account's `NAME.USER` item stays for 0.83.1, which reads only that key | Keychain, device-local | `SnowflakeTokenCache` |

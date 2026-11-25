@@ -1,0 +1,1899 @@
+{
+  "generated": "2026-11-24T14:09:07Z",
+  "providers": {
+    "anthropic": {
+      "default": "claude-opus-5-5",
+      "models": [
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-fable-5",
+          "images": true,
+          "name": "Claude Fable 5",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-06-07"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-fable-5-1",
+          "images": true,
+          "name": "Claude Fable 5.1",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-09-01"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-fable-5-2",
+          "images": true,
+          "name": "Claude Fable 5.2",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-09"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-haiku-4-5",
+          "images": true,
+          "name": "Claude Haiku 4.5 (latest)",
+          "output": 64000,
+          "reasoning": {
+            "budget_min": 1024,
+            "toggle": true
+          },
+          "released": "2025-10-15"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-haiku-4-5-20251001",
+          "images": true,
+          "name": "Claude Haiku 4.5",
+          "output": 64000,
+          "reasoning": {
+            "budget_min": 1024,
+            "toggle": true
+          },
+          "released": "2025-10-15"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-haiku-5-5",
+          "images": true,
+          "name": "Claude Haiku 5.5",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-10-07"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "deprecated": true,
+          "id": "claude-opus-4-5",
+          "images": true,
+          "name": "Claude Opus 4.5 (latest)",
+          "output": 64000,
+          "reasoning": {
+            "budget_min": 1024,
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "toggle": true
+          },
+          "released": "2025-11-24"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "deprecated": true,
+          "id": "claude-opus-4-5-20251101",
+          "images": true,
+          "name": "Claude Opus 4.5",
+          "output": 64000,
+          "reasoning": {
+            "budget_min": 1024,
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "toggle": true
+          },
+          "released": "2025-11-24"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-opus-4-6",
+          "images": true,
+          "name": "Claude Opus 4.6",
+          "output": 128000,
+          "reasoning": {
+            "budget_min": 1024,
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-02-04"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-opus-4-7",
+          "images": true,
+          "name": "Claude Opus 4.7",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-04-14"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-opus-4-8",
+          "images": true,
+          "name": "Claude Opus 4.8",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-05-28"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-opus-5",
+          "images": true,
+          "name": "Claude Opus 5",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-07-24"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-opus-5-5",
+          "images": true,
+          "name": "Claude Opus 5.5",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-09-22"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "deprecated": true,
+          "id": "claude-sonnet-4-5",
+          "images": true,
+          "name": "Claude Sonnet 4.5 (latest)",
+          "output": 64000,
+          "reasoning": {
+            "budget_min": 1024,
+            "toggle": true
+          },
+          "released": "2025-09-29"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "deprecated": true,
+          "id": "claude-sonnet-4-5-20250929",
+          "images": true,
+          "name": "Claude Sonnet 4.5",
+          "output": 64000,
+          "reasoning": {
+            "budget_min": 1024,
+            "toggle": true
+          },
+          "released": "2025-09-29"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-sonnet-4-6",
+          "images": true,
+          "name": "Claude Sonnet 4.6",
+          "output": 128000,
+          "reasoning": {
+            "budget_min": 1024,
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-02-17"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-sonnet-5",
+          "images": true,
+          "name": "Claude Sonnet 5",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-06-29"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "messages"
+          ],
+          "id": "claude-sonnet-5-5",
+          "images": true,
+          "name": "Claude Sonnet 5.5",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-09-28"
+        }
+      ]
+    },
+    "google": {
+      "default": "gemini-3.8-flash",
+      "models": [
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "deprecated": true,
+          "id": "gemini-2.5-flash",
+          "images": true,
+          "name": "Gemini 2.5 Flash",
+          "output": 65536,
+          "reasoning": {
+            "budget_min": 0,
+            "toggle": true
+          },
+          "released": "2025-06-17"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-2.5-flash-lite",
+          "images": true,
+          "name": "Gemini 2.5 Flash-Lite",
+          "output": 65536,
+          "reasoning": {
+            "budget_min": 512,
+            "toggle": true
+          },
+          "released": "2025-06-17"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "deprecated": true,
+          "id": "gemini-2.5-pro",
+          "images": true,
+          "name": "Gemini 2.5 Pro",
+          "output": 65536,
+          "reasoning": {
+            "budget_min": 128
+          },
+          "released": "2025-06-17"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-3-flash-preview",
+          "images": true,
+          "name": "Gemini 3 Flash Preview",
+          "output": 65536,
+          "reasoning": {
+            "default": "high"
+          },
+          "released": "2025-12-17"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "deprecated": true,
+          "id": "gemini-3.1-flash-lite",
+          "images": true,
+          "name": "Gemini 3.1 Flash Lite",
+          "output": 65536,
+          "reasoning": {},
+          "released": "2026-05-07"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-3.1-pro-preview",
+          "images": true,
+          "name": "Gemini 3.1 Pro Preview",
+          "output": 65536,
+          "reasoning": {
+            "default": "high"
+          },
+          "released": "2026-02-19"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-3.1-pro-preview-customtools",
+          "images": true,
+          "name": "Gemini 3.1 Pro Preview Custom Tools",
+          "output": 65536,
+          "reasoning": {},
+          "released": "2026-02-19"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "deprecated": true,
+          "id": "gemini-3.5-flash",
+          "images": true,
+          "name": "Gemini 3.5 Flash",
+          "output": 65536,
+          "reasoning": {},
+          "released": "2026-05-19"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-3.5-flash-lite",
+          "images": true,
+          "name": "Gemini 3.5 Flash Lite",
+          "output": 65536,
+          "reasoning": {
+            "default": "minimal"
+          },
+          "released": "2026-07-21"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-3.6-flash",
+          "images": true,
+          "name": "Gemini 3.6 Flash",
+          "output": 65536,
+          "reasoning": {
+            "default": "medium"
+          },
+          "released": "2026-07-21"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "deprecated": true,
+          "id": "gemini-3.7-flash",
+          "images": true,
+          "name": "Gemini 3.7 Flash",
+          "output": 65536,
+          "reasoning": {},
+          "released": "2026-08-13"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-3.8-flash",
+          "images": true,
+          "name": "Gemini 3.8 Flash",
+          "output": 65536,
+          "reasoning": {
+            "default": "medium"
+          },
+          "released": "2026-09-02"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-4-argon",
+          "images": true,
+          "name": "Gemini 4 Argon",
+          "output": 32768,
+          "reasoning": {
+            "default": "medium"
+          },
+          "released": "2026-10-13"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-4-carbon",
+          "images": true,
+          "name": "Gemini 4 Carbon",
+          "output": 32768,
+          "reasoning": {
+            "default": "medium"
+          },
+          "released": "2026-11-10"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-4-hydrogen",
+          "images": true,
+          "name": "Gemini 4 Hydrogen",
+          "output": 65536,
+          "reasoning": {
+            "default": "high"
+          },
+          "released": "2026-11-12"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-4-neon",
+          "images": true,
+          "name": "Gemini 4 Neon",
+          "output": 65536,
+          "reasoning": {
+            "default": "high"
+          },
+          "released": "2026-11-18"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-flash-latest",
+          "images": true,
+          "name": "Gemini Flash Latest",
+          "output": 65536,
+          "reasoning": {
+            "default": "medium"
+          },
+          "released": "2026-09-02"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-flash-lite-latest",
+          "images": true,
+          "name": "Gemini Flash-Lite Latest",
+          "output": 65536,
+          "reasoning": {},
+          "released": "2026-07-21"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-pro-latest",
+          "images": true,
+          "name": "Gemini Pro Latest",
+          "output": 65536,
+          "reasoning": {
+            "default": "high"
+          },
+          "released": "2026-02-19"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemini-robotics-er-2-preview",
+          "images": true,
+          "name": "Gemini Robotics-ER 2 Preview",
+          "output": 65536,
+          "reasoning": {
+            "default": "high"
+          },
+          "released": "2026-07-30"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemma-4-26b-a4b-it",
+          "images": true,
+          "name": "Gemma 4 26B A4B IT",
+          "output": 32768,
+          "reasoning": {
+            "toggle": true
+          },
+          "released": "2026-04-02"
+        },
+        {
+          "apis": [
+            "chat-completions",
+            "generate-content"
+          ],
+          "id": "gemma-4-31b-it",
+          "images": true,
+          "name": "Gemma 4 31B IT",
+          "output": 32768,
+          "reasoning": {
+            "toggle": true
+          },
+          "released": "2026-04-02"
+        }
+      ]
+    },
+    "meta": {
+      "default": "muse-spark-1.3",
+      "models": [
+        {
+          "apis": [
+            "responses",
+            "chat-completions",
+            "messages"
+          ],
+          "id": "muse-ember-1.0",
+          "images": true,
+          "name": "Muse Ember",
+          "output": 524288,
+          "reasoning": {
+            "default": "max",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-09"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions",
+            "messages"
+          ],
+          "id": "muse-spark-1.1",
+          "images": true,
+          "name": "Muse Spark 1.1",
+          "output": 131072,
+          "reasoning": {
+            "default": "high",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2026-04-08"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions",
+            "messages"
+          ],
+          "id": "muse-spark-1.2",
+          "images": true,
+          "name": "Muse Spark 1.2",
+          "output": 131072,
+          "reasoning": {
+            "default": "high",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2026-08-05"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions",
+            "messages"
+          ],
+          "id": "muse-spark-1.2-contributor",
+          "images": true,
+          "name": "Muse Spark 1.2 Contributor",
+          "output": 131072,
+          "reasoning": {
+            "default": "high",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2026-08-05"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions",
+            "messages"
+          ],
+          "id": "muse-spark-1.3",
+          "images": true,
+          "name": "Muse Spark 1.3",
+          "output": 131072,
+          "reasoning": {
+            "default": "high",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-09-02"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions",
+            "messages"
+          ],
+          "id": "muse-spark-1.3-contributor",
+          "images": true,
+          "name": "Muse Spark 1.3 Contributor",
+          "output": 131072,
+          "reasoning": {
+            "default": "high",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2026-09-02"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions",
+            "messages"
+          ],
+          "id": "muse-wonder-1.0",
+          "images": true,
+          "name": "Muse Wonder",
+          "output": 131072,
+          "reasoning": {
+            "default": "max",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-10-12"
+        }
+      ]
+    },
+    "openai": {
+      "default": "gpt-6.2-sol",
+      "models": [
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "chat-latest",
+          "images": true,
+          "name": "Chat Latest",
+          "output": 128000,
+          "reasoning": {},
+          "released": "2026-05-05"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-4.1",
+          "images": true,
+          "name": "GPT-4.1",
+          "output": 32768,
+          "released": "2025-04-14"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-4.1-mini",
+          "images": true,
+          "name": "GPT-4.1 mini",
+          "output": 32768,
+          "released": "2025-04-14"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-4o",
+          "images": true,
+          "name": "GPT-4o",
+          "output": 16384,
+          "released": "2024-05-13"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-4o-2024-08-06",
+          "images": true,
+          "name": "GPT-4o (2024-08-06)",
+          "output": 16384,
+          "released": "2024-08-06"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-4o-2024-11-20",
+          "images": true,
+          "name": "GPT-4o (2024-11-20)",
+          "output": 16384,
+          "released": "2024-11-20"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-4o-mini",
+          "images": true,
+          "name": "GPT-4o mini",
+          "output": 16384,
+          "released": "2024-07-18"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-5",
+          "images": true,
+          "name": "GPT-5",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "released": "2025-08-07"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-5-mini",
+          "images": true,
+          "name": "GPT-5 Mini",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "released": "2025-08-07"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-5-nano",
+          "images": true,
+          "name": "GPT-5 Nano",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "released": "2025-08-07"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "deprecated": true,
+          "id": "gpt-5-pro",
+          "images": true,
+          "name": "GPT-5 Pro",
+          "output": 272000,
+          "reasoning": {
+            "efforts": [
+              "high"
+            ]
+          },
+          "released": "2025-10-06"
+        },
+        {
+          "apis": [
+            "chat-completions"
+          ],
+          "id": "gpt-5-search-api",
+          "images": false,
+          "name": "GPT-5 Search API",
+          "output": 100000,
+          "released": "2025-10-14"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-5.1",
+          "images": true,
+          "name": "GPT-5.1",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "toggle": true
+          },
+          "released": "2025-11-13"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-5.2",
+          "images": true,
+          "name": "GPT-5.2",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "toggle": true
+          },
+          "released": "2025-12-11"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-5.2-pro",
+          "images": true,
+          "name": "GPT-5.2 Pro",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2025-12-11"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "deprecated": true,
+          "id": "gpt-5.3-codex",
+          "images": true,
+          "name": "GPT-5.3 Codex",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "toggle": true
+          },
+          "released": "2026-02-05"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-5.4",
+          "images": true,
+          "name": "GPT-5.4",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "toggle": true
+          },
+          "released": "2026-03-05"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-5.4-mini",
+          "images": true,
+          "name": "GPT-5.4 mini",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "toggle": true
+          },
+          "released": "2026-03-17"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-5.4-nano",
+          "images": true,
+          "name": "GPT-5.4 nano",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "toggle": true
+          },
+          "released": "2026-03-17"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-5.4-pro",
+          "images": true,
+          "name": "GPT-5.4 Pro",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2026-03-05"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-5.5",
+          "images": true,
+          "name": "GPT-5.5",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "toggle": true
+          },
+          "released": "2026-04-23"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-5.5-pro",
+          "images": true,
+          "name": "GPT-5.5 Pro",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2026-04-23"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-5.6",
+          "images": true,
+          "name": "GPT-5.6",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-07-09"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-5.6-cyber",
+          "images": true,
+          "name": "GPT-5.6 Cyber",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-08-07"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-5.6-luna",
+          "images": true,
+          "name": "GPT-5.6 Luna",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-07-09"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-5.6-sol",
+          "images": true,
+          "name": "GPT-5.6 Sol",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-07-09"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-5.6-terra",
+          "images": true,
+          "name": "GPT-5.6 Terra",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-07-09"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-6-astra",
+          "images": true,
+          "name": "GPT-6 Astra",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-09-04"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-6-cyber",
+          "images": true,
+          "name": "GPT-6 Cyber",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-05"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-6-luna",
+          "images": true,
+          "name": "GPT-6 Luna",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-09-22"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-6-sol",
+          "images": true,
+          "name": "GPT-6 Sol",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-09-22"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-6.1-sol",
+          "images": true,
+          "name": "GPT-6.1 Sol",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-09-29"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-6.1-terra",
+          "images": true,
+          "name": "GPT-6.1 Terra",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-10-26"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-6.2-astra",
+          "images": true,
+          "name": "GPT-6.2 Astra",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-17"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "gpt-6.2-sol",
+          "images": true,
+          "name": "GPT-6.2 Sol",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-17"
+        },
+        {
+          "apis": [
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-audio",
+          "images": false,
+          "name": "GPT-Audio",
+          "output": 16384,
+          "released": "2025-08-28"
+        },
+        {
+          "apis": [
+            "chat-completions"
+          ],
+          "id": "gpt-audio-1.5",
+          "images": false,
+          "name": "GPT-Audio-1.5",
+          "output": 16384,
+          "released": "2026-02-23"
+        },
+        {
+          "apis": [
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "gpt-audio-mini",
+          "images": false,
+          "name": "GPT-Audio Mini",
+          "output": 16384,
+          "released": "2025-10-06"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-daybreak-blue-latest",
+          "images": true,
+          "name": "Daybreak Blue",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-08-07"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-daybreak-red-latest",
+          "images": true,
+          "name": "Daybreak Red",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "toggle": true
+          },
+          "released": "2026-08-07"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "deprecated": true,
+          "id": "o3",
+          "images": true,
+          "name": "o3",
+          "output": 100000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "released": "2025-04-16"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "deprecated": true,
+          "id": "o3-pro",
+          "images": true,
+          "name": "o3-pro",
+          "output": 100000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "released": "2025-06-10"
+        }
+      ]
+    },
+    "openai-codex": {
+      "client_version": "0.172.0",
+      "default": "gpt-6.2-sol",
+      "models": [
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-5.6-luna",
+          "images": true,
+          "name": "GPT-5.6 Luna",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-07-09"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-5.6-sol",
+          "images": true,
+          "name": "GPT-5.6 Sol",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-07-09"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-5.6-terra",
+          "images": true,
+          "name": "GPT-5.6 Terra",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-07-09"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-6-astra",
+          "images": true,
+          "name": "GPT-6 Astra",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-09-04"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-6-luna",
+          "images": true,
+          "name": "GPT-6 Luna",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-09-22"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-6-sol",
+          "images": true,
+          "name": "GPT-6 Sol",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-09-22"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-6.1-sol",
+          "images": true,
+          "name": "GPT-6.1 Sol",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-09-29"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-6.1-terra",
+          "images": true,
+          "name": "GPT-6.1 Terra",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-10-26"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-6.2-astra",
+          "images": true,
+          "name": "GPT-6.2 Astra",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-17"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "gpt-6.2-sol",
+          "images": true,
+          "name": "GPT-6.2 Sol",
+          "output": 128000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "released": "2026-11-17"
+        }
+      ]
+    },
+    "xai": {
+      "default": "grok-4.7",
+      "models": [
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "grok-4.20-0309-non-reasoning",
+          "images": true,
+          "name": "Grok 4.20 (Non-Reasoning)",
+          "output": 30000,
+          "released": "2026-03-09"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "grok-4.20-0309-reasoning",
+          "images": true,
+          "name": "Grok 4.20 (Reasoning)",
+          "output": 30000,
+          "reasoning": {},
+          "released": "2026-03-09"
+        },
+        {
+          "apis": [
+            "responses"
+          ],
+          "id": "grok-4.20-multi-agent-0309",
+          "images": true,
+          "name": "Grok 4.20 Multi-Agent",
+          "output": 30000,
+          "reasoning": {
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2026-03-09"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "grok-4.3",
+          "images": true,
+          "name": "Grok 4.3",
+          "output": 30000,
+          "reasoning": {
+            "default": "low",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "toggle": true
+          },
+          "released": "2026-04-17"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "grok-4.5",
+          "images": true,
+          "name": "Grok 4.5",
+          "output": 500000,
+          "reasoning": {
+            "default": "high",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2026-07-08"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "grok-4.6",
+          "images": true,
+          "name": "Grok 4.6",
+          "output": 500000,
+          "reasoning": {
+            "default": "high",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2026-08-12"
+        },
+        {
+          "apis": [
+            "responses",
+            "chat-completions"
+          ],
+          "id": "grok-4.7",
+          "images": true,
+          "name": "Grok 4.7",
+          "output": 500000,
+          "reasoning": {
+            "default": "high",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "released": "2026-09-21"
+        }
+      ]
+    }
+  },
+  "schema": 1
+}

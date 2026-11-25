@@ -8,8 +8,14 @@ import AuthenticationServices
 import Foundation
 
 @MainActor
-internal protocol WebAuthenticating {
+internal protocol WebAuthenticating: Sendable {
     func authenticate(url: URL, callbackScheme: String) async throws(AccountError) -> URL
+    // The core stopped waiting, on its timeout or a cancel: the sheet closes and authenticate returns.
+    func cancel()
+}
+
+extension WebAuthenticating {
+    func cancel() {}
 }
 
 // Opens the account pages in an ASWebAuthenticationSession sheet and returns the app.tablepro: redirect.
@@ -56,6 +62,10 @@ internal final class WebAuthenticationSessionAuthenticator: NSObject, WebAuthent
         }
         session = nil
         return try result.get()
+    }
+
+    func cancel() {
+        session?.cancel()
     }
 
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {

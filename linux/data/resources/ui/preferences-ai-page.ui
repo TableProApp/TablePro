@@ -108,18 +108,38 @@
                           <object class="GtkStackPage">
                             <property name="name">models</property>
                             <property name="child">
-                              <object class="GtkScrolledWindow">
-                                <property name="hscrollbar-policy">never</property>
-                                <property name="propagate-natural-height">true</property>
-                                <property name="max-content-height">360</property>
-                                <property name="child">
-                                  <object class="GtkListBox" id="models_list">
-                                    <property name="selection-mode">none</property>
-                                    <accessibility>
-                                      <property name="label" translatable="yes">Models</property>
-                                    </accessibility>
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <child>
+                                  <object class="GtkLabel" id="models_offline">
+                                    <property name="visible">false</property>
+                                    <property name="wrap">true</property>
+                                    <property name="max-width-chars">36</property>
+                                    <property name="xalign">0</property>
+                                    <property name="margin-top">12</property>
+                                    <property name="margin-bottom">6</property>
+                                    <property name="margin-start">12</property>
+                                    <property name="margin-end">12</property>
+                                    <style>
+                                      <class name="dim-label"/>
+                                    </style>
                                   </object>
-                                </property>
+                                </child>
+                                <child>
+                                  <object class="GtkScrolledWindow">
+                                    <property name="hscrollbar-policy">never</property>
+                                    <property name="propagate-natural-height">true</property>
+                                    <property name="max-content-height">360</property>
+                                    <property name="child">
+                                      <object class="GtkListBox" id="models_list">
+                                        <property name="selection-mode">none</property>
+                                        <accessibility>
+                                          <property name="label" translatable="yes">Models</property>
+                                        </accessibility>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </child>
                               </object>
                             </property>
                           </object>

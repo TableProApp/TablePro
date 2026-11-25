@@ -13,6 +13,11 @@ internal struct AccountMembership: Equatable, Sendable, Identifiable {
     let hasSeat: Bool
 
     var id: String { teamID }
+
+    // The roles tablepro-cloud lets write a team's library. The server still refuses a push it does not allow.
+    var writesTeamLibrary: Bool {
+        role == "owner" || role == "admin" || role == "editor"
+    }
 }
 
 // GET /v2/me: who is signed in and the teams the account belongs to, with its role and seat in each.
@@ -41,14 +46,6 @@ internal struct AccountProfile: Equatable, Sendable {
                 )
             }
         )
-    }
-
-    static func fetch(api: any APIProtocol) async throws(AccountError) -> AccountProfile {
-        do {
-            return try read(try await api.getMe())
-        } catch {
-            throw AccountError.from(error)
-        }
     }
 
     static func read(_ output: Operations.GetMe.Output) throws -> AccountProfile {

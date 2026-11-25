@@ -14,11 +14,7 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
     let authStyle: AIProviderType.AuthStyle
     // A 403 for a wrong key would otherwise read as a server error, which the chat offers to retry.
     let rejectsBadKeyWithForbidden: Bool
-    // Ranked: a new provider starts on the first.
-    let curatedModels: [CuratedModel]
     let modelIDs: AIModelIDFilter
-    // What every chat model here accepts when the server's model list says nothing about reasoning.
-    let reasoning: AIReasoningSupport?
 
     init(
         id: String,
@@ -27,9 +23,7 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         icon: BrandIcon,
         authStyle: AIProviderType.AuthStyle,
         rejectsBadKeyWithForbidden: Bool,
-        curatedModels: [CuratedModel] = [],
-        modelIDs: AIModelIDFilter = .all,
-        reasoning: AIReasoningSupport? = nil
+        modelIDs: AIModelIDFilter = .all
     ) {
         self.id = id
         self.displayName = displayName
@@ -37,9 +31,7 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         self.icon = icon
         self.authStyle = authStyle
         self.rejectsBadKeyWithForbidden = rejectsBadKeyWithForbidden
-        self.curatedModels = curatedModels
         self.modelIDs = modelIDs
-        self.reasoning = reasoning
     }
 
     static let requesty = AIProviderPreset(
@@ -51,14 +43,6 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         rejectsBadKeyWithForbidden: true
     )
 
-    // No Off: without an effort Meta runs its default, max on Muse Wonder and Muse Ember.
-    private static let museReasoning = AIReasoningSupport(
-        mode: .effortOnly,
-        effortLevels: [.minimal, .low, .medium, .high, .xhigh],
-        defaultEffort: .high,
-        isMandatory: true
-    )
-
     static let meta = AIProviderPreset(
         id: "meta",
         displayName: "Meta",
@@ -66,17 +50,8 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         icon: BrandIcon(slug: "meta", fallbackSystemImage: "infinity.circle"),
         authStyle: .apiKey,
         rejectsBadKeyWithForbidden: false,
-        curatedModels: [
-            CuratedModel(id: "muse-spark-1.3", displayName: "Muse Spark 1.3"),
-            CuratedModel(id: "muse-wonder-1.0", displayName: "Muse Wonder"),
-            CuratedModel(id: "muse-ember-1.0", displayName: "Muse Ember")
-        ],
         // Meta may train on what a contributor model is sent, so one is used only when typed under Other….
-        modelIDs: AIModelIDFilter(
-            families: ["muse-spark-", "muse-wonder-", "muse-ember-"],
-            unlistedParts: ["-contributor"]
-        ),
-        reasoning: museReasoning
+        modelIDs: AIModelIDFilter(unlistedParts: ["-contributor"])
     )
 
     static let all: [AIProviderPreset] = [.requesty, .meta]
@@ -93,25 +68,15 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         else { return .all }
         return modelIDs
     }
-
-    func reasoning(forModelID modelID: String) -> AIReasoningSupport? {
-        guard let reasoning, modelIDs.isChatFamily(modelID) else { return nil }
-        return reasoning
-    }
 }
 
-// For a model list with no capability field, where chat models are told apart by their id.
+// Ids a vendor's list holds that are never offered, whatever the catalog says about them.
 struct AIModelIDFilter: Equatable, Sendable {
-    let families: [String]
     let unlistedParts: [String]
 
-    static let all = AIModelIDFilter(families: [], unlistedParts: [])
-
-    func isChatFamily(_ modelID: String) -> Bool {
-        families.isEmpty || families.contains { modelID.hasPrefix($0) }
-    }
+    static let all = AIModelIDFilter(unlistedParts: [])
 
     func lists(_ modelID: String) -> Bool {
-        isChatFamily(modelID) && !unlistedParts.contains { modelID.contains($0) }
+        !unlistedParts.contains { modelID.contains($0) }
     }
 }

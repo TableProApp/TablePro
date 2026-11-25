@@ -78,9 +78,9 @@ pub(crate) async fn answer_error(error: Error<v2::types::Problem>) -> AccountErr
         // A status the document does not list, such as a proxy's.
         Error::UnexpectedResponse(response) => {
             let status = response.status().as_u16();
-            let body = match response.bytes().await {
+            let body = match crate::server::read_capped(response, PROBLEM_LIMIT).await {
                 Ok(body) => body,
-                Err(error) => return AccountError::unreachable(error),
+                Err(error) => return error,
             };
             match serde_json::from_slice::<v2::types::Problem>(&body) {
                 Ok(problem) => problem_error(status, problem),
@@ -96,6 +96,9 @@ pub(crate) async fn answer_error(error: Error<v2::types::Problem>) -> AccountErr
 }
 
 const TOO_LARGE: u16 = 413;
+const LONGEST_RETRY_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
+// A problem is a few hundred bytes; a proxy's page is cut off rather than read whole.
+const PROBLEM_LIMIT: usize = 64 * 1024;
 
 fn too_large() -> AccountError {
     AccountError::Refused {
@@ -115,14 +118,23 @@ pub(crate) fn schema_mismatch(error: &serde_json::Error) -> String {
     )
 }
 
-// api.md, Conventions: every 429 carries Retry-After in seconds.
+// api.md, Conventions: every 429 carries Retry-After in seconds. A wait past a day is read as a day, so no server can
+// push a deadline past what the clocks hold.
 pub(crate) fn rate_limited(headers: &HeaderMap) -> AccountError {
     let retry_after = headers
         .get(RETRY_AFTER)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.trim().parse::<u64>().ok())
-        .map(Duration::from_secs);
+        .map(|seconds| Duration::from_secs(seconds).min(LONGEST_RETRY_AFTER));
     AccountError::RateLimited { retry_after }
+}
+
+// A refusal read by hand, for a call the generated client does not make.
+pub(crate) fn refusal(status: u16, body: &[u8]) -> AccountError {
+    match serde_json::from_slice::<v2::types::Problem>(body) {
+        Ok(problem) => problem_error(status, problem),
+        Err(_) => AccountError::Protocol(format!("HTTP {status} without a problem")),
+    }
 }
 
 fn problem_error(status: u16, problem: v2::types::Problem) -> AccountError {
@@ -240,6 +252,19 @@ mod tests {
             "{sent:?}"
         );
         assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+    }
+
+    #[test]
+    fn a_retry_after_past_a_day_is_read_as_a_day() {
+        let mut headers = HeaderMap::new();
+        headers.insert(RETRY_AFTER, HeaderValue::from_static("18446744073709551615"));
+
+        let limited = rate_limited(&headers);
+
+        assert!(
+            matches!(limited, AccountError::RateLimited { retry_after: Some(wait) } if wait == LONGEST_RETRY_AFTER),
+            "{limited:?}"
+        );
     }
 
     #[test]

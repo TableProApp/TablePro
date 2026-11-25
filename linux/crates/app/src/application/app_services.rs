@@ -76,7 +76,7 @@ pub struct AppServices {
     account: RefCell<AccountService>,
     telemetry: Telemetry,
     app_opened: RefCell<Option<AppOpenedChecks>>,
-    // A second picker window in one launch never opens the setup guide (core ADR 0049, G11).
+    // A second picker window in one launch never opens the setup guide (core ADR 0051, G11).
     first_picker_claimed: Cell<bool>,
 }
 
@@ -200,7 +200,8 @@ impl AppServices {
         services.mcp_tokens = Some(mcp_tokens);
         services.account_tokens = Some(account_tokens);
         services.telemetry = telemetry;
-        services.ai = AiService::new(services.settings.clone(), services.tasks.clone(), Some(ai_keys));
+        let models = tablepro_ai::ModelCatalog::new(services.storage.paths().cache.join("ai-models"));
+        services.ai = AiService::with_catalog(services.settings.clone(), services.tasks.clone(), Some(ai_keys), models);
         services
     }
 
@@ -521,7 +522,8 @@ mod tests {
 
     use chrono::{TimeDelta, Utc};
     use tablepro_account::{
-        Account, AccountError, AccountSettings, AppClient, CallbackPage, DeviceDescription, Endpoints, MachineId, fakes,
+        Account, AccountError, AccountSettings, AppClient, CallbackPage, DeviceDescription, Endpoints, FixedServer,
+        MachineId, ServerSettings, fakes,
     };
     use tablepro_session::SessionKey;
     use tablepro_session::fakes::FakeConnector;
@@ -582,19 +584,23 @@ mod tests {
     fn account(stub: &CloudStub, machine: MachineId, dir: &Path) -> (Account, AccountHandle) {
         let settings = AccountSettings {
             client: AppClient::LINUX,
-            endpoints: Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints"),
+            server: ServerSettings::Fixed(FixedServer {
+                endpoints: Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints"),
+                keys: fakes::keys().expect("the test key"),
+                issuer: fakes::ISSUER.to_owned(),
+            }),
             device: DeviceDescription {
                 name: "Ada's laptop".to_owned(),
                 app_version: "0.1.0".to_owned(),
                 os_version: "Ubuntu 26.04".to_owned(),
             },
             machine_id: machine,
-            keys: fakes::keys().expect("the test key"),
             account_file: dir.join("account.json"),
             callback_page: CallbackPage {
                 finished: String::new(),
                 unknown: String::new(),
             },
+            legacy_entitlement_file: None,
         };
         let (status, receiver) = watch::channel(AccountStatus::SignedOut);
         let account = Account::new(

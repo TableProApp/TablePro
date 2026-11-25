@@ -61,11 +61,26 @@ struct ChatGPTCodexProviderEncodingTests {
         #expect(body["stream"] as? Bool == false)
     }
 
-    @Test("Available models returns the curated subscription list without a network call")
-    func curatedModels() async throws {
-        let provider = ChatGPTCodexProvider(model: "")
-        let models = try await provider.fetchAvailableModels()
-        #expect(models.map(\.id) == ChatGPTCodex.curatedModelIDs)
-        #expect(models.map(\.id) == ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"])
+    // Shaped like the backend's reply, measured 2026-11-24: hidden entries are internal, priority ranks the list.
+    @Test("The backend's model list is ranked by priority, hidden models dropped, the first one the default")
+    func backendModelList() throws {
+        let reply: [String: Any] = ["models": [
+            ["slug": "gpt-6.1-sol", "display_name": "GPT-6.1-Sol", "visibility": "list", "priority": 5,
+             "default_reasoning_level": "low",
+             "supported_reasoning_levels": [["effort": "low"], ["effort": "medium"], ["effort": "max"], ["effort": "ultra"]],
+             "input_modalities": ["text", "image"]],
+            ["slug": "gpt-reserve", "visibility": "hide", "priority": 4],
+            ["slug": "gpt-6.2-sol", "display_name": "GPT-6.2-Sol", "visibility": "list", "priority": 1,
+             "supported_reasoning_levels": [["effort": "low"], ["effort": "high"]]]
+        ]]
+        let models = ChatGPTCodexProvider.decodeModelList(try JSONSerialization.data(withJSONObject: reply))
+        #expect(models.map(\.id) == ["gpt-6.2-sol", "gpt-6.1-sol"])
+        #expect(models.first?.isProviderDefault == true)
+        #expect(models.last?.isProviderDefault == false)
+        let reasoning = try #require(models.last?.reasoning)
+        #expect(reasoning.effortLevels == [.low, .medium, .max])
+        #expect(reasoning.defaultEffort == .low)
+        #expect(reasoning.isMandatory)
+        #expect(models.last?.displayName == "GPT-6.1-Sol")
     }
 }

@@ -12,17 +12,12 @@ enum AIProviderRegistration {
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.claude.rawValue,
             capabilities: [.reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
-            curatedModels: claudeCuratedModels,
-            effortLevelResolver: { AnthropicModelCapabilities.effortLevels(forModel: $0) },
             makeProvider: { config, apiKey in
                 AnthropicProvider(
                     endpoint: config.endpoint,
                     apiKey: apiKey ?? "",
                     model: config.model,
-                    maxOutputTokens: config.maxOutputTokens
-                        ?? config.reasoningEffort?.autoScaledMaxOutputTokens
-                        ?? 4_096,
-                    reasoningEffort: config.reasoningEffort,
+                    maxOutputTokens: config.maxOutputTokens,
                     providerID: config.id
                 )
             }
@@ -30,8 +25,7 @@ enum AIProviderRegistration {
 
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.claudeAgent.rawValue,
-            capabilities: [],
-            curatedModels: ClaudeAgent.curatedModels,
+            capabilities: [.modelListFetchable],
             makeProvider: { config, _ in
                 ClaudeAgentProvider(model: config.model)
             }
@@ -54,13 +48,14 @@ enum AIProviderRegistration {
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.openAI.rawValue,
             capabilities: [.reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
-            curatedModels: openAICuratedModels,
             makeProvider: { config, apiKey in
                 OpenAIResponsesProvider(
                     endpoint: config.endpoint,
                     apiKey: apiKey,
                     model: config.model,
-                    maxOutputTokens: config.maxOutputTokens
+                    maxOutputTokens: config.maxOutputTokens,
+                    providerID: config.id,
+                    source: AIModelSource(config: config)
                 )
             }
         ))
@@ -68,14 +63,15 @@ enum AIProviderRegistration {
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.xai.rawValue,
             capabilities: [.reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
-            curatedModels: xaiCuratedModels,
             makeProvider: { config, apiKey in
                 OpenAIResponsesProvider(
                     endpoint: config.endpoint,
                     apiKey: apiKey,
                     model: config.model,
                     maxOutputTokens: config.maxOutputTokens,
-                    dialect: .xai
+                    dialect: .xai,
+                    providerID: config.id,
+                    source: AIModelSource(config: config)
                 )
             }
         ))
@@ -84,6 +80,7 @@ enum AIProviderRegistration {
             registry.register(AIProviderDescriptor(
                 typeID: type.rawValue,
                 capabilities: openAICompatibleCapabilities(for: type),
+                unknownReasoning: AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high]),
                 makeProvider: { config, apiKey in
                     OpenAICompatibleProvider(config: config, apiKey: apiKey)
                 }
@@ -101,8 +98,7 @@ enum AIProviderRegistration {
 
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.chatgptCodex.rawValue,
-            capabilities: [.reasoning],
-            curatedModels: chatGPTCodexCuratedModels,
+            capabilities: [.reasoning, .modelListFetchable],
             oauthFlowKind: .browserRedirect,
             makeProvider: { config, _ in
                 ChatGPTCodexProvider(model: config.model)
@@ -125,51 +121,4 @@ enum AIProviderRegistration {
         }
         return capabilities
     }
-
-    private static func curatedModel(
-        id: String,
-        displayName: String,
-        provider: AIProviderType,
-        defaultEffort: ReasoningEffort? = .medium
-    ) -> CuratedModel {
-        let reasoning = AIModelOverlay.reasoning(providerTypeID: provider.rawValue, modelID: id)
-        return CuratedModel(
-            id: id,
-            displayName: displayName,
-            supportedEffortLevels: reasoning?.effortLevels ?? [],
-            defaultEffort: reasoning?.effortLevels.isEmpty == false ? defaultEffort : nil
-        )
-    }
-
-    private static let chatGPTCodexCuratedModels: [CuratedModel] = ChatGPTCodex.curatedModels.map {
-        curatedModel(id: $0.id, displayName: $0.name, provider: .chatgptCodex)
-    }
-
-    private static let openAICuratedModels: [CuratedModel] = [
-        curatedModel(id: "gpt-5.6-sol", displayName: "GPT-5.6 Sol", provider: .openAI),
-        curatedModel(id: "gpt-5.6-terra", displayName: "GPT-5.6 Terra", provider: .openAI),
-        curatedModel(id: "gpt-5.6-luna", displayName: "GPT-5.6 Luna", provider: .openAI),
-        curatedModel(id: "gpt-5.5", displayName: "GPT-5.5", provider: .openAI)
-    ]
-
-    private static let xaiCuratedModels: [CuratedModel] = [
-        CuratedModel(
-            id: "grok-4.5",
-            displayName: "Grok 4.5",
-            supportedEffortLevels: [.low, .medium, .high],
-            defaultEffort: .medium
-        ),
-        CuratedModel(
-            id: "grok-4.3",
-            displayName: "Grok 4.3",
-            supportedEffortLevels: [.low, .medium, .high],
-            defaultEffort: .low
-        )
-    ]
-
-    private static let claudeCuratedModels: [CuratedModel] = [
-        curatedModel(id: "claude-opus-5", displayName: "Claude Opus 5", provider: .claude),
-        curatedModel(id: "claude-sonnet-5", displayName: "Claude Sonnet 5", provider: .claude),
-        curatedModel(id: "claude-haiku-4-5", displayName: "Claude Haiku 4.5", provider: .claude, defaultEffort: .low)
-    ]
 }

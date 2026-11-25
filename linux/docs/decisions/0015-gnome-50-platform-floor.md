@@ -1,6 +1,6 @@
 # 0015: GNOME 50 platform floor
 
-- **Status**: Accepted; the runtime row and the channel that matters amended by 0018; the shortcuts dialog's loading amended by core 0050
+- **Status**: Accepted; the runtime row and the channel that matters amended by 0018; the shortcuts dialog's loading amended by core 0052
 - **Date**: 2026-09-15
 
 ## Context

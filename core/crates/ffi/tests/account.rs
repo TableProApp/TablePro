@@ -1,3 +1,6 @@
+// Every test here signs in to a local stack, which a release build refuses
+// (`a_release_build_refuses_a_development_server_and_test_keys`).
+#![cfg(debug_assertions)]
 #![expect(
     clippy::unwrap_used,
     reason = "the setup helpers fail a test the way the test functions themselves do"
@@ -14,8 +17,9 @@ use chrono::{TimeDelta, Utc};
 use secrecy::{ExposeSecret as _, SecretString};
 use tablepro_account::{MachineId, fakes};
 use tablepro_ffi::{
-    AccountConfig, AccountListener, AccountService, AccountStateTag, CancelToken, Core, CoreError, FeatureAccessTag,
-    HostBrowser, HostBrowserError, HostConfig, HostSecretError, HostSecrets, SecretItemTag, SecretKindTag,
+    AccountConfig, AccountListener, AccountService, AccountStateTag, AppClientTag, CancelToken, Core, CoreError,
+    FeatureAccessTag, HostBrowser, HostBrowserError, HostConfig, HostSecretError, HostSecrets, HostWebAuthenticator,
+    SecretItemTag, SecretKindTag, SignOutCauseTag,
 };
 
 const GUID: &str = "d3b07384-d113-4ec6-a2f1-6a3f0c2e9b7a";
@@ -66,12 +70,37 @@ impl HostSecrets for MemorySecrets {
 }
 
 #[derive(Default)]
-struct Counting(Arc<AtomicUsize>);
+struct Counting(Arc<AtomicUsize>, Arc<Mutex<Vec<SignOutCauseTag>>>);
 
 impl AccountListener for Counting {
     fn status_changed(&self) {
         self.0.fetch_add(1, Ordering::SeqCst);
     }
+
+    fn signed_out(&self, cause: SignOutCauseTag) {
+        self.1.lock().unwrap().push(cause);
+    }
+}
+
+// Stands in for ASWebAuthenticationSession: answers the page with the server's redirect, or as the person closing it.
+struct WebSession(Arc<Mutex<Vec<(String, String)>>>, bool);
+
+impl HostWebAuthenticator for WebSession {
+    fn authenticate(&self, url: String, callback_scheme: String) -> Result<String, HostBrowserError> {
+        self.0.lock().unwrap().push((url.clone(), callback_scheme));
+        if !self.1 {
+            return Err(HostBrowserError::Cancelled);
+        }
+        let url = tablepro_account::Url::parse(&url).unwrap();
+        let state = url
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .map(|(_, value)| value.into_owned())
+            .unwrap();
+        Ok(format!("app.tablepro:/oauth/callback?code=mac-code&state={state}"))
+    }
+
+    fn cancel(&self) {}
 }
 
 // Keeps the sign-in page's URL for the test to answer.
@@ -89,11 +118,16 @@ struct Opened {
     service: Arc<AccountService>,
     items: Items,
     changes: Arc<AtomicUsize>,
+    sign_outs: Arc<Mutex<Vec<SignOutCauseTag>>>,
     browser: Arc<Mutex<Option<String>>>,
     _dir: tempfile::TempDir,
 }
 
 async fn open(base: &str) -> Opened {
+    open_as(base, AppClientTag::Windows, None).await
+}
+
+async fn open_as(base: &str, client: AppClientTag, web: Option<Box<dyn HostWebAuthenticator>>) -> Opened {
     let dir = tempfile::tempdir().unwrap();
     let items = Items::default();
     let core = Core::new(
@@ -105,6 +139,7 @@ async fn open(base: &str) -> Opened {
     )
     .unwrap();
     let changes = Arc::new(AtomicUsize::new(0));
+    let sign_outs = Arc::new(Mutex::new(Vec::new()));
     let browser = Arc::new(Mutex::new(None));
     let config = AccountConfig {
         account_url: Some(base.to_owned()),
@@ -117,12 +152,19 @@ async fn open(base: &str) -> Opened {
         callback_finished: "Done".to_owned(),
         callback_unknown: "Unknown".to_owned(),
         machine_guid: Some(GUID.to_owned()),
+        client,
+        machine_id: None,
+        managed_server_url: None,
+        allow_other_servers: None,
+        legacy_entitlement_file: None,
+        license_keys: Vec::new(),
     };
     let service = core
         .open_account(
             config,
             Box::new(Browser(browser.clone())),
-            Box::new(Counting(changes.clone())),
+            web,
+            Box::new(Counting(changes.clone(), sign_outs.clone())),
         )
         .await
         .unwrap();
@@ -130,6 +172,7 @@ async fn open(base: &str) -> Opened {
         service,
         items,
         changes,
+        sign_outs,
         browser,
         _dir: dir,
     }
@@ -140,13 +183,14 @@ fn unreachable() -> String {
     "http://127.0.0.1:1".to_owned()
 }
 
-// Stands in for tablepro-cloud: `answer` gives the status and body for a method, path and request body.
-fn cloud(answer: impl Fn(&str, &str, &str) -> (u16, String) + Send + 'static) -> String {
+// Stands in for tablepro-cloud: `answer` gives the status and body for its base, a method, path and request body.
+fn cloud(answer: impl Fn(&str, &str, &str, &str) -> (u16, String) + Send + 'static) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
+    let origin = base.clone();
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
-            serve(stream, &answer);
+            serve(stream, &|method, path, body| answer(&origin, method, path, body));
         }
     });
     base
@@ -220,10 +264,12 @@ async fn approve(browser: &Arc<Mutex<Option<String>>>) {
     let _ = stream.read_to_string(&mut answer);
 }
 
-fn entitlement_answer() -> String {
+// A development stack names its API origin as the issuer.
+fn entitlement_answer(issuer: &str) -> String {
     let mut claims = fakes::claims(Utc::now(), TimeDelta::days(14), &["shared_links"]);
     claims.mid = MachineId::derive_machine_guid(GUID).unwrap().as_str().to_owned();
     claims.dev = DEVICE.to_owned();
+    claims.iss = issuer.to_owned();
     format!(
         r#"{{"token":"{}","expires_at":"2026-12-01T00:00:00Z","refresh_after":"2026-11-20T00:00:00Z"}}"#,
         fakes::sign(&claims).unwrap()
@@ -237,12 +283,14 @@ fn device_answer() -> String {
     )
 }
 
+// A development stack is not tablepro.app, so its token is kept under its own sign-in key.
 fn refresh_token(items: &Items) -> Option<String> {
+    let items = items.lock().unwrap();
+    assert!(!items.contains_key(&SecretItemTag::AccountRefreshToken));
     items
-        .lock()
-        .unwrap()
-        .get(&SecretItemTag::AccountRefreshToken)
-        .map(|token| token.expose_secret().to_owned())
+        .iter()
+        .find(|(item, _)| matches!(item, SecretItemTag::AccountRefreshTokenFor { sign_in_key } if sign_in_key.len() == 16))
+        .map(|(_, token)| token.expose_secret().to_owned())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -266,14 +314,13 @@ async fn a_sign_in_through_the_browser_registers_the_device_and_unlocks_its_feat
     let base = cloud({
         let requests = requests.clone();
         let device = device_answer();
-        let entitlement = entitlement_answer();
-        move |method, path, _| {
+        move |base, method, path, _| {
             requests.lock().unwrap().push(format!("{method} {path}"));
             match (method, path) {
                 ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
                 ("POST", "/oauth/revoke") => (200, String::new()),
                 ("POST", "/v2/devices") => (201, device.clone()),
-                ("POST", p) if p == format!("/v2/devices/{DEVICE}/entitlement") => (200, entitlement.clone()),
+                ("POST", p) if p == format!("/v2/devices/{DEVICE}/entitlement") => (200, entitlement_answer(base)),
                 _ => (404, String::new()),
             }
         }
@@ -292,6 +339,8 @@ async fn a_sign_in_through_the_browser_registers_the_device_and_unlocks_its_feat
     assert_eq!(kept.as_deref(), Some("stub-refresh"));
     assert_eq!(opened.service.status().state, AccountStateTag::SignedOut);
     assert_eq!(refresh_token(&opened.items), None);
+    eventually("the sign-out cause", || !opened.sign_outs.lock().unwrap().is_empty()).await;
+    assert_eq!(*opened.sign_outs.lock().unwrap(), [SignOutCauseTag::Requested]);
     let requests = requests.lock().unwrap().clone();
     assert!(requests.contains(&"POST /v2/devices".to_owned()), "{requests:?}");
     assert!(requests.contains(&"POST /oauth/revoke".to_owned()), "{requests:?}");
@@ -315,7 +364,7 @@ async fn a_cancel_ends_the_wait_for_the_browser() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_shared_link_opens_signed_out_and_the_owner_s_calls_do_not() {
     let path = format!("/v2/shared/{TOKEN}");
-    let base = cloud(move |method, requested, _| match (method, requested) {
+    let base = cloud(move |_, method, requested, _| match (method, requested) {
         ("GET", p) if p == path => (
             200,
             r#"{"kind":"query","title":"Orders","note":"","dialect":"postgres","sql":"SELECT 1",
@@ -334,6 +383,62 @@ async fn a_shared_link_opens_signed_out_and_the_owner_s_calls_do_not() {
     assert_eq!((shared.row_count, shared.expires_at_secs), (None, None));
     assert_eq!(limits.unwrap_err().code(), "account.signed_out");
     assert_eq!(malformed.unwrap_err().code(), "account.not_found");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_mac_signs_in_through_its_web_session_and_reads_its_server_and_bearer() {
+    let base = cloud({
+        let device = device_answer();
+        move |base, method, path, _| match (method, path) {
+            ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
+            ("POST", "/v2/devices") => (201, device.clone()),
+            ("POST", p) if p == format!("/v2/devices/{DEVICE}/entitlement") => (200, entitlement_answer(base)),
+            _ => (404, String::new()),
+        }
+    });
+    let pages = Arc::new(Mutex::new(Vec::new()));
+    let opened = open_as(
+        &base,
+        AppClientTag::Macos,
+        Some(Box::new(WebSession(pages.clone(), true))),
+    )
+    .await;
+
+    opened.service.sign_in(None).await.unwrap();
+    let bearer = opened.service.access_token().await.unwrap();
+    let server = opened.service.server();
+    let refused = opened
+        .service
+        .choose_server(Some("https://api.example.com".to_owned()))
+        .await;
+
+    let (page, scheme) = pages.lock().unwrap()[0].clone();
+    assert_eq!(scheme, "app.tablepro");
+    assert!(page.contains("client_id=tablepro-macos"), "{page}");
+    assert_eq!(opened.service.status().features, ["shared_links"]);
+    assert_eq!(bearer.token.expose_secret(), "stub-access");
+    assert_eq!(bearer.api_url, format!("{base}/v2"));
+    assert_eq!(server.api_origin, base);
+    assert!(!server.is_production && !server.others_allowed);
+    assert_eq!(refused.unwrap_err().code(), "account.server_managed");
+    assert!(opened.service.license().is_none());
+    assert_eq!(refresh_token(&opened.items).as_deref(), Some("stub-refresh"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_web_session_the_person_closed_cancels_the_sign_in() {
+    let pages = Arc::new(Mutex::new(Vec::new()));
+    let opened = open_as(
+        &unreachable(),
+        AppClientTag::Macos,
+        Some(Box::new(WebSession(pages, false))),
+    )
+    .await;
+
+    let ended = opened.service.sign_in(None).await;
+
+    assert_eq!(ended, Err(CoreError::Cancelled));
+    assert_eq!(opened.service.status().state, AccountStateTag::SignedOut);
 }
 
 #[cfg(feature = "engines")]
@@ -368,12 +473,11 @@ mod shares {
         let base = cloud({
             let bodies = bodies.clone();
             let device = device_answer();
-            let entitlement = entitlement_answer();
             let created = created();
-            move |method, path, body| match (method, path) {
+            move |base, method, path, body| match (method, path) {
                 ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
                 ("POST", "/v2/devices") => (201, device.clone()),
-                ("POST", p) if p == format!("/v2/devices/{DEVICE}/entitlement") => (200, entitlement.clone()),
+                ("POST", p) if p == format!("/v2/devices/{DEVICE}/entitlement") => (200, entitlement_answer(base)),
                 ("POST", "/v2/shares") => {
                     bodies.lock().unwrap().push(body.to_owned());
                     (201, created.clone())

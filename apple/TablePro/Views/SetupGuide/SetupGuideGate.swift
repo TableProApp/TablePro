@@ -5,7 +5,7 @@
 
 import Foundation
 
-// The macOS rows of the gate table in core/docs/decisions/0049-a-setup-guide-shows-on-an-empty-library.md.
+// The macOS rows of the gate table in core/docs/decisions/0051-a-setup-guide-shows-on-an-empty-library.md.
 internal enum SetupGuideGate {
     internal enum Trigger: Equatable, Sendable {
         case launch

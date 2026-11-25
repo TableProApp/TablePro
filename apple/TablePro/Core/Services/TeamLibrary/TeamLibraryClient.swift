@@ -15,6 +15,8 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
     // No seat, the team's plan lacks team_library, or the team is gone: the library is not this account's to read.
     case unreadable
     case writeForbidden
+    // A company server past its license's grace takes no pushes; pulls go on, and the edits wait on this Mac.
+    case licenseExpired
     // The pull's 422: the server cannot decode the cursor.
     case cursorRefused
     // The server refused the push as sent (422, 413); sending it again changes nothing. Names the refused item when
@@ -30,6 +32,7 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
         case .signedOut: "signedOut"
         case .unreadable: "unreadable"
         case .writeForbidden: "writeForbidden"
+        case .licenseExpired: "licenseExpired"
         case .cursorRefused: "cursorRefused"
         case .refused: "refused"
         }
@@ -39,7 +42,7 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
         switch self {
         case .offline, .rateLimited, .server:
             return true
-        case .signedOut, .unreadable, .writeForbidden, .cursorRefused, .refused:
+        case .signedOut, .unreadable, .writeForbidden, .licenseExpired, .cursorRefused, .refused:
             return false
         }
     }
@@ -50,9 +53,14 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
             return .signedOut
         case .server(let status, _) where status == 401:
             return .signedOut
+        case .server(_, "device_revoked"):
+            return .signedOut
         case .server(let status, _) where status == 429:
             return .rateLimited(retryAfter: nil)
         case .server(let status, _) where status >= 500:
+            return .server
+        // Status 0 is the core refusing the bearer: nothing reached the library, so the edits stay for a retry.
+        case .server(0, _):
             return .server
         case .server:
             return .refused(nil)
@@ -74,7 +82,7 @@ internal enum TeamLibraryPushAnswer: Sendable {
     case refusedChange(Int)
 }
 
-// The /v2 team library calls through the generated client, which carries the session's access token.
+// The /v2 team library calls through the generated client, which carries the core's access token to its server.
 internal struct TeamLibraryClient: Sendable {
     static let pageSize: Int64 = 500
 
@@ -136,8 +144,11 @@ internal struct TeamLibraryClient: Sendable {
             case .unauthorized:
                 throw TeamLibraryFailure.signedOut
             case .forbidden(let answer):
-                let problem = try answer.body.applicationProblemJson
-                throw problem.code == "library_write_forbidden" ? TeamLibraryFailure.writeForbidden : .unreadable
+                switch try answer.body.applicationProblemJson.code {
+                case "library_write_forbidden": throw TeamLibraryFailure.writeForbidden
+                case "license_expired": throw TeamLibraryFailure.licenseExpired
+                default: throw TeamLibraryFailure.unreadable
+                }
             case .notFound:
                 throw TeamLibraryFailure.unreadable
             case .contentTooLarge:

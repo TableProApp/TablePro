@@ -39,16 +39,17 @@ impl Account {
             .as_ref()
             .is_some_and(|snapshot| snapshot.columns.len() > MAX_SHARE_COLUMNS);
         let body = create_body(request)?;
-        let (bearer, attempt) = {
+        // The server is taken with the token, so a token never goes to a server picked during the upload.
+        let (bearer, server, attempt) = {
             let mut session = self.inner.session.lock().await;
             let taken = match session.waited(Call::ShareCreate) {
                 Ok(()) => self.bearer(&mut session, false).await,
                 Err(error) => Err(error),
             };
             let bearer = self.ended_by(&mut session, taken).await?;
-            (bearer, self.inner.attempts.load(Ordering::SeqCst))
+            (bearer, self.current(), self.inner.attempts.load(Ordering::SeqCst))
         };
-        let api = self.api(bearer.lasting(UPLOAD_TIMEOUT));
+        let api = v2::Client::new_with_client(&server.api, self.inner.http.clone(), bearer.lasting(UPLOAD_TIMEOUT));
         let sent = answer(api.create_share(&body).await).await;
         let mut session = self.inner.session.lock().await;
         // A sign-in or sign-out since the token was taken owns the session now.
@@ -117,13 +118,22 @@ impl Account {
         if !is_share_token(token) {
             return Err(not_found("not a share token"));
         }
-        let api = self.api(Bearer::public());
+        let api = v2::Client::new_with_client(&self.shared_links_api(), self.inner.http.clone(), Bearer::public());
         let password = password
             .map(|password| sent_share_password(password.expose_secret()))
             .filter(|password| !password.is_empty());
         answer(api.get_shared(token, password).await)
             .await
             .map(SharedLink::from)
+    }
+
+    // A link names no server, and only tablepro.app makes them, so a company server never sees its token or password.
+    pub(super) fn shared_links_api(&self) -> String {
+        let server = self.current();
+        match server.is_company() {
+            true => crate::account_settings::Endpoints::production().api().to_owned(),
+            false => server.api.clone(),
+        }
     }
 
     // Each call holds the session, waits out its 429, takes the bearer and ends the session on a refused sign-in.
@@ -247,6 +257,7 @@ mod tests {
     use crate::browser::BrowserLauncher;
     use crate::entitlement::test_tokens::keys;
     use crate::machine_id::MachineId;
+    use crate::server::{FixedServer, ServerSettings};
     use crate::share::ShareKind;
     use crate::token_vault::RefreshTokenVault;
 
@@ -364,19 +375,23 @@ mod tests {
             .expect("the account file");
         let settings = AccountSettings {
             client: AppClient::WINDOWS,
-            endpoints,
+            server: ServerSettings::Fixed(FixedServer {
+                endpoints,
+                keys: keys(),
+                issuer: crate::fakes::ISSUER.to_owned(),
+            }),
             device: DeviceDescription {
                 name: "Lab".to_owned(),
                 app_version: "1.0.0".to_owned(),
                 os_version: "Windows 11".to_owned(),
             },
             machine_id: MachineId::derive_machine_guid("d3b07384-d113-4ec6-a2f1-6a3f0c2e9b7a").expect("a machine"),
-            keys: keys(),
             account_file: dir.join("account.json"),
             callback_page: CallbackPage {
                 finished: String::new(),
                 unknown: String::new(),
             },
+            legacy_entitlement_file: None,
         };
         let account = Account::new(
             settings,

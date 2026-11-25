@@ -12,7 +12,7 @@ public sealed partial class ShellTests
 
     [Theory]
     [MemberData(nameof(Themes))]
-    // Changed on purpose: the setup guide holds importing and the sample, so the empty page keeps two cards (core 0049).
+    // Changed on purpose: the setup guide holds importing and the sample, so the empty page keeps two cards (core 0051).
     public void AnEmptyLibraryAfterTheGuideShowsNewConnectionAndSetUpAndNoRail(string theme)
     {
         using var app = AppSession.Launch(theme);

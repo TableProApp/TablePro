@@ -11,7 +11,7 @@ This file covers the macOS and iOS apps in `apple/`, and every command in it run
 | SwiftLint | 0.65.1 | The version CI runs |
 | GitHub CLI | any | Optional: `scripts/download-libs.sh` falls back to `curl` |
 | Go | `toolchain` in `Native/HanaBridge/go.mod` | SAP HANA plugin only: run `scripts/build-hana.sh` with no argument before building `HanaDriver` or `AllPlugins`. When the installed `go` is another release, `go` switches to that toolchain itself |
-| Rust | `Native/DamengBridge/rust-toolchain.toml` | Dameng plugin only, through [rustup](https://rustup.rs), which installs it: run `scripts/build-dameng.sh arm64` before building `DamengDriver` or `AllPlugins` |
+| Rust | `rust-toolchain.toml` at the repository root | Through [rustup](https://rustup.rs), which installs it. The app links the shared core: run `scripts/build-core.sh arm64` (or `x86_64`) before the first build and after a change under `core/`. The Dameng plugin pins its own in `Native/DamengBridge/rust-toolchain.toml`: run `scripts/build-dameng.sh arm64` before building `DamengDriver` or `AllPlugins` |
 
 Fork the repo on GitHub, then:
 
@@ -19,6 +19,7 @@ Fork the repo on GitHub, then:
 git clone https://github.com/<your-fork>/TablePro.git && cd TablePro/apple
 brew install xcodegen swiftlint
 scripts/download-libs.sh
+scripts/build-core.sh arm64
 cp Configs/Secrets.xcconfig.example Configs/Secrets.xcconfig
 scripts/generate-project.sh
 open TablePro.xcodeproj
@@ -164,4 +165,6 @@ The export builds the app first, so run `scripts/download-libs.sh` and `scripts/
 | `error: …/tablepro-hana-helper is missing or has no <arch> slice` | Run `scripts/build-hana.sh` with no argument, which builds both architectures |
 | Signing errors after a fresh clone | `Configs/Base.xcconfig` defaults to the maintainer's team and includes `Secrets.xcconfig` optionally, so a build without it still runs and fails to sign. Create the file with your team |
 | Package resolution fails | `Cmd+Shift+K` and reopen Xcode; then `rm -rf ~/Library/Developer/Xcode/DerivedData` |
+| `local binary target 'TableProFFIC' ... does not contain a binary artifact` | The core is not built: `scripts/build-core.sh arm64` |
+| `UniFFI API checksum mismatch` at launch | The bindings and the library come from different builds of the core: `scripts/build-core.sh arm64` again |
 | Test runs left defaults domains (`com.TablePro.tests.*`, `com.TablePro.uitest.*`) or temp folders behind | Quit TablePro, then run `scripts/clean-test-residue.sh`. It only reports until you pass `--apply` |

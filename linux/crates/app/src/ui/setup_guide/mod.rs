@@ -1,4 +1,4 @@
-// The setup guide, a page of the session window that ends with a connection open (core ADR 0049).
+// The setup guide, a page of the session window that ends with a connection open (core ADR 0051).
 
 mod imp;
 #[cfg(test)]

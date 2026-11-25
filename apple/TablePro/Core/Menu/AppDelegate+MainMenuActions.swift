@@ -26,7 +26,8 @@ extension AppDelegate: NSMenuItemValidation {
     }
 
     @objc func manageSharedLinks(_ sender: Any?) {
-        _ = WebPageOpener.open(AccountServices.shared.configuration.portalSharedLinks, scope: .httpsOrLoopbackHTTP)
+        guard ShareAvailability.isAvailable else { return }
+        _ = WebPageOpener.open(AccountServices.shared.portal.portalSharedLinks, scope: .httpsOrLoopbackHTTP)
     }
 
     @objc func openMCPActivity(_ sender: Any?) {
@@ -147,6 +148,8 @@ extension AppDelegate: NSMenuItemValidation {
             return UpdateCenter.shared.isPrimaryActionEnabled
         case #selector(reopenClosedTab(_:)):
             return !RecentlyClosedTabStore.shared.entries.isEmpty
+        case #selector(manageSharedLinks(_:)):
+            return ShareAvailability.isAvailable
         default:
             return true
         }

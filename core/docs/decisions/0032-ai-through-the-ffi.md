@@ -1,6 +1,6 @@
 # 0032: The AI assistant crosses the FFI
 
-- **Status**: Accepted
+- **Status**: Accepted; the model list amended by 0049
 - **Date**: 2026-11-18
 
 ## Context

@@ -1,6 +1,6 @@
 # 0008: Importers from other apps live in the core
 
-- **Status**: Accepted; the Windows host and the FFI surface amended by 0033, other apps' stores by 0039, availability and counts by 0049
+- **Status**: Accepted; the Windows host and the FFI surface amended by 0033, other apps' stores by 0039, availability and counts by 0051
 - **Date**: 2026-11-03
 
 ## Context

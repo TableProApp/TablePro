@@ -1,0 +1,130 @@
+name: AI models
+
+# Publishes the AI model catalog to https://updates.tablepro.app/ai/models-v1.json, where the apps read the model facts
+# a provider's own list leaves out. nightly.yml calls it to regenerate the catalog from models.dev; the generator
+# refuses a result that drops what the published one listed. A push to main that changes the bundled copy publishes
+# that copy as committed, the reviewed way past those guards. A dispatch from another branch only generates.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [core/crates/ai/ai-models.json]
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Generate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The branch rather than the site, which lags it until Pages deploys and then caches for ten minutes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name != 'push'
+        with:
+          ref: gh-pages
+          path: build/gh-pages
+          persist-credentials: false
+
+      - name: Take the committed catalog
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          mkdir -p build/ai-models
+          cp core/crates/ai/ai-models.json build/ai-models/models-v1.json
+
+      # published.json lets Publish see whether gh-pages moved after this read.
+      - name: Generate the catalog
+        if: github.event_name != 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/ai-models
+          previous=core/crates/ai/ai-models.json
+          if [ -f build/gh-pages/ai/models-v1.json ]; then
+            previous=build/gh-pages/ai/models-v1.json
+            cp "$previous" build/ai-models/published.json
+          fi
+          python3 -I scripts/ai-models/generate.py --previous "$previous" --output build/ai-models/models-v1.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ai-models
+          path: build/ai-models
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  publish:
+    name: Publish
+    needs: generate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: gh-pages
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ai-models
+          path: build/ai-models
+
+      # Keeps its credential: the job pushes gh-pages with it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages # zizmor: ignore[artipacked]
+          path: build/gh-pages
+
+      # github-pages deploys only from a v* or windows-v* tag (pages.yml).
+      - name: Push gh-pages and deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          site=build/gh-pages/ai/models-v1.json
+          read_before=build/ai-models/published.json
+          if [ "$EVENT" != push ] && { [ -f "$read_before" ] || [ -f "$site" ]; } && ! cmp -s "$read_before" "$site"; then
+            echo "::warning::gh-pages changed after Generate read ai/models-v1.json, so this run publishes nothing; the next run starts from the new file"
+            exit 0
+          fi
+          mkdir -p build/gh-pages/ai
+          cp build/ai-models/models-v1.json "$site"
+          cd build/gh-pages
+          git add ai/models-v1.json
+          if git diff --cached --quiet; then
+            # A run that pushed and then failed to deploy left gh-pages ahead of the site; a retry deploys it.
+            if curl -fsS --max-time 30 -o ../live-models-v1.json https://updates.tablepro.app/ai/models-v1.json \
+              && cmp -s ../live-models-v1.json ai/models-v1.json; then
+              echo "ai/models-v1.json is unchanged and deployed"
+              exit 0
+            fi
+            echo "gh-pages holds a file the site does not serve yet; deploying it"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "ai-models: update ai/models-v1.json"
+            git push origin HEAD:gh-pages
+          fi
+          tag="$(git -c versionsort.suffix=-beta ls-remote --tags --refs --sort=-v:refname origin 'refs/tags/v*' \
+            | awk 'NR == 1 { sub("refs/tags/", "", $2); print $2 }')"
+          if [ -z "$tag" ]; then
+            echo "::error::No v* tag to deploy Pages from"
+            exit 1
+          fi
+          gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref "$tag"
