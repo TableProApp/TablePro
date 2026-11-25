@@ -8,7 +8,7 @@ use tablepro_keys::cert::{AccountCertificate, CertKind};
 use tablepro_keys::encoding::{AccountId, Origin};
 
 use super::book::{TeamBook, account_holds};
-use super::facts::{Certificate, TeamFacts};
+use super::facts::{Certificate, TeamFacts, known_pin};
 use crate::api::error::SyncError;
 use crate::api::key_flows::{MemberKeyStatus, Roster};
 use crate::api::scopes::ServerLimits;
@@ -62,7 +62,7 @@ pub(crate) async fn someone_can_reconfirm(
         if !holders.iter().any(|holder| holder.account == member.account) {
             continue;
         }
-        match facts.pin(member.account).await? {
+        match known_pin(facts, member.account).await? {
             None => return Ok(true),
             Some(pin) if pin.alert => return Ok(true),
             Some(_) => {
@@ -84,7 +84,7 @@ pub(crate) async fn member_status(
     if facts.chain(account).await?.is_empty() {
         return Ok(MemberKeyStatus::NoKeys);
     }
-    Ok(match facts.pin(account).await? {
+    Ok(match known_pin(facts, account).await? {
         Some(pin) if pin.alert => MemberKeyStatus::Alert,
         _ if account_holds(origin, facts, holders, account).await? => MemberKeyStatus::Holder,
         _ => MemberKeyStatus::AwaitingConfirmation,
@@ -96,7 +96,7 @@ pub(crate) async fn current_certificate(
     facts: &mut dyn TeamFacts,
     account: AccountId,
 ) -> Result<Option<AccountCertificate>, SyncError> {
-    let Some(pin) = facts.pin(account).await? else {
+    let Some(pin) = known_pin(facts, account).await? else {
         return Ok(None);
     };
     Ok(match facts.certificate(account, pin.av).await? {
@@ -126,7 +126,7 @@ pub(crate) async fn rotation_recipients(
     accounts.insert(me);
     let mut recipients = Vec::new();
     for account in accounts {
-        if facts.pin(account).await?.is_some_and(|pin| pin.alert)
+        if known_pin(facts, account).await?.is_some_and(|pin| pin.alert)
             || !account_holds(origin, facts, holders, account).await?
         {
             continue;

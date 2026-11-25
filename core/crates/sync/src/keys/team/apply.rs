@@ -6,7 +6,7 @@ use tablepro_keys::encoding::{TeamId, Version};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::wrap::Recipient;
 
-use super::book::{Progress, TeamBook, TeamEvent};
+use super::book::{Progress, TeamBook, TeamEvent, record_signed};
 use super::roster;
 use super::service_facts::{FactsCache, ServiceFacts};
 use crate::api::error::SyncError;
@@ -198,8 +198,9 @@ impl KeyService {
             Err(SyncError::Keys(KeysError::Conflict)) => {
                 refuse(progress, &record_id, KeysError::Conflict);
                 outcome.conflict = true;
-                // Another version record at an id the device holds is a fork of the team's keys, which ends it.
-                if object.id.kind() == KeyKind::Version && book.end_now() {
+                // Two signed version records at one id are a fork of the team's keys, which ends it; junk at a held
+                // id is only an alarm, so a server cannot end a team without a signer's key.
+                if self.is_fork(txn, cache, scope, object).await? && book.end_now() {
                     progress.events.push(TeamEvent::Ended);
                 }
                 return Ok(());
@@ -223,6 +224,34 @@ impl KeyService {
             }
         }
         Ok(())
+    }
+
+    async fn is_fork(
+        &self,
+        txn: &mut dyn StateTxn,
+        cache: &mut FactsCache,
+        scope: ScopeName,
+        offered: &KeyObject,
+    ) -> Result<bool, SyncError> {
+        let Some(offered) = offered.version_record() else {
+            return Ok(false);
+        };
+        let id = KeyRecordId::Version(offered.key).to_wire();
+        let Some(held) = self
+            .held_object(txn, scope, KeyKind::Version, &id)
+            .await?
+            .and_then(|held| held.object.version_record())
+        else {
+            return Ok(false);
+        };
+        let mut facts = ServiceFacts {
+            service: self,
+            txn,
+            scope,
+            cache,
+        };
+        Ok(record_signed(self.origin(), &mut facts, &held).await?
+            && record_signed(self.origin(), &mut facts, &offered).await?)
     }
 
     async fn commit_team(

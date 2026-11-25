@@ -498,12 +498,14 @@ async fn a_restore_stop_is_left_to_the_restore_flow_and_a_catch_up_failure_met_m
     assert_eq!(passing.row().unwrap().version, v(5));
 
     let mut failing = book(&t.me, Some(waiting));
-    let by_outsider = Account::generated(11, 1);
-    t.facts.know(&by_outsider, 1);
-    let objects = version(6, Start::Next, &six, Some(&five_key), (&by_outsider, 1), &[(&t.me, 1)]);
+    t.a.keys
+        .insert(2, tablepro_keys::keys::AccountKeys::generate().unwrap());
+    t.a.sign_rotation(2);
+    t.facts.know(&t.a, 2);
+    let objects = version(6, Start::Next, &six, Some(&five_key), (&t.a, 1), &[(&t.me, 1)]);
     insert_all(&mut failing, &objects);
     let progress = failing.advance(&mut t.facts).await.unwrap();
-    assert_eq!(refusal(&progress, &objects, "key.version"), Some("keys.not_holder"));
+    assert_eq!(refusal(&progress, &objects, "key.version"), Some("keys.stale"));
     assert_eq!(failing.row().unwrap().stopped_cause, Some(StoppedCause::CatchUp));
 }
 
@@ -843,4 +845,165 @@ async fn a_team_due_after_a_members_own_account_rotation_is_left_to_that_member_
             .await
             .unwrap()
     );
+}
+
+// The security pass's attacks on the first cut, each now failing closed.
+
+#[tokio::test]
+async fn a_pin_left_behind_a_held_certificate_under_its_ik_still_makes_an_old_key_signature_stale() {
+    let (a, m, me) = (
+        Account::generated(1, 3),
+        Account::generated(2, 1),
+        Account::generated(3, 1),
+    );
+    let mut facts = TestFacts::default();
+    facts.know(&a, 1);
+    facts
+        .certificates
+        .insert((a.id, v(3)), Certificate::Usable(a.certificates[&3].clone()));
+    facts.know(&m, 1);
+    facts.know(&me, 1);
+    let mut team = book(&me, Some(row(6, &[a.holder(1), me.holder(1)], KeyVersionState::Ok)));
+    let (six, seven, eight) = (key(), key(), key());
+    let old_key = version(7, Start::Next, &seven, Some(&six), (&a, 1), &[(&m, 1)]);
+    insert_all(&mut team, &old_key);
+    insert_all(
+        &mut team,
+        &version(8, Start::Next, &eight, Some(&seven), (&m, 1), &[(&m, 1), (&me, 1)]),
+    );
+
+    let progress = team.advance(&mut facts).await.unwrap();
+
+    assert_eq!(refusal(&progress, &old_key, "key.version"), Some("keys.stale"));
+    assert_eq!(
+        (team.row().unwrap().version, team.row().unwrap().state),
+        (v(6), KeyVersionState::Stopped)
+    );
+}
+
+#[tokio::test]
+async fn an_ik_the_pin_saw_replaced_never_signs_a_version_that_advances() {
+    let (mut a, me) = (Account::generated(1, 1), Account::generated(3, 1));
+    let old_holder = a.holder(1);
+    let old_ik = a.change_ik(2, true);
+    let mut facts = TestFacts::default();
+    facts.know(&a, 2);
+    facts.know(&me, 1);
+    let mut attacker = a.clone();
+    attacker.ik = old_ik;
+    attacker
+        .keys
+        .insert(3, tablepro_keys::keys::AccountKeys::generate().unwrap());
+    attacker.sign_rotation(3);
+    facts
+        .certificates
+        .insert((a.id, v(3)), Certificate::Retired(attacker.certificates[&3].clone()));
+    let mut team = book(&me, Some(row(5, &[old_holder, me.holder(1)], KeyVersionState::Ok)));
+    let forged = version(6, Start::Next, &key(), Some(&key()), (&attacker, 3), &[(&me, 1)]);
+    insert_all(&mut team, &forged);
+
+    let progress = team.advance(&mut facts).await.unwrap();
+
+    assert_eq!(refusal(&progress, &forged, "key.version"), Some("keys.retired_ik"));
+    assert_eq!(team.row().unwrap().version, v(5));
+}
+
+#[tokio::test]
+async fn an_imported_version_whose_signer_certificate_is_withheld_holds_the_next_instead_of_stopping() {
+    let (a, b, me) = (
+        Account::generated(1, 1),
+        Account::generated(2, 1),
+        Account::generated(3, 1),
+    );
+    let mut facts = TestFacts::default();
+    facts.know(&b, 1);
+    facts.know(&me, 1);
+    let (five, six) = (key(), key());
+    let five_objects = version(5, Start::Next, &five, Some(&key()), (&a, 1), &[(&b, 1), (&me, 1)]);
+    let mut imported = row(5, &[], KeyVersionState::Ok);
+    imported.record = five_objects[0].version_record().unwrap().digest(&origin()).unwrap();
+    let mut team = book(&me, Some(imported));
+    insert_all(&mut team, &five_objects);
+    let next = version(6, Start::Next, &six, Some(&five), (&b, 1), &[(&b, 1), (&me, 1)]);
+    insert_all(&mut team, &next);
+
+    let progress = team.advance(&mut facts).await.unwrap();
+
+    assert!(progress.events.is_empty());
+    assert!(progress.held.contains(&next[0].id.to_wire()));
+    assert_eq!(team.row().unwrap().state, KeyVersionState::Ok);
+}
+
+#[tokio::test]
+async fn an_unsigned_record_at_the_version_held_is_an_alarm_that_ends_nothing() {
+    let (a, me) = (Account::generated(1, 1), Account::generated(3, 1));
+    let mut facts = TestFacts::default();
+    facts.know(&a, 1);
+    facts.know(&me, 1);
+    let genuine = version(5, Start::Next, &key(), Some(&key()), (&a, 1), &[(&me, 1)]);
+    let mut imported = row(5, &[], KeyVersionState::Ok);
+    imported.record = genuine[0].version_record().unwrap().digest(&origin()).unwrap();
+    let mut team = book(&me, Some(imported));
+    let junk = VersionRecord::sign(
+        &origin(),
+        KeyRef {
+            owner: team_id().0,
+            purpose: KeyPurpose::Team,
+            version: v(5),
+        },
+        Start::Next,
+        &key(),
+        a.id,
+        v(1),
+        &Ed25519Seed::generate().unwrap(),
+    )
+    .unwrap();
+    let junk = KeyObject {
+        id: KeyRecordId::Version(junk.key),
+        body: KeyBody::Version(VersionBody::of(&junk)),
+    };
+    team.insert(&junk, true).unwrap();
+
+    let progress = team.advance(&mut facts).await.unwrap();
+
+    assert_eq!(progress.refused[0].error.code(), "keys.conflict");
+    assert!(!progress.events.contains(&TeamEvent::Ended));
+    assert_eq!(team.row().unwrap().state, KeyVersionState::Ok);
+}
+
+#[tokio::test]
+async fn a_forged_version_below_the_join_point_opens_nothing_the_ring_chain_does_not_give() {
+    let (a, m, me) = (
+        Account::generated(1, 1),
+        Account::generated(2, 1),
+        Account::generated(3, 1),
+    );
+    let mut facts = TestFacts::default();
+    facts.know(&a, 1);
+    facts.know(&m, 1);
+    facts.know(&me, 1);
+    let (three, four, five, forged_three) = (key(), key(), key(), key());
+    let mut team = book(&me, None);
+    insert_all(
+        &mut team,
+        &version(5, Start::Next, &five, Some(&four), (&a, 1), &[(&a, 1), (&me, 1)]),
+    );
+    insert_all(&mut team, &version(4, Start::Next, &four, Some(&three), (&a, 1), &[]));
+    assert_eq!(
+        team.advance(&mut facts).await.unwrap().events,
+        [TeamEvent::Joined { version: v(5) }]
+    );
+    insert_all(
+        &mut team,
+        &version(3, Start::Over, &forged_three, None, (&m, 1), &[(&me, 1)]),
+    );
+    let keyring = TestKeyring { account: me.clone() };
+
+    let read = secrets::team_key(&keyring, super::team(), &team, &mut facts, v(3), v(5)).await;
+
+    assert_eq!(read.unwrap_err().code(), "sync.not_allowed");
+    let four_read = secrets::team_key(&keyring, super::team(), &team, &mut facts, v(4), v(5))
+        .await
+        .unwrap();
+    assert_eq!(four_read.expose(), four.expose());
 }

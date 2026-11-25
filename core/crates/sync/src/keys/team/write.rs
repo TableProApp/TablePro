@@ -13,7 +13,7 @@ use tablepro_keys::scope_key::Start;
 
 use super::book::{TeamBook, account_holds};
 use super::build::{self, NewVersion, Signer};
-use super::facts::TeamFacts;
+use super::facts::known_pin;
 use super::roster;
 use super::secrets;
 use super::service_facts::{FactsCache, ServiceFacts};
@@ -258,7 +258,7 @@ impl KeyService {
             what: "confirm a member with no keys",
         })?;
         facts.offer(&newest).await?;
-        let certificate = match TeamFacts::pin(&mut facts, account).await? {
+        let certificate = match known_pin(&mut facts, account).await? {
             Some(pin) if !pin.alert => roster::current_certificate(&mut facts, account).await?,
             _ => None,
         }
@@ -374,7 +374,7 @@ impl KeyService {
             if let Some(newest) = facts.chain_newest(account).await? {
                 facts.offer(&newest).await?;
             }
-            let certificate = match TeamFacts::pin(&mut facts, account).await? {
+            let certificate = match known_pin(&mut facts, account).await? {
                 Some(pin) if !pin.alert => roster::current_certificate(&mut facts, account).await?,
                 _ => None,
             }

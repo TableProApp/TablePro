@@ -112,8 +112,10 @@ async fn verified(
     account: AccountId,
     av: Version,
 ) -> Result<Option<tablepro_keys::cert::AccountCertificate>, SyncError> {
-    Ok(match facts.certificate(account, av).await? {
-        Some(Certificate::Usable(certificate) | Certificate::Alerted(certificate)) => Some(certificate),
-        _ => None,
-    })
+    Ok(facts
+        .certificate(account, av)
+        .await?
+        .as_ref()
+        .and_then(Certificate::verifying)
+        .cloned())
 }

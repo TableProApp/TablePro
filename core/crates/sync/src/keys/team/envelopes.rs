@@ -16,6 +16,7 @@ use tablepro_keys::json;
 use tablepro_keys::wrap::Recipient;
 
 use super::book::TeamBook;
+use super::facts::{TeamFacts, known_pin};
 use super::roster::holder_accounts;
 use super::secrets;
 use super::service_facts::{FactsCache, ServiceFacts};
@@ -207,8 +208,10 @@ impl KeyService {
         })
     }
 
-    // Every envelope held under a version some account that no longer holds the team key could read: a reader of
-    // version w reads every version up to w through the rings.
+    // Every envelope held under a version a removed party could read, a reader of version w reading every version up
+    // to w through the rings. A removed party is an account that no longer holds the team key, or the devices an
+    // account left behind when its `av` moved past the one a wrap names, as a device removal does (0056, Teams, Old
+    // data). A replace moves the `av` too, so the list can hold more than a removal exposed, never less.
     pub(super) async fn readable_by_removed(&self, scope: ScopeName) -> Result<Vec<EnvelopeId>, SyncError> {
         let ScopeName::Team(team) = scope else {
             return Err(SyncError::NotAllowed {
@@ -221,13 +224,25 @@ impl KeyService {
             return Ok(Vec::new());
         };
         let current = holder_accounts(&row.holders);
-        let newest_read_by_removed = book
+        let mut cache = FactsCache::default();
+        let mut facts = ServiceFacts {
+            service: self,
+            txn: &mut *txn,
+            scope,
+            cache: &mut cache,
+        };
+        let versions: Vec<Version> = book
             .versions()
             .map(|record| record.key.version)
             .filter(|version| *version <= row.version)
-            .filter(|version| readers(&book, *version).iter().any(|reader| !current.contains(reader)))
-            .max();
-        let Some(limit) = newest_read_by_removed else {
+            .collect();
+        let mut limit = None;
+        for version in versions {
+            if read_by_removed(&book, &mut facts, &current, version).await? {
+                limit = limit.max(Some(version));
+            }
+        }
+        let Some(limit) = limit else {
             return Ok(Vec::new());
         };
         let held = txn.scan(&RowRange::Scope(Table::KeyEnvelopes, scope)).await?;
@@ -241,16 +256,26 @@ impl KeyService {
     }
 }
 
-fn readers(book: &TeamBook, version: Version) -> BTreeSet<AccountId> {
-    let mut readers: BTreeSet<AccountId> = book
+async fn read_by_removed(
+    book: &TeamBook,
+    facts: &mut dyn TeamFacts,
+    current: &BTreeSet<AccountId>,
+    version: Version,
+) -> Result<bool, SyncError> {
+    let mut readers: Vec<(AccountId, Version)> = book
         .wraps_of(version)
         .filter_map(|wrap| match wrap.target.recipient {
-            Recipient::Account(account) => Some(account),
+            Recipient::Account(account) => Some((account, wrap.target.recipient_version)),
             Recipient::Device(_) => None,
         })
         .collect();
     if let Some(record) = book.version_record(version) {
-        readers.insert(record.signer);
+        readers.push((record.signer, record.signer_av));
     }
-    readers
+    for (account, av) in readers {
+        if !current.contains(&account) || known_pin(facts, account).await?.is_some_and(|pin| av < pin.av) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

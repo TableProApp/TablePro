@@ -14,7 +14,7 @@ use super::facts::{Certificate, PinFacts, TeamFacts};
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::state::StateTxn;
-use crate::keys::{KeyService, PinChange};
+use crate::keys::{IkStanding, KeyService, PinChange};
 
 #[derive(Debug, Default)]
 pub(crate) struct FactsCache {
@@ -71,7 +71,8 @@ impl ServiceFacts<'_> {
             .verify_certificate(&mut *self.txn, self.scope, &certificate)
             .await
         {
-            Ok(_) => Ok(Certificate::Usable(certificate)),
+            Ok(IkStanding::Replaced) => Ok(Certificate::Retired(certificate)),
+            Ok(IkStanding::Pinned | IkStanding::Endorsed) => Ok(Certificate::Usable(certificate)),
             Err(SyncError::Keys(KeysError::Unendorsed)) => Ok(Certificate::Alerted(certificate)),
             Err(SyncError::Keys(error)) => Ok(Certificate::Invalid(error)),
             Err(other) => Err(other),

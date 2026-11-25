@@ -45,10 +45,12 @@ async fn verified(
     account: AccountId,
     av: Version,
 ) -> Result<Option<AccountCertificate>, SyncError> {
-    Ok(match facts.certificate(account, av).await? {
-        Some(Certificate::Usable(certificate) | Certificate::Alerted(certificate)) => Some(certificate),
-        Some(Certificate::Invalid(_)) | None => None,
-    })
+    Ok(facts
+        .certificate(account, av)
+        .await?
+        .as_ref()
+        .and_then(Certificate::verifying)
+        .cloned())
 }
 
 async fn verified_record(
@@ -125,7 +127,10 @@ async fn walk_down(
     Ok(Some(key))
 }
 
-// `newest` bounds the search: the version the device advanced to, above which it holds no key.
+// `newest` bounds the search: the version the device advanced to, above which it holds no key. Below it, the chain of
+// rings from a version the device took is the authority: a direct wrap of an older version counts only where no ring
+// links it to the version above, as after a restart, since a record below the version held may never have passed the
+// holder rules.
 pub(crate) async fn team_key(
     service: &dyn Keyring,
     team: TeamId,
@@ -134,17 +139,28 @@ pub(crate) async fn team_key(
     version: Version,
     newest: Version,
 ) -> Result<ScopeKey, SyncError> {
-    let mut top = version;
-    while top <= newest {
-        if let Some(key) = open_own_wrap(service, book, facts, top).await?
-            && let Some(key) = walk_down(service.origin(), team, book, facts, key, top, version).await?
+    if version > newest {
+        return Err(not_given());
+    }
+    let above = version.next().ok();
+    let mut top = above;
+    while let Some(at) = top.filter(|at| *at <= newest) {
+        if let Some(key) = open_own_wrap(service, book, facts, at).await?
+            && let Some(key) = walk_down(service.origin(), team, book, facts, key, at, version).await?
         {
             return Ok(key);
         }
-        let Ok(next) = top.next() else { break };
-        top = next;
+        top = at.next().ok();
     }
-    Err(SyncError::NotAllowed {
+    let linked = above.is_some_and(|above| above <= newest && book.ring(above).is_some());
+    if !linked && let Some(key) = open_own_wrap(service, book, facts, version).await? {
+        return Ok(key);
+    }
+    Err(not_given())
+}
+
+fn not_given() -> SyncError {
+    SyncError::NotAllowed {
         what: "read a team key this account was not given",
-    })
+    }
 }

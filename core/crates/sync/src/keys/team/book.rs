@@ -15,7 +15,7 @@ use tablepro_keys::scope_key::{Ring, Start, VersionRecord};
 use tablepro_keys::wrap::{Recipient, Wrap};
 
 use super::chain;
-use super::facts::{Certificate, PinFacts, TeamFacts};
+use super::facts::{Certificate, PinFacts, TeamFacts, known_pin};
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::RefusedObject;
@@ -210,11 +210,15 @@ impl TeamBook {
         }
         while let Some(row) = self.row.clone() {
             if row.state != KeyVersionState::Ended
-                && let Some(item) = self.versions.get(&row.version)
+                && let Some(item) = self.versions.get(&row.version).cloned()
                 && item.value.digest(&self.origin)? != row.record
             {
-                progress.refuse(item, KeysError::Conflict);
-                self.end(&mut progress);
+                // Another signed record at the version held is a fork, which ends the team. One that no certificate
+                // signs is refused as an alarm and ends nothing, so a server cannot end a team with junk alone.
+                progress.refuse(&item, KeysError::Conflict);
+                if record_signed(&self.origin, facts, &item.value).await? {
+                    self.end(&mut progress);
+                }
                 break;
             }
             let moved = match (row.state, row.stopped_cause) {
@@ -222,13 +226,13 @@ impl TeamBook {
                 // A restore stop clears in the restore flow once the server holds what it waits for. A catch-up
                 // failure met meanwhile still counts, and makes the stop one only re-confirmation clears (0062).
                 (KeyVersionState::Stopped, Some(StoppedCause::RestoreWait)) => {
-                    self.step(facts, &mut progress, false).await?;
+                    self.step(facts, &mut progress, false, true).await?;
                     false
                 }
                 (KeyVersionState::Stopped, _) => self.clear_stop(facts, &mut progress).await?,
                 (KeyVersionState::Ok, _) => {
-                    self.grow(facts, &mut progress).await?;
-                    self.step(facts, &mut progress, true).await?
+                    let waiting = self.grow(facts, &mut progress).await?;
+                    self.step(facts, &mut progress, true, waiting).await?
                 }
             };
             if !moved {
@@ -380,11 +384,14 @@ impl TeamBook {
     // versions step by one and nothing above it can count until an owner or admin confirms it again.
     // `take` is false while a restore stop waits: the version is judged, and a failure stops the team as a catch-up,
     // but a version that passes waits for the restore flow.
+    // `waiting` is true while the evidence for the held version's holders is incomplete: a version above whose signer
+    // is no holder yet is then held rather than refused, as an object waiting on a certificate is (0056, Rollback).
     async fn step(
         &mut self,
         facts: &mut dyn TeamFacts,
         progress: &mut Progress,
         take: bool,
+        waiting: bool,
     ) -> Result<bool, SyncError> {
         let Some(row) = self.row.clone() else { return Ok(false) };
         let Ok(next) = row.version.next() else { return Ok(false) };
@@ -409,6 +416,9 @@ impl TeamBook {
                 Start::Next => {
                     if holds(&self.origin, facts, &row.holders, &signer).await? {
                         check_signed_under_newest(record.signer_av, pin.av).err()
+                    } else if waiting || row.holders.is_empty() {
+                        progress.hold(&item);
+                        return Ok(false);
                     } else {
                         Some(KeysError::NotHolder)
                     }
@@ -447,13 +457,14 @@ impl TeamBook {
 
     // The holders of the version held: its signer, then each recipient of a wrap a holder signed under its newest
     // `av`, until no wrap adds one. While the team is stopped nothing here runs, so its holders stay as they were.
-    async fn grow(&mut self, facts: &mut dyn TeamFacts, progress: &mut Progress) -> Result<(), SyncError> {
-        let Some(row) = self.row.clone() else { return Ok(()) };
+    // True when some of the evidence still waits for a certificate, so a version above is not judged on it yet.
+    async fn grow(&mut self, facts: &mut dyn TeamFacts, progress: &mut Progress) -> Result<bool, SyncError> {
+        let Some(row) = self.row.clone() else { return Ok(false) };
         let mut holders: BTreeSet<Holder> = row.holders.iter().copied().collect();
         if holders.is_empty() {
             // A version an approval imported, with its record and no holders yet (0056, Approving a device, step 7).
             let Some(item) = self.versions.get(&row.version).cloned() else {
-                return Ok(());
+                return Ok(true);
             };
             match recipient_certificate(facts, item.value.signer, item.value.signer_av).await? {
                 Check::Pass(signer) => {
@@ -464,11 +475,11 @@ impl TeamBook {
                 }
                 Check::Wait => {
                     progress.hold(&item);
-                    return Ok(());
+                    return Ok(true);
                 }
                 Check::Fail(error) => {
                     progress.refuse(&item, error);
-                    return Ok(());
+                    return Ok(true);
                 }
             }
         }
@@ -506,7 +517,7 @@ impl TeamBook {
         if let Some(row) = &mut self.row {
             row.holders = holders.into_iter().collect();
         }
-        Ok(())
+        Ok(waiting)
     }
 
     // A stopped device takes a later version only from an owner's or admin's re-confirming rotation: the version and
@@ -617,9 +628,11 @@ async fn usable_signer(
     let certificate = match facts.certificate(account, av).await? {
         None | Some(Certificate::Alerted(_)) => return Ok(Check::Wait),
         Some(Certificate::Invalid(error)) => return Ok(Check::Fail(error)),
+        // An IK seen replaced verifies the past and never advances: whatever it signs now is forged or stale.
+        Some(Certificate::Retired(_)) => return Ok(Check::Fail(KeysError::RetiredIk)),
         Some(Certificate::Usable(certificate)) => certificate,
     };
-    Ok(match facts.pin(account).await? {
+    Ok(match known_pin(facts, account).await? {
         Some(pin) if !pin.alert => Check::Pass((certificate, pin)),
         _ => Check::Wait,
     })
@@ -636,6 +649,11 @@ async fn recipient_certificate(
         None => Check::Wait,
         Some(Certificate::Invalid(error)) => Check::Fail(error),
         Some(Certificate::Usable(certificate) | Certificate::Alerted(certificate)) => Check::Pass(certificate),
+        // Under a replaced IK, only an `av` from before the replace is a real recipient.
+        Some(Certificate::Retired(certificate)) => match known_pin(facts, account).await? {
+            Some(pin) if certificate.av < pin.av => Check::Pass(certificate),
+            _ => Check::Fail(KeysError::RetiredIk),
+        },
     })
 }
 
@@ -723,7 +741,7 @@ pub(crate) async fn account_holds(
     holders: &[Holder],
     account: AccountId,
 ) -> Result<bool, SyncError> {
-    let Some(pin) = facts.pin(account).await? else {
+    let Some(pin) = known_pin(facts, account).await? else {
         return Ok(false);
     };
     if holders
@@ -736,4 +754,18 @@ pub(crate) async fn account_holds(
         Some(Certificate::Usable(current)) if current.ik == pin.ik => holds(origin, facts, holders, &current).await,
         _ => Ok(false),
     }
+}
+
+// Whether a version record verifies under its signer's certificate at the `av` it names: verifying only.
+pub(crate) async fn record_signed(
+    origin: &Origin,
+    facts: &mut dyn TeamFacts,
+    record: &VersionRecord,
+) -> Result<bool, SyncError> {
+    Ok(facts
+        .certificate(record.signer, record.signer_av)
+        .await?
+        .as_ref()
+        .and_then(Certificate::verifying)
+        .is_some_and(|signer| record.verify(origin, &signer.ask).is_ok()))
 }

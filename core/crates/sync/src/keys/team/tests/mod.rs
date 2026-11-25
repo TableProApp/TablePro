@@ -162,7 +162,9 @@ impl TeamFacts for TestFacts {
             .iter()
             .filter(|((held, _), _)| *held == account)
             .filter_map(|(_, certificate)| match certificate {
-                Certificate::Usable(certificate) | Certificate::Alerted(certificate) => Some(certificate.clone()),
+                Certificate::Usable(certificate)
+                | Certificate::Retired(certificate)
+                | Certificate::Alerted(certificate) => Some(certificate.clone()),
                 Certificate::Invalid(_) => None,
             })
             .collect();
