@@ -7,6 +7,7 @@ private final class InvalidationSpy: TextSelectionManagerDelegate {
     private(set) var setNeedsDisplayCount = 0
 
     func setNeedsDisplay() { setNeedsDisplayCount += 1 }
+    func setNeedsDisplay(_ invalidRect: NSRect) { setNeedsDisplayCount += 1 }
     func estimatedLineHeight() -> CGFloat { 14.0 }
 }
 
@@ -188,6 +189,48 @@ struct SelectionBehaviourTests {
         let afterThird = spy.setNeedsDisplayCount
         manager.addSelectedRange(NSRange(location: 10, length: 2))
         #expect(spy.setNeedsDisplayCount > afterThird)
+    }
+
+    @Test("A caret move redraws the line it leaves and the line it enters, not the whole view")
+    func caretMoveRedrawsOnlyItsLines() throws {
+        let text = (0..<400).map { "SELECT column_\($0) FROM some_table;" }.joined(separator: "\n")
+        let textView = RecordingTextView(string: text)
+        textView.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
+        textView.wrapLines = false
+        textView.frame = NSRect(x: 0, y: 0, width: 900, height: 6_000)
+        textView.updateFrameIfNeeded()
+        textView.layoutManager.invalidateLayoutForRange(textView.documentRange)
+        textView.layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 900, height: 6_000))
+        let manager: TextSelectionManager = textView.selectionManager
+        manager.setSelectedRange(NSRange(location: 3, length: 0))
+        textView.invalidatedRects.removeAll()
+
+        let target = try #require(textView.layoutManager.textLineForIndex(200))
+        manager.setSelectedRange(NSRange(location: target.range.location + 2, length: 0))
+
+        let leftLine = try #require(textView.layoutManager.textLineForIndex(0))
+        let lineHeight = leftLine.height
+        #expect(!textView.invalidatedRects.isEmpty)
+        #expect(textView.invalidatedRects.allSatisfy { $0.height <= lineHeight + 0.5 })
+        #expect(textView.invalidatedRects.contains { $0.minY <= leftLine.yPos && $0.maxY >= leftLine.yPos + lineHeight })
+        #expect(textView.invalidatedRects.contains { $0.minY <= target.yPos && $0.maxY >= target.yPos + target.height })
+    }
+
+    @Test("Moving several carets moves every one of them, not only the first that moved")
+    func everyCaretRepositions() throws {
+        let textView = makeLaidOutTextView("alpha beta gamma\ndelta epsilon zeta\neta theta iota")
+        textView.isFirstResponder = true
+        let manager: TextSelectionManager = textView.selectionManager
+        manager.setSelectedRanges([NSRange(location: 1, length: 0), NSRange(location: 20, length: 0)])
+
+        manager.moveSelections(direction: .forward, destination: .character)
+
+        #expect(manager.textSelections.map(\.range.location) == [2, 21])
+        for selection in manager.textSelections {
+            let view = try #require(selection.view)
+            let expected = try #require(textView.layoutManager.rectForOffset(selection.range.location))
+            #expect(view.frame.origin == expected.origin)
+        }
     }
 
     @Test("Laying out a band that was never laid out invalidates the view that draws over it")
