@@ -89,24 +89,37 @@ public struct LiveCloudKitDatabase: CloudKitDatabase {
         try await containers.container().userRecordID().recordName
     }
 
+    // One zone or subscription per operation, so its own error is the call's, not the partial failure around it.
     public func saveZone(_ zone: CKRecordZone.ID) async throws {
         let operation = CKModifyRecordZonesOperation(recordZonesToSave: [CKRecordZone(zoneID: zone)], recordZoneIDsToDelete: nil)
+        let itemFailure = Accumulator<(any Error)?>(nil)
         try await run(operation, on: database()) { finish in
-            operation.modifyRecordZonesResultBlock = { finish($0) }
+            operation.perRecordZoneSaveBlock = { _, result in
+                if case .failure(let error) = result { itemFailure.update { $0 = error } }
+            }
+            operation.modifyRecordZonesResultBlock = { finish(Self.itemFailure(itemFailure.value, over: $0)) }
         }
     }
 
     public func deleteZone(_ zone: CKRecordZone.ID) async throws {
         let operation = CKModifyRecordZonesOperation(recordZonesToSave: nil, recordZoneIDsToDelete: [zone])
+        let itemFailure = Accumulator<(any Error)?>(nil)
         try await run(operation, on: database()) { finish in
-            operation.modifyRecordZonesResultBlock = { finish($0) }
+            operation.perRecordZoneDeleteBlock = { _, result in
+                if case .failure(let error) = result { itemFailure.update { $0 = error } }
+            }
+            operation.modifyRecordZonesResultBlock = { finish(Self.itemFailure(itemFailure.value, over: $0)) }
         }
     }
 
     public func saveSubscription(_ subscription: CKSubscription) async throws {
         let operation = CKModifySubscriptionsOperation(subscriptionsToSave: [subscription], subscriptionIDsToDelete: nil)
+        let itemFailure = Accumulator<(any Error)?>(nil)
         try await run(operation, on: database()) { finish in
-            operation.modifySubscriptionsResultBlock = { finish($0) }
+            operation.perSubscriptionSaveBlock = { _, result in
+                if case .failure(let error) = result { itemFailure.update { $0 = error } }
+            }
+            operation.modifySubscriptionsResultBlock = { finish(Self.itemFailure(itemFailure.value, over: $0)) }
         }
     }
 
@@ -191,6 +204,13 @@ public struct LiveCloudKitDatabase: CloudKitDatabase {
             }
         }
         return results.value
+    }
+
+    private static func itemFailure(_ item: (any Error)?, over result: Result<Void, any Error>) -> Result<Void, any Error> {
+        if case .failure(let error as CKError) = result, error.code == .partialFailure, let item {
+            return .failure(item)
+        }
+        return result
     }
 
     // Each item's failure reached its own block, so a partial failure is no failure of the call.

@@ -43,10 +43,9 @@ final class FakeCloudKitDatabase: CloudKitDatabase, @unchecked Sendable {
     }
 
     func accountStatus() async throws -> CKAccountStatus {
-        try read { state in
-            if let failure = state.failure { throw failure }
-            return state.status
-        }
+        let (status, failure) = read { ($0.status, $0.failure) }
+        if let failure { throw failure }
+        return status
     }
 
     func userRecordName() async throws -> String {

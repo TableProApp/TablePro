@@ -83,39 +83,44 @@ nonisolated final class CloudKitCoreTransport: CloudKitTransport, @unchecked Sen
     func fetchRecords(account: String, names: [String]) async throws -> [CloudKitFetched] {
         try await bound(to: account) { [database] zone in
             let ids = names.map { CloudKitRecordID.make(name: $0, in: zone) }
-            let results = try await database.fetchRecords(ids.compactMap { $0 })
+            let results = Self.byName(try await database.fetchRecords(ids.compactMap { $0 }))
             return zip(names, ids).map { name, id in
-                guard let id else {
+                guard id != nil else {
                     return .failed(name: name, code: Int64(CKError.Code.invalidArguments.rawValue), retryAfterMs: nil)
                 }
-                return CloudKitFailureMapping.fetched(name, results[id])
+                return CloudKitFailureMapping.fetched(name, results[name])
             }
         }
     }
 
     func modify(account: String, saves: [CloudKitRecord], deletes: [String]) async throws -> [CloudKitOutcome] {
         try await bound(to: account) { [database] zone in
-            let records = saves.map { save in
-                Result { () throws(CloudKitRecordConversion.Refusal) in
-                    try CloudKitRecordConversion.ckRecord(save, in: zone)
-                }
+            // CloudKit raises on a name saved twice, deleted twice, or saved and deleted in one operation, so a name
+            // after its first appearance is refused.
+            var seen: Set<String> = []
+            let records = saves.map { save -> CKRecord? in
+                guard seen.insert(save.name).inserted else { return nil }
+                return try? CloudKitRecordConversion.ckRecord(save, in: zone)
             }
-            let ids = deletes.map { CloudKitRecordID.make(name: $0, in: zone) }
-            let sending = records.compactMap { try? $0.get() }
+            let ids = deletes.map { name -> CKRecord.ID? in
+                guard seen.insert(name).inserted else { return nil }
+                return CloudKitRecordID.make(name: name, in: zone)
+            }
+            let sending = records.compactMap { $0 }
             let deleting = ids.compactMap { $0 }
             var results = CloudKitModifyResults()
             if !sending.isEmpty || !deleting.isEmpty {
                 results = try await database.modifyRecords(saving: sending, deleting: deleting)
             }
-            let saved = zip(saves, records).map { save, record in
-                guard let record = try? record.get() else { return CloudKitFailureMapping.refused(save.name) }
-                return CloudKitFailureMapping.saved(save.name, results.saved[record.recordID])
+            let saved = Self.byName(results.saved)
+            let removed = Self.byName(results.deleted)
+            let savedOutcomes = zip(saves, records).map { save, record in
+                record == nil ? CloudKitFailureMapping.refused(save.name) : CloudKitFailureMapping.saved(save.name, saved[save.name])
             }
-            let deleted = zip(deletes, ids).map { name, id in
-                guard let id else { return CloudKitFailureMapping.refused(name) }
-                return CloudKitFailureMapping.deleted(name, results.deleted[id])
+            let deletedOutcomes = zip(deletes, ids).map { name, id in
+                id == nil ? CloudKitFailureMapping.refused(name) : CloudKitFailureMapping.deleted(name, removed[name])
             }
-            return saved + deleted
+            return savedOutcomes + deletedOutcomes
         }
     }
 
@@ -126,15 +131,16 @@ nonisolated final class CloudKitCoreTransport: CloudKitTransport, @unchecked Sen
         confirmed.withLock { $0 }
     }
 
+    // CloudKit's own error comes back, so `SyncPushChannel` tells a build's fault from a passing one.
     func saveSubscription(account: String) async throws {
-        try await bound(to: account) { [database] _ in
+        try await bound(to: account, mapsFailures: false) { [database] _ in
             try await database.saveSubscription(SyncPushSubscription.make())
         }
     }
 
-    // `CKAccountChanged`: what is in flight belongs to the account that was signed in.
+    // `CKAccountChanged`: what is in flight belongs to the account that was signed in, and fails as such.
     func cancelCallsInFlight() {
-        gate.cancelInFlight()
+        gate.cancelForAccountChange()
     }
 
     func close() {
@@ -151,11 +157,18 @@ nonisolated final class CloudKitCoreTransport: CloudKitTransport, @unchecked Sen
 
     // MARK: - Binding to the account
 
+    // CloudKit answers with the IDs it holds, whose owner may read as the current user's placeholder rather than the
+    // account's name, so each answer is found by its record name.
+    private static func byName<Value>(_ results: [CKRecord.ID: Value]) -> [String: Value] {
+        Dictionary(results.map { ($0.key.recordName, $0.value) }, uniquingKeysWith: { first, _ in first })
+    }
+
     private func bound<Value: Sendable>(
         to account: String,
+        mapsFailures: Bool = true,
         _ operation: @escaping @Sendable (CKRecordZone.ID) async throws -> Value
     ) async throws -> Value {
-        try await gate.run { [self] in
+        try await gate.run(mapsFailures: mapsFailures) { [self] in
             try await confirm(account)
             let result: Result<Value, any Error>
             do {
@@ -196,6 +209,8 @@ nonisolated final class CloudKitTransportGate: Sendable {
     private struct State {
         var isClosed = true
         var calls: [UUID: @Sendable () -> Void] = [:]
+        // Bumped by an account change, so a call it cancelled fails as `AccountChanged`.
+        var accountChanges = 0
     }
 
     private let state = OSAllocatedUnfairLock(initialState: State())
@@ -204,15 +219,18 @@ nonisolated final class CloudKitTransportGate: Sendable {
         state.withLock { $0.isClosed }
     }
 
-    func run<Value: Sendable>(_ body: @escaping @Sendable () async throws -> Value) async throws -> Value {
+    func run<Value: Sendable>(
+        mapsFailures: Bool = true,
+        _ body: @escaping @Sendable () async throws -> Value
+    ) async throws -> Value {
         let id = UUID()
-        let admitted = state.withLock { state -> Task<Value, any Error>? in
+        let admitted = state.withLock { state -> (Task<Value, any Error>, Int)? in
             guard !state.isClosed else { return nil }
             let call = Task { try await body() }
             state.calls[id] = { call.cancel() }
-            return call
+            return (call, state.accountChanges)
         }
-        guard let call = admitted else {
+        guard let (call, accountChanges) = admitted else {
             throw CloudKitFailure.Other(code: Int64(CKError.Code.operationCancelled.rawValue))
         }
         defer { _ = state.withLock { $0.calls.removeValue(forKey: id) } }
@@ -223,12 +241,19 @@ nonisolated final class CloudKitTransportGate: Sendable {
                 call.cancel()
             }
         } catch {
-            throw CloudKitFailureMapping.failure(error)
+            if state.withLock({ $0.accountChanges }) != accountChanges {
+                throw CloudKitFailure.AccountChanged
+            }
+            throw mapsFailures ? CloudKitFailureMapping.failure(error) : error
         }
     }
 
-    func cancelInFlight() {
-        for cancel in state.withLock({ Array($0.calls.values) }) {
+    func cancelForAccountChange() {
+        let calls = state.withLock { state -> [@Sendable () -> Void] in
+            state.accountChanges += 1
+            return Array(state.calls.values)
+        }
+        for cancel in calls {
             cancel()
         }
     }

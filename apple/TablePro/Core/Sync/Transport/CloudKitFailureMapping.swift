@@ -112,6 +112,6 @@ nonisolated enum CloudKitFailureMapping {
 
     static func retryAfterMilliseconds(_ error: CKError) -> UInt64? {
         guard let seconds = error.retryAfterSeconds, seconds.isFinite, seconds >= 0 else { return nil }
-        return UInt64((seconds * 1_000).rounded(.up))
+        return UInt64(exactly: (seconds * 1_000).rounded(.up)) ?? UInt64.max
     }
 }

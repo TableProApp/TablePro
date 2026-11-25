@@ -68,6 +68,8 @@ private final class Fixture {
     let engine = FakeSyncEngine()
     let clock = ManualClock()
     let policyChanges = PassthroughSubject<DisableReason?, Never>()
+    let notifications = NotificationCenter()
+    var opening: AsyncGate?
     var enabled = true
     var policy: DisableReason?
     var opens = true
@@ -81,6 +83,7 @@ private final class Fixture {
         metadata = SyncMetadataStorage(userDefaults: suite.defaults)
         transport = CloudKitCoreTransport(database: database)
         let host = SyncEngineHost(transport: transport) { [unowned self] listener in
+            await opening?.wait()
             guard opens else { throw AccountError.network("the account did not open") }
             self.listener = listener
             return engine
@@ -99,7 +102,8 @@ private final class Fixture {
             makeNetworkMonitor: { nil },
             metadata: metadata,
             pushRegistrar: .inert,
-            activationClock: clock
+            activationClock: clock,
+            notificationCenter: notifications
         )
     }
 
@@ -199,6 +203,46 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.database.read { $0.modifiesCancelled } == 1)
         #expect(fixture.database.modifyStarted == 1)
         #expect(fixture.transport.isClosed)
+    }
+
+    @Test("A stop while the engine is still opening keeps iCloud off: no pass runs and the engine is told off")
+    func stopWhileTheEngineOpens() async throws {
+        let fixture = try Fixture()
+        let opening = AsyncGate()
+        fixture.opening = opening
+        fixture.coordinator.start()
+        await opening.arrived(1)
+
+        fixture.policy = .managedPolicy
+        fixture.policyChanges.send(.managedPolicy)
+        await opening.open()
+        await fixture.coordinator.passesFinished()
+        try await waitUntil { fixture.providers == [.off] }
+
+        #expect(fixture.coordinator.syncStatus == .disabled(.managedPolicy))
+        #expect(fixture.passes.isEmpty)
+        #expect(fixture.transport.isClosed)
+    }
+
+    @Test("Turned off and on again during a pass, the transport opens only once that pass ends")
+    func reopenWaitsForTheStalePass() async throws {
+        let fixture = try Fixture()
+        let gate = AsyncGate()
+        fixture.engine.update { $0.pass = { _ in await gate.wait() } }
+        fixture.coordinator.start()
+        await gate.arrived(1)
+
+        fixture.enabled = false
+        fixture.coordinator.disableSync()
+        fixture.enabled = true
+        fixture.coordinator.enableSync()
+        #expect(fixture.transport.isClosed)
+        await gate.open()
+        await fixture.coordinator.passesFinished()
+
+        #expect(!fixture.transport.isClosed)
+        #expect(fixture.passes == [.launch, .person])
+        #expect(fixture.coordinator.syncStatus == .idle)
     }
 
     @Test("Turning the switch off closes the transport and tells the engine iCloud is off")
@@ -337,7 +381,7 @@ struct SyncProviderCoordinatorTests {
         fixture.coordinator.start()
         try await waitUntil { fixture.database.modifyStarted == 1 }
 
-        NotificationCenter.default.post(name: .CKAccountChanged, object: nil)
+        fixture.notifications.post(name: .CKAccountChanged, object: nil)
         try await waitUntil { fixture.database.read { $0.modifiesCancelled } == 1 }
         try await waitUntil { fixture.passes.count == 2 }
         await fixture.coordinator.passesFinished()
@@ -368,21 +412,27 @@ struct SyncProviderCoordinatorStatusTests {
         #expect(SyncProviderCoordinator.status(Self.info(.zoneRemoved)) == .error(.blocked(.dataDeletedFromICloud)))
         #expect(SyncProviderCoordinator.status(Self.info(.waiting(retryInMs: 500))) == .error(.busy))
         #expect(SyncProviderCoordinator.status(Self.info(.off)) == .idle)
+        #expect(SyncProviderCoordinator.status(Self.info(.unavailable)) == .error(.blocked(.unavailable)))
+        #expect(SyncProviderCoordinator.status(Self.info(.pullOnly)) == .error(.unexpected))
         #expect(SyncProviderCoordinator.status(Self.info(.idle, problem: "sync.icloud.network")) == .error(.offline))
+        #expect(SyncProviderCoordinator.status(Self.info(.idle, problem: "sync.icloud.account_changed")) == .idle)
+        // Only the engine's phase offers Upload Again.
+        #expect(SyncProviderCoordinator.status(Self.info(.idle, problem: "sync.icloud.zone_deleted_by_user")) == .error(.unexpected))
     }
 
     @Test("Each iCloud problem code is the condition the person can act on")
     func problems() {
-        let expected: [String: SyncError] = [
+        let expected: [String: SyncError?] = [
             "sync.icloud.no_account": .blocked(.signedOut),
             "sync.icloud.restricted": .blocked(.accountRestricted),
             "sync.icloud.account_temporarily_unavailable": .blocked(.accountNotReady),
             "sync.icloud.quota_exceeded": .blocked(.storageFull),
-            "sync.icloud.zone_deleted_by_user": .blocked(.dataDeletedFromICloud),
             "sync.icloud.network": .offline,
             "sync.icloud.throttled": .busy,
             "sync.adapter.store": .pullNotSaved,
             "sync.unimplemented": .blocked(.unavailable),
+            "sync.icloud.account_changed": nil,
+            "sync.cancelled": nil,
             "sync.icloud.other": .unexpected
         ]
         for (code, error) in expected {

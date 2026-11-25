@@ -37,6 +37,7 @@ final class SyncProviderCoordinator: ObservableObject {
     private let makeNetworkMonitor: () -> SyncNetworkMonitor?
     private let metadata: SyncMetadataStorage
     private let activationClock: any Clock<Duration>
+    private let notificationCenter: NotificationCenter
 
     private var hasStarted = false
     private var observers: Set<AnyCancellable> = []
@@ -45,8 +46,10 @@ final class SyncProviderCoordinator: ObservableObject {
     private var pendingPass: PassReasonTag?
     private var activationCooldown: Task<Void, Never>?
     private var activationHeld = false
-    // Telling the engine iCloud is off, which the next pass waits for.
-    private var stopping: Task<Void, Never>?
+    // Each turn of iCloud on or off, so a pass that began before one changes nothing after it.
+    private var generation = 0
+    // Every provider the engine is told, in order: a pass waits for the off before it, and an off follows the on.
+    private var providerChoice: Task<Void, Never>?
 
     init(
         host: @escaping @autoclosure () -> SyncEngineHost = .shared,
@@ -64,7 +67,8 @@ final class SyncProviderCoordinator: ObservableObject {
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { SyncNetworkMonitor() },
         metadata: SyncMetadataStorage = .appDefault,
         pushRegistrar: SyncPushRegistrar = .live,
-        activationClock: any Clock<Duration> = ContinuousClock()
+        activationClock: any Clock<Duration> = ContinuousClock(),
+        notificationCenter: NotificationCenter = .default
     ) {
         makeHost = host
         self.loadSettings = loadSettings
@@ -77,6 +81,7 @@ final class SyncProviderCoordinator: ObservableObject {
         self.makeNetworkMonitor = makeNetworkMonitor
         self.metadata = metadata
         self.activationClock = activationClock
+        self.notificationCenter = notificationCenter
         pushChannel = SyncPushChannel(registrar: pushRegistrar, metadata: metadata)
         lastSyncDate = metadata.lastSyncDate
     }
@@ -179,21 +184,26 @@ final class SyncProviderCoordinator: ObservableObject {
     }
 
     private func runPass(_ why: PassReasonTag) async {
-        await stopping?.value
+        let started = generation
+        guard syncStatus.isEnabled else {
+            finishPass()
+            return
+        }
         if why == .person || syncStatus.error == nil {
             syncStatus = .syncing
         }
         do {
-            let engine = try await host.engine()
-            if engine.status().provider != .icloud {
-                try await engine.chooseProvider(provider: .icloud)
+            try await choose(.icloud) { [weak self] in self?.generation == started }.value.get()
+            if started == generation {
+                try await host.engine().syncNow(why: why)
             }
-            try await engine.syncNow(why: why)
         } catch {
             Self.logger.error("A sync pass failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
-        if syncStatus.isEnabled {
+        if started == generation {
             await saveSubscriptionIfNeeded()
+        }
+        if started == generation, syncStatus.isEnabled {
             refreshStatus()
             if host.openedEngine == nil {
                 // The account's core did not open, so there is no engine to sync with.
@@ -202,11 +212,45 @@ final class SyncProviderCoordinator: ObservableObject {
                 startActivationCooldown()
             }
         }
+        finishPass()
+    }
+
+    private func finishPass() {
         currentPass = nil
+        // iCloud turned on again while a pass from before the stop was out: only now may CloudKit be reached.
+        if syncStatus.isEnabled, host.transport.isClosed {
+            host.transport.open()
+            refreshStatus()
+        }
         if let pending = pendingPass {
             pendingPass = nil
             requestPass(pending)
         }
+    }
+
+    // Queued behind every earlier choice when it is made, not when it runs. The engine is asked only when it does not
+    // hold the provider already, and a choice whose turn is over by then is dropped.
+    private func choose(
+        _ provider: SyncProviderTag,
+        while isCurrent: @escaping @MainActor () -> Bool = { true }
+    ) -> Task<Result<Void, any Error>, Never> {
+        let previous = providerChoice
+        let host = host
+        let choice = Task<Result<Void, any Error>, Never> {
+            await previous?.value
+            do {
+                let engine = try await host.engine()
+                guard isCurrent() else { return .success(()) }
+                if engine.status().provider != provider {
+                    try await engine.chooseProvider(provider: provider)
+                }
+                return .success(())
+            } catch {
+                return .failure(error)
+            }
+        }
+        providerChoice = Task { _ = await choice.value }
+        return choice
     }
 
     private func saveSubscriptionIfNeeded() async {
@@ -264,8 +308,12 @@ final class SyncProviderCoordinator: ObservableObject {
             return
         }
         guard case .disabled = syncStatus else { return }
-        host.transport.open()
+        generation += 1
         syncStatus = .idle
+        // A pass from before the stop may still be out; it opens the transport once it ends.
+        if currentPass == nil {
+            host.transport.open()
+        }
         arm()
         refreshStatus()
     }
@@ -277,13 +325,11 @@ final class SyncProviderCoordinator: ObservableObject {
         syncStatus = status
         pendingPass = nil
         disarm()
-        guard wasRunning, let engine = host.openedEngine else { return }
-        let previous = stopping
-        stopping = Task {
-            await previous?.value
-            do {
-                try await engine.chooseProvider(provider: .off)
-            } catch {
+        guard wasRunning else { return }
+        generation += 1
+        let choice = choose(.off)
+        Task {
+            if case .failure(let error) = await choice.value {
                 Self.logger.error("The engine did not take iCloud off: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
             }
         }
@@ -293,7 +339,11 @@ final class SyncProviderCoordinator: ObservableObject {
 
     private func arm() {
         guard triggers == nil else { return }
-        triggers = SyncProviderTriggers(accountObserver: observeAccountChanges(), networkMonitor: observeNetwork())
+        triggers = SyncProviderTriggers(
+            notificationCenter: notificationCenter,
+            accountObserver: observeAccountChanges(),
+            networkMonitor: observeNetwork()
+        )
         pushChannel.register()
     }
 
@@ -308,7 +358,7 @@ final class SyncProviderCoordinator: ObservableObject {
     // What is in flight belongs to the account that was signed in. The next pass reads the account and the engine
     // opens the state file of the one it finds.
     private func observeAccountChanges() -> any NSObjectProtocol {
-        NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
+        notificationCenter.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, syncStatus.isEnabled else { return }
                 host.transport.cancelCallsInFlight()
@@ -349,15 +399,17 @@ final class SyncProviderCoordinator: ObservableObject {
 
 // What starts a pass while iCloud runs. Releasing it detaches every observer; the network monitor stops in its deinit.
 private final class SyncProviderTriggers {
+    private let notificationCenter: NotificationCenter
     private let accountObserver: any NSObjectProtocol
     private let networkMonitor: SyncNetworkMonitor?
 
-    init(accountObserver: any NSObjectProtocol, networkMonitor: SyncNetworkMonitor?) {
+    init(notificationCenter: NotificationCenter, accountObserver: any NSObjectProtocol, networkMonitor: SyncNetworkMonitor?) {
+        self.notificationCenter = notificationCenter
         self.accountObserver = accountObserver
         self.networkMonitor = networkMonitor
     }
 
     deinit {
-        NotificationCenter.default.removeObserver(accountObserver)
+        notificationCenter.removeObserver(accountObserver)
     }
 }

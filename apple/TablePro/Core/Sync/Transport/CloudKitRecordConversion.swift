@@ -23,6 +23,16 @@ nonisolated enum CloudKitRecordConversion {
         return scalars.allSatisfy { isLetter($0) || ("0"..."9").contains($0) || $0 == "_" }
     }
 
+    // `CKRecord` raises "is a reserved key name" on setting any of these.
+    private static let reservedFieldNames: Set<String> = [
+        "recordID", "recordType", "creationDate", "modificationDate", "recordChangeTag", "creatorUserRecordID",
+        "lastModifiedUserRecordID"
+    ]
+
+    static func isValidFieldName(_ name: String) -> Bool {
+        isValidName(name) && !reservedFieldNames.contains(name)
+    }
+
     private static func isLetter(_ scalar: Unicode.Scalar) -> Bool {
         ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar)
     }
@@ -84,21 +94,25 @@ nonisolated enum CloudKitRecordConversion {
 
     // A save carries system fields unless it creates the record, in `zone`, the zone the call is bound to.
     static func ckRecord(_ record: CloudKitRecord, in zone: CKRecordZone.ID) throws(Refusal) -> CKRecord {
-        guard isValidName(record.recordType), record.fields.allSatisfy({ isValidName($0.name) }) else {
+        guard isValidName(record.recordType), record.fields.allSatisfy({ isValidFieldName($0.name) }) else {
             throw .invalid
         }
-        let built: CKRecord
+        var built: CKRecord?
         if let systemFields = record.systemFields {
             guard let rebuilt = rebuild(systemFields),
                   rebuilt.recordType == record.recordType,
                   rebuilt.recordID.recordName == record.name,
                   rebuilt.recordID.zoneID.zoneName == zone.zoneName
             else { throw .invalid }
-            built = rebuilt
-        } else {
+            // System fields with no change tag are of a record never saved; saved from them, it would be a create that
+            // names no account, so it goes into the bound zone as a create does.
+            built = rebuilt.recordChangeTag == nil ? nil : rebuilt
+        }
+        if built == nil {
             guard let id = CloudKitRecordID.make(name: record.name, in: zone) else { throw .invalid }
             built = CKRecord(recordType: record.recordType, recordID: id)
         }
+        guard let built else { throw .invalid }
         for field in record.fields {
             built[field.name] = field.value.map(ckValue)
         }

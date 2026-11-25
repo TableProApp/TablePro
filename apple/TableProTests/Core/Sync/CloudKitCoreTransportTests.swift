@@ -113,25 +113,69 @@ struct CloudKitCoreTransportTests {
         #expect(rebuilt.recordType == "ConnectionTag")
     }
 
-    @Test("A save rebuilt from system fields sends only the fields it names, and a cleared one as removed")
-    func saveFromSystemFields() async throws {
-        let base = Self.serverRecord("Tag_A")
-        let systemFields = CloudKitRecordConversion.systemFields(of: base)
+    @Test("System fields of a record never saved make a create in the account's zone, whatever zone they name")
+    func neverSavedSystemFieldsCreateInTheBoundZone() async throws {
+        let elsewhere = CKRecordZone.ID(zoneName: CloudKitSyncEngine.zoneName, ownerName: "_mallory")
+        let systemFields = CloudKitRecordConversion.systemFields(of: Self.serverRecord("Tag_A", in: elsewhere))
 
         _ = try await transport.modify(
             account: "_alice",
             saves: [Self.tag("Tag_A", systemFields: systemFields, fields: [
-                CloudKitField(name: "sortOrder", value: .int64(value: 9)),
-                CloudKitField(name: "color", value: nil)
+                CloudKitField(name: "sortOrder", value: .int64(value: 9))
             ])],
             deletes: []
         )
 
         let sent = try #require(database.read { $0.modifyCalls.first?.saves.first })
-        #expect(sent.recordID == base.recordID)
-        #expect(Set(sent.changedKeys()) == ["sortOrder", "color"])
+        #expect(sent.recordID == CKRecord.ID(recordName: "Tag_A", zoneID: Self.zone))
+        #expect(sent["sortOrder"] as? Int64 == 9)
         #expect(sent["name"] == nil)
-        #expect(sent["color"] == nil)
+    }
+
+    @Test("A name saved twice, deleted twice, or saved and deleted is refused after its first appearance")
+    func repeatedNamesAreRefused() async throws {
+        let outcomes = try await transport.modify(
+            account: "_alice",
+            saves: [Self.tag("Tag_A"), Self.tag("Tag_A")],
+            deletes: ["Tag_A", "Tag_B", "Tag_B"]
+        )
+
+        let refused = CloudKitOutcome.failed
+        let invalid = Int64(CKError.Code.invalidArguments.rawValue)
+        #expect(outcomes[1] == refused("Tag_A", invalid, nil))
+        #expect(outcomes[2] == refused("Tag_A", invalid, nil))
+        #expect(outcomes[3] == .deleted(name: "Tag_B"))
+        #expect(outcomes[4] == refused("Tag_B", invalid, nil))
+        let call = try #require(database.read { $0.modifyCalls.first })
+        #expect(call.saves.map(\.recordID.recordName) == ["Tag_A"])
+        #expect(call.deletes.map(\.recordName) == ["Tag_B"])
+    }
+
+    @Test("A field name CloudKit reserves is refused, not set")
+    func reservedFieldNamesAreRefused() async throws {
+        for name in ["recordID", "recordType", "creationDate", "modificationDate", "recordChangeTag"] {
+            let outcomes = try await transport.modify(
+                account: "_alice",
+                saves: [Self.tag("Tag_A", fields: [CloudKitField(name: name, value: .text(value: "x"))])],
+                deletes: []
+            )
+            #expect(outcomes == [.failed(name: "Tag_A", code: Int64(CKError.Code.invalidArguments.rawValue), retryAfterMs: nil)])
+        }
+        #expect(database.modifyStarted == 0)
+    }
+
+    @Test("An answer is found by record name, whatever owner CloudKit puts in its ID")
+    func answersMatchByName() async throws {
+        let placeholder = CKRecordZone.ID(zoneName: CloudKitSyncEngine.zoneName, ownerName: CKCurrentUserDefaultName)
+        database.update { $0.records["Tag_A"] = Self.serverRecord("Tag_A", in: placeholder) }
+
+        let fetched = try await transport.fetchRecords(account: "_alice", names: ["Tag_A"])
+
+        guard case .found(let record) = try #require(fetched.first) else {
+            Issue.record("not found: \(fetched)")
+            return
+        }
+        #expect(record.name == "Tag_A")
     }
 
     @Test("Each record's answer is its own outcome: the server's copy on a conflict, unknown items, failures")
@@ -253,6 +297,29 @@ struct CloudKitCoreTransportTests {
         #expect(database.read { $0.fetchTokens.count } == 1)
     }
 
+    @Test("A page's token goes to the engine in the archived form, and comes back as CloudKit's token")
+    func tokenRoundTrip() async throws {
+        let token = try Self.changeToken()
+        database.update { $0.page = CloudKitChangesPage(token: token) }
+
+        let first = try await transport.fetchChanges(account: "_alice", token: nil)
+        _ = try await transport.fetchChanges(account: "_alice", token: first.token)
+
+        let passed = database.read { $0.fetchTokens.last ?? nil }
+        #expect(first.token == CloudKitChangeToken.archive(token))
+        #expect(database.read { $0.fetchTokens.count } == 2)
+        #expect(passed.flatMap(CloudKitChangeToken.archive) == first.token)
+    }
+
+    @Test("A page that moved no position hands back the token it started from")
+    func pageWithoutTokenKeepsThePosition() async throws {
+        let token = try #require(CloudKitChangeToken.archive(try Self.changeToken()))
+
+        let changes = try await transport.fetchChanges(account: "_alice", token: token)
+
+        #expect(changes.token == token)
+    }
+
     @Test("A token this build cannot read is expired, and asks CloudKit nothing")
     func unreadableTokenIsExpired() async throws {
         let outcome = await failure {
@@ -347,6 +414,15 @@ struct CloudKitCoreTransportTests {
         #expect(database.read { $0.modifiesCancelled } == 1)
     }
 
+    @Test("A refused zone save fails the call with CloudKit's reason")
+    func singleItemFailure() async throws {
+        database.update { $0.failure = CKError(.quotaExceeded) }
+
+        let outcome = await failure { try await transport.ensureZone(account: "_alice") }
+
+        #expect(outcome == .QuotaExceeded)
+    }
+
     @Test("An account change cancels what is in flight and leaves the transport open")
     func accountChangeCancelsInFlight() async throws {
         database.update { $0.modifiesToHold = 1 }
@@ -356,14 +432,39 @@ struct CloudKitCoreTransportTests {
         try await waitUntil { database.modifyStarted == 1 }
 
         transport.cancelCallsInFlight()
-        _ = await upload.result
+        let cancelled = await upload.result
         let outcomes = try await transport.modify(account: "_alice", saves: [Self.tag("Tag_B")], deletes: [])
 
         #expect(database.read { $0.modifiesCancelled } == 1)
+        #expect(throws: CloudKitFailure.AccountChanged) { try cancelled.get() }
         #expect(!transport.isClosed)
         guard case .saved = try #require(outcomes.first) else {
             Issue.record("not saved: \(outcomes)")
             return
         }
     }
+
+    static func changeToken() throws -> CKServerChangeToken {
+        let archiver = NSKeyedArchiver(requiringSecureCoding: true)
+        archiver.setClassName("CKServerChangeToken", for: TransportChangeTokenArchive.self)
+        archiver.encode(TransportChangeTokenArchive(), forKey: NSKeyedArchiveRootObjectKey)
+        archiver.finishEncoding()
+        let token = try NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: archiver.encodedData)
+        return try #require(token)
+    }
+}
+
+@objc(CloudKitCoreTransportTestsChangeTokenArchive)
+private final class TransportChangeTokenArchive: NSObject, NSSecureCoding {
+    static var supportsSecureCoding: Bool { true }
+
+    override init() {
+        super.init()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init()
+    }
+
+    func encode(with coder: NSCoder) {}
 }
