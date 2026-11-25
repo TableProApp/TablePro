@@ -99,6 +99,7 @@ Every construction is a standard one from an audited library. `tablepro-keys` co
 | `tablepro/v1/member`, `tablepro/v1/member-qr` | Member confirmation words and QR code |
 | `tablepro/v1/state` | The state file's MAC (0054) |
 | `tablepro/v1/receipt` | The server's time receipt on a key statement |
+| `tablepro/v1/receipt-key` | An old receipt key's signature on its successor |
 
 **Key commitment.** For any symmetric key K, `kid(K) = HKDF-SHA256(salt = none, IKM = K, info = LP("tablepro/v1/key-id"), L = 32)`.
 
@@ -215,7 +216,9 @@ A statement's place in its log orders it. Neither `iat` nor the server's revisio
   - So every client that holds the same head reaches the same state, and a comparison of heads covers the times. A client whose record differs from a signed `after` raises a fork alarm.
 - **The hold.** A client that saw a reset or a time-locked start while it was still open also holds the log at a statement that ends the wait, until its own clock is 7 days past when it first saw the start, less the 300 s bound. It holds and never refuses: when the wait ends it evaluates the statement again.
 - **Time receipts.** When the server takes a key statement, it signs a receipt: `Ed25519(receipt key, LP("tablepro/v1/receipt") || LP(origin) || LP(statement hash) || u64(taken_at))`. This is the pattern of Certificate Transparency's signed certificate timestamp (RFC 6962 §3.2) and of an RFC 3161 time-stamp token.
-  - The receipt key lives outside the database, so a restore cannot lose it. The server publishes its public key (0051), and each client pins it per origin when it first sees it.
+  - The receipt key is an Ed25519 key used only for receipts, and lives outside the database, so a restore cannot lose it. The server lists its receipt keys newest first and keeps old ones so their receipts still verify (0051). Each client pins the newest per origin when it first sees it.
+  - **Rotating the receipt key.** The old key signs the new one: `Ed25519(old receipt key, LP("tablepro/v1/receipt-key") || LP(origin) || LP(new public key))`, published beside the new key. A client adds a new key only through a chain of these from a key it pinned. This is The Update Framework's root rotation, where a client trusts a new root only when the root it holds signs it.
+  - **A receipt under a key the client cannot link** to a pinned one counts as no evidence. The client keeps the statement, and waits still run on the record's `taken_at` and the signed `after`. It asks for the cross-certification. If none links the key, the app shows a changed server time key, as an SSH client shows a changed host key, and pins the new key only when the person accepts. An install that lost its old key ends up there.
   - Clients keep each receipt with its statement in `key_statements`, and send it back when they republish.
   - An `after` must equal the `taken_at` in the start's receipt.
 - **Restore.** After a restore, the server verifies its own signature on a republished receipt and checks every wait against the original `taken_at` it carries. A statement republished without its receipt gets a new `taken_at`, so its wait starts again: a restore lengthens a wait and never shortens one. A client-supplied time never counts, since a resetting holder mints its own IK and could backdate it.
@@ -815,7 +818,7 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
     - a fork re-pin that moves an anchored device from a dropped `replace` branch, and the `rotate` after it with versions above every branch;
     - a team `resolve` whose branch removed a signer and counts k there, one that drops a cancel, and one that drops a revocation not signed again;
     - a revocation whose signer's admission a later voiding takes away, which stays;
-    - a restored `reset` and `activate` taken under the reset's original receipt, a restored start without its receipt, whose wait starts again, a receipt under another key, and two receipts for one statement with different times;
+    - a restored `reset` and `activate` taken under the reset's original receipt, a restored start without its receipt, whose wait starts again, a receipt under a key no cross-certification links to a pinned one, a cross-certification by a key that was not pinned, and two receipts for one statement with different times;
     - the last signer's own account starting its removal after its `activate`;
   - **Keys:** a swapped SK, and a `kid` mismatch after unwrap.
   - **Recovery:** a blob with the wrong origin, account or `rk_v`, and a recovery key with a bad checksum or the wrong length.
