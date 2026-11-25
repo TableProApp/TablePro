@@ -20,6 +20,9 @@
 # `test` with no Test runs the Unit plan only; those two packages run with `package <Package>`.
 # A name no target declares exits 3 before anything builds. A Test that runs nothing is FAIL.
 # Here --no-wait skips the wait for another xcodebuild, and --offline pins SwiftPM to Package.resolved.
+# --jobs <n> passes -jobs to xcodebuild, -maximum-parallel-testing-workers to the test plans, --jobs and --num-workers
+# to swift test, and caps Cargo and Go in the core and bridge builds. abi caps only its core build:
+# apple/scripts/check-pluginkit-abi.sh runs its own xcodebuild uncapped.
 
 MAX_WAIT_SECONDS=1800
 APPLE_ROOT="$REPO_ROOT/apple"
@@ -113,6 +116,7 @@ wait_for_free_toolchain() {
 xcodebuild_flags() {
     printf '%s' "-skipPackagePluginValidation"
     is_offline && printf ' %s' "-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile"
+    [ -n "$JOBS" ] && printf ' -jobs %s' "$JOBS"
 }
 
 # ---------------------------------------------------------------------------- test selection
@@ -300,7 +304,8 @@ run_plan() {
     note "run: xcodebuild test -testPlan $plan${only[*]+ (${#only[@]} filter(s))}"
     # shellcheck disable=SC2046
     run_logged "$log" xcodebuild test -project "$APPLE_ROOT/TablePro.xcodeproj" -scheme TablePro \
-        -testPlan "$plan" -resultBundlePath "$bundle" $(xcodebuild_flags) ${only[@]+"${only[@]}"}
+        -testPlan "$plan" -resultBundlePath "$bundle" $(xcodebuild_flags) ${JOBS:+-maximum-parallel-testing-workers "$JOBS"} \
+        ${only[@]+"${only[@]}"}
     RUN_CODE=$?
     report_xcresult "$bundle" "$RUN_CODE" "$filters" "$log"
     ran_nothing_for_the_environment "$log" && RUN_STATUS=INCONCLUSIVE
@@ -316,6 +321,7 @@ run_plan() {
 run_swift_tests() {
     local package="$1" log="$2" filters="$3" dir="$APPLE_ROOT/Packages/$1" args=() label regex
     [ -f "$dir/Package.resolved" ] && args+=(--force-resolved-versions)
+    [ -n "$JOBS" ] && args+=(--jobs "$JOBS" --num-workers "$JOBS")
     while IFS=$'\t' read -r label regex _; do
         args+=(--filter "$regex")
     done < "$filters"
@@ -446,7 +452,8 @@ platform_step() {
             # Xcode copies the HANA helper into the plugin and never builds it.
             helper="$APPLE_ROOT/Native/HanaBridge/bin/tablepro-hana-helper"
             if [ "$scheme" = "AllPlugins" ] && [ ! -e "$helper" ] && command -v go > /dev/null; then
-                "$APPLE_ROOT/scripts/build-hana.sh" "$(uname -m)" >> "$log" 2>&1 \
+                # build-hana.sh clears GOFLAGS, so the cap reaches go build's -p through its default, GOMAXPROCS.
+                env ${JOBS:+GOMAXPROCS="$JOBS"} "$APPLE_ROOT/scripts/build-hana.sh" "$(uname -m)" >> "$log" 2>&1 \
                     && note "built the HANA helper first: $helper"
             fi
             helper="$APPLE_ROOT/Native/DamengBridge/lib/libdameng_bridge.a"
@@ -647,7 +654,7 @@ platform_step() {
             done
             xcodebuild test -project "$project" -scheme TableProMobile -destination "id=$simulator" \
                 -parallel-testing-enabled NO -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
-                -resultBundlePath "$bundle" "${filters[@]}" >> "$log" 2>&1
+                ${JOBS:+-jobs "$JOBS"} -resultBundlePath "$bundle" "${filters[@]}" >> "$log" 2>&1
             code=$?
             note "results: $bundle"
             report_xcresult "$bundle" "$code" "${log%.log}.filters" "$log"
