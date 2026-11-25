@@ -23,6 +23,7 @@ public sealed partial class ShellTests
             JsonSerializer.Serialize(new Dictionary<string, object>
             {
                 ["theme"] = theme,
+                ["setupGuideSeen"] = true,
                 ["mcpServerEnabled"] = true,
                 ["mcpServerPort"] = FreePort(),
             }));
@@ -87,7 +88,7 @@ public sealed partial class ShellTests
 
         var version = Finish(StartCommand(app, "--version"));
         var completion = Finish(StartCommand(app, "completion", "powershell"));
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         var counted = Finish(StartCommand(app, "query", "-c", "Chinook (Sample)", "SELECT count(*) AS n FROM Track"));
         var status = Finish(StartCommand(app, "status", "--format", "json"));

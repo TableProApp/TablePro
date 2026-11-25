@@ -1,7 +1,14 @@
 import Foundation
 @testable import TablePro
 import TableProImport
+import TableProSyncTransport
 import Testing
+
+private final class RefusingKeychain: KeychainStoring, @unchecked Sendable {
+    func writeString(_ value: String, forKey key: String) -> Bool { false }
+    func readStringResult(forKey key: String) -> KeychainStringResult { .notFound }
+    func delete(forKey key: String) {}
+}
 
 @MainActor
 struct MacImportLibraryStoreTests {
@@ -368,6 +375,40 @@ struct MacImportLibraryStoreTests {
 
         #expect(library.connections.loadPluginSecureField(fieldId: "awsSecretAccessKey", for: importedId) == "s3cr3t")
         #expect(library.connections.loadPluginSecureField(fieldId: "zzzFutureSecret", for: importedId) == nil)
+    }
+
+    @Test("Every secret the Keychain refuses is counted, never dropped in silence")
+    func refusedSecretsAreCounted() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        let suite = try EphemeralDefaults("ImportLibrary.refusing")
+        let refusing = ConnectionStorage(
+            fileURL: library.directory.appendingPathComponent("refusing-connections.json"),
+            userDefaults: suite.defaults,
+            syncTracker: SyncChangeTracker(metadataStorage: library.metadata),
+            keychain: RefusingKeychain(),
+            appEvents: library.appEvents,
+            integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: InMemoryKeychain()))
+        )
+        let store = MacImportLibraryStore(
+            connections: refusing,
+            groups: library.groups,
+            tags: library.tags,
+            profiles: library.profiles,
+            sshProfiles: library.sshProfiles,
+            favorites: library.favorites
+        )
+        let credentials = ExportableCredentials(
+            password: "secret",
+            sshPassword: "tunnel",
+            keyPassphrase: nil,
+            sslClientKeyPassphrase: nil,
+            totpSecret: "JBSWY3DPEHPK3PXP",
+            pluginSecureFields: nil
+        )
+
+        #expect(store.writeCredentials(credentials, connectionId: UUID()) == CredentialWriteResult(secretsNotKept: 3))
+        #expect(library.store.writeCredentials(credentials, connectionId: UUID()) == .allKept)
     }
 
     @Test("A connections file that cannot be written gets no Keychain item")

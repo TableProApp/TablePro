@@ -783,6 +783,34 @@ fn a_search_for_a_tag_lists_every_connection_that_has_it() {
 }
 
 #[gtk4::test]
+fn revealing_imported_connections_clears_a_search_that_hides_them() {
+    let pickers = Pickers::new();
+    let view = &pickers.views[0];
+    let window = OwnedWindow::presented(adw::Window::new());
+    window.set_content(Some(view));
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let imported = library.connection("imported", Some(work));
+    library.connection("production", None);
+    pickers.show(library.list());
+    wait_until(WAIT, || view.row(LibrarySection::Tree, "Work").is_some()).expect("Work's row");
+    view.tree_row("Work").expect("Work's tree row").set_expanded(false);
+    view.set_search("production");
+    assert_eq!(view.sections(), [section("", &["production"])]);
+
+    view.focus_connections(&[imported]);
+
+    assert_eq!(view.visible_page().as_deref(), Some("list"));
+    assert_eq!(
+        view.sections(),
+        [section("Connections", &["Work", "  imported", "production"])],
+        "the search still hides the imported connection"
+    );
+    wait_until(WAIT, || view.focused_title().as_deref() == Some("imported"))
+        .expect("the imported connection to take the focus");
+}
+
+#[gtk4::test]
 fn a_search_finds_a_connection_by_a_word_of_its_group_path_and_shows_the_path() {
     let pickers = Pickers::new();
     let mut library = NestedLibrary::default();

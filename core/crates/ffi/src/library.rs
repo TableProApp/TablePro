@@ -248,10 +248,12 @@ pub struct LibrarySnapshot {
     pub tags: Vec<TagRecord>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ImportSummary {
     pub added: u32,
     pub updated: u32,
+    // The saved connections the file wrote, added or updated, once each in file order (core 0057).
+    pub connection_ids: Vec<String>,
 }
 
 const RECENT_LIMIT: usize = 8;
@@ -831,6 +833,7 @@ impl ConnectionLibrary {
             Ok(ImportSummary {
                 added: u32::try_from(report.added).unwrap_or(u32::MAX),
                 updated: u32::try_from(report.updated).unwrap_or(u32::MAX),
+                connection_ids: report.connection_ids.iter().map(Uuid::to_string).collect(),
             })
         })
         .await

@@ -5,12 +5,14 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Windows.Storage.Pickers;
 using TablePro.App.ConnectionForm;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.App.Views;
+using TablePro.Editor.Model;
 using TablePro.Interop;
 using Windows.Graphics;
 using Windows.System;
@@ -55,6 +57,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     // The connection whose cue the title bar shows, painted again when the theme changes.
     private OpenConnection? _cue;
 
+    // The setup guide while it is the page in front; leaving it by any route ends it (core 0057).
+    private SetupView? _setup;
+    private bool _launchGateAsked;
+    private bool _choosingRail;
+    private EffectiveKeymap? _keysShown;
+
     // A tab window that has not taken a tab yet, kept hidden for the next drag out of a strip.
     private MainWindow? _spare;
     private bool _isSpare;
@@ -93,6 +101,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         workbench.ObjectPaneWidth = session.ObjectPaneWidth ?? ObjectPane.DefaultWidth;
         workbench.LoadRecentFiles(session.RecentFiles);
         _home = new HomeView(workbench, this);
+        _home.LibraryRead += OnLibraryRead;
+        _home.SetupGuideRequested += (_, _) => ShowSetupGuide();
         Rail.Content = _home;
         Rail.SelectedItem = HomeItem;
         Closed += (_, _) => _home.WindowClosed();
@@ -377,6 +387,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             var summary = await _workbench.Library.ImportAsync(result.Path);
             _workbench.NotifyLibraryChanged();
             _home.ShowMessage(Strings.Format("ImportDone", summary.Added, summary.Updated), InfoBarSeverity.Success);
+            await HandOffAsync(SetupGuide.Handoff(summary.ConnectionIds, ImportSource.FileOrLink));
         }
         catch (TableProException exception)
         {
@@ -410,7 +421,122 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             _workbench.NotifySavedQueriesChanged();
         }
 
-        _home.ShowMessage(ImportFromAppDialog.Describe(ending), ImportFromAppDialog.Severity(ending));
+        _home.ShowMessage(ImportFromAppPanel.Describe(ending), ImportFromAppPanel.Severity(ending));
+        await HandOffAsync(SetupGuide.Handoff(ending.ConnectionIds, ending.Source));
+    }
+
+    // Help > Setup Guide and the Connections page's card open it whatever the library holds (core 0057, G6).
+    public void ShowSetupGuide()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            _primary.ShowSetupGuide();
+            return;
+        }
+
+        if (_setup is { } shown)
+        {
+            Show(shown);
+            return;
+        }
+
+        var importer = new CoreForeignImporter(_workbench.Core, ForeignAppDirs.ForCurrentUser());
+        var guide = new SetupGuide(importer);
+        var setup = new SetupView(_workbench, this, importer, guide);
+        setup.Ended += async (_, ending) => await FinishSetupAsync(setup, ending);
+        setup.BackChanged += (_, _) => ShowSetupBack();
+        _setup = setup;
+        if (Rail.IsPaneVisible)
+        {
+            // Nothing on the rail stays selected, so Connections leaves the guide as any other item does.
+            _choosingRail = true;
+            Rail.SelectedItem = null;
+            _choosingRail = false;
+        }
+
+        Show(setup);
+        _ = guide.ProbeAsync(SetupGuide.ProbeLimit);
+    }
+
+    // The launch's first read of the library decides whether the guide shows, while the Connections page is in front.
+    private void OnLibraryRead(object? sender, LibrarySnapshot snapshot)
+    {
+        if (_launchGateAsked)
+        {
+            return;
+        }
+
+        _launchGateAsked = true;
+        var gate = new SetupGate(
+            false, true, snapshot.Connections.Count, _workbench.Settings.SetupGuideSeen, LaunchWork: _waitingFiles.Count > 0);
+        if (ReferenceEquals(Rail.Content, _home) && SetupGuide.ShouldShow(gate))
+        {
+            ShowSetupGuide();
+        }
+    }
+
+    // Finish and Skip: seen first, then the recorded connection, else what the guide's imports wrote.
+    private async Task FinishSetupAsync(SetupView setup, SetupEnding ending)
+    {
+        if (!ReferenceEquals(_setup, setup))
+        {
+            return;
+        }
+
+        _setup = null;
+        _workbench.UpdateSettings(settings => settings with { SetupGuideSeen = true });
+        setup.Dispose();
+        switch (ending)
+        {
+            case SetupEnding.NewConnection:
+                ShowHome();
+                NewConnection();
+                break;
+            case SetupEnding.Sample:
+                await OpenSampleAsync();
+                break;
+            default:
+                ShowHome();
+                await HandOffAsync(ending);
+                break;
+        }
+    }
+
+    // Open connects, a selection shows checked on the Connections page, none leaves the page as it is.
+    private async Task HandOffAsync(SetupEnding ending)
+    {
+        switch (ending)
+        {
+            case SetupEnding.Open open:
+                try
+                {
+                    var snapshot = await _workbench.Library.GetSnapshotAsync();
+                    if (snapshot.Connections.FirstOrDefault(saved => saved.Id == open.Id) is { } connection)
+                    {
+                        Connect(connection);
+                    }
+                }
+                catch (TableProException exception)
+                {
+                    _home?.ShowMessage(Strings.Error(exception.Error), InfoBarSeverity.Error);
+                }
+
+                break;
+            case SetupEnding.SelectInLibrary select:
+                _home?.SelectConnections(select.Ids);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void ShowSetupBack()
+    {
+        if (_setup is { } setup && ReferenceEquals(Rail.Content, setup))
+        {
+            AppTitleBar.IsBackButtonVisible = setup.CanGoBack;
+        }
     }
 
     public async Task ExportConnectionsAsync()
@@ -598,6 +724,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
                 await workspace.CheckFileAsync();
             }
         };
+        ShowKeys();
         ShowRecentFiles();
         WatchUpdates();
         _workbench.RecentFilesChanged += OnRecentFilesChanged;
@@ -707,7 +834,89 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private async void OnLibraryChanged(object? sender, EventArgs e) => await RefreshMarksAsync();
 
-    private void OnSettingsChanged(object? sender, EventArgs e) => Themes.Apply(this, _workbench.Settings.Theme);
+    private void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        Themes.Apply(this, _workbench.Settings.Theme);
+        ShowKeys();
+    }
+
+    // An accelerator sits on one element, so each window sets its own; every keyed item gets a label, a space for none.
+    private void ShowKeys()
+    {
+        var keymap = DisplaySettings.Keymap;
+        if (ReferenceEquals(_keysShown, keymap))
+        {
+            return;
+        }
+
+        _keysShown = keymap;
+        foreach (var (item, action) in KeyedItems())
+        {
+            item.KeyboardAcceleratorTextOverride = DisplaySettings.KeyLabel(action);
+        }
+
+        foreach (var (item, action) in AcceleratedItems())
+        {
+            item.KeyboardAccelerators.Clear();
+            foreach (var chord in keymap.KeysOf(action))
+            {
+                if (EditorKey.VirtualKeyOf(chord.Key) is { } code)
+                {
+                    item.KeyboardAccelerators.Add(new KeyboardAccelerator
+                    {
+                        Key = (VirtualKey)code,
+                        Modifiers = (chord.Control ? VirtualKeyModifiers.Control : VirtualKeyModifiers.None)
+                            | (chord.Alt ? VirtualKeyModifiers.Menu : VirtualKeyModifiers.None)
+                            | (chord.Shift ? VirtualKeyModifiers.Shift : VirtualKeyModifiers.None),
+                    });
+                }
+            }
+        }
+    }
+
+    // The menu items whose keys the keymap sets; MenuDocumentation keeps F1, which no preset moves.
+    private (MenuFlyoutItem Item, string Action)[] AcceleratedItems() =>
+    [
+        (MenuNewConnection, "newConnection"),
+        (MenuOpenFile, "openFile"),
+        (MenuNewQueryTab, "newTab"),
+        (MenuCloseTab, "closeTab"),
+        (MenuReopenTab, "reopenClosedTab"),
+        (MenuSaveChanges, "saveChanges"),
+        (MenuSaveAs, "saveAs"),
+        (MenuDiscardChanges, "discardChanges"),
+        (MenuExportResults, "exportResults"),
+        (MenuSettings, "showSettings"),
+        (MenuAddRow, "addRow"),
+        (MenuDuplicateRow, "duplicateRow"),
+        (MenuPreviewSql, "previewSQL"),
+        (MenuShowConnections, "manageConnections"),
+        (MenuShowObjects, "toggleTableBrowser"),
+        (MenuFilterObjects, "focusSidebarSearch"),
+        (MenuShowHistory, "toggleHistory"),
+        (MenuRefresh, "refresh"),
+        (MenuSwitchDatabase, "openDatabase"),
+        (MenuRun, "executeAllStatements"),
+        (MenuRunStatement, "executeQuery"),
+        (MenuStop, "cancelQuery"),
+        (MenuFilterRows, "toggleFilters"),
+    ];
+
+    // The editor, the grid and Windows answer these keys themselves, so their items only name them.
+    private (MenuFlyoutItem Item, string Action)[] KeyedItems() =>
+    [
+        .. AcceleratedItems(),
+        (MenuUndo, "undo"),
+        (MenuRedo, "redo"),
+        (MenuCut, "cut"),
+        (MenuCopy, "copy"),
+        (MenuPaste, "paste"),
+        (MenuSelectAll, "selectAll"),
+        (MenuFind, "find"),
+        (MenuReplace, "findAndReplace"),
+        (MenuFormatQuery, "formatQuery"),
+        (MenuDeleteRows, "delete"),
+    ];
 
     private async Task RefreshMarksAsync()
     {
@@ -822,7 +1031,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         AppTitleBar.Subtitle = string.Empty;
         ShowCue(null);
         // While the rail is hidden, Settings is reached from the Connections page, so the title bar leads back.
-        AppTitleBar.IsBackButtonVisible = !Rail.IsPaneVisible && ReferenceEquals(page, _settings);
+        AppTitleBar.IsBackButtonVisible = page is SetupView setup
+            ? setup.CanGoBack
+            : !Rail.IsPaneVisible && ReferenceEquals(page, _settings);
         UpdateCommands();
     }
 
@@ -831,6 +1042,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         if (Rail.Content is WorkspaceView shown && !ReferenceEquals(shown, page))
         {
             shown.Leave();
+        }
+
+        // Any route away from the guide ends it, with nothing run; closing the window is quitting and writes nothing.
+        if (_setup is { } setup && ReferenceEquals(Rail.Content, setup) && !ReferenceEquals(page, setup))
+        {
+            _setup = null;
+            setup.Leave();
+            setup.Dispose();
+            _workbench.UpdateSettings(settings => settings with { SetupGuideSeen = true });
         }
 
         Rail.Content = page;
@@ -1147,7 +1367,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnRailSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        if (_home is null)
+        if (_home is null || _choosingRail)
         {
             return;
         }
@@ -1168,6 +1388,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnBackRequested(TitleBar sender, object args)
     {
+        if (Rail.Content is SetupView setup)
+        {
+            setup.Back();
+            return;
+        }
+
         if (_home is not null)
         {
             Show(_home);
@@ -1686,9 +1912,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     // Exit ends the app from any window; the primary saves every window as it closes.
     private async void OnExit(object sender, RoutedEventArgs e) => await _primary.RequestCloseAsync();
 
-    private void OnUndo(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.Z);
+    private void OnUndo(object sender, RoutedEventArgs e) => RunEditorCommand(EditorCommand.Undo);
 
-    private void OnRedo(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.Y);
+    private void OnRedo(object sender, RoutedEventArgs e) => RunEditorCommand(EditorCommand.Redo);
 
     private void OnCut(object sender, RoutedEventArgs e) => Workspace?.ActiveTab?.Editor?.Cut();
 
@@ -1734,12 +1960,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
-        EditorKey(VirtualKey.A);
+        RunEditorCommand(EditorCommand.SelectAll);
     }
 
-    private void OnFind(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.F);
+    private void OnFind(object sender, RoutedEventArgs e) => RunEditorCommand(EditorCommand.Find);
 
-    private void OnReplace(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.H);
+    private void OnReplace(object sender, RoutedEventArgs e) => RunEditorCommand(EditorCommand.Replace);
 
     private void OnSwitchDatabase(object sender, RoutedEventArgs e) => Workspace?.OpenDatabaseMenu();
 
@@ -1759,14 +1985,14 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
     }
 
-    // The menu sends the editor the key it already answers, so a menu command and its shortcut cannot differ.
-    private void EditorKey(VirtualKey key)
+    // The command itself, not its key: under a preset the key may run something else (docs/decisions/0025).
+    private void RunEditorCommand(EditorCommand command)
     {
         if (Workspace?.ActiveTab?.Editor is { } editor)
         {
-            editor.HandleKey(key, control: true, shift: false, alt: false);
+            editor.Run(command);
             // Find and Replace put the keyboard in the find bar's box, which a focus on the editor would take back.
-            if (key is not (VirtualKey.F or VirtualKey.H))
+            if (command is not (EditorCommand.Find or EditorCommand.Replace))
             {
                 editor.Focus(FocusState.Programmatic);
             }
@@ -2009,6 +2235,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         await Launcher.LaunchUriAsync(SettingsView.IssuesUri);
 
     private async void OnOpenSample(object sender, RoutedEventArgs e) => await OpenSampleAsync();
+
+    private void OnSetupGuide(object sender, RoutedEventArgs e) => ShowSetupGuide();
 
     private void OnAbout(object sender, RoutedEventArgs e)
     {

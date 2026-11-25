@@ -10,7 +10,7 @@ public sealed partial class ShellTests
     public void ResultsShowAsJsonTextAndAsATreeOfRows(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.Click(app.FindByName("Artist", app.Find("ObjectTree")), () => app.TryFind("TableStatus") is not null);
         AppSession.WaitForText(
             app.Find("TableStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal));

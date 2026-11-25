@@ -225,13 +225,23 @@ struct DBeaverImporterTests {
             "mysql-1": makeConnection(name: "MySQL1", provider: "mysql")
         ]
         try writeDataSources(makeDataSourcesJSON(connections: connections))
-        #expect(importer.inventory() == ForeignAppInventory(connections: 3, savedQueries: 0))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 3, savedQueries: 0))
     }
 
     @Test("inventory is empty when the file is missing")
     func testInventory_fileMissing_returnsZero() throws {
         try? FileManager.default.removeItem(at: projectDir.appendingPathComponent("data-sources.json"))
-        #expect(importer.inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
+        #expect(!importer.hasDataAtDefaultLocation())
+    }
+
+    @Test("A main data-sources file that is there but cannot be read is unreadable, never zero")
+    func testInventory_unreadableMainFile_throws() throws {
+        try Data("not json".utf8).write(to: projectDir.appendingPathComponent("data-sources.json"))
+
+        #expect(throws: ForeignAppImportError.self) {
+            try importer.inventory()
+        }
     }
 
     // MARK: - collect
@@ -477,7 +487,7 @@ struct DBeaverImporterTests {
         try writeCredentials(credentials)
 
         let result = try importer.collect(.withPasswords)
-        #expect(result.bundle.credentials["pg-1"]?.password == "s3cr3t_p4ss")
+        #expect(result.bundle.credentials["General/pg-1"]?.password == "s3cr3t_p4ss")
     }
 
     @Test("collect without passwords skips decryption")
@@ -511,12 +521,12 @@ struct DBeaverImporterTests {
         )
         try Data("not json".utf8).write(to: projectDir.appendingPathComponent("data-sources-broken.json"))
 
-        #expect(importer.inventory().connections == 2)
+        #expect(try importer.inventory().connections == 2)
         let result = try importer.collect(.withPasswords)
         #expect(result.connections.map { $0.name } == ["Main", "Second"])
         #expect(result.connections.map { $0.username } == ["main-user", "reporter"])
-        #expect(result.bundle.credentials["main-1"]?.password == "main-pass")
-        #expect(result.bundle.credentials["sub-1"]?.password == "sub-pass")
+        #expect(result.bundle.credentials["General/main-1"]?.password == "main-pass")
+        #expect(result.bundle.credentials["General/sub-1"]?.password == "sub-pass")
         #expect(result.groupPath(at: 1) == ["Shared Servers"])
     }
 
@@ -531,18 +541,78 @@ struct DBeaverImporterTests {
         #expect(try importer.collect(.connectionsOnly).connections.map { $0.name } == ["Team"])
     }
 
-    @Test("The first project by name is read, whatever order the folder lists them in")
-    func testCollect_readsProjectsInNameOrder() throws {
+    private func writeProject(_ project: String, contents: Data? = nil) throws {
         let workspace = projectDir.deletingLastPathComponent().deletingLastPathComponent()
+        let json = makeDataSourcesJSON(connections: ["\(project)-1": makeConnection(name: "\(project) PG")])
+        let metadata = workspace.appendingPathComponent("\(project)/.dbeaver", isDirectory: true)
+        try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+        try (contents ?? JSONSerialization.data(withJSONObject: json)).write(to: metadata.appendingPathComponent("data-sources.json"))
+    }
+
+    @Test("Every project is read and counted, whatever order the folder lists them in")
+    func testCollect_readsEveryProject() throws {
         for project in ["Beta", "Alpha"] {
-            let json = makeDataSourcesJSON(connections: ["\(project)-1": makeConnection(name: "\(project) PG")])
-            let data = try JSONSerialization.data(withJSONObject: json)
-            let metadata = workspace.appendingPathComponent("\(project)/.dbeaver", isDirectory: true)
-            try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
-            try data.write(to: metadata.appendingPathComponent("data-sources.json"))
+            try writeProject(project)
         }
 
-        #expect(try importer.collect(.connectionsOnly).connections.map { $0.name } == ["Alpha PG"])
+        let result = try importer.collect(.connectionsOnly)
+
+        #expect(try importer.inventory().connections == 2)
+        #expect(result.connections.map { $0.name } == ["Alpha PG", "Beta PG"])
+    }
+
+    @Test("A project whose main file is broken leaves the other projects importable")
+    func testCollect_brokenProjectLeavesTheOthers() throws {
+        try writeProject("Alpha", contents: Data("not json".utf8))
+        try writeProject("Beta")
+
+        let result = try importer.collect(.connectionsOnly)
+
+        #expect(try importer.inventory().connections == 1)
+        #expect(result.connections.map { $0.name } == ["Beta PG"])
+    }
+
+    @Test("Every project's scripts are read")
+    func testCollect_scriptsOfEveryProject() throws {
+        for project in ["Alpha", "Beta"] {
+            try writeProject(project)
+            let workspace = projectDir.deletingLastPathComponent().deletingLastPathComponent()
+            try ForeignFixture.write(
+                "select '\(project)';",
+                to: workspace.appendingPathComponent("\(project)/Scripts/\(project) report.sql")
+            )
+        }
+
+        let result = try importer.collect(.withSavedQueries)
+
+        #expect(result.savedQueryNames == ["Alpha report", "Beta report"])
+        #expect(try importer.inventory().savedQueries == 2)
+    }
+
+    @Test("Two projects that share a data source id each keep their scripts on their own connection")
+    func testCollect_sharedDataSourceIdStaysInItsProject() throws {
+        let workspace = projectDir.deletingLastPathComponent().deletingLastPathComponent()
+        for project in ["Alpha", "Beta"] {
+            let json = makeDataSourcesJSON(connections: ["postgres-jdbc-1": makeConnection(name: "\(project) PG")])
+            try writeProject(project, contents: JSONSerialization.data(withJSONObject: json))
+            let projectURL = workspace.appendingPathComponent(project, isDirectory: true)
+            try ForeignFixture.write(
+                "select '\(project)';",
+                to: projectURL.appendingPathComponent("Scripts/\(project) report.sql")
+            )
+            let metadata = ["resources": ["Scripts/\(project) report.sql": ["default-datasource": "postgres-jdbc-1"]]]
+            try JSONSerialization.data(withJSONObject: metadata)
+                .write(to: projectURL.appendingPathComponent(".dbeaver/project-metadata.json"))
+        }
+
+        let result = try importer.collect(.withSavedQueries)
+
+        #expect(result.connections.map { $0.name } == ["Alpha PG", "Beta PG"])
+        let alpha = try #require(result.connectionRef(named: "Alpha PG"))
+        let beta = try #require(result.connectionRef(named: "Beta PG"))
+        #expect(alpha != beta)
+        #expect(result.savedQuery(named: "Alpha report")?.connectionRef == alpha)
+        #expect(result.savedQuery(named: "Beta report")?.connectionRef == beta)
     }
 
     // MARK: - Tunnel credentials
@@ -557,8 +627,8 @@ struct DBeaverImporterTests {
         #expect(try importer.collect(.connectionsOnly).connections[0].sshConfig?.username == "tunnel-user")
         let result = try importer.collect(.withPasswords)
         #expect(result.connections[0].sshConfig?.username == "tunnel-user")
-        #expect(result.bundle.credentials["ssh-1"]?.sshPassword == "tunnel-secret")
-        #expect(result.bundle.credentials["ssh-1"]?.password == nil)
+        #expect(result.bundle.credentials["General/ssh-1"]?.sshPassword == "tunnel-secret")
+        #expect(result.bundle.credentials["General/ssh-1"]?.password == nil)
     }
 
     @Test("A key tunnel's saved secret imports as the key passphrase, not the SSH password")
@@ -575,7 +645,7 @@ struct DBeaverImporterTests {
         ]))
         try writeCredentials(["key-1": ["network/ssh_tunnel": ["password": "phrase"]]])
 
-        let credentials = try importer.collect(.withPasswords).bundle.credentials["key-1"]
+        let credentials = try importer.collect(.withPasswords).bundle.credentials["General/key-1"]
         #expect(credentials?.keyPassphrase == "phrase")
         #expect(credentials?.sshPassword == nil)
     }
@@ -695,7 +765,7 @@ struct DBeaverImporterTests {
         }
     }
 
-    @Test("collect stamps the bundle and keys each connection by its data source id, sorted by name")
+    @Test("collect stamps the bundle and keys each connection by its project and data source id, sorted by name")
     func testCollect_bundleMetadata() throws {
         let connections: [String: [String: Any]] = [
             "pg-2": makeConnection(name: "Zeta"),
@@ -706,7 +776,7 @@ struct DBeaverImporterTests {
         let result = try importer.collect(.connectionsOnly)
         #expect(result.bundle.appVersion == "DBeaver Import")
         #expect(result.bundle.tags.isEmpty)
-        #expect(result.bundle.connections.map { $0.ref } == ["pg-1", "pg-2"])
+        #expect(result.bundle.connections.map { $0.ref } == ["General/pg-1", "General/pg-2"])
     }
 
     @Test("collect SSH port as string")
@@ -1080,9 +1150,9 @@ struct DBeaverImporterTests {
 
         let daily = try #require(result.savedQuery(named: "Daily users"))
         #expect(daily.sql == "select ${days};")
-        #expect(daily.connectionRef == "pg-1")
+        #expect(daily.connectionRef == "General/pg-1")
         #expect(result.folderPath(of: daily) == ["Reports"])
-        #expect(result.bundle.folderChain(daily.folderRef).allSatisfy { $0.connectionRef == "pg-1" })
+        #expect(result.bundle.folderChain(daily.folderRef).allSatisfy { $0.connectionRef == "General/pg-1" })
         #expect(result.isSuggested(daily))
     }
 
@@ -1118,7 +1188,7 @@ struct DBeaverImporterTests {
 
         #expect(result.savedQueryNames == ["Script", "Script-3", "Daily users", "Unbound", "Elsewhere"])
         let script = try #require(result.savedQuery(named: "Script"))
-        #expect(script.connectionRef == "pg-1")
+        #expect(script.connectionRef == "General/pg-1")
         #expect(!result.isSuggested(script))
         let numbered = try #require(result.savedQuery(named: "Script-3"))
         #expect(!result.isSuggested(numbered))
@@ -1164,6 +1234,6 @@ struct DBeaverImporterTests {
     func testInventory_countsScripts() throws {
         try writeScriptFixture()
 
-        #expect(importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 5))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 5))
     }
 }

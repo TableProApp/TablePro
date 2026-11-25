@@ -17,6 +17,7 @@ const JSON_EXTENSION: &str = ".json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Project {
+    pub(super) name: String,
     pub(super) path: PathBuf,
     pub(super) configs: Vec<ConfigFile>,
 }
@@ -65,43 +66,57 @@ pub(super) fn data_roots(dirs: &ForeignAppDirs) -> Vec<PathBuf> {
     }
 }
 
-// Moving between packages leaves two roots behind; the one DBeaver wrote last is the live one.
-pub(super) fn find_project(roots: &[PathBuf]) -> Option<Project> {
-    let mut chosen: Option<(Project, Option<SystemTime>)> = None;
+// Moving between packages leaves two roots behind; the one DBeaver wrote last is the live one. Every project of its
+// workspace is read, since DBeaver keeps one set of connections per project.
+pub(super) fn find_projects(roots: &[PathBuf]) -> Vec<Project> {
+    let mut chosen: Option<(Vec<Project>, Option<SystemTime>)> = None;
     for root in roots {
-        let Some(project) = project_in(root) else {
+        let projects = projects_in(root);
+        if projects.is_empty() {
             continue;
-        };
-        let modified = project.last_modified();
+        }
+        let modified = projects.iter().filter_map(Project::last_modified).max();
         if chosen.as_ref().is_none_or(|(_, newest)| modified > *newest) {
-            chosen = Some((project, modified));
+            chosen = Some((projects, modified));
         }
     }
-    chosen.map(|(project, _)| project)
+    chosen.map(|(projects, _)| projects).unwrap_or_default()
 }
 
-fn project_in(root: &Path) -> Option<Project> {
+fn projects_in(root: &Path) -> Vec<Project> {
     let mut workspaces: Vec<(String, PathBuf)> = children(root)
         .into_iter()
         .filter(|(name, _)| name.starts_with(WORKSPACE_PREFIX))
         .collect();
     // A later `workspace7` sorts ahead of `workspace6`.
     workspaces.sort_by(|left, right| right.0.cmp(&left.0));
-    workspaces.into_iter().find_map(|(_, workspace)| {
-        let mut projects = children(&workspace);
-        projects.sort_by(|left, right| left.0.cmp(&right.0));
-        projects.into_iter().find_map(|(_, path)| Project::at(path))
-    })
+    workspaces
+        .into_iter()
+        .map(|(_, workspace)| {
+            let mut projects = children(&workspace);
+            projects.sort_by(|left, right| left.0.cmp(&right.0));
+            projects
+                .into_iter()
+                .filter_map(|(name, path)| Project::at(name, path))
+                .collect::<Vec<_>>()
+        })
+        .find(|projects| !projects.is_empty())
+        .unwrap_or_default()
 }
 
 impl Project {
-    fn at(path: PathBuf) -> Option<Self> {
+    fn at(name: String, path: PathBuf) -> Option<Self> {
         let configs = config_files(&path.join(METADATA_FOLDER));
         if configs.is_empty() {
             None
         } else {
-            Some(Self { path, configs })
+            Some(Self { name, path, configs })
         }
+    }
+
+    // A data source id is unique per project only, and a folder name never holds the `/`.
+    pub(super) fn scoped_id(&self, id: &str) -> String {
+        format!("{}/{id}", self.name)
     }
 
     fn last_modified(&self) -> Option<SystemTime> {
@@ -170,8 +185,12 @@ mod tests {
         project.configs.iter().map(|config| config.name.as_str()).collect()
     }
 
+    fn paths(projects: &[Project]) -> Vec<&Path> {
+        projects.iter().map(|project| project.path.as_path()).collect()
+    }
+
     #[test]
-    fn the_newest_workspace_name_wins_and_other_folders_are_ignored() {
+    fn every_project_of_the_newest_workspace_is_read_in_name_order() {
         let root = tempfile::tempdir().expect("a temp dir");
         write(&root.path().join("workspace5/General/.dbeaver/data-sources.json"), "{}");
         write(&root.path().join("workspace6/Second/.dbeaver/data-sources.json"), "{}");
@@ -181,8 +200,14 @@ mod tests {
             "{}",
         );
         write(&root.path().join("zz-backup/General/.dbeaver/data-sources.json"), "{}");
-        let project = find_project(&[root.path().to_path_buf()]).expect("a project");
-        assert_eq!(project.path, root.path().join("workspace6/First"));
+        let projects = find_projects(&[root.path().to_path_buf()]);
+        assert_eq!(
+            paths(&projects),
+            [
+                root.path().join("workspace6/First"),
+                root.path().join("workspace6/Second")
+            ]
+        );
     }
 
     #[test]
@@ -193,8 +218,8 @@ mod tests {
             "{}",
         );
         write(&root.path().join("workspace5/General/.dbeaver/data-sources.json"), "{}");
-        let project = find_project(&[root.path().to_path_buf()]).expect("a project");
-        assert_eq!(project.path, root.path().join("workspace5/General"));
+        let projects = find_projects(&[root.path().to_path_buf()]);
+        assert_eq!(paths(&projects), [root.path().join("workspace5/General")]);
     }
 
     #[test]
@@ -207,9 +232,10 @@ mod tests {
         write(&metadata.join("data-sources.json.bak"), "{}");
         write(&metadata.join("credentials-config.json"), "");
         fs::create_dir_all(metadata.join("data-sources-folder.json")).expect("a folder");
-        let project = find_project(&[root.path().to_path_buf()]).expect("a project");
+        let projects = find_projects(&[root.path().to_path_buf()]);
+        let project = &projects[0];
         assert_eq!(
-            names(&project),
+            names(project),
             ["data-sources.json", "data-sources-a.json", "data-sources-b.json"]
         );
         assert!(project.configs[0].is_default);
@@ -231,8 +257,8 @@ mod tests {
             &root.path().join("workspace6/General/.dbeaver/data-sources-team.json"),
             "{}",
         );
-        let project = find_project(&[root.path().to_path_buf()]).expect("a project");
-        assert_eq!(names(&project), ["data-sources-team.json"]);
+        let projects = find_projects(&[root.path().to_path_buf()]);
+        assert_eq!(names(&projects[0]), ["data-sources-team.json"]);
     }
 
     #[test]
@@ -250,15 +276,12 @@ mod tests {
         touch(&first_file, earlier);
         touch(&second_file, later);
         assert_eq!(
-            find_project(&roots).map(|p| p.path),
-            Some(second.path().join("workspace6/General"))
+            paths(&find_projects(&roots)),
+            [second.path().join("workspace6/General")]
         );
 
         touch(&first_file, later);
-        assert_eq!(
-            find_project(&roots).map(|p| p.path),
-            Some(first.path().join("workspace6/General"))
-        );
+        assert_eq!(paths(&find_projects(&roots)), [first.path().join("workspace6/General")]);
     }
 
     #[test]

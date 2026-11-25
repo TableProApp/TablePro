@@ -17,8 +17,8 @@ extension AppDelegate: NSMenuItemValidation {
         SupportWindowController.present()
     }
 
-    @objc func showWelcomeSheet(_ sender: Any?) {
-        WelcomeRouter.shared.route(.showWelcomeSheet)
+    @objc func showSetupGuide(_ sender: Any?) {
+        SetupGuidePresenter.shared.presentFromMenu()
     }
 
     @objc func checkForUpdates(_ sender: Any?) {

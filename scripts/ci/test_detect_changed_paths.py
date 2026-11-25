@@ -483,6 +483,40 @@ class DetectChangedPathsTests(unittest.TestCase):
     def test_the_mac_tests_run_on_the_model_merge_cases_they_share(self):
         self.assertEqual(self.verdict_after("macos", "core/crates/ai/tests/model-merge-cases.json"), "true")
 
+    def test_the_mac_app_runs_on_the_shortcut_presets_it_bundles(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        presets = "core/crates/core/keymaps.json"
+        for suite in ["macos", "release", "shipped", "linux", "core", "windows"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, presets), "true")
+        self.assertEqual(self.verdict_after("ios", presets), "false")
+        self.assertEqual(self.verdict_after("plugins", presets), "false")
+
+    def test_both_apple_apps_run_on_the_sample_database_the_core_holds(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text(
+            "sources:\n  - path: ../Packages/TableProCore\n  - path: ../../core/resources/Chinook.sqlite\n",
+            encoding="utf-8",
+        )
+        self.seed = self.commit([])
+        sample = "core/resources/Chinook.sqlite"
+        for suite in ["macos", "ios", "release", "shipped", "linux", "windows"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, sample), "true")
+        self.assertEqual(self.verdict_after("plugins", sample), "false")
+
+    def test_the_mac_tests_run_on_the_source_list_cases_the_core_shares(self):
+        cases = "core/crates/foreign-import/tests/fixtures/source_list.json"
+        for suite in ["macos", "linux", "core", "windows"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, cases), "true")
+        self.assertEqual(self.verdict_after("release", cases), "false")
+        self.assertEqual(self.verdict_after("macos", "core/crates/foreign-import/tests/fixtures/other.json"), "false")
+
     def test_macos_runs_on_the_build_setup_action(self):
         self.assertEqual(self.verdict_after("macos", ".github/actions/prepare-build/action.yml"), "true")
 

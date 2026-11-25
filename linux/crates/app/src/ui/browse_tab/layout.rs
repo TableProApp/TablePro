@@ -46,9 +46,14 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
     imp.inner_stack.set_visible_child_name("loading");
     imp.read_only_banner.set_revealed(init.read_only);
     let page_sizes = page_size_choices(&imp.page_size_dropdown, init.page_size);
-    imp.overflow_button.set_menu_model(Some(&overflow_menu(&page_sizes)));
-    imp.more_button.set_menu_model(Some(&more_menu(&page_sizes)));
-    imp.json_more.set_menu_model(Some(&json_menu(&page_sizes)));
+    for (button, menu) in [
+        (&imp.overflow_button, overflow_menu(&page_sizes)),
+        (&imp.more_button, more_menu(&page_sizes)),
+        (&imp.json_more, json_menu(&page_sizes)),
+    ] {
+        crate::application::keymap::follow_menu(&menu);
+        button.set_menu_model(Some(&menu));
+    }
     connect_controls(tab, page_sizes.clone());
     BrowseTabWidgets {
         inner_stack: imp.inner_stack.get(),
@@ -119,9 +124,7 @@ fn json_menu(page_sizes: &[u64]) -> gio::Menu {
 fn export_item() -> gio::MenuItem {
     let export = gio::MenuItem::new(Some(&gettext("_Export Rows…")), Some("browse.export"));
     // The window's Export Results key reaches this tab's Export.
-    if let Some(key) = crate::application::triggers_for("win.export-results").first() {
-        export.set_attribute_value("accel", Some(&key.to_variant()));
-    }
+    crate::application::keymap::show_key_of(&export, "win.export-results");
     export
 }
 

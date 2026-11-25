@@ -103,7 +103,32 @@ struct DataGripImporterTests {
             source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a"),
             source(uuid: "2", name: "B", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://h:5432/b")
         ])
-        #expect(importer.inventory() == ForeignAppInventory(connections: 2, savedQueries: 0))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 2, savedQueries: 0, keychainPrompts: 2))
+    }
+
+    @Test("A data source over SSH counts its tunnel's Keychain item too")
+    func inventoryCountsTunnelPrompts() throws {
+        try writeDataSources([
+            source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a"),
+            source(uuid: "2", name: "B", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://h:5432/b")
+        ])
+        try writeLocalDataSources([
+            localSource(
+                uuid: "1",
+                extra: "<ssh-properties><enabled>true</enabled><ssh-config-id>SSH1</ssh-config-id></ssh-properties>"
+            )
+        ])
+
+        #expect(try importer.inventory().keychainPrompts == 3)
+    }
+
+    @Test("The launch probe stops at DataGrip's config folders")
+    func probeLooksAtConfigFoldersOnly() throws {
+        var empty = importer
+        empty.jetBrainsRoot = root.appendingPathComponent("missing")
+
+        #expect(importer.hasDataAtDefaultLocation())
+        #expect(!empty.hasDataAtDefaultLocation())
     }
 
     @Test("import throws when no DataGrip data found")
@@ -496,17 +521,19 @@ struct DataGripImporterTests {
             source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a")
         ])
 
-        #expect(importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 0))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 0, keychainPrompts: 1))
     }
 
-    @Test("A dataSources.xml past 16 MiB is not read")
+    @Test("A dataSources.xml past 16 MiB is not read, and with nothing else readable the data is unreadable")
     func oversizedDataSourcesFile() throws {
         try writeDataSources([
             source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a"),
             "<!--" + String(repeating: " ", count: ForeignAppFile.maximumByteCount) + "-->"
         ])
 
-        #expect(importer.inventory().connections == 0)
+        #expect(throws: ForeignAppImportError.self) {
+            try importer.inventory()
+        }
     }
 
     @Test("Only a regular file under the cap is read")
@@ -788,6 +815,6 @@ struct DataGripImporterTests {
     func inventoryCountsConsoles() throws {
         try writeConsoleFixture()
 
-        #expect(importer.inventory() == ForeignAppInventory(connections: 2, savedQueries: 7))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 2, savedQueries: 7, keychainPrompts: 2))
     }
 }

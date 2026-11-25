@@ -3,6 +3,7 @@ import SwiftUI
 
 struct FirstRunSheet: View {
     let pages: [FirstRunPage]
+    let onStart: (LibraryStartAction) -> Void
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -19,10 +20,13 @@ struct FirstRunSheet: View {
     @ViewBuilder
     private func page(_ page: FirstRunPage) -> some View {
         switch page {
-        case .welcome:
-            WelcomePage(isAdvancing: isAdvancing) {
-                advance(from: .welcome)
-            }
+        case .origin:
+            OriginPage(
+                offersICloud: !appState.onboarding.isCloudSyncEnabled,
+                isAdvancing: isAdvancing,
+                onChoose: choose,
+                onSkip: { advance(from: .origin) }
+            )
             .toolbar(.hidden, for: .navigationBar)
         case .iCloud:
             ICloudPage(
@@ -51,6 +55,16 @@ struct FirstRunSheet: View {
         }
     }
 
+    // Sync is the iCloud page's own question, so the card answers it here and that page is skipped.
+    private func choose(_ action: LibraryStartAction) {
+        guard !isAdvancing else { return }
+        if action == .turnOnICloud {
+            appState.setCloudSyncEnabled(true)
+        }
+        onStart(action)
+        advance(from: .origin)
+    }
+
     private func advance(from current: FirstRunPage) {
         guard !isAdvancing else { return }
         isAdvancing = true
@@ -67,6 +81,9 @@ struct FirstRunSheet: View {
     private func nextPage(after current: FirstRunPage) async -> FirstRunPage? {
         guard let index = pages.firstIndex(of: current) else { return nil }
         for candidate in pages.dropFirst(index + 1) {
+            if candidate == .iCloud, appState.onboarding.syncChoice != nil {
+                continue
+            }
             if candidate == .iCloud, await !isICloudAvailable() {
                 continue
             }
@@ -80,24 +97,74 @@ struct FirstRunSheet: View {
     }
 }
 
-private struct WelcomePage: View {
+private struct OriginPage: View {
+    let offersICloud: Bool
     let isAdvancing: Bool
-    let onContinue: () -> Void
+    let onChoose: (LibraryStartAction) -> Void
+    let onSkip: () -> Void
 
     var body: some View {
         OnboardingPageLayout {
-            OnboardingHeader(title: "Welcome to TablePro", message: nil, image: .appIcon)
+            OnboardingHeader(
+                title: "Welcome to TablePro",
+                message: "Bring your connections, or start with a new one.",
+                image: .appIcon
+            )
         } content: {
-            FeatureHighlightList(highlights: FeatureHighlights.welcome)
-        } actions: {
-            Button(action: onContinue) {
-                Text("Continue")
-                    .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 28) {
+                group(
+                    "Bring Your Connections",
+                    footer: "Using another app? Import its connections in TablePro on your Mac, then sync them here with iCloud."
+                ) {
+                    if offersICloud {
+                        card(.turnOnICloud, detail: "Connections from TablePro on your Mac appear here.")
+                    }
+                    card(.importConnections, detail: "A .tablepro file from AirDrop, Files, or Mail.")
+                }
+                group("Start Fresh") {
+                    card(.addConnection, detail: "Enter the server details yourself.")
+                    card(.openSample, detail: "Explore a music store database without connecting to a server.")
+                }
             }
-            .buttonStyle(.borderedProminent)
             .disabled(isAdvancing)
-            .accessibilityIdentifier("first-run-continue")
+        } actions: {
+            Button("Skip", action: onSkip)
+                .buttonStyle(.borderless)
+                .disabled(isAdvancing)
+                .accessibilityIdentifier("first-run-origin-skip")
         }
+    }
+
+    private func group<Cards: View>(
+        _ title: LocalizedStringResource,
+        footer: LocalizedStringResource? = nil,
+        @ViewBuilder cards: () -> Cards
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+                .accessibilityAddTraits(.isHeader)
+            VStack(spacing: 10) {
+                cards()
+            }
+            if let footer {
+                Text(footer)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func card(_ action: LibraryStartAction, detail: LocalizedStringResource) -> some View {
+        OnboardingChoiceCard(title: action.title, detail: detail, systemImage: action.systemImage) {
+            onChoose(action)
+        }
+        .accessibilityIdentifier("first-run-origin-\(action.accessibilityIdentifier)")
     }
 }
 
@@ -118,12 +185,9 @@ private struct ICloudPage: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         } actions: {
-            Button(action: onUse) {
-                Text("Use iCloud")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .accessibilityIdentifier("first-run-use-icloud")
+            Button("Use iCloud", action: onUse)
+                .onboardingProminentButton()
+                .accessibilityIdentifier("first-run-use-icloud")
             Button("Not Now", action: onNotNow)
                 .buttonStyle(.borderless)
                 .accessibilityIdentifier("first-run-icloud-not-now")
@@ -145,12 +209,9 @@ private struct UsageDataPage: View {
         } content: {
             UsageDataDisclosure()
         } actions: {
-            Button(action: onShare) {
-                Text("Share Usage Data")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .accessibilityIdentifier("first-run-share-usage")
+            Button("Share Usage Data", action: onShare)
+                .onboardingProminentButton()
+                .accessibilityIdentifier("first-run-share-usage")
             Button("Don't Share", action: onDontShare)
                 .buttonStyle(.borderless)
                 .accessibilityIdentifier("first-run-dont-share-usage")

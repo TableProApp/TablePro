@@ -8,33 +8,6 @@ nonisolated struct FeatureHighlight: Identifiable, Sendable {
 }
 
 nonisolated enum FeatureHighlights {
-    static let welcome: [FeatureHighlight] = [
-        FeatureHighlight(
-            id: "databases",
-            systemImage: "cylinder.split.1x2",
-            title: "Many Databases, One App",
-            message: "MySQL, PostgreSQL, SQL Server, Oracle, Redis, SQLite, DuckDB, and more."
-        ),
-        FeatureHighlight(
-            id: "browse",
-            systemImage: "tablecells",
-            title: "Browse and Edit Data",
-            message: "Open a table, filter its rows, and change values in place."
-        ),
-        FeatureHighlight(
-            id: "query",
-            systemImage: "chevron.left.forwardslash.chevron.right",
-            title: "Write and Run SQL",
-            message: "Run queries and find the ones you ran before in History."
-        ),
-        FeatureHighlight(
-            id: "secure",
-            systemImage: "lock.shield",
-            title: "Connect Securely",
-            message: "Passwords stay in your Keychain. Connect through an SSH tunnel or over SSL."
-        )
-    ]
-
     static func release(_ version: String) -> [FeatureHighlight]? {
         releases[version]
     }

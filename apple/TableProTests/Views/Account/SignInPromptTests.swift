@@ -19,7 +19,7 @@ struct SignInPromptTests {
         isUITestSandbox: Bool = false,
         uiTestRequestsPrompt: Bool = false,
         isUserSession: Bool = true,
-        welcomeSheetPending: Bool = false,
+        setupGuidePending: Bool = false,
         isSignedIn: Bool = false,
         hasStoredLicenseKey: Bool = false
     ) -> SignInPrompt {
@@ -28,7 +28,7 @@ struct SignInPromptTests {
             isUITestSandbox: isUITestSandbox,
             uiTestRequestsPrompt: uiTestRequestsPrompt,
             isUserSession: { isUserSession },
-            welcomeSheetPending: { welcomeSheetPending },
+            setupGuidePending: { setupGuidePending },
             isSignedIn: { isSignedIn },
             hasStoredLicenseKey: { hasStoredLicenseKey },
             present: { recorder.presented += 1 }
@@ -62,12 +62,12 @@ struct SignInPromptTests {
         #expect(recorder.presented == 0)
     }
 
-    @Test("A new install sees the welcome sheet first, and the sign-in window when it closes")
-    func waitsForTheWelcomeSheet() throws {
+    @Test("A new install sees the setup guide first, and the sign-in window when it closes")
+    func waitsForTheSetupGuide() throws {
         let defaults = try EphemeralDefaults()
         let recorder = Recorder()
 
-        Self.prompt(defaults.defaults, recorder: recorder, welcomeSheetPending: true).presentIfNeeded()
+        Self.prompt(defaults.defaults, recorder: recorder, setupGuidePending: true).presentIfNeeded()
         #expect(recorder.presented == 0)
 
         Self.prompt(defaults.defaults, recorder: recorder).presentIfNeeded()
