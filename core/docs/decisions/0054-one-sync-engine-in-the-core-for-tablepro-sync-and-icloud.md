@@ -187,11 +187,12 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
 
 ### Integrity and freshness
 
-- **Integrity.** The file carries 0053's state MAC, `HMAC-SHA256(key, LP("tablepro/v1/state") || LP(origin) || LP(account) || state)`, keyed from the device store.
-  - `state` is `LP(file id) || LP(counter) || LP(digest)`, with the counter as 8 bytes big-endian.
-  - The digest is SHA-256 over the key tables in the order the column list gives. It frames with `W(x)`, an 8-byte big-endian length then the bytes of `x`, not 0053's `LP`, since a key object kept verbatim can pass 65,535 bytes. Each table is `W(name) || u64(row count)`, then its rows in the byte order of their encoded primary keys. A row is its values in column order. A value is one byte, 0 for null and 1 otherwise, then for a present value `W` of its bytes: text as UTF-8, an integer or flag as 8 bytes big-endian, bytes as they are. iCloud files have no key tables, so their digest covers none.
-  - The digest is computed again when a key table changes, and the MAC on every commit. A file whose MAC does not verify is refused.
-  - One MAC covers the whole snapshot, so rows from two copies of the file cannot be mixed.
+- **Integrity.** The file carries 0053's state MAC, `HMAC-SHA256(key, LP("tablepro/v1/state") || LP(origin) || LP(account) || state)`. Its key is 32 random bytes in the device store, one per state file; on the TablePro Sync file it is the key 0053 names for the holder's state.
+  - `state` is `LP(file id) || LP(counter) || LP(key digest) || LP(sync digest)`, with the counter as 8 bytes big-endian.
+  - **The key digest** is SHA-256 over the key tables in the order the column list gives. It frames with `W(x)`, an 8-byte big-endian length then the bytes of `x`, not 0053's `LP`, since a key object kept verbatim can pass 65,535 bytes. Each table is `W(name) || u64(row count)`, then its rows in the byte order of their encoded primary keys. A row is its values in column order. A value is one byte, 0 for null and 1 otherwise, then for a present value `W` of its bytes: text as UTF-8, an integer or flag as 8 bytes big-endian, bytes as they are. iCloud files have no key tables, so their key digest covers none.
+  - **The sync digest** is SHA-256 over every other table, in the order the table above lists them, framed the same way, with each row's columns in the order the file's schema version defines. Bases, approvals, cursors and the outbox decide what a pass sends and applies, so a local writer must not swap them either.
+  - Each digest is computed again when its tables change, and the MAC on every commit. A file whose MAC does not verify is refused.
+  - One MAC covers the whole snapshot, so rows from two copies of the file cannot be mixed. The key digest stays apart because the anchor's checks use it.
 - **Freshness.** A MAC proves the file is this device's, not that it is the latest. Sealed state needs a monotonic counter kept apart from what it seals; this follows ROTE (Matetic et al., "ROTE: Rollback Protection for Trusted Execution", USENIX Security 2017), with the device store in place of a trusted counter.
   - Every commit raises the counter by one. The file's **anchor** in the device store is a small root item and the checkpoint items it names. A new file writes its anchor first.
   - **The root** holds the file id, a current entry and at most one pending entry. An entry holds the counter, the MAC, the key tables' digest and the digest of its checkpoint.
@@ -218,7 +219,7 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
   - Its sync tables go into refill, as a restored store does: the pull wins, records the provider has never seen go up as creates, then the diff runs again.
   - Its key tables are not trusted, and the holder keys stay, so it is the same holder. It rebuilds the key tables from the logs the server holds, accepting only what extends the anchor's checkpoint, the pending entry's when one is left:
     - a log extends an anchored head when it contains that head at its `seq` with the same hash. Otherwise a fork ending, as the exception above defines it, must drop the branch that head is on, with the dropped branch's statements chained from the fork point to the anchored `seq` and hash. A missing or substituted link keeps the holder blocked;
-    - no key version below an anchored floor, and no envelope counter below an anchored one.
+    - no key version below an anchored floor for writing or as the current version, and no envelope counter below an anchored one. A floor limits writes, not reads: an older key version verified on the kept chain still opens the envelopes and history sealed under it, and a burned version opens nothing.
 
     Until every followed log extends its anchored head, it accepts no wrap or envelope and writes no secret. A comparison never pins a head older than the anchor's, so a holder that missed a removal cannot hand the device its older view. A fork re-pin is the one comparison that may, under the exception above.
   - An anchor with no file, as after a reinstall that kept the device store, rebuilds the same way.
@@ -349,7 +350,8 @@ A copy whose content changed after the move is kept, since a content edit wins. 
   - a statement the holder signed whose push was refused never enters the anchored checkpoint, so a rebuild after it still completes;
   - a log, floor or envelope counter below the anchored checkpoint is refused after a restore, from the server or a partner, and a member's identity chain and device chain are each held to their own anchored head;
   - digest vectors cover a value of 65,535 bytes, one of 65,536, and a key object at the record limit;
-  - a key table row copied from another copy of the file fails the MAC;
+  - a key table row copied from another copy of the file fails the MAC, and so does a base, approval, cursor or outbox row swapped in while the binding, counter and key tables stay current;
+  - after a restore, and after either fork ending, envelopes and history sealed under older key versions on the kept chain still open;
   - the first run keeps every consent decision and refusal, and leaves an unapproved synced connection unapproved;
   - the moves with three devices on two fake transports: a deletion on iCloud after another device moved, with and without a later content edit or reorder on the service; an edit on iCloud after another device moved; a record created on the service after the move; and the move back, where a `policy` tombstone deletes nothing on iCloud and nothing is deleted before the person confirms the count.
 - **Bindings:** Swift tests over a Swift fake transport.
