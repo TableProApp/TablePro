@@ -73,7 +73,7 @@ On 2026-11-25 the maintainer decided:
 | `key.request` | personal | Any key holder of the account, approved or not | Create only, bound to the DPoP key that writes it, purged once it expires |
 | `key.sas` | personal, team | The party of each step | Create only, purged once its session expires |
 | `key.wrap`, `key.ring` | personal, team | Personal: the account's approved key holders. Team: the signer 0053 names | Written whole; only that writer replaces one |
-| `key.team` | team | Owner, admin | Create only. Each append is verified under every rule over the team log in 0053, against the signer's identity and device logs: k approvals for adding or removing a signer, and a re-root only as 0053 allows it |
+| `key.team` | team | Owner, admin | Create only. Each append is verified under every rule over the team log in 0053, against the signer's identity and device logs: k approvals, with k as 0053 sets it, for adding a signer or removing another one, a signer's removal of itself at any time, and a re-root only as 0053 allows it |
 | `key.member` | team | The member it names, in any role | Create only, writer-bound to that account, and byte for byte the account's `key.identity` or `key.device` record at that log and `seq` |
 | Any other kind | personal, team | Personal: approved key holders. Team: owner, admin, editor | Patch and delete |
 
