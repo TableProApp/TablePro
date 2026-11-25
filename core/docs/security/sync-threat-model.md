@@ -45,7 +45,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | Network attacker | Everything, through TLS | Traffic timing and sizes |
 | Honest-but-curious operator, database staff, backups, dumps, the cloud provider | Secrets, history, keys | Plaintext records, metadata |
 | Malicious operator with full control of the server | Secrets and history of every account and team whose keys the client pinned, unless a device or a recovery key is stolen too, or a current or removed member helps it (Residual risks 2, 3 and 5). The named attacks below | Substitution at first contact, withholding, older state shown to a device that never saw newer, split views, denial of service, plaintext records, metadata |
-| A compromised IdP or a phished session | Personal data, plaintext included; team secrets; every key object | Team plaintext records its seat allows; a genesis on an account with no keys yet; a reset, which the honest server holds 7 days in view of every device |
+| A compromised IdP or a phished session | Personal data, plaintext included; team secrets; every key object | Team plaintext records its seat allows; a genesis on an account with no keys yet; with the step-up too, a reset, which the honest server holds 7 days in view of every device |
 | A lost or stolen device | After removal with the recovery key and the review of the members it confirmed, on an honest server: every scope key and secret written after it | What the device already holds. Before the recovery key is typed, what a compromised server gives it |
 | A stolen device working with the server | The identity key: IK is not on the device, so it cannot certify keys or start a rotation | Reading everything until removal. After it, a team key that a teammate the server kept on the account's old version wraps to the old account key (Residual risks 2). A reset it pushes with the server's help, which shows as an alert |
 | A removed member | Team key versions after the rotation, on an honest server | What it already read, which "Credentials to rotate" covers. With the server's help, a next version it signs for members who missed the removal (Residual risks 3) |
@@ -73,7 +73,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | Invent a member and wait for the team key | Nothing is wrapped automatically. An owner or admin confirms each member in the app, with the words shown | Teams |
 | Invent a member or admin that rotates the team key to one the server knows | A version counts only when a holder of the previous version signs it, and a made-up account holds none | Teams |
 | Substitute keys during device approval | The words cover both devices' key device ids and keys and the account's IK, and each side pins the other's keys only from them, never from a certificate. The new device commits to its view before the approving device sends its random value, so the server gets one guess at 2^-64.6 per session. The account keys and pins the new device receives are signed by that DSK, so a stolen device holding the account keys cannot stand in for the approver | Approving a device |
-| Show a new device other teammates than its approver sees, or a teammate without the alert the approver holds | The approving device sends its pins, with their open alerts and replaced IKs, and its newest versions in a wrap signed by its DSK, which the words cover | Approving a device; Pins |
+| Show a new device other teammates than its approver sees, or a teammate without the alert the approver holds | The approving device sends its pins, with their open alerts and replaced IKs, and its newest versions in a wrap signed by its DSK, which the words cover. First-use pins it leaves out for size are pinned on first use again | Approving a device; Pins |
 | Have a rotation send new account keys to a device that a stolen account key certified | A rotation keeps only the devices the rotating device compared with itself. Every other device joins again by approval | Account flows, Rotation |
 | Replay an older certificate, version or key | Clients keep the newest account key version and scope key versions, under 0054's anchor, and refuse an older one as current; older objects still verify history. At an anchored scope key version they take only the record whose digest the anchor holds. The honest server takes only the next version | Rollback |
 | Slip in an envelope under an old key that a removed device still holds | In a pull, an envelope counts only under the newest version at its place in the revision order, and never below the copy a client holds. A forced refill is the gap left (Residual risks) | Rollback |
@@ -86,7 +86,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | Make up a reset | The honest server holds it 7 days in view of every device and cancels it on a device's or the recovery key's word. A malicious server can apply one, and then the person's devices and every teammate see an identity that nothing endorsed | Account flows, Reset |
 | Fake a revocation (`device_removed`), or hide a device's new certificate from a rotation that kept it | The device locks and erases nothing. Only Sign Out and another account's sign-in on its row erase its keys, and only an approval the person runs replaces them | Keys; Account flows, Rotation |
 | Withhold a member's rotation so teammates wrap to its old key | The honest server refuses a wrap to a superseded key version. A malicious one can serve it. The member's app raises an alarm if that wrap reaches it, which does not stop the split | Teams |
-| Use a phished session to write key objects | Key-object and envelope writes need a DPoP proof from an approved device, except what a device writes before approval: its request and its steps, a genesis on an account with none, a rotation or a cancel the recovery key signs, and a reset proposal after a fresh sign-in with its activation | What the server stores and checks |
+| Use a phished session to write key objects | Key-object and envelope writes need a DPoP proof from an approved device, except what a device writes before approval: its request and its steps, a genesis on an account with none, a rotation or a cancel the recovery key signs, and a reset proposal after a step-up with its activation | What the server stores and checks |
 
 **What it still gets.**
 
@@ -104,14 +104,14 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 **What holds.**
 
 - **Personal data.** A new sign-in gets no personal record, plaintext or not, until another device approves it or the recovery key is typed. The server enforces this through DPoP proofs checked against the device certificates (0056, What the server stores and checks).
-- **Secrets and keys.** It reads the personal scope's key objects, which hold public keys and ciphertext: wraps to keys it does not hold, and the recovery blob under a 256-bit key. It writes no envelope, and no key object but what a device writes before approval (0056, What the server stores and checks): its own request and its steps, a genesis on an account with none, and a reset proposal after a fresh sign-in, with its activation 7 days later. A rotation or a cancel before approval needs the recovery key.
+- **Secrets and keys.** It reads the personal scope's key objects, which hold public keys and ciphertext: wraps to keys it does not hold, and the recovery blob under a 256-bit key. It writes no envelope, and no key object but what a device writes before approval (0056, What the server stores and checks): its own request and its steps, a genesis on an account with none, and a reset proposal after a step-up, with its activation 7 days later. A rotation or a cancel before approval needs the recovery key.
 - **Social engineering.** A request from the attacker shows on the person's devices as a new device. Approving it needs the five words on the attacker's screen.
 
 **What does not hold.**
 
 - Team plaintext records, as far as the account's seat and role allow.
 - **Genesis** on an account with no keys yet is trust on first use. An attacker who gets there first owns that identity. The person's own genesis fails, and the account comes back through a reset.
-- **A reset.** After a fresh IdP sign-in the attacker can start one. The honest server holds it 7 days, every device and the portal show it, the SaaS emails, and any certified device or the recovery key cancels it. If nobody cancels it in that time, it applies, whether or not the person still has the recovery key: the person's other devices are removed, and teammates see an alert. With no device left, the reset also deletes the personal and history records.
+- **A reset.** An attacker who also passes the step-up, a passkey the server holds or on the SaaS a code it emails, can start one. The honest server holds it 7 days, every device and the portal show it, the SaaS emails, and any certified device or the recovery key cancels it. If nobody cancels it in that time, it applies, whether or not the person still has the recovery key: the person's other devices are removed, and teammates see an alert. A kind 3 reset, which runs whatever device rows remain, also deletes the personal and history records.
 
 ## A lost or stolen device
 
@@ -202,7 +202,7 @@ On 2026-11-25 the maintainer accepted risks 2, 3, 5, 6 and 9, which the vault mo
 5. **A confirmed member with the server's help** can replace a team secret's value.
 6. **Rollback within a version,** and records a removed device with the server's help plants under a version it held: in a snapshot, which the server can force, and in history.
 7. **Full rollback** for a state file restored with its anchor. A restored state file, with its anchor or without it, can also bring back history the person deleted, since deleted history ids live in the file and not in the anchor (0054). These are limits of local state, not among the risks accepted above.
-8. **A reset** by someone with the person's IdP sign-in succeeds if nobody cancels it for 7 days. Teammates see an alert.
+8. **A reset** by someone who passes the person's sign-in and step-up succeeds if nobody cancels it for 7 days. Teammates see an alert.
 9. **An exposed recovery key after a replace.** With the server's help, its holder can keep a device or a teammate that never saw the replace on the old identity, a split view.
 10. **A person who confirms without reading** approves whatever is on the other screen.
 11. **Plaintext records and metadata** are readable by the operator.
