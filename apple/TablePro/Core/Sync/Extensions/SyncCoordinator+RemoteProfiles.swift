@@ -5,6 +5,7 @@
 
 import CloudKit
 import Foundation
+import os
 
 extension SyncCoordinator {
     /// False when the profile could not be persisted, which withholds the pull token so the record
