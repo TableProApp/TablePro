@@ -19,10 +19,10 @@ log-chain.spthy           -             no_rollback                             
 log-chain.spthy           -             heads_are_the_signers                               verified
 log-chain.spthy           -             no_false_fork_alarm                                 verified
 team-signers.spthy        -             signers_executable                                  verified
-team-signers.spthy        -             reroot_opens_when_every_signer_is_gone              verified
+team-signers.spthy        -             timelock_cancelled                                  verified
 team-signers.spthy        -             no_signer_added_alone                               verified
 team-signers.spthy        -             no_signer_removed_by_one_other                      verified
-team-signers.spthy        -             gone_only_by_own_statement                          verified
+team-signers.spthy        -             reset_removes_no_signer                             verified
 team-signers.spthy        -             no_reroot_while_a_signer_is_left                    verified
 recovery.spthy            -             recovery_executable                                 verified
 recovery.spthy            -             recovery_ik_authentic                               verified
@@ -33,16 +33,15 @@ recovery.spthy            -             ak_after_recovery_rotate_secret         
 replace-recovery.spthy    -             replace_executable                                  verified
 replace-recovery.spthy    -             old_recovery_key_gives_no_identity                  verified
 replace-recovery.spthy    -             old_recovery_key_gives_no_account_key               verified
-replace-recovery.spthy    -             old_recovery_key_extends_no_log                     verified
+replace-recovery.spthy    -             old_recovery_key_extends_no_log                     falsified
+replace-recovery.spthy    -             old_recovery_key_extends_no_log_after_the_replace   verified
 replace-recovery.spthy    OLDREPLACE    old_recovery_key_gives_no_identity                  falsified
 replace-recovery.spthy    OLDREPLACE    old_recovery_key_gives_no_account_key               falsified
-replace-recovery.spthy    OLDREPLACE    old_recovery_key_extends_no_log                     falsified
+replace-recovery.spthy    OLDREPLACE    old_recovery_key_extends_no_log_after_the_replace   falsified
 envelopes.spthy           -             envelopes_executable                                verified
-envelopes.spthy           -             refusal_names_an_accepted_envelope                  verified
 envelopes.spthy           -             no_superseded_envelope                              verified
 envelopes.spthy           -             nothing_from_the_removed_holder_after_removal       verified
 envelopes.spthy           -             stolen_holder_cannot_pin_the_counter                verified
-envelopes.spthy           OLDCOUNTER    refusal_names_an_accepted_envelope                  verified
 envelopes.spthy           OLDCOUNTER    stolen_holder_cannot_pin_the_counter                falsified
 device-approval.spthy     -             approval_executable                                 verified
 device-approval.spthy     -             commitment_leaves_one_guess                         verified
@@ -58,6 +57,7 @@ member-confirmation.spthy -             tk_secret                               
 team-keys.spthy           -             team_executable                                     verified
 team-keys.spthy           -             tk_reaches_only_sealed_sks                          verified
 team-keys.spthy           -             removed_member_gets_no_new_tk                       verified
+team-keys.spthy           -             removal_stays_when_its_signer_is_removed            verified
 team-keys.spthy           -             no_tk_to_revoked_sk                                 falsified
 team-keys.spthy           -             no_tk_to_sk_the_signer_saw_revoked                  verified
 team-keys.spthy           -             member_never_uses_tk_sealed_to_its_replaced_sk      verified
@@ -73,5 +73,6 @@ server-enforcement.spthy  -             members_are_honest_or_a_break_in        
 server-enforcement.spthy  -             enforcement_executable                              verified
 server-enforcement.spthy  -             write_needs_approved_holder                         verified
 server-enforcement.spthy  -             reset_needs_s_or_full_delay                         verified
+server-enforcement.spthy  -             row_removal_keeps_the_cancel                        verified
 server-enforcement.spthy  -             stolen_holder_reset_cancelled                       verified
 server-enforcement.spthy  OLDRESET      reset_needs_s_or_full_delay                         falsified

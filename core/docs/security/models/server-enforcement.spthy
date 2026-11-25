@@ -120,8 +120,8 @@ rule Srv_Reset:
     , Accepted(a, pk(hsig), <'reset', rp>) ]->
   [ PendingReset(a, pk(ik2), h(rp), pk(hsig), hlin) ]
 
-// Any holder in the set cancels a reset the person did not make, as does S through any statement the IK in force
-// signs.
+// Any holder the logs list cancels a reset the person did not make, whatever the server says of its row, as does S
+// through any statement the IK in force signs.
 rule H_Cancel:
   let
     cp = <'cancel', a, rid>
@@ -138,7 +138,7 @@ rule Srv_CancelByHolder:
   in
   [ !IKTaken(a, ik), !SMem(a, pk(hsig), lin, ik), PendingReset(a, ik2pub, rid, rh, rlin)
   , ToServer(<'cancel', <cp, sign(cp, hsig)>, <dp, sign(dp, hsig)>>) ]
-  --[ InForce(a, ik), JtiUsed(jti), UseMem(a, lin), Cancelled(a, rid), Accepted(a, pk(hsig), <'cancel', cp>) ]->
+  --[ InForce(a, ik), JtiUsed(jti), Cancelled(a, rid), CancelledBy(a, pk(hsig)), Accepted(a, pk(hsig), <'cancel', cp>) ]->
   [ ]
 
 rule P_CancelWithS:
@@ -190,7 +190,7 @@ rule Srv_Write:
 
 // An admin's portal removal, or the person's removal of the device row: the holder and those it approved.
 rule AdminRemove:
-  [ !SMem(a, hk, lin, ik) ] --[ Cut(a, lin) ]-> [ ]
+  [ !SMem(a, hk, lin, ik) ] --[ Cut(a, lin), RowRemoved(a, hk) ]-> [ ]
 
 rule Compromise:
   [ !Holder(a, hsig) ] --[ Compromise(a, pk(hsig)) ]-> [ Out(hsig) ]
@@ -246,6 +246,14 @@ lemma reset_needs_s_or_full_delay:
 
 #ifdef OLDRESET
 #else
+// 0053's claim: removing the rows of the person's devices, as a phished session or an admin can, never takes the
+// cancel away from a holder the logs list.
+lemma row_removal_keeps_the_cancel:
+  exists-trace
+  "Ex a h ik rid #x #p #c. RowRemoved(a, h)@x & ResetPending(a, ik, rid)@p & #x < #p & CancelledBy(a, h)@c
+     & Cancelled(a, rid)@c & (Ex #k. HonestKey(a, h)@k) & not (Ex #q. PersonIK(a, ik)@q)
+     & not (Ex #y. Compromise(a, h)@y)"
+
 // A thief's reset, cancelled by one of the person's holders, never takes effect.
 lemma stolen_holder_reset_cancelled:
   exists-trace

@@ -3,7 +3,7 @@ begin
 
 // ADR 0053: Flows: Replace Recovery Key; Identity log, `replace`. The person replaces S with S'. Later the attacker
 // gets the old S, for example a found paper. The server is malicious and keeps every blob and wrap. C is a client
-// that follows the identity log.
+// that follows the identity log. Phase 1 is before the replace, phase 2 after it.
 // Flag OLDREPLACE models 0053 before G0 round 1 (e8879f95ee): Replace keeps IK and AK and only seals them to a new RK.
 
 builtins: hashing, signing, asymmetric-encryption, symmetric-encryption
@@ -20,7 +20,7 @@ rule Genesis:
   in
   [ Fr(~a), Fr(~S), Fr(~ik), Fr(~rk), Fr(~ak) ]
   --[ OnlyOnce('genesis') ]->
-  [ Current(~a, ~S, ~ik, ~rk, ~ak), !Holder(~a, ~ak), ClientIK(~a, pk(~ik))
+  [ !Phase1(~a, ~S, ~ik, ~rk, ~ak), !Holder(~a, ~ak), !ClientIK1(~a, pk(~ik))
   , Out(~a), Out(blob(~S, ~a, ~ik, ~rk)), Out(rkwrap(~a, ~ak, ~rk)), Out(<gp, sign(gp, ~ik)>) ]
 
 #ifdef OLDREPLACE
@@ -28,59 +28,75 @@ rule Replace:
   let
     rp = <'recovery', a, pk(~rk2)>
   in
-  [ Current(a, S, ik, rk, ak), Fr(~S2), Fr(~rk2) ]
-  --[ OnlyOnce('replace'), Replaced(a), IKAfterReplace(a, ik), AKAfterReplace(a, ak) ]->
-  [ Current(a, ~S2, ik, ~rk2, ak), OldS(a, S)
+  [ !Phase1(a, S, ik, rk, ak), Fr(~S2), Fr(~rk2) ]
+  --[ OnlyOnce('replace'), Replaced(a), IKAfterReplace(a, ik), PersonReplaceTo(a, pk(ik)), AKAfterReplace(a, ak) ]->
+  [ !Phase2(a, ~S2, ik, ~rk2, ak)
   , Out(blob(~S2, a, ik, ~rk2)), Out(rkwrap(a, ak, ~rk2)), Out(<rp, sign(rp, ik)>) ]
 
-// C follows the identity log under the IK it has pinned.
 rule C_SeeReplace:
   let
     rp = <'recovery', a, rk2pub>
   in
-  [ ClientIK(a, pk(ik)), In(<rp, sign(rp, ik)>) ]
-  --[ ClientSawReplace(a) ]->
-  [ ClientIK(a, pk(ik)) ]
+  [ !ClientIK1(a, pk(ik)), In(<rp, sign(rp, ik)>) ]
+  --[ ClientSawReplace(a), ClientSawReplaceTo(a, pk(ik)), OnlyOnce(<'client-replace', a>) ]->
+  [ !ClientIK2(a, pk(ik)) ]
 #else
 // `replace` is signed by the IK in force and endorsed by the new IK. It also rotates SK and AK.
 rule Replace:
   let
     rp = <'replace', a, pk(ik), pk(~ik2), pk(~rk2), kid(~ak2)>
   in
-  [ Current(a, S, ik, rk, ak), Fr(~S2), Fr(~ik2), Fr(~rk2), Fr(~ak2) ]
-  --[ OnlyOnce('replace'), Replaced(a), IKAfterReplace(a, ~ik2), AKAfterReplace(a, ~ak2) ]->
-  [ Current(a, ~S2, ~ik2, ~rk2, ~ak2), OldS(a, S), !Holder(a, ~ak2)
+  [ !Phase1(a, S, ik, rk, ak), Fr(~S2), Fr(~ik2), Fr(~rk2), Fr(~ak2) ]
+  --[ OnlyOnce('replace'), Replaced(a), IKAfterReplace(a, ~ik2), PersonReplaceTo(a, pk(~ik2)), AKAfterReplace(a, ~ak2) ]->
+  [ !Phase2(a, ~S2, ~ik2, ~rk2, ~ak2), !Holder(a, ~ak2)
   , Out(blob(~S2, a, ~ik2, ~rk2)), Out(rkwrap(a, ~ak2, ~rk2))
   , Out(<rp, sign(rp, ik), sign(rp, ~ik2)>) ]
 
 rule C_SeeReplace:
   let
-    rp = <'replace', a, pk(ik), ik2pub, rk2pub, akkid>
+    rp = <'replace', a, pk(ik), pk(ik2), rk2pub, akkid>
   in
-  [ ClientIK(a, pk(ik)), In(<rp, sign(rp, ik), sign(rp, ik2)>) ]
-  --[ ClientSawReplace(a) ]->
-  [ ClientIK(a, pk(ik2)) ]
+  [ !ClientIK1(a, pk(ik)), In(<rp, sign(rp, ik), sign(rp, ik2)>) ]
+  --[ ClientSawReplace(a), ClientSawReplaceTo(a, pk(ik2)), OnlyOnce(<'client-replace', a>) ]->
+  [ !ClientIK2(a, pk(ik2)) ]
 #endif
 
 // C extends the identity log only with statements the IK in force signs.
-rule C_Extend:
-  [ ClientIK(a, pk(ik)), In(<<'statement', a, x>, sign(<'statement', a, x>, ik)>) ]
+rule C_Extend1:
+  [ !ClientIK1(a, pk(ik)), In(<<'statement', a, x>, sign(<'statement', a, x>, ik)>) ]
+  --[ BeforeClientReplace(a), ClientExtended(a, x) ]->
+  [ ]
+
+rule C_Extend2:
+  [ !ClientIK2(a, pk(ik)), In(<<'statement', a, x>, sign(<'statement', a, x>, ik)>) ]
   --[ ClientExtended(a, x) ]->
-  [ ClientIK(a, pk(ik)) ]
+  [ ]
 
-rule PersonSigns:
-  [ Current(a, S, ik, rk, ak), Fr(~x) ]
+rule PersonSigns1:
+  [ !Phase1(a, S, ik, rk, ak), Fr(~x) ]
+  --[ BeforeReplace(a), PersonStatement(a, ~x) ]->
+  [ Out(<<'statement', a, ~x>, sign(<'statement', a, ~x>, ik)>) ]
+
+rule PersonSigns2:
+  [ !Phase2(a, S, ik, rk, ak), Fr(~x) ]
   --[ PersonStatement(a, ~x) ]->
-  [ Current(a, S, ik, rk, ak), Out(<<'statement', a, ~x>, sign(<'statement', a, ~x>, ik)>) ]
+  [ Out(<<'statement', a, ~x>, sign(<'statement', a, ~x>, ik)>) ]
 
+// The old S leaks after the replace.
 rule RevealOldS:
-  [ OldS(a, S) ] --[ RevealOldS(a) ]-> [ Out(S) ]
+  [ !Phase1(a, S, ik, rk, ak), !Phase2(a, S2, ik2, rk2, ak2) ] --[ RevealOldS(a) ]-> [ Out(S) ]
 
 rule RevealCurrentS:
-  [ Current(a, S, ik, rk, ak) ] --[ RevealCurrentS(a) ]-> [ Current(a, S, ik, rk, ak), Out(S) ]
+  [ !Phase2(a, S, ik, rk, ak) ] --[ RevealCurrentS(a) ]-> [ Out(S) ]
 
 rule RevealHolder:
   [ !Holder(a, ak) ] --[ RevealHolder(a, ak) ]-> [ Out(ak) ]
+
+restriction BeforeReplace:
+  "All a #i #r. BeforeReplace(a)@i & Replaced(a)@r ==> #i < #r"
+
+restriction BeforeClientReplace:
+  "All a #i #r. BeforeClientReplace(a)@i & ClientSawReplace(a)@r ==> #i < #r"
 
 restriction OnlyOnce:
   "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
@@ -92,17 +108,23 @@ lemma replace_executable:
 
 // After a Replace, the old recovery key gives no identity key in force.
 lemma old_recovery_key_gives_no_identity:
-  "All a ik #r #j. IKAfterReplace(a, ik)@r & K(ik)@j ==> Ex #x. RevealCurrentS(a)@x & #r < #x"
+  "All a ik #r #j. IKAfterReplace(a, ik)@r & K(ik)@j ==> Ex #x. RevealCurrentS(a)@x"
 
 // After a Replace, the old recovery key gives no account key in force.
 lemma old_recovery_key_gives_no_account_key:
   "All a ak #r #j. AKAfterReplace(a, ak)@r & K(ak)@j ==>
-     (Ex #x. RevealCurrentS(a)@x & #r < #x) | (Ex #x. RevealHolder(a, ak)@x)"
+     (Ex #x. RevealCurrentS(a)@x) | (Ex #x. RevealHolder(a, ak)@x)"
 
-// 0053's claim: an old S after a `replace` can extend no log, at a client that has seen the replace.
+// 0053's claim as worded: an old S after a `replace` can extend no log.
 lemma old_recovery_key_extends_no_log:
   "All a x #r #e. ClientSawReplace(a)@r & ClientExtended(a, x)@e & #r < #e ==>
      (Ex #p. PersonStatement(a, x)@p)
-     | (Ex #y. RevealCurrentS(a)@y & #r < #y)"
+     | (Ex #y. RevealCurrentS(a)@y)"
+
+// The claim at a client that has seen the person's own replace.
+lemma old_recovery_key_extends_no_log_after_the_replace:
+  "All a ik2 x #r #q #e. ClientSawReplaceTo(a, ik2)@r & PersonReplaceTo(a, ik2)@q & ClientExtended(a, x)@e & #r < #e ==>
+     (Ex #p. PersonStatement(a, x)@p)
+     | (Ex #y. RevealCurrentS(a)@y)"
 
 end

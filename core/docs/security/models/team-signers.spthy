@@ -1,23 +1,18 @@
 theory SyncTeamSigners
 begin
 
-// ADR 0053: Team log (`signer_add`, `signer_remove`, `approve`, `reroot`), gone signers, D15 and the maintainer's
-// k = min(2, n). Root signer A is honest. A adds B while alone. The attacker holds B's key from the start, runs the
-// server and may hold an owner role, so it can write any statement B or an attacker account signs. G verifies the
-// team log. A gone signer counts in neither n nor k.
+// ADR 0053: Team log (`signer_add`, `signer_remove`, `approve`, the time-locked removal, `reroot`), D15 and the
+// maintainer's k = min(2, n). Signers A and B; A is honest. The attacker holds B's key, runs the server and may hold
+// an owner role, so it can write any statement B or an attacker account signs, and can claim that A reset. G
+// verifies the team log. n counts every signer in the set; nothing the server says and no reset lowers it.
+// The model has no clock: a time-locked removal completes any time after its start unless its target cancelled.
 
 builtins: hashing, signing
 
 rule Team:
   [ Fr(~t), Fr(~ka), Fr(~kb) ]
-  --[ OnlyOnce('team'), SignerIn(~t, 'A') ]->
-  [ !Key(~t, 'A', ~ka), !Key(~t, 'B', ~kb), !AKey(~t, ~ka), AddB(~t), Out(<~t, pk(~ka), pk(~kb)>) ]
-
-// A adds B while it is the only signer: k = min(2, 1) = 1.
-rule A_AddB:
-  [ AddB(t) ]
-  --[ OnlySigner(t, 'A'), NotGone(t, 'A'), AEndorsed(t, 'B'), SignerIn(t, 'B'), SignerAdded(t, 'B') ]->
-  [ Out(<'b-added', t>) ]
+  --[ OnlyOnce('team'), SignerIn(~t, 'A'), SignerIn(~t, 'B'), AEndorsed(~t, 'B') ]->
+  [ !Key(~t, 'A', ~ka), !Key(~t, 'B', ~kb), !AKey(~t, ~ka), Out(<~t, pk(~ka), pk(~kb)>) ]
 
 rule CorruptB:
   [ !Key(t, 'B', kb) ] --[ Corrupt(t, 'B') ]-> [ Out(kb) ]
@@ -31,21 +26,27 @@ rule A_ProposeAdd:
   --[ AEndorsed(t, ~h) ]->
   [ Out(<sp, sign(sp, ka)>) ]
 
-// A removes itself, or its own logs show it reset or emptied its device set.
-rule A_Gone:
+// A cancels any time-locked removal that targets it, from any of its holders.
+rule A_CancelTimelock:
   let
-    gp = <'gone', t, 'A'>
+    cp = <'signer_remove_cancel', t, pid, 'A'>
   in
-  [ !AKey(t, ka) ]
-  --[ AOwnGone(t) ]->
-  [ Out(<gp, sign(gp, ka)>) ]
+  [ !AKey(t, ka), In(pid) ]
+  -->
+  [ Out(<cp, sign(cp, ka)>) ]
+
+rule A_RemoveSelf:
+  let
+    rp = <'signer_remove', t, 'A', 'A'>
+  in
+  [ !AKey(t, ka) ] --[ AOwnRemoval(t) ]-> [ Out(<rp, sign(rp, ka)>) ]
 
 rule V_ProposeAdd:
   let
     sp = <'signer_add', t, p, s>
   in
   [ !Key(t, s, k), In(<sp, sign(sp, k)>) ]
-  --[ NotGone(t, s) ]->
+  --[ InSet(t, s) ]->
   [ !Proposal(t, h(sp), 'add', p, s) ]
 
 rule V_ProposeRemove:
@@ -53,64 +54,87 @@ rule V_ProposeRemove:
     rp = <'signer_remove', t, x, s>
   in
   [ !Key(t, s, k), In(<rp, sign(rp, k)>) ]
-  --[ NotGone(t, s), Neq(x, s) ]->
+  --[ InSet(t, s), Neq(x, s) ]->
   [ !Proposal(t, h(rp), 'remove', x, s) ]
+
+rule V_RemoveSelf:
+  let
+    rp = <'signer_remove', t, s, s>
+  in
+  [ !Key(t, s, k), In(<rp, sign(rp, k)>) ]
+  --[ InSet(t, s), SignerOut(t, s), SelfRemoved(t, s) ]->
+  [ ]
 
 rule V_Approve:
   let
     ap = <'approve', t, pid, s>
   in
   [ !Key(t, s, k), In(<ap, sign(ap, k)>) ]
-  --[ NotGone(t, s) ]->
+  --[ InSet(t, s) ]->
   [ !Approval(t, pid, s) ]
 
-// Gone comes only from the signer's own signed statements: removing itself, an activated reset, an empty device set.
-rule V_Gone:
-  let
-    gp = <'gone', t, s>
-  in
-  [ !Key(t, s, k), In(<gp, sign(gp, k)>) ]
-  --[ Gone(t, s) ]->
-  [ ]
+// A reset of A, real or made up by the server: A is suspended, and stays in the set and in n.
+rule V_ResetOfA:
+  [ In(<'reset', t, 'A', ik2>) ] --[ Suspended(t, 'A') ]-> [ ]
 
 rule V_AddAlone:
   [ !Proposal(t, pid, 'add', p, s) ]
-  --[ OnlySigner(t, s), NotGone(t, s), SignerIn(t, p), SignerAdded(t, p), Once(<t, pid>) ]->
+  --[ OnlySigner(t, s), InSet(t, s), SignerIn(t, p), SignerAdded(t, p), Once(<t, pid>) ]->
   [ ]
 
 rule V_AddWithApproval:
   [ !Proposal(t, pid, 'add', p, s1), !Approval(t, pid, s2) ]
-  --[ Neq(s1, s2), NotGone(t, s1), NotGone(t, s2), SignerIn(t, p), SignerAdded(t, p), Once(<t, pid>) ]->
+  --[ Neq(s1, s2), InSet(t, s1), InSet(t, s2), SignerIn(t, p), SignerAdded(t, p), Once(<t, pid>) ]->
   [ ]
 
-// Removing another signer: k = min(2, n) distinct signers other than the target. With n = 1 there is no other.
+// Removing another signer with k = min(2, n) distinct signers other than the target.
 rule V_RemoveWithApproval:
   [ !Proposal(t, pid, 'remove', x, s1), !Approval(t, pid, s2) ]
-  --[ Neq(s1, s2), Neq(s2, x), NotGone(t, s1), NotGone(t, s2), SignerOut(t, x), RemovedByOthers(t, x), Once(<t, pid>) ]->
+  --[ Neq(s1, s2), Neq(s2, x), InSet(t, s1), InSet(t, s2), InSet(t, x), SignerOut(t, x), RemovedByOthers(t, x)
+    , RemovedWithK(t, x), Once(<t, pid>) ]->
   [ ]
 
-// An account the server lists as owner writes `reroot`; G takes it only when no signer is left.
+// The time-locked removal: any one other signer starts it, the target cancels it, and it completes after the delay.
+rule V_TimelockStart:
+  let
+    rp = <'signer_remove', t, x, s, 'timelock'>
+  in
+  [ !Key(t, s, k), In(<rp, sign(rp, k)>) ]
+  --[ InSet(t, s), InSet(t, x), Neq(x, s), TimelockStarted(t, x, h(rp)), Once(h(rp)) ]->
+  [ PendingRemoval(t, x, h(rp)) ]
+
+rule V_TimelockCancel:
+  let
+    cp = <'signer_remove_cancel', t, pid, x>
+  in
+  [ PendingRemoval(t, x, pid), !Key(t, x, k), In(<cp, sign(cp, k)>) ]
+  --[ TimelockCancelled(t, pid) ]->
+  [ ]
+
+rule V_TimelockComplete:
+  [ PendingRemoval(t, x, pid) ]
+  --[ InSet(t, x), SignerOut(t, x), RemovedByOthers(t, x), TimelockCompleted(t, x, pid) ]->
+  [ ]
+
+// An account the server lists as owner writes `reroot`; G takes it only when the signer set is empty.
 rule V_Reroot:
   [ In(<'reroot', t, r>) ]
   --[ NoSignerLeft(t), Reroot(t, r) ]->
   [ ]
 
-restriction NotGone:
-  "All t s #i. NotGone(t, s)@i ==>
-     (Ex #j. SignerIn(t, s)@j & #j < #i)
-     & not (Ex #o. SignerOut(t, s)@o & #o < #i)
-     & not (Ex #g. Gone(t, s)@g & #g < #i)"
+restriction InSet:
+  "All t s #i. InSet(t, s)@i ==> (Ex #j. SignerIn(t, s)@j & #j < #i) & not (Ex #o. SignerOut(t, s)@o & #o < #i)"
 
 restriction OnlySigner:
   "All t s #i. OnlySigner(t, s)@i ==>
-     not (Ex s2 #j. SignerIn(t, s2)@j & #j < #i & not (s2 = s)
-          & not (Ex #o. SignerOut(t, s2)@o & #o < #i)
-          & not (Ex #g. Gone(t, s2)@g & #g < #i))"
+     not (Ex s2 #j. SignerIn(t, s2)@j & #j < #i & not (s2 = s) & not (Ex #o. SignerOut(t, s2)@o & #o < #i))"
 
 restriction NoSignerLeft:
   "All t #i. NoSignerLeft(t)@i ==>
-     All s #j. SignerIn(t, s)@j & #j < #i ==>
-       (Ex #o. SignerOut(t, s)@o & #o < #i) | (Ex #g. Gone(t, s)@g & #g < #i)"
+     All s #j. SignerIn(t, s)@j & #j < #i ==> Ex #o. SignerOut(t, s)@o & #o < #i"
+
+restriction JoinOnce:
+  "All t s #i #j. SignerIn(t, s)@i & SignerIn(t, s)@j ==> #i = #j"
 
 restriction Neq:
   "All x y #i. Neq(x, y)@i ==> not (x = y)"
@@ -121,30 +145,35 @@ restriction Once:
 restriction OnlyOnce:
   "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
 
+// A adds a third signer with B's approval.
 lemma signers_executable:
   exists-trace
-  "Ex t p #i. SignerAdded(t, p)@i & not (p = 'B') & not (Ex #c. Corrupt(t, 'B')@c)"
+  "Ex t p #i #e. SignerAdded(t, p)@i & AEndorsed(t, p)@e & not (p = 'B')"
 
-lemma reroot_opens_when_every_signer_is_gone:
+// A cancels B's time-locked removal of A and stays.
+lemma timelock_cancelled:
   exists-trace
-  "Ex t r #i. Reroot(t, r)@i"
+  "Ex t pid #s #c. TimelockStarted(t, 'A', pid)@s & TimelockCancelled(t, pid)@c
+     & not (Ex #o. SignerOut(t, 'A')@o)"
 
-// While A is a signer that is not gone, B adds no signer without A.
+// While A is a signer, B adds no signer without A.
 lemma no_signer_added_alone:
-  "All t p #i #a. SignerAdded(t, p)@i & SignerIn(t, 'A')@a & #a < #i
-     & not (Ex #o. SignerOut(t, 'A')@o & #o < #i) & not (Ex #g. Gone(t, 'A')@g & #g < #i) ==>
+  "All t p #i #a. SignerAdded(t, p)@i & SignerIn(t, 'A')@a & #a < #i & not (Ex #o. SignerOut(t, 'A')@o & #o < #i) ==>
      Ex #e. AEndorsed(t, p)@e"
 
-// Nobody removes A: with A and B alone, B is the only signer other than A, and k = 2.
+// 0053's claim: no signer is removed by another with fewer than k approvals, unless a time-locked removal ran its
+// delay without the target's cancel.
 lemma no_signer_removed_by_one_other:
-  "All t #i. RemovedByOthers(t, 'A')@i ==> F"
+  "All t #i. RemovedByOthers(t, 'A')@i ==>
+     Ex pid #s. TimelockStarted(t, 'A', pid)@s & #s < #i & not (Ex #c. TimelockCancelled(t, pid)@c)"
 
-// A is gone only by its own statement. A server hint never makes it gone.
-lemma gone_only_by_own_statement:
-  "All t #g. Gone(t, 'A')@g ==> Ex #h. AOwnGone(t)@h & #h < #g"
+// 0053's claim: a reset, even one the server made up, removes no signer, so it lowers neither n nor k.
+lemma reset_removes_no_signer:
+  "All t s #o. SignerOut(t, s)@o ==>
+     (Ex #r. SelfRemoved(t, s)@r) | (Ex #r. RemovedWithK(t, s)@r) | (Ex pid #r. TimelockCompleted(t, s, pid)@r)"
 
+// 0053's claim: no re-root takes effect while a signer is left.
 lemma no_reroot_while_a_signer_is_left:
-  "All t r s #i #j. Reroot(t, r)@i & SignerIn(t, s)@j & #j < #i ==>
-     (Ex #o. SignerOut(t, s)@o & #o < #i) | (Ex #g. Gone(t, s)@g & #g < #i)"
+  "All t r s #i #j. Reroot(t, r)@i & SignerIn(t, s)@j & #j < #i ==> Ex #o. SignerOut(t, s)@o & #o < #i"
 
 end

@@ -123,6 +123,25 @@ rule G_AcceptConfirmByAddedSigner:
   --[ UseAuthority(t, lin) ]->
   [ !TConf(t, m, ikpub, lin) ]
 
+// A `remove_member` from any signer holder. A revocation is never voided, so it stays when that holder is removed.
+#ifdef ASKSIGNED
+rule G_AcceptRemoveMember:
+  let
+    rp = <'remove_member', t, m>
+  in
+  [ !SignerASK(t, pk(ask)), !TConf(t, m, ik, lin), In(<rp, sign(rp, ask)>) ]
+  --[ RemoveMember(t, m) ]->
+  [ ]
+#else
+rule G_AcceptRemoveMember:
+  let
+    rp = <'remove_member', t, m, pk(hs)>
+  in
+  [ !Authority(t, pk(hs), alin), !TConf(t, m, ik, lin), In(<rp, sign(rp, hs)>) ]
+  --[ RemoveMember(t, m), RemovedBy(t, m, pk(hs)) ]->
+  [ ]
+#endif
+
 // The person removes the stolen signer holder with S. G sees the signer's `rotate`.
 rule SignerRemovesHolder:
   [ !Stealable(t, g2, ask), Fr(~ask2) ]
@@ -183,6 +202,11 @@ lemma team_executable:
   exists-trace
   "Ex t r m tk sk #rm #n #s. RemoveMember(t, r)@rm & NewTK(t, tk)@n & SealTK(t, tk, m, sk)@s & #rm < #n
      & not (Ex m2 sk2 #c. SKRevealed(m2, sk2)@c) & not (Ex h #c. StealSigner(t, h)@c)"
+
+// 0053's claim: a member removed by a holder that is itself removed later still gets no later TK.
+lemma removal_stays_when_its_signer_is_removed:
+  "All t r h tk sk #rm #v #n #s. RemovedBy(t, r, h)@rm & SawRemovedHolder(t, h)@v & NewTK(t, tk)@n & #rm < #n
+     & SealTK(t, tk, r, sk)@s ==> F"
 
 // The attacker learns a team key only through an SK G sealed it to: a stolen member device, or an account the
 // attacker controls that a signer statement confirmed.
