@@ -48,7 +48,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | A stolen device working with the server | Taking over the identity: IK is not on the device, a reset waits 7 days that any other device or S can cancel, and following it needs a comparison | Reading new data until the person removes the device; an older view shown to a holder that pins again with S; a new team key sealed by a signer from whom the server withheld the member's `rotate` |
 | A removed member | Team key versions after the rotation. The floor stops writers on old keys | Secrets they could already read, which is why "Credentials to rotate" exists |
 | A malicious current member, with the server's help | Other people's personal scopes | Writing a team secret under a valid writer signature |
-| A malicious signer | Other people's personal scopes | Every team secret. Confirming puppet accounts and sealing keys to them. With two signers, adding a third or removing the other, as D15 sets. All of it shows in every member's app |
+| A malicious signer | Other people's personal scopes | Every team secret. Confirming puppet accounts and sealing keys to them. All of it shows in every member's app |
 | Self-hosted customer IT as operator, IdP admin, install admin and endpoint manager | Secrets against dumps, backups and database staff | Anything on endpoints it controls. It can install software, read device memory or sign in as anyone through its IdP. End-to-end encryption does not protect against the organization itself |
 
 ## A malicious server operator
@@ -176,8 +176,8 @@ It cannot take over the identity:
 - **A member who is not confirmed yet** reads team plaintext records and no team secret.
 - **A malicious signer** is trusted with the team:
   - it can confirm puppet accounts and seal the team key to them;
-  - with three signers or more, it can neither add nor remove a signer alone, since both need k = min(2, n-1) approvals;
-  - with two signers, either can add a third or remove the other alone, as D15 sets, and owners' apps warn while one signer is left.
+  - once a team has two signers, it can neither add a signer nor remove another alone, since both need k = min(2, n) approvals;
+  - owners' apps warn while a team has one signer.
 
   Every statement it signs is in the team log, which every member's app verifies and shows.
 - **A team whose last signer is gone,** having reset, removed itself or lost every device, can be re-rooted by an owner the server lists. Every member's app shows it, and every member confirms the new root before trusting it. A thief who resets the last signer's identity waits 7 days first, and any of that signer's devices or its recovery key can cancel.
@@ -186,20 +186,22 @@ It cannot take over the identity:
 
 ## Rollback and split views
 
-ePrint 2026/058 calls rollback an open problem for clients that keep no state. Here, each holder keeps every log it follows, with its head, in the key tables of its state file. 0054 checks that file's freshness against an anchor in the device store (0053, Security state).
+ePrint 2026/058 calls rollback an open problem for clients that keep no state. Here, each holder keeps every log it follows in the key tables of its state file, and 0054 keeps a key checkpoint in an anchor in the device store: each log's head, each floor, and each envelope's highest counter (0053, Security state).
 
 **What holds.**
 
 - A device refuses any log that does not extend its stored head.
 - A device refuses a second statement at a position it already holds with a different signing input, and raises a fork alarm. A fork ends only through a statement the key in force at the fork signs, or k signers for a team.
 - Key versions, envelope counters and floors only move forward.
-- A stale state file, edited or older than its anchor, is not trusted, and neither is a missing one. The holder keeps its keys but accepts no log, wrap or envelope and writes no secret until it pins again: through a comparison with another of the account's holders, or with S.
+- A stale state file, edited or older than its anchor, is not trusted, and neither is an anchor with no file. The key tables are rebuilt from the server's logs, taking only what extends the anchored checkpoint, and no secret is written until a log extends the anchored heads. No comparison pins a head older than one the holder has anchored.
 - Every comparison covers the log heads, so two devices that compare also check that they see one history. A device approval also compares the team logs and member bundles, and the new device starts from the approving device's checkpoints.
 
 **What does not hold.**
 
-- **A holder that pins again with S,** after a recovery from zero devices or with stale or missing state, has no device to compare with. The server can show it a consistent older view of the account's logs. That pin ends with a `rotate` that issues fresh keys and removes every other holder, so an older view gives a removed holder nothing new. The holder can still see an older view of the person's teams until it compares with a teammate or another of its own devices.
+- **A holder that pins again with S,** after a recovery from zero devices or with a file that has no anchor, has no device to compare with. The server can show it a consistent older view of the account's logs. That pin ends with a `rotate` that issues fresh keys and removes every other holder, so an older view gives a removed holder nothing new. The holder can still see an older view of the person's teams until it compares with a teammate or another of its own devices.
+- **A file with no anchor** pins again through a comparison with another holder, or with S as above.
 - **A restore of the state file together with its anchor,** such as a whole-machine image, cannot be told apart locally from the moment it came from (0054). Freshness across it needs a hardware monotonic counter.
+- **Deleted history ids** live in the file only, so a restore can let the server bring back history entries the person deleted.
 - **Split view.** The server can keep two groups of devices on two consistent branches indefinitely. They notice only when a device of one group compares with a device of the other.
 - **Withholding** a statement looks the same as no statement.
 - **This is not key transparency.** draft-ietf-keytrans-protocol is still a draft. A transparency log, or devices gossiping heads, could detect split views later.
@@ -241,11 +243,11 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 
 1. **Trust on first use** at genesis, at a team's genesis, and once a no-holder reset takes effect.
 2. **Split views and withholding** go undetected until devices compare.
-3. **Full rollback** works against a holder that pins again with S, and against a restore of the state file together with its anchor.
+3. **Full rollback** works against a holder that pins again with S, against a file with no anchor that pins with S, and against a restore of the state file together with its anchor. Such a restore can also bring back history the person deleted.
 4. **A confirmed member** can write a team secret with the server's help.
 5. **A signer from whom the server withholds a member's `rotate`** seals the next team key to that member's old SK, which a stolen device of the member opens, until the member's app sees the `key` and raises its alarm.
 6. **History paged back on a new device** can show an entry a removed holder backdated with the server's help, marked as written on a removed device.
-7. **A malicious signer** can grant the team key to accounts of its choice. With two signers, either can add a third or remove the other alone (D15).
+7. **A malicious signer** can grant the team key to accounts of its choice.
 8. **A re-root after the last signer is gone** trusts the owner the server lists, as at a team's genesis, until members confirm it.
 9. **A person who confirms a comparison without reading it** approves whatever is on the other screen.
 10. **Plaintext records and metadata** are readable by the operator.

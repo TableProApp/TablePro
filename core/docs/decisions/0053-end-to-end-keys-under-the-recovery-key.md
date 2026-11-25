@@ -20,11 +20,11 @@ On 2026-11-25 the maintainer decided:
 - **D6.** A recovery key is required before any personal sync, and it anchors the identity through a seed-derived, AEAD-wrapped identity key.
 - **D7.** A lost device is removed with the recovery key. The identity key lives only under the recovery key, so teammates see no change. Neither a sign-out nor the end of a session rotates any key.
 - **D8.** A device gets nothing personal until it is approved, and the server enforces it through the signed device list.
-- **D15.** Any owner or admin signs team trust. Removing a signer needs k = min(2, n-1) signers, and a signer may always remove itself. A team re-root happens only when no signer is left, is visible to every member, and support can never perform it.
+- **D15.** Any owner or admin signs team trust. Removing a signer needs k signers, and a signer may always remove itself. A team re-root happens only when no signer is left, is visible to every member, and support can never perform it. k is a technical choice, set below.
 - **Linux without a keyring** gets team records only.
 - **Review.** No external audit now. Whether to commission one is decided before end-to-end encryption leaves beta.
 - **Past grace,** key-object writes and `leave` stay allowed.
-- **Signers, refined later that day.** Adding a signer needs the same k approvals as removing one, so a lone signer still adds the first co-signer. A team's only signer that lost its keys, reset or removed itself counts as gone, which opens D15's visible re-root. Owners' apps warn while a team has one signer.
+- **Signers, refined later that day.** Adding a signer needs the same k approvals as removing another, so a lone signer still adds the first co-signer. To hold that, k = min(2, n), as the orchestrator corrected the earlier min(2, n-1) the same day. A team's only signer that lost its keys, reset or removed itself counts as gone, which opens D15's visible re-root. Owners' apps warn while a team has one signer.
 - **Sign Out** never removes the devices it approved. Removing a device with S catches a planted one.
 - **Consequences accepted the same day:** team secrets need the recovery key; an account with no holder and no recovery key left resets after the server deletes its personal and history records; changing the API origin loses the history written under the old one.
 
@@ -272,7 +272,7 @@ Each statement carries `by`: the signer's `acct`, its `holder`, and its `ih` and
 | `genesis` | `root`: `acct`, `ik` | The first signer, an owner or admin in the server's roles. The root counts as confirmed |
 | `signer_add` | `who`: `acct`, `ik` | The account is a confirmed member with that IK. It opens a proposal named by its own hash, and takes effect under the same k as a removal |
 | `signer_remove` | `target` | Takes effect at once when `target` is `by.acct`. Otherwise it opens a proposal named by its own hash |
-| `approve` | `proposal` | A removal takes effect at the statement where the distinct signers other than the target, counting the proposer, reach `k = min(2, n - 1)`, with n the signers at that statement. An addition takes effect when the distinct signers, counting the proposer, reach the same k, so a lone signer adds the first co-signer alone. A `resolve` takes effect at k approvals by signers of the common prefix. Only signers that are not gone count |
+| `approve` | `proposal` | An addition, or a removal of another signer, takes effect at the statement where the distinct signers other than the target, counting the proposer, reach `k = min(2, n)`, with n the signers at that statement. So a lone signer adds the first co-signer alone, and with two signers or more nobody adds a signer or removes another alone. A `resolve` takes effect at k approvals by signers of the common prefix. Only signers that are not gone count toward n and k |
 | `confirm` | `member`: `acct`, `ik`, `ih`, `dh` | After a comparison (below). Confirming a member again after a reset is allowed |
 | `remove_member` | `acct` | Refused while the account is a signer. A signer leaves the signer set first, under k |
 | `revoke_sk` | `acct`, `sk_v` | After a server hint that the person's device was removed, or a reset |
@@ -294,7 +294,7 @@ Each statement carries `by`: the signer's `acct`, its `holder`, and its `ih` and
   - Voided statements keep their place for the chain and for version numbering.
   - A TK version that a voided `key` introduced counts as known to the attacker, so the team enters rotation pending.
   - The app shows which confirmations and signer additions fell away, and those members are confirmed again.
-- **What a signer can do.** One signer can confirm members, seal team keys to them and remove members. With three signers or more, it can neither add nor remove a signer alone. With two, either one can add a third or remove the other, since k is 1, as D15 sets. A malicious signer is therefore trusted with the team's secrets, and every statement it signs shows in every member's app. The threat model covers this.
+- **What a signer can do.** One signer can confirm members, seal team keys to them and remove members. Once a team has two signers, it can neither add a signer nor remove another alone. With exactly two, removing the other therefore needs that signer to leave on its own, or to be gone, which needs no removal. A malicious signer is still trusted with the team's secrets, and every statement it signs shows in every member's app. The threat model covers this.
 
 **Member bundle.** Kind `key.member` in the team scope, writer-bound to the member's account, one record per statement.
 
@@ -356,6 +356,7 @@ The exchange is Vaudenay's SAS-based message cross-authentication (CRYPTO 2005; 
 3. `reveal`: I, after it has `r_R`, publishes `r_I`. R refuses an `r_I` that does not open `c` with `m_I` as R received it.
 4. Each side computes `d = SHA-256(LP(label) || ctx || LP(r_I) || LP(r_R))` from its own view of `ctx`. The words are the first five base-7776 digits of d read as a big-endian integer, least significant first, each picking a word of the EFF large word list.
 
+- **Never backwards.** A holder never pins, from a comparison, a head older than one it has anchored (0054). Such a session ends as a mismatch.
 - **When each side fixes its view.** Each side fixes its `ctx` (the request bytes and the heads it compares) before it publishes its own random value: I before step 1, R before step 2. A session ends if a followed log moves before the person confirms. The formal model found that a side reading its heads later lets the server pick heads after `r_I` is public.
 - The person compares the five words on both screens and confirms on both.
 - A session allows one comparison and expires 10 minutes after `c`. A mismatch ends it and is shown as a possible interception.
@@ -364,8 +365,9 @@ The exchange is Vaudenay's SAS-based message cross-authentication (CRYPTO 2005; 
 **Device approval**, label `tablepro/v1/device-approval`. I is the new holder N, R the approving holder A, and the session is N's request.
 
 - `m_N = LP(holder) || LP(row) || LP(platform) || LP(N's HPKE key) || LP(thumbprint of N's signing key)`.
-- `ctx = LP(origin) || LP(account) || LP(session) || LP(m_N) || head(identity) || head(device) || teams`.
-- `teams` is `u32(count)`, then for each team the account is in, sorted by id: `LP(team) || head(team log)`, then for each confirmed member sorted by account: `LP(account) || head(that member's identity log) || head(that member's device log)`.
+- `ctx = LP(origin) || LP(account) || LP(session) || LP(m_N) || head(identity) || head(device) || u32(personal floor) || teams`.
+- `teams` is `u32(count)`, then for each team the account is in, sorted by id: `LP(team) || head(team log) || u32(team floor)`, then for each confirmed member sorted by account: `LP(account) || head(that member's identity log) || head(that member's device log)`.
+- A floor in `ctx` is the version the signed removals in those logs require, so both sides compute it from the heads they compare, never from a server hint.
 - N reads the team logs and member bundles before step 1, as it may as the account's seat (0051), and pins every head it compared once the words match. So a new device starts with the approving device's team checkpoints, and a server that shows it an older team log or member bundle fails the comparison.
 
 **Member confirmation**, label `tablepro/v1/member`. I is the signer G, R the member M.
@@ -545,7 +547,7 @@ A key holder belongs to (origin, account id, device row id), not to a session (F
 
 ### Security state
 
-A holder's security state is what it has verified, apart from its keys. It lives in the account's TablePro Sync state file. 0054 owns the file's format, its single MAC over a snapshot of the key tables, and its freshness check against an anchor in the device store, after ROTE. This ADR fixes what each key table holds and the rules on it:
+A holder's security state is what it has verified, apart from its keys. It lives in the account's TablePro Sync state file. 0054 owns the file's format and MAC, its freshness, and the key checkpoint it keeps in an anchor in the device store, after ROTE. The checkpoint holds every followed log's head, every key version floor, and each envelope's highest counter with that ciphertext's hash. This ADR fixes what each key table holds and the rules on it:
 
 | Table | Holds |
 |---|---|
@@ -557,15 +559,23 @@ A holder's security state is what it has verified, apart from its keys. It lives
 | `envelope_counters` | Per envelope, the highest (`kv`, `n`) it accepted and that ciphertext's hash |
 | `deleted_history` | The ids of history entries with a `user` tombstone |
 
-**Stale or missing state.** When 0054's check finds the state stale or missing, the holder keeps its keys but trusts nothing the key tables held. It accepts no log, wrap or envelope and writes no secret until it pins again, in one of two ways:
+**Stale state, or an anchor with no file.** 0054 rebuilds the key tables from the server's logs. The holder keeps its keys and accepts only what extends the anchored checkpoint, and writes no secret until a log extends the anchored heads. No comparison makes it pin a head older than one it has anchored.
+
+**A file with no anchor** pins again, in one of two ways:
 
 - **With another holder of the account.**
   - It runs the device approval comparison as N, with its existing keys. The request is marked as a re-pin, and the flow ends with no `add` and no wraps.
-  - The context carries the account's identity and device heads, and every team's head and member bundle heads (Comparing keys). The floors that clients enforce follow from the signed removals those heads cover.
+  - The context carries the account's identity and device heads and floor, and every team's head, member bundle heads and floor (Comparing keys).
   - Once the words match, the holder pins what it compared and rebuilds its key tables from the logs it verifies from there.
 - **With S.** The holder runs Recovery's steps 2 to 6 with its own holder, so it signs no new `add`. It opens the blob, verifies the account logs under IK, and signs the `rotate` that removes every other holder. The team logs and member bundles it then reads are pinned uncompared, as after a recovery, until a device approval or member confirmation compares them.
 
-**The limit.** A restore that brings back the state file together with its anchor cannot be told apart locally from the moment it came from (0054). The threat model lists it.
+**The limits** (0054):
+
+- a file with no anchor, which pins as above;
+- a restore that brings back the file together with its anchor, which cannot be told apart locally from the moment it came from;
+- `deleted_history`, which lives in the file only, so a restore can bring back history the person deleted.
+
+The threat model lists all three.
 
 ### Wraps and rings
 
@@ -729,7 +739,8 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
     - a statement by a signer after its own reset, before a new `signer_add`;
     - a `confirm` and a `key` by a holder a later `rotate` names, which must be voided;
     - a `key` sealed to a revoked SK, and one naming a stale `ih` for a member;
-    - adding or removing a signer with fewer than k approvals, counting a gone signer, `remove_member` of a signer, and `reroot` while a signer that is not gone is left;
+    - adding a signer or removing another with fewer than k = min(2, n) approvals, a gone signer's approval counted, and, at n = 2, one signer adding a third or removing the other alone;
+    - `remove_member` of a signer, and `reroot` while a signer that is not gone is left;
     - a `reroot` once the last signer reset, removed itself or has an empty device set, which must be taken.
   - **Keys:** a swapped SK, and a `kid` mismatch after unwrap.
   - **Recovery:** a blob with the wrong origin, account or `rk_v`, and a recovery key with a bad checksum or the wrong length.
@@ -772,7 +783,7 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 - that no holder a removed holder approved, directly or not, receives a later key version;
 - that no account a removed holder confirmed, and no signer it added, receives a later TK version;
 - that no reset takes effect without S, or without the full delay with no cancel;
-- that no signer is added or removed with fewer than k approvals, and no re-root takes effect while a signer that is not gone is left;
+- that no signer is added, and no signer removed by another, with fewer than k = min(2, n) approvals, so one signer never takes a team of two or more alone, and no re-root takes effect while a signer that is not gone is left;
 - that an old S after a `replace` can extend no log;
 - that a removed holder cannot pin an envelope counter past the next version.
 
@@ -834,7 +845,7 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 - **An account-wide signing key held by every device.** A removal cannot tell which statements the removed device signed, so a stolen signer's device could leave a confirmed puppet behind.
 - **A reset that takes effect at once.** A stolen device alone would take the identity and lock out the person and their recovery key.
 - **Sign Out removing the devices it approved.** The maintainer chose against it on 2026-11-25. An honest sign-out of an old laptop would drop the new laptop it approved, and it would still not revoke the shared SK, which D7 keeps from rotating at sign-out. Removal with S takes a planted device out instead.
-- **One signer adding signers alone.** One signer could then add two accounts of its own and remove every other signer. The maintainer chose the same k for additions as for removals.
+- **One signer adding signers alone, or k = min(2, n - 1).** One signer could add accounts of its own and then remove every other signer. Under min(2, n - 1) a team of two falls to one signer in two steps: it adds a puppet alone, and the two remove the honest signer. The maintainer chose the same k for additions as for removals, and k = min(2, n) enforces it.
 - **Replace Recovery Key keeping IK.** The old S would stay a master key wherever the old blob survives.
 - **Signing `(enc, ct)` on each wrap** (SYN C2). Checking the unwrapped key against a signed commitment gives the same protection, and the recipient list stays in the `key` statement.
 - **Five or eight words with no commitment** (0044, SYN C8). A server that controls both views finds matching words by a birthday search: 2^32 work at 64 bits and 2^52 at 103 bits.
