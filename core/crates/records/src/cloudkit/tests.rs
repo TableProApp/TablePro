@@ -476,6 +476,43 @@ fn a_wire_value_of_the_wrong_shape_is_refused_rather_than_cleared() {
 }
 
 #[test]
+fn record_fields_that_are_not_an_object_write_nothing() {
+    assert_eq!(
+        from_wire(Kind::Connection, "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44", &json!([]), 0)
+            .map_err(|error| error.code()),
+        Err("records.bad_field")
+    );
+}
+
+#[test]
+fn a_settings_document_with_a_malformed_option_writes_nothing() {
+    let keyboard = |shortcuts: serde_json::Value| json!({"category": "keyboard", "options": {"shortcuts": shortcuts}});
+    for fields in [
+        keyboard(json!([{"id": "executeQuery"}])),
+        keyboard(json!({"executeQuery": {"keyCode": 36}})),
+        json!({"category": "editor", "options": {"tabWidth": "4"}}),
+        json!({"category": "customSlashCommands", "options": [{"id": "a", "name": 1}]}),
+    ] {
+        let category = fields["category"].as_str().expect("a category").to_owned();
+        assert_eq!(
+            from_wire(Kind::MacosSettings, &category, &fields, 0).map_err(|error| error.code()),
+            Err("records.bad_field"),
+            "{fields}"
+        );
+    }
+    let good = keyboard(json!([{"id": "executeQuery", "value": {"keyCode": 36, "command": true}}]));
+    let saved = from_wire(Kind::MacosSettings, "keyboard", &good, 0)
+        .expect("writes")
+        .expect("a save");
+    assert_eq!(
+        saved.get("settingsJson"),
+        Some(&Some(CloudValue::Bytes(mac_json_bytes(
+            &json!({"shortcuts": {"executeQuery": {"keyCode": 36, "command": true}}})
+        ))))
+    );
+}
+
+#[test]
 fn a_cloudkit_field_of_the_wrong_shape_makes_the_record_unreadable() {
     let fields = BTreeMap::from([(
         "sshConfigJson".to_owned(),

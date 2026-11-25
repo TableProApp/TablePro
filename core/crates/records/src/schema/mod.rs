@@ -102,8 +102,13 @@ impl Approval {
                         .and_then(|text| order.iter().position(|known| *known == text))
                         .unwrap_or(order.len())
                 };
-                // A value removed reads as the app's default, which the pull cannot be trusted to know.
-                pulled.is_none() || rank(pulled) > rank(held)
+                // A value removed or first set reads against the app's default, which the pull cannot be trusted
+                // to know, so only the strictest value goes in unasked.
+                match (held, pulled) {
+                    (_, None) => true,
+                    (None, Some(_)) => rank(pulled) > 0,
+                    (Some(_), Some(_)) => rank(pulled) > rank(held),
+                }
             }
             Self::WhenOn => pulled.and_then(Value::as_bool) != Some(false),
             Self::WhenHigher => match (held.and_then(Value::as_i64), pulled.and_then(Value::as_i64)) {
@@ -121,10 +126,11 @@ impl Class {
 }
 
 // The class of a driver's field from the trust its driver declares for the id, as the Mac's `ConnectionFieldTrust`
-// names them. An id no driver declares waits for approval. A team drops scripts on pull (0051, What syncs).
+// names them. That trust says what may travel, not what weakens a protection: a driver keeps switches such as TLS
+// verification among its settings, so every field that syncs waits for approval. A team drops scripts on pull (0051,
+// What syncs).
 pub fn entry_class(scope: Scope, trust: Option<&str>) -> Class {
     match trust {
-        Some("setting") => Class::Inert,
         Some("secret" | "hostInternal") => Class::DeviceOnly,
         Some("ownDevices") if scope == Scope::Team => Class::Dropped,
         _ => Class::Approval(Approval::Always),

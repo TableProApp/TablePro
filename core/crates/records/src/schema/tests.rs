@@ -414,6 +414,13 @@ fn a_looser_value_waits_and_a_stricter_one_applies() {
     assert!(rule.waits(Some(&json!("silent")), Some(&json!("fromTheFuture"))));
     assert!(rule.waits(Some(&json!("alert")), None));
     assert!(!rule.waits(Some(&json!("alert")), Some(&json!("alert"))));
+    // A member first set: only the strictest value goes in unasked.
+    assert!(rule.waits(None, Some(&json!("silent"))));
+    assert!(!rule.waits(None, Some(&json!("readOnly"))));
+    for (order, loosest) in [(AI_POLICIES, "alwaysAllow"), (EXTERNAL_ACCESS, "readWrite")] {
+        assert!(Approval::Looser(order).waits(None, Some(&json!(loosest))), "{loosest}");
+    }
+    assert!(Approval::Looser(&["ask", "edit", "agent"]).waits(None, Some(&json!("agent"))));
     let Class::Approval(access) = schema(Kind::Connection).class("external_access") else {
         panic!("external access is approval-required");
     };
@@ -455,7 +462,10 @@ fn destinations_scripts_and_allowlists_wait_and_names_apply() {
 // A driver's field takes the class its driver declares; a team drops scripts on pull (0051, What syncs).
 #[test]
 fn a_driver_field_is_classed_by_the_trust_its_driver_declares() {
-    assert_eq!(entry_class(Scope::Personal, Some("setting")), Class::Inert);
+    assert_eq!(
+        entry_class(Scope::Personal, Some("setting")),
+        Class::Approval(Approval::Always)
+    );
     assert_eq!(
         entry_class(Scope::Personal, Some("destination")),
         Class::Approval(Approval::Always)

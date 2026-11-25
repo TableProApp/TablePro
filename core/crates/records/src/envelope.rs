@@ -74,7 +74,8 @@ impl fmt::Display for SecretKind {
 }
 
 // The members of the record a secret is sealed for, as paths into its wire schema. A hop of the SSH route keeps the
-// same SSH fields as the host it leads to.
+// same SSH fields as the host it leads to. A driver's own fields go in whole: some of them name the hosts it dials,
+// such as Elasticsearch's node list, or switch its TLS checks, and only the driver knows which.
 pub fn destination_paths(parent: Kind, secret: &SecretKind) -> &'static [&'static str] {
     const CONNECTION: &[&str] = &[
         "type",
@@ -95,6 +96,9 @@ pub fn destination_paths(parent: Kind, secret: &SecretKind) -> &'static [&'stati
         "ssh_config.jump_hosts[].username",
         "ssh_config.jump_hosts[].private_key_path",
         "ssh_profile_id",
+        "ssh_route",
+        "network_options",
+        "additional_fields",
     ];
     const CONNECTION_SSH: &[&str] = &[
         "ssh_config.host",
@@ -121,6 +125,7 @@ pub fn destination_paths(parent: Kind, secret: &SecretKind) -> &'static [&'stati
         "sshConfig.jumpHosts[].username",
         "sshConfig.jumpHosts[].privateKeyPath",
         "sshProfileId",
+        "additionalFields",
     ];
     const LIBRARY_CONNECTION_SSH: &[&str] = &[
         "sshConfig.host",
@@ -344,6 +349,45 @@ mod tests {
                 "{}",
                 case["name"]
             );
+        }
+    }
+
+    // Each member that decides where the secret goes, or how it is protected on the way, changes `dest`.
+    #[test]
+    fn every_endpoint_member_changes_the_destination() {
+        let held = json!({
+            "type": "Elasticsearch",
+            "host": "es",
+            "port": 9200,
+            "ssl_config": {"mode": "Required"},
+            "ssh_config": {"enabled": true, "host": "b", "jump_hosts": [{"host": "j"}]},
+            "ssh_route": {"hops": [{"host": "h1"}], "target": {"host": "es"}},
+            "network_options": {"more_hosts": ["es2:9200"]},
+            "additional_fields": [{"id": "esHosts", "value": "es:9200"}, {"id": "esSkipTLSVerify", "value": "false"}]
+        });
+        let changes = [
+            ("/type", json!("OpenSearch")),
+            ("/host", json!("evil")),
+            ("/port", json!(1)),
+            ("/ssl_config/mode", json!("Disabled")),
+            ("/ssh_config/enabled", json!(false)),
+            ("/ssh_config/jump_hosts/0/host", json!("evil")),
+            ("/ssh_route/hops/0/host", json!("evil")),
+            ("/network_options/more_hosts/0", json!("evil:9200")),
+            ("/additional_fields/0/value", json!("evil:9200")),
+            ("/additional_fields/1/value", json!("true")),
+        ];
+        for secret in [SecretKind::Password, SecretKind::Plugin("esApiKey".to_owned())] {
+            let sealed = destination(Kind::Connection, &secret, &held);
+            for (pointer, value) in &changes {
+                let mut moved = held.clone();
+                *moved.pointer_mut(pointer).expect("a member") = value.clone();
+                assert_ne!(
+                    destination(Kind::Connection, &secret, &moved),
+                    sealed,
+                    "{secret} {pointer}"
+                );
+            }
         }
     }
 

@@ -46,6 +46,8 @@ pub enum ProjectionError {
     Id(#[from] IdError),
     #[error("the field {field} does not hold what its type declares")]
     Field { field: &'static str },
+    #[error("the record's fields are not a JSON object")]
+    NotAnObject,
 }
 
 impl ProjectionError {
@@ -54,7 +56,7 @@ impl ProjectionError {
             Self::UnknownType { .. } => "records.unknown_record_type",
             Self::Name => "records.bad_record_name",
             Self::Id(error) => error.code(),
-            Self::Field { .. } => "records.bad_field",
+            Self::Field { .. } | Self::NotAnObject => "records.bad_field",
         }
     }
 }
@@ -104,7 +106,7 @@ pub fn to_wire(record_type: &str, name: &str, fields: &CloudFields) -> Result<Wi
     }
     read_legacy(record_type.kind, fields, &mut wire);
     if record_type.kind == Kind::MacosSettings {
-        settings_entries(&mut wire, Direction::ToWire);
+        settings_entries(&mut wire, Direction::ToWire)?;
     }
     Ok(WireRecord {
         kind: record_type.kind,
@@ -124,10 +126,13 @@ pub fn from_wire(
     let Some(record_type) = record_type_of(kind).filter(|record_type| record_type.deployed) else {
         return Ok(None);
     };
+    if !fields.is_object() {
+        return Err(ProjectionError::NotAnObject);
+    }
     let schema = schema::schema(kind);
     let mut fields = fields.clone();
     if kind == Kind::MacosSettings {
-        settings_entries_value(&mut fields, Direction::ToCloud);
+        settings_entries_value(&mut fields, Direction::ToCloud)?;
     }
     let mut saved = BTreeMap::new();
     for field in record_type.fields.iter().filter(|field| record_type.writes(field)) {
@@ -316,39 +321,53 @@ enum Direction {
     ToCloud,
 }
 
-// A settings document's maps keyed by data, such as column widths by column, go as entries on the wire.
-fn settings_entries(wire: &mut serde_json::Map<String, Value>, direction: Direction) {
+// A settings document's maps keyed by data, such as column widths by column, go as entries on the wire. A document
+// whose options do not have the shapes its category gives them is refused, so a save never empties a valid one.
+fn settings_entries(wire: &mut serde_json::Map<String, Value>, direction: Direction) -> Result<(), ProjectionError> {
+    let refused = ProjectionError::Field { field: "settingsJson" };
     let category = wire.get("category").and_then(Value::as_str).map(str::to_owned);
     let Some(options) = wire.get_mut("options") else {
-        return;
+        return Ok(());
     };
     let Some(known) = category
         .as_deref()
         .and_then(|category| settings::registry(Kind::MacosSettings)?.category(category))
     else {
-        return;
+        return Ok(());
     };
+    let fields = known.document.options();
     let Value::Object(members) = options else {
-        return;
+        let conforms = options
+            .as_array()
+            .is_some_and(|items| items.iter().all(|item| schema::conforms(&Type::Object(fields), item)));
+        return if conforms { Ok(()) } else { Err(refused) };
     };
-    for option in known
-        .document
-        .options()
-        .iter()
-        .filter(|option| matches!(option.ty, Type::Entries(_)))
-    {
-        let converted = match (direction, members.get(option.key)) {
-            (Direction::ToWire, Some(Value::Object(map))) => entries(map.clone()),
-            (Direction::ToCloud, Some(Value::Array(items))) => map(items),
-            _ => continue,
+    for option in fields {
+        let Some(value) = members.get(option.key) else {
+            continue;
+        };
+        let converted = match (direction, option.ty) {
+            (Direction::ToWire, Type::Entries(inner)) => match value {
+                Value::Object(map) if map.values().all(|member| schema::conforms(inner, member)) => {
+                    entries(map.clone())
+                }
+                _ => return Err(refused),
+            },
+            (Direction::ToCloud, Type::Entries(_)) if schema::conforms(&option.ty, value) => {
+                map(value.as_array().map_or(&[], Vec::as_slice))
+            }
+            (_, ty) if schema::conforms(&ty, value) => continue,
+            _ => return Err(refused),
         };
         members.insert(option.key.to_owned(), converted);
     }
+    Ok(())
 }
 
-fn settings_entries_value(fields: &mut Value, direction: Direction) {
-    if let Value::Object(members) = fields {
-        settings_entries(members, direction);
+fn settings_entries_value(fields: &mut Value, direction: Direction) -> Result<(), ProjectionError> {
+    match fields {
+        Value::Object(members) => settings_entries(members, direction),
+        _ => Ok(()),
     }
 }
 
