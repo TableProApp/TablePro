@@ -15,7 +15,9 @@ use tablepro_sync::api::key_flows::{
     SessionPhase, TypedBack,
 };
 use tablepro_sync::api::scopes::ScopesAnswer;
-use tablepro_sync::api::state::{KeyDevicePinRow, KeyPinRow, Row, RowKey, RowRange, ScopeRow, StateFiles, StateIdentity, StateStore, StateTxn, Table};
+use tablepro_sync::api::state::{
+    KeyDevicePinRow, KeyPinRow, Row, RowKey, RowRange, ScopeRow, StateFiles, StateIdentity, StateStore, StateTxn, Table,
+};
 use tablepro_sync::api::transport::{
     Change, ChangeOutcome, DpopKey, Proof, PullRequest, PulledPage, PushAnswer, PushBatch, RejectedCode,
     ServiceTransport, Transport, TransportError,
@@ -56,13 +58,25 @@ impl Wire {
         *self.fail.lock().unwrap() = Some(error);
     }
 
-    pub fn pushed_kinds(&self) -> Vec<Vec<String>> {
-        self.pushed
+    // The last push's changes by kind and record id, whatever order they went up in.
+    pub fn last_push_by_id(&self) -> Vec<(String, String, String)> {
+        let mut changes: Vec<(String, String, String)> = self
+            .pushed
             .lock()
             .unwrap()
+            .last()
+            .unwrap()
             .iter()
-            .map(|changes| changes.iter().map(|change| change.kind.as_str().to_owned()).collect())
-            .collect()
+            .map(|change| {
+                (
+                    change.kind.as_str().to_owned(),
+                    change.record_id.clone(),
+                    format!("{:?}", change.op),
+                )
+            })
+            .collect();
+        changes.sort();
+        changes
     }
 }
 
@@ -119,10 +133,8 @@ pub struct Device {
     pub server: Arc<FakeServer>,
     pub wire: Arc<Wire>,
     pub hooks: Arc<RecordingHooks>,
-    pub store: Arc<FakeDeviceStore>,
     pub state: Arc<dyn StateStore>,
     pub row: DeviceRowId,
-    pub account: AccountId,
     skew: Arc<ServerClock>,
 }
 
@@ -162,10 +174,8 @@ impl Device {
             server: Arc::clone(server),
             wire,
             hooks,
-            store,
             state,
             row,
-            account,
             skew: clock,
         }
     }
@@ -205,9 +215,11 @@ impl Device {
     }
 
     pub async fn av(&self) -> u32 {
-        match self.key_state().await {
+        let state = self.key_state().await;
+        assert!(matches!(state, KeyState::Approved { .. }), "not approved: {state:?}");
+        match state {
             KeyState::Approved { av, .. } => av.get(),
-            other => panic!("not approved: {other:?}"),
+            _ => 0,
         }
     }
 
@@ -303,9 +315,14 @@ impl Device {
     }
 
     pub async fn words(&self, request: RequestId) -> Vec<String> {
-        match self.service.approval_session(request).await.unwrap().phase {
+        let phase = self.service.approval_session(request).await.unwrap().phase;
+        assert!(
+            matches!(phase, SessionPhase::Compare { .. }),
+            "no words to compare: {phase:?}"
+        );
+        match phase {
             SessionPhase::Compare { words } => words,
-            other => panic!("no words to compare: {other:?}"),
+            _ => Vec::new(),
         }
     }
 
@@ -351,16 +368,6 @@ pub fn stored(server: &FakeServer, account: AccountId, kind: &str, id: &str) -> 
     let stored = server.stored(ScopeOwner::Personal(account), kind, id)?;
     let text = serde_json::to_string(stored.fields.as_ref()?).unwrap();
     Some(KeyObject::parse(kind, id, text.as_bytes()).unwrap())
-}
-
-pub fn stored_deleted(server: &FakeServer, account: AccountId, kind: &str, id: &str) -> bool {
-    server
-        .stored(ScopeOwner::Personal(account), kind, id)
-        .is_some_and(|record| record.deleted.is_some())
-}
-
-pub fn refused_codes(applied: &KeyApplied) -> Vec<&'static str> {
-    applied.refused.iter().map(|refused| refused.error.code()).collect()
 }
 
 // A reset proposal as a person makes it, R' typed back.

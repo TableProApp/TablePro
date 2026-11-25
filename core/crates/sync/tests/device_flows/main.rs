@@ -5,10 +5,6 @@
     clippy::unwrap_used,
     reason = "the setup helpers fail a test the way the test functions themselves do"
 )]
-#![expect(
-    clippy::disallowed_types,
-    reason = "pulled records carry their fields as serde values, which compare as values whatever the member order"
-)]
 
 mod approval;
 mod harness;

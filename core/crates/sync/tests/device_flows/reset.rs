@@ -4,8 +4,8 @@
 use secrecy::SecretString;
 use tablepro_keys::body::KeyBody;
 use tablepro_keys::encoding::KeyPurpose;
-use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::record_id::KeyRecordId;
+use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::scope_key::{KeyRef, Start};
 use tablepro_sync::api::error::SyncError;
 use tablepro_sync::api::key_flows::{CancelWith, KeyNoticeKind, ResetFlows, ResetKind, ResetState, TypedBack};
@@ -36,14 +36,19 @@ async fn a_reset_from_an_approved_device_is_held_seven_days_in_view_of_every_dev
     assert_eq!((proposed.state, proposed.mine), (ResetState::Pending, true));
     assert_eq!(proposed.held_until_us - proposed.taken_at_us, 7 * DAY_US);
     let seen = b.service.pending_reset().await.unwrap().unwrap();
-    assert_eq!((seen.reset, seen.mine, seen.state), (proposed.reset, false, ResetState::Pending));
-    assert!(b.hooks.calls().contains(&HookCall::Notice(
-        b.service
-            .held_notices()
-            .into_iter()
-            .find(|notice| notice.kind == KeyNoticeKind::ResetPending { reset: proposed.reset })
-            .unwrap()
-    )));
+    assert_eq!(
+        (seen.reset, seen.mine, seen.state),
+        (proposed.reset, false, ResetState::Pending)
+    );
+    assert!(
+        b.hooks.calls().contains(&HookCall::Notice(
+            b.service
+                .held_notices()
+                .into_iter()
+                .find(|notice| notice.kind == KeyNoticeKind::ResetPending { reset: proposed.reset })
+                .unwrap()
+        ))
+    );
 }
 
 #[tokio::test]
@@ -73,11 +78,18 @@ async fn r_typed_back_wrong_proposes_nothing_and_keeps_the_draft() {
     a.genesis().await;
     let draft = a.service.begin_reset(ResetKind::KeepScopeKeys).await.unwrap();
     let wrong = TypedBack {
-        groups: [SecretString::from("ZZZZ".to_owned()), SecretString::from("ZZZZ".to_owned())],
+        groups: [
+            SecretString::from("ZZZZ".to_owned()),
+            SecretString::from("ZZZZ".to_owned()),
+        ],
     };
 
     let error = a.service.finish_reset_proposal(draft.draft, wrong).await.unwrap_err();
-    let retried = a.service.finish_reset_proposal(draft.draft, typed_back(&draft)).await.unwrap();
+    let retried = a
+        .service
+        .finish_reset_proposal(draft.draft, typed_back(&draft))
+        .await
+        .unwrap();
 
     assert_eq!(error, SyncError::TypedBackWrong);
     assert_eq!(retried.state, ResetState::Pending);
@@ -97,8 +109,16 @@ async fn a_kind_3_proposal_the_server_asks_to_step_up_for_goes_up_after_the_step
         max_age_secs: 300,
     }));
 
-    let error = d.service.finish_reset_proposal(draft.draft, typed_back(&draft)).await.unwrap_err();
-    let proposed = d.service.finish_reset_proposal(draft.draft, typed_back(&draft)).await.unwrap();
+    let error = d
+        .service
+        .finish_reset_proposal(draft.draft, typed_back(&draft))
+        .await
+        .unwrap_err();
+    let proposed = d
+        .service
+        .finish_reset_proposal(draft.draft, typed_back(&draft))
+        .await
+        .unwrap();
 
     assert_eq!(error.code(), "sync.step_up_required");
     assert_eq!((proposed.kind, proposed.mine), (ResetKind::StartEmpty, true));
@@ -115,7 +135,10 @@ async fn a_certified_device_cancels_a_reset_and_every_device_sees_it_end() {
     let proposed = propose_reset(&a, ResetKind::KeepScopeKeys).await;
     b.pull().await;
 
-    b.service.cancel_reset(proposed.reset, CancelWith::ThisDevice).await.unwrap();
+    b.service
+        .cancel_reset(proposed.reset, CancelWith::ThisDevice)
+        .await
+        .unwrap();
     a.pull().await;
 
     assert_eq!(b.pending_reset_state().await, Some(ResetState::Cancelled));
@@ -174,13 +197,13 @@ async fn an_activation_before_held_until_is_reset_held_and_goes_up_unchanged_aft
     a.wire.refuse_next_push(RejectedCode::ResetHeld);
 
     let early = a.service.activate_reset(proposed.reset).await.unwrap_err();
-    let first = a.wire.pushed.lock().unwrap().last().cloned().unwrap();
+    let first = a.wire.last_push_by_id();
     a.advance(7 * DAY_US);
     a.service.activate_reset(proposed.reset).await.unwrap();
-    let second = a.wire.pushed.lock().unwrap().last().cloned().unwrap();
+    let second = a.wire.last_push_by_id();
 
     assert_eq!(early, rejected(RejectedCode::ResetHeld));
-    assert_eq!(first, second);
+    assert_eq!(first, second, "the same objects, sealed once");
     assert_eq!(a.pending_reset_state().await, Some(ResetState::Active));
     a.server_approves().await;
     assert_eq!(a.av().await, 2);

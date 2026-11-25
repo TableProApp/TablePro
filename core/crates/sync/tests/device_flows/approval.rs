@@ -50,8 +50,20 @@ async fn an_approved_device_approves_a_new_one_after_both_see_the_same_words() {
     assert_eq!(n.av().await, 1);
     let n_device = n.service.device_keys().await.unwrap().current.unwrap();
     let a_device = a.service.device_keys().await.unwrap().current.unwrap();
-    assert_eq!(n.device_pins().await.iter().map(|pin| pin.key_device).collect::<Vec<_>>(), vec![a_device.key_device]);
-    assert!(a.device_pins().await.iter().any(|pin| pin.key_device == n_device.key_device));
+    assert_eq!(
+        n.device_pins()
+            .await
+            .iter()
+            .map(|pin| pin.key_device)
+            .collect::<Vec<_>>(),
+        vec![a_device.key_device]
+    );
+    assert!(
+        a.device_pins()
+            .await
+            .iter()
+            .any(|pin| pin.key_device == n_device.key_device)
+    );
     assert_eq!(n.pin(account).await.unwrap().ik, a.pin(account).await.unwrap().ik);
     let id = KeyRecordId::Device {
         account,
@@ -59,7 +71,10 @@ async fn an_approved_device_approves_a_new_one_after_both_see_the_same_words() {
         av: tablepro_keys::encoding::Version::FIRST,
     };
     assert!(stored(&server, account, "key.device", &id.to_wire()).is_some());
-    assert_eq!(a.service.approval_session(request).await.unwrap().phase, SessionPhase::Approved);
+    assert_eq!(
+        a.service.approval_session(request).await.unwrap().phase,
+        SessionPhase::Approved
+    );
 }
 
 #[tokio::test]
@@ -123,10 +138,21 @@ async fn a_reveal_that_does_not_open_the_commitment_ends_the_session_with_a_comm
         body: KeyBody::Sas(tablepro_keys::body::SasBody::Reveal { r: [0x5a; 32] }),
     };
 
-    let applied = a.service.apply_session_objects(arrival(vec![pulled(&forged)])).await.unwrap();
+    let applied = a
+        .service
+        .apply_session_objects(arrival(vec![pulled(&forged)]))
+        .await
+        .unwrap();
     a.service.resume_approval(request).await.unwrap();
 
-    assert_eq!(applied.refused.iter().map(|refused| refused.error.code()).collect::<Vec<_>>(), vec!["keys.commitment"]);
+    assert_eq!(
+        applied
+            .refused
+            .iter()
+            .map(|refused| refused.error.code())
+            .collect::<Vec<_>>(),
+        vec!["keys.commitment"]
+    );
     assert_eq!(
         a.service.approval_session(request).await.unwrap().phase,
         SessionPhase::Cancelled {
@@ -195,7 +221,10 @@ async fn a_session_past_expires_at_takes_no_step() {
     let error = a.service.choose_request(request).await.unwrap_err();
 
     assert_eq!(error.code(), "keys.session");
-    assert_eq!(a.service.approval_session(request).await.unwrap().phase, SessionPhase::Expired);
+    assert_eq!(
+        a.service.approval_session(request).await.unwrap().phase,
+        SessionPhase::Expired
+    );
     assert!(a.service.approval_requests().await.unwrap().is_empty());
 }
 
@@ -214,7 +243,9 @@ async fn a_cancel_from_either_side_ends_the_session_for_both() {
     a.service.cancel_session(request).await.unwrap();
     n.pull().await;
 
-    let user = SessionPhase::Cancelled { reason: SessionEnd::User };
+    let user = SessionPhase::Cancelled {
+        reason: SessionEnd::User,
+    };
     assert_eq!(n.service.approval_session(request).await.unwrap().phase, user);
     assert_eq!(a.service.approval_session(request).await.unwrap().phase, user);
 }
@@ -236,7 +267,10 @@ async fn an_approval_wrapped_under_a_dsk_the_new_device_did_not_compare_is_keys_
     n.words(request).await;
     a.pull().await;
     a.words(request).await;
-    assert_eq!(n.service.confirm_session(request).await.unwrap().phase, SessionPhase::Confirmed);
+    assert_eq!(
+        n.service.confirm_session(request).await.unwrap().phase,
+        SessionPhase::Confirmed
+    );
     let pending = n.service.device_keys().await.unwrap().pending.unwrap();
     let mut txn = a.txn().await;
     let own = a.service.own_account(txn.as_mut()).await.unwrap().unwrap();
@@ -348,4 +382,37 @@ async fn a_device_that_already_holds_the_account_s_keys_does_not_ask() {
     let error = a.service.request_approval().await.unwrap_err();
 
     assert_eq!(error.code(), "sync.not_allowed");
+}
+
+// A replace changes IK, which the words covered: the session ends, and N asks again.
+#[tokio::test]
+async fn a_replace_during_a_session_ends_it_with_keys_session() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    let draft = a.service.begin_replace(r).await.unwrap();
+    a.service
+        .finish_replace(
+            draft.recovery.draft,
+            crate::harness::typed_back(&draft.recovery),
+            Vec::new(),
+        )
+        .await
+        .unwrap();
+    a.server_approves().await;
+    a.pull().await;
+
+    let error = a.service.confirm_session(request).await.unwrap_err();
+
+    assert_eq!(error.code(), "keys.session");
 }

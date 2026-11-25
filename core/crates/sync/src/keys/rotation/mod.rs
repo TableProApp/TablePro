@@ -397,13 +397,8 @@ impl KeyService {
     pub(crate) async fn change_set_candidates(&self, av: Version) -> Result<Vec<KeyObject>, SyncError> {
         let mut txn = self.begin().await?;
         let mut objects = Vec::new();
-        for kind in [
-            KeyKind::Account,
-            KeyKind::Recovery,
-            KeyKind::Device,
-            KeyKind::Wrap,
-            KeyKind::Version,
-        ] {
+        // Certificates before what they certify, and each version record before its ring and its wraps.
+        for kind in [KeyKind::Account, KeyKind::Recovery, KeyKind::Device, KeyKind::Version] {
             for held in self.held_objects(txn.as_mut(), ScopeName::Personal, kind).await? {
                 if !held.applied && in_change_set(&held.object, av) {
                     objects.push(held.object);
@@ -423,6 +418,14 @@ impl KeyService {
                 && !held.applied
                 && versions.contains(&key)
             {
+                objects.push(held.object);
+            }
+        }
+        for held in self
+            .held_objects(txn.as_mut(), ScopeName::Personal, KeyKind::Wrap)
+            .await?
+        {
+            if !held.applied && in_change_set(&held.object, av) {
                 objects.push(held.object);
             }
         }

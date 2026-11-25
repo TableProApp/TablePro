@@ -3,8 +3,8 @@
 
 use secrecy::SecretString;
 use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose};
-use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::record_id::KeyRecordId;
+use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::scope_key::{KeyRef, Start};
 use tablepro_sync::api::error::SyncError;
 use tablepro_sync::api::key_flows::{DeviceFlows, KeyState, LockCause, ResetKind};
@@ -15,8 +15,16 @@ use crate::harness::{Device, approve, new_account, propose_reset, stored};
 
 // A rotation from `device` that keeps no other device, as a removal of every other device would.
 pub async fn rotate_keeping_only_self(device: &Device, recovery: &SecretString) {
-    let review = device.service.begin_removal(recovery.clone(), Vec::new()).await.unwrap();
-    device.service.finish_removal(review.review, Vec::new(), Vec::new()).await.unwrap();
+    let review = device
+        .service
+        .begin_removal(recovery.clone(), Vec::new())
+        .await
+        .unwrap();
+    device
+        .service
+        .finish_removal(review.review, Vec::new(), Vec::new())
+        .await
+        .unwrap();
 }
 
 async fn key_device(device: &Device) -> KeyDeviceId {
@@ -47,7 +55,10 @@ async fn removing_a_device_keeps_the_compared_ones_and_leaves_the_lost_one_out()
         .iter()
         .map(|device| (device.device.key_device, device.keep_by_default))
         .collect();
-    a.service.finish_removal(review.review, vec![b_device], Vec::new()).await.unwrap();
+    a.service
+        .finish_removal(review.review, vec![b_device], Vec::new())
+        .await
+        .unwrap();
     a.server_approves().await;
     b.pull().await;
 
@@ -61,7 +72,10 @@ async fn removing_a_device_keeps_the_compared_ones_and_leaves_the_lost_one_out()
         av: tablepro_keys::encoding::Version::new(2).unwrap(),
     };
     assert!(stored(&server, account, "key.device", &left_out.to_wire()).is_none());
-    assert_eq!(c.service.device_keys().await.unwrap().current.unwrap().key_device, c_device);
+    assert_eq!(
+        c.service.device_keys().await.unwrap().current.unwrap().key_device,
+        c_device
+    );
 }
 
 #[tokio::test]
@@ -99,7 +113,11 @@ async fn a_rotation_that_keeps_a_device_this_one_never_compared_is_keys_not_comp
     let c_device = key_device(&c).await;
 
     let review = b.service.begin_removal(r, Vec::new()).await.unwrap();
-    let error = b.service.finish_removal(review.review, vec![c_device], Vec::new()).await.unwrap_err();
+    let error = b
+        .service
+        .finish_removal(review.review, vec![c_device], Vec::new())
+        .await
+        .unwrap_err();
 
     assert_eq!(error.code(), "keys.not_compared");
     assert_eq!(b.av().await, 1);
@@ -112,7 +130,11 @@ async fn another_account_s_recovery_key_is_keys_signature_and_bad_text_is_keys_r
     let a = Device::new(&server, account, "dev_a").await;
     a.genesis().await;
 
-    let wrong = a.service.begin_removal(other_recovery_key(), Vec::new()).await.unwrap_err();
+    let wrong = a
+        .service
+        .begin_removal(other_recovery_key(), Vec::new())
+        .await
+        .unwrap_err();
     let garbled = a
         .service
         .begin_removal(SecretString::from("0000-1111".to_owned()), Vec::new())
@@ -148,7 +170,11 @@ async fn a_lost_device_cannot_be_kept() {
     let b_device = key_device(&b).await;
 
     let review = a.service.begin_removal(r, vec![b_device]).await.unwrap();
-    let error = a.service.finish_removal(review.review, vec![b_device], Vec::new()).await.unwrap_err();
+    let error = a
+        .service
+        .finish_removal(review.review, vec![b_device], Vec::new())
+        .await
+        .unwrap_err();
 
     assert_eq!(error.code(), "sync.not_allowed");
 }
@@ -245,7 +271,11 @@ async fn a_rotation_the_server_did_not_answer_goes_up_again_on_resume() {
     });
 
     let review = a.service.begin_removal(r, Vec::new()).await.unwrap();
-    let error = a.service.finish_removal(review.review, Vec::new(), Vec::new()).await.unwrap_err();
+    let error = a
+        .service
+        .finish_removal(review.review, Vec::new(), Vec::new())
+        .await
+        .unwrap_err();
     a.service
         .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
         .await
