@@ -10,7 +10,7 @@ internal struct CopyObjectsProgressView: View {
 
     internal var body: some View {
         TransferProgressView(progress: session.transferProgress)
-            .frame(maxWidth: TransferProgressSheet.width)
+            .frame(maxWidth: TransferProgressView.sheetWidth)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(24)
             .accessibilityElement(children: .contain)
