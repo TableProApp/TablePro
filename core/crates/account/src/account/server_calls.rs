@@ -9,20 +9,20 @@ use reqwest::StatusCode;
 use reqwest::header::{ACCEPT, AUTHORIZATION};
 use secrecy::{ExposeSecret as _, SecretString};
 use serde::Deserialize;
+use tablepro_cloud_api::{ApiError, rate_limited, read_capped, refusal, schema_mismatch};
 
 use super::{AccessToken, Account, Call, Licensed, Server, Session, SignOutCause, Trust};
 use crate::account_error::AccountError;
 use crate::account_file::{self, AccountFile};
 use crate::account_settings::SignInKey;
 use crate::account_status::{AccountStatus, EntitlementProblem};
-use crate::cloud_api::{rate_limited, refusal};
 use crate::entitlement::EntitlementError;
 use crate::entitlement_keys::EntitlementKeys;
 use crate::license::{License, LicenseError};
 use crate::license_keys::LicenseKeys;
 use crate::server::{
     self, Choice, ServerError, ServerKind, ServerSettings, choice_file, loopback_http_allowed, parse_origin,
-    read_capped, write_choice,
+    write_choice,
 };
 
 // A license is a few kilobytes and a JWKS lists two keys.
@@ -174,20 +174,18 @@ impl Account {
             .map_err(AccountError::unreachable)?;
         let status = response.status();
         if status == StatusCode::TOO_MANY_REQUESTS {
-            return Err(rate_limited(response.headers()));
+            return Err(rate_limited(response.headers()).into());
         }
         let body = read_capped(response, LICENSE_LIMIT).await?;
         if !status.is_success() {
             return Err(match refusal(status.as_u16(), &body) {
-                AccountError::Refused { code, .. } if code == "license_not_installed" => {
-                    LicenseError::NotInstalled.into()
-                }
-                other => other,
+                ApiError::Refused { code, .. } if code == "license_not_installed" => LicenseError::NotInstalled.into(),
+                other => other.into(),
             });
         }
         serde_json::from_slice::<LicenseAnswer>(&body)
             .map(|answer| answer.license)
-            .map_err(|error| AccountError::Protocol(crate::cloud_api::schema_mismatch(&error)))
+            .map_err(|error| AccountError::Protocol(schema_mismatch(&error)))
     }
 
     async fn jwks(&self, uri: &str) -> Result<String, AccountError> {
@@ -201,7 +199,7 @@ impl Account {
             .map_err(AccountError::unreachable)?;
         let status = response.status();
         if status == StatusCode::TOO_MANY_REQUESTS {
-            return Err(rate_limited(response.headers()));
+            return Err(rate_limited(response.headers()).into());
         }
         if status.is_server_error() {
             return Err(AccountError::Refused {
@@ -281,9 +279,13 @@ impl Account {
             Err(error) => Err(error),
         };
         let token = self.ended_by(&mut session, taken).await?;
+        let server = self.current();
         Ok(AccessToken {
             token,
-            api: self.current().api.clone(),
+            api: server.api.clone(),
+            origin: server.target.origin.clone(),
+            account_id: session.account_id.clone(),
+            device_id: session.device_id.clone(),
             session_id: session.id.clone(),
         })
     }

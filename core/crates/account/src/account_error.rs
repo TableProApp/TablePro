@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use tablepro_cloud_api::{ApiError, http_text};
+
 use crate::entitlement::EntitlementError;
 use crate::license::LicenseError;
 use crate::profile::Device;
@@ -93,17 +95,25 @@ impl AccountError {
     }
 }
 
-// Without the URL, whose path can hold a share token. reqwest keeps the cause, such as a refused connection, below.
-pub(crate) fn http_text(error: reqwest::Error) -> String {
-    let error = error.without_url();
-    let mut detail = error.to_string();
-    let mut source = std::error::Error::source(&error);
-    while let Some(cause) = source {
-        detail.push_str(": ");
-        detail.push_str(&cause.to_string());
-        source = cause.source();
+impl From<ApiError> for AccountError {
+    fn from(error: ApiError) -> Self {
+        match error {
+            ApiError::Unreachable(detail) => Self::Unreachable(detail),
+            ApiError::DeviceRevoked => Self::DeviceRevoked,
+            ApiError::DeviceLimitReached { devices } => Self::DeviceLimitReached {
+                devices: devices.into_iter().map(Into::into).collect(),
+            },
+            ApiError::Refused { status, code, detail } => Self::Refused { status, code, detail },
+            // Only a share's snapshot gets that large.
+            ApiError::TooLarge => Self::Refused {
+                status: 413,
+                code: "snapshot_too_large".to_owned(),
+                detail: "the request is larger than the server takes".to_owned(),
+            },
+            ApiError::RateLimited { retry_after } => Self::RateLimited { retry_after },
+            ApiError::Protocol(detail) => Self::Protocol(detail),
+        }
     }
-    detail
 }
 
 #[cfg(test)]

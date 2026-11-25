@@ -2,16 +2,16 @@ use std::num::NonZeroU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use progenitor_client::{Error, ResponseValue};
 use secrecy::{ExposeSecret as _, SecretString};
+use tablepro_cloud_api::v2::{Error, ResponseValue};
+use tablepro_cloud_api::{Bearer, answer_error, v2};
 
 use super::{Account, Call, Session};
 use crate::account_error::AccountError;
-use crate::cloud_api::{Bearer, answer_error, v2};
 use crate::server::ServerError;
 use crate::share::{
     CreatedShare, MAX_SHARE_COLUMNS, MAX_SHARE_SQL_BYTES, Share, ShareExpiry, ShareLimits, SharePage, ShareRequest,
-    SharedLink, SnapshotBody, sent_share_password,
+    SharedLink, sent_share_password, snapshot_body,
 };
 use crate::share_link::is_share_token;
 
@@ -170,7 +170,7 @@ impl Account {
 async fn answer<T>(sent: Result<ResponseValue<T>, Error<v2::types::Problem>>) -> Result<T, AccountError> {
     match sent {
         Ok(answer) => Ok(answer.into_inner()),
-        Err(error) => Err(answer_error(error).await),
+        Err(error) => Err(answer_error(error).await.into()),
     }
 }
 
@@ -196,7 +196,7 @@ fn create_body(request: ShareRequest) -> Result<v2::types::CreateShareBody, Acco
             })
             .transpose()?,
         team_id: request.team_id.map(|team| limited(team, "not a team ID")).transpose()?,
-        snapshot: request.snapshot.map(SnapshotBody::from),
+        snapshot: request.snapshot.map(snapshot_body),
     })
 }
 
