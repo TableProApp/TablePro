@@ -16,10 +16,22 @@ pub enum AiPolicy {
     /// Nothing from the connection goes into a prompt: not its schema,
     /// its rows, its editor text or a question asked beside it.
     Never,
+    /// The app's own default decides, as a macOS connection that never
+    /// picked one follows the AI settings. An app with no default asks.
+    AppDefault,
 }
 
 impl AiPolicy {
-    pub const ALL: [AiPolicy; 3] = [Self::Ask, Self::Allow, Self::Never];
+    pub const ALL: [AiPolicy; 4] = [Self::Ask, Self::Allow, Self::Never, Self::AppDefault];
+
+    /// The policy in force, with `app_default` standing for the app's own setting.
+    pub fn or_app_default(self, app_default: AiPolicy) -> AiPolicy {
+        match (self, app_default) {
+            (Self::AppDefault, Self::AppDefault) => Self::Ask,
+            (Self::AppDefault, policy) => policy,
+            (policy, _) => policy,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -33,7 +45,14 @@ mod tests {
             .filter_map(|policy| serde_json::to_string(&policy).ok())
             .collect();
 
-        assert_eq!(spelled, ["\"ask\"", "\"allow\"", "\"never\""]);
+        assert_eq!(spelled, ["\"ask\"", "\"allow\"", "\"never\"", "\"app_default\""]);
         assert_eq!(AiPolicy::default(), AiPolicy::Ask);
+    }
+
+    #[test]
+    fn the_app_default_stands_in_and_an_app_without_one_asks() {
+        assert_eq!(AiPolicy::AppDefault.or_app_default(AiPolicy::Never), AiPolicy::Never);
+        assert_eq!(AiPolicy::AppDefault.or_app_default(AiPolicy::AppDefault), AiPolicy::Ask);
+        assert_eq!(AiPolicy::Allow.or_app_default(AiPolicy::Never), AiPolicy::Allow);
     }
 }

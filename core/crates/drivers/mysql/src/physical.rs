@@ -331,7 +331,8 @@ fn ssl_mode(mode: TlsMode) -> Result<MySqlSslMode, DriverError> {
         TlsMode::Prefer => Ok(MySqlSslMode::Preferred),
         TlsMode::Require => Ok(MySqlSslMode::Required),
         TlsMode::VerifyFull => Ok(MySqlSslMode::VerifyIdentity),
-        TlsMode::Strict => Err(DriverError::Config(ConfigError::UnsupportedTlsMode)),
+        // Not offered until a test shows sqlx's VERIFY_CA checks the chain against the CA file with no name.
+        TlsMode::VerifyCa | TlsMode::Strict => Err(DriverError::Config(ConfigError::UnsupportedTlsMode)),
     }
 }
 

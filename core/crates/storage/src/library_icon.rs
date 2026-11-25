@@ -2,13 +2,47 @@ use serde::{Deserialize, Serialize};
 
 use crate::ConnectionIcon;
 
+/// The icon a group or a connection shows in place of its default one.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum GroupIcon {
+pub enum LibraryIcon {
     Named(ConnectionIcon),
     /// Kept so a macOS library round-trips. Only the Apple apps can draw
-    /// it; the others draw the plain folder.
+    /// it; the others draw the default icon.
     Symbol(SymbolName),
+}
+
+// A connection stored its icon as the named icon's id before it could hold a symbol, and a build
+// that reads only that form still reads a named icon.
+pub(crate) mod connection_field {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    use super::LibraryIcon;
+    use crate::ConnectionIcon;
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(untagged)]
+    enum Stored {
+        Named(ConnectionIcon),
+        Tagged(LibraryIcon),
+    }
+
+    pub(crate) fn serialize<S: Serializer>(icon: &Option<LibraryIcon>, serializer: S) -> Result<S::Ok, S::Error> {
+        match icon {
+            Some(LibraryIcon::Named(named)) => Stored::Named(*named).serialize(serializer),
+            Some(other) => Stored::Tagged(other.clone()).serialize(serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<LibraryIcon>, D::Error> {
+        Ok(
+            Option::<Stored>::deserialize(deserializer)?.map(|stored| match stored {
+                Stored::Named(named) => LibraryIcon::Named(named),
+                Stored::Tagged(icon) => icon,
+            }),
+        )
+    }
 }
 
 /// The shape macOS accepts from a file. Whether the symbol exists is the
@@ -80,21 +114,21 @@ mod tests {
 
     #[test]
     fn each_kind_of_icon_is_stored_under_its_own_key() {
-        let named = GroupIcon::Named(ConnectionIcon::Server);
-        let symbol = GroupIcon::Symbol(SymbolName::new("server.rack").expect("a symbol"));
+        let named = LibraryIcon::Named(ConnectionIcon::Server);
+        let symbol = LibraryIcon::Symbol(SymbolName::new("server.rack").expect("a symbol"));
 
         let named_json = serde_json::to_string(&named).expect("serialize");
         let symbol_json = serde_json::to_string(&symbol).expect("serialize");
 
         assert_eq!(named_json, r#"{"named":"server"}"#);
         assert_eq!(symbol_json, r#"{"symbol":"server.rack"}"#);
-        assert_eq!(serde_json::from_str::<GroupIcon>(&named_json).expect("named"), named);
-        assert_eq!(serde_json::from_str::<GroupIcon>(&symbol_json).expect("symbol"), symbol);
+        assert_eq!(serde_json::from_str::<LibraryIcon>(&named_json).expect("named"), named);
+        assert_eq!(serde_json::from_str::<LibraryIcon>(&symbol_json).expect("symbol"), symbol);
     }
 
     #[test]
     fn a_malformed_symbol_or_an_unknown_icon_is_refused() {
-        assert!(serde_json::from_str::<GroupIcon>(r#"{"symbol":"Not A Symbol"}"#).is_err());
-        assert!(serde_json::from_str::<GroupIcon>(r#"{"named":"rocket"}"#).is_err());
+        assert!(serde_json::from_str::<LibraryIcon>(r#"{"symbol":"Not A Symbol"}"#).is_err());
+        assert!(serde_json::from_str::<LibraryIcon>(r#"{"named":"rocket"}"#).is_err());
     }
 }

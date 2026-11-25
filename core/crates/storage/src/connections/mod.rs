@@ -25,25 +25,29 @@ pub mod field_trust;
 mod library;
 mod placement;
 mod profiles;
+mod ssh;
 #[cfg(test)]
 mod store_tests;
 mod write_guard;
 
 pub use additions::ImportedConnection;
+pub use library::LibraryWrite;
 pub use details::{
     CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionOrigin,
     CredentialReference, DeviceOnly, KnownOrigin, LocalPasswordSource, SocksProxy, SshRoute, SshRouteHop,
     SshRouteTarget, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
 };
 pub use profiles::{CredentialPassword, CredentialProfile, SshProfile};
+pub use ssh::{
+    RemoteFileAccess, SavedSshAuth, SavedSshConfig, SshJumpAuth, SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm,
+    SshTotpMode,
+};
 use write_guard::WriteGuard;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {
     pub id: Uuid,
-    /// As [`crate::name_rules::shown`] gives it, so a file cannot bring a
-    /// name that looks like a saved one and compares as another.
-    #[serde(deserialize_with = "crate::name_rules::deserialize_shown")]
+    // As stored: an edit, a form and a file import write it as `name_rules::shown` gives it.
     pub name: String,
     pub driver_id: String,
     pub host: String,
@@ -85,8 +89,12 @@ pub struct SavedConnection {
     /// order, by name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<Uuid>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon: Option<crate::ConnectionIcon>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::library_icon::connection_field"
+    )]
+    pub icon: Option<crate::LibraryIcon>,
     /// What the engine reads beyond host, port and database, such as a
     /// MongoDB DNS seed list. Only the engines that offer an option set
     /// it.
@@ -160,7 +168,15 @@ impl SavedConnection {
     /// it: startup SQL, AI rules and tools, credential sources, profile links and plugin fields that
     /// are not portable. A key this build does not know may be either, so it stays out too.
     pub fn portable(&self, keep_local_credentials: bool) -> Self {
+        let mut tls = self.tls.clone();
+        tls.unknown.clear();
+        let ssh = self.ssh.clone().map(|mut ssh| {
+            ssh.unknown.clear();
+            ssh
+        });
         Self {
+            tls,
+            ssh,
             details: ConnectionDetails {
                 redis_database: self.details.redis_database,
                 additional_fields: field_trust::portable_fields(
@@ -212,32 +228,6 @@ impl SavedConnection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SavedSshConfig {
-    pub host: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub port: Option<u16>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub username: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub jump_hosts: Vec<String>,
-    pub auth: SavedSshAuth,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SavedSshAuth {
-    Agent,
-    PrivateKey {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        path: Option<PathBuf>,
-        #[serde(default)]
-        has_passphrase: bool,
-    },
-    Password,
-    KeyboardInteractive,
-}
-
 /// The saved-connection list as it sits on disk. A connection or a profile this build cannot read
 /// is held and written back, so a value a newer build wrote leaves the rest of the list usable.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -262,39 +252,15 @@ fn is_empty_list<T>(list: &Lenient<T>) -> bool {
 }
 
 impl ConnectionsDocument {
-    /// A tag named twice keeps its first entry and a connection names a
-    /// tag at most once, whatever a hand-edited or crafted file says. A
-    /// tag whose name another one holds becomes that one, so a connection
-    /// keeps the label it showed. Every write passes here, so a name is
-    /// stored as the list shows it however it was set.
+    // Each id names one entry and a connection names a tag once, whatever a hand-edited or crafted file says. Every
+    // value is kept as stored: a reference nothing answers to reads as the top level or as no tag, so a pull that brings
+    // a connection before its group or tag loses neither.
     fn tidy(&mut self) {
-        let mut kept: Vec<ConnectionTag> = Vec::with_capacity(self.tags.len());
-        let mut same: HashMap<Uuid, Uuid> = HashMap::with_capacity(self.tags.len());
-        let mut named: HashMap<String, Uuid> = HashMap::with_capacity(self.tags.len());
-        for tag in std::mem::take(&mut self.tags) {
-            if same.contains_key(&tag.id) {
-                continue;
-            }
-            match named.entry(tag.name.key()) {
-                Entry::Occupied(held) => {
-                    same.insert(tag.id, *held.get());
-                }
-                Entry::Vacant(free) => {
-                    free.insert(tag.id);
-                    same.insert(tag.id, tag.id);
-                    kept.push(tag);
-                }
-            }
-        }
-        self.tags = kept;
+        let mut seen = HashSet::with_capacity(self.tags.len());
+        self.tags.retain(|tag| seen.insert(tag.id));
         for connection in self.connections.iter_mut() {
-            connection.name = crate::name_rules::shown(&connection.name);
-            let mut seen = HashSet::with_capacity(connection.tags.len());
-            connection.tags = std::mem::take(&mut connection.tags)
-                .iter()
-                .filter_map(|id| same.get(id).copied())
-                .filter(|id| seen.insert(*id))
-                .collect();
+            let mut named = HashSet::with_capacity(connection.tags.len());
+            connection.tags.retain(|id| named.insert(*id));
         }
         self.tidy_library();
     }
@@ -364,18 +330,69 @@ impl ConnectionsDocument {
         }
     }
 
-    /// What an import takes from a file: the same, read as untrusted.
+    // A file is untrusted, so its names are cleaned: none can look like a saved one and compare as another.
     fn imported(self) -> Self {
         let mut connections = self.connections.without_held();
         for connection in connections.iter_mut() {
             *connection = connection.portable(false);
+            connection.name = crate::name_rules::shown(&connection.name);
         }
-        Self {
+        let groups = self
+            .groups
+            .into_iter()
+            .filter_map(|group| {
+                Some(ConnectionGroup {
+                    name: crate::ConnectionGroupName::cleaned_from(group.name.as_str())?,
+                    ..group
+                })
+            })
+            .collect();
+        let tags = self
+            .tags
+            .into_iter()
+            .filter_map(|tag| {
+                Some(ConnectionTag {
+                    name: ConnectionTagName::cleaned_from(tag.name.as_str()).ok()?,
+                    ..tag
+                })
+            })
+            .collect();
+        let mut imported = Self {
             connections,
-            groups: self.groups,
-            tags: self.tags,
+            groups,
+            tags,
             favorites: self.favorites,
             ..Self::default()
+        };
+        imported.merge_tags_by_name();
+        imported
+    }
+
+    // A file's tags of one name are one tag, as an import matches them by name.
+    fn merge_tags_by_name(&mut self) {
+        let mut kept: Vec<ConnectionTag> = Vec::with_capacity(self.tags.len());
+        let mut same: HashMap<Uuid, Uuid> = HashMap::with_capacity(self.tags.len());
+        let mut named: HashMap<String, Uuid> = HashMap::with_capacity(self.tags.len());
+        for tag in std::mem::take(&mut self.tags) {
+            match named.entry(tag.name.key()) {
+                Entry::Occupied(held) => {
+                    same.insert(tag.id, *held.get());
+                }
+                Entry::Vacant(free) => {
+                    free.insert(tag.id);
+                    same.insert(tag.id, tag.id);
+                    kept.push(tag);
+                }
+            }
+        }
+        self.tags = kept;
+        for connection in self.connections.iter_mut() {
+            let mut seen = HashSet::with_capacity(connection.tags.len());
+            connection.tags = std::mem::take(&mut connection.tags)
+                .iter()
+                .filter_map(|id| same.get(id).copied())
+                .filter(|id| seen.insert(*id))
+                .collect();
         }
     }
 }
@@ -443,13 +460,21 @@ impl ConnectionList {
     }
 
     pub fn connections_in(&self, group: Option<Uuid>) -> Vec<&SavedConnection> {
+        let known: HashSet<Uuid> = self.groups.iter().map(|group| group.id).collect();
         let mut found: Vec<&SavedConnection> = self
             .connections
             .iter()
-            .filter(|connection| connection.group_id == group)
+            .filter(|connection| connection.group_id.filter(|id| known.contains(id)) == group)
             .collect();
         found.sort_by_key(|connection| connection.order);
         found
+    }
+
+    // The group the list files the connection under: one the list lacks reads as the top level.
+    pub fn group_of(&self, connection: &SavedConnection) -> Option<Uuid> {
+        connection
+            .group_id
+            .filter(|id| self.groups.iter().any(|group| group.id == *id))
     }
 
     /// Favourites are left out, as in the macOS library.
@@ -769,6 +794,9 @@ impl ConnectionStore {
         if document.tags.len() == before {
             return Ok(RemoveOutcome::NotPresent);
         }
+        for connection in document.connections.iter_mut() {
+            connection.tags.retain(|tag| *tag != id);
+        }
         self.commit(&mut state, document)?;
         Ok(RemoveOutcome::Removed)
     }
@@ -1044,7 +1072,6 @@ impl ConnectionStore {
 
     // Write first, then adopt, so a failed write leaves the file and the cache as they were.
     fn commit(&self, state: &mut WriteGuard<'_>, mut document: ConnectionsDocument) -> Result<(), StorageError> {
-        // A connection saved with a tag deleted meanwhile drops it here.
         document.tidy();
         let changed = match &**state {
             StoreState::Ready(before, _) => document.changed_kinds(before),

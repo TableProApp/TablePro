@@ -9,6 +9,12 @@ pub enum TlsMode {
     /// `PREFERRED`.
     Prefer,
     Require,
+    /// The certificate chains to a trusted root or the CA file, and the
+    /// server's name is not checked: libpq's `verify-ca` and the mysql
+    /// client's `VERIFY_CA`. No engine offers it until its driver checks
+    /// the chain without the name, so a connection saved with it is
+    /// refused at connect.
+    VerifyCa,
     VerifyFull,
     /// TLS before the first protocol byte, as SQL Server's TDS 8.0 strict
     /// encryption does, with the certificate checked as in `VerifyFull`.
@@ -20,6 +26,11 @@ impl TlsMode {
     /// Whether the server's certificate must chain to a trusted root and
     /// carry the server's name.
     pub fn verifies_certificate(self) -> bool {
+        matches!(self, Self::VerifyCa | Self::VerifyFull | Self::Strict)
+    }
+
+    /// Whether the certificate must also carry the server's name.
+    pub fn verifies_host_name(self) -> bool {
         matches!(self, Self::VerifyFull | Self::Strict)
     }
 
@@ -49,6 +60,18 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&TlsMode::Strict).ok().as_deref(),
             Some("\"strict\"")
+        );
+    }
+
+    #[test]
+    fn verify_ca_checks_the_chain_and_not_the_name() {
+        assert!(TlsMode::VerifyCa.verifies_certificate());
+        assert!(!TlsMode::VerifyCa.verifies_host_name());
+        assert!(TlsMode::VerifyFull.verifies_host_name());
+        assert!(TlsMode::VerifyCa.requires_tls());
+        assert_eq!(
+            serde_json::to_string(&TlsMode::VerifyCa).ok().as_deref(),
+            Some("\"verify_ca\"")
         );
     }
 
