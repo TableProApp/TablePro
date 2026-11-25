@@ -1,6 +1,6 @@
 # 0055: Managed policies for the sync provider and tablepro.app traffic
 
-- **Status**: Accepted
+- **Status**: Accepted; what `personalSync` off refuses and tombstones amended by 0051, which keeps the `key.*` kinds
 - **Date**: 2026-11-25
 
 ## Context
@@ -68,7 +68,7 @@ A boolean key that is `true` or absent leaves the person's own setting. Each hos
   - **None,** from a list that is set but empty or holds no entry that applies here: personal sync is off, and the picker is locked.
 - **The server's switch only takes its own provider away.** A self-hosted server with `personalSync` off makes `tablepro-sync` unavailable while the device is signed in to it. It never picks another provider: a device on it goes off, and the picker keeps showing what the profile allows.
 - **Leaving a provider.** When the provider in use is no longer allowed, it stops at once with no last pass, and the device keeps its data and its unsent edits. The device then moves to another provider only when the profile itself leaves one choice, or when the person picks one. A server's answer never starts another provider.
-- **Forced TablePro Sync still asks before its first upload.** The device stays off until the person signs in to a server that grants `service_sync`, confirms the upload (the move off iCloud in 0054, for a device on iCloud) and sets up the recovery key (0053). A forced iCloud starts as the person's own switch does.
+- **Forced TablePro Sync still asks before its first upload.** The device stays off until the person signs in to a server that grants `service_sync`, confirms the upload (the move off iCloud in 0054, for a device on iCloud) and sets up the recovery key ([0056](0056-end-to-end-keys-per-account-and-device.md)). A forced iCloud starts as the person's own switch does.
 - **Team Library is not a personal provider.** No value of this key starts or stops a team scope.
 - **Which server.** TablePro Sync goes to the server the person is signed in to. An organization that wants personal data on its own server pairs `tablepro-sync` with `AccountServerURL` and `AllowOtherAccountServers=false`.
 - **One rule.** The core's sync engine works out the choices from the raw list, the other keys and the server's policies, so every app shows the same choices for the same profile.

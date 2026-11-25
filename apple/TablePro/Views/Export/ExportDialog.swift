@@ -20,25 +20,28 @@ struct ExportDialog: View {
     @State private var config = ExportConfiguration()
     @State private var databaseItems: [ExportDatabaseItem] = []
     @State private var isLoading = true
-    @State private var isExporting = false
+    @State private var phase: Phase = .form
+    @State private var suppressesSuccess = false
     @State private var exportStartedAt: ContinuousClock.Instant?
-    @State private var showProgressDialog = false
-    @State private var showSuccessDialog = false
     @State private var exportedFileURL: URL?
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var exportSucceeded = false
 
-    /// Which object kinds the last load actually read, so a format switch knows whether the tree it
-    /// already holds can answer for the new format without another round trip.
+    private enum Phase {
+        case form
+        case installing(PluginInstallRun)
+        case running
+        case finished(TransferResult)
+    }
+
+    // Lets a format switch tell whether the tree it holds answers for the new format without another load.
     @State private var loadedObjectKinds: Set<PluginExportObjectKind> = []
     @State private var formatReconciliation: Task<Void, Never>?
 
-    /// Bumped each time a reload replaces the tree, so a container read started against the old
-    /// tree cannot land in the new one.
+    // Bumped per reload, so a container read started against the old tree cannot land in the new one.
     @State private var treeGeneration = 0
 
-    /// A container read in flight. A second ask for the same container, from a profile or another
-    /// expansion, waits for it rather than reading twice or acting before it lands.
+    // A second ask for a container being read, from a profile or an expansion, waits for that read.
     @State private var objectReads: [UUID: ObjectRead] = [:]
 
     private struct ObjectRead {
@@ -53,9 +56,7 @@ struct ExportDialog: View {
     @State private var isNamingProfile = false
     @State private var profileApplication = 0
 
-    /// The window this dialog is hosted in, used for presenting its alerts and panels.
-    /// Avoids `NSApp.keyWindow`, which when a result is presented is the progress sheet being
-    /// torn down in the same transaction, and AppKit ends a sheet's children with it (#2314).
+    // Alerts and panels go on this sheet's window, not `NSApp.keyWindow`, which can be a closing sheet (#2314).
     @State private var hostWindow: NSWindow?
 
     // MARK: - User Preferences
@@ -110,33 +111,29 @@ struct ExportDialog: View {
         return .tables(names: [], scope: nil)
     }
 
+    private var isExporting: Bool {
+        if case .running = phase { return true }
+        return false
+    }
+
     // MARK: - Body
 
+    // A ZStack, not a Group, whose modifiers reach each phase view: a phase switch must not run onDisappear.
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                if !exportsSingleResult {
-                    tableSelectionView
-                        .frame(minWidth: leftPanelWidth, maxWidth: .infinity)
-
-                    Divider()
+        ZStack {
+            switch phase {
+            case .form:
+                formView
+            case .installing(let install):
+                PluginInstallProgressSheet(install: install)
+            case .running:
+                ExportProgressSheet(service: exportService ?? waitingService, fileName: config.fileName) {
+                    run.stop()
                 }
-
-                exportOptionsView
-                    .frame(width: Self.optionsPanelWidth)
+            case .finished(let result):
+                resultView(result)
             }
-            .frame(minHeight: 320, idealHeight: 420, maxHeight: .infinity)
-
-            Divider()
-
-            footerView
         }
-        .frame(
-            minWidth: dialogWidth,
-            idealWidth: dialogWidth,
-            maxWidth: exportsSingleResult ? dialogWidth : .infinity
-        )
-        .background(Color(nsColor: .windowBackgroundColor))
         .background {
             WindowAccessor { window in
                 hostWindow = window
@@ -164,9 +161,15 @@ struct ExportDialog: View {
                 restoreSettingsSnapshot()
             }
         }
+        // Stop and the install's Cancel own Escape while they show.
         .onExitCommand {
-            if !isExporting {
+            switch phase {
+            case .form:
                 isPresented = false
+            case .installing, .running:
+                break
+            case .finished:
+                closeFromResult()
             }
         }
         .task {
@@ -180,25 +183,59 @@ struct ExportDialog: View {
             populateFromSidebarTables(of: connection)
             await loadDatabaseItems(of: connection)
         }
-        .sheet(isPresented: $showProgressDialog) {
-            ExportProgressSheet(service: exportService ?? waitingService, fileName: config.fileName) {
-                run.stop()
-            }
-        }
-        .onChange(of: showSuccessDialog) { isShowing in
-            guard isShowing else { return }
-            TransferResultAlert.presentExportSuccess(
-                warnings: exportService?.state.warnings ?? [],
-                notes: exportService?.state.notes ?? [],
-                window: hostWindow
-            ) { choice in
-                showSuccessDialog = false
-                if choice == .openFolder {
-                    openContainingFolder()
+    }
+
+    private var formView: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                if !exportsSingleResult {
+                    tableSelectionView
+                        .frame(minWidth: leftPanelWidth, maxWidth: .infinity)
+
+                    Divider()
                 }
-                isPresented = false
+
+                exportOptionsView
+                    .frame(width: Self.optionsPanelWidth)
+            }
+            .frame(minHeight: 320, idealHeight: 420, maxHeight: .infinity)
+
+            Divider()
+
+            footerView
+        }
+        .frame(
+            minWidth: dialogWidth,
+            idealWidth: dialogWidth,
+            maxWidth: exportsSingleResult ? dialogWidth : .infinity
+        )
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    @ViewBuilder
+    private func resultView(_ result: TransferResult) -> some View {
+        if result.returnsToForm {
+            TransferResultView(result, onBack: { phase = .form }, onDone: { closeFromResult() })
+        } else {
+            TransferResultView(result, onDone: { closeFromResult() }) {
+                if result.outcome == .succeeded {
+                    Toggle("Do not show this again", isOn: $suppressesSuccess)
+                        .toggleStyle(.checkbox)
+                }
+            } actions: {
+                Button("Show in Finder") {
+                    openContainingFolder()
+                    closeFromResult()
+                }
             }
         }
+    }
+
+    private func closeFromResult() {
+        if suppressesSuccess {
+            hideSuccessDialog = true
+        }
+        isPresented = false
     }
 
     // MARK: - Plugin Helpers
@@ -245,9 +282,18 @@ struct ExportDialog: View {
 
     @MainActor
     private func installOfferedFormat(_ format: InstallableExportFormat) async {
-        guard await PluginInstallPrompt.ensureInstalled(format, window: hostWindow),
-              let plugin = pluginManager.exportPlugin(forFormat: format.formatId)
+        guard case .form = phase,
+              await PluginInstallPrompt.confirmInstall(format, window: hostWindow)
         else { return }
+        let install = PluginInstallRun(pluginName: format.displayName)
+        phase = .installing(install)
+        let installed = await PluginInstallPrompt.run(
+            install,
+            window: hostWindow,
+            onEnd: { phase = .form },
+            PluginInstallPrompt.install(format)
+        )
+        guard installed, let plugin = pluginManager.exportPlugin(forFormat: format.formatId) else { return }
         if let settable = plugin as? any SettablePluginDiscoverable {
             settingsSnapshot?.include(settable)
         }
@@ -933,11 +979,11 @@ struct ExportDialog: View {
 
     private func showExportError(_ error: Error) {
         reportExportFinished(.failed(reason: error.localizedDescription))
-        AlertHelper.showErrorSheet(
+        phase = .finished(TransferResult(
+            outcome: .failed,
             title: String(localized: "Export Error"),
-            message: error.localizedDescription,
-            window: hostWindow
-        )
+            message: error.localizedDescription
+        ))
     }
 
     @MainActor
@@ -967,7 +1013,6 @@ struct ExportDialog: View {
     }
 
     private func beginExport(to url: URL) {
-        isExporting = true
         exportStartedAt = .now
         exportedFileURL = url
         exportService = nil
@@ -981,7 +1026,7 @@ struct ExportDialog: View {
             connectionIds: Set([connection?.id].compactMap { $0 }),
             scope: sheetWork
         ) { stopper.stop() }
-        showProgressDialog = true
+        phase = .running
     }
 
     private func endRunningWork() {
@@ -998,25 +1043,22 @@ struct ExportDialog: View {
     }
 
     private func finishSuccessfulExport() {
-        showProgressDialog = false
-        isExporting = false
         recordSuccessfulExport()
-
-        if hideSuccessDialog, exportService?.state.warnings.isEmpty ?? true {
+        let warnings = exportService?.state.warnings ?? []
+        if hideSuccessDialog, warnings.isEmpty {
             isPresented = false
-        } else {
-            showSuccessDialog = true
+            return
         }
+        phase = .finished(TransferResults.exportSucceeded(warnings: warnings, notes: exportService?.state.notes ?? []))
     }
 
     // A driver can report a stop as an error of its own, so a requested stop decides first.
     private func finishExport(throwing error: any Error) {
-        showProgressDialog = false
-        isExporting = false
         let wasStopped = run.isStopRequested
             || error is PluginExportCancellationError
             || error is CancellationError
         guard !wasStopped else {
+            phase = .form
             reportExportFinished(.cancelled)
             return
         }

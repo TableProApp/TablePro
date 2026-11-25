@@ -618,7 +618,7 @@ extension ImportServiceStopTests {
                                                      columnMapping: file.columnMapping, sourceFields: file.sourceFields)
             Issue.record("The failed write must be reported")
         } catch { failure = error }
-        let text = TransferResultAlert.importFailureSummary(error: failure, result: fixture.service.stopResult)
+        let text = TransferResults.importFailureSummary(error: failure, result: fixture.service.stopResult)
         #expect(text.contains("injected write failure"))
         #expect(text.contains("injected rollback failure"))
         #expect(text.contains("injected cleanup failure"))
@@ -661,7 +661,7 @@ extension ImportServiceStopTests {
         #expect(result.completionNotes.contains("still open"))
         let report = RowImportBatchReport(files: [], outcomes: [], ending: .completed, transaction: .untracked,
                                          executionTime: 0, stopResult: result)
-        #expect(TransferResultAlert.batchImportSummary(report).contains("still open"))
+        #expect(TransferResults.batchImportSummary(report).contains("still open"))
     }
 
     @Test("Stop after a preparation failure preserves the error but reports cancellation", arguments: [false, true])
@@ -701,9 +701,9 @@ extension ImportServiceStopTests {
         ledger.cleanupErrors = ["rollback failed"]
         ledger.currentState = .open
         let result = ImportStopResult(ledger: ledger)
-        let display = TransferResultAlert.importFailureDisplay(error: error, result: result)
-        #expect(display.utf16.count < TransferResultAlert.shownErrorLengthLimit + 100)
-        #expect(display.components(separatedBy: "\n").count <= TransferResultAlert.shownErrorLineLimit + 1)
+        let display = TransferResults.importFailureDisplay(error: error, result: result)
+        #expect(display.utf16.count < TransferResults.shownErrorLengthLimit + 100)
+        #expect(display.components(separatedBy: "\n").count <= TransferResults.shownErrorLineLimit + 1)
         #expect(display.contains("still open"))
         #expect(display.contains("rollback failed"))
         #expect(result.details.contains(marker))
@@ -730,7 +730,7 @@ extension ImportServiceStopTests {
                                          ending: stopped ? .stopped(file: 0) : .failed(file: 0),
                                          transaction: .untracked, executionTime: 0,
                                          stopResult: ImportStopResult(ledger: ledger))
-        let shown = TransferResultAlert.shownErrors(TransferResultAlert.batchImportSummary(report))
+        let shown = TransferResults.shownErrors(TransferResults.batchImportSummary(report))
         #expect(shown.hasPrefix("A transaction is still open"))
         #expect(shown.contains("rollback failed"))
     }
