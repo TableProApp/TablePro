@@ -263,6 +263,19 @@ struct CoreLibraryStoreTests {
         }
     }
 
+    // A connection any reader would take, so the mirror carries it into connections.json.
+    private func plantReadableCoreConnection(named name: String) throws {
+        let data = try Data(contentsOf: fixture.coreURL)
+        var document = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var connections = try #require(document["connections"] as? [[String: Any]])
+        var planted = try #require(connections.first)
+        planted["id"] = UUID().uuidString.lowercased()
+        planted["name"] = name
+        connections.append(planted)
+        document["connections"] = connections
+        try JSONSerialization.data(withJSONObject: document).write(to: fixture.coreURL, options: .atomic)
+    }
+
     private func editLegacyOutsideTablePro() throws {
         var bytes = try Data(contentsOf: fixture.legacyURL)
         bytes.append(contentsOf: Array(" ".utf8))
@@ -313,7 +326,7 @@ struct CoreLibraryStoreTests {
         let storage = fixture.launch()
         let favorite = connection("alpha", favorite: true)
         #expect(storage.addConnection(favorite))
-        try appendUnreadableCoreEntry(id: UUID())
+        try plantReadableCoreConnection(named: "planted")
         try editLegacyOutsideTablePro()
 
         let relaunched = fixture.launch()

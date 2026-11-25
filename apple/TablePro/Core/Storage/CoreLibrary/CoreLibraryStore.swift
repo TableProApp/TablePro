@@ -170,7 +170,7 @@ final class CoreLibraryStore {
         let taggedOutside = verdict == .modified || verdict == .unstamped
         // The previous stable's stores, when they read and verify, hold what TablePro last wrote; a core file TablePro
         // did not tag never wins over them, whatever the mirror record says.
-        if taggedOutside, let legacy, mirror.isTrusted {
+        if taggedOutside, let legacy, mirror.isTrusted, mirror.holdsConnectionsFile {
             guard setAsideCoreFile(as: "untrusted") != nil else { return failLoad() }
             forgetCoreState()
             return importLegacy(legacy, digest: legacyDigest, into: library, replacing: false)
@@ -193,7 +193,9 @@ final class CoreLibraryStore {
         }
         // A file TablePro tagged that the core cannot read is a newer build's and stays as it is. Any other comes back
         // from the previous stable's stores, which hold the library as last written.
-        guard taggedOutside, let legacy, setAsideCoreFile(as: "unreadable") != nil else { return failLoad() }
+        guard taggedOutside, let legacy, mirror.holdsConnectionsFile, setAsideCoreFile(as: "unreadable") != nil else {
+            return failLoad()
+        }
         forgetCoreState()
         return importLegacy(legacy, digest: legacyDigest, into: library, replacing: false)
     }
