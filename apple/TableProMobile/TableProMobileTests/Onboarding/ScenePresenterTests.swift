@@ -1,4 +1,5 @@
 import Foundation
+import TableProImport
 @testable import TableProMobile
 import Testing
 
@@ -72,12 +73,13 @@ struct ScenePresenterTests {
         #expect(presenter.holdsConnectionRestore == false)
     }
 
+    // Changed on purpose: the origin page replaces the welcome page.
     @Test("Dismissing the launch sheet leaves the lock hold standing")
     func launchSheetDismissalKeepsTheLockHold() throws {
         let fixture = try AppStateFixture()
         let appState = fixture.makeState(syncEnabled: false)
         let presenter = ScenePresenter(isLockedAtLaunch: true)
-        presenter.present(.firstRun([.welcome]))
+        presenter.present(.firstRun([.origin]))
 
         presenter.sheet = nil
         presenter.sheetDidDismiss(appState: appState)
@@ -86,6 +88,200 @@ struct ScenePresenterTests {
 
         presenter.lockDidChange(false)
         #expect(presenter.holdsConnectionRestore == false)
+    }
+
+    @Test("The action chosen on the origin page is handed over once the first run has closed, and only once")
+    func startActionHandedOverAfterClose() throws {
+        let fixture = try AppStateFixture()
+        let appState = fixture.makeState(syncEnabled: false)
+        let presenter = ScenePresenter()
+        presenter.present(.firstRun([.origin, .usageData]))
+        presenter.recordStartAction(.addConnection)
+
+        #expect(presenter.sheetDidDismiss(appState: appState) == nil)
+
+        presenter.sheet = nil
+        #expect(presenter.sheetDidDismiss(appState: appState) == .addConnection)
+        #expect(presenter.sheetDidDismiss(appState: appState) == nil)
+    }
+
+    @Test("Skipping the origin page hands over nothing")
+    func skippedOriginHandsOverNothing() throws {
+        let fixture = try AppStateFixture()
+        let appState = fixture.makeState(syncEnabled: false)
+        let presenter = ScenePresenter()
+        presenter.present(.firstRun([.origin]))
+
+        presenter.sheet = nil
+        #expect(presenter.sheetDidDismiss(appState: appState) == nil)
+    }
+
+    @Test("A file the app was opened with wins over the action chosen on the origin page")
+    func pendingFileWinsOverStartAction() throws {
+        let fixture = try AppStateFixture()
+        let appState = fixture.makeState(syncEnabled: false)
+        let presenter = ScenePresenter()
+        let file = URL(fileURLWithPath: "/tmp/Team.tablepro")
+        presenter.present(.firstRun([.origin]))
+        presenter.recordStartAction(.openSample)
+        presenter.receive(.importConnections(file))
+
+        presenter.sheet = nil
+        #expect(presenter.sheetDidDismiss(appState: appState) == nil)
+        #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: true) == .importConnections(file))
+    }
+
+    @Test("A link delivered after the reopened guide clears and before it dismisses still wins over its start action")
+    func linkDeliveredDuringReopenedGuideDismissal() throws {
+        let fixture = try AppStateFixture()
+        let appState = fixture.makeState(syncEnabled: false)
+        let presenter = ScenePresenter()
+        let file = URL(fileURLWithPath: "/tmp/Team.tablepro")
+        presenter.presentSetupGuide()
+        presenter.recordStartAction(.openSample)
+
+        presenter.sheet = nil
+        presenter.receive(.importConnections(file))
+        #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: true) == .importConnections(file))
+        #expect(presenter.sheetDidDismiss(appState: appState) == nil)
+    }
+
+    @Test("Closing a sheet that is not the first run hands over nothing")
+    func otherSheetHandsOverNothing() throws {
+        let fixture = try AppStateFixture()
+        let appState = fixture.makeState(syncEnabled: false)
+        let presenter = ScenePresenter()
+        presenter.present(.settings)
+        presenter.recordStartAction(.addConnection)
+
+        presenter.sheet = nil
+        #expect(presenter.sheetDidDismiss(appState: appState) == nil)
+    }
+
+    @Test("A saved connection is handed over once its sheet has gone, and only once")
+    func savedConnectionHandedOverAfterSheet() {
+        let presenter = ScenePresenter()
+        presenter.present(.addConnection)
+        presenter.openAfterSheet(connectionId)
+
+        presenter.sheet = nil
+        #expect(presenter.takeHandoffAfterSheet() == .open(connectionId))
+        #expect(presenter.takeHandoffAfterSheet() == nil)
+    }
+
+    @Test("A link that came in while the sheet was up wins over opening the saved connection")
+    func pendingLinkWinsOverSavedConnection() {
+        let presenter = ScenePresenter()
+        let linked = UUID()
+        presenter.present(.addConnection)
+        presenter.receive(.openConnection(linked, table: nil))
+        presenter.openAfterSheet(connectionId)
+
+        presenter.sheet = nil
+        #expect(presenter.takeHandoffAfterSheet() == nil)
+        #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: true) == .openConnection(linked, table: nil))
+    }
+
+    @Test("A file delivered before the sheet's dismissal still keeps the saved connection from opening")
+    func deliveredFileWinsOverSavedConnection() {
+        let presenter = ScenePresenter()
+        let file = URL(fileURLWithPath: "/tmp/Team.tablepro")
+        presenter.present(.importFile(file))
+        presenter.openAfterSheet(connectionId)
+
+        presenter.sheet = nil
+        presenter.receive(.importConnections(file))
+        #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: true) == .importConnections(file))
+        #expect(presenter.takeHandoffAfterSheet() == nil)
+    }
+
+    @Test("A connections file of one connection reveals it and reports, never opens it")
+    func singleFileImportReveals() {
+        let presenter = ScenePresenter()
+        let outcome = ImportOutcome(connectionIds: [connectionId], connectionsAdded: 1)
+        presenter.present(.importFile(URL(fileURLWithPath: "/tmp/Team.tablepro")))
+
+        #expect(presenter.finishImport(outcome, from: .fileOrLink) == MobileImportOutcomeMessage(outcome))
+
+        presenter.sheet = nil
+        #expect(presenter.takeHandoffAfterSheet() == .reveal([connectionId]))
+        #expect(presenter.takeHandoffAfterSheet() == nil)
+    }
+
+    @Test("A single clean import from the user's own machine or account opens its connection, with no message")
+    func singleOwnImportOpens() {
+        let presenter = ScenePresenter()
+        let outcome = ImportOutcome(connectionIds: [connectionId], connectionsAdded: 1)
+
+        #expect(presenter.finishImport(outcome, from: .ownMachineOrAccount) == nil)
+        #expect(presenter.takeHandoffAfterSheet() == .open(connectionId))
+    }
+
+    @Test("A batch import reveals every connection it wrote once the sheet has gone, and keeps its count message")
+    func batchImportReveals() {
+        let presenter = ScenePresenter()
+        let other = UUID()
+        let outcome = ImportOutcome(connectionIds: [connectionId, other], connectionsAdded: 1, connectionsReplaced: 1)
+        presenter.present(.importFile(URL(fileURLWithPath: "/tmp/Team.tablepro")))
+
+        #expect(presenter.finishImport(outcome, from: .fileOrLink) == MobileImportOutcomeMessage(outcome))
+
+        presenter.sheet = nil
+        #expect(presenter.takeHandoffAfterSheet() == .reveal([connectionId, other]))
+        #expect(presenter.takeHandoffAfterSheet() == nil)
+    }
+
+    @Test("A single import that lost a password is revealed and reported instead of opened")
+    func singleImportWithLossReveals() {
+        let presenter = ScenePresenter()
+        let outcome = ImportOutcome(connectionIds: [connectionId], connectionsAdded: 1, passwordsNotKept: 1)
+
+        #expect(presenter.finishImport(outcome, from: .ownMachineOrAccount) == MobileImportOutcomeMessage(outcome))
+        #expect(presenter.takeHandoffAfterSheet() == .reveal([connectionId]))
+    }
+
+    @Test("An import that wrote no connection reports and hands nothing over")
+    func emptyImportStays() {
+        let presenter = ScenePresenter()
+        let outcome = ImportOutcome(savedQueriesAdded: 2)
+        presenter.present(.importFile(URL(fileURLWithPath: "/tmp/Team.tablepro")))
+
+        #expect(presenter.finishImport(outcome, from: .fileOrLink) == MobileImportOutcomeMessage(outcome))
+
+        presenter.sheet = nil
+        #expect(presenter.takeHandoffAfterSheet() == nil)
+    }
+
+    @Test("A link that came in while the import sheet was up wins over revealing the batch")
+    func pendingLinkSkipsReveal() {
+        let presenter = ScenePresenter()
+        let linked = UUID()
+        presenter.present(.importFile(URL(fileURLWithPath: "/tmp/Team.tablepro")))
+        presenter.receive(.openConnection(linked, table: nil))
+        _ = presenter.finishImport(ImportOutcome(connectionIds: [connectionId, UUID()], connectionsAdded: 2), from: .fileOrLink)
+
+        presenter.sheet = nil
+        #expect(presenter.takeHandoffAfterSheet() == nil)
+        #expect(presenter.takeDeliverableIntent(isLocked: false, isLibraryWritable: true) == .openConnection(linked, table: nil))
+    }
+
+    @Test("The setup guide shows the origin page alone and marks it seen when it closes")
+    func setupGuideShowsOriginAgain() throws {
+        let fixture = try AppStateFixture()
+        let appState = fixture.makeState(syncEnabled: false)
+        let presenter = ScenePresenter()
+
+        presenter.presentSetupGuide()
+        guard case .firstRun(let pages)? = presenter.sheet else {
+            Issue.record("The setup guide did not open the first run sheet")
+            return
+        }
+        #expect(pages == [.origin])
+
+        presenter.recordStartAction(.importConnections)
+        presenter.sheet = nil
+        #expect(presenter.sheetDidDismiss(appState: appState) == .importConnections)
+        #expect(appState.onboarding.hasSeenOrigin)
     }
 
     @Test("A link waiting to be delivered holds the connection restore, and lets go with the delivery")

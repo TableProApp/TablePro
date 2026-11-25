@@ -70,7 +70,7 @@
   source: manual
   patched: false
   platforms: [macos, ios]
-  notes: 'The sample database, shipped as TablePro/Resources/SampleDatabases/Chinook.sqlite in both apps.
+  notes: 'The sample database, kept as core/resources/Chinook.sqlite and shipped in both apps.
     Byte-identical (SHA-256 7651ba37...) to ChinookDatabase/DataSources/Chinook_Sqlite.sqlite at upstream
     commit ac32dbc3d5b3, the last commit to touch that file. No release asset matches it: v1.4.5, the newest
     tag, predates the regenerated invoice dates. GitHub''s detector reports "other" / NOASSERTION because

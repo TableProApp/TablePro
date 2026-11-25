@@ -5,13 +5,11 @@ use gtk4::gdk;
 use gtk4::prelude::*;
 
 use super::descendants;
+use crate::application::keymap::CLASS_SHORTCUTS;
 use crate::application::{ShortcutOwner, keypad_twins};
 
 /// A key with its modifiers, keyval lowered as GtkKeyvalTrigger stores it.
 pub(crate) type Keystroke = (gdk::Key, gdk::ModifierType);
-
-/// The name GTK gives the controller that runs a widget class's bindings.
-const CLASS_SHORTCUTS: &str = "gtk-widget-class-shortcuts";
 
 pub(crate) fn keystroke(accel: &str) -> Keystroke {
     let (key, modifiers) = gtk::accelerator_parse(accel).unwrap_or_else(|| panic!("{accel} does not parse"));
@@ -28,18 +26,7 @@ pub(crate) fn keystrokes_with_twins(accel: &str) -> Vec<Keystroke> {
 }
 
 pub(crate) fn trigger_keys(trigger: &gtk::ShortcutTrigger) -> Vec<Keystroke> {
-    let mut keys = Vec::new();
-    collect_trigger_keys(trigger, &mut keys);
-    keys
-}
-
-fn collect_trigger_keys(trigger: &gtk::ShortcutTrigger, into: &mut Vec<Keystroke>) {
-    if let Some(keyval) = trigger.downcast_ref::<gtk::KeyvalTrigger>() {
-        into.push((keyval.keyval().to_lower(), keyval.modifiers()));
-    } else if let Some(pair) = trigger.downcast_ref::<gtk::AlternativeTrigger>() {
-        collect_trigger_keys(&pair.first(), into);
-        collect_trigger_keys(&pair.second(), into);
-    }
+    crate::application::keymap::keystrokes_of(trigger)
 }
 
 pub(crate) fn shortcuts(controller: &gtk::ShortcutController) -> Vec<gtk::Shortcut> {

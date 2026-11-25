@@ -28,6 +28,7 @@ mod host;
 mod host_key;
 mod import;
 mod key_read;
+mod keymap;
 mod library;
 mod library_details;
 mod masking;
@@ -89,8 +90,9 @@ pub use filter::{
 pub use foreign_import::{
     ExistingConnectionInfo, ForeignAppDirsArg, ForeignAppTag, ForeignConnectionChoice, ForeignConnectionRow,
     ForeignImportChoices, ForeignImportOutcome, ForeignImportRequest, ForeignImportReview, ForeignQueryChoice,
-    ForeignQueryRow, ForeignSourceInfo, ForeignSslModeTag, PasswordOutcomeTag, PasswordSourceTag, QueryAvailabilityTag,
-    ResolutionTag, RowNoteInfo, SavedQuerySupportTag, TlsFileReasonTag,
+    ForeignQueryRow, ForeignSourceInfo, ForeignSslModeTag, PasswordOfferTag, PasswordOutcomeTag, PasswordSourceTag,
+    QueryAvailabilityTag, ResolutionTag, RowNoteInfo, SavedQuerySupportTag, ScanDepthTag, SourceAvailabilityTag,
+    TlsFileReasonTag,
 };
 pub use history::{
     HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryOutcomeTag, HistoryPageInfo, HistoryRun,
@@ -102,6 +104,7 @@ pub use import::{
     ImportColumnInfo, LineSpan,
 };
 pub use key_read::{KeyKindTag, KeyReader, KeyTtlTag, KeyWindowInfo};
+pub use keymap::{KeymapBindingInfo, KeymapPlatformTag, KeymapPresetInfo, keymap_preset, keymap_presets};
 pub use library::{
     AiPolicyTag, ConnectionLibrary, ConnectionRecord, ConnectionSecrets, ExternalAccessTag, GroupRecord, ImportSummary,
     LibrarySnapshot, SafeModeTag, SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings, check_jump_hosts,

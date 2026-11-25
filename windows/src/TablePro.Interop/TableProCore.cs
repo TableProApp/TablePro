@@ -61,12 +61,31 @@ public sealed class TableProCore : IDisposable
         CoreCall.Run(() => Native.CoreMethods.CheckJumpHosts(list));
     }
 
-    // The other apps Windows has, each looked for where it keeps its files; nothing is decrypted yet.
-    public async Task<IReadOnlyList<ForeignSource>> GetForeignSourcesAsync(ForeignAppDirs dirs)
+    // The other apps Windows has, each looked for where it keeps its files; nothing is decrypted yet. Presence reads
+    // no count, for a check that has to answer quickly.
+    public async Task<IReadOnlyList<ForeignSource>> GetForeignSourcesAsync(
+        ForeignAppDirs dirs,
+        ForeignScanDepth depth = ForeignScanDepth.Inventory)
     {
         ArgumentNullException.ThrowIfNull(dirs);
-        var sources = await CoreCall.RunAsync(() => _core.ForeignSources(Mapping.Dirs(dirs))).ConfigureAwait(false);
+        var sources = await CoreCall.RunAsync(() => _core.ForeignSources(Mapping.Dirs(dirs), Mapping.Depth(depth)))
+            .ConfigureAwait(false);
         return [.. sources.Select(Mapping.Source)];
+    }
+
+    // A shortcut preset's rows for the platform named, never the one this build runs on. Throws TableProException
+    // with a keymap.* code.
+    public static IReadOnlyList<KeymapBinding> KeymapPreset(string id, KeymapPlatform platform)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        var bindings = CoreCall.Run(() => Native.CoreMethods.KeymapPreset(id, Mapping.Platform(platform)));
+        return [.. bindings.Select(Mapping.Binding)];
+    }
+
+    public static IReadOnlyList<KeymapPresetInfo> KeymapPresets(KeymapPlatform platform)
+    {
+        var presets = CoreCall.Run(() => Native.CoreMethods.KeymapPresets(Mapping.Platform(platform)));
+        return [.. presets.Select(Mapping.Preset)];
     }
 
     // File is the export the user picked, for an app imported from one. Throws foreign_import.* codes.

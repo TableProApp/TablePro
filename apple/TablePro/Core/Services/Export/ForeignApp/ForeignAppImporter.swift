@@ -20,6 +20,16 @@ struct ForeignImportRequest: Sendable, Equatable {
 struct ForeignAppInventory: Sendable, Equatable {
     let connections: Int
     let savedQueries: Int
+    // Upper bound of the Keychain items a read with passwords asks for; macOS prompts once per item that exists.
+    let keychainPrompts: Int
+
+    init(connections: Int, savedQueries: Int, keychainPrompts: Int = 0) {
+        self.connections = connections
+        self.savedQueries = savedQueries
+        self.keychainPrompts = keychainPrompts
+    }
+
+    static let empty = ForeignAppInventory(connections: 0, savedQueries: 0)
 }
 
 enum ForeignSavedQuerySupport: Sendable, Equatable {
@@ -48,10 +58,12 @@ protocol ForeignAppImporter: Sendable {
     var importFileTypes: [UTType]? { get }
     var savedQuerySupport: ForeignSavedQuerySupport { get }
     func installedAppURL() -> URL?
+    // The launch probe runs it, so it looks only in the app's own ~/Library folder, where no privacy prompt fires.
+    func hasDataAtDefaultLocation() -> Bool
     // Declared here so an override dispatches through `any ForeignAppImporter`.
     func isAvailable() -> Bool
-    // Reads files only, never the Keychain, so it is safe off the main thread.
-    func inventory() -> ForeignAppInventory
+    // Files only, never the Keychain; data that is there but unreadable throws, so it never reads as zero.
+    func inventory() throws -> ForeignAppInventory
     mutating func setSelectedFile(_ url: URL)
     func collect(_ request: ForeignImportRequest) throws -> CollectedImport
 }
@@ -61,11 +73,17 @@ extension ForeignAppImporter {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: appBundleIdentifier)
     }
 
+    // A deleted app leaves its data behind, and that data still imports.
     func isAvailable() -> Bool {
-        installedAppURL() != nil
+        installedAppURL() != nil || hasDataAtDefaultLocation()
     }
 
     var importFileTypes: [UTType]? { nil }
+
+    // A file the user picks may come from someone else, so its connections never open on their own.
+    var importOrigin: ImportOrigin {
+        importFileTypes == nil ? .ownMachineOrAccount : .fileOrLink
+    }
 
     mutating func setSelectedFile(_ url: URL) {}
 }
@@ -131,6 +149,7 @@ enum ForeignAppImportError: LocalizedError {
     case parseError(String)
     case unsupportedFormat(String)
     case noConnectionsFound
+    case unreadable(String)
 
     var errorDescription: String? {
         switch self {
@@ -142,6 +161,26 @@ enum ForeignAppImportError: LocalizedError {
             return String(format: String(localized: "Unsupported file format: %@"), detail)
         case .noConnectionsFound:
             return String(localized: "No connections found to import")
+        case .unreadable(let reason):
+            return reason
+        }
+    }
+
+    static func unreadableFile(_ url: URL) -> ForeignAppImportError {
+        .unreadable(String(format: String(localized: "%@ could not be read."), url.lastPathComponent))
+    }
+}
+
+enum ForeignAppStoredFile {
+    // Nil when the file is not there; a file that is there and cannot be read throws `unreadable`.
+    static func data(at url: URL, read: (URL) throws -> Data = { try Data(contentsOf: $0) }) throws -> Data? {
+        do {
+            return try read(url)
+        } catch {
+            if ForeignAppFile.isMissing(error) || (error as? CocoaError)?.code == .fileReadNoSuchFile {
+                return nil
+            }
+            throw ForeignAppImportError.unreadableFile(url)
         }
     }
 }

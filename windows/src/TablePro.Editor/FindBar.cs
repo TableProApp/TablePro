@@ -44,6 +44,7 @@ internal sealed partial class FindBar : UserControl
         Visibility = Visibility.Collapsed,
     };
     private readonly TextBlock _count = new() { VerticalAlignment = VerticalAlignment.Center, MinWidth = 64, Margin = new Thickness(8, 0, 4, 0) };
+    private EditorKeymap _keymap = EditorKeymap.Default;
 
     public FindBar()
     {
@@ -55,7 +56,9 @@ internal sealed partial class FindBar : UserControl
         Visibility = Visibility.Collapsed;
 
         _replaceToggle.Content = _replaceGlyph;
-        Describe(_replaceToggle, "FindBarToggleReplace", "FindReplaceToggle");
+        AutomationProperties.SetAutomationId(_replaceToggle, "FindReplaceToggle");
+        AutomationProperties.SetName(_replaceToggle, HostStrings.Get("FindBarToggleReplace"));
+        ShowKeys();
         AutomationProperties.SetAutomationId(_regex, "FindRegexToggle");
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
@@ -107,6 +110,17 @@ internal sealed partial class FindBar : UserControl
     public event EventHandler? CloseRequested;
 
     public bool IsOpen => Visibility == Visibility.Visible;
+
+    // The editor's keys, so the bar answers Find and Replace wherever a preset put them.
+    public EditorKeymap Keymap
+    {
+        get => _keymap;
+        set
+        {
+            _keymap = value ?? EditorKeymap.Default;
+            ShowKeys();
+        }
+    }
 
     public bool IsReplaceShown => _replaceRow.Visibility == Visibility.Visible;
 
@@ -193,27 +207,35 @@ internal sealed partial class FindBar : UserControl
     // Before the boxes see the key, so these chords work from any control in the bar.
     private void OnBarPreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (!Down(VirtualKey.Control) || Down(VirtualKey.Shift))
+        var control = Down(VirtualKey.Control);
+        var shift = Down(VirtualKey.Shift);
+        var alt = Down(VirtualKey.Menu);
+        if (e.Key == VirtualKey.Enter && control && alt && !shift && IsReplaceShown)
         {
+            ReplaceAllRequested?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
             return;
         }
-        var alt = Down(VirtualKey.Menu);
-        switch (e.Key)
+        switch (EditorKey.FromVirtualKey((int)e.Key, control, alt, shift) is { } key ? _keymap.CommandFor(key) : null)
         {
-            case VirtualKey.Enter when alt && IsReplaceShown:
-                ReplaceAllRequested?.Invoke(this, EventArgs.Empty);
-                e.Handled = true;
-                break;
-            case VirtualKey.H when !alt:
+            case EditorCommand.Replace:
                 ShowReplace(true);
                 FocusBox(_box.Text.Length > 0 ? _replaceBox : _box);
                 e.Handled = true;
                 break;
-            case VirtualKey.F when !alt:
+            case EditorCommand.Find:
                 FocusBox(_box);
                 e.Handled = true;
                 break;
         }
+    }
+
+    private void ShowKeys()
+    {
+        var name = HostStrings.Get("FindBarToggleReplace");
+        var keys = _keymap.Label(EditorCommand.Replace, SqlEditor.KeyWord);
+        var tip = keys.Length == 0 ? name : HostStrings.Format("TipWithKeys", name, keys);
+        ToolTipService.SetToolTip(_replaceToggle, tip);
     }
 
     // The app's theme is set on its root, and a lookup from code sees the system's, so the bar asks for its own theme.

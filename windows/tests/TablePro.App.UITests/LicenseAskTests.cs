@@ -18,6 +18,7 @@ public sealed partial class ShellTests
             JsonSerializer.Serialize(new Dictionary<string, object>
             {
                 ["theme"] = theme,
+                ["setupGuideSeen"] = true,
                 ["usageDays"] = 29,
                 ["lastUsageDay"] = "2000-01-01",
             }));

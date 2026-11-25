@@ -107,13 +107,6 @@ struct ForeignAppImporterRegistryTests {
         #expect(NavicatImporter().readsPasswordsFromKeychain == false)
     }
 
-    @Test("Keychain confirmation applies only to keychain-based importers when importing passwords")
-    func testRequiresKeychainConfirmation() {
-        #expect(ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: true, importer: TablePlusImporter()))
-        #expect(!ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: true, importer: DBeaverImporter()))
-        #expect(!ImportFromAppSheet.requiresKeychainConfirmation(includePasswords: false, importer: TablePlusImporter()))
-    }
-
     @Test("Every importer but Navicat reads saved queries, each with its caption")
     func testSavedQuerySupport() {
         for importer in ForeignAppImporterRegistry.all {
@@ -133,12 +126,12 @@ struct ForeignAppImporterRegistryTests {
         let empty = try ForeignFixture.makeTempDirectory("ForeignAppImporterRegistryTests")
         let importers = Self.importers(rootedAt: empty)
 
-        let inventories = await withTaskGroup(of: ForeignAppInventory.self) { group in
+        let inventories = try await withThrowingTaskGroup(of: ForeignAppInventory.self) { group in
             for importer in importers {
-                group.addTask { importer.inventory() }
+                group.addTask { try importer.inventory() }
             }
             var collected: [ForeignAppInventory] = []
-            for await inventory in group {
+            for try await inventory in group {
                 collected.append(inventory)
             }
             return collected

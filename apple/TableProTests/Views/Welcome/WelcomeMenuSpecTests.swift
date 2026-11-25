@@ -93,6 +93,18 @@ struct WelcomeMenuSpecTests {
         #expect(titles(sections) == [["New Connection…", "New Group…"], ["Import"]])
     }
 
+    @Test("The Import submenu lists the shared import commands, grouped as the File menu groups them")
+    func importSubmenuFollowsTheSharedList() throws {
+        let sections = WelcomeMenuSpec.sections(for: context(rows: []))
+        let children = try #require(submenu("Import", in: sections))
+        let expectedTitles = ImportCommand.groups.map { group in group.map { $0.title } }
+        let expectedCommands = ImportCommand.groups.flatMap { group in group.map { WelcomeMenuSpec.menuCommand(for: $0) } }
+
+        #expect(titles(children) == expectedTitles)
+        #expect(entries(children).map { $0.command } == expectedCommands)
+        #expect(expectedCommands == [.importConnections, .importFromURL, .importFromApp, .importFromAWS, .openProjectFolder])
+    }
+
     @Test("A single connection in the tree offers the full set, with Delete last on its own")
     func singleConnection() {
         let connection = DatabaseConnection(name: "Prod", type: .mysql)

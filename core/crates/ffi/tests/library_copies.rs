@@ -244,3 +244,37 @@ async fn an_exported_file_holds_every_connection_and_no_secret_and_imports_back(
         .collect();
     assert!(leftovers.is_empty(), "{leftovers:?}");
 }
+
+#[tokio::test]
+async fn an_imported_file_names_each_connection_it_wrote_in_file_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = core(&dir.path().join("one"), MemorySecrets::default())
+        .library()
+        .unwrap();
+    let shop = library
+        .save(record("Shop"), ConnectionSecrets::default())
+        .await
+        .unwrap();
+    let warehouse = library
+        .save(record("Warehouse"), ConnectionSecrets::default())
+        .await
+        .unwrap();
+    let file = dir.path().join("connections.json");
+    library.export_file(file.display().to_string()).await.unwrap();
+    let elsewhere = core(&dir.path().join("two"), MemorySecrets::default())
+        .library()
+        .unwrap();
+    let mine = elsewhere
+        .save(record("Mine"), ConnectionSecrets::default())
+        .await
+        .unwrap();
+
+    let first = elsewhere.import_file(file.display().to_string()).await.unwrap();
+    let again = elsewhere.import_file(file.display().to_string()).await.unwrap();
+
+    assert_eq!((first.added, first.updated), (2, 0));
+    assert_eq!(first.connection_ids, [shop.id, warehouse.id]);
+    assert_eq!((again.added, again.updated), (0, 2));
+    assert_eq!(again.connection_ids, first.connection_ids);
+    assert!(!first.connection_ids.contains(&mine.id));
+}
