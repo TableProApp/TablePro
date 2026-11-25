@@ -16,6 +16,10 @@ struct AIProviderCapabilitiesTests {
         AIProviderRegistry.shared.descriptor(for: type.rawValue)
     }
 
+    private func reference() throws -> AIModelReference {
+        AIModelReference(file: try AIModelReferenceFixtures.file)
+    }
+
     @Test("Copilot hides max output tokens and endpoint, shows telemetry, fetches a live model list")
     func copilotCapabilities() {
         let copilot = descriptor(.copilot)
@@ -27,14 +31,13 @@ struct AIProviderCapabilitiesTests {
         #expect(copilot?.fetchesModelList == true)
     }
 
-    @Test("ChatGPT Codex hides max output tokens and endpoint, uses curated models only")
+    @Test("ChatGPT Codex hides max output tokens and endpoint, and lists the models the account's backend offers")
     func chatgptCodexCapabilities() {
         let codex = descriptor(.chatgptCodex)
         #expect(codex?.allowsMaxOutputTokens == false)
         #expect(codex?.allowsEndpointConfiguration == false)
-        #expect(codex?.fetchesModelList == false)
+        #expect(codex?.fetchesModelList == true)
         #expect(codex?.showsTelemetryToggle == false)
-        #expect(codex?.curatedModels.isEmpty == false)
     }
 
     @Test("HTTP API-key providers accept max output tokens, a configurable endpoint, and model fetch")
@@ -71,7 +74,7 @@ struct AIProviderCapabilitiesTests {
     func noEffortPickerWhereTheTransportIgnoresIt() {
         for type in [AIProviderType.gemini, .ollama] {
             #expect(descriptor(type)?.supportsReasoning == false, "\(type.rawValue) must not offer reasoning")
-            #expect(descriptor(type)?.supportedEffortLevels(forModelID: "any-model").isEmpty == true)
+            #expect(descriptor(type)?.supportedEffortLevels(for: nil).isEmpty == true)
         }
     }
 
@@ -80,7 +83,7 @@ struct AIProviderCapabilitiesTests {
         let router = try #require(descriptor(.openRouter))
         let textOnly = AIModelInfo(id: "m", modalities: [.text], reasoning: .unsupported)
         #expect(router.supportsImages(fetched: textOnly) == false)
-        #expect(router.supportedEffortLevels(forModelID: "m", fetched: textOnly).isEmpty)
+        #expect(router.supportedEffortLevels(for: textOnly).isEmpty)
 
         let capable = AIModelInfo(
             id: "m",
@@ -88,7 +91,7 @@ struct AIProviderCapabilitiesTests {
             reasoning: AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high])
         )
         #expect(router.supportsImages(fetched: capable))
-        #expect(router.supportedEffortLevels(forModelID: "m", fetched: capable) == [.low, .medium, .high])
+        #expect(router.supportedEffortLevels(for: capable) == [.low, .medium, .high])
     }
 
     /// A plain OpenAI model list carries an id and nothing else. Reading that silence as "text
@@ -99,7 +102,7 @@ struct AIProviderCapabilitiesTests {
         let silent = AIModelInfo(id: "m")
         #expect(silent.supportsImages == nil)
         #expect(router.supportsImages(fetched: silent))
-        #expect(router.supportedEffortLevels(forModelID: "m", fetched: silent) == [.low, .medium, .high])
+        #expect(router.supportedEffortLevels(for: silent) == [.low, .medium, .high])
     }
 
     @Test("Only the custom provider allows the name field")
@@ -117,88 +120,98 @@ struct AIProviderCapabilitiesTests {
     }
 
     /// The effort is saved with the provider's own model, and the chat panel can send another.
-    /// GPT-5.6 offers Minimal, and picking GPT-5.5 in the panel sent `minimal` to a model that
-    /// takes low to extra high.
+    /// Minimal sent to GPT-5.6 Sol was a 400: the model takes low to max.
     @Test("The effort sent is fitted to the model the chat panel picked")
-    func effortIsFittedToTheSentModel() {
-        let chatGPT = AIProviderConfig(type: .chatgptCodex, model: "gpt-5.6-sol", reasoningEffort: .minimal)
+    func effortIsFittedToTheSentModel() throws {
+        let chatGPT = AIProviderConfig(type: .chatgptCodex, model: "gpt-5.6-sol", reasoningEffort: .max)
         let catalog = AIModelCatalog()
-        #expect(AIProviderFactory.reasoningEffort(.minimal, config: chatGPT, model: "gpt-5.6-sol", catalog: catalog) == .minimal)
-        #expect(AIProviderFactory.reasoningEffort(.minimal, config: chatGPT, model: "gpt-5.5", catalog: catalog) == .low)
+        let reference = try reference()
+        #expect(AIProviderFactory.reasoningEffort(.minimal, config: chatGPT, model: "gpt-5.6-sol", catalog: catalog, reference: reference) == .low)
+        #expect(AIProviderFactory.reasoningEffort(.max, config: chatGPT, model: "gpt-5.6-sol", catalog: catalog, reference: reference) == .max)
+        #expect(AIProviderFactory.reasoningEffort(.max, config: chatGPT, model: "gpt-5.5", catalog: catalog, reference: reference) == .xhigh)
     }
 
     @Test("No effort goes to a model its server lists as not reasoning, or to a provider without reasoning")
-    func noEffortWhereNoneIsTaken() {
+    func noEffortWhereNoneIsTaken() throws {
         let catalog = AIModelCatalog()
+        let reference = try reference()
         let router = AIProviderConfig(preset: .requesty)
         var configured = router
         configured.reasoningEffort = .high
         catalog.store(providerID: router.id, models: [AIModelInfo(id: "alibaba/qwen-max", reasoning: .unsupported)])
-        #expect(AIProviderFactory.reasoningEffort(.high, config: configured, model: "alibaba/qwen-max", catalog: catalog) == nil)
+        #expect(AIProviderFactory.reasoningEffort(.high, config: configured, model: "alibaba/qwen-max", catalog: catalog, reference: reference) == nil)
 
         let copilot = AIProviderConfig(type: .copilot, model: "gpt-5.5", reasoningEffort: .high)
-        #expect(AIProviderFactory.reasoningEffort(.high, config: copilot, model: "gpt-5.5", catalog: catalog) == nil)
+        #expect(AIProviderFactory.reasoningEffort(.high, config: copilot, model: "gpt-5.5", catalog: catalog, reference: reference) == nil)
     }
 
     @Test("A Meta provider sends its effort to any Muse chat model the panel picks")
-    func metaEffortReachesEveryMuseModel() {
+    func metaEffortReachesEveryMuseModel() throws {
         var meta = AIProviderConfig(preset: .meta)
         meta.model = "muse-spark-1.3"
         meta.reasoningEffort = .xhigh
         let catalog = AIModelCatalog()
-        for model in ["muse-spark-1.3", "muse-spark-1.2", "muse-wonder-1.0", "muse-ember-1.0"] {
-            #expect(AIProviderFactory.reasoningEffort(.xhigh, config: meta, model: model, catalog: catalog) == .xhigh, "\(model)")
+        let reference = try reference()
+        for model in ["muse-spark-1.3", "muse-wonder-1.0", "muse-ember-1.0"] {
+            #expect(AIProviderFactory.reasoningEffort(.xhigh, config: meta, model: model, catalog: catalog, reference: reference) == .xhigh, "\(model)")
         }
     }
 
     /// Meta runs its most expensive level when no effort is sent, and inline suggestions and a
     /// provider synced from an older build send none.
-    @Test("A Muse model sent no effort gets its default, and other models stay without one")
-    func mandatoryReasoningGetsItsDefault() {
+    @Test("A model that always reasons and is sent no effort gets its default, capped at High")
+    func mandatoryReasoningGetsItsDefault() throws {
         let meta = AIProviderConfig(preset: .meta)
         let catalog = AIModelCatalog()
-        #expect(AIProviderFactory.reasoningEffort(nil, config: meta, model: "muse-wonder-1.0", catalog: catalog) == .high)
+        let reference = try reference()
+        #expect(AIProviderFactory.reasoningEffort(nil, config: meta, model: "muse-wonder-1.0", catalog: catalog, reference: reference) == .high)
         let openAI = AIProviderConfig(type: .openAI, model: "gpt-5.5")
-        #expect(AIProviderFactory.reasoningEffort(nil, config: openAI, model: "gpt-5.5", catalog: catalog) == nil)
+        #expect(AIProviderFactory.reasoningEffort(nil, config: openAI, model: "gpt-5.5", catalog: catalog, reference: reference) == nil)
     }
 
-    @Test("Effort levels for every provider without a preset are what they were")
-    func presetFreeLevelsAreUnchanged() throws {
-        #expect(try #require(descriptor(.openRouter)).supportedEffortLevels(forModelID: "m") == [.low, .medium, .high])
-        #expect(try #require(descriptor(.custom)).supportedEffortLevels(forModelID: "m") == [.low, .medium, .high])
-        #expect(try #require(descriptor(.openAI)).supportedEffortLevels(forModelID: "gpt-5.5") == [.low, .medium, .high, .xhigh])
-        #expect(try #require(descriptor(.copilot)).supportedEffortLevels(forModelID: "gpt-5.5").isEmpty)
+    @Test("Levels come from the catalog, the server's list, or the reasoning_effort trio for an unknown compatible model")
+    func levelsPerSource() throws {
+        let reference = try reference()
+        let openAI = AIProviderConfig(type: .openAI)
+        let gpt55 = reference.info(source: AIModelSource(config: openAI), modelID: "gpt-5.5")
+        #expect(try #require(descriptor(.openRouter)).supportedEffortLevels(for: nil) == [.low, .medium, .high])
+        #expect(try #require(descriptor(.custom)).supportedEffortLevels(for: nil) == [.low, .medium, .high])
+        #expect(try #require(descriptor(.openAI)).supportedEffortLevels(for: gpt55) == [.low, .medium, .high, .xhigh])
+        #expect(try #require(descriptor(.openAI)).supportedEffortLevels(for: nil).isEmpty)
+        #expect(try #require(descriptor(.copilot)).supportedEffortLevels(for: gpt55).isEmpty)
     }
 
     /// Inline suggestions send no effort where a model allows it. A Muse model has no such choice,
     /// and sending none there ran Meta's most expensive level on every keystroke pause.
     @Test("Inline suggestions send the saved effort only to a model that always reasons")
-    func inlineEffortOnlyWhereRequired() {
+    func inlineEffortOnlyWhereRequired() throws {
         var meta = AIProviderConfig(preset: .meta)
         meta.reasoningEffort = .minimal
         let openAI = AIProviderConfig(type: .openAI, model: "gpt-5.5", reasoningEffort: .high)
         let catalog = AIModelCatalog()
+        let reference = try reference()
         #expect(AIProviderFactory.reasoningEffort(
-            .minimal, config: meta, model: "muse-spark-1.3", onlyWhereRequired: true, catalog: catalog
+            .minimal, config: meta, model: "muse-spark-1.3", onlyWhereRequired: true, catalog: catalog, reference: reference
         ) == .minimal)
         #expect(AIProviderFactory.reasoningEffort(
-            nil, config: meta, model: "muse-ember-1.0", onlyWhereRequired: true, catalog: catalog
+            nil, config: meta, model: "muse-ember-1.0", onlyWhereRequired: true, catalog: catalog, reference: reference
         ) == .high)
         #expect(AIProviderFactory.reasoningEffort(
-            .high, config: openAI, model: "gpt-5.5", onlyWhereRequired: true, catalog: catalog
+            .high, config: openAI, model: "gpt-5.5", onlyWhereRequired: true, catalog: catalog, reference: reference
         ) == nil)
     }
 
     /// OpenAI rejects a reasoning effort for its non-reasoning models, which the chat panel lists
-    /// beside the reasoning ones.
-    @Test("No effort goes to an OpenAI model that does not reason")
+    /// beside the reasoning ones. An id nothing describes gets no effort either.
+    @Test("No effort goes to an OpenAI model that does not reason or that nothing describes")
     func noEffortForOpenAINonReasoningModels() throws {
         let openAI = AIProviderConfig(type: .openAI, model: "gpt-5.5", reasoningEffort: .high)
         let catalog = AIModelCatalog()
-        for model in ["gpt-4.1", "gpt-4o-mini", "chatgpt-4o-latest", "gpt-5-chat-latest", "gpt-3.5-turbo"] {
-            #expect(AIProviderFactory.reasoningEffort(.high, config: openAI, model: model, catalog: catalog) == nil, "\(model)")
+        let reference = try reference()
+        for model in ["gpt-4.1", "gpt-4o-mini", "chatgpt-4o-latest"] {
+            #expect(AIProviderFactory.reasoningEffort(.high, config: openAI, model: model, catalog: catalog, reference: reference) == nil, "\(model)")
         }
-        #expect(AIProviderFactory.reasoningEffort(.high, config: openAI, model: "gpt-5.5", catalog: catalog) == .high)
-        #expect(try #require(descriptor(.openAI)).supportedEffortLevels(forModelID: "gpt-4.1").isEmpty)
+        #expect(AIProviderFactory.reasoningEffort(.high, config: openAI, model: "gpt-5.5", catalog: catalog, reference: reference) == .high)
+        #expect(AIProviderFactory.reasoningEffort(.off, config: openAI, model: "gpt-5.5", catalog: catalog, reference: reference) == .off)
     }
 }

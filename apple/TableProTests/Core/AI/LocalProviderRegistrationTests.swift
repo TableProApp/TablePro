@@ -57,7 +57,7 @@ struct LocalProviderRegistrationTests {
             #expect(provider?.supportsImages == true)
             #expect(provider?.supportsImages(fetched: nil) == true)
             #expect(provider?.supportsImages(fetched: AIModelInfo(id: "text-only", modalities: [.text])) == false)
-            #expect(provider?.supportedEffortLevels(forModelID: "some-unfetched-local-model").isEmpty == false)
+            #expect(provider?.supportedEffortLevels(for: nil).isEmpty == false)
         }
     }
 

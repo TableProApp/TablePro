@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use secrecy::{ExposeSecret, SecretString};
-use tablepro_ai::{AiClient, ApiKeyVault, ChatRequest, Endpoint, chat_system_prompt};
+use tablepro_ai::{AiClient, ApiKeyVault, ChatRequest, Endpoint, ModelCatalog, chat_system_prompt};
 use tablepro_core::credentials::SecretItems;
 use tablepro_core::{AiPolicy, AiProvider};
 use tablepro_session::runtime::Tasks;
@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use super::ai_reply::ReplyState;
 use super::{
-    AiActionTag, AiChatArg, AiConversationArg, AiConversationStart, AiProviderInfo, AiProviderTag, AiReply,
-    AiReplyEvent, AiReplyListener, AiSettingsArg, schema_reader,
+    AiActionTag, AiChatArg, AiConversationArg, AiConversationStart, AiModelInfo, AiProviderInfo, AiProviderTag,
+    AiReply, AiReplyEvent, AiReplyListener, AiSettingsArg, schema_reader,
 };
 use crate::cancel_token::{CancelToken, token};
 use crate::error::CoreError;
@@ -34,6 +34,7 @@ struct Inner {
     version: String,
     // Built once, off the caller's thread: it reads the system's certificates.
     client: Arc<OnceCell<AiClient>>,
+    catalog: ModelCatalog,
 }
 
 impl AiAssistant {
@@ -43,6 +44,7 @@ impl AiAssistant {
         tasks: Tasks,
         version: String,
         client: Arc<OnceCell<AiClient>>,
+        catalog: ModelCatalog,
     ) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -51,6 +53,7 @@ impl AiAssistant {
                 tasks,
                 version,
                 client,
+                catalog,
             }),
         }
     }
@@ -84,12 +87,13 @@ impl AiAssistant {
         .await
     }
 
-    // The models the provider offers the key, sorted.
+    // The models the provider offers the key, merged with the catalog. On a failure, `offline_models` gives the
+    // catalog's to show beside the error.
     pub async fn list_models(
         &self,
         settings: AiSettingsArg,
         cancel: Option<Arc<CancelToken>>,
-    ) -> Result<Vec<String>, CoreError> {
+    ) -> Result<Vec<AiModelInfo>, CoreError> {
         let inner = self.inner.clone();
         let cancel = token(cancel);
         on_runtime(&self.inner.tasks, async move {
@@ -97,10 +101,27 @@ impl AiAssistant {
             tokio::select! {
                 biased;
                 () = cancel.cancelled() => Err(CoreError::Cancelled),
-                listed = tablepro_ai::list_models(&client, &endpoint) => Ok(listed?),
+                listed = tablepro_ai::list_models(&client, &endpoint, &inner.catalog) => {
+                    Ok(listed?.into_iter().map(AiModelInfo::from).collect())
+                }
             }
         })
         .await
+    }
+
+    // The catalog's models for the provider, each offline; none for the compatible server.
+    pub fn offline_models(&self, provider: AiProviderTag) -> Vec<AiModelInfo> {
+        self.inner
+            .catalog
+            .offline_models(provider.into())
+            .into_iter()
+            .map(AiModelInfo::from)
+            .collect()
+    }
+
+    // The model an empty setting resolves to, which the app saves on first use; None for the compatible server.
+    pub fn default_model(&self, provider: AiProviderTag) -> Option<String> {
+        self.inner.catalog.default_model(provider.into())
     }
 
     // Reads the catalog for the tables `asked` names and writes the system prompt the conversation keeps.

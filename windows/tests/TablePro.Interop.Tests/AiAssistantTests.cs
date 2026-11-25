@@ -162,6 +162,23 @@ public sealed class AiAssistantTests : IAsyncLifetime
 
         var models = await _core.Assistant.ListModelsAsync(Compatible(server), TestContext.Current.CancellationToken);
 
-        Assert.Equal(["llama3.2:latest", "qwen3"], models);
+        Assert.Equal(["llama3.2:latest", "qwen3"], models.Select(model => model.Id));
+        Assert.All(models, model => Assert.False(model.IsOffline || model.IsDefault));
+    }
+
+    [Fact]
+    public void AHostedProviderHasOfflineModelsAndADefaultAndTheCompatibleServerHasNone()
+    {
+        foreach (var provider in new[] { AiProvider.Anthropic, AiProvider.OpenAI })
+        {
+            var offline = _core.Assistant.OfflineModels(provider);
+            var preferred = _core.Assistant.DefaultModel(provider);
+
+            Assert.All(offline, model => Assert.True(model.IsOffline));
+            Assert.Contains(offline, model => model.Id == preferred);
+        }
+
+        Assert.Empty(_core.Assistant.OfflineModels(AiProvider.OpenAICompatible));
+        Assert.Null(_core.Assistant.DefaultModel(AiProvider.OpenAICompatible));
     }
 }

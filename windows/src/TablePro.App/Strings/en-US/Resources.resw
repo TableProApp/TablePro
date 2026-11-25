@@ -1929,6 +1929,7 @@ New fingerprint: {2}</value>
   </data>
   <data name="ReferenceKey" xml:space="preserve">
     <value>{0} ({1})</value>
+    <comment>{0} is a model's name that another model shares, {1} the model's id.</comment>
   </data>
   <data name="ReferenceKeyThrough" xml:space="preserve">
     <value>{0} through {1}</value>
@@ -5368,6 +5369,17 @@ New fingerprint: {2}</value>
   </data>
   <data name="AiModelsNone" xml:space="preserve">
     <value>The provider lists no models.</value>
+  </data>
+  <data name="AiModelsOffline" xml:space="preserve">
+    <value>The provider's models could not be read, so TablePro's own list is shown. {0}</value>
+    <comment>{0} is why the provider's list was not read.</comment>
+  </data>
+  <data name="AiModelDeprecated" xml:space="preserve">
+    <value>{0} (deprecated)</value>
+    <comment>{0} is a model's name; the provider is retiring the model.</comment>
+  </data>
+  <data name="AiModelWithId" xml:space="preserve">
+    <value>{0} ({1})</value>
   </data>
   <data name="AiPolicyCard.Header" xml:space="preserve">
     <value>AI assistant</value>

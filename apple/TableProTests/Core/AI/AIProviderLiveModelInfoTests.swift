@@ -49,8 +49,8 @@ struct AIProviderLiveModelInfoTests {
         #expect(try body(of: sent)["reasoning_effort"] as? String == "high")
     }
 
-    /// Haiku 4.5 is budgeted in the offline table, so adaptive thinking here can only come from the
-    /// list stored under this configuration.
+    /// The catalog lists Haiku 4.5 with manual thinking, so adaptive thinking here can only come from
+    /// the list stored under this configuration.
     @Test("A Claude transport built by the app reads reasoning from its own model list")
     func registryBuiltClaudeReadsTheCatalog() throws {
         let config = AIProviderConfig(type: .claude, model: "claude-haiku-4-5")

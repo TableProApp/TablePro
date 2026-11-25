@@ -39,6 +39,30 @@ pub struct AiProviderInfo {
     pub takes_address: bool,
 }
 
+// A model a settings page offers: the provider's list merged with TablePro's catalog (core ADR 0049).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AiModelInfo {
+    pub id: String,
+    // None when neither the provider nor the catalog names it.
+    pub name: Option<String>,
+    pub deprecated: bool,
+    pub is_default: bool,
+    // From the catalog only, because the provider's own list was not read.
+    pub offline: bool,
+}
+
+impl From<tablepro_ai::ModelInfo> for AiModelInfo {
+    fn from(model: tablepro_ai::ModelInfo) -> Self {
+        Self {
+            id: model.id,
+            name: model.name,
+            deprecated: model.deprecated,
+            is_default: model.default,
+            offline: model.offline,
+        }
+    }
+}
+
 // What the settings name. `address` is read for the compatible server only; None there is its default.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct AiSettingsArg {

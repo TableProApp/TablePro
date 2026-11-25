@@ -10,6 +10,7 @@ tablepro-core.workspace = true
 tablepro-net.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
+chrono.workspace = true
 futures-util.workspace = true
 http.workspace = true
 http-body-util = "0.1"
@@ -27,6 +28,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 hyper = { version = "1", features = ["server", "http1"] }
 tokio = { workspace = true, features = ["rt", "test-util"] }
 

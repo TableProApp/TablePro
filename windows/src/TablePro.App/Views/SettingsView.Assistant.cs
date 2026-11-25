@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.Interop;
 using Windows.System;
@@ -14,6 +15,7 @@ public sealed partial class SettingsView
     // Counts key reads and writes, so one that lands after the provider changed, or after a later one, is not shown.
     private int _keyRead;
     private CancellationTokenSource? _listingModels;
+    private IReadOnlyList<AiModelChoice> _modelChoices = [];
 
     private AiProvider? ChosenProvider => (AiProviderBox.SelectedItem as ComboBoxItem)?.Tag as AiProvider?;
 
@@ -48,6 +50,7 @@ public sealed partial class SettingsView
         AiKeyRemoveButton.Visibility = Visibility.Collapsed;
         AiStatusText.Text = string.Empty;
         _listingModels?.Cancel();
+        _modelChoices = [];
         AiModelBox.Items.Clear();
         AiModelBox.Text = provider is { } chosen ? _workbench.Settings.ModelOf(chosen) : string.Empty;
         if (compatible)
@@ -83,9 +86,10 @@ public sealed partial class SettingsView
         var address = AiAddressBox.Text;
         _workbench.UpdateSettings(settings => settings with { CompatibleAddress = address });
         CheckAddress(address);
-        // Models listed by the server before are not this one's; the model typed stays.
+        // Models listed by the server before are not this one's; the model chosen stays, as its id.
         _listingModels?.Cancel();
-        var model = AiModelBox.Text;
+        var model = AiModelChoice.IdFor(_modelChoices, AiModelBox.Text);
+        _modelChoices = [];
         AiModelBox.Items.Clear();
         AiModelBox.Text = model;
     }
@@ -199,7 +203,8 @@ public sealed partial class SettingsView
         using var listing = new CancellationTokenSource();
         _listingModels = listing;
         var asked = _workbench.Settings.AssistantFor(provider);
-        IReadOnlyList<string> models;
+        IReadOnlyList<AiModelInfo> models;
+        string? failure = null;
         try
         {
             AiStatusText.Text = Strings.Get("AiModelsReading");
@@ -213,12 +218,9 @@ public sealed partial class SettingsView
         }
         catch (TableProException exception)
         {
-            if (!listing.IsCancellationRequested)
-            {
-                AiStatusText.Text = Strings.Format("AiModelsFailed", AssistantText.Error(exception.Error));
-            }
-
-            return;
+            // The catalog's models, so a model can still be picked; the error says why they are not the provider's.
+            failure = AssistantText.Error(exception.Error);
+            models = _workbench.Core.Assistant.OfflineModels(provider);
         }
         finally
         {
@@ -235,31 +237,42 @@ public sealed partial class SettingsView
             return;
         }
 
-        AiStatusText.Text = models.Count == 0 ? Strings.Get("AiModelsNone") : string.Empty;
-        // Read after the wait, so a model typed or picked while the list loaded stays.
-        var typed = AiModelBox.Text;
-        _loading = true;
-        AiModelBox.Items.Clear();
-        foreach (var model in models)
+        AiStatusText.Text = (failure, models.Count) switch
         {
-            AiModelBox.Items.Add(model);
+            (null, 0) => Strings.Get("AiModelsNone"),
+            (null, _) => string.Empty,
+            (_, 0) => Strings.Format("AiModelsFailed", failure),
+            _ => Strings.Format("AiModelsOffline", failure),
+        };
+        // Read after the wait, so a model typed or picked while the list loaded stays, as its id.
+        var typed = AiModelChoice.IdFor(_modelChoices, AiModelBox.Text);
+        _loading = true;
+        _modelChoices = AiModelChoice.For(
+            models,
+            label => Strings.Format("AiModelDeprecated", label),
+            (name, id) => Strings.Format("AiModelWithId", name, id));
+        AiModelBox.Items.Clear();
+        foreach (var choice in _modelChoices)
+        {
+            AiModelBox.Items.Add(choice.Label);
         }
 
-        AiModelBox.Text = typed;
+        AiModelBox.Text = AiModelChoice.LabelFor(_modelChoices, typed);
         _loading = false;
     }
 
     private void OnAiModelPicked(object sender, SelectionChangedEventArgs e)
     {
-        if (!_loading && AiModelBox.SelectedItem is string model)
+        if (!_loading && AiModelBox.SelectedItem is string label)
         {
-            SaveModel(model);
+            SaveModel(AiModelChoice.IdFor(_modelChoices, label));
         }
     }
 
+    // A picked entry leaves its name in the box, so a name submitted again saves its id.
     private void OnAiModelTyped(ComboBox sender, ComboBoxTextSubmittedEventArgs args)
     {
-        SaveModel(args.Text);
+        SaveModel(AiModelChoice.IdFor(_modelChoices, args.Text));
     }
 
     private void SaveModel(string model)

@@ -182,24 +182,11 @@ struct AIProviderPresetTests {
         )
     }
 
-    @Test("A new Meta provider starts on Muse Spark 1.3 before its model list loads")
-    func metaStartsOnMuseSpark() throws {
-        let descriptor = try #require(AIProviderRegistry.shared.descriptor(for: AIProviderType.custom.rawValue))
-        let curated = descriptor.curatedModels(for: AIProviderPreset.meta)
-        #expect(curated.map(\.id) == ["muse-spark-1.3", "muse-wonder-1.0", "muse-ember-1.0"])
-        #expect(AIProviderDraftRules.initialModel(curated: curated, fetched: []) == "muse-spark-1.3")
-        #expect(descriptor.curatedModels(for: AIProviderPreset.requesty).isEmpty)
-        #expect(descriptor.curatedModels(for: nil).isEmpty)
-    }
-
     /// Meta may train on what a contributor model is sent, so a list click never picks one.
-    @Test("Meta lists only its chat models, without the contributor ones; a preset with no filter lists every model")
-    func metaListsChatModels() {
-        let listed = ["muse-image-1.0", "muse-spark-1.3", "muse-spark-1.2-contributor", "muse-voice-transcribe-1.0",
-                      "sam-3.1", "muse-ember-1.0", "muse-wonder-1.0"]
-        #expect(listed.filter { AIProviderPreset.meta.modelIDs.lists($0) }
-            == ["muse-spark-1.3", "muse-ember-1.0", "muse-wonder-1.0"])
-        #expect(AIProviderPreset.meta.modelIDs.isChatFamily("muse-spark-1.2-contributor"))
+    @Test("Meta never lists a contributor model; a preset with no filter lists every model")
+    func metaListsNoContributorModels() {
+        let listed = ["muse-spark-1.3", "muse-spark-1.2-contributor", "muse-ember-1.0"]
+        #expect(listed.filter { AIProviderPreset.meta.modelIDs.lists($0) } == ["muse-spark-1.3", "muse-ember-1.0"])
         #expect(listed.allSatisfy { AIProviderPreset.requesty.modelIDs.lists($0) })
     }
 
@@ -217,22 +204,21 @@ struct AIProviderPresetTests {
         #expect(AIProviderPreset.meta.modelIDFilter(forEndpoint: "https://gateway.example/meta") == .all)
     }
 
-    @Test("Every Meta chat model always reasons, from minimal to extra high, starting at high")
+    @Test("A Muse model from the catalog always reasons and starts at High")
     func metaReasoningIsMandatory() throws {
         let descriptor = try #require(AIProviderRegistry.shared.descriptor(for: AIProviderType.custom.rawValue))
-        for model in ["muse-spark-1.3", "muse-spark-1.1", "muse-wonder-1.0", "muse-ember-1.0"] {
-            let reasoning = descriptor.reasoning(forModelID: model, fetched: AIModelInfo(id: model), preset: .meta)
+        let reference = AIModelReference(file: try AIModelReferenceFixtures.file)
+        let source = AIModelSource(config: AIProviderConfig(preset: .meta))
+        for model in ["muse-spark-1.3", "muse-wonder-1.0", "muse-ember-1.0"] {
+            let reasoning = descriptor.reasoning(for: reference.info(source: source, modelID: model))
             #expect(reasoning.isMandatory, "\(model)")
-            #expect(reasoning.effortLevels == [.minimal, .low, .medium, .high, .xhigh], "\(model)")
-            #expect(reasoning.defaultEffort == .high, "\(model)")
+            #expect(reasoning.preferredEffort == .high, "\(model)")
         }
-        let typed = descriptor.reasoning(forModelID: "llama-4", preset: .meta)
-        #expect(!typed.isMandatory)
-        #expect(typed.effortLevels == [.low, .medium, .high])
-        #expect(!descriptor.reasoning(forModelID: "muse-spark-1.3").isMandatory)
+        #expect(!descriptor.reasoning(for: nil).isMandatory)
     }
 
-    @Test("A Meta provider asks the server only for chat models")
+    // Meta's list carries ids only: the catalog decides which are chat models, and names the default.
+    @Test("A Meta provider shows only the chat models the catalog knows, its default first")
     func metaModelListIsFiltered() async throws {
         MetaModelListProtocol.body = #"""
         {"object":"list","data":[
@@ -251,8 +237,13 @@ struct AIProviderPresetTests {
             apiKey: "LLM_1_key",
             session: URLSession(configuration: sessionConfig)
         )
-        let models = try await provider.fetchAvailableModels()
-        #expect(models.map(\.id) == ["muse-ember-1.0", "muse-spark-1.3"])
+        let models = AIModelMerge.merge(
+            live: try await provider.fetchAvailableModels(),
+            reference: try AIModelReferenceFixtures.file.providers["meta"],
+            source: AIModelSource(config: AIProviderConfig(preset: .meta))
+        )
+        #expect(models.map(\.id) == ["muse-spark-1.3", "muse-ember-1.0"])
+        #expect(models.first?.isProviderDefault == true)
     }
 }
 

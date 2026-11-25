@@ -6,7 +6,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use secrecy::SecretString;
-use tablepro_ai::{AiClient, AiError, ApiKeyVault, ChatRequest, Endpoint, ReplyEnd, ReplyEvent};
+use tablepro_ai::{
+    AiClient, AiError, ApiKeyVault, ChatRequest, Endpoint, ModelCatalog, ModelInfo, ReplyEnd, ReplyEvent,
+};
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::SecretError;
 use tablepro_linux_platform::AppSettings;
@@ -39,6 +41,13 @@ impl Drop for ReplyHandle {
     }
 }
 
+/// A provider's models, or the catalog's beside why the provider's were
+/// not read.
+pub(crate) struct ModelListing {
+    pub models: Vec<ModelInfo>,
+    pub error: Option<AiSetupError>,
+}
+
 #[derive(Clone)]
 pub(crate) struct AiService {
     inner: Rc<Inner>,
@@ -52,16 +61,28 @@ struct Inner {
     /// Built on first use, off the GTK thread: it reads the system's
     /// certificates.
     client: RefCell<Option<AiClient>>,
+    catalog: ModelCatalog,
 }
 
 impl AiService {
+    /// On the bundled model catalog, as tests use it.
     pub(crate) fn new(settings: Rc<AppSettings>, tasks: Tasks, keys: Option<Arc<dyn ApiKeyVault>>) -> Self {
+        Self::with_catalog(settings, tasks, keys, ModelCatalog::bundled())
+    }
+
+    pub(crate) fn with_catalog(
+        settings: Rc<AppSettings>,
+        tasks: Tasks,
+        keys: Option<Arc<dyn ApiKeyVault>>,
+        catalog: ModelCatalog,
+    ) -> Self {
         Self {
             inner: Rc::new(Inner {
                 settings,
                 tasks,
                 keys,
                 client: RefCell::new(None),
+                catalog,
             }),
         }
     }
@@ -88,7 +109,7 @@ impl AiService {
 
     pub(crate) async fn endpoint_for(&self, provider: AiProvider) -> Result<Endpoint, AiSetupError> {
         let settings = &self.inner.settings;
-        let (base, model) = (settings.ai_base_url(provider), settings.ai_model(provider));
+        let (base, model) = (settings.ai_base_url(provider), self.settle_model(provider));
         let key = match self.load_key(provider).await {
             Ok(key) => key,
             // A local server usually takes no key, so a keyring that is
@@ -186,13 +207,47 @@ impl AiService {
             .map_err(|_| AiError::Protocol("the request stopped".to_owned()))?
     }
 
-    pub(crate) async fn models(&self, provider: AiProvider) -> Result<Vec<String>, AiSetupError> {
+    /// The model saved for `provider`, else the one an empty setting
+    /// takes on first use.
+    pub(crate) fn model(&self, provider: AiProvider) -> String {
+        let saved = self.inner.settings.ai_model(provider);
+        if !saved.is_empty() {
+            return saved;
+        }
+        self.inner.catalog.default_model(provider).unwrap_or_default()
+    }
+
+    /// Save the catalog's default for `provider` when no model is saved,
+    /// so a later catalog never changes a model the user started on.
+    pub(crate) fn settle_model(&self, provider: AiProvider) -> String {
+        let model = self.model(provider);
+        if self.inner.settings.ai_model(provider).is_empty()
+            && !model.is_empty()
+            && let Err(error) = self.inner.settings.set_ai_model(provider, &model)
+        {
+            tracing::warn!(%error, "the default model could not be saved");
+        }
+        model
+    }
+
+    pub(crate) async fn models(&self, provider: AiProvider) -> ModelListing {
+        match self.read_models(provider).await {
+            Ok(models) => ModelListing { models, error: None },
+            Err(error) => ModelListing {
+                models: self.inner.catalog.offline_models(provider),
+                error: Some(error),
+            },
+        }
+    }
+
+    async fn read_models(&self, provider: AiProvider) -> Result<Vec<ModelInfo>, AiSetupError> {
         let endpoint = self.endpoint_for(provider).await?;
         let client = self.client().await?;
+        let catalog = self.inner.catalog.clone();
         let listed = self
             .inner
             .tasks
-            .spawn_task(async move { tablepro_ai::list_models(&client, &endpoint).await })
+            .spawn_task(async move { tablepro_ai::list_models(&client, &endpoint, &catalog).await })
             .await
             .map_err(|_| AiSetupError::Stopped)?;
         Ok(listed?)
@@ -274,8 +329,53 @@ pub(crate) mod tests {
             missing.unwrap_err(),
             AiSetupError::Ai(AiError::MissingKey(AiProvider::Anthropic))
         );
+        let default = ModelCatalog::bundled().default_model(AiProvider::Anthropic).unwrap();
         assert_eq!(ready.host(), "api.anthropic.com");
-        assert_eq!(ready.model(), "claude-opus-5-5");
+        assert_eq!(ready.model(), default);
+        assert_eq!(
+            settings.get().ai_model(AiProvider::Anthropic),
+            default,
+            "saved on first use"
+        );
         assert!(keys.0.lock().unwrap().is_empty(), "an empty key removes the one kept");
+    }
+
+    #[gtk4::test]
+    fn a_saved_model_is_never_replaced_and_the_compatible_server_has_no_default() {
+        let settings = crate::test_support::MemorySettings::new();
+        let runtime = crate::test_support::test_runtime();
+        let service = AiService::new(settings.get().clone(), runtime.tasks(), None);
+        settings
+            .get()
+            .set_ai_model(AiProvider::Anthropic, "claude-haiku-4-5")
+            .unwrap();
+
+        assert_eq!(service.settle_model(AiProvider::Anthropic), "claude-haiku-4-5");
+        assert_eq!(service.settle_model(AiProvider::OpenAiCompatible), "");
+        assert_eq!(settings.get().ai_model(AiProvider::OpenAiCompatible), "");
+    }
+
+    #[gtk4::test]
+    fn a_failed_listing_gives_the_catalogs_models_beside_the_error() {
+        let settings = crate::test_support::MemorySettings::new();
+        let runtime = crate::test_support::test_runtime();
+        let service = AiService::new(
+            settings.get().clone(),
+            runtime.tasks(),
+            Some(Arc::new(MemoryKeys::default())),
+        );
+
+        let listing = crate::test_support::finish_on_main(WAIT, {
+            let service = service.clone();
+            async move { service.models(AiProvider::Anthropic).await }
+        })
+        .expect("an answer");
+
+        assert_eq!(
+            listing.error,
+            Some(AiSetupError::Ai(AiError::MissingKey(AiProvider::Anthropic)))
+        );
+        assert!(!listing.models.is_empty());
+        assert!(listing.models.iter().all(|model| model.offline));
     }
 }

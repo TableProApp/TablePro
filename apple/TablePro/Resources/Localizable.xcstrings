@@ -2715,6 +2715,9 @@
     "%@ (default)" : {
 
     },
+    "%@ (deprecated)" : {
+
+    },
     "%@ (entry point %@)" : {
       "localizations" : {
         "fr" : {
@@ -2781,6 +2784,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ (lecteur)"
+          }
+        }
+      }
+    },
+    "%@ (retires %@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (retires %2$@)"
           }
         }
       }
@@ -73790,6 +73803,9 @@
         }
       }
     },
+    "Deprecated" : {
+
+    },
     "Descending" : {
       "localizations" : {
         "fr" : {
@@ -90974,6 +90990,9 @@
           }
         }
       }
+    },
+    "Failed to fetch models" : {
+
     },
     "Failed to fetch models from %@" : {
       "localizations" : {

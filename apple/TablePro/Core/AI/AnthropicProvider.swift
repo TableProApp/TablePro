@@ -10,18 +10,19 @@ import TableProMCP
 final class AnthropicProvider: ChatTransport {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AnthropicProvider")
 
+    // A reply's ceiling when nothing else sets one; the model's own limit lowers it.
+    static let defaultMaxTokens = 64_000
+
     private let transport: AIProviderTransport
     private let model: String
-    private let maxOutputTokens: Int
-    private let configuredEffort: ReasoningEffort?
+    private let maxOutputTokens: Int?
     private let providerID: UUID?
 
     init(
         endpoint: String,
         apiKey: String,
         model: String = "",
-        maxOutputTokens: Int = 4_096,
-        reasoningEffort: ReasoningEffort? = nil,
+        maxOutputTokens: Int? = nil,
         providerID: UUID? = nil,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
@@ -36,7 +37,6 @@ final class AnthropicProvider: ChatTransport {
         )
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
-        self.configuredEffort = reasoningEffort
         self.providerID = providerID
     }
 
@@ -48,110 +48,94 @@ final class AnthropicProvider: ChatTransport {
             try buildMessagesRequest(
                 turns: turns,
                 options: options,
-                effort: options.reasoningEffort ?? configuredEffort
+                effort: options.reasoningEffort
             )
         }
     }
 
     func fetchAvailableModels() async throws -> [AIModelInfo] {
-        let url = try transport.url(AIEndpointStyle.messages.modelsResource)
+        let url = try transport.url(
+            AIEndpointStyle.messages.modelsResource,
+            query: [URLQueryItem(name: "limit", value: "1000")]
+        )
         switch await transport.modelList(at: url, key: "data") {
         case .unreachable(let error):
-            Self.logger.warning("Anthropic model fetch failed; using known models: \(error.publicLogShape, privacy: .public)")
-            return Self.offlineModels
-        case .notHTTP:
-            Self.logger.warning("Anthropic model fetch returned no HTTP response; using known models")
-            return Self.offlineModels
+            Self.logger.warning("Anthropic model fetch failed: \(error.publicLogShape, privacy: .public)")
+            throw AIProviderError.networkError(String(localized: "Failed to fetch models"))
+        case .notHTTP, .entries(nil):
+            throw AIProviderError.networkError(String(localized: "Failed to fetch models"))
         case .rejected(let reply):
             throw transport.httpError(reply, url: url)
-        case .entries(nil):
-            Self.logger.warning("Anthropic model fetch returned unexpected response; using known models")
-            return Self.offlineModels
         case .entries(let models?):
-            let fetched = models.compactMap(Self.decodeModel(_:))
-            return fetched.isEmpty ? Self.offlineModels : fetched
+            return models.compactMap(Self.decodeModel(_:))
         }
     }
 
+    static func date(_ text: Any?) -> Date? {
+        guard let text = text as? String else { return nil }
+        return (try? Date(text, strategy: .iso8601)) ?? AIModelReferenceFile.Model.date(String(text.prefix(10)))
+    }
+
     static func decodeModel(_ json: [String: Any]) -> AIModelInfo? {
-        guard let id = json["id"] as? String else { return nil }
+        guard let id = json["id"] as? String, !id.isEmpty else { return nil }
         let capabilities = json["capabilities"] as? [String: Any]
+        let images = supportFlag(capabilities?["image_input"])
+        let lifecycle = json["lifecycle"] as? String
         return AIModelInfo(
             id: id,
             displayName: json["display_name"] as? String,
             contextWindow: json["max_input_tokens"] as? Int,
             maxOutputTokens: json["max_tokens"] as? Int,
-            modalities: [.text, .image],
-            reasoning: decodeReasoning(capabilities: capabilities, modelID: id)
+            modalities: images.map { $0 ? [.text, .image] : [.text] } ?? [],
+            reasoning: decodeReasoning(capabilities: capabilities),
+            isDeprecated: lifecycle.map { $0 != "active" } ?? false,
+            retiresAt: date(json["retires_at"]),
+            released: date(json["created_at"])
         )
     }
 
-    private static func decodeReasoning(capabilities: [String: Any]?, modelID: String) -> AIReasoningSupport? {
+    // Adaptive thinking runs at `high` when no effort is sent (Messages API, effort parameter).
+    private static func decodeReasoning(capabilities: [String: Any]?) -> AIReasoningSupport? {
         guard let capabilities else { return nil }
 
         let thinking = capabilities["thinking"] as? [String: Any]
         let types = thinking?["types"] as? [String: Any]
-        let adaptiveSupported = supportFlag(types?["adaptive"])
-        let enabledSupported = supportFlag(types?["enabled"])
+        let disables = supportFlag(types?["disabled"]) ?? false
 
-        let effort = capabilities["effort"] as? [String: Any]
-        let effortSupported = supportFlag(effort) ?? false
-        let levels = effortSupported ? ReasoningEffort.allCases.filter { level in
-            supportFlag(effort?[level.anthropicEffortValue]) ?? false
-        } : []
-
-        let mode: AIReasoningMode
-        if adaptiveSupported == true {
-            mode = .adaptive
-        } else if enabledSupported == true {
-            mode = .budgeted
-        } else if supportFlag(thinking) == false {
-            mode = .unsupported
-        } else {
-            return nil
+        if supportFlag(types?["adaptive"]) == true {
+            let effort = capabilities["effort"] as? [String: Any]
+            let offered = supportFlag(effort) == true
+                ? ["low", "medium", "high", "xhigh", "max"].filter { supportFlag(effort?[$0]) == true }
+                : []
+            return AIReasoningSupport(
+                mode: .adaptive,
+                effortLevels: ReasoningEffort.levels(fromWire: offered),
+                defaultEffort: .high,
+                isMandatory: !disables,
+                canTurnOff: disables
+            )
         }
-
-        return AIReasoningSupport(
-            mode: mode,
-            effortLevels: mode == .budgeted ? [.low, .medium, .high] : uniqueLevels(levels),
-            defaultEffort: .medium
-        )
-    }
-
-    private static func uniqueLevels(_ levels: [ReasoningEffort]) -> [ReasoningEffort] {
-        var seen: Set<ReasoningEffort> = []
-        return levels.filter { seen.insert($0).inserted }
+        if supportFlag(types?["enabled"]) == true {
+            return AIReasoningSupport(mode: .budgeted, effortLevels: [.low, .medium, .high])
+        }
+        return supportFlag(thinking) == false ? .unsupported : nil
     }
 
     private static func supportFlag(_ value: Any?) -> Bool? {
         (value as? [String: Any])?["supported"] as? Bool
     }
 
-    private static let offlineModels: [AIModelInfo] = [
-        "claude-opus-5",
-        "claude-sonnet-5",
-        "claude-fable-5",
-        "claude-opus-4-8",
-        "claude-opus-4-7",
-        "claude-sonnet-4-6",
-        "claude-haiku-4-5"
-    ].map { AIModelInfo(id: $0) }
-
-    private static let knownModels = offlineModels.map(\.id)
-
+    // A key and Base URL are proven by listing the models, which needs no model id and costs nothing.
     func testConnection() async throws -> Bool {
-        let testModel = model.isEmpty ? (Self.knownModels.first ?? "") : model
-        let testTurn = ChatTurnWire(role: .user, blocks: [.text("Hi")])
-        let testOptions = ChatTransportOptions(model: testModel, maxOutputTokens: 1)
-        let request = try buildMessagesRequest(
-            turns: [testTurn],
-            options: testOptions,
-            stream: false,
-            effort: nil
+        let url = try transport.url(
+            AIEndpointStyle.messages.modelsResource,
+            query: [URLQueryItem(name: "limit", value: "1")]
         )
-        guard let reply = try await transport.connectionReply(to: request) else { return false }
-        guard reply.statusCode == 200 || reply.statusCode == 400 else {
-            throw transport.httpError(reply, url: request.url)
+        guard let reply = try await transport.connectionReply(to: transport.get(url, timeout: nil)) else {
+            return false
+        }
+        guard reply.statusCode == 200 else {
+            throw transport.httpError(reply, url: url)
         }
         return true
     }
@@ -163,21 +147,31 @@ final class AnthropicProvider: ChatTransport {
         effort: ReasoningEffort?
     ) throws -> URLRequest {
         let url = try transport.url(AIEndpointStyle.messages.chatResource(model: options.model))
-
-        let resolvedMaxTokens = options.maxOutputTokens
-            ?? effort?.autoScaledMaxOutputTokens
-            ?? maxOutputTokens
-
+        let info = AIModelCatalog.shared.info(
+            providerID: providerID,
+            source: AIModelSource(key: AIModelSource.anthropicKey, api: nil, hidesUnknown: false, liveOrdered: true),
+            modelID: options.model
+        )
         let body = try Self.makeRequestBody(
             turns: turns,
             options: options,
             effort: effort,
-            maxTokens: resolvedMaxTokens,
+            maxTokens: Self.maxTokens(
+                requested: options.maxOutputTokens ?? maxOutputTokens,
+                effort: effort,
+                modelLimit: info?.maxOutputTokens
+            ),
             stream: stream,
-            liveReasoning: AIModelCatalog.shared.fetchedInfo(providerID: providerID, modelID: options.model)?.reasoning
+            reasoning: info?.reasoning
         )
-
         return try transport.post(url, body: body)
+    }
+
+    // The user's own limit first, then one sized for the effort, then the default, never above the model's limit.
+    static func maxTokens(requested: Int?, effort: ReasoningEffort?, modelLimit: Int?) -> Int {
+        let wanted = requested ?? effort?.autoScaledMaxOutputTokens ?? defaultMaxTokens
+        guard let modelLimit, modelLimit > 0 else { return wanted }
+        return min(wanted, modelLimit)
     }
 
     static func makeRequestBody(
@@ -186,7 +180,7 @@ final class AnthropicProvider: ChatTransport {
         effort: ReasoningEffort?,
         maxTokens: Int,
         stream: Bool,
-        liveReasoning: AIReasoningSupport? = nil
+        reasoning: AIReasoningSupport? = nil
     ) throws -> [String: Any] {
         var body: [String: Any] = [
             "model": options.model,
@@ -198,16 +192,16 @@ final class AnthropicProvider: ChatTransport {
             body["system"] = systemPrompt
         }
 
-        if let effort {
-            let reasoning = liveReasoning ?? offlineReasoning(for: options.model)
-
-            if let thinking = thinkingBody(for: effort, reasoning: reasoning, maxTokens: maxTokens) {
-                body["thinking"] = thinking
-            }
-
-            if reasoning.sendsEffortParameter,
-               let wireEffort = reasoning.clampedEffort(effort)?.anthropicEffortValue {
-                body["output_config"] = ["effort": wireEffort]
+        if let effort, let reasoning, let effective = reasoning.clampedEffort(effort) {
+            if effective == .off {
+                body["thinking"] = ["type": "disabled"]
+            } else {
+                if let thinking = thinkingBody(for: effective, reasoning: reasoning, maxTokens: maxTokens) {
+                    body["thinking"] = thinking
+                }
+                if reasoning.sendsEffortParameter {
+                    body["output_config"] = ["effort": effective.wireValue]
+                }
             }
         }
 
@@ -222,14 +216,8 @@ final class AnthropicProvider: ChatTransport {
         return body
     }
 
-    private static func offlineReasoning(for model: String) -> AIReasoningSupport {
-        let capabilities = AnthropicModelCapabilities.resolve(model: model)
-        return AIReasoningSupport(
-            mode: capabilities.thinkingMode == .adaptive ? .adaptive : .budgeted,
-            effortLevels: capabilities.effortLevels,
-            defaultEffort: .medium
-        )
-    }
+    // The API refuses a thinking budget under 1,024 tokens.
+    private static let minimumThinkingBudgetTokens = 1_024
 
     private static func thinkingBody(
         for effort: ReasoningEffort,
@@ -241,7 +229,7 @@ final class AnthropicProvider: ChatTransport {
             return ["type": "adaptive", "display": "summarized"]
         case .budgeted:
             let ceiling = maxTokens - 1
-            guard ceiling >= AnthropicModelCapabilities.minimumThinkingBudgetTokens else { return nil }
+            guard ceiling >= minimumThinkingBudgetTokens else { return nil }
             let budget = min(effort.anthropicBudgetTokens, ceiling)
             return ["type": "enabled", "budget_tokens": budget]
         case .unsupported:
