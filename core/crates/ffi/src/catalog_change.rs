@@ -591,7 +591,7 @@ mod tests {
         assert_eq!(gates(&drop), [SaveGate::Confirm, SaveGate::Confirm, SaveGate::Refuse]);
         assert_eq!(gates(&create), [SaveGate::Run, SaveGate::Confirm, SaveGate::Refuse]);
         assert_eq!(
-            catalog_gate(SafeModeLevel::Off, create.access(), true),
+            catalog_gate(SafeModeLevel::Silent, create.access(), true),
             SaveGate::Refuse
         );
     }

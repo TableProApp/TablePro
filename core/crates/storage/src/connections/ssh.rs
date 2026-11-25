@@ -18,6 +18,9 @@ pub struct SavedSshConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty", with = "jump_list")]
     pub jump_hosts: Vec<SshJumpHost>,
     pub auth: SavedSshAuth,
+    // A key file kept while auth is not a key, as the macOS form keeps it; a key auth holds its own in `auth`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kept_key_path: Option<PathBuf>,
     // None is the agent SSH_AUTH_SOCK names.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_socket: Option<PathBuf>,
@@ -38,6 +41,7 @@ impl SavedSshConfig {
             username: None,
             jump_hosts: Vec::new(),
             auth,
+            kept_key_path: None,
             agent_socket: None,
             totp: SshTotp::default(),
             remote_file: SshRemoteFile::default(),
@@ -407,12 +411,14 @@ mod tests {
             "host": "bastion",
             "auth": {"kind": "password"},
             "agent_socket": "~/.1password/agent.sock",
+            "kept_key_path": "~/.ssh/id_ed25519",
             "totp": {"mode": "auto_generate", "algorithm": "sha256", "digits": 8, "period": 30},
             "remote_file": {"path": "~/app.db", "access": "on_server"},
             "compression": true
         }));
 
         assert!(!ssh.enabled);
+        assert_eq!(ssh.kept_key_path, Some(PathBuf::from("~/.ssh/id_ed25519")));
         assert_eq!(ssh.totp.digits, 8);
         assert_eq!(ssh.remote_file.access, RemoteFileAccess::OnServer);
         assert_eq!(ssh.unknown.get("compression"), Some(&json!(true)));

@@ -441,7 +441,7 @@ fn a_duplicate_whose_saved_connection_guards_more_is_offered_as_copy_only() {
     let base = existing(settings(), "Production").expect("a saved connection");
     let guarded = [
         SavedConnection {
-            safe_mode: SafeModeLevel::ConfirmWrites,
+            safe_mode: SafeModeLevel::Alert,
             ..base.clone()
         },
         SavedConnection {
@@ -834,7 +834,7 @@ fn a_duckdb_file_comes_from_the_field_the_macos_app_keeps_it_in() {
 #[test]
 fn an_imported_connection_starts_as_a_new_one_does_in_the_app() {
     let saved = mapped(settings()).expect("a supported engine");
-    assert_eq!(saved.safe_mode, SafeModeLevel::Off);
+    assert_eq!(saved.safe_mode, SafeModeLevel::Silent);
     assert_eq!(saved.external_access, ExternalAccess::ReadOnly);
     assert_eq!(saved.ai_policy, AiPolicy::Ask);
     assert_eq!(saved.query_timeout_secs, None);

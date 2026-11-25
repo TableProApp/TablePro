@@ -61,6 +61,8 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
             options: saved.options.clone(),
         }
     };
+    // No app on the core asks before a read or for proof yet, so a level that does runs as Read-Only.
+    let safe_mode = saved.safe_mode.enforced();
     Ok(ConnectRequest {
         metadata: ConnectionMetadata {
             id: saved.id,
@@ -69,9 +71,9 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
         },
         driver,
         target,
-        workspace_settings: WorkspaceSettings::workspace(saved.safe_mode.blocks_writes())
+        workspace_settings: WorkspaceSettings::workspace(safe_mode.blocks_writes())
             .with_editor_timeout(QueryTimeout::from_seconds(saved.query_timeout_secs)),
-        safe_mode: saved.safe_mode,
+        safe_mode,
     })
 }
 

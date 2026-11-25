@@ -57,9 +57,9 @@ mod tests {
         let update = gated(
             "UPDATE t SET a = 1 WHERE id = 2",
             SqlGrammar::PostgreSql,
-            SafeModeLevel::ConfirmWrites,
+            SafeModeLevel::Alert,
         );
-        let select = gated("SELECT * FROM t", SqlGrammar::PostgreSql, SafeModeLevel::ConfirmWrites);
+        let select = gated("SELECT * FROM t", SqlGrammar::PostgreSql, SafeModeLevel::Alert);
 
         assert_eq!(update.confirm, ["UPDATE t SET a = 1 WHERE id = 2"]);
         assert!(!update.destructive);
@@ -72,7 +72,7 @@ mod tests {
         let run = gated(
             "SELECT 1; INSERT INTO t VALUES (1); SELECT 2; DELETE FROM t",
             SqlGrammar::MySql,
-            SafeModeLevel::ConfirmWrites,
+            SafeModeLevel::Alert,
         );
 
         assert_eq!(run.confirm.len(), 2);
@@ -83,8 +83,8 @@ mod tests {
 
     #[test]
     fn off_asks_only_before_a_destructive_statement() {
-        let write = gated("INSERT INTO t VALUES (1)", SqlGrammar::Sqlite, SafeModeLevel::Off);
-        let drop = gated("DROP TABLE t", SqlGrammar::Sqlite, SafeModeLevel::Off);
+        let write = gated("INSERT INTO t VALUES (1)", SqlGrammar::Sqlite, SafeModeLevel::Silent);
+        let drop = gated("DROP TABLE t", SqlGrammar::Sqlite, SafeModeLevel::Silent);
 
         assert!(write.confirm.is_empty());
         assert_eq!(drop.confirm, ["DROP TABLE t"]);
@@ -95,11 +95,11 @@ mod tests {
     fn a_byte_order_mark_does_not_hide_a_sqlite_statement_from_the_question() {
         // SQLite reads U+FEFF as a space where a token starts, so both
         // statements run as written without the mark.
-        let drop = gated("\u{feff}DROP TABLE t", SqlGrammar::Sqlite, SafeModeLevel::Off);
+        let drop = gated("\u{feff}DROP TABLE t", SqlGrammar::Sqlite, SafeModeLevel::Silent);
         let delete = gated(
             "WITH stale AS (SELECT 1) \u{feff}DELETE FROM t",
             SqlGrammar::Sqlite,
-            SafeModeLevel::ConfirmWrites,
+            SafeModeLevel::Alert,
         );
 
         assert_eq!(drop.confirm.len(), 1);
@@ -113,7 +113,7 @@ mod tests {
         let run = gated(
             "UPDATE accounts SET balance = balance - 10 WHERE id = 1\nGO 100",
             SqlGrammar::MsSql,
-            SafeModeLevel::ConfirmWrites,
+            SafeModeLevel::Alert,
         );
 
         assert_eq!(
@@ -128,7 +128,7 @@ mod tests {
         // runs the DROP after it.
         let script = "/*!40103 SET TIME_ZONE='+00:00' */;\nSELECT 1 /*!99999 /* */ ' */ ; DROP TABLE orders; -- '";
 
-        let off = gated(script, SqlGrammar::MySql, SafeModeLevel::Off);
+        let off = gated(script, SqlGrammar::MySql, SafeModeLevel::Silent);
         let read_only = gated(script, SqlGrammar::MySql, SafeModeLevel::ReadOnly);
 
         let texts: Vec<&str> = off.batches.iter().map(|batch| batch.text.as_str()).collect();
@@ -151,7 +151,7 @@ mod tests {
         let script = "DELIMITER //\nSELECT 1;\nDELIMITER ; /*!99999 '*/ `' */\n\
                       SELECT 1 /*!99999 ' */ ; DROP TABLE t; -- ` ' */\n//";
 
-        let run = gated(script, SqlGrammar::MySql, SafeModeLevel::Off);
+        let run = gated(script, SqlGrammar::MySql, SafeModeLevel::Silent);
 
         assert_eq!(run.batches.len(), 1);
         assert!(run.destructive);

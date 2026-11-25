@@ -11,7 +11,9 @@ use crate::{ConnectionColor, ConnectionTagName};
 pub struct ConnectionTag {
     pub id: Uuid,
     pub name: ConnectionTagName,
-    pub color: ConnectionColor,
+    // None for a tag with no colour, which macOS can hold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<ConnectionColor>,
     // One of the tags macOS starts every library with, which its UI never deletes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_preset: bool,
@@ -22,7 +24,7 @@ impl ConnectionTag {
         Self {
             id: Uuid::new_v4(),
             name,
-            color,
+            color: Some(color),
             is_preset: false,
         }
     }
@@ -51,10 +53,13 @@ mod tests {
     }
 
     #[test]
-    fn a_tag_without_a_colour_is_refused() {
+    fn a_tag_without_a_colour_reads_and_writes_none() {
         let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","name":"acme"}"#;
 
-        assert!(serde_json::from_str::<ConnectionTag>(json).is_err());
+        let tag = serde_json::from_str::<ConnectionTag>(json).expect("a tag");
+
+        assert_eq!(tag.color, None);
+        assert_eq!(serde_json::to_string(&tag).expect("json"), json);
     }
 
     #[test]

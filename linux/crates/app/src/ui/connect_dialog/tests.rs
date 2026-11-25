@@ -579,7 +579,7 @@ fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
 #[gtk4::test]
 fn an_edit_opens_on_the_saved_level_and_keeps_it() {
     let saved = SavedConnection {
-        safe_mode: SafeModeLevel::ConfirmWrites,
+        safe_mode: SafeModeLevel::Alert,
         ..shop()
     };
     let harness = open(Options {
@@ -591,7 +591,7 @@ fn an_edit_opens_on_the_saved_level_and_keeps_it() {
     let imp = harness.dialog.imp();
 
     assert_eq!(imp.safe_mode_row.selected(), 1);
-    assert_eq!(harness.dialog.form().safe_mode, SafeModeLevel::ConfirmWrites);
+    assert_eq!(harness.dialog.form().safe_mode, SafeModeLevel::Alert);
 }
 
 #[gtk4::test]
@@ -894,7 +894,7 @@ fn a_connect_from_new_connection_never_writes_over_a_saved_entry() {
     assert!(submitted.is_new, "the connect replaced the saved entry");
     assert_ne!(submitted.connection.id, saved.id);
     assert_eq!(submitted.connection.name, "Shop RW");
-    assert_eq!(submitted.connection.safe_mode, SafeModeLevel::Off);
+    assert_eq!(submitted.connection.safe_mode, SafeModeLevel::Silent);
 }
 
 #[gtk4::test]

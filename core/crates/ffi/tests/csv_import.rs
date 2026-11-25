@@ -339,7 +339,7 @@ async fn confirm_writes_asks_first_and_read_only_refuses() {
             server_name: None,
         },
         ssh: None,
-        safe_mode: SafeModeTag::ConfirmWrites,
+        safe_mode: SafeModeTag::Alert,
         query_timeout_secs: None,
         color: None,
         group_id: None,
