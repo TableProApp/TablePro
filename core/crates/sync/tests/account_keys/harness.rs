@@ -175,6 +175,30 @@ impl Device {
         }
     }
 
+    // The same device after its process stopped: the same state file and device store, no flow in memory.
+    pub fn restarted(&self) -> Self {
+        let service = KeyService::new(KeyServiceParts {
+            origin: origin(),
+            account: self.account,
+            device_row: self.row.clone(),
+            state: Arc::clone(&self.state),
+            device_store: self.store.clone(),
+            transport: self.transport.clone(),
+            hooks: self.hooks.clone(),
+            clock: Arc::new(TestClock(AtomicI64::new(self.server.now_us()))),
+        });
+        Self {
+            service,
+            server: Arc::clone(&self.server),
+            transport: Arc::clone(&self.transport),
+            hooks: Arc::clone(&self.hooks),
+            store: Arc::clone(&self.store),
+            state: Arc::clone(&self.state),
+            row: self.row.clone(),
+            account: self.account,
+        }
+    }
+
     pub async fn txn(&self) -> Box<dyn StateTxn> {
         self.state.begin().await.unwrap()
     }

@@ -17,7 +17,9 @@ use super::KeyService;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::{KeyApplied, KeyArrival, KeyNoticeKind, LockCause, RefusedObject};
-use crate::api::state::{KeyPinRow, KeyVersionRow, KeyVersionState, Row, RowKey, StateTxn, StoppedCause};
+use crate::api::state::{
+    KeyPinRow, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn, StoppedCause, Table,
+};
 use crate::api::transport::PulledRecord;
 
 const ACCOUNT_KINDS: [&str; 6] = [
@@ -52,12 +54,21 @@ impl KeyService {
         let mut txn = self.begin().await?;
         let mut applied = KeyApplied::default();
         let mut fresh = Vec::new();
+        let mut own_genesis = false;
         for record in &arrival.records {
             if !ACCOUNT_KINDS.contains(&record.kind.as_str()) || record.deleted.is_some() {
                 continue;
             }
             match self.take_record(txn.as_mut(), record).await {
-                Ok(object) => fresh.push(object),
+                Ok((object, candidate)) => {
+                    own_genesis |= candidate
+                        && object.id
+                            == KeyRecordId::Account {
+                                account: self.account,
+                                av: Version::FIRST,
+                            };
+                    fresh.push(object);
+                }
                 Err(SyncError::Keys(error)) => {
                     if error == KeysError::Conflict {
                         self.raise_notice(KeyNoticeKind::Conflict {
@@ -71,6 +82,9 @@ impl KeyService {
                 }
                 Err(other) => return Err(other),
             }
+        }
+        if own_genesis && !self.is_unanchored() && !self.is_rebuilding() {
+            self.adopt_own_genesis(txn.as_mut()).await?;
         }
         self.settle_account(txn.as_mut()).await?;
         let mut in_force = match txn.get(&RowKey::Scope(ScopeName::Personal)).await? {
@@ -100,8 +114,9 @@ impl KeyService {
         Ok(applied)
     }
 
-    // Parses a served record as the key object its kind and id name, from its exact text, and keeps it.
-    async fn take_record(&self, txn: &mut dyn StateTxn, record: &PulledRecord) -> Result<KeyObject, SyncError> {
+    // Parses a served record as the key object its kind and id name, from its exact text, and keeps it. Says whether
+    // it is this device's own candidate that the server now serves back.
+    async fn take_record(&self, txn: &mut dyn StateTxn, record: &PulledRecord) -> Result<(KeyObject, bool), SyncError> {
         let text = record.fields_json.as_deref().ok_or(KeysError::Encoding {
             what: "a key object served without its text",
         })?;
@@ -118,8 +133,12 @@ impl KeyService {
             }
             .into());
         }
+        let candidate = self
+            .held_object(txn, ScopeName::Personal, object.id.kind(), &object.id.to_wire())
+            .await?
+            .is_some_and(|held| !held.applied && held.object == object);
         self.hold_object(txn, ScopeName::Personal, &object, true).await?;
-        Ok(object)
+        Ok((object, candidate))
     }
 
     // Moves the own pin and the personal and history keys as far as the held objects allow.
@@ -179,6 +198,61 @@ impl KeyService {
             }
         }
         Ok(())
+    }
+
+    // A genesis this device pushed and never heard applied, its own candidate served back: only this device holds the
+    // account keys its certificate names, beside a device certificate for its own key device. Never in a file it
+    // cannot trust, and an approval in flight finishes its own way.
+    async fn adopt_own_genesis(&self, txn: &mut dyn StateTxn) -> Result<(), SyncError> {
+        if self.pin(txn, self.account).await?.is_some() {
+            return Ok(());
+        }
+        let approving =
+            txn.scan(&RowRange::Table(Table::KeyPending)).await?.iter().any(
+                |row| matches!(row, Row::KeyPending(pending) if matches!(pending.flow, PendingFlow::Approval { .. })),
+            );
+        if approving {
+            return Ok(());
+        }
+        let id = KeyRecordId::Account {
+            account: self.account,
+            av: Version::FIRST,
+        };
+        let Some(held) = self
+            .held_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
+            .await?
+            .filter(|held| held.applied)
+        else {
+            return Ok(());
+        };
+        let KeyBody::Account(body) = &held.object.body else {
+            return Ok(());
+        };
+        let certificate = body.certificate(self.account, Version::FIRST);
+        let (Some(keys), Some(device)) = (
+            self.account_keys(Version::FIRST).await?,
+            self.device_keys().await?.current,
+        ) else {
+            return Ok(());
+        };
+        if certificate.verify(&self.origin).is_err()
+            || keys.check_against(&certificate.ask, &certificate.aek).is_err()
+            || !self.certifies(txn, &certificate, &device).await?
+        {
+            return Ok(());
+        }
+        let mut objects = vec![held.object];
+        for version in self.held_objects(txn, ScopeName::Personal, KeyKind::Version).await? {
+            if version.applied
+                && version
+                    .object
+                    .version_record()
+                    .is_some_and(|record| record.signer_av == Version::FIRST && record.key.purpose != KeyPurpose::Team)
+            {
+                objects.push(version.object);
+            }
+        }
+        self.adopt_account_change_set(txn, &objects).await
     }
 
     fn locked(&self, cause: LockCause) -> Result<(), SyncError> {
@@ -452,10 +526,32 @@ impl KeyService {
                 let Some(compared) = self.compared_dsk(txn, wrap, &device).await? else {
                     return Ok(Checked::Refused(KeysError::NotCompared));
                 };
-                Ok(match wrap.verify(&self.origin, &device.dek.public()?, &compared) {
-                    Ok(()) => Checked::Verified,
-                    Err(_) => Checked::Refused(KeysError::NotCompared),
-                })
+                if let Err(error) = wrap.verify(&self.origin, &device.dek.public()?, &compared) {
+                    return Ok(Checked::Refused(match error {
+                        KeysError::Signature => KeysError::NotCompared,
+                        other => other,
+                    }));
+                }
+                if wrap.target.purpose != WrapPurpose::Account {
+                    return Ok(Checked::Verified);
+                }
+                // The keys it carries must be the ones the certificate at its `av` names (`keys.mismatch`).
+                let Some(certificate) = self
+                    .certificate_at(txn, ScopeName::Personal, self.account, wrap.target.version)
+                    .await?
+                else {
+                    return Ok(Checked::Held);
+                };
+                let public = AccountPublicKeys {
+                    ask: certificate.ask,
+                    aek: certificate.aek,
+                };
+                Ok(
+                    match wrap.open_account(&self.origin, &device.dek, &device.dek.public()?, &compared, &public) {
+                        Ok(_) => Checked::Verified,
+                        Err(error) => Checked::Refused(error),
+                    },
+                )
             }
             _ => Ok(Checked::Refused(KeysError::Encoding {
                 what: "wrap recipient does not fit its purpose",

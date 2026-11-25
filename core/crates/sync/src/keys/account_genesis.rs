@@ -150,6 +150,11 @@ impl KeyService {
             .with(draft, |held: &mut GenesisDraft| held.shown.check_typed_back(typed))??;
         let mut txn = self.begin().await?;
         if self.account_has_keys(txn.as_mut()).await? {
+            // A pull already took this device's own genesis back after its answer was lost.
+            if self.own_account(txn.as_mut()).await?.is_some() {
+                self.drafts().remove(draft);
+                return Ok(GenesisOutcome::Created);
+            }
             drop(txn);
             return self.another_genesis_won(draft, &[]).await;
         }
