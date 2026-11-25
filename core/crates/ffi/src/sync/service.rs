@@ -1,19 +1,62 @@
 use std::sync::Arc;
 
+use tablepro_records::Kind;
 use tablepro_session::runtime::Tasks;
 use tablepro_sync::SyncError;
+use tablepro_sync::api::{CloudKitFailure, TransportError};
 
-use super::cloudkit::CloudKitTransport;
-use super::host::{HostDeviceStore, HostSettings};
+use super::cloudkit::{CloudKitBridge, CloudKitTransport};
+use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSettingsBridge};
+use super::keys::LockCauseTag;
+use super::legacy::{HostLegacyMirror, LegacyMirrorBridge};
 use crate::account::{AccountService, SyncProviderTag};
 use crate::core_handle::Core;
 use crate::error::CoreError;
 
+// The typed fields a sync refusal carries, which the app acts on: RFC 9470's challenge to step up and retry, a
+// `Retry-After`, the rejected change's own code (0051, Push), and why the device locked.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SyncFailureInfo {
+    StepUp { acr_values: Vec<String>, max_age_secs: u64 },
+    RetryAfter { ms: u64 },
+    Rejected { code: String },
+    Locked { cause: LockCauseTag },
+}
+
+fn failure_info(error: &SyncError) -> Option<SyncFailureInfo> {
+    match error {
+        SyncError::Transport(TransportError::StepUpRequired(challenge)) => Some(SyncFailureInfo::StepUp {
+            acr_values: challenge.acr_values.clone(),
+            max_age_secs: challenge.max_age_secs,
+        }),
+        SyncError::Transport(
+            TransportError::RateLimited { retry_after_ms }
+            | TransportError::RestoreCheckUnavailable { retry_after_ms }
+            | TransportError::Server { retry_after_ms, .. },
+        )
+        | SyncError::CloudKit(CloudKitFailure::Throttled { retry_after_ms }) => {
+            retry_after_ms.map(|ms| SyncFailureInfo::RetryAfter { ms })
+        }
+        SyncError::Rejected { code } => Some(SyncFailureInfo::Rejected {
+            code: code.as_str().to_owned(),
+        }),
+        SyncError::Locked { cause } => Some(SyncFailureInfo::Locked { cause: (*cause).into() }),
+        _ => None,
+    }
+}
+
 impl From<SyncError> for CoreError {
     fn from(error: SyncError) -> Self {
-        match error {
-            SyncError::Cancelled => Self::Cancelled,
-            error => Self::failed(error.code(), error.to_string()),
+        if error == SyncError::Cancelled {
+            return Self::Cancelled;
+        }
+        let sync = failure_info(&error);
+        match Self::failed(error.code(), error.to_string()) {
+            Self::Failed { mut info } => {
+                info.sync = sync;
+                Self::Failed { info }
+            }
+            cancelled @ Self::Cancelled => cancelled,
         }
     }
 }
@@ -54,9 +97,10 @@ pub struct SyncService {
     pub(crate) tasks: Tasks,
     pub(crate) account: Arc<AccountService>,
     pub(crate) config: SyncConfig,
-    pub(crate) cloudkit: Option<Arc<dyn CloudKitTransport>>,
-    pub(crate) settings: Option<Arc<dyn HostSettings>>,
-    pub(crate) device_store: Option<Arc<dyn HostDeviceStore>>,
+    pub(crate) cloudkit: Option<Arc<dyn tablepro_sync::api::CloudKitTransport>>,
+    pub(crate) settings: Option<Arc<dyn tablepro_sync::api::HostSettings>>,
+    pub(crate) device_store: Option<Arc<dyn tablepro_sync::api::HostDeviceStore>>,
+    pub(crate) legacy_mirror: Option<Arc<dyn tablepro_sync::api::LegacyMirror>>,
     pub(crate) listener: Arc<dyn SyncListener>,
 }
 
@@ -70,8 +114,12 @@ impl std::fmt::Debug for SyncService {
 
 #[uniffi::export]
 impl Core {
-    // The Apple apps pass their CloudKit transport and device store; Windows and Linux pass neither, since the core
-    // reaches Credential Manager and the Secret Service itself and they have no iCloud.
+    // The Apple apps pass their CloudKit transport and device store, and the Mac its legacy mirror while the previous
+    // stable runs the Swift engine. Windows passes none: the core reaches Credential Manager itself.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a UniFFI record cannot carry callback interfaces, so each host service is its own argument"
+    )]
     pub fn open_sync(
         &self,
         config: SyncConfig,
@@ -79,15 +127,45 @@ impl Core {
         cloudkit: Option<Arc<dyn CloudKitTransport>>,
         settings: Option<Box<dyn HostSettings>>,
         device_store: Option<Box<dyn HostDeviceStore>>,
+        legacy_mirror: Option<Box<dyn HostLegacyMirror>>,
         listener: Box<dyn SyncListener>,
     ) -> Result<Arc<SyncService>, CoreError> {
+        let tasks = self.tasks.clone();
+        let kind = match config.platform {
+            SyncPlatformTag::Macos => Kind::MacosSettings,
+            SyncPlatformTag::Ios => Kind::IosSettings,
+            SyncPlatformTag::Linux => Kind::LinuxSettings,
+            SyncPlatformTag::Windows => Kind::WindowsSettings,
+        };
+        let cloudkit =
+            cloudkit.map(|host| Arc::new(CloudKitBridge(host)) as Arc<dyn tablepro_sync::api::CloudKitTransport>);
+        let settings = settings.map(|host| {
+            Arc::new(HostSettingsBridge {
+                host: Arc::from(host),
+                kind,
+                tasks: tasks.clone(),
+            }) as Arc<dyn tablepro_sync::api::HostSettings>
+        });
+        let device_store = device_store.map(|host| {
+            Arc::new(HostDeviceStoreBridge {
+                host: Arc::from(host),
+                tasks: tasks.clone(),
+            }) as Arc<dyn tablepro_sync::api::HostDeviceStore>
+        });
+        let legacy_mirror = legacy_mirror.map(|host| {
+            Arc::new(LegacyMirrorBridge {
+                host: Arc::from(host),
+                tasks: tasks.clone(),
+            }) as Arc<dyn tablepro_sync::api::LegacyMirror>
+        });
         Ok(Arc::new(SyncService {
-            tasks: self.tasks.clone(),
+            tasks,
             account,
             config,
             cloudkit,
-            settings: settings.map(Arc::from),
-            device_store: device_store.map(Arc::from),
+            settings,
+            device_store,
+            legacy_mirror,
             listener: Arc::from(listener),
         }))
     }

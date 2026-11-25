@@ -131,7 +131,7 @@ impl HostDeviceStore for FakeDeviceStore {
 #[cfg(test)]
 mod tests {
     use tablepro_keys::encoding::{AccountId, Origin, Version};
-    use tablepro_sync::api::ids::{DeviceRowId, FileId};
+    use tablepro_sync::api::ids::{DeviceRowId, StateName};
     use uuid::Uuid;
 
     use super::*;
@@ -153,7 +153,9 @@ mod tests {
     }
 
     fn anchor() -> DeviceItem {
-        DeviceItem::AnchorRoot { file: FileId([7; 16]) }
+        DeviceItem::AnchorRoot {
+            state: StateName("ab".repeat(32)),
+        }
     }
 
     async fn filled() -> FakeDeviceStore {

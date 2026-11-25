@@ -26,8 +26,8 @@ struct Zone {
     records: BTreeMap<String, Stored>,
     deletions: Vec<(u64, CloudKitDeletion)>,
     next_change: u64,
-    // Tokens below it have expired.
-    token_floor: u64,
+    // Each token names the generation it was issued in; expiring tokens starts a new one.
+    generation: u64,
 }
 
 #[derive(Debug)]
@@ -92,7 +92,7 @@ impl FakeCloudKit {
     // Every token the zone gave so far now answers `TokenExpired`.
     pub fn expire_tokens(&self, account: &str) {
         if let Some(zone) = self.lock().zones.get_mut(account) {
-            zone.token_floor = zone.next_change + 1;
+            zone.generation += 1;
         }
     }
 
@@ -219,13 +219,21 @@ fn value_bytes(value: &CloudKitValue) -> usize {
     }
 }
 
-fn token(change: u64) -> Vec<u8> {
-    change.to_be_bytes().to_vec()
+fn token(generation: u64, change: u64) -> Vec<u8> {
+    [generation.to_be_bytes(), change.to_be_bytes()].concat()
 }
 
-fn read_token(token: &[u8]) -> Result<u64, CloudKitFailure> {
-    let bytes: [u8; 8] = token.try_into().map_err(|_| CloudKitFailure::TokenExpired)?;
-    Ok(u64::from_be_bytes(bytes))
+// The change a token resumes after, when it is of the zone's current generation.
+fn read_token(token: &[u8], generation: u64) -> Result<u64, CloudKitFailure> {
+    let bytes: [u8; 16] = token.try_into().map_err(|_| CloudKitFailure::TokenExpired)?;
+    let (issued, change) = bytes.split_at(8);
+    let issued = u64::from_be_bytes(issued.try_into().map_err(|_| CloudKitFailure::TokenExpired)?);
+    if issued != generation {
+        return Err(CloudKitFailure::TokenExpired);
+    }
+    Ok(u64::from_be_bytes(
+        change.try_into().map_err(|_| CloudKitFailure::TokenExpired)?,
+    ))
 }
 
 fn zone<'a>(state: &'a mut State, account: &str) -> Result<&'a mut Zone, CloudKitFailure> {
@@ -300,10 +308,11 @@ impl CloudKitTransport for FakeCloudKit {
         let mut state = self.begin(&account)?;
         let page_size = state.page_size;
         let zone = zone(&mut state, &account)?;
-        let since = token.as_deref().map(read_token).transpose()?.unwrap_or(0);
-        if token.is_some() && since < zone.token_floor {
-            return Err(CloudKitFailure::TokenExpired);
-        }
+        let since = token
+            .as_deref()
+            .map(|token| read_token(token, zone.generation))
+            .transpose()?
+            .unwrap_or(0);
         // Each change at most once, in the order the zone took them.
         let mut events: Vec<(u64, Option<&str>, Option<&CloudKitDeletion>)> = zone
             .records
@@ -337,7 +346,7 @@ impl CloudKitTransport for FakeCloudKit {
             changed,
             deleted,
             unfetched: Vec::new(),
-            token: self::token(if more { last } else { zone.next_change.max(since) }),
+            token: self::token(zone.generation, if more { last } else { zone.next_change.max(since) }),
             more,
         })
     }

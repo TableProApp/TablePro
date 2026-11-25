@@ -137,7 +137,12 @@ async fn an_expired_token_answers_token_expired() {
     cloud.expire_tokens(USER);
 
     let expired = cloud.fetch_changes(USER.to_owned(), Some(changes.token)).await;
+    let fresh = cloud.fetch_changes(USER.to_owned(), None).await.unwrap();
+    let next = cloud.fetch_changes(USER.to_owned(), Some(fresh.token)).await;
+
     assert_eq!(expired.unwrap_err(), CloudKitFailure::TokenExpired);
+    assert_eq!(fresh.changed.len(), 1);
+    assert!(next.unwrap().changed.is_empty());
 }
 
 #[tokio::test]

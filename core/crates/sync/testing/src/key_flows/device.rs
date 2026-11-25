@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use secrecy::SecretString;
-use tablepro_keys::KeysError;
 use tablepro_keys::encoding::{KeyDeviceId, Version};
 use tablepro_sync::api::error::SyncError;
 use tablepro_sync::api::ids::DeviceRowId;
@@ -10,7 +9,7 @@ use tablepro_sync::api::key_flows::{
 use tablepro_sync::api::transport::{StepUpChallenge, TransportError};
 use uuid::Uuid;
 
-use super::{FakeKeyFlows, account::notice, require_approved, same_recovery_key};
+use super::{FakeKeyFlows, account::notice, keep_compared, require_approved, rotate, same_recovery_key};
 
 #[async_trait]
 impl DeviceFlows for FakeKeyFlows {
@@ -72,20 +71,8 @@ impl DeviceFlows for FakeKeyFlows {
             .reviews
             .remove(&review)
             .ok_or(SyncError::Unknown { what: "review" })?;
-        // Only a device this one compared with can be kept (0056, Rotation).
-        let comparable = |id: &KeyDeviceId| {
-            model
-                .devices
-                .iter()
-                .any(|device| device.key_device == *id && device.compared)
-        };
-        if !keep.iter().all(comparable) {
-            return Err(SyncError::Keys(KeysError::NotCompared));
-        }
-        model
-            .devices
-            .retain(|device| device.this_device || keep.contains(&device.key_device));
-        model.av += 1;
+        keep_compared(&mut model, &keep)?;
+        rotate(&mut model);
         for member in remove {
             if let Some(team) = model.teams.get_mut(&member.team)
                 && let Some((_, status)) = team.members.get_mut(&member.account)
@@ -104,7 +91,7 @@ impl DeviceFlows for FakeKeyFlows {
     async fn recover(&self, recovery_key: SecretString) -> Result<(), SyncError> {
         let mut model = self.lock();
         same_recovery_key(model.recovery.as_ref(), &recovery_key)?;
-        model.av += 1;
+        rotate(&mut model);
         model.devices.retain(|device| device.this_device);
         self.approve(&mut model)
     }

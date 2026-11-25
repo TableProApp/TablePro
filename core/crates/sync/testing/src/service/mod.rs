@@ -63,6 +63,7 @@ pub struct StoredRecord {
     pub taken_at_us: i64,
     pub updated_at_us: i64,
     pub updated_device: Option<DeviceRowId>,
+    pub updated_by: Option<AccountId>,
 }
 
 impl StoredRecord {
@@ -126,6 +127,7 @@ pub(crate) struct StoredAnswer {
     pub(crate) digest: [u8; 32],
     // The outcome of each change that applied, by its place in the push; the others are judged again on a replay.
     pub(crate) applied: Vec<Option<tablepro_sync::api::transport::ChangeOutcome>>,
+    pub(crate) created_at_us: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -156,7 +158,9 @@ pub(crate) struct State {
     pub(crate) stopped: BTreeMap<(TeamId, DeviceRowId), StopReport>,
     pub(crate) policies: Policies,
     pub(crate) lapsed: bool,
-    pub(crate) step_up_fresh: bool,
+    // Each device row's sign-in with a fresh step-up, and the account each row belongs to.
+    pub(crate) stepped_up: HashSet<DeviceRowId>,
+    pub(crate) rows: HashMap<DeviceRowId, AccountId>,
     pub(crate) fail_next: Vec<TransportError>,
     pub(crate) clock_us: i64,
 }
@@ -215,7 +219,8 @@ impl FakeServer {
             stopped: BTreeMap::new(),
             policies: Policies::default(),
             lapsed: false,
-            step_up_fresh: false,
+            stepped_up: HashSet::new(),
+            rows: HashMap::new(),
             fail_next: Vec::new(),
             clock_us: 1_767_225_600_000_000,
         };
@@ -238,6 +243,7 @@ impl FakeServer {
     }
 
     pub fn client(self: &Arc<Self>, account: AccountId, device_row: DeviceRowId) -> FakeClient {
+        self.lock().rows.insert(device_row.clone(), account);
         FakeClient {
             server: Arc::clone(self),
             account,
@@ -329,8 +335,14 @@ impl FakeServer {
         state.stopped.retain(|(_, row), _| row != device_row);
     }
 
-    pub fn set_step_up(&self, fresh: bool) {
-        self.lock().step_up_fresh = fresh;
+    // Whether this row's sign-in holds a step-up within 300 s (0051, Step-up).
+    pub fn set_step_up(&self, device_row: &DeviceRowId, fresh: bool) {
+        let mut state = self.lock();
+        if fresh {
+            state.stepped_up.insert(device_row.clone());
+        } else {
+            state.stepped_up.remove(device_row);
+        }
     }
 
     pub fn set_lapsed(&self, lapsed: bool) {
@@ -375,6 +387,7 @@ impl FakeServer {
                     record.fields = None;
                     record.updated_at_us = now;
                     record.updated_device = None;
+                    record.updated_by = None;
                 }
             }
         }

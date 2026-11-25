@@ -2,11 +2,12 @@
 // UUID text, a team its scope name (`team_...`).
 
 use secrecy::SecretString;
+use tablepro_sync::api::key_flows::LockCause;
 
 use super::service::{SyncService, unfilled};
 use crate::error::CoreError;
 
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum LockCauseTag {
     DeviceRemoved,
     LeftOutOfRotation,
@@ -14,6 +15,19 @@ pub enum LockCauseTag {
     AccountEnded,
     Unanchored,
     PersonalStopped,
+}
+
+impl From<LockCause> for LockCauseTag {
+    fn from(cause: LockCause) -> Self {
+        match cause {
+            LockCause::DeviceRemoved => Self::DeviceRemoved,
+            LockCause::LeftOutOfRotation => Self::LeftOutOfRotation,
+            LockCause::OwnAccountReset => Self::OwnAccountReset,
+            LockCause::AccountEnded => Self::AccountEnded,
+            LockCause::Unanchored => Self::Unanchored,
+            LockCause::PersonalStopped => Self::PersonalStopped,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -218,6 +232,30 @@ pub struct TeamKeysInfo {
     pub rotation_due: bool,
     pub holder: bool,
     pub members: Vec<MemberKeysInfo>,
+    pub stopped: Vec<StoppedDeviceInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct StoppedDeviceInfo {
+    pub account: String,
+    pub device: String,
+    pub version: u32,
+    // This account held that version, so the app offers to confirm the device again by rotating.
+    pub can_reconfirm: bool,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct RotationDraftInfo {
+    pub recovery: RecoveryKeyDraftInfo,
+    pub devices: Vec<ReviewedDeviceInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct KeyChangeInfo {
+    pub account: String,
+    pub pinned: FingerprintInfo,
+    pub offered: FingerprintInfo,
+    pub offered_ik: String,
 }
 
 #[uniffi::export]
@@ -244,16 +282,20 @@ impl SyncService {
         unfilled("keys.sign_out")
     }
 
-    pub async fn begin_replace_recovery_key(
-        &self,
-        recovery_key: SecretString,
-    ) -> Result<RecoveryKeyDraftInfo, CoreError> {
+    // R' and the devices the rotation can keep.
+    pub async fn begin_replace_recovery_key(&self, recovery_key: SecretString) -> Result<RotationDraftInfo, CoreError> {
         let _ = recovery_key;
         unfilled("keys.begin_replace")
     }
 
-    pub async fn finish_replace_recovery_key(&self, draft: String, typed: Vec<SecretString>) -> Result<(), CoreError> {
-        let _ = (draft, typed);
+    // `keep` holds the key device ids the person ticked.
+    pub async fn finish_replace_recovery_key(
+        &self,
+        draft: String,
+        typed: Vec<SecretString>,
+        keep: Vec<String>,
+    ) -> Result<(), CoreError> {
+        let _ = (draft, typed, keep);
         unfilled("keys.finish_replace")
     }
 
@@ -272,8 +314,20 @@ impl SyncService {
     }
 
     // Accepting without comparing is recorded as `first_use`.
-    pub async fn accept_key_change(&self, account: String, compared: bool) -> Result<(), CoreError> {
-        let _ = (account, compared);
+    // The pinned and the offered identity of an account under a key-change alert, to compare.
+    pub async fn account_key_change(&self, account: String) -> Result<Option<KeyChangeInfo>, CoreError> {
+        let _ = account;
+        unfilled("keys.key_change")
+    }
+
+    // `offered_ik` is the one `account_key_change` showed, as base64url.
+    pub async fn accept_key_change(
+        &self,
+        account: String,
+        offered_ik: String,
+        compared: bool,
+    ) -> Result<(), CoreError> {
+        let _ = (account, offered_ik, compared);
         unfilled("keys.accept_key_change")
     }
 

@@ -155,3 +155,19 @@ async fn an_open_reports_what_the_test_set_for_it() {
     assert_eq!(first.opened(), &stale);
     assert_eq!(second.opened(), &Opened::FRESH);
 }
+
+#[tokio::test]
+async fn a_refused_commit_writes_nothing() {
+    let files = MemoryStateFiles::new();
+    let store = files.open(identity(1)).await.unwrap();
+    let mut txn = store.begin().await.unwrap();
+    txn.put(base("A")).await.unwrap();
+    txn.delete(&RowKey::Binding).await.unwrap();
+
+    let refused = txn.commit().await;
+
+    let mut txn = store.begin().await.unwrap();
+    assert!(refused.is_err());
+    assert!(txn.get(&base("A").key()).await.unwrap().is_none());
+    assert!(txn.get(&RowKey::Binding).await.unwrap().is_some());
+}

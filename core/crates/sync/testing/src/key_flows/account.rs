@@ -4,22 +4,24 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{Value, json};
 use tablepro_keys::KeysError;
-use tablepro_keys::encoding::{AccountId, HistoryId, Version};
+use tablepro_keys::encoding::{AccountId, HistoryId, KeyDeviceId, Version};
 use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::fingerprint::{fingerprint, fingerprint_words, parse_qr, qr_text};
-use tablepro_keys::keys::Ed25519Seed;
+use tablepro_keys::keys::{Ed25519Public, Ed25519Seed};
 use tablepro_keys::sas::SAS_WORDS;
 use tablepro_keys::words::words;
 use tablepro_sync::api::error::SyncError;
 use tablepro_sync::api::ids::ScopeName;
 use tablepro_sync::api::key_flows::{
-    Acceptance, AccountFlows, DraftId, Fingerprint, GenesisOutcome, KeyApplied, KeyArrival, KeyNotice, KeyNoticeKind,
-    KeyState, MemberKeyStatus, NoticeId, OpenedEnvelope, RecoveryKeyDraft, SignOutOutcome, TypedBack,
+    Acceptance, AccountFlows, DraftId, Fingerprint, GenesisOutcome, KeyApplied, KeyArrival, KeyChange, KeyNotice,
+    KeyNoticeKind, KeyState, MemberKeyStatus, NoticeId, OpenedEnvelope, RecoveryKeyDraft, ReviewedDevice,
+    RotationDraft, SignOutOutcome, TypedBack,
 };
 use uuid::Uuid;
 
 use super::{
-    DraftPurpose, FakeKeyFlows, Model, check_typed_back, new_draft, require_approved, same_recovery_key, version,
+    DraftPurpose, FakeKeyFlows, Model, check_typed_back, keep_compared, new_draft, require_approved, rotate,
+    same_recovery_key, supersede_reset, version,
 };
 
 pub(crate) fn notice(model: &mut Model, kind: KeyNoticeKind) {
@@ -52,15 +54,24 @@ pub(crate) fn fake_open(fields: &Value) -> Result<(Version, Value), SyncError> {
     Ok((Version::from_i64(kv)?, plaintext))
 }
 
-// Never below the version in force at its place in the order, nor below the copy held (0056, Rollback).
+// In order, exactly the version in force at its place; in a snapshot, any version up to the newest. Never below the
+// copy held (0056, Rollback).
 pub(crate) fn take_kv(
     model: &mut Model,
     scope: ScopeName,
     id: &str,
     kv: Version,
     in_force: Option<Version>,
+    newest: u32,
 ) -> Result<(), SyncError> {
     let held = model.held_kv.get(&(scope, id.to_owned())).copied();
+    let ceiling = in_force.map_or(newest, Version::get);
+    if kv.get() > ceiling {
+        return Err(SyncError::Keys(KeysError::Step {
+            held: ceiling,
+            offered: kv.get(),
+        }));
+    }
     for floor in [in_force.map(Version::get), held].into_iter().flatten() {
         if kv.get() < floor {
             return Err(SyncError::Keys(KeysError::Stale {
@@ -96,7 +107,7 @@ impl FakeKeyFlows {
         model.av = model.av.max(1);
         model.key_state = KeyState::Approved {
             av: version(model.av)?,
-            key_device: self.key_device,
+            key_device: model.key_device,
         };
         Ok(())
     }
@@ -145,8 +156,15 @@ impl AccountFlows for FakeKeyFlows {
 
     async fn sign_out(&self) -> Result<SignOutOutcome, SyncError> {
         let mut model = self.lock();
+        // The keys and the key device id go; signing in again is a new device (0056, Sign Out).
         model.key_state = KeyState::NeedsApproval { request: None };
         model.sessions.clear();
+        model.key_device = KeyDeviceId(Uuid::new_v4());
+        model.held_kv.clear();
+        for team in model.teams.values_mut() {
+            team.holder = false;
+        }
+        supersede_reset(&mut model);
         Ok(if model.offline {
             SignOutOutcome::ErasedOffline
         } else {
@@ -154,29 +172,42 @@ impl AccountFlows for FakeKeyFlows {
         })
     }
 
-    async fn begin_replace(&self, recovery_key: SecretString) -> Result<RecoveryKeyDraft, SyncError> {
+    async fn begin_replace(&self, recovery_key: SecretString) -> Result<RotationDraft, SyncError> {
         let mut model = self.lock();
         require_approved(&model, "replace the recovery key")?;
         same_recovery_key(model.recovery.as_ref(), &recovery_key)?;
         let (draft, made) = new_draft(&mut model, DraftPurpose::Replace)?;
-        Ok(RecoveryKeyDraft {
-            draft,
-            text: made.text,
-            check: made.check,
+        let devices = model
+            .devices
+            .iter()
+            .map(|device| ReviewedDevice {
+                keep_by_default: device.compared,
+                device: device.clone(),
+            })
+            .collect();
+        Ok(RotationDraft {
+            recovery: RecoveryKeyDraft {
+                draft,
+                text: made.text,
+                check: made.check,
+            },
+            devices,
         })
     }
 
-    async fn finish_replace(&self, draft: DraftId, typed: TypedBack) -> Result<(), SyncError> {
+    async fn finish_replace(&self, draft: DraftId, typed: TypedBack, keep: Vec<KeyDeviceId>) -> Result<(), SyncError> {
         let mut model = self.lock();
         let held = model
             .drafts
             .get(&draft)
+            .filter(|held| held.purpose == DraftPurpose::Replace)
             .cloned()
             .ok_or(SyncError::Unknown { what: "draft" })?;
         check_typed_back(&held, &typed)?;
+        keep_compared(&mut model, &keep)?;
         model.drafts.remove(&draft);
         model.recovery = Some(held.text);
-        model.av += 1;
+        rotate(&mut model);
         self.approve(&mut model)
     }
 
@@ -194,9 +225,36 @@ impl AccountFlows for FakeKeyFlows {
         Ok(scanned == fingerprint(&self.origin, account, &ik)?)
     }
 
-    async fn accept_key_change(&self, account: AccountId, how: Acceptance) -> Result<(), SyncError> {
+    async fn key_change(&self, account: AccountId) -> Result<Option<KeyChange>, SyncError> {
+        let offered = self.lock().offered.get(&account).copied();
+        let Some(offered_ik) = offered else {
+            return Ok(None);
+        };
+        let digest = fingerprint(&self.origin, account, &offered_ik)?;
+        Ok(Some(KeyChange {
+            account,
+            pinned: self.fingerprint_of(account)?,
+            offered: Fingerprint {
+                words: fingerprint_words(&digest).into_iter().map(str::to_owned).collect(),
+                qr: qr_text(&digest),
+            },
+            offered_ik,
+        }))
+    }
+
+    async fn accept_key_change(
+        &self,
+        account: AccountId,
+        offered: Ed25519Public,
+        how: Acceptance,
+    ) -> Result<(), SyncError> {
         let _ = how;
         let mut model = self.lock();
+        if model.offered.get(&account) != Some(&offered) {
+            return Err(SyncError::Unknown { what: "key change" });
+        }
+        model.offered.remove(&account);
+        model.identities.insert(account, offered);
         for team in model.teams.values_mut() {
             if let Some((_, status)) = team.members.get_mut(&account)
                 && *status == MemberKeyStatus::Alert
@@ -220,9 +278,14 @@ impl AccountFlows for FakeKeyFlows {
         Ok(())
     }
 
+    // Parses nothing: the version in force comes back, so an engine test can carry it with the cursor.
     async fn apply_account_objects(&self, arrival: KeyArrival) -> Result<KeyApplied, SyncError> {
         let _ = arrival;
-        Ok(KeyApplied::default())
+        let av = self.lock().av;
+        Ok(KeyApplied {
+            in_force: Version::new(av).ok(),
+            ..KeyApplied::default()
+        })
     }
 
     async fn seal_personal_envelope(
@@ -249,7 +312,15 @@ impl AccountFlows for FakeKeyFlows {
         let mut model = self.lock();
         require_approved(&model, "open a personal secret")?;
         let (kv, plaintext) = fake_open(&fields)?;
-        take_kv(&mut model, ScopeName::Personal, &envelope.to_wire(), kv, in_force)?;
+        let newest = model.av;
+        take_kv(
+            &mut model,
+            ScopeName::Personal,
+            &envelope.to_wire(),
+            kv,
+            in_force,
+            newest,
+        )?;
         Ok(opened(kv, &plaintext))
     }
 
@@ -267,7 +338,14 @@ impl AccountFlows for FakeKeyFlows {
         let model = self.lock();
         require_approved(&model, "open a history entry")?;
         let _ = entry;
-        let (_, plaintext) = fake_open(&fields)?;
+        let (kv, plaintext) = fake_open(&fields)?;
+        // History has no order against its key's versions: any version up to the newest (0056, Rollback, History).
+        if kv.get() > model.history_version.max(1) {
+            return Err(SyncError::Keys(KeysError::Step {
+                held: model.history_version,
+                offered: kv.get(),
+            }));
+        }
         Ok(plaintext.get("entry").cloned().unwrap_or(Value::Null))
     }
 }

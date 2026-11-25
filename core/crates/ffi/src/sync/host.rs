@@ -2,6 +2,14 @@
 // store, for the keys and the state file's anchor (0054, Integrity and freshness). Each call may block, so the core
 // makes it on a blocking thread, never under a lock.
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use tablepro_records::Kind;
+use tablepro_session::runtime::Tasks;
+use tablepro_sync::api::{self as sync, AdapterError, DeviceStoreError, SettingsDocument};
+use zeroize::Zeroizing;
+
 use crate::host::HostSecretError;
 
 #[uniffi::export(callback_interface)]
@@ -37,7 +45,7 @@ pub enum DeviceItemClassTag {
     Anchor,
 }
 
-// One item, named by what it holds. Ids are upper-case UUID text, files are hex.
+// One item, named by what it holds. Ids are upper-case UUID text; a state file's name and a checkpoint are hex.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum DeviceItemTag {
     DeviceKeys {
@@ -56,21 +64,21 @@ pub enum DeviceItemTag {
         reset: String,
     },
     StateMacKey {
-        file: String,
+        state: String,
     },
     AnchorRoot {
-        file: String,
+        state: String,
     },
     AnchorCheckpoint {
-        file: String,
+        state: String,
         checkpoint: String,
         part: u32,
     },
 }
 
 impl DeviceItemTag {
-    pub(crate) fn of(item: &tablepro_sync::api::DeviceItem) -> Self {
-        use tablepro_sync::api::DeviceItem;
+    pub(crate) fn of(item: &sync::DeviceItem) -> Self {
+        use sync::DeviceItem;
         let hex = |bytes: &[u8]| bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
         match item {
             DeviceItem::DeviceKeys {
@@ -92,10 +100,14 @@ impl DeviceItemTag {
                 account: account.to_wire(),
                 reset: reset.to_wire(),
             },
-            DeviceItem::StateMacKey { file } => Self::StateMacKey { file: hex(&file.0) },
-            DeviceItem::AnchorRoot { file } => Self::AnchorRoot { file: hex(&file.0) },
-            DeviceItem::AnchorCheckpoint { file, checkpoint, part } => Self::AnchorCheckpoint {
-                file: hex(&file.0),
+            DeviceItem::StateMacKey { state } => Self::StateMacKey { state: state.0.clone() },
+            DeviceItem::AnchorRoot { state } => Self::AnchorRoot { state: state.0.clone() },
+            DeviceItem::AnchorCheckpoint {
+                state,
+                checkpoint,
+                part,
+            } => Self::AnchorCheckpoint {
+                state: state.0.clone(),
                 checkpoint: hex(checkpoint),
                 part: *part,
             },
@@ -118,11 +130,119 @@ pub fn device_item_class(item: DeviceItemTag) -> DeviceItemClassTag {
     item.class()
 }
 
+fn store_error(error: HostSecretError) -> DeviceStoreError {
+    match error {
+        HostSecretError::Unavailable { detail } => DeviceStoreError::Unavailable { detail },
+        HostSecretError::Locked => DeviceStoreError::Locked,
+        HostSecretError::Dismissed => DeviceStoreError::Failed {
+            detail: "the unlock prompt was dismissed".to_owned(),
+        },
+        HostSecretError::Failed { detail } => DeviceStoreError::Failed { detail },
+    }
+}
+
+fn failed(failure: impl std::fmt::Display) -> DeviceStoreError {
+    DeviceStoreError::Failed {
+        detail: failure.to_string(),
+    }
+}
+
+// The host's device store under the engine's trait, each call on a blocking thread.
+pub(crate) struct HostDeviceStoreBridge {
+    pub(crate) host: Arc<dyn HostDeviceStore>,
+    pub(crate) tasks: Tasks,
+}
+
+#[async_trait]
+impl sync::HostDeviceStore for HostDeviceStoreBridge {
+    async fn load(&self, item: sync::DeviceItem) -> Result<Option<Zeroizing<Vec<u8>>>, DeviceStoreError> {
+        let (host, tag) = (Arc::clone(&self.host), DeviceItemTag::of(&item));
+        let loaded = self
+            .tasks
+            .spawn_blocking_task(move || host.load(tag))
+            .await
+            .map_err(failed)?;
+        loaded.map(|value| value.map(Zeroizing::new)).map_err(store_error)
+    }
+
+    async fn store(&self, item: sync::DeviceItem, value: Zeroizing<Vec<u8>>) -> Result<(), DeviceStoreError> {
+        let (host, tag) = (Arc::clone(&self.host), DeviceItemTag::of(&item));
+        let value = value.to_vec();
+        let stored = self
+            .tasks
+            .spawn_blocking_task(move || host.store(tag, value))
+            .await
+            .map_err(failed)?;
+        stored.map_err(store_error)
+    }
+
+    async fn delete(&self, item: sync::DeviceItem) -> Result<(), DeviceStoreError> {
+        let (host, tag) = (Arc::clone(&self.host), DeviceItemTag::of(&item));
+        let deleted = self
+            .tasks
+            .spawn_blocking_task(move || host.delete(tag))
+            .await
+            .map_err(failed)?;
+        deleted.map_err(store_error)
+    }
+}
+
+// The host's settings under the engine's trait; documents cross as JSON text.
+pub(crate) struct HostSettingsBridge {
+    pub(crate) host: Arc<dyn HostSettings>,
+    pub(crate) kind: Kind,
+    pub(crate) tasks: Tasks,
+}
+
+fn host_error(failure: impl std::fmt::Display) -> AdapterError {
+    AdapterError::Host {
+        detail: failure.to_string(),
+    }
+}
+
+#[async_trait]
+impl sync::HostSettings for HostSettingsBridge {
+    fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    async fn categories(&self) -> Result<Vec<SettingsDocument>, AdapterError> {
+        let host = Arc::clone(&self.host);
+        let categories = self
+            .tasks
+            .spawn_blocking_task(move || host.categories())
+            .await
+            .map_err(host_error)?;
+        categories
+            .map_err(host_error)?
+            .into_iter()
+            .map(|category| {
+                let document = serde_json::from_str(&category.document).map_err(host_error)?;
+                Ok(SettingsDocument {
+                    category: category.category,
+                    document,
+                })
+            })
+            .collect()
+    }
+
+    async fn apply(&self, category: String, document: Option<serde_json::Value>) -> Result<(), AdapterError> {
+        let host = Arc::clone(&self.host);
+        let document = document.map(|document| document.to_string());
+        let applied = self
+            .tasks
+            .spawn_blocking_task(move || host.apply(category, document))
+            .await
+            .map_err(host_error)?;
+        applied.map_err(host_error)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tablepro_keys::encoding::{AccountId, Origin, Version};
     use tablepro_sync::api::DeviceItem;
-    use tablepro_sync::api::ids::FileId;
+    use tablepro_sync::api::ids::StateName;
     use uuid::Uuid;
 
     use super::*;
@@ -136,13 +256,13 @@ mod tests {
             av: Version::new(3).unwrap(),
         };
         let anchor = DeviceItem::AnchorRoot {
-            file: FileId([0xab; 16]),
+            state: StateName("ab".repeat(32)),
         };
 
         let tag = DeviceItemTag::of(&anchor);
 
         assert_eq!(device_item_class(DeviceItemTag::of(&keys)), DeviceItemClassTag::Keys);
         assert_eq!(tag.class(), DeviceItemClassTag::Anchor);
-        assert_eq!(tag, DeviceItemTag::AnchorRoot { file: "ab".repeat(16) });
+        assert_eq!(tag, DeviceItemTag::AnchorRoot { state: "ab".repeat(32) });
     }
 }

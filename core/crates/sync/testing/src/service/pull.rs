@@ -1,6 +1,7 @@
 // `GET /v2/sync/scopes/{scope}/changes` (0051, Pull): a snapshot up to a mark in pages, then the changes after it in
 // revision order. A page with no records is caught up, and no page ends inside a change set.
 
+use serde_json::Value;
 use tablepro_records::limits;
 use tablepro_sync::api::ids::{Cursor, ScopeName};
 use tablepro_sync::api::transport::{PullRequest, PulledPage, PulledRecord, ServiceMeta, TransportError};
@@ -232,6 +233,11 @@ fn pulled(record: &StoredRecord) -> PulledRecord {
         } else {
             record.fields.clone()
         },
+        fields_json: if record.deleted.is_some() {
+            None
+        } else {
+            record.fields.as_ref().map(Value::to_string)
+        },
         deleted: record.deleted,
         service: Some(ServiceMeta {
             version: record.version,
@@ -241,7 +247,7 @@ fn pulled(record: &StoredRecord) -> PulledRecord {
             taken_at_us: record.taken_at_us,
             held_until_us: held_until(record),
             expires_at_us: expires_at(record),
-            updated_by: None,
+            updated_by: record.updated_by.map(|account| account.to_wire()),
             updated_device: record.updated_device.clone(),
             updated_by_name: None,
         }),

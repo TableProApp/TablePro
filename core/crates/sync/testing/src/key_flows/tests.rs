@@ -3,7 +3,9 @@ use serde_json::json;
 use tablepro_keys::KeysError;
 use tablepro_keys::encoding::{AccountId, KeyDeviceId, Origin, RequestId, TeamId, Version};
 use tablepro_keys::envelope::EnvelopeId;
+use tablepro_keys::keys::Ed25519Public;
 use tablepro_sync::api::error::SyncError;
+use tablepro_sync::api::key_flows::Acceptance;
 use tablepro_sync::api::key_flows::{
     AccountDevice, AccountFlows, ApprovalFlows, ApprovalRequest, CancelWith, DeviceFlows, GenesisOutcome, KeyState,
     MemberKeyStatus, RecoveryKeyDraft, ResetFlows, ResetKind, ResetState, SessionEnd, SessionPhase, StopAction,
@@ -163,8 +165,11 @@ async fn replace_needs_the_current_recovery_key_and_moves_the_account_on() {
         .unwrap();
 
     let refused = flows.begin_replace(other).await;
-    let draft = flows.begin_replace(current.clone()).await.unwrap();
-    flows.finish_replace(draft.draft, typed(&draft)).await.unwrap();
+    let draft = flows.begin_replace(current.clone()).await.unwrap().recovery;
+    flows
+        .finish_replace(draft.draft, typed(&draft), Vec::new())
+        .await
+        .unwrap();
 
     assert!(refused.is_err());
     assert_eq!(
@@ -341,14 +346,20 @@ async fn only_an_owner_or_admin_confirms_and_nothing_goes_to_a_member_under_an_a
     let no_keys = flows.confirm_member(team, bo).await;
     flows.raise_alert(ana);
     let under_alert = flows.confirm_member(team, ana).await;
+    let change = flows.key_change(ana).await.unwrap().unwrap();
+    let stale = Ed25519Public([9; 32]);
+    let wrong = flows.accept_key_change(ana, stale, Acceptance::Compared).await;
     flows
-        .accept_key_change(ana, tablepro_sync::api::key_flows::Acceptance::Compared)
+        .accept_key_change(ana, change.offered_ik, Acceptance::Compared)
         .await
         .unwrap();
     flows.confirm_member(team, ana).await.unwrap();
 
     assert!(no_keys.is_err());
     assert!(under_alert.is_err());
+    assert!(wrong.is_err());
+    assert_ne!(change.pinned.words, change.offered.words);
+    assert!(flows.key_change(ana).await.unwrap().is_none());
     let keys = flows.team_keys(team).await.unwrap();
     assert_eq!(keys.version, Some(Version::new(1).unwrap()));
     assert!(
@@ -392,7 +403,22 @@ async fn a_member_rotates_only_while_due_and_an_owner_restarts_only_with_no_hold
 #[tokio::test]
 async fn an_envelope_is_sealed_under_the_newest_version_and_never_taken_below_one_held() {
     let flows = with_keys().await;
-    let fields = flows
+    let old = flows
+        .seal_personal_envelope(envelope(), SecretString::from("old".to_owned()), json!({"host": "db"}))
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        let draft = flows
+            .begin_replace(flows.recovery_key().unwrap())
+            .await
+            .unwrap()
+            .recovery;
+        flows
+            .finish_replace(draft.draft, typed(&draft), Vec::new())
+            .await
+            .unwrap();
+    }
+    let newest = flows
         .seal_personal_envelope(
             envelope(),
             SecretString::from("hunter2".to_owned()),
@@ -400,19 +426,17 @@ async fn an_envelope_is_sealed_under_the_newest_version_and_never_taken_below_on
         )
         .await
         .unwrap();
+
     let opened = flows
-        .open_personal_envelope(envelope(), fields.clone(), None)
+        .open_personal_envelope(envelope(), newest.clone(), None)
         .await
         .unwrap();
-    let mut newer = fields.clone();
-    newer["kv"] = json!(3);
+    let older = flows.open_personal_envelope(envelope(), old.clone(), None).await;
+    let in_force = Some(Version::new(2).unwrap());
+    let below_in_force = flows.open_personal_envelope(envelope(), old, in_force).await;
+    let above_in_force = flows.open_personal_envelope(envelope(), newest, in_force).await;
 
-    flows.open_personal_envelope(envelope(), newer, None).await.unwrap();
-    let older = flows.open_personal_envelope(envelope(), fields.clone(), None).await;
-    let below_in_force = flows
-        .open_personal_envelope(envelope(), fields, Some(Version::new(2).unwrap()))
-        .await;
-
+    assert_eq!(opened.kv.get(), 3);
     assert_eq!(opened.secret.expose_secret(), "hunter2");
     assert_eq!(opened.dest, json!({"host": "db"}));
     assert!(matches!(
@@ -420,6 +444,7 @@ async fn an_envelope_is_sealed_under_the_newest_version_and_never_taken_below_on
         Err(SyncError::Keys(KeysError::Stale { held: 3, offered: 1 }))
     ));
     assert!(matches!(below_in_force, Err(SyncError::Keys(KeysError::Stale { .. }))));
+    assert!(matches!(above_in_force, Err(SyncError::Keys(KeysError::Step { .. }))));
 }
 
 #[tokio::test]
@@ -505,4 +530,110 @@ async fn fingerprints_are_six_words_and_their_qr_compares() {
     assert!(theirs.qr.starts_with("TPF1:"));
     assert!(flows.compare_qr(ana, theirs.qr.clone()).await.unwrap());
     assert!(!flows.compare_qr(ana, own.qr).await.unwrap());
+}
+
+#[tokio::test]
+async fn a_rotation_ends_a_pending_reset_and_moves_history_to_the_new_version() {
+    let flows = with_keys().await;
+    let draft = flows.begin_reset(ResetKind::KeepScopeKeys).await.unwrap();
+    let pending = flows.finish_reset_proposal(draft.draft, typed(&draft)).await.unwrap();
+    let again = flows.finish_reset_proposal(draft.draft, typed(&draft)).await;
+
+    let replace = flows
+        .begin_replace(flows.recovery_key().unwrap())
+        .await
+        .unwrap()
+        .recovery;
+    flows
+        .finish_replace(replace.draft, typed(&replace), Vec::new())
+        .await
+        .unwrap();
+    flows.advance_clock(RESET_HOLD_US);
+    let entry = tablepro_keys::encoding::HistoryId(Uuid::new_v4());
+    let sealed = flows
+        .seal_history_entry(entry, json!({"query": "select 1"}))
+        .await
+        .unwrap();
+
+    assert!(again.is_err());
+    assert_eq!(
+        flows.pending_reset().await.unwrap().unwrap().state,
+        ResetState::Superseded
+    );
+    assert!(flows.activate_reset(pending.reset).await.is_err());
+    assert_eq!(sealed["kv"], json!(2));
+}
+
+#[tokio::test]
+async fn a_refused_push_back_of_a_version_ends_the_team_and_a_refused_confirmation_does_not() {
+    use tablepro_sync::api::ids::{KindName, ScopeName};
+    use tablepro_sync::api::key_flows::{KeyChangeSet, PushBackVerdict, RestoreFlows};
+    use tablepro_sync::api::transport::{Change, ChangeOp, ChangeOutcome, DpopKey};
+
+    let flows = with_keys().await;
+    let team = TeamId(Uuid::new_v4());
+    flows.add_team(team, Role::Owner, &[]);
+    flows.create_team_keys(team).await.unwrap();
+    let set = |kind: &str| KeyChangeSet {
+        scope: ScopeName::Team(team),
+        changes: vec![Change {
+            kind: KindName::parse(kind).unwrap(),
+            record_id: "x".to_owned(),
+            base: None,
+            op: ChangeOp::Delete,
+        }],
+        proof: DpopKey(std::sync::Arc::new(
+            tablepro_keys::keys::Ed25519Seed::generate().unwrap(),
+        )),
+    };
+    let refused = || {
+        vec![ChangeOutcome::Rejected {
+            code: RejectedCode::Role,
+        }]
+    };
+
+    let confirmation = flows.push_back_answered(set("key.wrap"), refused()).await.unwrap();
+    let version = flows.push_back_answered(set("key.version"), refused()).await.unwrap();
+
+    assert_eq!(confirmation, PushBackVerdict::Continue);
+    assert_eq!(
+        version,
+        PushBackVerdict::Ended {
+            scope: ScopeName::Team(team)
+        }
+    );
+    assert_eq!(
+        flows.team_keys(team).await.unwrap().state,
+        tablepro_sync::api::state::KeyVersionState::Ended
+    );
+    assert!(flows.rotate_team(team, Vec::new()).await.is_err());
+}
+
+#[tokio::test]
+async fn a_restart_wraps_to_no_member_under_an_alert() {
+    let flows = with_keys().await;
+    let team = TeamId(Uuid::new_v4());
+    let ana = AccountId(Uuid::from_u128(2));
+    flows.add_team(
+        team,
+        Role::Owner,
+        &[(ana, Role::Editor, MemberKeyStatus::AwaitingConfirmation)],
+    );
+    flows.raise_alert(ana);
+
+    flows.restart_team(team, vec![ana]).await.unwrap();
+
+    let keys = flows.team_keys(team).await.unwrap();
+    assert!(keys.holder);
+    assert_eq!(keys.members[0].status, MemberKeyStatus::Alert);
+}
+
+#[tokio::test]
+async fn a_new_approval_after_sign_out_takes_a_new_key_device() {
+    let flows = with_keys().await;
+    let before = flows.key_device();
+
+    flows.sign_out().await.unwrap();
+
+    assert_ne!(flows.key_device(), before);
 }

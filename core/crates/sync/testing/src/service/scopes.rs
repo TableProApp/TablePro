@@ -170,9 +170,7 @@ impl ServiceTransport for FakeClient {
 
     async fn revoke_key_device(&self, proof: DpopKey) -> Result<(), TransportError> {
         let mut state = self.server.lock();
-        if !state.fail_next.is_empty() {
-            return Err(state.fail_next.remove(0));
-        }
+        self.admit(&mut state, None)?;
         // Taken from any signed-in device; it clears the row's key device only under that key device's own DSK.
         if self.approval(&state, &Proof::Dpop(proof)) == Approval::Approved {
             state.approved.remove(&self.device_row);
@@ -205,7 +203,11 @@ impl ServiceTransport for FakeClient {
         if self.approval(&state, &Proof::Dpop(proof)) != Approval::Approved {
             return Err(TransportError::DeviceNotApproved);
         }
-        if !state.step_up_fresh {
+        // Only a row of the caller's own account, and only on a sign-in with a fresh step-up.
+        if state.rows.get(&device) != Some(&self.account) {
+            return Err(TransportError::NotFound);
+        }
+        if !state.stepped_up.contains(&self.device_row) {
             return Err(TransportError::StepUpRequired(StepUpChallenge {
                 acr_values: vec![STEP_UP_ACR.to_owned()],
                 max_age_secs: 300,

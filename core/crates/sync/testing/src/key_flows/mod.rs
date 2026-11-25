@@ -1,7 +1,8 @@
 // The key flows as the person and the engine see them, with 0056's states and refusals but none of its cryptography
 // beyond the recovery key's text, the SAS words and the fingerprints, which are real. Envelopes and history entries are
-// sealed in the clear in a form that says so; their key version rules hold. For the UI lanes and the engine's tests,
-// never for a check of the keys themselves.
+// sealed in the clear in a form that says so; their key version rules hold. The `apply_*` calls parse no key object:
+// they answer the version in force and nothing held. For the UI lanes and the engine's tests, never for a check of the
+// keys themselves.
 
 mod account;
 mod approval;
@@ -61,6 +62,7 @@ pub(crate) struct FakeTeam {
     pub(crate) holder: bool,
     pub(crate) rotation_due: bool,
     pub(crate) members: BTreeMap<AccountId, (Role, MemberKeyStatus)>,
+    pub(crate) ended: bool,
 }
 
 #[derive(Debug)]
@@ -88,13 +90,17 @@ pub(crate) struct Model {
     pub(crate) held_kv: HashMap<(ScopeName, String), u32>,
     pub(crate) credentials: Vec<EnvelopeId>,
     pub(crate) clock_us: i64,
+    pub(crate) key_device: KeyDeviceId,
+    // An IK offered for an account whose pin is under an alert.
+    pub(crate) offered: HashMap<AccountId, Ed25519Public>,
+    // The draft holding R' for each reset this device proposed.
+    pub(crate) reset_drafts: HashMap<tablepro_keys::encoding::ResetId, DraftId>,
 }
 
 #[derive(Debug)]
 pub struct FakeKeyFlows {
     pub(crate) origin: Origin,
     pub(crate) account: AccountId,
-    pub(crate) key_device: KeyDeviceId,
     pub(crate) model: Mutex<Model>,
 }
 
@@ -104,7 +110,6 @@ impl FakeKeyFlows {
         Self {
             origin,
             account,
-            key_device: KeyDeviceId(Uuid::new_v4()),
             model: Mutex::new(Model {
                 key_state: KeyState::NoKeys,
                 av: 0,
@@ -129,6 +134,9 @@ impl FakeKeyFlows {
                 held_kv: HashMap::new(),
                 credentials: Vec::new(),
                 clock_us: 1_767_225_600_000_000,
+                key_device: KeyDeviceId(Uuid::new_v4()),
+                offered: HashMap::new(),
+                reset_drafts: HashMap::new(),
             }),
         }
     }
@@ -138,7 +146,7 @@ impl FakeKeyFlows {
     }
 
     pub fn key_device(&self) -> KeyDeviceId {
-        self.key_device
+        self.lock().key_device
     }
 
     pub fn recovery_key(&self) -> Option<SecretString> {
@@ -213,6 +221,7 @@ impl FakeKeyFlows {
                 version: None,
                 holder: false,
                 rotation_due: false,
+                ended: false,
                 members: members
                     .iter()
                     .map(|(account, role, status)| (*account, (*role, *status)))
@@ -227,7 +236,9 @@ impl FakeKeyFlows {
 
     // A key change with no endorsement: an alert in every team the account is in.
     pub fn raise_alert(&self, account: AccountId) {
+        let offered = Ed25519Public(*Uuid::new_v4().as_bytes().repeat(2).first_chunk().unwrap_or(&[0; 32]));
         let mut model = self.lock();
+        model.offered.insert(account, offered);
         for team in model.teams.values_mut() {
             if let Some((_, status)) = team.members.get_mut(&account) {
                 *status = MemberKeyStatus::Alert;
@@ -261,6 +272,53 @@ pub(crate) fn require_approved(model: &Model, what: &'static str) -> Result<(), 
         KeyState::Approved { .. } => Ok(()),
         KeyState::Locked { cause } => Err(SyncError::Locked { cause }),
         _ => Err(SyncError::NotAllowed { what }),
+    }
+}
+
+// A rotation to the next `av`: the personal and history keys move with it, and a pending reset at that `av` ends,
+// since whoever rotated holds R (0056, Rotation).
+pub(crate) fn rotate(model: &mut Model) {
+    model.av += 1;
+    model.history_version = model.av;
+    supersede_reset(model);
+}
+
+// Only a device this one compared with can be kept (0056, Rotation); the others leave the account's list.
+pub(crate) fn keep_compared(model: &mut Model, keep: &[KeyDeviceId]) -> Result<(), SyncError> {
+    let comparable = |id: &KeyDeviceId| {
+        model
+            .devices
+            .iter()
+            .any(|device| device.key_device == *id && device.compared)
+    };
+    if !keep.iter().all(comparable) {
+        return Err(SyncError::Keys(KeysError::NotCompared));
+    }
+    model
+        .devices
+        .retain(|device| device.this_device || keep.contains(&device.key_device));
+    Ok(())
+}
+
+pub(crate) fn supersede_reset(model: &mut Model) {
+    let ended = match &mut model.reset {
+        Some(reset) if reset.state == tablepro_sync::api::key_flows::ResetState::Pending => {
+            reset.state = tablepro_sync::api::key_flows::ResetState::Superseded;
+            Some(reset.reset)
+        }
+        _ => None,
+    };
+    if let Some(reset) = ended {
+        if let Some(draft) = model.reset_drafts.remove(&reset) {
+            model.drafts.remove(&draft);
+        }
+        account::notice(
+            model,
+            tablepro_sync::api::key_flows::KeyNoticeKind::ResetEnded {
+                reset,
+                state: tablepro_sync::api::key_flows::ResetState::Superseded,
+            },
+        );
     }
 }
 

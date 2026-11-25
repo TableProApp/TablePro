@@ -25,6 +25,17 @@ fn team(model: &mut Model, team: TeamId) -> Result<&mut FakeTeam, SyncError> {
     model.teams.get_mut(&team).ok_or(SyncError::Unknown { what: "team" })
 }
 
+// A team that ended on this device writes no secret and takes no new version (0051, What cannot go back).
+fn live_team(model: &mut Model, id: TeamId) -> Result<&mut FakeTeam, SyncError> {
+    let held = team(model, id)?;
+    if held.ended {
+        return Err(SyncError::NotAllowed {
+            what: "use a team that ended on this device",
+        });
+    }
+    Ok(held)
+}
+
 fn next(version: Option<Version>) -> Option<Version> {
     Version::new(version.map_or(1, |version| version.get() + 1)).ok()
 }
@@ -37,7 +48,11 @@ impl TeamFlows for FakeKeyFlows {
         Ok(TeamKeys {
             team: id,
             version: held.version,
-            state: KeyVersionState::Ok,
+            state: if held.ended {
+                KeyVersionState::Ended
+            } else {
+                KeyVersionState::Ok
+            },
             rotation_due: held.rotation_due,
             holder: held.holder,
             members: held
@@ -49,13 +64,14 @@ impl TeamFlows for FakeKeyFlows {
                     status: *status,
                 })
                 .collect(),
+            stopped: Vec::new(),
         })
     }
 
     async fn create_team_keys(&self, id: TeamId) -> Result<(), SyncError> {
         let mut model = self.lock();
         require_approved(&model, "create a team key")?;
-        let held = team(&mut model, id)?;
+        let held = live_team(&mut model, id)?;
         if held.role != Role::Owner || held.version.is_some() {
             return Err(role(RejectedCode::Role));
         }
@@ -73,7 +89,7 @@ impl TeamFlows for FakeKeyFlows {
     async fn confirm_member(&self, id: TeamId, account: AccountId) -> Result<(), SyncError> {
         let mut model = self.lock();
         require_approved(&model, "confirm a member")?;
-        let held = team(&mut model, id)?;
+        let held = live_team(&mut model, id)?;
         if !held.role.manages_keys() {
             return Err(role(RejectedCode::Role));
         }
@@ -102,7 +118,7 @@ impl TeamFlows for FakeKeyFlows {
     async fn rotate_team(&self, id: TeamId, remove: Vec<AccountId>) -> Result<(), SyncError> {
         let mut model = self.lock();
         require_approved(&model, "rotate a team key")?;
-        let held = team(&mut model, id)?;
+        let held = live_team(&mut model, id)?;
         if !held.holder {
             return Err(SyncError::Keys(KeysError::NotHolder));
         }
@@ -122,7 +138,7 @@ impl TeamFlows for FakeKeyFlows {
     async fn restart_team(&self, id: TeamId, confirm: Vec<AccountId>) -> Result<(), SyncError> {
         let mut model = self.lock();
         require_approved(&model, "restart a team key")?;
-        let held = team(&mut model, id)?;
+        let held = live_team(&mut model, id)?;
         if held.role != Role::Owner {
             return Err(role(RejectedCode::Role));
         }
@@ -135,8 +151,9 @@ impl TeamFlows for FakeKeyFlows {
         {
             return Err(role(RejectedCode::Role));
         }
+        // Nothing goes to a member with no keys or under an open alert.
         for (account, (_, status)) in &mut held.members {
-            if confirm.contains(account) && *status != MemberKeyStatus::NoKeys {
+            if confirm.contains(account) && *status == MemberKeyStatus::AwaitingConfirmation {
                 *status = MemberKeyStatus::Holder;
             }
         }
@@ -177,9 +194,18 @@ impl TeamFlows for FakeKeyFlows {
         Ok(())
     }
 
+    // Parses nothing: the team's version in force comes back, so an engine test can carry it with the cursor.
     async fn apply_team_objects(&self, arrival: KeyArrival) -> Result<KeyApplied, SyncError> {
-        let _ = arrival;
-        Ok(KeyApplied::default())
+        let ScopeName::Team(id) = arrival.scope else {
+            return Err(SyncError::NotAllowed {
+                what: "apply team objects outside a team",
+            });
+        };
+        let version = team(&mut self.lock(), id)?.version;
+        Ok(KeyApplied {
+            in_force: version,
+            ..KeyApplied::default()
+        })
     }
 
     async fn seal_team_envelope(
@@ -191,7 +217,7 @@ impl TeamFlows for FakeKeyFlows {
     ) -> Result<Value, SyncError> {
         let mut model = self.lock();
         require_approved(&model, "seal a team secret")?;
-        let held = team(&mut model, id)?;
+        let held = live_team(&mut model, id)?;
         if !held.holder {
             return Err(role(RejectedCode::Role));
         }
@@ -219,7 +245,15 @@ impl TeamFlows for FakeKeyFlows {
             return Err(SyncError::Keys(KeysError::NotHolder));
         }
         let (kv, plaintext) = fake_open(&fields)?;
-        take_kv(&mut model, ScopeName::Team(id), &envelope.to_wire(), kv, in_force)?;
+        let newest = team(&mut model, id)?.version.map_or(0, Version::get);
+        take_kv(
+            &mut model,
+            ScopeName::Team(id),
+            &envelope.to_wire(),
+            kv,
+            in_force,
+            newest,
+        )?;
         Ok(opened(kv, &plaintext))
     }
 }
@@ -257,7 +291,15 @@ impl RestoreFlows for FakeKeyFlows {
                 );
                 Ok(PushBackVerdict::AccountEnded)
             }
-            scope @ ScopeName::Team(_) => {
+            scope @ ScopeName::Team(id) => {
+                // A refused confirmation wrap ends nothing: the member is confirmed again at the next version.
+                let refused_version = set.changes.iter().zip(&outcomes).any(|(change, outcome)| {
+                    change.kind.as_str() != "key.wrap" && !matches!(outcome, ChangeOutcome::Applied { .. })
+                });
+                if !refused_version {
+                    return Ok(PushBackVerdict::Continue);
+                }
+                team(&mut model, id)?.ended = true;
                 notice(&mut model, KeyNoticeKind::ScopeEnded { scope });
                 Ok(PushBackVerdict::Ended { scope })
             }

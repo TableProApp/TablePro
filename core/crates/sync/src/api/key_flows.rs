@@ -10,6 +10,7 @@ use serde_json::Value;
 use tablepro_keys::KeysError;
 use tablepro_keys::encoding::{AccountId, HistoryId, KeyDeviceId, RequestId, ResetId, TeamId, Version};
 use tablepro_keys::envelope::EnvelopeId;
+use tablepro_keys::keys::Ed25519Public;
 use uuid::Uuid;
 
 use super::error::SyncError;
@@ -56,13 +57,15 @@ pub trait AccountFlows: Send + Sync {
     }
 
     // Replace Recovery Key: a rotation with R' and IK' endorsed by the old IK, which needs the current R.
-    async fn begin_replace(&self, recovery_key: SecretString) -> Result<RecoveryKeyDraft, SyncError> {
+    // Shows R' and the devices the rotation can keep: this one, and those it compared with.
+    async fn begin_replace(&self, recovery_key: SecretString) -> Result<RotationDraft, SyncError> {
         let _ = recovery_key;
         unimplemented("keys.begin_replace")
     }
 
-    async fn finish_replace(&self, draft: DraftId, typed: TypedBack) -> Result<(), SyncError> {
-        let _ = (draft, typed);
+    // `keep` is the own-device pins the person ticked; every other device joins again by approval.
+    async fn finish_replace(&self, draft: DraftId, typed: TypedBack, keep: Vec<KeyDeviceId>) -> Result<(), SyncError> {
+        let _ = (draft, typed, keep);
         unimplemented("keys.finish_replace")
     }
 
@@ -82,9 +85,21 @@ pub trait AccountFlows: Send + Sync {
         unimplemented("keys.compare_qr")
     }
 
-    // Re-confirming after a key-change alert, by comparing or by accepting, which is recorded as `first_use`.
-    async fn accept_key_change(&self, account: AccountId, how: Acceptance) -> Result<(), SyncError> {
-        let _ = (account, how);
+    // An open key-change alert: the IK pinned and the one offered, each with its words, to compare before accepting.
+    async fn key_change(&self, account: AccountId) -> Result<Option<KeyChange>, SyncError> {
+        let _ = account;
+        unimplemented("keys.key_change")
+    }
+
+    // Re-confirming after a key-change alert, by comparing or by accepting, which is recorded as `first_use`. Bound to
+    // the offered IK the person saw, so a different one offered since is not accepted with it.
+    async fn accept_key_change(
+        &self,
+        account: AccountId,
+        offered: Ed25519Public,
+        how: Acceptance,
+    ) -> Result<(), SyncError> {
+        let _ = (account, offered, how);
         unimplemented("keys.accept_key_change")
     }
 
@@ -497,6 +512,21 @@ pub enum SignOutOutcome {
     ErasedOffline,
 }
 
+// R' as a draft, with the devices a rotation can keep, ticked by default when compared.
+#[derive(Debug, Clone)]
+pub struct RotationDraft {
+    pub recovery: RecoveryKeyDraft,
+    pub devices: Vec<ReviewedDevice>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyChange {
+    pub account: AccountId,
+    pub pinned: Fingerprint,
+    pub offered: Fingerprint,
+    pub offered_ik: Ed25519Public,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Fingerprint {
     // Words 0 to 5 of the account's fingerprint.
@@ -700,6 +730,17 @@ pub struct TeamKeys {
     // This account holds the current version.
     pub holder: bool,
     pub members: Vec<MemberKeys>,
+    // The stop reports owners and admins see (0051, A stopped device).
+    pub stopped: Vec<StoppedDevice>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoppedDevice {
+    pub account: AccountId,
+    pub device: DeviceRowId,
+    pub version: Version,
+    // This account held that version, so its rotation confirms the device again; the app offers it only then.
+    pub can_reconfirm: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

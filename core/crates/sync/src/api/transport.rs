@@ -96,6 +96,9 @@ pub struct PulledRecord {
     pub tag: ChangeTag,
     // None on a tombstone, whose fields `/v2/sync` never sends.
     pub fields: Option<Value>,
+    // The fields' JSON text exactly as served. A key object is parsed from it, so a duplicate member is refused
+    // rather than collapsed (0051, Key object bodies). None on CloudKit and on a tombstone.
+    pub fields_json: Option<String>,
     pub deleted: Option<DeletedReason>,
     // The service's columns; None on CloudKit.
     pub service: Option<ServiceMeta>,
@@ -334,8 +337,9 @@ pub enum TransportError {
     IdempotencyMismatch,
     #[error("rate limited")]
     RateLimited { retry_after_ms: Option<u64> },
+    // 503: backed off as a 429 is, honoring `Retry-After`.
     #[error("the server cannot run its restore check")]
-    RestoreCheckUnavailable,
+    RestoreCheckUnavailable { retry_after_ms: Option<u64> },
     // `GET /v2/sync/scopes` answered 404: the server has no `/v2/sync` (0051, Releases).
     #[error("the server is too old for TablePro Sync")]
     ServerTooOld,
@@ -345,7 +349,11 @@ pub enum TransportError {
     Network { detail: String },
     // Another status or problem code, as the server sent it.
     #[error("the server answered {status} {code}")]
-    Server { status: u16, code: String },
+    Server {
+        status: u16,
+        code: String,
+        retry_after_ms: Option<u64>,
+    },
 }
 
 impl TransportError {
@@ -366,7 +374,7 @@ impl TransportError {
             Self::EpochChanged => "sync.epoch_changed",
             Self::IdempotencyMismatch => "sync.idempotency_mismatch",
             Self::RateLimited { .. } => "sync.rate_limited",
-            Self::RestoreCheckUnavailable => "sync.restore_check_unavailable",
+            Self::RestoreCheckUnavailable { .. } => "sync.restore_check_unavailable",
             Self::ServerTooOld => "sync.server_too_old",
             Self::SignedOut => "sync.signed_out",
             Self::Network { .. } => "sync.network",

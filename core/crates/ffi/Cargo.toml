@@ -64,6 +64,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 uniffi.workspace = true
 uuid.workspace = true
+zeroize.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true

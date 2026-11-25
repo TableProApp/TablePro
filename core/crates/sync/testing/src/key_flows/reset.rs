@@ -26,6 +26,9 @@ fn settle(model: &mut Model) {
         _ => None,
     };
     if let Some(reset) = ended {
+        if let Some(draft) = model.reset_drafts.remove(&reset) {
+            model.drafts.remove(&draft);
+        }
         notice(
             model,
             KeyNoticeKind::ResetEnded {
@@ -86,6 +89,11 @@ impl ResetFlows for FakeKeyFlows {
             return Err(SyncError::Unknown { what: "reset draft" });
         };
         check_typed_back(&held, &typed)?;
+        // At most one reset is pending, and a draft proposes once.
+        settle(&mut model);
+        if pending(&model).is_some() || model.reset_drafts.values().any(|proposed| *proposed == draft) {
+            return Err(rejected(RejectedCode::BadStatement));
+        }
         let reset = PendingReset {
             reset: ResetId(random_uuid()?),
             kind,
@@ -95,7 +103,8 @@ impl ResetFlows for FakeKeyFlows {
             taken_at_us: model.clock_us,
             held_until_us: model.clock_us + RESET_HOLD_US,
         };
-        // R' stays with the draft, as the reset's keys wait in the device store, until it activates.
+        // R' stays with its draft, as the reset's keys wait in the device store, until the reset activates or ends.
+        model.reset_drafts.insert(reset.reset, draft);
         model.reset = Some(reset.clone());
         notice(&mut model, KeyNoticeKind::ResetPending { reset: reset.reset });
         Ok(reset)
@@ -116,6 +125,9 @@ impl ResetFlows for FakeKeyFlows {
         }
         if let Some(held) = &mut model.reset {
             held.state = ResetState::Cancelled;
+        }
+        if let Some(draft) = model.reset_drafts.remove(&reset) {
+            model.drafts.remove(&draft);
         }
         notice(
             &mut model,
@@ -143,19 +155,16 @@ impl ResetFlows for FakeKeyFlows {
         if model.clock_us < held.held_until_us {
             return Err(rejected(RejectedCode::ResetHeld));
         }
-        let draft = model
-            .drafts
-            .iter()
-            .find(|(_, draft)| draft.purpose == DraftPurpose::Reset(held.kind))
-            .map(|(id, draft)| (*id, draft.text.clone()));
-        if let Some((id, text)) = draft {
-            model.drafts.remove(&id);
-            model.recovery = Some(text);
+        if let Some(draft) = model.reset_drafts.remove(&reset)
+            && let Some(proposed) = model.drafts.remove(&draft)
+        {
+            model.recovery = Some(proposed.text);
         }
         if let Some(stored) = &mut model.reset {
             stored.state = ResetState::Active;
         }
         model.av += 1;
+        model.history_version = model.av;
         model.devices.retain(|device| device.this_device);
         for team in model.teams.values_mut() {
             team.holder = false;

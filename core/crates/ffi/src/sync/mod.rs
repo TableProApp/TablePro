@@ -4,6 +4,7 @@
 mod cloudkit;
 mod host;
 mod keys;
+mod legacy;
 mod service;
 
 pub use cloudkit::{
@@ -14,14 +15,17 @@ pub use host::{
     DeviceItemClassTag, DeviceItemTag, HostDeviceStore, HostSettings, SettingsCategoryArg, device_item_class,
 };
 pub use keys::{
-    AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, FingerprintInfo, GenesisOutcomeTag, KeyNoticeInfo,
-    KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo,
-    PendingResetInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo,
-    ReviewedMemberInfo, SessionEndTag, SessionPhaseTag, SessionRoleTag, SignOutOutcomeTag, StopCauseTag, TeamKeysInfo,
-    TeamRoleTag,
+    AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, FingerprintInfo, GenesisOutcomeTag, KeyChangeInfo,
+    KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LockCauseTag, MemberKeyStatusTag,
+    MemberKeysInfo, PendingResetInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag,
+    ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo, SessionEndTag, SessionPhaseTag, SessionRoleTag,
+    SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, TeamKeysInfo, TeamRoleTag,
+};
+pub use legacy::{
+    HostLegacyMirror, LegacyMetadataArg, LegacyRecordArg, LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg,
 };
 pub use service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
-    PassReasonTag, PendingApprovalInfo, SyncConfig, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef,
-    SyncService, SyncStatusInfo, TeamConflictInfo,
+    PassReasonTag, PendingApprovalInfo, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag,
+    SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo,
 };

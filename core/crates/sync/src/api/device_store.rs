@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use tablepro_keys::encoding::{AccountId, Origin, ResetId, Version};
 use zeroize::Zeroizing;
 
-use super::ids::{DeviceRowId, FileId};
+use super::ids::{DeviceRowId, StateName};
 
 // The device's own secret store (0056, Device stores; 0054, Integrity and freshness): Keychain items that do not sync,
 // Credential Manager with local machine persistence, a Secret Service item. Never synced or exported. Each call may
@@ -42,15 +42,16 @@ pub enum DeviceItem {
     },
     // 32 random bytes per state file, in the anchor's class.
     StateMacKey {
-        file: FileId,
+        state: StateName,
     },
-    // The anchor's root: the file id, the current entry and at most one pending entry.
+    // The anchor's root: the file id, the current entry and at most one pending entry. Named by the state file's
+    // name, not its file id, so an anchor with no file is still found (0054, On open).
     AnchorRoot {
-        file: FileId,
+        state: StateName,
     },
-    // One numbered part of a checkpoint the root names; Windows splits one over items of 2,560 bytes.
+    // One numbered part of a checkpoint the root names by its digest; Windows splits one over items of 2,560 bytes.
     AnchorCheckpoint {
-        file: FileId,
+        state: StateName,
         checkpoint: [u8; 32],
         part: u32,
     },

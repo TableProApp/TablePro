@@ -120,6 +120,23 @@ fn member(av: u32) -> String {
     format!("{ACCOUNT}/{av}")
 }
 
+// The personal and history key versions up to `upto`, each its own change set.
+async fn key_versions(device: &Device, upto: u32) {
+    for version in 1..=upto {
+        for purpose in ["personal", "history"] {
+            let id = format!("{ACCOUNT}/{purpose}/{version}");
+            let outcomes = device
+                .push(
+                    ScopeName::Personal,
+                    vec![write("key.version", &id, None, json!({"suite": "tp1"}))],
+                )
+                .await
+                .unwrap();
+            tag_of(&outcomes[0]);
+        }
+    }
+}
+
 #[tokio::test]
 async fn a_write_applies_only_on_the_stored_tag_and_a_create_over_a_record_conflicts() {
     let server = FakeServer::new();
@@ -514,6 +531,7 @@ async fn a_page_never_ends_inside_a_change_set() {
 async fn the_history_scope_pages_newest_first_with_a_cursor_for_the_changes() {
     let server = FakeServer::new();
     let mac = device(&server, "dev_mac", true);
+    key_versions(&mac, 1).await;
     let ids: Vec<String> = (0..3).map(|_| Uuid::new_v4().to_string().to_uppercase()).collect();
     for id in &ids {
         mac.push(
@@ -548,6 +566,7 @@ async fn the_history_scope_pages_newest_first_with_a_cursor_for_the_changes() {
 async fn a_history_entry_is_created_once() {
     let server = FakeServer::new();
     let mac = device(&server, "dev_mac", true);
+    key_versions(&mac, 1).await;
     let id = Uuid::new_v4().to_string().to_uppercase();
     let created = mac
         .push(
@@ -563,7 +582,7 @@ async fn a_history_entry_is_created_once() {
                 "history_entry",
                 &id,
                 Some(tag_of(&created.unwrap()[0])),
-                json!({"kv": 2}),
+                json!({"kv": 1}),
             )],
         )
         .await;
@@ -631,6 +650,7 @@ async fn a_reserved_kind_outside_its_scopes_and_a_value_the_rules_refuse_are_rej
 async fn a_switch_turned_off_tombstones_with_policy_and_refuses_the_kind() {
     let server = FakeServer::new();
     let mac = device(&server, "dev_mac", true);
+    key_versions(&mac, 1).await;
     let id = format!("connection/{CONNECTION}/password");
     let sealed = json!({"suite": "tp1", "kv": 1, "nonce": "n", "ct": "c"});
     mac.push(
@@ -649,10 +669,11 @@ async fn a_switch_turned_off_tombstones_with_policy_and_refuses_the_kind() {
         .await
         .unwrap();
     let page = mac.pull(ScopeName::Personal, None).await.unwrap();
+    let envelope = page.records.iter().find(|record| record.record_id == id).unwrap();
 
     assert_eq!(rejected(&refused[0]), RejectedCode::Policy);
-    assert_eq!(page.records[0].deleted, Some(DeletedReason::Policy));
-    assert_eq!(page.records[0].fields, None);
+    assert_eq!(envelope.deleted, Some(DeletedReason::Policy));
+    assert_eq!(envelope.fields, None);
 }
 
 #[tokio::test]
@@ -738,7 +759,7 @@ async fn removing_a_row_needs_a_step_up_and_the_removed_device_is_told_on_every_
         .client
         .remove_device_row(lost.client.device_row.clone(), mac.key.clone())
         .await;
-    server.set_step_up(true);
+    server.set_step_up(&mac.client.device_row, true);
     mac.client
         .remove_device_row(lost.client.device_row.clone(), mac.key.clone())
         .await
@@ -783,4 +804,204 @@ async fn past_grace_only_key_objects_are_taken() {
 
     assert_eq!(data.unwrap_err(), TransportError::LicenseExpired);
     tag_of(&keys.unwrap()[0]);
+}
+
+#[tokio::test]
+async fn an_envelope_is_taken_only_under_the_current_key_version() {
+    let server = FakeServer::new();
+    let mac = device(&server, "dev_mac", true);
+    key_versions(&mac, 2).await;
+    let id = format!("connection/{CONNECTION}/password");
+    let sealed = |kv: u32| json!({"suite": "tp1", "kv": kv, "nonce": "n", "ct": "c"});
+
+    let stale = mac
+        .push(
+            ScopeName::Personal,
+            vec![write("secret_envelope", &id, None, sealed(1))],
+        )
+        .await
+        .unwrap();
+    let unknown = mac
+        .push(
+            ScopeName::Personal,
+            vec![write("secret_envelope", &id, None, sealed(3))],
+        )
+        .await
+        .unwrap();
+    let current = mac
+        .push(
+            ScopeName::Personal,
+            vec![write("secret_envelope", &id, None, sealed(2))],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(rejected(&stale[0]), RejectedCode::KeyVersionStale);
+    assert_eq!(rejected(&unknown[0]), RejectedCode::KeyVersionUnknown);
+    tag_of(&current[0]);
+}
+
+#[tokio::test]
+async fn a_team_envelope_is_refused_while_the_team_is_due_a_rotation() {
+    let server = FakeServer::new();
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account(), Role::Owner)]);
+    let mac = device(&server, "dev_mac", true);
+    let version = format!("{}/team/1", tablepro_keys::encoding::uuid_to_wire(team.0));
+    mac.push(
+        ScopeName::Team(team),
+        vec![write("key.version", &version, None, json!({"suite": "tp1"}))],
+    )
+    .await
+    .unwrap();
+    server.set_rotation_due(team, true);
+    let id = format!("library_connection/{}/password", CONNECTION.to_lowercase());
+
+    let held = mac
+        .push(
+            ScopeName::Team(team),
+            vec![write("secret_envelope", &id, None, json!({"suite": "tp1", "kv": 1}))],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(rejected(&held[0]), RejectedCode::RotationDue);
+}
+
+#[tokio::test]
+async fn a_team_library_id_that_matches_another_once_lower_cased_is_refused() {
+    let server = FakeServer::new();
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account(), Role::Editor)]);
+    let mac = device(&server, "dev_mac", true);
+    let lower = CONNECTION.to_lowercase();
+    mac.push(
+        ScopeName::Team(team),
+        vec![write("library_folder", &lower, None, json!({"name": "a"}))],
+    )
+    .await
+    .unwrap();
+
+    let upper = mac
+        .push(
+            ScopeName::Team(team),
+            vec![write("library_folder", CONNECTION, None, json!({"name": "b"}))],
+        )
+        .await;
+
+    assert_eq!(rejected(&upper.unwrap()[0]), RejectedCode::IdCaseCollision);
+}
+
+#[tokio::test]
+async fn a_replay_checks_the_role_again_and_answers_expire_after_a_day() {
+    let server = FakeServer::new();
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account(), Role::Editor)]);
+    let mac = device(&server, "dev_mac", true);
+    let batch = mac.batch(
+        ScopeName::Team(team),
+        vec![write("library_folder", CONNECTION, None, json!({"name": "a"}))],
+    );
+    mac.client.push(batch.clone()).await.unwrap();
+
+    server.set_role(team, account(), Some(Role::Member));
+    let demoted = mac.client.push(batch.clone()).await.unwrap();
+    server.set_role(team, account(), Some(Role::Editor));
+    server.advance_clock(86_400 * 1_000_000);
+    let expired = mac.client.push(batch).await.unwrap();
+
+    assert_eq!(rejected(&demoted.outcomes[0]), RejectedCode::Role);
+    assert!(matches!(&expired.outcomes[0], ChangeOutcome::Conflict { .. }));
+}
+
+#[tokio::test]
+async fn a_body_over_four_mebibytes_is_refused_whole() {
+    let server = FakeServer::new();
+    let mac = device(&server, "dev_mac", true);
+    let big = "x".repeat(900 * 1024);
+    let changes: Vec<Change> = (0..5)
+        .map(|_| {
+            write(
+                "tag",
+                &Uuid::new_v4().to_string().to_uppercase(),
+                None,
+                json!({"name": big}),
+            )
+        })
+        .collect();
+
+    let refused = mac.push(ScopeName::Personal, changes).await;
+
+    assert!(matches!(refused, Err(TransportError::Server { status: 413, .. })));
+    assert_eq!(server.horizon(ScopeOwner::Personal(account())), 0);
+}
+
+#[tokio::test]
+async fn before_approval_a_lone_device_certificate_is_refused() {
+    let server = FakeServer::new();
+    let new = device(&server, "dev_new", false);
+    let certificate = format!("{ACCOUNT}/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/1");
+
+    let lone = new
+        .push(
+            ScopeName::Personal,
+            vec![write("key.device", &certificate, None, json!({"suite": "tp1"}))],
+        )
+        .await;
+    let request = new
+        .push(
+            ScopeName::Personal,
+            vec![write(
+                "key.request",
+                "5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357",
+                None,
+                json!({"suite": "tp1"}),
+            )],
+        )
+        .await;
+
+    assert_eq!(lone.unwrap_err(), TransportError::DeviceNotApproved);
+    tag_of(&request.unwrap()[0]);
+}
+
+#[tokio::test]
+async fn a_row_of_another_account_cannot_be_removed_and_a_removed_row_cannot_revoke() {
+    let server = FakeServer::new();
+    let mac = device(&server, "dev_mac", true);
+    let stranger = server.client(AccountId(Uuid::from_u128(5)), DeviceRowId("dev_other".to_owned()));
+    let lost = device(&server, "dev_lost", true);
+    server.set_step_up(&mac.client.device_row, true);
+
+    let other = mac
+        .client
+        .remove_device_row(stranger.device_row.clone(), mac.key.clone())
+        .await;
+    mac.client
+        .remove_device_row(lost.client.device_row.clone(), mac.key.clone())
+        .await
+        .unwrap();
+
+    assert_eq!(other.unwrap_err(), TransportError::NotFound);
+    assert_eq!(
+        lost.client.revoke_key_device(lost.key.clone()).await.unwrap_err(),
+        TransportError::DeviceRemoved
+    );
+}
+
+#[tokio::test]
+async fn a_pulled_record_names_the_account_that_wrote_it() {
+    let server = FakeServer::new();
+    let mac = device(&server, "dev_mac", true);
+    mac.push(
+        ScopeName::Personal,
+        vec![write("tag", CONNECTION, None, json!({"name": "a"}))],
+    )
+    .await
+    .unwrap();
+
+    let page = mac.pull(ScopeName::Personal, None).await.unwrap();
+    let meta = page.records[0].service.clone().unwrap();
+
+    assert_eq!(meta.updated_by.as_deref(), Some(ACCOUNT));
+    assert_eq!(page.records[0].fields_json.as_deref(), Some(r#"{"name":"a"}"#));
 }

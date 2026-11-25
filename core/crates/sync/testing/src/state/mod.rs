@@ -193,18 +193,22 @@ impl StateTxn for MemoryTxn {
         Ok(())
     }
 
+    // On a copy, published only once it is whole, so a refused commit leaves the file as it was.
     async fn commit(self: Box<Self>) -> Result<Committed, StateError> {
         let mut rows = lock(&self.rows);
+        let mut next = rows.clone();
         for write in &self.writes {
-            apply(&mut rows, write);
+            apply(&mut next, write);
         }
-        let Some(Row::Binding(binding)) = rows.get_mut(&(Table::Binding, Vec::new())) else {
+        let Some(Row::Binding(binding)) = next.get_mut(&(Table::Binding, Vec::new())) else {
             return Err(StateError::Integrity);
         };
         binding.counter += 1;
-        Ok(Committed {
+        let committed = Committed {
             counter: binding.counter,
-        })
+        };
+        *rows = next;
+        Ok(committed)
     }
 }
 

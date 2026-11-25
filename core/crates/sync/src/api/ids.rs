@@ -201,6 +201,11 @@ pub struct DeviceRowId(pub String);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FileId(pub [u8; 16]);
 
+// The hex digest that names one identity's state file (0054, One per provider and account). It stays the same when
+// the file is lost or made again, so the device store finds an anchor that outlived its file by it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct StateName(pub String);
+
 #[cfg(test)]
 mod tests {
     use super::*;
