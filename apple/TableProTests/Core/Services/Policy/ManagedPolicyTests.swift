@@ -142,10 +142,14 @@ struct ManagedPolicyReaderTests {
     func wrongTypeIsIgnored() {
         let reader = ManagedPolicyReader(preferences: FakePreferences(forced: [
             ManagedPolicy.accountServerURL.key: 42,
-            ManagedPolicy.allowOtherAccountServers.key: "false"
+            ManagedPolicy.allowOtherAccountServers.key: "false",
+            ManagedPolicy.usageDataAllowed.key: "NO",
+            ManagedPolicy.iCloudSyncAllowed.key: NSNumber(value: 0)
         ]))
         #expect(reader.string(.accountServerURL) == nil)
         #expect(reader.bool(.allowOtherAccountServers) == nil)
+        #expect(reader.bool(.usageDataAllowed) == nil)
+        #expect(reader.bool(.iCloudSyncAllowed) == nil)
     }
 
     @Test("a number is not a boolean policy")
@@ -154,6 +158,64 @@ struct ManagedPolicyReaderTests {
             ManagedPolicy.allowOtherAccountServers.key: NSNumber(value: 0)
         ]))
         #expect(reader.bool(.allowOtherAccountServers) == nil)
+    }
+
+    @Test("the keys a profile forces read as one set, and a person's own values for them are not policy")
+    func snapshotReadsOnlyForcedValues() {
+        let values: [String: Any] = [
+            ManagedPolicy.accountServerURL.key: "https://tablepro.corp.example",
+            ManagedPolicy.allowOtherAccountServers.key: false,
+            ManagedPolicy.personalSyncProvider.key: ["tablepro-sync", "off"],
+            ManagedPolicy.usageDataAllowed.key: false,
+            ManagedPolicy.pluginCatalogAllowed.key: false,
+            ManagedPolicy.iCloudSyncAllowed.key: false
+        ]
+
+        let forced = ManagedPolicySnapshot(reading: ManagedPolicyReader(preferences: FakePreferences(forced: values)))
+        let written = ManagedPolicySnapshot(reading: ManagedPolicyReader(preferences: FakePreferences(unforced: values)))
+
+        #expect(forced == ManagedPolicySnapshot(
+            accountServerURL: "https://tablepro.corp.example",
+            allowOtherAccountServers: false,
+            personalSyncProvider: ["tablepro-sync", "off"],
+            usageDataAllowed: false,
+            pluginCatalogAllowed: false,
+            iCloudSyncAllowed: false
+        ))
+        #expect(!forced.allowsUsageData && !forced.allowsPluginCatalog && !forced.allowsICloudSync)
+        #expect(written == ManagedPolicySnapshot())
+        #expect(written.allowsUsageData && written.allowsPluginCatalog && written.allowsICloudSync)
+    }
+
+    @Test("a list keeps its strings and skips any other entry; a list key of another type reads nil")
+    func listEntriesThatAreNotStringsAreSkipped() {
+        let mixed = ManagedPolicyReader(preferences: FakePreferences(forced: [
+            ManagedPolicy.personalSyncProvider.key: ["icloud", 7, "off"] as [Any]
+        ]))
+        let single = ManagedPolicyReader(preferences: FakePreferences(forced: [
+            ManagedPolicy.personalSyncProvider.key: "icloud"
+        ]))
+        let empty = ManagedPolicyReader(preferences: FakePreferences(forced: [
+            ManagedPolicy.personalSyncProvider.key: [String]()
+        ]))
+
+        #expect(mixed.strings(.personalSyncProvider) == ["icloud", "off"])
+        #expect(single.strings(.personalSyncProvider) == nil)
+        #expect(empty.strings(.personalSyncProvider) == [])
+    }
+
+    @Test("a Safe Mode floor of another type or an unknown level sets no floor")
+    func safeModeFloorOfAnotherTypeIsNoFloor() {
+        let number = ManagedPolicyReader(preferences: FakePreferences(forced: [
+            ManagedPolicy.minimumSafeModeLevel.key: 2
+        ]))
+        let unknown = ManagedPolicyReader(preferences: FakePreferences(forced: [
+            ManagedPolicy.minimumSafeModeLevel.key: "paranoid"
+        ]))
+
+        #expect(ManagedPolicyResolver.minimumSafeModeLevel(policy: number) == nil)
+        #expect(ManagedPolicyResolver.minimumSafeModeLevel(policy: unknown) == nil)
+        #expect(ManagedPolicyResolver.effectiveSafeModeLevel(connectionLevel: .silent, policy: number) == .silent)
     }
 
     @Test("policy keys are distinct and namespaced apart from the settings blobs")

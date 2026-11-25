@@ -3,6 +3,7 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @ObservedObject var settings: SettingsSlice<GeneralSettings>
     let onResetAll: () -> Void
+    @ObservedObject private var policy = ManagedPolicyCenter.shared
 
     @State private var showResetConfirmation = false
 
@@ -41,16 +42,23 @@ struct GeneralSettingsView: View {
             }
 
             Section {
-                Toggle(isOn: $settings.value.shareAnalytics) {
+                Toggle(isOn: shareUsageData) {
                     Text("Share usage data")
-                    Text(
-                        """
-                        Sent to PostHog: app and macOS versions, Mac model, screen size, architecture, language, time zone, \
-                        database types, connection count, first connection and query, plan prompts, sign-in and sign-out, \
-                        and your account ID once you sign in. Never hostnames, credentials, queries, or rows.
-                        """
-                    )
+                    if policy.snapshot.allowsUsageData {
+                        Text(
+                            """
+                            Sent to PostHog: app and macOS versions, Mac model, screen size, architecture, language, \
+                            time zone, database types, connection count, first connection and query, plan prompts, \
+                            sign-in and sign-out, and your account ID once you sign in. Never hostnames, credentials, \
+                            queries, or rows.
+                            """
+                        )
+                    } else {
+                        Text("Managed by your organization")
+                            .accessibilityIdentifier("general-share-usage-managed")
+                    }
                 }
+                .disabled(!policy.snapshot.allowsUsageData)
                 .accessibilityIdentifier("general-share-usage-toggle")
             } header: {
                 Text("Privacy")
@@ -83,6 +91,14 @@ struct GeneralSettingsView: View {
                 """
             )
         }
+    }
+}
+
+extension GeneralSettingsView {
+    // UsageDataAllowed=false shows the switch off and leaves the person's own choice as it was.
+    private var shareUsageData: Binding<Bool> {
+        guard policy.snapshot.allowsUsageData else { return .constant(false) }
+        return $settings.value.shareAnalytics
     }
 }
 

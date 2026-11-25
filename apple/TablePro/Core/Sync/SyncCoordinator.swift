@@ -33,9 +33,13 @@ final class SyncCoordinator: ObservableObject {
     private let makeNetworkMonitor: () -> SyncNetworkMonitor?
     /// Why the license keeps sync off, or nil while it allows sync.
     private let licenseGate: @MainActor () -> DisableReason?
+    // Why a configuration profile keeps iCloud off, or nil while it allows iCloud.
+    private let policyGate: @MainActor () -> DisableReason?
+    private let policyChanges: AnyPublisher<Void, Never>
     let recordCreationDate: (CKRecord) -> Date?
     private var triggers: SyncTriggers?
     private var licenseCancellable: AnyCancellable?
+    private var policyCancellable: AnyCancellable?
     private var debounceTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var hasStarted = false
@@ -83,6 +87,13 @@ final class SyncCoordinator: ObservableObject {
         columnLayouts: @escaping @autoclosure () -> FileColumnLayoutPersister = .shared,
         themeCatalog: ThemeCatalog = .shared,
         licenseGate: (@MainActor () -> DisableReason?)? = nil,
+        policyGate: @escaping @MainActor () -> DisableReason? = {
+            SyncProviderPolicy.disableReason(ManagedPolicyCenter.shared.snapshot)
+        },
+        policyChanges: AnyPublisher<Void, Never> = ManagedPolicyCenter.shared.$snapshot
+            .dropFirst()
+            .map { _ in () }
+            .eraseToAnyPublisher(),
         recordCreationDate: @escaping (CKRecord) -> Date? = { $0.creationDate },
         activationClock: any Clock<Duration> = ContinuousClock(),
         pushRegistrar: SyncPushRegistrar = .live
@@ -102,6 +113,8 @@ final class SyncCoordinator: ObservableObject {
         self.licenseGate = licenseGate ?? {
             SyncCoordinator.licenseDisableReason(for: featureAccess.check(.iCloudSync))
         }
+        self.policyGate = policyGate
+        self.policyChanges = policyChanges
         lastSyncDate = metadataStorage.lastSyncDate
     }
 
@@ -128,6 +141,7 @@ final class SyncCoordinator: ObservableObject {
         hasStarted = true
 
         observeLicenseChanges()
+        observePolicyChanges()
         evaluateStatus()
         guard syncStatus.isEnabled else { return }
         Task { await sync(.launch) }
@@ -269,9 +283,12 @@ final class SyncCoordinator: ObservableObject {
             }
         }
 
-        let push = admission == .full ? await performPush() : PushReport()
+        let push = admission == .full && !isStoppedByPolicy ? await performPush() : PushReport()
+        // A provider the organization stops commits nothing more, so nothing else of this run is kept.
+        guard !isStoppedByPolicy else { return CycleResult(admission: admission, failure: nil) }
         let noticesAtThisDownload = pushChannel.noticesReceived
         let pull = await performPull(echoGuard: push.echoGuard)
+        guard !isStoppedByPolicy else { return CycleResult(admission: admission, failure: nil) }
         let pullFailure = pull.failure
         if pullFailure == nil {
             if trigger == .activation, pull.broughtRemoteChanges,
@@ -356,6 +373,10 @@ final class SyncCoordinator: ObservableObject {
     private func finish(_ result: CycleResult, previousError: SyncError?, from generation: Int) {
         guard generation == statusGeneration else {
             Self.logger.info("Discarding a sync outcome the status moved on from")
+            return
+        }
+        if let reason = policyGate() {
+            decide(.disabled(reason))
             return
         }
         let settlement = SyncSettlement(failure: result.failure, admission: result.admission, previousError: previousError)
@@ -499,14 +520,18 @@ final class SyncCoordinator: ObservableObject {
 
     /// Called when user disables sync in settings
     func disableSync() {
-        decide(.disabled(.userDisabled))
+        decide(.disabled(policyGate() ?? .userDisabled))
     }
 
     // MARK: - Status
 
-    // The switch before the license: sync that was never turned on is off by choice, whatever the
-    // license says.
+    // The organization first, then the switch before the license: sync that was never turned on is
+    // off by choice, whatever the license says.
     private func evaluateStatus() {
+        if let reason = policyGate() {
+            decide(.disabled(reason))
+            return
+        }
         let syncSettings = services.appSettingsStorage.loadSync()
         guard syncSettings.enabled else {
             decide(.disabled(.userDisabled))
@@ -548,21 +573,15 @@ final class SyncCoordinator: ObservableObject {
         activationHeldForCooldown = false
     }
 
-    // Exhaustive, so a paying customer the app could not reach the server about is never told to buy.
-    nonisolated static func licenseDisableReason(for access: ProFeatureAccess) -> DisableReason? {
-        switch access {
-        case .available:
-            return nil
-        case .expired:
-            return .licenseExpired
-        case .refreshFailed:
-            return .licenseUnverified
-        case .signedOut, .notIncluded:
-            return .licenseRequired
-        }
+    private var isStoppedByPolicy: Bool {
+        policyGate() != nil
     }
 
     private func canSync() -> Bool {
+        guard !isStoppedByPolicy else {
+            Self.logger.trace("Sync skipped: the organization's policy leaves iCloud out")
+            return false
+        }
         guard licenseGate() == nil else {
             Self.logger.trace("Sync skipped: license not available")
             return false
@@ -617,6 +636,8 @@ final class SyncCoordinator: ObservableObject {
             Self.logger.error("Push failed: \(error.localizedDescription)")
             return PushReport(failure: SyncStepFailure(error))
         }
+        // The server may have taken the batch; the next run's conflict rebase settles that from the last kept state.
+        guard !isStoppedByPolicy else { return PushReport() }
         outcome.acceptMissingDeletions(of: deletions)
 
         recordCache.store(outcome.savedBases(pushed: batch.editsByRecordID))
@@ -684,10 +705,6 @@ final class SyncCoordinator: ObservableObject {
 
     // MARK: - Pull
 
-    nonisolated static func isTokenExpired(_ error: Error) -> Bool {
-        SyncFailure(error) == .tokenExpired
-    }
-
     // A delta never resends a record the token passed, and a category toggle starts no run, so every pull checks.
     private func adoptReadableContent(for settings: SyncSettings) {
         guard metadataStorage.adoptReadableRecordTypes(Self.readableContent(for: settings)) else { return }
@@ -715,6 +732,7 @@ final class SyncCoordinator: ObservableObject {
 
         do {
             let result = try await transport.pull(since: token)
+            guard !isStoppedByPolicy else { return PullReport() }
             guard await applyPull(result, isFullFetch: token == nil, settings: settings, echoGuard: echoGuard) else {
                 return PullReport(failure: .pullNotSaved)
             }
@@ -1044,16 +1062,6 @@ final class SyncCoordinator: ObservableObject {
         }
     }
 
-    // Groups and tags write only their own store, and the rest are collected and applied after the loop.
-    private static func leavesConnectionLibraryAlone(_ type: SyncRecordType) -> Bool {
-        switch type {
-        case .connection, .group, .tag, .tableFavorite, .tableFolder, .tableFolderItem, .favorite, .favoriteFolder:
-            return true
-        case .settings, .sshProfile, .credentialProfile, .favoriteDatabase:
-            return false
-        }
-    }
-
     // Applied to one list and written once, where each record used to read, verify, decode, encode and write the
     // whole library.
     private func stageRemoteConnection(
@@ -1135,18 +1143,6 @@ final class SyncCoordinator: ObservableObject {
         if tombstoneIds.contains(remoteTag.id.uuidString) { return .skipped }
 
         return services.tagStorage.applyRemoteTag(remoteTag)
-    }
-
-    private static func availableProfileName(
-        basedOn name: String,
-        taken profiles: [CredentialProfile]
-    ) -> String {
-        let used = Set(profiles.map { $0.name.lowercased() })
-        for index in 2...99 {
-            let candidate = String(format: String(localized: "%1$@ (%2$lld)"), name, Int64(index))
-            if !used.contains(candidate.lowercased()) { return candidate }
-        }
-        return name
     }
 
     /// False when the profile could not be persisted, which withholds the pull token so the record
@@ -1325,6 +1321,16 @@ final class SyncCoordinator: ObservableObject {
                     debounceTask = nil
                     await sync(.localChange)
                 }
+            }
+    }
+
+    // A provider no longer allowed stops at once, with no last run; one allowed again waits for the switch.
+    private func observePolicyChanges() {
+        policyCancellable = policyChanges
+            .sink { [weak self] in
+                guard let self else { return }
+                evaluateStatus()
+                requestSync(.launch)
             }
     }
 

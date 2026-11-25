@@ -81,8 +81,7 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
             machineGuid: nil,
             client: .macos,
             machineId: setup.machineID,
-            managedServerUrl: setup.managedServerURL,
-            allowOtherServers: setup.allowOtherServers,
+            policy: setup.policy.coreArgument,
             legacyEntitlementFile: setup.legacyEntitlementFile.path,
             licenseKeys: stack?.licenseKeys ?? []
         )
@@ -182,6 +181,17 @@ internal final class CoreAccountBackend: AccountBackend, @unchecked Sendable {
     func accessTokenRejected(_ token: String) async {
         guard let service = await opening.value else { return }
         await service.accessTokenRejected(token: token)
+    }
+
+    func applyPolicy(_ policy: ManagedPolicySnapshot) async {
+        guard let service = await opening.value else { return }
+        await service.applyPolicy(policy: policy.coreArgument)
+    }
+
+    // An account that did not open holds no values to allow anything by.
+    func allowsTableProRequests() async -> Bool {
+        guard let service = await opening.value else { return false }
+        return service.allowsTableproRequests()
     }
 
     private static func call<T>(

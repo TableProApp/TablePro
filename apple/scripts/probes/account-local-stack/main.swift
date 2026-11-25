@@ -702,8 +702,7 @@ private final class Probe {
             accountFile: folder.appendingPathComponent("account.json"),
             legacyEntitlementFile: folder.appendingPathComponent("entitlement.jwt"),
             machineID: machine.machineID,
-            managedServerURL: nil,
-            allowOtherServers: nil,
+            policy: ManagedPolicySnapshot(),
             developmentStack: stack
         )
         let backend = CoreAccountBackend(setup: setup, machine: machine, keychain: AccountKeychain(keychain: keychain))

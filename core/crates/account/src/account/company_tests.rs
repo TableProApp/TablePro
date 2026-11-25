@@ -15,6 +15,7 @@ use crate::account_settings::{AccountSettings, AppClient, CallbackPage, DeviceDe
 use crate::account_status::{AccountStatus, EntitlementProblem, FeatureAccess};
 use crate::fakes;
 use crate::license_keys::LicenseKeys;
+use crate::policy::{ManagedPolicy, PolicyValues};
 use crate::server::{self, ServerError, ServerPolicy, ServerSettings, choice_file};
 use crate::token_vault::{RefreshTokenVault, RefreshTokenVaults};
 
@@ -144,9 +145,16 @@ pub(super) fn settings(dir: &Path, client: AppClient, server: ServerSettings) ->
 
 pub(super) fn managed(base: &str, allow_others: Option<bool>) -> ServerSettings {
     ServerSettings::Resolved(ServerPolicy {
-        managed_url: Some(base.to_owned()),
-        allow_other_servers: allow_others,
+        managed: held_to(base, allow_others),
         license_keys: LicenseKeys::from_public_keys([fakes::PUBLIC_X]).expect("the test key"),
+    })
+}
+
+pub(super) fn held_to(base: &str, allow_others: Option<bool>) -> ManagedPolicy {
+    ManagedPolicy::Values(PolicyValues {
+        account_server_url: Some(base.to_owned()),
+        allow_other_account_servers: allow_others,
+        ..PolicyValues::default()
     })
 }
 
@@ -1149,4 +1157,97 @@ async fn a_cancel_ends_a_slow_discovery_and_opens_no_page() {
         started.elapsed()
     );
     assert!(browser.opened.lock().expect("the URL").is_none());
+}
+
+// Values read while the app runs that no longer allow the server signed in to stop every call to it, an upload's
+// token included, and only a launch lifts that.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn values_that_stop_allowing_the_server_stop_every_call_until_the_next_launch() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let calls = Arc::new(StdMutex::new(Vec::<String>::new()));
+    let base = company(&LICENSED, {
+        let calls = calls.clone();
+        move |_, method, path, _| {
+            calls.lock().expect("the calls").push(format!("{method} {path}"));
+            None
+        }
+    });
+    let items = Arc::new(Items::default());
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &items,
+        browser.clone(),
+    );
+    account.restore().await;
+    let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), approve(&browser));
+    signed.expect("signed in");
+    account.access_token().await.expect("a token before the change");
+    let before = calls.lock().expect("the calls").len();
+
+    account
+        .apply_policy(held_to("https://tablepro.other.example", Some(false)))
+        .await;
+    let token = account.access_token().await;
+    let refreshed = account.refresh_entitlement().await;
+    let devices = account.devices().await;
+    let chosen = account.choose_server(None).await;
+    account.apply_policy(ManagedPolicy::default()).await;
+    let after_lifted = account.access_token().await;
+
+    for refused in [
+        token.map(|_| ()),
+        refreshed,
+        devices.map(|_| ()),
+        chosen,
+        after_lifted.map(|_| ()),
+    ] {
+        assert_eq!(refused.expect_err("refused").code(), "account.server_managed");
+    }
+    assert_eq!(calls.lock().expect("the calls").len(), before);
+    let held = signed_in(&account);
+    assert!(
+        matches!(&held.problem, Some(EntitlementProblem::RefreshFailed(error)) if error.code() == "account.server_managed")
+    );
+    assert_eq!(
+        held.entitlement.map(|it| it.features_at(Utc::now())),
+        Some(LICENSED.map(str::to_owned).to_vec())
+    );
+
+    let launched = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &items,
+        Arc::default(),
+    );
+    launched.restore().await;
+    launched.access_token().await.expect("a token after the launch");
+    assert!(calls.lock().expect("the calls").len() > before);
+}
+
+// A launch with values that hold the account to one server resolves to it; a value read later that names another
+// stops the account at once, signed in or not.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_launch_follows_the_values_and_a_later_value_for_another_server_stops_the_sign_in() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let base = company(&LICENSED, |_, _, _, _| None);
+    let items = Arc::new(Items::default());
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, Some(false))),
+        &items,
+        browser.clone(),
+    );
+    account.restore().await;
+    account.apply_policy(held_to(&format!("{base}/"), Some(false))).await;
+    account.apply_policy(ManagedPolicy::default()).await;
+
+    let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), approve(&browser));
+    signed.expect("the same server, written another way, still signs in");
+    account.apply_policy(ManagedPolicy::Refused).await;
+    let refused = account
+        .sign_in(tokio::time::sleep(std::time::Duration::from_secs(5)))
+        .await;
+
+    assert_eq!(refused.expect_err("held").code(), "account.server_managed");
+    assert!(!account.allows_tablepro_requests());
 }

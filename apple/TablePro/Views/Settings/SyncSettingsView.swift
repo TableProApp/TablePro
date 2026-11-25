@@ -6,23 +6,32 @@ import TableProSyncTransport
 struct SyncPaneLayout: Equatable {
     let notice: SyncNotice?
     let isToggleDisabled: Bool
+    let showsManagedNote: Bool
     let showsLicenseGate: Bool
     let showsStatus: Bool
     let showsLastSynced: Bool
     let offersSyncNow: Bool
     let showsCategories: Bool
 
-    init(enabled: Bool, isLicensed: Bool, presentation: SyncStatusPresentation) {
-        let showsLive = enabled && isLicensed
+    // `isManaged` when a configuration profile leaves one choice or none, `allowsICloud` while iCloud is one of them.
+    init(
+        enabled: Bool,
+        isLicensed: Bool,
+        presentation: SyncStatusPresentation,
+        isManaged: Bool = false,
+        allowsICloud: Bool = true
+    ) {
+        let showsLive = enabled && isLicensed && allowsICloud
         notice = presentation.notice
-        // A lapsed license can still turn sync off.
-        isToggleDisabled = !isLicensed && !enabled
-        showsLicenseGate = !isLicensed
+        // A lapsed license can still turn sync off; the organization's choice cannot be changed here.
+        isToggleDisabled = isManaged || (!isLicensed && !enabled)
+        showsManagedNote = isManaged
+        showsLicenseGate = !isLicensed && allowsICloud
         showsStatus = showsLive && presentation.notice == nil
         showsLastSynced = showsLive
         offersSyncNow = presentation.offersSyncNow
         // The categories apply before the first upload, so they show while sync is off too.
-        showsCategories = isLicensed
+        showsCategories = isLicensed && allowsICloud
     }
 }
 
@@ -32,6 +41,7 @@ struct SyncSettingsView: View {
 
     @ObservedObject private var coordinator = SyncCoordinator.shared
     @ObservedObject private var featureAccess = FeatureAccess.shared
+    @ObservedObject private var policy = ManagedPolicyCenter.shared
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncSettingsView")
 
@@ -41,10 +51,13 @@ struct SyncSettingsView: View {
 
     var body: some View {
         let presentation = SyncStatusPresentation(status: coordinator.syncStatus)
+        let iCloud = SyncProviderPolicy.iCloud(policy.snapshot)
         let layout = SyncPaneLayout(
             enabled: settings.enabled,
             isLicensed: featureAccess.isAvailable(.iCloudSync),
-            presentation: presentation
+            presentation: presentation,
+            isManaged: iCloud.isLocked,
+            allowsICloud: iCloud.isAllowed
         )
 
         Form {
@@ -57,9 +70,14 @@ struct SyncSettingsView: View {
             Section {
                 Toggle(isOn: $settings.enabled) {
                     Text("Sync this Mac with iCloud")
-                    Text(
-                        "Keep your connections and the items you choose the same on devices signed in to your Apple Account."
-                    )
+                    if layout.showsManagedNote {
+                        Text("Managed by your organization")
+                            .accessibilityIdentifier("settings-sync-managed")
+                    } else {
+                        Text(
+                            "Keep your connections and the items you choose the same on devices signed in to your Apple Account."
+                        )
+                    }
                 }
                 .disabled(layout.isToggleDisabled)
                 .accessibilityIdentifier("settings-sync-toggle")

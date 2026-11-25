@@ -19,7 +19,7 @@ use tablepro_account::{MachineId, fakes};
 use tablepro_ffi::{
     AccountConfig, AccountListener, AccountService, AccountStateTag, AppClientTag, CancelToken, Core, CoreError,
     FeatureAccessTag, HostBrowser, HostBrowserError, HostConfig, HostSecretError, HostSecrets, HostWebAuthenticator,
-    SecretItemTag, SecretKindTag, SignOutCauseTag,
+    ManagedPolicyArg, ManagedPolicyValues, SecretItemTag, SecretKindTag, SignOutCauseTag,
 };
 
 const GUID: &str = "d3b07384-d113-4ec6-a2f1-6a3f0c2e9b7a";
@@ -154,8 +154,9 @@ async fn open_as(base: &str, client: AppClientTag, web: Option<Box<dyn HostWebAu
         machine_guid: Some(GUID.to_owned()),
         client,
         machine_id: None,
-        managed_server_url: None,
-        allow_other_servers: None,
+        policy: ManagedPolicyArg::Read {
+            values: ManagedPolicyValues::default(),
+        },
         legacy_entitlement_file: None,
         license_keys: Vec::new(),
     };

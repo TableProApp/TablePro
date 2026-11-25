@@ -54,6 +54,8 @@ internal final class AccountServices: AccountBackendListener {
     private var checkTask: Task<Bool, Never>?
     private var expiryTask: Task<Void, Never>?
     private var migrationRetryTask: Task<Void, Never>?
+    private var policyCancellable: AnyCancellable?
+    private var policyTask: Task<Void, Never>?
     private var verifiedAt: Date?
     // Whether subscribers know of a session, so a sign-out reaches them once, whether the core's listener or the
     // call that caused it gets here first.
@@ -84,7 +86,8 @@ internal final class AccountServices: AccountBackendListener {
                 serverURL: sharedLinkServer,
                 transport: transport,
                 middlewares: [AccountBearerMiddleware(backend: backend, onlyTo: sharedLinkServer)]
-            )
+            ),
+            allowsReading: { [backend] in await backend.allowsTableProRequests() }
         )
     }
 
@@ -111,11 +114,21 @@ internal final class AccountServices: AccountBackendListener {
     }
 
     // The core runs its own refresh schedule; this publishes what it restored and exchanges a stored license key.
-    func start() {
+    // Each reading of the managed values goes to the core in order; one the setup already carried changes nothing.
+    func start(policyChanges: AnyPublisher<ManagedPolicySnapshot, Never>? = nil) {
         guard !isStarted else { return }
         isStarted = true
         loadStoredState()
         Task { await checkNow() }
+        let changes = policyChanges ?? ManagedPolicyCenter.shared.$snapshot.eraseToAnyPublisher()
+        // Only the newest reading waits: an older one would only be replaced.
+        let (readings, reader) = AsyncStream.makeStream(of: ManagedPolicySnapshot.self, bufferingPolicy: .bufferingNewest(1))
+        policyCancellable = changes.sink { reader.yield($0) }
+        policyTask = Task { [backend] in
+            for await policy in readings {
+                await backend.applyPolicy(policy)
+            }
+        }
     }
 
     func stop() {
@@ -123,6 +136,13 @@ internal final class AccountServices: AccountBackendListener {
         expiryTask = nil
         migrationRetryTask?.cancel()
         migrationRetryTask = nil
+        policyCancellable = nil
+        policyTask?.cancel()
+        policyTask = nil
+    }
+
+    func allowsTableProRequests() async -> Bool {
+        await backend.allowsTableProRequests()
     }
 
     // Back from the portal's device page, where the person may have freed a slot.

@@ -206,6 +206,28 @@ struct AIModelReferenceTests {
         #expect(!FileManager.default.fileExists(atPath: saved.path))
     }
 
+    @Test("A refresh the organization does not allow asks tablepro.app nothing, and the copy on hand serves")
+    func heldRefreshAsksNothing() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CatalogHostProtocol.self]
+        CatalogHostProtocol.body = AIModelReferenceFixtures.json
+            .replacingOccurrences(of: "2026-11-24T00:00:00Z", with: "2999-01-01T00:00:00Z")
+        CatalogHostProtocol.requests = 0
+        let reference = AIModelReference(
+            file: try AIModelReferenceFixtures.file,
+            session: URLSession(configuration: config),
+            savedURL: folder.appendingPathComponent("models-v1.json"),
+            refreshAllowed: { false }
+        )
+
+        await reference.refresh()
+
+        #expect(CatalogHostProtocol.requests == 0)
+        #expect(reference.current == (try AIModelReferenceFixtures.file))
+    }
+
     @Test("The newer of the bundled and cached copies wins")
     func newerCopyWins() throws {
         let bundled = try AIModelReferenceFixtures.file

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::num::NonZeroU64;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use chrono::{DateTime, TimeDelta, Utc};
@@ -20,6 +20,7 @@ use crate::license::{License, LicenseError};
 use crate::loopback::{ExpectedIssuer, Loopback, callback};
 use crate::machine_id::MachineId;
 use crate::oauth::{OAuth, Tokens};
+use crate::policy::ManagedPolicy;
 use crate::profile::{Device, Profile};
 use crate::server::{ServerError, ServerInfo, ServerSettings};
 use crate::token_vault::{RefreshTokenVault, RefreshTokenVaults, SingleVault};
@@ -101,6 +102,11 @@ struct Inner {
     sign_outs: broadcast::Sender<SignOutCause>,
     // A company server's verified license, kept apart from the entitlement, which can fail after it.
     license: watch::Sender<Option<Arc<License>>>,
+    // The managed values the host passed last (core ADR 0055).
+    policy: watch::Sender<ManagedPolicy>,
+    // Set once those values stop allowing the server, which only a launch changes: from then on the account calls it
+    // no more.
+    held: AtomicBool,
 }
 
 #[derive(Default)]
@@ -211,6 +217,16 @@ impl Account {
             .build()
             .map_err(|error| AccountError::Protocol(http_text(error)))?;
         let server = Server::initial(&settings, &http, hosts.vaults.as_ref())?;
+        let policy = match &settings.server {
+            ServerSettings::Resolved(policy) => policy.managed.clone(),
+            ServerSettings::Fixed(_) => ManagedPolicy::default(),
+        };
+        let held = !policy.allows_server(&server.target.origin);
+        if held {
+            tracing::warn!(
+                "the organization's policy does not allow the account server, so the account makes no call to it"
+            );
+        }
         Ok(Self {
             inner: Arc::new(Inner {
                 settings,
@@ -225,6 +241,8 @@ impl Account {
                 attempts: AtomicU64::new(0),
                 sign_outs: broadcast::Sender::new(SIGN_OUT_BACKLOG),
                 license: watch::Sender::new(None),
+                policy: watch::Sender::new(policy),
+                held: AtomicBool::new(held),
             }),
         })
     }
@@ -252,6 +270,50 @@ impl Account {
 
     fn current(&self) -> Arc<Server> {
         self.inner.server.borrow().clone()
+    }
+
+    pub fn policy(&self) -> ManagedPolicy {
+        self.inner.policy.borrow().clone()
+    }
+
+    // Share-link reads and the AI model catalog refresh ask this before any request (core ADR 0055).
+    pub fn allows_tablepro_requests(&self) -> bool {
+        self.inner.policy.borrow().allows_tablepro_requests()
+    }
+
+    // Values the host read again. They apply at once, but the server changes only at a launch: when they no longer
+    // allow it, the account stops calling it until then, and a call already sent has its answer dropped.
+    pub async fn apply_policy(&self, policy: ManagedPolicy) {
+        let changed = self.inner.policy.send_if_modified(|held| {
+            let changed = *held != policy;
+            *held = policy.clone();
+            changed
+        });
+        if !changed || self.is_held() || policy.allows_server(&self.current().target.origin) {
+            return;
+        }
+        self.inner.held.store(true, Ordering::SeqCst);
+        tracing::warn!(
+            "the organization's policy no longer allows the account server, so the account stops calling it"
+        );
+        let session = self.inner.session.lock().await;
+        if session.refresh.is_some() {
+            let kept = self.inner.status.borrow().entitlement().cloned();
+            let problem = EntitlementProblem::RefreshFailed(ServerError::Managed.into());
+            self.publish(&session, kept, Some(problem));
+        }
+    }
+
+    fn is_held(&self) -> bool {
+        self.inner.held.load(Ordering::SeqCst)
+    }
+
+    // Before every request to the server signed in to, and again before an answer is kept.
+    fn reachable(&self) -> Result<(), AccountError> {
+        match self.is_held() {
+            true => Err(ServerError::Managed.into()),
+            false => Ok(()),
+        }
     }
 
     pub async fn run(&self) {
@@ -469,6 +531,7 @@ impl Account {
     // Only the latest sign-in, sign-out or server change counts: tokens that come back for an attempt a later one
     // superseded are revoked, never adopted. Nothing replaces a working sign-in until the new one has a refresh token.
     async fn commit_sign_in(&self, attempt: u64, server: &Server, tokens: Tokens) -> Result<(), AccountError> {
+        self.reachable()?;
         let Some(refresh) = tokens.refresh.clone().filter(|token| !token.expose_secret().is_empty()) else {
             return Err(AccountError::Protocol("the sign-in gave no refresh token".to_owned()));
         };
@@ -643,6 +706,7 @@ impl Account {
             Err(error) => Err(answer_error(error).await),
         };
         let answer = session.answered(Call::Entitlement, answer)?;
+        self.reachable()?;
         let entitlement = self.verify(session, &answer.token, Utc::now())?;
         session.account_id = Some(entitlement.claims().sub.clone());
         self.write_file(session, Some(entitlement.token().to_owned())).await;
@@ -742,6 +806,7 @@ impl Account {
     }
 
     async fn access(&self, session: &mut Session, renew: bool) -> Result<SecretString, AccountError> {
+        self.reachable()?;
         if !renew
             && let Some((access, until)) = &session.access
             && *until > Utc::now() + ACCESS_TOKEN_MARGIN

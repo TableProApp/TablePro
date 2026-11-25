@@ -69,9 +69,9 @@ struct SyncStatusPresentationTests {
         #expect(SyncStatusPresentation(status: .error(.offline)).offersSyncNow)
     }
 
-    @Test("A license state is not a sync notice: the license row under the switch explains it")
+    @Test("A license or organization state is not a sync notice: the row under the switch explains it")
     func licenseStatesHaveNoSyncNotice() {
-        for reason in [DisableReason.licenseRequired, .licenseExpired, .licenseUnverified, .userDisabled] {
+        for reason in [DisableReason.licenseRequired, .licenseExpired, .licenseUnverified, .userDisabled, .managedPolicy] {
             #expect(SyncStatusPresentation(status: .disabled(reason)).notice == nil, "\(reason)")
         }
     }
