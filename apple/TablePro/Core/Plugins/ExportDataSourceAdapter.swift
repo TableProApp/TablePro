@@ -204,6 +204,16 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return try await pluginDriver.fetchApproximateRowCount(table: table, schema: schema)
     }
 
+    /// Every table's row estimate in one schema, from the driver's schema-wide catalog read, keyed by table name.
+    /// Nil when the driver has no such read; a table the catalog holds no estimate for is absent.
+    func fetchBulkApproximateRowCounts(databaseName: String) async throws -> [String: Int]? {
+        guard let pluginDriver, pluginDriver.providesBulkTableMetadataFetch else { return nil }
+        let metadata = try await pluginDriver.fetchAllTableMetadata(schema: exportSchema(for: databaseName))
+        return metadata.compactMapValues { entry in
+            entry.rowCount.map { Int(clamping: $0) }
+        }
+    }
+
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo] {
         let schema = exportSchema(for: databaseName)
         let sequences: [(name: String, ddl: String)]
