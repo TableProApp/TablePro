@@ -412,6 +412,166 @@ impl World<'_> {
         ]
     }
 
+    fn recovery(&self, label: &str, who: &str, av: u32) -> JsonValue {
+        let person = self.person(who);
+        let blob = person
+            .r
+            .seal_blob_with_nonce(
+                &origin(),
+                person.id,
+                v(av),
+                person.at(av),
+                draw(&format!("flows/{label}/nonce")),
+            )
+            .expect("blob");
+        rec(
+            label,
+            None,
+            person.id.0,
+            &KeyRecordId::Recovery {
+                account: person.id,
+                av: v(av),
+            },
+            &KeyBody::Recovery(blob),
+            vec![],
+        )
+    }
+
+    // The personal and history keys of one `av`: version records, rings unless they start over, and wraps to AEK.
+    fn scope_keys_at(
+        &self,
+        label: &str,
+        who: &str,
+        av: u32,
+        start: Start,
+        wrapper_device: &DeviceKeys,
+    ) -> Vec<JsonValue> {
+        let person = self.person(who);
+        let ask = &person.at(av).ask;
+        let mut records = Vec::new();
+        for (purpose, name) in [
+            (KeyPurpose::Personal, person.name.to_owned()),
+            (KeyPurpose::History, format!("{} history", person.name)),
+        ] {
+            let key = KeyRef {
+                owner: person.id.0,
+                purpose,
+                version: v(av),
+            };
+            let scope_key = personal_key(&name, av);
+            records.push(self.version(
+                &format!("{label}: {} version {av}", purpose.name()),
+                key,
+                start,
+                &scope_key,
+                who,
+                av,
+                ask,
+            ));
+            if start == Start::Next {
+                records.push(personal_ring(
+                    key,
+                    person.name,
+                    &format!("{label}: {} ring {av}", purpose.name()),
+                ));
+            }
+            records.push(self.scope_wrap(
+                &format!("{label}: {} wrap {av}", purpose.name()),
+                key,
+                &scope_key,
+                who,
+                av,
+                who,
+                av,
+                ask,
+                wrapper_device,
+            ));
+        }
+        records
+    }
+
+    // ADR 0056, Genesis: the certificate at av 1, the blob, the device certificate, PK and HK v1 with wraps.
+    fn genesis(&self, label: &str, who: &str, device: &DeviceKeys) -> Vec<JsonValue> {
+        let mut records = vec![
+            self.account(&format!("{label}: certificate at av 1"), who, 1),
+            self.recovery(&format!("{label}: recovery blob"), who, 1),
+            self.device_cert(&format!("{label}: device certificate"), who, 1, device),
+        ];
+        records.extend(self.scope_keys_at(label, who, 1, Start::Over, device));
+        records
+    }
+
+    // ADR 0056, Rotation: the certificate at av + 1 under IK, the blob, each kept device's certificate and
+    // account wrap from the rotating device, and PK and HK at their next versions with rings and wraps.
+    fn rotation(&self, label: &str, who: &str, av: u32, keep: &[&DeviceKeys], by: &DeviceKeys) -> Vec<JsonValue> {
+        let person = self.person(who);
+        let mut records = vec![
+            self.account(&format!("{label}: certificate at av {av}"), who, av),
+            self.recovery(&format!("{label}: recovery blob"), who, av),
+        ];
+        for (index, device) in keep.iter().enumerate() {
+            records.push(self.device_cert(&format!("{label}: kept device {index}"), who, av, device));
+            records.push(self.device_wrap(
+                &format!("{label}: account wrap to kept device {index}"),
+                who,
+                av,
+                WrapPurpose::Account,
+                device,
+                by,
+                &by.dsk,
+                person.at(av).to_plaintext().as_slice(),
+            ));
+        }
+        records.extend(self.scope_keys_at(label, who, av, Start::Next, by));
+        records
+    }
+
+    // ADR 0056, Reset, Activation: the proposal's certificate, device certificate and blob as it holds
+    // them, and PK and HK at their next versions: with rings for kind 2, starting over for kind 3.
+    fn activation(
+        &self,
+        proposal: &str,
+        who: &str,
+        av: u32,
+        kind: CertKind,
+        new_ik: &Ed25519Seed,
+        device: &DeviceKeys,
+    ) -> Vec<JsonValue> {
+        let person = self.person(who);
+        let new_r = RecoveryKey::from_bytes(draw(&format!("flows/{proposal}/R'")));
+        let blob = new_r
+            .seal_blob_with_nonce(
+                &origin(),
+                person.id,
+                v(av),
+                person.at(av),
+                draw(&format!("flows/{proposal}/blob nonce")),
+            )
+            .expect("blob");
+        let start = if kind == CertKind::ResetEmpty {
+            Start::Over
+        } else {
+            Start::Next
+        };
+        let mut records = vec![
+            self.account_with(&format!("{proposal}: the proposed certificate"), who, av, kind, new_ik),
+            rec(
+                &format!("{proposal}: the proposed blob"),
+                None,
+                person.id.0,
+                &KeyRecordId::Recovery {
+                    account: person.id,
+                    av: v(av),
+                },
+                &KeyBody::Recovery(blob),
+                vec![],
+            ),
+            self.device_cert(&format!("{proposal}: the proposed device certificate"), who, av, device),
+        ];
+        records.extend(self.scope_keys_at(proposal, who, av, start, device));
+        records
+    }
+
     fn request(&self, label: &str, who: &str, request: RequestId, device: &DeviceKeys) -> JsonValue {
         let person = self.person(who);
         let body = RequestBody {
@@ -1048,12 +1208,9 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         steps: vec![step("B", "decide", vec![w.device_cert("C's certificate, never compared", "P", 2, &dev_c)], "keys.not_compared", "none")],
     }));
 
-    let mut bad_genesis = vec![
-        w.account("genesis certificate", "P", 1),
-        w.device_cert("genesis device certificate", "P", 1, &dev_b),
-    ];
+    let mut bad_genesis = w.genesis("B's genesis", "P", &dev_b);
     let mut broken_version = w.version(
-        "PK version 1, signed by the wrong key",
+        "B's genesis: personal version 1, signed by the wrong key",
         pk(1),
         Start::Over,
         &personal_key("P", 1),
@@ -1067,7 +1224,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         h(&w.p.at(1).ask.public().expect("public").0),
     );
     set_verify(&mut broken_version, "valid", b(false));
-    bad_genesis.push(broken_version);
+    bad_genesis[3] = broken_version;
     rows.push(scenario(
         "a change set with one bad object",
         Row {
@@ -1098,30 +1255,21 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
                 step(
                     "B",
                     "push change set",
-                    vec![
-                        w.account("B's genesis certificate", "P", 1),
-                        w.device_cert("B's device certificate", "P", 1, &dev_b),
-                    ],
+                    w.genesis("B's genesis", "P", &dev_b),
                     "none",
                     "applied",
                 ),
                 step(
                     "C",
                     "push change set",
-                    vec![
-                        w.account("C's genesis certificate at the same av", "P'", 1),
-                        w.device_cert("C's device certificate", "P'", 1, &dev_c),
-                    ],
+                    w.genesis("C's genesis", "P'", &dev_c),
                     "none",
                     "create_only",
                 ),
                 step(
                     "B",
                     "push change set",
-                    vec![
-                        w.account("B's genesis certificate", "P", 1),
-                        w.device_cert("B's device certificate", "P", 1, &dev_b),
-                    ],
+                    w.genesis("B's genesis", "P", &dev_b),
                     "none",
                     "applied",
                 ),
@@ -1147,11 +1295,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         server: "applied",
         layer: &["flow", "server"],
         given: obj(vec![("account_av", n(1)), ("recovery_key", h(w.p.r.expose()))]),
-        steps: vec![step("N", "push change set", vec![
-            w.account("the certificate at av 2 under IK", "P", 2),
-            w.device_cert("N's certificate at av 2", "P", 2, &dev_n),
-            w.version("PK version 2", pk(2), Start::Next, &personal_key("P", 2), "P", 2, &w.p.at(2).ask),
-        ], "succeeds", "applied")],
+        steps: vec![step("N", "push change set", w.rotation("N's recovery", "P", 2, &[&dev_n], &dev_n), "succeeds", "applied")],
     }));
 
     let reset_id = ResetId(draw_uuid("flows/reset"));
@@ -1328,25 +1472,14 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
             )],
         },
     ));
-    let activation = vec![
-        w.account_with(
-            "the proposed certificate, as the proposal holds it",
-            "P",
-            2,
-            CertKind::ResetKeepingKeys,
-            &reset_ik,
-        ),
-        w.device_cert("the proposed device certificate", "P", 2, &dev_b),
-        w.version(
-            "PK version 3 with start 0",
-            pk(3),
-            Start::Next,
-            &personal_key("P", 3),
-            "P",
-            2,
-            &w.p.at(2).ask,
-        ),
-    ];
+    let activation = w.activation(
+        "P's reset proposal",
+        "P",
+        2,
+        CertKind::ResetKeepingKeys,
+        &reset_ik,
+        &dev_b,
+    );
     rows.push(scenario(
         "activations out of time or from another device",
         Row {
@@ -1373,20 +1506,12 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
             steps: vec![step(
                 "B",
                 "push change set",
-                vec![
-                    w.account("a rotation to av 2 under the current IK", "P", 2),
-                    w.device_cert("B at av 2", "P", 2, &dev_b),
-                ],
+                w.rotation("B's rotation", "P", 2, &[&dev_b], &dev_b),
                 "the reset ends",
                 "applied",
             )],
         },
     ));
-    let hk = |version: u32| KeyRef {
-        owner: w.p.id.0,
-        purpose: KeyPurpose::History,
-        version: v(version),
-    };
     rows.push(scenario("kind 3 and kind 2 activations", Row {
         row: "Kind 3 activation with no old PK and HK; kind 2 activation with rings",
         client: "start 1 and no ring; start 0 with rings",
@@ -1394,14 +1519,8 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         layer: &["server", "flow"],
         given: obj(vec![("pending_reset", b(true)), ("held_until_passed", b(true))]),
         steps: vec![
-            step("N", "push change set", vec![
-                w.version("PK version 3 with start 1", pk(3), Start::Over, &personal_key("P", 3), "P", 2, &w.p.at(2).ask),
-                w.version("HK version 3 with start 1", hk(3), Start::Over, &personal_key("P history", 3), "P", 2, &w.p.at(2).ask),
-            ], "start 1 and no ring", "applied"),
-            step("B", "push change set", vec![
-                w.version("PK version 3 with start 0", pk(3), Start::Next, &personal_key("P", 3), "P", 2, &w.p.at(2).ask),
-                personal_ring(pk(3), "P", "PK version 3's ring"),
-            ], "start 0 with rings", "applied"),
+            step("N", "push change set", w.activation("a kind 3 proposal", "P", 2, CertKind::ResetEmpty, &reset_ik, &dev_n), "start 1 and no ring", "applied"),
+            step("B", "push change set", w.activation("P's reset proposal", "P", 2, CertKind::ResetKeepingKeys, &reset_ik, &dev_b), "start 0 with rings", "applied"),
         ],
     }));
 
@@ -1681,10 +1800,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
             steps: vec![step(
                 "N",
                 "push change set",
-                vec![
-                    w.account("the rotation to av 2", "P", 2),
-                    w.device_cert("N at av 2", "P", 2, &dev_n),
-                ],
+                w.rotation("N's recovery from a fresh row", "P", 2, &[&dev_n], &dev_n),
                 "succeeds",
                 "applied, then approved",
             )],
@@ -1771,7 +1887,7 @@ fn approval_rows(
         alert,
         replaced,
     };
-    let record_of = |label: &str| draw::<32>(&format!("flows/record/{label}"));
+    let record_of = |label: &str| labelled_version(w, label).1;
     let trust = |pins: Vec<TrustPin>, versions: Vec<TrustVersion>| TrustPlaintext { pins, versions };
     let pv = |version: u32, label: &str| TrustVersion {
         owner: w.p.id.0,
@@ -2096,6 +2212,88 @@ fn set_verify(record: &mut JsonValue, name: &str, value: JsonValue) {
     }
 }
 
+// The version records the approval rows' trust plaintexts name, by label; `record` is each one's digest.
+const LABELLED_VERSIONS: [&str; 9] = [
+    "P PK1",
+    "P PK2",
+    "P PK2 under av 2",
+    "P PK3 held",
+    "P PK3 other",
+    "P PK3 under av 1",
+    "P PK2 under av 1",
+    "team 6",
+    "team 8 by M",
+];
+
+fn labelled_version(w: &World<'_>, label: &str) -> (JsonValue, [u8; 32]) {
+    let personal = |version: u32| KeyRef {
+        owner: w.p.id.0,
+        purpose: KeyPurpose::Personal,
+        version: v(version),
+    };
+    let record = match label {
+        "P PK1" => w.version(
+            label,
+            personal(1),
+            Start::Over,
+            &personal_key("P", 1),
+            "P",
+            1,
+            &w.p.at(1).ask,
+        ),
+        "P PK2" | "P PK2 under av 2" => w.version(
+            label,
+            personal(2),
+            Start::Next,
+            &personal_key("P", 2),
+            "P",
+            2,
+            &w.p.at(2).ask,
+        ),
+        "P PK3 held" => w.version(
+            label,
+            personal(3),
+            Start::Next,
+            &personal_key("P", 3),
+            "P",
+            2,
+            &w.p.at(2).ask,
+        ),
+        "P PK3 other" => w.version(
+            label,
+            personal(3),
+            Start::Next,
+            &personal_key("P other", 3),
+            "P",
+            2,
+            &w.p.at(2).ask,
+        ),
+        "P PK3 under av 1" => w.version(
+            label,
+            personal(3),
+            Start::Next,
+            &personal_key("P old", 3),
+            "P",
+            1,
+            &w.p.at(1).ask,
+        ),
+        "P PK2 under av 1" => w.version(
+            label,
+            personal(2),
+            Start::Next,
+            &personal_key("P old", 2),
+            "P",
+            1,
+            &w.p.at(1).ask,
+        ),
+        "team 6" => w.team_version(label, 6, Start::Next, "A", 2),
+        _ => w.team_version(label, 8, Start::Next, "M", 2),
+    };
+    let mut verify = In::of(&record).sub("verify");
+    let digest = verify.hex32("digest_hex");
+    (record, digest)
+}
+
 fn world_json(w: &World<'_>) -> JsonValue {
     let person = |p: &Person| {
         obj(vec![
@@ -2146,6 +2344,13 @@ fn world_json(w: &World<'_>) -> JsonValue {
         (
             "roles",
             s("A admin, O owner, M member, E editor, P member; B, C and N are P's devices"),
+        ),
+        (
+            "version_records",
+            arr(LABELLED_VERSIONS
+                .iter()
+                .map(|label| labelled_version(w, label).0)
+                .collect()),
         ),
     ])
 }

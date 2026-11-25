@@ -1,3 +1,6 @@
-# Read byte for byte: the pinned word list by its SHA-256, the vectors against what the generator writes.
-src/words/eff_large_wordlist.txt -text
-vectors/** text eol=lf
+# The word list is read byte for byte against its pinned SHA-256, and the vectors against what the
+# generator writes; both, with the word table, are text no one here wrote.
+src/words/eff_large_wordlist.txt -text linguist-vendored
+src/words/eff_large.rs linguist-generated
+vectors/** text eol=lf linguist-generated
+vectors/standard/** linguist-vendored

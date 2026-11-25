@@ -152,11 +152,36 @@ fn less_than(a: &[u8; 32], b: &[u8; 32]) -> bool {
     false
 }
 
-// y below p, with the sign bit cleared.
+// y below p, with the sign bit cleared, and no sign bit where x is 0 (at y = 1 and y = p - 1), which
+// RFC 8032 section 5.1.3 refuses and some decoders read as the point itself.
 fn canonical_point(encoding: &[u8; 32]) -> bool {
     let mut y = *encoding;
     y[31] &= 0x7f;
-    less_than(&y, &FIELD_P)
+    let x_is_zero = y == SMALL_ORDER[0] || y == SMALL_ORDER[1];
+    less_than(&y, &FIELD_P) && !(x_is_zero && encoding[31] & 0x80 != 0)
+}
+
+fn small_order(encoding: &[u8; 32]) -> bool {
+    let mut y = *encoding;
+    y[31] &= 0x7f;
+    SMALL_ORDER.iter().any(|point| {
+        let mut other = *point;
+        other[31] &= 0x7f;
+        other == y
+    })
+}
+
+// R canonical and S below L: a signature no key could make otherwise.
+pub(crate) fn ed25519_signature_form(signature: &[u8; 64]) -> Result<(), KeysError> {
+    let mut r = [0_u8; 32];
+    let mut s = [0_u8; 32];
+    r.copy_from_slice(&signature[..32]);
+    s.copy_from_slice(&signature[32..]);
+    if canonical_point(&r) && less_than(&s, &GROUP_L) {
+        Ok(())
+    } else {
+        Err(KeysError::Signature)
+    }
 }
 
 pub(crate) fn ed25519_public(seed: &[u8; 32]) -> Result<[u8; 32], KeysError> {
@@ -179,13 +204,10 @@ pub(crate) fn ed25519_sign(seed: &[u8; 32], message: &[u8]) -> Result<[u8; 64], 
 // ADR 0056, Libraries: refuse a non-canonical A or R, an A of small order and S at or above L,
 // then verify cofactorless as the library does.
 pub(crate) fn ed25519_verify(public: &[u8; 32], message: &[u8], signature: &[u8; 64]) -> Result<(), KeysError> {
-    let mut r = [0_u8; 32];
-    let mut s = [0_u8; 32];
-    r.copy_from_slice(&signature[..32]);
-    s.copy_from_slice(&signature[32..]);
-    if !canonical_point(public) || SMALL_ORDER.contains(public) || !canonical_point(&r) || !less_than(&s, &GROUP_L) {
+    if !canonical_point(public) || small_order(public) {
         return Err(KeysError::Signature);
     }
+    ed25519_signature_form(signature)?;
     aws_lc_rs::signature::UnparsedPublicKey::new(&ED25519, public)
         .verify(message, signature)
         .map_err(|_| KeysError::Signature)
@@ -291,6 +313,16 @@ pub(crate) mod tests {
 
         for small in SMALL_ORDER {
             assert_eq!(ed25519_verify(&small, b"m", &signature), Err(KeysError::Signature));
+            let mut flipped = small;
+            flipped[31] ^= 0x80;
+            assert_eq!(ed25519_verify(&flipped, b"m", &signature), Err(KeysError::Signature));
         }
+        let mut negative_zero_r = signature;
+        negative_zero_r[..32].copy_from_slice(&SMALL_ORDER[0]);
+        negative_zero_r[31] |= 0x80;
+        assert_eq!(
+            ed25519_verify(&public, b"m", &negative_zero_r),
+            Err(KeysError::Signature)
+        );
     }
 }

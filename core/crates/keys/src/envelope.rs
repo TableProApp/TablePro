@@ -150,6 +150,17 @@ impl EnvelopeId {
         };
         check_record_id(&id.to_wire())?;
         check_record_id(parent_id)?;
+        // ADR 0052, Ids per kind: these parents are named by their UUID; a team library item keeps
+        // the client id its library stores.
+        if matches!(
+            parent_kind,
+            ParentKind::Connection | ParentKind::SshProfile | ParentKind::CredentialProfile
+        ) {
+            crate::encoding::uuid_from_wire(parent_id)?;
+        }
+        if SecretKind::parse(&id.secret_kind.name())? != id.secret_kind {
+            return Err(KeysError::encoding("a secret kind's id is empty or holds `/`"));
+        }
         if !id.secret_kind.allowed_under(parent_kind, parent_id) {
             return Err(KeysError::encoding(
                 "no row of the envelope table has this parent and secret kind",
@@ -232,10 +243,14 @@ pub fn envelope_plaintext(secret: &str, dest: &JsonValue) -> Result<Zeroizing<St
     if !dest.is_object() {
         return Err(KeysError::encoding("`dest` is not an object"));
     }
-    let mut out = Zeroizing::new(String::from("{\"v\":1,\"secret\":"));
+    const HEAD: &str = "{\"v\":1,\"secret\":";
+    const MIDDLE: &str = ",\"dest\":";
+    let len = HEAD.len() + json::string_len(secret) + MIDDLE.len() + dest.encoded_len() + 1;
+    let mut out = Zeroizing::new(String::with_capacity(len));
+    out.push_str(HEAD);
     push_string(&mut out, secret);
-    out.push_str(",\"dest\":");
-    out.push_str(&dest.to_json());
+    out.push_str(MIDDLE);
+    dest.write(&mut out);
     out.push('}');
     Ok(out)
 }
@@ -297,11 +312,15 @@ pub fn open_envelope(
 
 // `{"v": 1, "secret": <string>, "dest": <object>}`, after the padding is removed.
 pub fn parse_envelope_plaintext(plaintext: &[u8]) -> Result<EnvelopePlaintext, KeysError> {
-    let value = json::parse(plaintext)?;
-    let mut members = Members::of(&value)?;
-    check_format(&mut members)?;
-    let secret = SecretString::from(members.string("secret")?.to_owned());
-    let dest = members.object("dest")?.clone();
+    let mut value = Zeroizing::new(json::parse(plaintext)?);
+    let dest = {
+        let mut members = Members::of(&value)?;
+        check_format(&mut members)?;
+        members.string("secret")?;
+        members.object("dest")?.clone()
+    };
+    // The secret's text moves into the SecretString, which wipes it, rather than being copied.
+    let secret = SecretString::from(value.take_string("secret").unwrap_or_default());
     Ok(EnvelopePlaintext { secret, dest })
 }
 
@@ -353,7 +372,12 @@ pub fn history_plaintext(entry: &JsonValue) -> Result<Zeroizing<String>, KeysErr
     if !entry.is_object() {
         return Err(KeysError::encoding("`entry` is not an object"));
     }
-    Ok(Zeroizing::new(format!("{{\"v\":1,\"entry\":{}}}", entry.to_json())))
+    const HEAD: &str = "{\"v\":1,\"entry\":";
+    let mut out = Zeroizing::new(String::with_capacity(HEAD.len() + entry.encoded_len() + 1));
+    out.push_str(HEAD);
+    entry.write(&mut out);
+    out.push('}');
+    Ok(out)
 }
 
 // `key` is the HK version `kv`. A device that pushes an entry again seals it under the newest HK.
@@ -398,7 +422,7 @@ pub fn open_history(
     account: AccountId,
     id: HistoryId,
     sealed: &Sealed,
-) -> Result<JsonValue, KeysError> {
+) -> Result<HistoryPlaintext, KeysError> {
     check_sealed_len(&sealed.ct)?;
     let subkey = history_subkey(key, origin, account, id)?;
     let padded = crypto::aes_open(
@@ -411,11 +435,31 @@ pub fn open_history(
 }
 
 // `{"v": 1, "entry": <object>}`, after the padding is removed.
-pub fn parse_history_plaintext(plaintext: &[u8]) -> Result<JsonValue, KeysError> {
-    let value = json::parse(plaintext)?;
-    let mut members = Members::of(&value)?;
-    check_format(&mut members)?;
-    Ok(members.object("entry")?.clone())
+pub fn parse_history_plaintext(plaintext: &[u8]) -> Result<HistoryPlaintext, KeysError> {
+    let mut value = Zeroizing::new(json::parse(plaintext)?);
+    {
+        let mut members = Members::of(&value)?;
+        check_format(&mut members)?;
+        members.object("entry")?;
+    }
+    Ok(HistoryPlaintext(Zeroizing::new(
+        value.take_member("entry").unwrap_or(JsonValue::Null),
+    )))
+}
+
+// A history entry's fields, wiped on drop; Debug never prints them.
+pub struct HistoryPlaintext(Zeroizing<JsonValue>);
+
+impl HistoryPlaintext {
+    pub fn expose(&self) -> &JsonValue {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for HistoryPlaintext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("HistoryPlaintext(redacted)")
+    }
 }
 
 #[cfg(test)]
@@ -443,7 +487,7 @@ mod tests {
         assert!(EnvelopeId::parse("macos_settings/ai/ai_key.openai").is_ok());
         assert!(EnvelopeId::parse("library_connection/6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44/plugin.token").is_ok());
         assert_eq!(
-            EnvelopeId::parse("ssh_profile/X/password").unwrap_err(),
+            EnvelopeId::parse("ssh_profile/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/password").unwrap_err(),
             KeysError::Encoding {
                 what: "no row of the envelope table has this parent and secret kind"
             }
@@ -452,6 +496,19 @@ mod tests {
         assert!(EnvelopeId::parse("linux_settings/theme/ai_key.openai").is_err());
         assert!(EnvelopeId::parse("connection/X/plugin.").is_err());
         assert!(EnvelopeId::parse("tag/X/password").is_err());
+        assert!(
+            EnvelopeId::parse("connection/X/password").is_err(),
+            "a connection is named by its UUID"
+        );
+        assert!(EnvelopeId::parse("connection/6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44/password").is_err());
+        assert!(
+            EnvelopeId::new(
+                ParentKind::Connection,
+                "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44",
+                SecretKind::Plugin("a/b".into())
+            )
+            .is_err()
+        );
         assert!(EnvelopeId::parse("connection//password").is_err());
         assert_eq!(
             EnvelopeId::new(ParentKind::Settings(Platform::Ios), "ai", SecretKind::AiKey("x".into()))
@@ -503,6 +560,7 @@ mod tests {
         assert!(
             open_history(&key, &origin(), account, id, &sealed)
                 .unwrap()
+                .expose()
                 .same_as(&entry)
         );
         assert_eq!(

@@ -16,6 +16,9 @@ pub fn decode(text: &str) -> Result<Vec<u8>, KeysError> {
 }
 
 pub fn decode_exact<const N: usize>(text: &str) -> Result<[u8; N], KeysError> {
+    if text.len() != (N * 4).div_ceil(3) {
+        return Err(KeysError::encoding("wrong byte length"));
+    }
     let bytes = decode(text)?;
     <[u8; N]>::try_from(bytes.as_slice()).map_err(|_| KeysError::encoding("wrong byte length"))
 }

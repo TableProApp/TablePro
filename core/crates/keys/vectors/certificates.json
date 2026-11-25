@@ -413,6 +413,30 @@
       "server": "bad_statement"
     },
     {
+      "name": "A the identity with the sign bit set",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "0100000000000000000000000000000000000000000000000000000000000080",
+        "message_hex": "7461626c6570726f2d6b657973206564323535313920766563746f7200",
+        "sig_hex": "bb1bd9ab598680081b450de0b1b6d9992b2a8a56d0bb5203e90c368cc31cc95b333836bc4795a9b27ec2723063dbe03b0960f5386e417ee1b43d6d258cba510e"
+      },
+      "error": "keys.signature",
+      "server": "bad_statement"
+    },
+    {
+      "name": "R the identity with the sign bit set",
+      "op": "ed25519_verify",
+      "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",
+      "input": {
+        "public_hex": "e8fdd4dbe43ad643b99076c8333669aa1c9ebd0863c6133726ea5047d2708475",
+        "message_hex": "7461626c6570726f2d6b657973206564323535313920766563746f7200",
+        "sig_hex": "0100000000000000000000000000000000000000000000000000000000000080333836bc4795a9b27ec2723063dbe03b0960f5386e417ee1b43d6d258cba510e"
+      },
+      "error": "keys.signature",
+      "server": "bad_statement"
+    },
+    {
       "name": "a non-canonical R",
       "op": "ed25519_verify",
       "row": "An Ed25519 A of small order, a non-canonical A or R, S at or above L",

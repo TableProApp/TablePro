@@ -7,7 +7,7 @@ use crate::crypto;
 use crate::json::push_string;
 use crate::keys::Ed25519Seed;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct DpopRequest<'a> {
     pub method: &'a str,
     // The request URI; the query and fragment are left out of `htu`.
@@ -17,6 +17,19 @@ pub struct DpopRequest<'a> {
     pub iat: u64,
     // The server's `DPoP-Nonce`, once it sent one.
     pub nonce: Option<&'a str>,
+}
+
+// The access token is a bearer credential, so Debug leaves it out.
+impl std::fmt::Debug for DpopRequest<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DpopRequest")
+            .field("method", &self.method)
+            .field("url", &self.url)
+            .field("access_token", &"(redacted)")
+            .field("iat", &self.iat)
+            .field("nonce", &self.nonce)
+            .finish()
+    }
 }
 
 pub fn htu(url: &str) -> Result<String, KeysError> {

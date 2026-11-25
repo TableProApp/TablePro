@@ -163,6 +163,7 @@ impl Wrap {
         dsk: &Ed25519Seed,
     ) -> Result<Self, KeysError> {
         require_purpose(target, WrapPurpose::Trust)?;
+        trust.check_unique()?;
         let padded = crate::padding::pad(trust.encode().as_bytes())?;
         Self::seal(origin, target, dek, &padded, wrapper, dsk)
     }
@@ -208,9 +209,18 @@ impl Wrap {
             });
         }
         let info = self.info(origin, certified)?;
+        // A signature no key could make is keys.signature; one in form that the expected key did
+        // not make is `signature_error`, keys.not_compared for an approval's wraps.
+        crypto::ed25519_signature_form(&self.sig.0)?;
         signer
             .verify(&wrap_sig_message(&info, &self.enc, &self.ct, self.wrapper)?, &self.sig)
-            .map_err(|_| signature_error)?;
+            .map_err(|error| {
+                if error == KeysError::Signature {
+                    signature_error
+                } else {
+                    error
+                }
+            })?;
         crypto::hpke_open(secret.expose(), &self.enc, &info, &self.ct)
     }
 
@@ -263,8 +273,7 @@ impl Wrap {
             return Err(KeysError::encoding("the version record is not the wrapped version's"));
         }
         let plaintext = self.open_checked(origin, aek, certified_aek, wrapper_ask, KeysError::Signature)?;
-        let bytes = <[u8; 32]>::try_from(plaintext.as_slice()).map_err(|_| KeysError::encoding("scope key length"))?;
-        let key = ScopeKey::from_bytes(bytes);
+        let key = ScopeKey::from_slice(&plaintext)?;
         record.check_key(&key)?;
         Ok(key)
     }

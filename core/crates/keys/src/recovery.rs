@@ -53,8 +53,11 @@ impl RecoveryKey {
 
     fn checksum(r: &[u8; 32]) -> Result<[u8; 3], KeysError> {
         let mut frame = Frame::new(Label::RecoveryChecksum);
+        // Room for R up front, so the frame never moves it and leaves a copy behind.
+        frame.reserve(4 + r.len());
         frame.lp(r);
-        let digest = crypto::sha256(&frame.finish()?);
+        let input = Zeroizing::new(frame.finish()?);
+        let digest = crypto::sha256(&input);
         Ok([digest[0], digest[1], digest[2]])
     }
 
@@ -76,7 +79,7 @@ impl RecoveryKey {
 
     // Drops hyphens and spaces, upper-cases, reads O as 0 and I and L as 1.
     pub fn parse(text: &str) -> Result<Self, KeysError> {
-        let mut symbols = Zeroizing::new(String::with_capacity(56));
+        let mut symbols = Zeroizing::new(String::with_capacity(text.len()));
         for character in text.chars() {
             match character.to_ascii_uppercase() {
                 '-' | ' ' => {}
@@ -104,7 +107,7 @@ impl RecoveryKey {
     pub fn identity_seed(&self, origin: &Origin, account: AccountId) -> Result<Ed25519Seed, KeysError> {
         let mut info = Frame::new(Label::Identity);
         info.origin(origin).id(account.0);
-        crypto::hkdf32(self.expose(), &info.finish()?).map(|seed| Ed25519Seed::from_bytes(*seed))
+        crypto::hkdf32(self.expose(), &info.finish()?).and_then(|seed| Ed25519Seed::from_slice(seed.as_slice()))
     }
 
     pub fn blob_key(&self, origin: &Origin, account: AccountId) -> Result<Zeroizing<[u8; 32]>, KeysError> {

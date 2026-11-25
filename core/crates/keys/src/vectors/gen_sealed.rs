@@ -11,7 +11,7 @@ use crate::envelope::{
 use crate::json::JsonValue;
 use crate::keys::{Ed25519Public, ScopeKey};
 use crate::padding;
-use crate::trust::{PinHow, TrustPin, TrustPlaintext, TrustVersion};
+use crate::trust::{PinHow, RECORD_LIMIT, TrustPin, TrustPlaintext, TrustVersion, trust_wrap_record_len};
 
 const PADDING_SIZES: [usize; 16] = [
     63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024, 2047, 2048, 4095, 4096, 8191, 8192,
@@ -653,6 +653,50 @@ pub(super) fn history() -> JsonValue {
     )
 }
 
+// `count` compared pins, the account of pin i being 019A0000-0000-7000-8000- and i in 12 hex digits.
+fn generated_trust_of(count: usize) -> TrustPlaintext {
+    let ik = Ed25519Public(
+        crate::keys::Ed25519Seed::from_bytes(draw("trust/generated IK"))
+            .public()
+            .unwrap()
+            .0,
+    );
+    let pins = (0..count)
+        .map(|index| TrustPin {
+            account: crate::encoding::AccountId(uuid::Uuid::from_u128(
+                0x019a_0000_0000_7000_8000_0000_0000_0000 + index as u128,
+            )),
+            ik,
+            av: v(1),
+            how: PinHow::Compared,
+            alert: false,
+            replaced: Vec::new(),
+        })
+        .collect();
+    TrustPlaintext {
+        pins,
+        versions: Vec::new(),
+    }
+}
+
+fn generated_json(count: usize) -> JsonValue {
+    let ik = crate::keys::Ed25519Seed::from_bytes(draw("trust/generated IK"))
+        .public()
+        .unwrap();
+    obj(vec![
+        ("count", n(count as u64)),
+        ("first_account", s("019A0000-0000-7000-8000-000000000000")),
+        ("ik", s(&crate::b64::encode(&ik.0))),
+        ("av", n(1)),
+        ("how", s("compared")),
+    ])
+}
+
+pub(super) fn generated_trust(value: &JsonValue) -> TrustPlaintext {
+    let mut input = super::verify::In::of(value);
+    generated_trust_of(usize::try_from(input.u64("count")).unwrap())
+}
+
 #[expect(clippy::too_many_lines, reason = "one case per vector the ADR lists")]
 pub(super) fn trust() -> JsonValue {
     let ik = |name: &str| Ed25519Public(crate::keys::Ed25519Seed::from_bytes(draw(name)).public().unwrap().0);
@@ -777,29 +821,92 @@ pub(super) fn trust() -> JsonValue {
         versions: Vec::new(),
     };
     let encoded = crowded.encode();
-    let fitted = crowded
-        .fit(|candidate| candidate.encode().len() <= encoded.len() - 100)
-        .unwrap();
-    let floor = crowded
-        .fit(|candidate| candidate.pins.len() <= 2)
-        .unwrap()
-        .encode()
-        .len();
-    let fit = vec![
-        case(
+    let av = v(2);
+    let record_len = |trust: &TrustPlaintext| trust_wrap_record_len(trust.encode().len(), av).unwrap();
+    let full = record_len(&crowded);
+    let without_third = TrustPlaintext {
+        pins: vec![
+            crowded.pins[0].clone(),
+            crowded.pins[1].clone(),
+            crowded.pins[3].clone(),
+        ],
+        versions: Vec::new(),
+    };
+    let floor = TrustPlaintext {
+        pins: vec![crowded.pins[1].clone(), crowded.pins[3].clone()],
+        versions: Vec::new(),
+    };
+    let fit_case = |name: &str, limit: usize, expected: Option<&TrustPlaintext>| {
+        let mut output = vec![("record_len", n(full as u64)), ("fits", b(expected.is_some()))];
+        if let Some(expected) = expected {
+            output.push(("text", s(&expected.encode())));
+        }
+        (name.to_owned(), limit, output)
+    };
+    let fitted = crowded.fit_record(record_len(&without_third), av).unwrap().unwrap();
+    let mut fit = Vec::new();
+    for (name, limit, output) in [
+        fit_case("the whole plaintext fits", full, Some(&crowded)),
+        fit_case(
             "first-use pins with no alert and no replaced IK are left out first, from the end",
-            "trust_fit",
-            vec![("text", s(&encoded)), ("limit_bytes", n((encoded.len() - 100) as u64))],
-            vec![("fits", b(true)), ("text", s(&fitted.encode()))],
+            record_len(&without_third),
+            Some(&fitted),
         ),
-        case_row(
-            "alerts and replaced IKs alone pass the limit: nothing is dropped and the approval fails, as the server's too_large would",
-            "trust_fit",
-            "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit; a first-use pin with a replaced IK, kept",
-            vec![("text", s(&encoded)), ("limit_bytes", n((floor - 1) as u64))],
-            vec![("fits", b(false))],
+        fit_case(
+            "only the alert and the replaced IK are left",
+            record_len(&floor),
+            Some(&floor),
         ),
-    ];
+    ] {
+        fit.push(case(
+            &name,
+            "trust_fit",
+            vec![
+                ("text", s(&encoded)),
+                ("record_limit", n(limit as u64)),
+                ("wrapper_av", n(2)),
+            ],
+            output,
+        ));
+    }
+    fit.push(case_row(
+        "alerts and replaced IKs alone pass the limit: nothing is dropped and the approval fails, as the server's too_large would",
+        "trust_fit",
+        "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit; a first-use pin with a replaced IK, kept",
+        vec![("text", s(&encoded)), ("record_limit", n((record_len(&floor) - 1) as u64)), ("wrapper_av", n(2))],
+        vec![("record_len", n(full as u64)), ("fits", b(false))],
+    ));
+    // At the record limit itself: compared pins, which are never left out, up to 1 MiB.
+    let fits =
+        |count: usize| trust_wrap_record_len(generated_trust_of(count).encode().len(), av).unwrap() <= RECORD_LIMIT;
+    let (mut low, mut high) = (1_usize, 1_usize << 15);
+    while low + 1 < high {
+        let middle = usize::midpoint(low, high);
+        if fits(middle) { low = middle } else { high = middle }
+    }
+    let at_limit = low;
+    for (name, count, fits) in [
+        ("the most compared pins that fit 1 MiB", at_limit, true),
+        ("one compared pin more", at_limit + 1, false),
+    ] {
+        let trust = generated_trust_of(count);
+        let len = trust_wrap_record_len(trust.encode().len(), av).unwrap();
+        let mut output = vec![("record_len", n(len as u64)), ("fits", b(fits))];
+        if fits {
+            output.push(("pins", n(count as u64)));
+        }
+        fit.push(case_row(
+            name,
+            "trust_fit",
+            "A rotation or a trust record at the record limit",
+            vec![
+                ("generated", generated_json(count)),
+                ("record_limit", n(RECORD_LIMIT as u64)),
+                ("wrapper_av", n(2)),
+            ],
+            output,
+        ));
+    }
     file(
         "trust",
         "The trust plaintext, its reading and what is left out for size (ADR 0056, Pins)",

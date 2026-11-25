@@ -384,6 +384,26 @@ fn ed25519_negatives() -> Vec<JsonValue> {
         "keys.signature",
         BAD_STATEMENT,
     ));
+    // x = 0 with the sign bit set, which RFC 8032 refuses and lenient decoders read as the identity.
+    let negative_zero = hex::decode("0100000000000000000000000000000000000000000000000000000000000080").unwrap();
+    cases.push(negative(
+        "A the identity with the sign bit set",
+        "ed25519_verify",
+        row,
+        input(&negative_zero, &sig.0),
+        "keys.signature",
+        BAD_STATEMENT,
+    ));
+    let mut negative_zero_r = sig.0;
+    negative_zero_r[..32].copy_from_slice(&negative_zero);
+    cases.push(negative(
+        "R the identity with the sign bit set",
+        "ed25519_verify",
+        row,
+        input(&public.0, &negative_zero_r),
+        "keys.signature",
+        BAD_STATEMENT,
+    ));
     let mut bad_r = sig.0;
     bad_r[..32].copy_from_slice(&non_canonical);
     cases.push(negative(

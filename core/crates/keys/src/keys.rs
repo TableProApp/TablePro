@@ -36,6 +36,16 @@ macro_rules! secret_bytes {
                 Self(Zeroizing::new(bytes))
             }
 
+            // Copies straight into the zeroized buffer, leaving no copy on the stack.
+            pub fn from_slice(bytes: &[u8]) -> Result<Self, KeysError> {
+                if bytes.len() != 32 {
+                    return Err(KeysError::encoding("a key of the wrong length"));
+                }
+                let mut key = Zeroizing::new([0_u8; 32]);
+                key.copy_from_slice(bytes);
+                Ok(Self(key))
+            }
+
             pub fn generate() -> Result<Self, KeysError> {
                 let mut bytes = Zeroizing::new([0_u8; 32]);
                 crypto::random(bytes.as_mut())?;

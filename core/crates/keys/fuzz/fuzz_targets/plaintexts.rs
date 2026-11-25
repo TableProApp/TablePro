@@ -26,8 +26,9 @@ fuzz_target!(|data: &[u8]| {
         }
         _ => {
             if let Ok(entry) = parse_history_plaintext(plaintext) {
-                let written = history_plaintext(&entry).expect("write");
-                assert!(parse_history_plaintext(written.as_bytes()).expect("its own plaintext").same_as(&entry));
+                let written = history_plaintext(entry.expose()).expect("write");
+                let again = parse_history_plaintext(written.as_bytes()).expect("its own plaintext");
+                assert!(again.expose().same_as(entry.expose()));
             }
         }
     }

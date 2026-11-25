@@ -192,12 +192,20 @@ impl Ring {
         let mut version = [0_u8; 4];
         version.copy_from_slice(&plaintext[..4]);
         let expected = key.version.previous().ok_or(KeysError::Ring)?;
-        if u32::from_be_bytes(version) != expected.get() || below.key.version != expected {
+        if u32::from_be_bytes(version) != expected.get() {
             return Err(KeysError::Ring);
         }
-        let mut bytes = zeroize::Zeroizing::new([0_u8; 32]);
-        bytes.copy_from_slice(&plaintext[4..]);
-        let older = ScopeKey::from_bytes(*bytes);
+        if below.key
+            != (KeyRef {
+                version: expected,
+                ..key
+            })
+        {
+            return Err(KeysError::encoding(
+                "the version record is not the ring's version below",
+            ));
+        }
+        let older = ScopeKey::from_slice(&plaintext[4..])?;
         below.check_key(&older)?;
         Ok(older)
     }
@@ -269,10 +277,10 @@ mod tests {
         }
         assert_eq!(current.expose(), keys[0].expose());
 
-        assert_eq!(
+        assert!(matches!(
             rings[2].open(&origin(), key_ref(4), &keys[3], &records[1]).unwrap_err(),
-            KeysError::Ring
-        );
+            KeysError::Encoding { .. }
+        ));
         let mut wrong_kid = records[2].clone();
         wrong_kid.kid = keys[0].kid().unwrap();
         assert_eq!(

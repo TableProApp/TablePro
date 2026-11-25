@@ -783,7 +783,10 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             let id = HistoryId(uuid_from_wire(input.str("id"))?);
             let key = ScopeKey::from_bytes(input.hex32("key_hex"));
             let sealed = parse_sealed(input.value("fields").to_json().as_bytes())?;
-            vec![("entry", open_history(&key, &origin, account, id, &sealed)?)]
+            vec![(
+                "entry",
+                open_history(&key, &origin, account, id, &sealed)?.expose().clone(),
+            )]
         }
         "trust_plaintext" => {
             let text = input.str("text");
@@ -798,11 +801,28 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             outputs
         }
         "trust_fit" => {
-            let trust = TrustPlaintext::parse(input.str("text").as_bytes())?;
-            let limit = usize::try_from(input.u64("limit_bytes")).expect("limit");
-            match trust.fit(|candidate| candidate.encode().len() <= limit) {
-                Some(fitted) => vec![("fits", b(true)), ("text", s(&fitted.encode()))],
-                None => vec![("fits", b(false))],
+            let trust = if input.has("text") {
+                TrustPlaintext::parse(input.str("text").as_bytes())?
+            } else {
+                super::gen_sealed::generated_trust(input.value("generated"))
+            };
+            let limit = usize::try_from(input.u64("record_limit")).expect("limit");
+            let wrapper_av = input.version("wrapper_av");
+            let record_len = crate::trust::trust_wrap_record_len(trust.encode().len(), wrapper_av)?;
+            match trust.fit_record(limit, wrapper_av)? {
+                Some(fitted) if input.has("text") => {
+                    vec![
+                        ("record_len", n(record_len as u64)),
+                        ("fits", b(true)),
+                        ("text", s(&fitted.encode())),
+                    ]
+                }
+                Some(fitted) => vec![
+                    ("record_len", n(record_len as u64)),
+                    ("fits", b(true)),
+                    ("pins", n(fitted.pins.len() as u64)),
+                ],
+                None => vec![("record_len", n(record_len as u64)), ("fits", b(false))],
             }
         }
         "sas" => {
@@ -1039,10 +1059,24 @@ fn check_wrap(name: &str, input: &JsonValue, expected: &[(String, JsonValue)]) {
     let opened = crypto::hpke_open(secret.expose(), &wrap.enc, &info, &wrap.ct)
         .unwrap_or_else(|error| panic!("{name}: {error:?}"));
     assert_eq!(opened.as_slice(), input.hex("plaintext_hex").as_slice(), "{name}");
-    let JsonValue::String(enc) = get("enc_hex") else {
-        panic!("{name}: enc")
+    let hex_of = |key: &str| match get(key) {
+        JsonValue::String(text) => hex::decode(text).expect("hex"),
+        _ => panic!("{name}: {key}"),
     };
-    assert_eq!(hex::decode(enc).expect("hex"), wrap.enc, "{name}");
+    assert_eq!(
+        KeyRecordId::Wrap(wrap.target).to_wire(),
+        input.str("id"),
+        "{name}: the record's id is the case's"
+    );
+    assert_eq!(hex_of("info_hex"), info, "{name}");
+    assert_eq!(hex_of("enc_hex"), wrap.enc, "{name}");
+    assert_eq!(hex_of("ct_hex"), wrap.ct, "{name}");
+    assert_eq!(hex_of("sig_hex"), wrap.sig.0, "{name}");
+    let message = crate::wrap::wrap_sig_message(&info, &wrap.enc, &wrap.ct, wrap.wrapper).expect("message");
+    assert_eq!(hex_of("sig_message_hex"), message, "{name}");
+    // The signature is the signer's own: Ed25519 is deterministic.
+    let seed = Ed25519Seed::from_bytes(input.hex32("signer_seed_hex"));
+    assert_eq!(seed.sign(&message).expect("sign"), wrap.sig, "{name}");
     // And a fresh seal of the same plaintext opens the same way.
     let (enc, ct) = crypto::hpke_seal(&pk_r.0, &info, &input.hex("plaintext_hex")).expect("seal");
     assert_eq!(

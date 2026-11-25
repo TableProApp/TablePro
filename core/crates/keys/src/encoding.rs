@@ -99,6 +99,10 @@ impl Frame {
         self
     }
 
+    pub(crate) fn reserve(&mut self, additional: usize) {
+        self.bytes.reserve_exact(additional);
+    }
+
     pub(crate) fn u32(&mut self, value: u32) -> &mut Self {
         self.bytes.extend_from_slice(&value.to_be_bytes());
         self

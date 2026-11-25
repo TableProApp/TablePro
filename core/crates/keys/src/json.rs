@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use zeroize::{Zeroize, Zeroizing};
+
 use crate::KeysError;
 use crate::encoding::Version;
 
@@ -84,7 +86,14 @@ impl From<u64> for JsonNumber {
     }
 }
 
+// No record a client reads is longer than a 4 MiB push or page (ADR 0051, Limits), so nothing longer
+// is read: a server cannot make the tree grow past what a page could hold.
+pub const MAX_JSON_LEN: usize = 4 << 20;
+
 pub fn parse(bytes: &[u8]) -> Result<JsonValue, KeysError> {
+    if bytes.len() > MAX_JSON_LEN {
+        return Err(KeysError::encoding("JSON longer than a 4 MiB page"));
+    }
     let text = std::str::from_utf8(bytes).map_err(|_| KeysError::encoding("JSON is not UTF-8"))?;
     let mut reader = Reader { text, at: 0 };
     reader.whitespace();
@@ -152,12 +161,13 @@ impl Reader<'_> {
             return Err(KeysError::encoding("JSON nested too deep"));
         }
         self.expect(b'{')?;
-        let mut members = Vec::new();
+        // Wiped if a later member fails, since a plaintext's values can be secrets.
+        let mut object = Zeroizing::new(JsonValue::Object(Vec::new()));
         let mut names = HashSet::new();
         self.whitespace();
         if self.peek() == Some(b'}') {
             self.at += 1;
-            return Ok(JsonValue::Object(members));
+            return Ok(std::mem::replace(&mut *object, JsonValue::Null));
         }
         loop {
             self.whitespace();
@@ -169,13 +179,15 @@ impl Reader<'_> {
             self.expect(b':')?;
             self.whitespace();
             let value = self.value(depth)?;
-            members.push((name, value));
+            if let JsonValue::Object(members) = &mut *object {
+                members.push((name, value));
+            }
             self.whitespace();
             match self.peek() {
                 Some(b',') => self.at += 1,
                 Some(b'}') => {
                     self.at += 1;
-                    return Ok(JsonValue::Object(members));
+                    return Ok(std::mem::replace(&mut *object, JsonValue::Null));
                 }
                 _ => return Err(syntax()),
             }
@@ -187,21 +199,24 @@ impl Reader<'_> {
             return Err(KeysError::encoding("JSON nested too deep"));
         }
         self.expect(b'[')?;
-        let mut items = Vec::new();
+        let mut array = Zeroizing::new(JsonValue::Array(Vec::new()));
         self.whitespace();
         if self.peek() == Some(b']') {
             self.at += 1;
-            return Ok(JsonValue::Array(items));
+            return Ok(std::mem::replace(&mut *array, JsonValue::Null));
         }
         loop {
             self.whitespace();
-            items.push(self.value(depth)?);
+            let item = self.value(depth)?;
+            if let JsonValue::Array(items) = &mut *array {
+                items.push(item);
+            }
             self.whitespace();
             match self.peek() {
                 Some(b',') => self.at += 1,
                 Some(b']') => {
                     self.at += 1;
-                    return Ok(JsonValue::Array(items));
+                    return Ok(std::mem::replace(&mut *array, JsonValue::Null));
                 }
                 _ => return Err(syntax()),
             }
@@ -217,9 +232,24 @@ impl Reader<'_> {
         u32::from_str_radix(digits, 16).map_err(|_| syntax())
     }
 
+    // The raw length up to the closing quote, which the decoded text never passes.
+    fn raw_string_len(&self) -> usize {
+        let bytes = self.text.as_bytes();
+        let mut end = self.at + 1;
+        while let Some(byte) = bytes.get(end) {
+            match byte {
+                b'\\' => end += 2,
+                b'"' => break,
+                _ => end += 1,
+            }
+        }
+        end.min(bytes.len()).saturating_sub(self.at + 1)
+    }
+
+    // Built in place at its final size and wiped on failure, so a secret leaves no copy behind.
     fn string(&mut self) -> Result<String, KeysError> {
+        let mut out = Zeroizing::new(String::with_capacity(self.raw_string_len()));
         self.expect(b'"')?;
-        let mut out = String::new();
         loop {
             let rest = &self.text[self.at..];
             let run = rest
@@ -230,7 +260,7 @@ impl Reader<'_> {
             match self.peek().ok_or_else(syntax)? {
                 b'"' => {
                     self.at += 1;
-                    return Ok(out);
+                    return Ok(std::mem::take(&mut *out));
                 }
                 b'\\' => {
                     self.at += 1;
@@ -336,12 +366,38 @@ impl JsonValue {
     }
 
     pub fn to_json(&self) -> String {
-        let mut out = String::new();
+        let mut out = String::with_capacity(self.encoded_len());
         self.write(&mut out);
         out
     }
 
-    fn write(&self, out: &mut String) {
+    // The length `to_json` writes, so a buffer for a secret can be made at its final size.
+    pub fn encoded_len(&self) -> usize {
+        match self {
+            Self::Null => 4,
+            Self::Bool(value) => {
+                if *value {
+                    4
+                } else {
+                    5
+                }
+            }
+            Self::Number(value) => value.as_str().len(),
+            Self::String(value) => string_len(value),
+            Self::Array(items) => {
+                2 + items.iter().map(Self::encoded_len).sum::<usize>() + items.len().saturating_sub(1)
+            }
+            Self::Object(members) => {
+                2 + members
+                    .iter()
+                    .map(|(name, value)| string_len(name) + 1 + value.encoded_len())
+                    .sum::<usize>()
+                    + members.len().saturating_sub(1)
+            }
+        }
+    }
+
+    pub(crate) fn write(&self, out: &mut String) {
         match self {
             Self::Null => out.push_str("null"),
             Self::Bool(value) => out.push_str(if *value { "true" } else { "false" }),
@@ -375,6 +431,54 @@ impl JsonValue {
     pub fn is_object(&self) -> bool {
         matches!(self, Self::Object(_))
     }
+
+    // Moves a member out of an object, leaving null in its place.
+    pub(crate) fn take_member(&mut self, name: &str) -> Option<Self> {
+        let Self::Object(members) = self else {
+            return None;
+        };
+        members
+            .iter_mut()
+            .find(|(member, _)| member == name)
+            .map(|(_, value)| std::mem::replace(value, Self::Null))
+    }
+
+    // Moves a string member out of an object, leaving an empty string in its place.
+    pub(crate) fn take_string(&mut self, name: &str) -> Option<String> {
+        let Self::Object(members) = self else {
+            return None;
+        };
+        match members.iter_mut().find(|(member, _)| member == name) {
+            Some((_, Self::String(text))) => Some(std::mem::take(text)),
+            _ => None,
+        }
+    }
+}
+
+impl Zeroize for JsonValue {
+    fn zeroize(&mut self) {
+        match self {
+            Self::String(text) => text.zeroize(),
+            Self::Number(number) => number.0.zeroize(),
+            Self::Array(items) => items.iter_mut().for_each(Zeroize::zeroize),
+            Self::Object(members) => members.iter_mut().for_each(|(name, value)| {
+                name.zeroize();
+                value.zeroize();
+            }),
+            Self::Null | Self::Bool(_) => {}
+        }
+    }
+}
+
+pub(crate) fn string_len(value: &str) -> usize {
+    2 + value
+        .chars()
+        .map(|character| match character {
+            '"' | '\\' | '\n' | '\r' | '\t' | '\u{8}' | '\u{c}' => 2,
+            control if control < '\u{20}' => 6,
+            other => other.len_utf8(),
+        })
+        .sum::<usize>()
 }
 
 // A JSON string with the escapes RFC 8259 requires: the quote, the backslash and control characters.
@@ -569,6 +673,8 @@ mod tests {
         assert!(parse(deep.as_bytes()).is_err());
         let fine = "[".repeat(128) + &"]".repeat(128);
         assert!(parse(fine.as_bytes()).is_ok());
+        let long = format!("\"{}\"", "a".repeat(super::MAX_JSON_LEN));
+        assert!(parse(long.as_bytes()).is_err(), "past a page");
     }
 
     proptest! {

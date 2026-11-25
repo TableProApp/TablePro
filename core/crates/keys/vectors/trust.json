@@ -113,15 +113,45 @@
   ],
   "fit": [
     {
+      "name": "the whole plaintext fits",
+      "op": "trust_fit",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}",
+        "record_limit": 1677,
+        "wrapper_av": 2
+      },
+      "output": {
+        "record_len": 1677,
+        "fits": true,
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}"
+      }
+    },
+    {
       "name": "first-use pins with no alert and no replaced IK are left out first, from the end",
       "op": "trust_fit",
       "input": {
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}",
-        "limit_bytes": 594
+        "record_limit": 1677,
+        "wrapper_av": 2
       },
       "output": {
+        "record_len": 1677,
         "fits": true,
-        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}"
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}"
+      }
+    },
+    {
+      "name": "only the alert and the replaced IK are left",
+      "op": "trust_fit",
+      "input": {
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}",
+        "record_limit": 994,
+        "wrapper_av": 2
+      },
+      "output": {
+        "record_len": 1677,
+        "fits": true,
+        "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}"
       }
     },
     {
@@ -130,9 +160,52 @@
       "row": "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit; a first-use pin with a replaced IK, kept",
       "input": {
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}",
-        "limit_bytes": 383
+        "record_limit": 993,
+        "wrapper_av": 2
       },
       "output": {
+        "record_len": 1677,
+        "fits": false
+      }
+    },
+    {
+      "name": "the most compared pins that fit 1 MiB",
+      "op": "trust_fit",
+      "row": "A rotation or a trust record at the record limit",
+      "input": {
+        "generated": {
+          "count": 5079,
+          "first_account": "019A0000-0000-7000-8000-000000000000",
+          "ik": "KHrUN4yrfgXFBmRiq6XC-oNKUV4ZFj5d67bG88eNK00",
+          "av": 1,
+          "how": "compared"
+        },
+        "record_limit": 1048576,
+        "wrapper_av": 2
+      },
+      "output": {
+        "record_len": 1043426,
+        "fits": true,
+        "pins": 5079
+      }
+    },
+    {
+      "name": "one compared pin more",
+      "op": "trust_fit",
+      "row": "A rotation or a trust record at the record limit",
+      "input": {
+        "generated": {
+          "count": 5080,
+          "first_account": "019A0000-0000-7000-8000-000000000000",
+          "ik": "KHrUN4yrfgXFBmRiq6XC-oNKUV4ZFj5d67bG88eNK00",
+          "av": 1,
+          "how": "compared"
+        },
+        "record_limit": 1048576,
+        "wrapper_av": 2
+      },
+      "output": {
+        "record_len": 1048888,
         "fits": false
       }
     }

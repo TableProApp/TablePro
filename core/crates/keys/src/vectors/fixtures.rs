@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use uuid::Uuid;
@@ -107,8 +108,9 @@ pub(super) fn scope_key(name: &str) -> ScopeKey {
 // same record id while they still open to the case's plaintext under its key and `info`.
 type Sealed = Vec<([u8; 32], Vec<u8>)>;
 
+// A seal made during a run joins the cache, so a wrap built twice in one run is the same both times.
 pub(super) struct HpkeCache {
-    entries: HashMap<String, Sealed>,
+    entries: RefCell<HashMap<String, Sealed>>,
 }
 
 impl HpkeCache {
@@ -117,16 +119,22 @@ impl HpkeCache {
         for file in files {
             collect(file, &mut entries);
         }
-        Self { entries }
+        Self {
+            entries: RefCell::new(entries),
+        }
     }
 
     pub(super) fn seal(&self, id: &str, secret: &X25519Secret, info: &[u8], plaintext: &[u8]) -> ([u8; 32], Vec<u8>) {
-        for (enc, ct) in self.entries.get(id).into_iter().flatten() {
+        let mut entries = self.entries.borrow_mut();
+        let found = entries.entry(id.to_owned()).or_default();
+        for (enc, ct) in found.iter() {
             if crypto::hpke_open(secret.expose(), enc, info, ct).is_ok_and(|opened| opened.as_slice() == plaintext) {
                 return (*enc, ct.clone());
             }
         }
-        crypto::hpke_seal(&secret.public().expect("public").0, info, plaintext).expect("seal")
+        let sealed = crypto::hpke_seal(&secret.public().expect("public").0, info, plaintext).expect("seal");
+        found.push(sealed.clone());
+        sealed
     }
 
     // A wrap as `Wrap::seal` makes it, with its HPKE output from the cache.
