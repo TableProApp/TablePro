@@ -48,7 +48,7 @@ Every synced kind has one id form, fixed below, that every device computes the s
 | `ios_settings`, `linux_settings`, `windows_settings` | personal | none | A category that platform's settings registry in the core names | `editor` |
 | `history_entry` | history | none | A random UUIDv4 | `07D0575D-F499-463A-AB54-2852D631B0B4` |
 | `secret_envelope` | personal, team | none | Secret envelopes, below | `connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/password` |
-| `key.*` | personal, team | none | Key objects, below | `7`; `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/7` |
+| `key.*` | personal, team | none | Key objects, below | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/7` |
 | The library's `connection`, `folder` and `query` | team | none | Team scope, below | `6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44` |
 
 The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its table `shop.public.orders`. A `columnLayout` category for an SQLite file deep in the file system passes the limit and takes the long form, `sha256-` and 64 hex digits.
@@ -73,10 +73,24 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
 
 ### Key objects
 
-- A key object's id is one or more segments joined by `/`. A segment is a UUID in the form above, a decimal counter with no leading zero, or a name of lower-case ASCII letters, digits and `_` that starts with a letter.
-- The id names the object's version or its position in its log, so two writers of one version meet on one id, and the create-only rule (0051) keeps one of them.
-- A writer-bound id starts with the writing account's id. The server refuses a write whose first segment is not the caller's account id in upper case, compared as bytes. 0051 gives the refusal code.
-- 0053 names each key kind's segments and which kinds are writer-bound.
+- A key object's id is its parts joined by `/`, in the order below. A part is a UUID in the form above, a decimal counter with no leading zero, or a name of lower-case ASCII letters, digits and `-` that starts with a letter.
+- 0053 says what each part means, which kinds are create-only and which writer each kind is bound to. Here is how the parts are written.
+
+| Kind | Id | Example |
+|---|---|---|
+| `key.identity` | `<account>/<seq>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/0` |
+| `key.device` | `<account>/<seq>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/4` |
+| `key.recovery` | `<account>/<rk_v>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1` |
+| `key.request` | `<request id>` | `5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357` |
+| `key.sas` | `<session id>/<step>`, the step `commit`, `nonce` or `reveal`; a device approval's session id is its request's id | `5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357/nonce` |
+| `key.wrap` | `<owner>/<purpose>/<version>/<recipient type>/<recipient id>/<recipient version>`, the owner an account or a team, the purpose `account-key`, `account-signing-key`, `sharing-key` or `team-key`, the recipient `holder` (its id, version 0), `recovery` (the account, `rk_v`) or `member` (the account, `sk_v`) | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/account-key/3/holder/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/0`; `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team-key/2/member/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/1` |
+| `key.ring` | `<owner>/<version>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/3` |
+| `key.team` | `<team>/<seq>` | `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/12` |
+| `key.member` | `<account>/<seq>` | `019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/0` |
+
+- One id per log position, version or step, so two writers of one meet on one id: the create-only rule (0051) keeps the first, and only the writer 0053 names replaces a wrap or a ring.
+- Where the bound writer is an account the id names, the server compares that part as bytes with the caller's account id in upper case: the account of `key.identity`, `key.device`, `key.recovery` and `key.member`, and the owner of a personal `key.wrap` or `key.ring`. 0051 gives the refusal code.
+- A key kind added later writes its parts the same way.
 
 ### Team scope
 
