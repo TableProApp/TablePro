@@ -45,7 +45,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | Malicious operator with full control of the server | Secrets and history, as long as it never gets a key holder or a recovery key. The named attacks below are refused or detected | Withholding; full rollback for a device that never saw the newer head; split views until two sides compare; fake revocations, which deny service; plaintext records |
 | A compromised IdP or a phished session | Personal data, plaintext included: nothing personal flows without an approved key holder or the recovery key (D8). Team secrets: they need a confirmed SK. Key objects and envelopes: it writes none | Team plaintext records that the account's seat and role allow; genesis on an account with no identity yet; a reset on an account with no holder left, after a step-up and 7 days that S can cancel |
 | A lost or stolen device | After removal with the recovery key, even after the thief signed it out: every new secret and history write, the new key versions, and what it approved, confirmed or added | What the device already holds, and anything readable before the removal |
-| A stolen device working with the server | Taking over the identity: IK is not on the device, a reset waits 7 days that any other device or S can cancel, and following it needs a comparison | Reading new data until the person removes the device; an older view shown to a holder that pins again with S |
+| A stolen device working with the server | Taking over the identity: IK is not on the device, a reset waits 7 days that any other device or S can cancel, and following it needs a comparison | Reading new data until the person removes the device; an older view shown to a holder that pins again with S; a new team key sealed by a signer from whom the server withheld the member's `rotate` |
 | A removed member | Team key versions after the rotation. The floor stops writers on old keys | Secrets they could already read, which is why "Credentials to rotate" exists |
 | A malicious current member, with the server's help | Other people's personal scopes | Writing a team secret under a valid writer signature |
 | A malicious signer | Other people's personal scopes | Every team secret. Confirming puppet accounts and sealing keys to them. Adding signers, then removing the others with them. All of it shows in every member's app |
@@ -84,7 +84,7 @@ This is the case the end-to-end design exists for.
 | Re-encode a signature so one statement gets two hashes and raises a fork | A statement's hash covers its signing input, and base64url must be canonical | Suite, encoding and labels |
 | Add a holder after a removal, or keep one a stolen device planted, even one that then signed out | Approvals are signed by the approving holder. A `rotate` takes effect at its `dh` and takes out every holder the removed ones approved | Logs, Ordering rules |
 | Keep a puppet that a stolen signer's device confirmed or added as a signer | Team statements are signed by one holder. Those of a holder the account later removes are voided, and the team rotates its key | Logs, Team log |
-| Seal a new team key to a revoked SK by hiding a member's `rotate` from the signers | The honest server refuses a `key` naming a stale SK. `key` names the member log head each recipient was checked at, and the member's own app raises an alarm when it sees its old SK named | Flows, Rotation pending |
+| Seal a new team key to a revoked SK by hiding a member's `rotate` from the signers | Not prevented against a malicious server: the signer seals to the SK it last verified. The honest server refuses a `key` naming a stale SK. `key` names the member log head each recipient was checked at. The member's own app refuses the version, raises an alarm and publishes its `rotate` again | Flows, Rotation pending |
 | Mint an envelope | Envelopes are AEAD under keys the server never has, and every envelope carries its writer holder's signature | Envelopes |
 | Slip in an envelope a removed holder wrote under an old key version | A client refuses envelopes from a removed holder unless it held them before it saw the removal. The removing client seals the removed holder's envelopes again under the new version | Envelopes |
 | Hand back a superseded envelope | Each envelope carries (`kv`, `n`). Clients keep the highest they accepted and refuse anything not above it | Envelopes |
@@ -181,7 +181,7 @@ It cannot take over the identity:
 
   k = min(2, n-1) only stops one signer from removing another in a single step. Every statement it signs is in the team log, which every member's app verifies and shows.
 - **A removed member** keeps what they read. The next team key version is sealed only to the members left, and the envelopes their holders wrote are sealed again. Until a signer's app rotates the key, the honest server's floor holds new team secret writes back, and clients refuse to write under old versions.
-- **Collusion with the server.** It cannot get a new team key version to an SK the sealing signer has seen revoked. A server that hides a member's `rotate` from every signer is a split view: the honest server refuses such a `key`, and the member's app raises an alarm when it sees one. The formal model checks this claim.
+- **Collusion with the server.** No signer seals a new team key version to an SK it has verified as revoked, and the formal model verifies that claim. A server that withholds a member's `rotate` from a signer can still get the next version sealed to the member's old SK, which a stolen device of that member opens. The honest server refuses such a `key`. The member's own app refuses it, writes nothing under it, raises an alarm and publishes its `rotate` again, so the withholding shows.
 
 ## Rollback and split views
 
@@ -242,12 +242,13 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 2. **Split views and withholding** go undetected until devices compare.
 3. **Full rollback** works against a holder that pins again with S, and against a restore of the state file together with its anchor.
 4. **A confirmed member** can write a team secret with the server's help.
-5. **History paged back on a new device** can show an entry a removed holder backdated with the server's help, marked as written on a removed device.
-6. **A malicious signer** can grant the team key to accounts of its choice, and with two signers of its own remove the others.
-7. **A person who confirms a comparison without reading it** approves whatever is on the other screen.
-8. **Plaintext records and metadata** are readable by the operator.
-9. **The organization running a self-hosted install** controls its endpoints and its IdP, which end-to-end encryption does not cover.
-10. **P-256 and Ed25519 are not post-quantum.** Someone who archives `tp1` wraps today could open them on a future quantum computer, and with them every envelope and history entry written under those key versions, however strong AES-256 is. Moving to `tp2` issues new keys that reach anyone only through hybrid wraps, so it protects what is written after the move, not what was written before (0053, Suite).
+5. **A signer from whom the server withholds a member's `rotate`** seals the next team key to that member's old SK, which a stolen device of the member opens, until the member's app sees the `key` and raises its alarm.
+6. **History paged back on a new device** can show an entry a removed holder backdated with the server's help, marked as written on a removed device.
+7. **A malicious signer** can grant the team key to accounts of its choice, and with two signers of its own remove the others.
+8. **A person who confirms a comparison without reading it** approves whatever is on the other screen.
+9. **Plaintext records and metadata** are readable by the operator.
+10. **The organization running a self-hosted install** controls its endpoints and its IdP, which end-to-end encryption does not cover.
+11. **P-256 and Ed25519 are not post-quantum.** Someone who archives `tp1` wraps today could open them on a future quantum computer, and with them every envelope and history entry written under those key versions, however strong AES-256 is. Moving to `tp2` issues new keys that reach anyone only through hybrid wraps, so it protects what is written after the move, not what was written before (0053, Suite).
 
 ## Out of scope
 

@@ -487,7 +487,7 @@ The first signer client that sees it signs the next `key` and seals it to curren
 - Two signers racing are serialized by `create_only`, and the loser discards its key.
 - A client pushes a statement alone and waits for it to apply before it pushes the wraps and the ring that depend on it.
 - The honest server refuses a `key` or `grant` whose recipient `sk_v` is not that member's current SK.
-- A member's own client raises a fork alarm when a `key` names, for it, an SK it has since replaced. That is how it notices a server hiding its bundle from the signers.
+- **A member checks what is sealed to it.** A member's client refuses a `key` or `grant` that names one of its own SK versions that its `rotate`, `replace` or `reset` replaced. It writes nothing under that TK version, raises an alarm, and publishes the replacing statement into that team's member bundle again. That is how a server that hid the member's bundle from the signers is noticed, as signer apps notice an ignored portal removal (Removing a member).
 
 ### Server enforcement (D8)
 
@@ -761,7 +761,7 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 
 - the secrecy of AK and TK versions after a removal, against a removed holder working with the server;
 - the authenticity of IK on recovery;
-- that no TK version is sealed to an SK the sealing signer has seen revoked;
+- that no TK version is sealed to an SK the sealing signer has verified as revoked. The model shows the stronger claim fails: a server that withholds a member's `rotate` from a signer gets the next TK sealed to the old SK. The threat model lists it;
 - injective agreement on device approval and member confirmation, with each side's view fixed before its random value;
 - refusal of rollback through chained heads;
 - that no holder a removed holder approved, directly or not, receives a later key version;
@@ -814,6 +814,7 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
   - split views and withholding;
   - a full rollback for a holder that pins again with S, or a restore of the state file together with its anchor;
   - a confirmed member writing a team secret with the server's help;
+  - a new team key sealed to a member's old SK by a signer from whom the server withheld the member's `rotate`, until the member's app raises its alarm;
   - a malicious signer;
   - data under `tp1` key versions against a future quantum computer.
 - **Docs.** The cloud repository's `SECURITY.md` links the threat model. No text claims third-party verification. Whether to commission an external audit is decided before end-to-end encryption leaves beta.
