@@ -183,13 +183,13 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
 | `envelope_counters` | `scope`, `envelope_id`; `kv`, `n`, `hash` | Per envelope, the highest (`kv`, `n`) accepted and that ciphertext's hash |
 | `deleted_history` | `record_id` | The ids of history entries with a `user` tombstone |
 
-`scope` is the scope id. `log` is `identity`, `device`, `team`, or `member:` with the member's account id. `subject` is a `log` value, or `ik:` with a member's account id.
+`scope` is the scope id. `log` is `identity` or `device` for the account's own logs, `team` for a team's log, and `member:<account>:identity` or `member:<account>:device` for each chain of a member bundle, so each chain has a head of its own. `subject` is a `log` value, or `ik:<account>` for a member's pinned IK.
 
 ### Integrity and freshness
 
 - **Integrity.** The file carries 0053's state MAC, `HMAC-SHA256(key, LP("tablepro/v1/state") || LP(origin) || LP(account) || state)`, keyed from the device store.
   - `state` is `LP(file id) || LP(counter) || LP(digest)`, with the counter as 8 bytes big-endian.
-  - The digest is SHA-256 over the key tables in the order the column list gives. Each table is `LP(name) || LP(row count)`, then its rows in the byte order of their encoded primary keys. A row is its values in column order. A value is one byte, 0 for null and 1 otherwise, then for a present value `LP` of its bytes: text as UTF-8, an integer or flag as 8 bytes big-endian, bytes as they are. iCloud files have no key tables, so their digest covers none.
+  - The digest is SHA-256 over the key tables in the order the column list gives. It frames with `W(x)`, an 8-byte big-endian length then the bytes of `x`, not 0053's `LP`, since a key object kept verbatim can pass 65,535 bytes. Each table is `W(name) || u64(row count)`, then its rows in the byte order of their encoded primary keys. A row is its values in column order. A value is one byte, 0 for null and 1 otherwise, then for a present value `W` of its bytes: text as UTF-8, an integer or flag as 8 bytes big-endian, bytes as they are. iCloud files have no key tables, so their digest covers none.
   - The digest is computed again when a key table changes, and the MAC on every commit. A file whose MAC does not verify is refused.
   - One MAC covers the whole snapshot, so rows from two copies of the file cannot be mixed.
 - **Freshness.** A MAC proves the file is this device's, not that it is the latest. Sealed state needs a monotonic counter kept apart from what it seals; this follows ROTE (Matetic et al., "ROTE: Rollback Protection for Trusted Execution", USENIX Security 2017), with the device store in place of a trusted counter.
@@ -342,7 +342,8 @@ A copy whose content changed after the move is kept, since a content edit wins. 
   - a comparison never pins a head older than an anchored one: a partner that missed a removal the anchor recorded ends the session as a mismatch;
   - a fork resolution moves an anchored head off the dropped branch, also when the head sits several statements past the fork point, and the next key version comes above every version either branch reached. A missing or substituted link between the fork point and the anchored head keeps the holder blocked;
   - a statement the holder signed whose push was refused never enters the anchored checkpoint, so a rebuild after it still completes;
-  - a log, floor or envelope counter below the anchored checkpoint is refused after a restore, from the server or a partner;
+  - a log, floor or envelope counter below the anchored checkpoint is refused after a restore, from the server or a partner, and a member's identity chain and device chain are each held to their own anchored head;
+  - digest vectors cover a value of 65,535 bytes, one of 65,536, and a key object at the record limit;
   - a key table row copied from another copy of the file fails the MAC;
   - the first run keeps every consent decision and refusal, and leaves an unapproved synced connection unapproved;
   - the moves with three devices on two fake transports: a deletion on iCloud after another device moved, with and without a later content edit or reorder on the service; an edit on iCloud after another device moved; a record created on the service after the move; and the move back.
