@@ -136,15 +136,15 @@ impl AccountCertificate {
         if self.ik == *previous_ik {
             return Ok(IkChange::Same);
         }
-        let endorsed = self.kind == CertKind::Replace
-            && self.replace_sig.as_ref().is_some_and(|sig| {
-                replace_message(origin, self.account, self.av, &self.ik)
-                    .is_ok_and(|message| previous_ik.verify(&message, sig).is_ok())
-            });
-        if endorsed {
-            Ok(IkChange::Endorsed)
-        } else {
-            Err(KeysError::Unendorsed)
+        let (CertKind::Replace, Some(sig)) = (self.kind, &self.replace_sig) else {
+            return Err(KeysError::Unendorsed);
+        };
+        // An endorsement no key could make is keys.signature; one the old IK did not make, keys.unendorsed.
+        crate::crypto::ed25519_signature_form(&sig.0)?;
+        match previous_ik.verify(&replace_message(origin, self.account, self.av, &self.ik)?, sig) {
+            Ok(()) => Ok(IkChange::Endorsed),
+            Err(KeysError::Signature) => Err(KeysError::Unendorsed),
+            Err(other) => Err(other),
         }
     }
 }

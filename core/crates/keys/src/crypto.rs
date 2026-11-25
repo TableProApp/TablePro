@@ -82,11 +82,13 @@ pub(crate) fn aes_seal(
     aad: &[u8],
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KeysError> {
-    let mut in_out = plaintext.to_vec();
+    // Room for the tag up front: the buffer never moves while it still holds the plaintext.
+    let mut in_out = Zeroizing::new(Vec::with_capacity(plaintext.len() + TAG_LEN));
+    in_out.extend_from_slice(plaintext);
     aes_key(key)?
-        .seal_in_place_append_tag(Nonce::assume_unique_for_key(*nonce), Aad::from(aad), &mut in_out)
+        .seal_in_place_append_tag(Nonce::assume_unique_for_key(*nonce), Aad::from(aad), &mut *in_out)
         .map_err(|_| KeysError::encoding("plaintext too long for AES-GCM"))?;
-    Ok(in_out)
+    Ok(std::mem::take(&mut *in_out))
 }
 
 pub(crate) fn aes_open(

@@ -1,5 +1,5 @@
 use secrecy::SecretString;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::KeysError;
 use crate::crypto::{self, NONCE_LEN};
@@ -320,7 +320,12 @@ pub fn parse_envelope_plaintext(plaintext: &[u8]) -> Result<EnvelopePlaintext, K
         members.object("dest")?.clone()
     };
     // The secret's text moves into the SecretString, which wipes it, rather than being copied.
-    let secret = SecretString::from(value.take_string("secret").unwrap_or_default());
+    // At its exact length, so SecretString's conversion to a boxed str moves nothing.
+    let mut text = Zeroizing::new(value.take_string("secret").unwrap_or_default());
+    let mut exact = String::with_capacity(text.len());
+    exact.push_str(&text);
+    text.zeroize();
+    let secret = SecretString::from(exact);
     Ok(EnvelopePlaintext { secret, dest })
 }
 

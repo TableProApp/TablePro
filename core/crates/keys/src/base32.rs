@@ -1,3 +1,5 @@
+use zeroize::Zeroizing;
+
 use crate::KeysError;
 
 // Crockford's alphabet, bits taken most significant first (RFC 4648 section 6 order).
@@ -35,13 +37,14 @@ fn value(symbol: u8) -> Option<u16> {
 
 // Upper-case symbols only. A symbol count no byte length encodes to, or non-zero final bits,
 // is refused.
-pub fn decode(text: &str) -> Result<Vec<u8>, KeysError> {
+// Wiped on drop, failures included, since it decodes the recovery key.
+pub fn decode(text: &str) -> Result<Zeroizing<Vec<u8>>, KeysError> {
     let symbols = text.as_bytes();
     let total_bits = symbols.len() * 5;
     if total_bits % 8 >= 5 {
         return Err(KeysError::encoding("base32 symbol count encodes no byte length"));
     }
-    let mut bytes = Vec::with_capacity(total_bits / 8);
+    let mut bytes = Zeroizing::new(Vec::with_capacity(total_bits / 8));
     let mut buffer: u16 = 0;
     let mut bits = 0_u32;
     for symbol in symbols {
@@ -72,7 +75,7 @@ mod tests {
         assert_eq!(encode(&[0xff]), "ZW");
         assert_eq!(encode(&[0, 0, 0, 0, 0]), "00000000");
         assert_eq!(encode(&[0xff; 5]), "ZZZZZZZZ");
-        assert_eq!(decode("ZW").unwrap(), vec![0xff]);
+        assert_eq!(decode("ZW").unwrap().as_slice(), [0xff]);
     }
 
     #[test]
@@ -88,7 +91,8 @@ mod tests {
     proptest! {
         #[test]
         fn round_trips(bytes in proptest::collection::vec(any::<u8>(), 0..80)) {
-            prop_assert_eq!(decode(&encode(&bytes)).unwrap(), bytes);
+            let decoded = decode(&encode(&bytes)).unwrap();
+            prop_assert_eq!(decoded.as_slice(), bytes.as_slice());
         }
 
         #[test]

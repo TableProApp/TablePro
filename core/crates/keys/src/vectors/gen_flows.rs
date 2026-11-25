@@ -528,16 +528,10 @@ impl World<'_> {
 
     // ADR 0056, Reset, Activation: the proposal's certificate, device certificate and blob as it holds
     // them, and PK and HK at their next versions: with rings for kind 2, starting over for kind 3.
-    fn activation(
-        &self,
-        proposal: &str,
-        who: &str,
-        av: u32,
-        kind: CertKind,
-        new_ik: &Ed25519Seed,
-        device: &DeviceKeys,
-    ) -> Vec<JsonValue> {
+    fn activation(&self, proposal: &str, who: &str, av: u32, kind: CertKind, device: &DeviceKeys) -> Vec<JsonValue> {
         let person = self.person(who);
+        let new_ik = self.reset_ik(proposal, who);
+        let new_ik = &new_ik;
         let new_r = RecoveryKey::from_bytes(draw(&format!("flows/{proposal}/R'")));
         let blob = new_r
             .seal_blob_with_nonce(
@@ -570,6 +564,14 @@ impl World<'_> {
         ];
         records.extend(self.scope_keys_at(proposal, who, av, start, device));
         records
+    }
+
+    // A reset's IK comes from its own new recovery key, so each attempt has its own (ADR 0056, Reset).
+    fn reset_ik(&self, proposal: &str, who: &str) -> Ed25519Seed {
+        let person = self.person(who);
+        RecoveryKey::from_bytes(draw(&format!("flows/{proposal}/R'")))
+            .identity_seed(&origin(), person.id)
+            .expect("ik")
     }
 
     fn request(&self, label: &str, who: &str, request: RequestId, device: &DeviceKeys) -> JsonValue {
@@ -626,18 +628,10 @@ impl World<'_> {
         )
     }
 
-    #[expect(clippy::too_many_arguments, reason = "an object names its key, signer and recipient")]
-    fn reset(
-        &self,
-        label: &str,
-        who: &str,
-        reset: ResetId,
-        av: u32,
-        kind: CertKind,
-        new_ik: &Ed25519Seed,
-        device: &DeviceKeys,
-    ) -> JsonValue {
+    fn reset(&self, label: &str, who: &str, reset: ResetId, av: u32, kind: CertKind, device: &DeviceKeys) -> JsonValue {
         let person = self.person(who);
+        let new_ik = self.reset_ik(label, who);
+        let new_ik = &new_ik;
         let certificate = AccountCertificate::sign(
             &origin(),
             person.id,
@@ -1179,7 +1173,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
             owner: w.p.id.0,
             purpose: KeyPurpose::Personal,
             version: v(2),
-            record: draw("flows/P PK2 record"),
+            record: labelled_version(&w, "P PK2").1,
         }],
     };
     let mut stale_approval = w.approval("an approval built at av 1", "P", 1, &dev_n, &dev_b, &trust_for_p);
@@ -1285,7 +1279,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         given: obj(vec![("device", s("C")), ("account_av", n(1))]),
         steps: vec![
             step("server", "pull", vec![w.account("the certificate at av 2", "P", 2)], "waits", "none"),
-            step("server", "pull", vec![w.device_cert("B's certificate at av 2", "P", 2, &dev_b)], "locks, erases nothing", "none"),
+            step("server", "pull", w.rotation("B's rotation, which leaves C out", "P", 2, &[&dev_b], &dev_b), "the whole change set: locks, erases nothing", "none"),
         ],
     }));
 
@@ -1299,14 +1293,12 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
     }));
 
     let reset_id = ResetId(draw_uuid("flows/reset"));
-    let reset_ik = Ed25519Seed::from_bytes(draw("flows/P reset IK"));
     let proposal = w.reset(
         "P's reset proposal",
         "P",
         reset_id,
         2,
         CertKind::ResetKeepingKeys,
-        &reset_ik,
         &dev_b,
     );
     rows.push(scenario(
@@ -1325,7 +1317,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
                     "P",
                     reset_id,
                     2,
-                    &reset_ik.public().expect("public"),
+                    &w.reset_ik("P's reset proposal", "P").public().expect("public"),
                     false,
                 )],
                 "none",
@@ -1352,7 +1344,6 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
                         ResetId(draw_uuid("flows/second reset")),
                         2,
                         CertKind::ResetKeepingKeys,
-                        &reset_ik,
                         &dev_c,
                     )],
                     "none",
@@ -1367,7 +1358,6 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
                         ResetId(draw_uuid("flows/kind 2 reset")),
                         2,
                         CertKind::ResetKeepingKeys,
-                        &reset_ik,
                         &dev_n,
                     )],
                     "none",
@@ -1382,7 +1372,6 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
                         ResetId(draw_uuid("flows/kind 3 reset")),
                         2,
                         CertKind::ResetEmpty,
-                        &reset_ik,
                         &dev_b,
                     )],
                     "none",
@@ -1397,7 +1386,6 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         ResetId(draw_uuid("flows/kind 3 proposal")),
         2,
         CertKind::ResetEmpty,
-        &reset_ik,
         &dev_n,
     );
     rows.push(scenario(
@@ -1438,7 +1426,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
                         "P",
                         ResetId(draw_uuid("flows/kind 3 proposal")),
                         2,
-                        &reset_ik.public().expect("public"),
+                        &w.reset_ik("a kind 3 proposal", "P").public().expect("public"),
                         false,
                     )],
                     "none",
@@ -1472,14 +1460,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
             )],
         },
     ));
-    let activation = w.activation(
-        "P's reset proposal",
-        "P",
-        2,
-        CertKind::ResetKeepingKeys,
-        &reset_ik,
-        &dev_b,
-    );
+    let activation = w.activation("P's reset proposal", "P", 2, CertKind::ResetKeepingKeys, &dev_b);
     rows.push(scenario(
         "activations out of time or from another device",
         Row {
@@ -1519,8 +1500,8 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         layer: &["server", "flow"],
         given: obj(vec![("pending_reset", b(true)), ("held_until_passed", b(true))]),
         steps: vec![
-            step("N", "push change set", w.activation("a kind 3 proposal", "P", 2, CertKind::ResetEmpty, &reset_ik, &dev_n), "start 1 and no ring", "applied"),
-            step("B", "push change set", w.activation("P's reset proposal", "P", 2, CertKind::ResetKeepingKeys, &reset_ik, &dev_b), "start 0 with rings", "applied"),
+            step("N", "push change set", w.activation("a kind 3 proposal", "P", 2, CertKind::ResetEmpty, &dev_n), "start 1 and no ring", "applied"),
+            step("B", "push change set", w.activation("P's reset proposal", "P", 2, CertKind::ResetKeepingKeys, &dev_b), "start 0 with rings", "applied"),
         ],
     }));
 
@@ -1816,6 +1797,10 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
             given: obj(vec![
                 ("record_limit_bytes", n(1 << 20)),
                 ("measure", s("fields encoded without HTML escaping")),
+                (
+                    "records",
+                    s("trust.json, fit: the generated compared pins at and one past 1 MiB, with their record lengths"),
+                ),
             ]),
             steps: vec![step(
                 "B",

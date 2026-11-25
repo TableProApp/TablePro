@@ -91,7 +91,7 @@ impl RecoveryKey {
         if symbols.len() != 56 {
             return Err(KeysError::RecoveryKey);
         }
-        let b = Zeroizing::new(base32::decode(&symbols).map_err(|_| KeysError::RecoveryKey)?);
+        let b = base32::decode(&symbols).map_err(|_| KeysError::RecoveryKey)?;
         if b.len() != 35 {
             return Err(KeysError::RecoveryKey);
         }

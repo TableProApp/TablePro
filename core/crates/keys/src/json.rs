@@ -97,12 +97,12 @@ pub fn parse(bytes: &[u8]) -> Result<JsonValue, KeysError> {
     let text = std::str::from_utf8(bytes).map_err(|_| KeysError::encoding("JSON is not UTF-8"))?;
     let mut reader = Reader { text, at: 0 };
     reader.whitespace();
-    let value = reader.value(0)?;
+    let mut value = Zeroizing::new(reader.value(0)?);
     reader.whitespace();
     if reader.at != text.len() {
         return Err(KeysError::encoding("text after the JSON value"));
     }
-    Ok(value)
+    Ok(std::mem::replace(&mut *value, JsonValue::Null))
 }
 
 struct Reader<'a> {
