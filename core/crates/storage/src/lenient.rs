@@ -36,9 +36,23 @@ impl<T> Lenient<T> {
         self.held.len()
     }
 
-    /// Drop the held copies of `id`, once a readable one takes its place.
-    pub(crate) fn release(&mut self, id: Uuid) {
+    /// Drop the held copies of `id`, once a readable one takes its place or the entry is deleted.
+    /// Returns whether there was one.
+    pub(crate) fn release(&mut self, id: Uuid) -> bool {
+        let before = self.held.len();
         self.held.retain(|entry| entry_id(entry) != Some(id));
+        self.held.len() < before
+    }
+
+    /// Removes the entry with `id`, readable or held. Returns whether there was one.
+    pub(crate) fn remove_id(&mut self, id: Uuid) -> bool
+    where
+        T: Identified,
+    {
+        let before = self.read.len();
+        self.read.retain(|entry| entry.id() != id);
+        let held = self.release(id);
+        held || self.read.len() < before
     }
 
     pub(crate) fn without_held(&self) -> Self

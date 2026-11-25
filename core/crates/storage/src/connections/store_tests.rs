@@ -707,3 +707,19 @@ fn a_pull_keeps_the_favourite_of_a_connection_this_build_cannot_read() {
     assert_eq!(list.favorites.to_vec(), vec![held.id]);
     assert_eq!(list.unreadable.to_vec(), vec![held.id]);
 }
+
+#[test]
+fn deleting_an_unreadable_connection_or_profile_removes_it_from_the_file() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, held) = seeded_with_unreadable(&root, true);
+
+    assert_eq!(store.remove_blocking(held.id).expect("remove"), RemoveOutcome::Removed);
+    assert_eq!(
+        store.remove_blocking(held.id).expect("again"),
+        RemoveOutcome::NotPresent
+    );
+
+    let list = ConnectionStore::new(&paths(&root)).list_blocking().expect("the list");
+    assert!(list.unreadable.is_empty());
+    assert!(list.favorites.is_empty());
+}

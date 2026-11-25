@@ -177,3 +177,49 @@ async fn table_folder_kinds_reach_the_journal_in_order() {
         ]
     );
 }
+
+async fn copied_rows(copy: &std::path::Path) -> (i64, i64) {
+    use sqlx::ConnectOptions;
+    let mut database = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(copy)
+        .read_only(true)
+        .connect()
+        .await
+        .expect("open the copy");
+    let folders = sqlx::query_scalar("SELECT COUNT(*) FROM table_folders")
+        .fetch_one(&mut database)
+        .await
+        .expect("count");
+    let items = sqlx::query_scalar("SELECT COUNT(*) FROM table_folder_items")
+        .fetch_one(&mut database)
+        .await
+        .expect("count");
+    database.close().await.expect("close");
+    (folders, items)
+}
+
+#[tokio::test]
+async fn a_deleted_folder_or_unfiled_table_leaves_the_upgrade_copies_too() {
+    let (_root, history) = open().await;
+    let folders = history.table_folders();
+    let connection = Uuid::new_v4();
+    let sales = folders.create(scope(connection), "Sales").await.expect("create");
+    let audit = folders.create(scope(connection), "Audit").await.expect("create");
+    folders
+        .file(&[table(connection, "orders")], sales.id)
+        .await
+        .expect("file");
+    folders
+        .file(&[table(connection, "refunds")], audit.id)
+        .await
+        .expect("file");
+    let copy = crate::upgrade_copies::keep_database(history.pool(), history.path(), 1)
+        .await
+        .expect("a copy");
+    assert_eq!(copied_rows(&copy).await, (2, 2));
+
+    folders.delete(sales.id).await.expect("delete");
+    folders.unfile(&[table(connection, "refunds")]).await.expect("unfile");
+
+    assert_eq!(copied_rows(&copy).await, (1, 0));
+}

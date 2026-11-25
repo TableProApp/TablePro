@@ -119,6 +119,11 @@ impl QueryHistory {
         &self.path
     }
 
+    #[cfg(test)]
+    pub(crate) fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     /// The journal every later write through this database's handles tells, or none.
     pub fn set_journal(&self, journal: Option<Arc<dyn ChangeJournal>>) {
         self.journal.set(journal);
@@ -163,7 +168,7 @@ impl QueryHistory {
 
     /// The folders a connection's tables are filed in, in the same database.
     pub fn table_folders(&self) -> crate::table_folders::TableFolders {
-        crate::table_folders::TableFolders::new(self.pool.clone(), self.signals.clone())
+        crate::table_folders::TableFolders::new(self.pool.clone(), self.path.clone(), self.signals.clone())
     }
 
     fn history_changed(&self, changed: bool) {

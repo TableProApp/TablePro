@@ -80,13 +80,10 @@ impl ConnectionStore {
         })
     }
 
-    /// Connections that follow it keep its id and the settings they last applied.
+    /// Connections that follow it keep its id and the settings they last applied. A profile this
+    /// build cannot read is deleted too.
     pub fn delete_ssh_profile_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
-        self.edit(|document| {
-            let before = document.ssh_profiles.len();
-            document.ssh_profiles.retain(|profile| profile.id != id);
-            Ok(removed(before, document.ssh_profiles.len()))
-        })
+        self.edit(|document| Ok(removed(document.ssh_profiles.remove_id(id))))
     }
 
     /// Adds the profile, or replaces the one with its id.
@@ -108,16 +105,12 @@ impl ConnectionStore {
     /// A connection linked to it keeps the link, which reads as no profile until one with that id
     /// comes back, as a pull can bring a connection before its profile.
     pub fn delete_credential_profile_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
-        self.edit(|document| {
-            let before = document.credential_profiles.len();
-            document.credential_profiles.retain(|profile| profile.id != id);
-            Ok(removed(before, document.credential_profiles.len()))
-        })
+        self.edit(|document| Ok(removed(document.credential_profiles.remove_id(id))))
     }
 }
 
-fn removed(before: usize, after: usize) -> RemoveOutcome {
-    if after < before {
+fn removed(found: bool) -> RemoveOutcome {
+    if found {
         RemoveOutcome::Removed
     } else {
         RemoveOutcome::NotPresent

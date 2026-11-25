@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StorageError;
 use crate::journal::{RecordKind, Signals};
+use crate::query_history::{Bind, CopyDelete, trim_upgrade_copies};
 
 #[cfg(test)]
 mod tests;
@@ -49,12 +50,13 @@ pub struct TableFolderItem {
 #[derive(Debug, Clone)]
 pub struct TableFolders {
     pool: SqlitePool,
+    path: std::path::PathBuf,
     signals: Signals,
 }
 
 impl TableFolders {
-    pub(crate) fn new(pool: SqlitePool, signals: Signals) -> Self {
-        Self { pool, signals }
+    pub(crate) fn new(pool: SqlitePool, path: std::path::PathBuf, signals: Signals) -> Self {
+        Self { pool, path, signals }
     }
 
     pub fn changes(&self) -> tokio::sync::watch::Receiver<u64> {
@@ -157,10 +159,28 @@ impl TableFolders {
         }
     }
 
-    /// Deletes the folder, and its tables go back to the schema's list.
+    /// Deletes the folder, and its tables go back to the schema's list. The upgrade copies lose it
+    /// first, so restoring one never brings it back.
     pub async fn delete(&self, id: Uuid) -> Result<bool, StorageError> {
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
+        let folder = || vec![Bind::Text(id.to_string())];
+        trim_upgrade_copies(
+            &self.path,
+            &[
+                CopyDelete {
+                    table: "table_folder_items",
+                    sql: "DELETE FROM main.table_folder_items WHERE folder_id = ?".to_owned(),
+                    binds: folder(),
+                },
+                CopyDelete {
+                    table: "table_folders",
+                    sql: "DELETE FROM main.table_folders WHERE id = ?".to_owned(),
+                    binds: folder(),
+                },
+            ],
+        )
+        .await?;
         let items = sqlx::query("DELETE FROM table_folder_items WHERE folder_id = ?")
             .bind(id.to_string())
             .execute(&mut *transaction)
@@ -211,6 +231,22 @@ impl TableFolders {
         }
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
+        let copies: Vec<CopyDelete> = tables
+            .iter()
+            .map(|table| CopyDelete {
+                table: "table_folder_items",
+                sql: "DELETE FROM main.table_folder_items WHERE connection_id = ? AND database = ? AND schema = ? \
+                      AND name = ?"
+                    .to_owned(),
+                binds: vec![
+                    Bind::Text(table.connection_id.to_string()),
+                    Bind::Text(table.database.clone()),
+                    Bind::Text(table.schema.clone()),
+                    Bind::Text(table.name.clone()),
+                ],
+            })
+            .collect();
+        trim_upgrade_copies(&self.path, &copies).await?;
         let mut changed = 0;
         for table in tables {
             changed += sqlx::query(

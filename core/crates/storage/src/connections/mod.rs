@@ -690,12 +690,11 @@ impl ConnectionStore {
         self.commit(&mut state, document)
     }
 
+    /// Deletes the connection, one this build cannot read included, since its secrets go with it.
     pub fn remove_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
         let mut state = self.lock_to_write();
         let mut document = self.ensure_current(&mut state)?;
-        let before = document.connections.len();
-        document.connections.retain(|saved| saved.id != id);
-        if document.connections.len() == before {
+        if !document.connections.remove_id(id) {
             return Ok(RemoveOutcome::NotPresent);
         }
         self.commit(&mut state, document)?;
