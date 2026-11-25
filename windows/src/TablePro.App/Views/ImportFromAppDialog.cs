@@ -66,6 +66,7 @@ internal static class ImportFromAppDialog
         await WindowDialogs.ShowAsync(dialog, owner).ConfigureAwait(true);
         panel.Cancel();
         await panel.WhenIdleAsync().ConfigureAwait(true);
-        return panel.Endings.LastOrDefault();
+        var endings = panel.Endings;
+        return endings.Count > 0 ? endings[^1] : null;
     }
 }
