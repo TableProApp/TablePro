@@ -44,7 +44,7 @@ One engine in `tablepro-sync` syncs every app with TablePro Sync and the Apple a
 
 ### The engine
 
-- **Transports.** A `Transport` pulls a page from a cursor and pushes a batch. It answers each record with a value: applied with its new change tag, conflict, gone, or refused with a code. A conflict names the stored record's change tag, not its fields. On the service it also carries the version, revision and epoch and whether the record is a tombstone, as 0051 has it.
+- **Transports.** A `Transport` pulls a page from a cursor and pushes a batch. It answers each record with a value: applied with its new change tag, conflict, gone, or refused with a code. A conflict names the stored record's change tag, not its fields. On the service it also carries the version, revision and epoch and whether the record is a tombstone, as [0051](0051-sync-protocol-and-record-rules.md) has it.
 - **Adapters.** Each kind has a `RecordAdapter` over its core store. Settings take a `HostSettings` adapter that each app implements, since each platform keeps them its own way.
 - **A pass** pulls, then pushes.
   - A pull merges three ways against the base, then writes the store, the bases, and last the cursor or change token. A crash replays it with no effect.
@@ -155,10 +155,11 @@ pub enum CloudKitFailure {
   - `<state>` is `StoragePaths::state`. Only hex digits reach the path, so an account id a server chose cannot name another file. The identity itself is kept inside the file.
 - **Format.** SQLite through sqlx in WAL mode, with migrations of its own. It is created with mode 0600 where the platform has modes. An upgrade copies it first, as [0012](0012-copies-before-a-format-upgrade.md) says.
 - **Bound to its identity.** The file records the provider, server, account and device it was made for, and the engine refuses it for any other. Another account opens another file, so no base, cursor or queued change crosses accounts.
+- **The key holder's state.** The TablePro Sync file of an account is the state file 0053 gives that device's key holder, and holds its key tables. iCloud files have none. What each key table holds, and its rules, are 0053's. Their names, encoding and freshness are set here.
 
 | Table | Holds |
 | --- | --- |
-| `binding` | The provider, the server origin, the account id or iCloud user record name, the device id and the schema version |
+| `binding` | The provider, the server origin, the account id or iCloud user record name, the device id and the schema version; the file id, 16 random bytes set when the file is made; the write counter; the state MAC |
 | `scopes` | Per scope: its type and role; on the service, its epoch, cursor, horizon and policies; on iCloud, the zone's change token; whether it is in refill |
 | `stores` | Each store's generation id and write sequence |
 | `bases` | Per (scope, kind, record id): the change tag (the service's opaque tag, or CloudKit's system fields), the version, the revision, and the fields as last agreed. Create-once kinds, such as history entries, keep no fields |
@@ -168,8 +169,32 @@ pub enum CloudKitFailure {
 | `outbox` | The batch in flight: scope, idempotency key, request digest and age |
 | `approvals` | Pulled values waiting for the person, and rejections kept as device-local overrides |
 | `conflicts` | Team records whose field both sides changed: base, mine and theirs |
-| `pins` | The identity keys this device pinned and the head of each signed log it follows, under a MAC, as 0053 defines |
+| `key_statements` | Every statement of each log the holder follows |
+| `key_heads` | Each log's head |
+| `key_pins` | The holder's own identity head, and per team the team head and the confirmed members |
+| `key_comparisons` | Comparisons opened and not yet finished |
+| `key_floors` | Key version floors and rotations pending |
+| `envelope_counters` | Per envelope, the highest counter accepted and the hash of that ciphertext |
+| `deleted_history` | History entry ids this device saw deleted |
 | `legacy_mirror` | What the downgrade mirror last wrote |
+
+### Integrity and freshness
+
+- **Integrity.** The file carries 0053's state MAC, `HMAC-SHA256(key, LP("tablepro/v1/state") || LP(origin) || LP(account) || state)`, keyed from the device store.
+  - `state` is `LP(file id) || LP(counter) || LP(digest)`, with the counter as 8 bytes big-endian.
+  - The digest is SHA-256 over the key tables in the order the table above lists them. Each table is `LP(name) || LP(row count)`, then its rows in the byte order of their primary keys, each row the `LP` of each column's bytes in column order. iCloud files have no key tables, so their digest covers none.
+  - The digest is computed again when a key table changes, and the MAC on every commit. A file whose MAC does not verify is refused.
+  - One MAC covers the whole snapshot, so rows from two copies of the file cannot be mixed.
+- **Freshness.** A MAC proves the file is this device's, not that it is the latest. Sealed state needs a monotonic counter kept apart from what it seals; this follows ROTE (Matetic et al., "ROTE: Rollback Protection for Trusted Execution", USENIX Security 2017), with the device store in place of a trusted counter.
+  - Every commit raises the counter by one. After the commit, the engine writes the file id, counter and MAC to the file's **anchor**, an item in the device store. A new file writes its anchor first.
+  - **Apple platforms:** a Keychain item in the data protection keychain, `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` and not synchronizable. Apple Platform Security, "Keychain data protection", says items of that class don't sync to iCloud Keychain, aren't backed up and aren't in escrow keybags. Other ThisDeviceOnly classes do not serve: "Keybags for Data Protection" (Backup keybag) has them restored to the device they were backed up from. The anchor reads only while the device is unlocked, so a pass that starts locked waits. A device with no passcode uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and falls under the limit below.
+  - **Windows:** a Credential Manager item with local machine persistence. **Linux:** a Secret Service item.
+  - **On open,** the file is fresh when it has the anchor's file id, counter and MAC, or the anchor's file id and the next counter, which a crash between the commit and the anchor write leaves. The anchor is then brought up to date. Anything else is stale: an older counter, another file id, a file with no anchor, or an anchor with no file.
+- **A stale file** is trusted for nothing.
+  - Its sync tables go into refill, as a restored store does: the pull wins, records the provider has never seen go up as creates, then the diff runs again.
+  - Its key tables are not trusted. The holder accepts no log, wrap or envelope and writes no secret until it pins again through a comparison with another holder of the account or with S, as 0053's device approval does. Its holder keys stay, so it is the same holder.
+  - An anchor with no file, as after a reinstall that kept the device store, is handled the same way.
+- **The limit.** A restore that brings back the file and its anchor together goes unseen on this device. On Linux a restore of the home folder brings back the keyring, and on Windows a restore of the user profile brings back Credential Manager. Such a device holds an older checkpoint, and until its next comparison with another holder the server can show it what 0053's threat model calls a rollback for a device that never saw the newer head. The Mac and iOS lanes check that a Time Machine restore and a device backup restore do not bring the anchor back; where one does, that platform falls under this limit too.
 
 ### Providers
 
@@ -260,6 +285,7 @@ A copy whose content changed after the move is kept, since a content edit wins. 
 - **CloudKit deletions stay unconditional.** CloudKit has no change tag on a deletion, so the content-edit rule holds on iCloud only when the deletion reaches CloudKit first, as today.
 - **Every CloudKit call crosses the FFI.** A pass makes a few calls per page or batch, not one per record.
 - **Until an app runs the engine,** a fix to one of its sync rules lands in Swift, and again in Rust once that rule is ported.
+- **A restored state file costs a comparison.** After a restore, a reinstall that kept the device store, or a copied-in file, the device asks another device or S once before it handles secrets again, and its sync data refills.
 - **This amends 0010.**
   - Swift keeps the container, zone operations, subscriptions and the account status.
   - The record cache, dirty and deleted tracking, push batches and the rebase move into the core.
@@ -280,6 +306,9 @@ A copy whose content changed after the move is kept, since a content edit wins. 
   - both crash windows, and a restored store going into refill;
   - a history prune followed by a pass pushes nothing, and a history entry the person deleted goes up after a restart;
   - an iCloud account change between `account_status` and `modify`, and while a fetch completes, saves nothing to either account;
+  - an older copy of a state file with a valid MAC opens stale: its sync tables refill, and its key tables are trusted only after a comparison;
+  - a crash between a commit and its anchor write opens fresh; a file with no anchor, and an anchor with no file, both need a comparison before any log is trusted;
+  - a key table row copied from another copy of the file fails the MAC;
   - the first run keeps every consent decision and refusal, and leaves an unapproved synced connection unapproved;
   - the moves with three devices on two fake transports: a deletion on iCloud after another device moved, with and without a later content edit or reorder on the service; an edit on iCloud after another device moved; a record created on the service after the move; and the move back.
 - **Bindings:** Swift tests over a Swift fake transport.
@@ -295,4 +324,7 @@ A copy whose content changed after the move is kept, since a content edit wins. 
 - **CKSyncEngine.** It needs macOS 14, and the Mac supports 13.0. It would also be a second engine beside the service's, with state of its own.
 - **CloudKit Web Services from Rust.** A transport with no Swift, but each person would sign in to Apple again for a web token, which the framework gets from the device's account, and push delivery would still need the app.
 - **One state file per device, with a provider column.** An account switch, a move and a sign-out would delete rows across tables in step. A file per identity is deleted whole and is never read for another account.
+- **An HMAC alone over the state file.** It proves the file is the device's, not that it is the latest, so a backup copy passes.
+- **A checkpoint the holder signs and keeps on the server.** The server cannot forge it but can serve an older one, and a device's old cursor tells it when a restore happened.
+- **A MAC per row.** Rows from two copies of the file would each verify, and could be mixed.
 - **A blocking callback,** as `HostWebAuthenticator` is. Each CloudKit call would hold a core thread for its whole round trip, and Swift would wait on its own async API with a semaphore.
