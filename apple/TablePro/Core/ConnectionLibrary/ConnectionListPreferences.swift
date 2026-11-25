@@ -42,22 +42,31 @@ internal final class ConnectionListPreferences: ObservableObject {
         appEvents.connectionListStateChanged.send(())
     }
 
-    // The library's favourites list, which the core keeps with the connections (core ADR 0010, slice 1b).
+    // The library's favourites list, which the core keeps with the connections (core ADR 0010, slice 1b). While the
+    // library does not read, the order stays where earlier builds kept it, so nothing prunes it in the meantime.
     internal var favoritesOrder: [UUID] {
-        connectionStorageProvider().library.current()?.favoritesOrder ?? []
+        connectionStorageProvider().library.current()?.favoritesOrder ?? storedFavoritesOrder
     }
 
     internal func setFavoritesOrder(_ order: [UUID]) {
         var seen: Set<UUID> = []
         let unique = order.filter { seen.insert($0).inserted }
         let library = connectionStorageProvider().library
-        guard unique != favoritesOrder, var image = library.current() else { return }
-        image.favoritesOrder = unique
-        guard library.commit(image, byUser: false) else {
-            Self.logger.error("The favourites order was not saved")
-            return
+        guard unique != favoritesOrder else { return }
+        if var image = library.current() {
+            image.favoritesOrder = unique
+            guard library.commit(image, byUser: false) else {
+                Self.logger.error("The favourites order was not saved")
+                return
+            }
+        } else {
+            defaults.set(unique.map(\.uuidString), forKey: PreferenceKeys.connectionListFavoritesOrder.name)
         }
         appEvents.connectionListStateChanged.send(())
+    }
+
+    private var storedFavoritesOrder: [UUID] {
+        (defaults.stringArray(forKey: PreferenceKeys.connectionListFavoritesOrder.name) ?? []).compactMap(UUID.init(uuidString:))
     }
 
     internal func setShowsRecent(_ showsRecent: Bool) {

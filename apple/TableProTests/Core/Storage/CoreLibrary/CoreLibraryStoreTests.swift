@@ -169,7 +169,7 @@ struct CoreLibraryStoreTests {
 
         #expect(relaunched.loadConnections().map(\.name) == ["alpha"])
         #expect(!relaunched.isLibraryUnreadable)
-        #expect(try setAside("unreadable").map { try Data(contentsOf: $0) } == [damaged])
+        #expect(try setAsideCopies().map { try Data(contentsOf: $0) } == [damaged])
         #expect(try fixture.launchFromCoreOnly().loadConnections().map(\.name) == ["alpha"])
     }
 
@@ -179,13 +179,27 @@ struct CoreLibraryStoreTests {
         #expect(storage.addConnection(connection("alpha")))
         let newer = Data(#"{"version": 99, "connections": []}"#.utf8)
         try newer.write(to: fixture.coreURL, options: .atomic)
+        #expect(ConnectionStoreIntegrity.shared.stamp(newer, fileURL: fixture.coreURL))
 
         let relaunched = fixture.launch()
 
         #expect(relaunched.isLibraryUnreadable)
         #expect(!relaunched.addConnection(connection("beta")))
         #expect(try Data(contentsOf: fixture.coreURL) == newer)
-        #expect(try setAside("unreadable").isEmpty)
+        #expect(try setAsideCopies().isEmpty)
+    }
+
+    @Test("A write whose mirror did not land, then the previous stable's edit, takes the edit in")
+    func aMirrorThatDidNotLandTakesThePreviousStablesEdit() throws {
+        let storage = fixture.launch()
+        #expect(storage.addConnection(connection("first")))
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: fixture.directory.path)
+        #expect(storage.addConnection(connection("only in the core")))
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: fixture.directory.path)
+
+        try fixture.writeAsPreviousStable(connections: [connection("edited on the previous stable")])
+
+        #expect(fixture.launch().loadConnections().map(\.name) == ["edited on the previous stable"])
     }
 
     @Test("A save that moves secrets out of the store removes the copies set aside, which still hold them")
@@ -195,16 +209,19 @@ struct CoreLibraryStoreTests {
         try Data("not json".utf8).write(to: fixture.coreURL, options: .atomic)
         let relaunched = fixture.launch()
         _ = relaunched.loadConnections()
-        #expect(try setAside("unreadable").count == 1)
+        #expect(try setAsideCopies().count == 1)
 
         #expect(relaunched.saveConnections(relaunched.loadConnections(), byUser: false, removingSecrets: true))
 
-        #expect(try setAside("unreadable").isEmpty)
+        #expect(try setAsideCopies().isEmpty)
     }
 
-    private func setAside(_ reason: String) throws -> [URL] {
+    private func setAsideCopies() throws -> [URL] {
         try FileManager.default.contentsOfDirectory(at: fixture.coreURL.deletingLastPathComponent(), includingPropertiesForKeys: nil)
-            .filter { $0.lastPathComponent.hasPrefix("connections.json.\(reason)-") }
+            .filter { url in
+                let name = url.lastPathComponent
+                return name.hasPrefix("connections.json.unreadable-") || name.hasPrefix("connections.json.untrusted-")
+            }
     }
 
     // MARK: - Records this build cannot read
@@ -215,7 +232,7 @@ struct CoreLibraryStoreTests {
         let readable = connection("alpha")
         #expect(storage.addConnection(readable))
         let heldId = UUID()
-        try appendUnreadableCoreEntry(id: heldId)
+        try appendUnreadableCoreEntry(id: heldId, taggedByTablePro: true)
 
         let relaunched = fixture.launch()
         #expect(relaunched.loadConnections().map(\.id) == [readable.id])
@@ -228,8 +245,9 @@ struct CoreLibraryStoreTests {
         #expect(!fixture.launch().unreadableConnectionIds.contains(heldId))
     }
 
-    // A value a newer build wrote: a Safe Mode level no build knows yet.
-    private func appendUnreadableCoreEntry(id: UUID) throws {
+    // A value a newer build wrote: a Safe Mode level no build knows yet. A newer TablePro tags its write; anything else
+    // leaves the tag as it was.
+    private func appendUnreadableCoreEntry(id: UUID, taggedByTablePro: Bool = false) throws {
         let data = try Data(contentsOf: fixture.coreURL)
         var document = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         var connections = try #require(document["connections"] as? [[String: Any]])
@@ -238,18 +256,43 @@ struct CoreLibraryStoreTests {
         newer["safe_mode"] = "paranoid"
         connections.append(newer)
         document["connections"] = connections
-        try JSONSerialization.data(withJSONObject: document).write(to: fixture.coreURL, options: .atomic)
+        let bytes = try JSONSerialization.data(withJSONObject: document)
+        try bytes.write(to: fixture.coreURL, options: .atomic)
+        if taggedByTablePro {
+            #expect(ConnectionStoreIntegrity.shared.stamp(bytes, fileURL: fixture.coreURL))
+        }
+    }
+
+    private func editLegacyOutsideTablePro() throws {
+        var bytes = try Data(contentsOf: fixture.legacyURL)
+        bytes.append(contentsOf: Array(" ".utf8))
+        try bytes.write(to: fixture.legacyURL, options: .atomic)
     }
 
     // MARK: - Trust
 
-    @Test("A core store changed outside TablePro is trusted again only rebuilt from what the user saved")
-    func anEditedCoreStoreIsNotTrusted() throws {
+    @Test("A core store changed outside TablePro comes back from the previous stable's stores when those verify")
+    func anEditedCoreStoreComesBackFromTheMirror() throws {
         let storage = fixture.launch()
         #expect(storage.addConnection(connection("alpha")))
-        #expect(storage.storeIsTrusted)
         let planted = UUID()
         try appendUnreadableCoreEntry(id: planted)
+
+        let relaunched = fixture.launch()
+
+        #expect(relaunched.loadConnections().map(\.name) == ["alpha"])
+        #expect(relaunched.storeIsTrusted)
+        #expect(!relaunched.unreadableConnectionIds.contains(planted))
+        #expect(try setAsideCopies().count == 1)
+    }
+
+    @Test("With both stores changed outside TablePro, only a connection save rebuilds the store and vouches for it")
+    func bothStoresEditedWaitForAConnectionSave() throws {
+        let storage = fixture.launch()
+        #expect(storage.addConnection(connection("alpha")))
+        let planted = UUID()
+        try appendUnreadableCoreEntry(id: planted)
+        try editLegacyOutsideTablePro()
 
         let relaunched = fixture.launch()
         _ = relaunched.loadConnections()
@@ -259,18 +302,19 @@ struct CoreLibraryStoreTests {
         #expect(relaunched.addConnection(connection("beta")))
         #expect(relaunched.storeIsTrusted)
         #expect(!relaunched.unreadableConnectionIds.contains(planted))
-        #expect(try setAside("untrusted").count == 1)
+        #expect(try setAsideCopies().count == 1)
         let reopened = fixture.launch()
         #expect(reopened.loadConnections().map(\.name) == ["alpha", "beta"])
         #expect(reopened.storeIsTrusted)
     }
 
-    @Test("A group, tag or favourites save never vouches for a core store changed outside TablePro")
+    @Test("A group, tag, favourites or sync write never vouches for either store")
     func onlyAConnectionSaveVouches() throws {
         let storage = fixture.launch()
         let favorite = connection("alpha", favorite: true)
         #expect(storage.addConnection(favorite))
         try appendUnreadableCoreEntry(id: UUID())
+        try editLegacyOutsideTablePro()
 
         let relaunched = fixture.launch()
         try fixture.groups(relaunched).addGroup(ConnectionGroup(name: "Staging"))
@@ -279,6 +323,8 @@ struct CoreLibraryStoreTests {
         #expect(relaunched.saveConnections(relaunched.loadConnections(), byUser: false))
 
         #expect(!relaunched.storeIsTrusted)
+        let legacy = try Data(contentsOf: fixture.legacyURL)
+        #expect(ConnectionStoreIntegrity.shared.verify(legacy, fileURL: fixture.legacyURL) != .trusted)
         let reopened = fixture.launch()
         _ = reopened.loadConnections()
         #expect(!reopened.storeIsTrusted)
@@ -292,7 +338,9 @@ struct CoreLibraryStoreTests {
         let planted = UUID()
         try appendUnreadableCoreEntry(id: planted)
         let plantedDigest = LegacyLibraryMirror.digest(of: try Data(contentsOf: fixture.coreURL))
-        let record = LegacyLibraryMirror.Record(legacy: "forged", core: plantedDigest, connectionsFileExisted: true)
+        let record = LegacyLibraryMirror.Record(
+            legacy: "forged", core: plantedDigest, connectionsFileExisted: true, legacyBehind: false
+        )
         fixture.defaults.set(try JSONEncoder().encode(record), forKey: LegacyLibraryMirror.recordKey)
 
         let relaunched = fixture.launch()
@@ -300,7 +348,7 @@ struct CoreLibraryStoreTests {
         #expect(relaunched.loadConnections().map(\.id) == [kept.id])
         #expect(!relaunched.unreadableConnectionIds.contains(planted))
         #expect(relaunched.storeIsTrusted)
-        #expect(try setAside("untrusted").count == 1)
+        #expect(try setAsideCopies().count == 1)
     }
 
     @Test("A connections.json changed outside TablePro hands its doubt to the core")

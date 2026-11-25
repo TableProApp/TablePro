@@ -31,7 +31,6 @@ final class CoreLibraryStore {
     private var storedGroups: [UUID: GroupRecord] = [:]
     private var storedTags: [UUID: TagRecord] = [:]
     private var heldByCore: Set<UUID> = []
-    private var coreFileIsDamaged = false
     // The bytes this store last read or wrote, so a write can tell the file changed outside TablePro since.
     private var seenCoreDigest: String?
     // False while no integrity key can be had: a store rebuilt then could not be tagged either.
@@ -93,8 +92,13 @@ final class CoreLibraryStore {
             Self.logger.error("Refused to write the connection library: it could not be read")
             return false
         }
-        var next = proposed.keepingFirstOfEachId()
-        next.favoritesOrder = next.favorites(keeping: unreadableIds)
+        // The core holds one record per id, and a second copy would take the first one's secrets.
+        guard proposed.keepingFirstOfEachId() == proposed else {
+            Self.logger.error("Refused a library write that names one id twice")
+            return false
+        }
+        var next = proposed
+        next.favoritesOrder = proposed.favorites(keeping: unreadableIds)
         let held = unreadableIds.subtracting(removedIds)
         if let taken = next.connections.first(where: { held.contains($0.id) }) {
             Self.logger.error("Refused a write over a connection this build cannot read: \(taken.id, privacy: .public)")
@@ -105,18 +109,27 @@ final class CoreLibraryStore {
         if coreChangedSinceSeen() {
             isTrusted = false
         }
-        if byUser, !isTrusted, integrityKeyAnswered {
-            guard setAsideCoreFile(as: "untrusted") else { return false }
+        let rebuilds = byUser && !isTrusted && integrityKeyAnswered
+        var setAside: URL?
+        if rebuilds {
+            if FileManager.default.fileExists(atPath: coreFileURL.path) {
+                guard let aside = setAsideCoreFile(as: "untrusted") else { return false }
+                setAside = aside
+            }
             forgetCoreState()
         }
         // Copies set aside still hold what a save that moves secrets out takes out of the store.
-        if removingSecrets, !removeSetAsideCopies() { return false }
+        if removingSecrets, !removeSetAsideCopies(keeping: setAside) {
+            restore(setAside)
+            return false
+        }
         for id in removedIds.intersection(heldByCore) {
             do {
                 try Self.blocking { try await library.delete(id: id.uuidString) }
                 heldByCore.remove(id)
             } catch {
                 Self.logger.error("Could not remove an unreadable connection: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+                restore(setAside)
                 return false
             }
         }
@@ -125,10 +138,14 @@ final class CoreLibraryStore {
             try Self.blocking { try await library.replaceLibrary(library: write) }
         } catch {
             Self.logger.error("The core refused the library write: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            restore(setAside)
             return false
         }
         writeCount += 1
-        let written = settleWrite(of: library, stamping: byUser || isTrusted)
+        let written = settleWrite(of: library, stamping: rebuilds || isTrusted)
+        if removingSecrets, let setAside {
+            try? FileManager.default.removeItem(at: setAside)
+        }
         image = next
         updateKeptOnDevice(next)
         mirrorWrite(next, coreBytes: written, byUser: byUser, removingSecrets: removingSecrets, removingUnreadable: removedIds)
@@ -142,32 +159,43 @@ final class CoreLibraryStore {
         guard let library = openedLibrary() else { return failLoad() }
         let legacy = mirror.read()
         let legacyDigest = mirror.digest()
-        let coreBytes = try? Data(contentsOf: coreFileURL)
-        guard takesLegacy(legacyDigest: legacyDigest, coreBytes: coreBytes) else {
-            if let loaded = readCore(library) {
-                remirrorIfBehind(loaded, legacyDigest: legacyDigest, legacyReads: legacy != nil)
-                return loaded
+        guard let coreBytes = try? Data(contentsOf: coreFileURL) else {
+            guard let legacy else {
+                Self.logger.error("connections.json could not be read and the core holds no library yet")
+                return failLoad()
             }
-            // The previous stable's stores hold the library as last written, so a core file that is not JSON at all is
-            // set aside and the library comes back from them, as connections.json came back from its backup.
-            guard coreFileIsDamaged, let legacy, setAsideCoreFile(as: "unreadable") else { return failLoad() }
+            return importLegacy(legacy, digest: legacyDigest, into: library, replacing: false)
+        }
+        let verdict = integrity.verify(coreBytes, fileURL: coreFileURL)
+        let taggedOutside = verdict == .modified || verdict == .unstamped
+        // The previous stable's stores, when they read and verify, hold what TablePro last wrote; a core file TablePro
+        // did not tag never wins over them, whatever the mirror record says.
+        if taggedOutside, let legacy, mirror.isTrusted {
+            guard setAsideCoreFile(as: "untrusted") != nil else { return failLoad() }
             forgetCoreState()
             return importLegacy(legacy, digest: legacyDigest, into: library, replacing: false)
         }
-        // A change this build cannot read is never written over, as connections.json has always been kept.
-        guard let legacy else {
-            Self.logger.error("The previous stable's library changed and could not be read; nothing is written over it")
-            return failLoad()
+        if takesLegacy(legacyDigest: legacyDigest, coreBytes: coreBytes) {
+            // A change this build cannot read is never written over, as connections.json has always been kept.
+            guard let legacy else {
+                Self.logger.error("The previous stable's library changed and could not be read; nothing is written over it")
+                return failLoad()
+            }
+            if taggedOutside {
+                guard setAsideCoreFile(as: "untrusted") != nil else { return failLoad() }
+                forgetCoreState()
+            }
+            return importLegacy(legacy, digest: legacyDigest, into: library, replacing: !taggedOutside)
         }
-        var replacing = coreBytes != nil
-        // What a core file TablePro did not write holds never reaches the library the previous stable's stores bring back.
-        let verdict = coreBytes.map { integrity.verify($0, fileURL: coreFileURL) }
-        if verdict == .modified || verdict == .unstamped {
-            guard setAsideCoreFile(as: "untrusted") else { return failLoad() }
-            forgetCoreState()
-            replacing = false
+        if let loaded = readCore(library) {
+            remirrorIfBehind(loaded, legacyDigest: legacyDigest, legacyReads: legacy != nil)
+            return loaded
         }
-        return importLegacy(legacy, digest: legacyDigest, into: library, replacing: replacing)
+        // A file TablePro tagged that the core cannot read is a newer build's and stays as it is. Any other comes back
+        // from the previous stable's stores, which hold the library as last written.
+        guard taggedOutside, let legacy, setAsideCoreFile(as: "unreadable") != nil else { return failLoad() }
+        forgetCoreState()
+        return importLegacy(legacy, digest: legacyDigest, into: library, replacing: false)
     }
 
     // The previous stable writes only its own stores. A change there that the core's store did not see since the last
@@ -274,28 +302,27 @@ final class CoreLibraryStore {
         return bytes
     }
 
-    // A write that stopped before its mirror, or stores another build changed while the core's did too, leave the
-    // previous stable reading an older library; it gets the core's again before anyone can downgrade onto it.
+    // A write whose mirror did not land, or stores that no record describes, leave the previous stable reading an
+    // older library; it gets the core's again before anyone can downgrade onto it.
     private func remirrorIfBehind(_ loaded: LibraryImage, legacyDigest: String, legacyReads: Bool) {
+        guard legacyReads else { return }
         let coreBytes = try? Data(contentsOf: coreFileURL)
-        let current = mirrorRecord(legacy: legacyDigest, core: coreBytes)
-        guard legacyReads, let recorded = mirror.record, recorded != current else {
-            if legacyReads, mirror.record == nil {
-                mirrorWrite(loaded, coreBytes: coreBytes, byUser: false, removingSecrets: false, removingUnreadable: [])
+        if let recorded = mirror.record {
+            let coreDigest = LegacyLibraryMirror.digest(of: coreBytes)
+            guard recorded.legacyBehind || recorded.legacy != legacyDigest || recorded.core != coreDigest else { return }
+            if recorded.legacy != legacyDigest, recorded.core != coreDigest, mirror.holdsConnectionsFile {
+                Self.logger.warning("The previous stable's stores changed while the core's did too; the core's library is kept")
             }
-            return
-        }
-        if recorded.legacy != current.legacy, recorded.core != current.core, mirror.holdsConnectionsFile {
-            Self.logger.warning("The previous stable's stores changed while the core's did too; the core's library is kept")
         }
         mirrorWrite(loaded, coreBytes: coreBytes, byUser: false, removingSecrets: false, removingUnreadable: [])
     }
 
-    private func mirrorRecord(legacy: String, core: Data?) -> LegacyLibraryMirror.Record {
+    private func mirrorRecord(legacy: String, core: Data?, legacyBehind: Bool = false) -> LegacyLibraryMirror.Record {
         LegacyLibraryMirror.Record(
             legacy: legacy,
             core: LegacyLibraryMirror.digest(of: core),
-            connectionsFileExisted: mirror.holdsConnectionsFile
+            connectionsFileExisted: mirror.holdsConnectionsFile,
+            legacyBehind: legacyBehind
         )
     }
 
@@ -304,45 +331,48 @@ final class CoreLibraryStore {
     }
 
     private func contents(of library: ConnectionLibrary) -> LibraryContents? {
-        coreFileIsDamaged = false
         do {
             return try Self.blocking { try await library.libraryContents() }
         } catch {
-            // Only bytes that are not JSON are damage. A file a newer build wrote parses, and is never written over.
-            if case .Failed(let info)? = error as? CoreError, info.code == "storage.document_unavailable",
-               let bytes = try? Data(contentsOf: coreFileURL),
-               (try? JSONSerialization.jsonObject(with: bytes)) == nil {
-                coreFileIsDamaged = true
-            }
             Self.logger.error("The core could not read the connection library: \(LogRedaction.publicDescription(of: error), privacy: .public)")
             return nil
         }
     }
 
     // Kept under its own name, never over an earlier one, so each copy that was set aside stays.
-    private func setAsideCoreFile(as reason: String) -> Bool {
-        guard FileManager.default.fileExists(atPath: coreFileURL.path) else { return true }
+    private func setAsideCoreFile(as reason: String) -> URL? {
         let stamp = Self.asideStamp.string(from: Date())
         let aside = coreFileURL.deletingLastPathComponent()
             .appendingPathComponent("\(coreFileURL.lastPathComponent).\(reason)-\(stamp)-\(UUID().uuidString.prefix(8))")
         do {
             try FileManager.default.moveItem(at: coreFileURL, to: aside)
             Self.logger.warning("Set aside Core/connections.json as \(reason, privacy: .public)")
-            return true
+            return aside
         } catch {
             Self.logger.error("Could not set aside Core/connections.json: \(error.publicLogShape, privacy: .public)")
-            return false
+            return nil
         }
     }
 
-    private func removeSetAsideCopies() -> Bool {
+    // A write that did not land leaves the store as it was, so the file set aside for it goes back.
+    private func restore(_ aside: URL?) {
+        guard let aside else { return }
+        do {
+            try FileManager.default.moveItem(at: aside, to: coreFileURL)
+        } catch {
+            Self.logger.error("Could not put back Core/connections.json: \(error.publicLogShape, privacy: .public)")
+        }
+    }
+
+    private func removeSetAsideCopies(keeping kept: URL?) -> Bool {
         let folder = coreFileURL.deletingLastPathComponent()
         let prefix = "\(coreFileURL.lastPathComponent)."
         do {
             let copies = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
                 .filter { url in
                     let name = url.lastPathComponent
-                    return name.hasPrefix(prefix + "unreadable-") || name.hasPrefix(prefix + "untrusted-")
+                    return url.lastPathComponent != kept?.lastPathComponent
+                        && (name.hasPrefix(prefix + "unreadable-") || name.hasPrefix(prefix + "untrusted-"))
                 }
             for copy in copies {
                 try FileManager.default.removeItem(at: copy)
@@ -442,7 +472,18 @@ final class CoreLibraryStore {
             tags: image.tags,
             favoritesOrder: image.favoritesOrder
         )
-        guard mirror.write(contents, byUser: byUser, removingSecrets: removingSecrets, removingUnreadable: removedIds) else {
+        // Recorded first, so a launch after a crash here knows these stores are behind the core's.
+        mirror.record = mirrorRecord(legacy: mirror.digest(), core: coreBytes, legacyBehind: true)
+        // The copy vouches for no more than the store it copies.
+        if !isTrusted {
+            mirror.file.withdrawTrust()
+        }
+        guard mirror.write(
+            contents,
+            byUser: byUser && isTrusted,
+            removingSecrets: removingSecrets,
+            removingUnreadable: removedIds
+        ) else {
             Self.logger.error("The previous stable's stores were not updated; the core's store has this write")
             return
         }

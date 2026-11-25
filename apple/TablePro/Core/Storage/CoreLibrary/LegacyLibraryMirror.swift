@@ -24,6 +24,8 @@ final class LegacyLibraryMirror {
         var core: String
         // A connections.json gone since then was deleted by hand; the previous stable never removes it.
         var connectionsFileExisted: Bool
+        // The core's store took a write these stores did not, so the next launch writes them again.
+        var legacyBehind: Bool
     }
 
     static let groupsKey = "com.TablePro.groups"

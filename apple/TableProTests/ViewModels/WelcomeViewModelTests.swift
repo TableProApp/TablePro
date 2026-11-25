@@ -958,10 +958,8 @@ final class WelcomeViewModelTests {
         #expect(viewModel.connections.map(\.id) == [connection.id])
 
         let directory = connectionFileURL.deletingLastPathComponent()
-        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
-        defer {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
-        }
+        try LibraryWriteRefusal.set(true, in: directory)
+        defer { try? LibraryWriteRefusal.set(false, in: directory) }
 
         connectionStorage.invalidateCache()
         viewModel.connectionsToDelete = [connection]
