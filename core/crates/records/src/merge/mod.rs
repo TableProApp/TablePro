@@ -48,7 +48,7 @@ pub fn merge(kind: Kind, mode: Mode, sides: Sides<'_>) -> Merged {
         return whole(sides);
     }
     if kind.is_create_once() {
-        return created_once(sides);
+        return created_once(kind, sides);
     }
     let schema = schema(kind);
     match (sides.base, sides.local, sides.server) {
@@ -63,6 +63,7 @@ pub fn merge(kind: Kind, mode: Mode, sides: Sides<'_>) -> Merged {
 
 fn whole(sides: Sides<'_>) -> Merged {
     match (sides.base, sides.local, sides.server) {
+        (None, None, Some(server)) => Merged::Record(server.clone()),
         (_, None, _) => Merged::Deleted,
         (base, Some(local), server) if base == Some(local) => {
             server.map_or(Merged::Deleted, |server| Merged::Record(server.clone()))
@@ -72,9 +73,11 @@ fn whole(sides: Sides<'_>) -> Merged {
 }
 
 // History entries and key objects are never patched: the stored copy stands, and one the provider no longer holds
-// after this device took it was deleted (a `user` tombstone of a history entry is final).
-fn created_once(sides: Sides<'_>) -> Merged {
+// after this device took it was deleted (a `user` tombstone of a history entry is final). A device deletes a history
+// entry it took; it never deletes a key object.
+fn created_once(kind: Kind, sides: Sides<'_>) -> Merged {
     match (sides.base, sides.local, sides.server) {
+        (Some(_), None, Some(_)) if kind == Kind::HistoryEntry => Merged::Deleted,
         (_, _, Some(server)) => Merged::Record(server.clone()),
         (None, Some(local), None) => Merged::Record(local.clone()),
         _ => Merged::Deleted,
