@@ -34,13 +34,14 @@ final class AccountModel: AccountBackendListener {
     @ObservationIgnored private var backend: (any AccountBackend)?
     @ObservationIgnored private let opener: Opener
     @ObservationIgnored private var configuration: ManagedAppConfiguration
-    @ObservationIgnored private var reopensWhenIdle = false
-    // Calls that hold the open account across an await, its restore included.
-    @ObservationIgnored private var callsInFlight = 0
+    // Every reading reaches the core in order, so one that stops the server is never overtaken by an older one.
+    @ObservationIgnored private let readings: AsyncStream<ManagedPolicyArg>
+    @ObservationIgnored private let reader: AsyncStream<ManagedPolicyArg>.Continuation
 
     init(configuration: ManagedAppConfiguration = .unmanaged, opener: @escaping Opener) {
         self.configuration = configuration
         self.opener = opener
+        (readings, reader) = AsyncStream.makeStream(of: ManagedPolicyArg.self)
     }
 
     var isSignedIn: Bool {
@@ -59,11 +60,15 @@ final class AccountModel: AccountBackendListener {
             backend = opened
             availability = .open
             publish()
-            beginCall()
+            let readings = readings
+            Task {
+                for await policy in readings {
+                    await opened.applyPolicy(policy)
+                }
+            }
             Task {
                 await opened.waitUntilRestored()
                 publish()
-                endCall()
             }
         } catch .locked {
             availability = .waitingForUnlock
@@ -73,27 +78,19 @@ final class AccountModel: AccountBackendListener {
         }
     }
 
-    // The core resolves the server from the organization's values when the account opens (core ADR 0047), so new
-    // ones open it again, which drops a sign-in to a server they no longer allow. Every call to the open account
-    // finishes first, since two would share the refresh tokens and account.json.
+    // The organization's values read again. When they no longer allow the server signed in to, the core calls it no
+    // more until the next launch (core ADR 0055); an account not open yet opens with them.
     func apply(_ configuration: ManagedAppConfiguration) {
-        let serverChanged = configuration.accountServerURL != self.configuration.accountServerURL
-            || configuration.allowOtherAccountServers != self.configuration.allowOtherAccountServers
+        guard configuration != self.configuration else { return }
         self.configuration = configuration
-        guard serverChanged, backend != nil else { return }
-        reopensWhenIdle = true
-        if callsInFlight == 0 {
-            reopen()
-        }
+        reader.yield(configuration.coreArgument)
     }
 
     // Back in the foreground: a device another one removed may have freed a slot.
     func sceneBecameActive() {
         openIfNeeded()
         guard let backend, isPastDeviceLimit else { return }
-        beginCall()
         Task {
-            defer { endCall() }
             do throws(AccountError) {
                 _ = try await backend.refreshPastDeviceLimit()
             } catch {
@@ -104,8 +101,6 @@ final class AccountModel: AccountBackendListener {
     }
 
     func signIn(using authenticator: some WebAuthenticating) async throws(AccountError) {
-        beginCall()
-        defer { endCall() }
         let backend = try await restoredBackend()
         guard backend.status().state != .signedIn else { throw .signOutFirst }
         isBusy = true
@@ -118,8 +113,6 @@ final class AccountModel: AccountBackendListener {
     // Signs out here even when the server could not be told.
     func signOut() async {
         guard let backend else { return }
-        beginCall()
-        defer { endCall() }
         isBusy = true
         defer { isBusy = false }
         do throws(AccountError) {
@@ -132,8 +125,6 @@ final class AccountModel: AccountBackendListener {
 
     // Nil drops the choice, for the organization's server or else tablepro.app.
     func chooseServer(_ url: URL?) async throws(AccountError) {
-        beginCall()
-        defer { endCall() }
         let backend = try await restoredBackend()
         guard backend.status().state != .signedIn else { throw .signOutFirst }
         isBusy = true
@@ -143,22 +134,16 @@ final class AccountModel: AccountBackendListener {
     }
 
     func refresh() async throws(AccountError) {
-        beginCall()
-        defer { endCall() }
         let backend = try await restoredBackend()
         defer { publish() }
         try await backend.refresh()
     }
 
     func devices() async throws(AccountError) -> [AccountDevice] {
-        beginCall()
-        defer { endCall() }
-        return try await restoredBackend().devices()
+        try await restoredBackend().devices()
     }
 
     func removeDevice(_ id: String) async throws(AccountError) {
-        beginCall()
-        defer { endCall() }
         let backend = try await restoredBackend()
         try await backend.removeDevice(id)
         do throws(AccountError) {
@@ -179,26 +164,6 @@ final class AccountModel: AccountBackendListener {
     }
 
     // MARK: - Private
-
-    private func beginCall() {
-        callsInFlight += 1
-    }
-
-    private func endCall() {
-        callsInFlight -= 1
-        if callsInFlight == 0, reopensWhenIdle {
-            reopen()
-        }
-    }
-
-    private func reopen() {
-        reopensWhenIdle = false
-        backend = nil
-        availability = .opening
-        isRestored = false
-        snapshot = AccountSnapshot()
-        openIfNeeded()
-    }
 
     private func restoredBackend() async throws(AccountError) -> any AccountBackend {
         guard let backend else { throw .network("the account is not open") }
@@ -304,8 +269,7 @@ nonisolated enum MobileAccountSetup {
             machineGuid: nil,
             client: .ios,
             machineId: deviceID,
-            managedServerUrl: managed.accountServerURL,
-            allowOtherServers: managed.allowOtherAccountServers,
+            policy: managed.coreArgument,
             legacyEntitlementFile: nil,
             licenseKeys: developmentStack?.licenseKeys ?? []
         )

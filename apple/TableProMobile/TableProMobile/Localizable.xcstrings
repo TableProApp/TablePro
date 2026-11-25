@@ -31560,6 +31560,9 @@
     "Your Mac reaches the SSH server through these hosts from its ~/.ssh/config, and this device dials the same route with its own keys. Changing the SSH server or jump hosts above replaces it." : {
 
     },
+    "Your organization manages iCloud sync for TablePro." : {
+
+    },
     "Your organization manages which server TablePro signs in to." : {
 
     },

@@ -26,7 +26,7 @@ final class OnboardingPreferences {
     }
 
     var isCloudSyncEnabled: Bool {
-        syncChoice == true && managed.allowsICloudSync
+        managed.settledICloudSync(syncChoice == true)
     }
 
     var isUsageDataEnabled: Bool {

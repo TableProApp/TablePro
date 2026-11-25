@@ -7,6 +7,7 @@ import Combine
 import Foundation
 @testable import TablePro
 import TableProCloudAPI
+import TableProFFI
 import TableProTestSupport
 import Testing
 
@@ -440,6 +441,32 @@ struct AccountServicesTests {
         await #expect(throws: ShareFailure.signedOut) { try await fixture.services.shares.liveLinks(teamID: nil) }
 
         #expect(await fixture.server.requests.filter { $0.path.hasPrefix("/shares") }.isEmpty)
+    }
+
+    @Test("A link is not read from tablepro.app while the core holds the app to its organization's server")
+    func heldSharedLinkReadSendsNothing() async throws {
+        let fixture = try AccountFixture()
+        fixture.backend.holdTableProRequests(true)
+
+        await #expect(throws: ShareFailure.managedByOrganization) {
+            _ = try await fixture.services.shares.fetchShared(token: String(repeating: "a", count: 43), password: nil)
+        }
+
+        #expect(await fixture.server.requests.isEmpty)
+        #expect(!(await fixture.services.allowsTableProRequests()))
+    }
+
+    @Test("Each managed value read after launch reaches the core, the newest last")
+    func policyReadingsReachTheCore() async throws {
+        let fixture = try AccountFixture()
+        let readings = PassthroughSubject<ManagedPolicySnapshot, Never>()
+        let held = ManagedPolicySnapshot(accountServerURL: "https://tablepro.example.com", allowOtherAccountServers: false)
+        fixture.services.start(policyChanges: readings.eraseToAnyPublisher())
+
+        readings.send(held)
+
+        try await waitUntil { fixture.backend.appliedPolicies.last == held.coreArgument }
+        fixture.services.stop()
     }
 
     @Test("Signed out, the Swift clients send nothing")

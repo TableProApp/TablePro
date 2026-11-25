@@ -160,8 +160,11 @@ final class KeychainHelper: KeychainStoring {
         followsPasswordSync && passwordSyncSetting()
     }
 
-    static func storedPasswordSyncSetting() -> Bool {
-        AppStorageEnvironment.shared.defaults.bool(forKey: passwordSyncEnabledKey)
+    // A profile that leaves iCloud out, ICloudSyncAllowed=false included, writes every item device-only from then on;
+    // items already synced stay and stay readable, since deleting one deletes it on every device (core ADR 0055).
+    static func storedPasswordSyncSetting(policy: any ManagedPolicyReading = ManagedPolicyReader.shared) -> Bool {
+        SyncProviderPolicy.iCloud(ManagedPolicySnapshot(reading: policy)).isAllowed
+            && AppStorageEnvironment.shared.defaults.bool(forKey: passwordSyncEnabledKey)
     }
 
     init(

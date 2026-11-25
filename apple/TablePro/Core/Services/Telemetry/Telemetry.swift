@@ -115,6 +115,18 @@ internal final class Telemetry {
             .store(in: &subscriptions)
     }
 
+    // UsageDataAllowed=false keeps usage data off whatever the switch says; true or absent leaves the switch
+    // (core/docs/decisions/0055-managed-policies-for-the-sync-provider-and-tablepro-app-traffic.md).
+    nonisolated static func sharesUsageData(
+        setting: AnyPublisher<Bool, Never>,
+        policy: AnyPublisher<ManagedPolicySnapshot, Never>
+    ) -> AnyPublisher<Bool, Never> {
+        setting
+            .combineLatest(policy.map(\.allowsUsageData))
+            .map { $0 && $1 }
+            .eraseToAnyPublisher()
+    }
+
     private func restoredAccountID(_ state: AccountState) -> String? {
         guard state.isSignedIn, state.server.isProduction else { return nil }
         return state.entitlement?.accountID ?? defaults.string(forKey: Keys.identifiedAccount)

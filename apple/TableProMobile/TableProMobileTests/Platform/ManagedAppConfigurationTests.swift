@@ -1,9 +1,10 @@
 import Foundation
+import TableProFFI
 @testable import TableProMobile
 import Testing
 
 struct ManagedAppConfigurationTests {
-    @Test("Each key core ADR 0055 gives iOS reads from its AppConfig type")
+    @Test("Each key core ADR 0055 gives iOS reads from its AppConfig type and reaches the core as read")
     func readsEveryKey() {
         let managed = ManagedAppConfiguration([
             "AccountServerURL": "https://tablepro.example.com",
@@ -13,9 +14,15 @@ struct ManagedAppConfigurationTests {
             "ICloudSyncAllowed": false,
         ])
 
-        #expect(managed.accountServerURL == "https://tablepro.example.com")
-        #expect(managed.allowOtherAccountServers == false)
-        #expect(managed.personalSyncProviders == [.tableProSync, .off])
+        #expect(managed.coreArgument == .read(values: ManagedPolicyValues(
+            accountServerUrl: "https://tablepro.example.com",
+            allowOtherAccountServers: false,
+            personalSyncProvider: ["tablepro-sync", "off"],
+            usageDataAllowed: false,
+            pluginCatalogAllowed: nil,
+            updateChecksAllowed: nil,
+            icloudSyncAllowed: false
+        )))
         #expect(!managed.allowsUsageData)
         #expect(!managed.allowsICloudSync)
     }
@@ -27,6 +34,9 @@ struct ManagedAppConfigurationTests {
         #expect(managed == .unmanaged)
         #expect(managed.allowsUsageData)
         #expect(managed.allowsICloudSync)
+        #expect(!managed.locksICloudSync)
+        #expect(managed.settledICloudSync(true))
+        #expect(!managed.settledICloudSync(false))
     }
 
     @Test("A value of another type counts as absent: a number is not a boolean, a string is not a list")
@@ -42,23 +52,34 @@ struct ManagedAppConfigurationTests {
         #expect(managed == .unmanaged)
     }
 
-    @Test("An unknown provider is skipped, and an empty list allows none")
-    func providers() {
-        let mixed = ManagedAppConfiguration(["PersonalSyncProvider": ["icloud", "dropbox", "iCloud"]])
-        let empty = ManagedAppConfiguration(["PersonalSyncProvider": [String]()])
-        let notAllText = ManagedAppConfiguration(["PersonalSyncProvider": ["icloud", 1] as [Any]])
+    @Test("A list entry that is not a string is left out, and the core skips a name it does not know")
+    func listEntries() {
+        let mixed = ManagedAppConfiguration(["PersonalSyncProvider": ["icloud", 1, "dropbox"] as [Any]])
 
-        #expect(mixed.personalSyncProviders == [.iCloud])
-        #expect(empty.personalSyncProviders == [])
-        #expect(notAllText.personalSyncProviders == nil)
+        #expect(mixed.personalSyncProvider == ["icloud", "dropbox"])
+        #expect(mixed.allowsICloudSync)
+        #expect(mixed.locksICloudSync)
     }
 
-    @Test("True or absent booleans leave the person's own setting")
-    func trueAllows() {
-        let managed = ManagedAppConfiguration(["UsageDataAllowed": true, "ICloudSyncAllowed": true])
+    @Test("PersonalSyncProvider forces iCloud on or keeps it off, by the core's rule")
+    func providerListSettlesICloud() {
+        let forced = ManagedAppConfiguration(personalSyncProvider: ["icloud"])
+        let off = ManagedAppConfiguration(personalSyncProvider: ["off"])
+        let either = ManagedAppConfiguration(personalSyncProvider: ["off", "icloud"])
+        let none = ManagedAppConfiguration(personalSyncProvider: [])
 
-        #expect(managed.allowsUsageData)
-        #expect(managed.allowsICloudSync)
+        #expect(forced.settledICloudSync(false) && forced.locksICloudSync)
+        #expect(!off.settledICloudSync(true) && off.locksICloudSync && !off.allowsICloudSync)
+        #expect(either.settledICloudSync(true) && !either.settledICloudSync(false) && !either.locksICloudSync)
+        #expect(!none.settledICloudSync(true) && none.locksICloudSync)
+    }
+
+    @Test("ICloudSyncAllowed=false takes iCloud away even where the list names it")
+    func iCloudSyncAllowedWins() {
+        let managed = ManagedAppConfiguration(personalSyncProvider: ["icloud"], iCloudSyncAllowed: false)
+
+        #expect(!managed.allowsICloudSync)
+        #expect(!managed.settledICloudSync(true))
     }
 
     @Test("It is read from the managed configuration key, where an MDM writes it")

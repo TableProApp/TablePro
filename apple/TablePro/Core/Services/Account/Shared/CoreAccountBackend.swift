@@ -165,6 +165,17 @@ nonisolated internal final class CoreAccountBackend: AccountBackend, @unchecked 
         await service.accessTokenRejected(token: token)
     }
 
+    func applyPolicy(_ policy: ManagedPolicyArg) async {
+        guard let service = await opening.value else { return }
+        service.applyPolicy(policy: policy)
+    }
+
+    // An account that did not open holds no values to allow anything by.
+    func allowsTableProRequests() async -> Bool {
+        guard let service = await opening.value else { return false }
+        return service.allowsTableproRequests()
+    }
+
     private static func call<T>(
         _ operation: CoreAccountMapping.Operation,
         _ body: () async throws -> T

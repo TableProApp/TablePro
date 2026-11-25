@@ -26,8 +26,8 @@ public enum SyncStatus: Equatable, Sendable {
     }
 }
 
-/// Why sync is off by the person's choice or their license. A condition of the iCloud account is
-/// not one of these: sync stays on and waits for it as `SyncError.blocked`.
+/// Why sync is off by the person's choice, their license or their organization. A condition of the
+/// iCloud account is not one of these: sync stays on and waits for it as `SyncError.blocked`.
 public enum DisableReason: Equatable, Sendable {
     case licenseRequired
     case licenseExpired
@@ -37,4 +37,7 @@ public enum DisableReason: Equatable, Sendable {
     /// offering to activate a license the person already owns is the one thing that cannot help.
     case licenseUnverified
     case userDisabled
+
+    /// A configuration profile leaves iCloud out of the providers this device may use.
+    case managedPolicy
 }

@@ -529,6 +529,26 @@ struct TelemetryTests {
         ])
     }
 
+    @Test("UsageDataAllowed=false keeps usage data off whatever the switch says, and true or absent leaves the switch")
+    func managedUsageDataFollowsThePolicy() {
+        let setting = CurrentValueSubject<Bool, Never>(true)
+        let policy = CurrentValueSubject<ManagedPolicySnapshot, Never>(ManagedPolicySnapshot())
+        var shared: [Bool] = []
+        let subscription = Telemetry.sharesUsageData(
+            setting: setting.eraseToAnyPublisher(),
+            policy: policy.eraseToAnyPublisher()
+        )
+        .sink { shared.append($0) }
+
+        policy.send(ManagedPolicySnapshot(usageDataAllowed: false))
+        setting.send(true)
+        policy.send(ManagedPolicySnapshot(usageDataAllowed: true))
+        setting.send(false)
+        subscription.cancel()
+
+        #expect(shared == [true, false, false, true, false])
+    }
+
     @Test("The PostHog client collects nothing on its own and sends each event as it is captured")
     func postHogConfiguration() {
         let config = PostHogTelemetryClient.configuration(projectKey: "phc_test")

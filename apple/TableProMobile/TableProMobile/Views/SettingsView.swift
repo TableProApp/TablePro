@@ -56,7 +56,7 @@ struct SettingsView: View {
     private var iCloudSection: some View {
         Section {
             Toggle(String(localized: "iCloud Sync"), isOn: cloudSyncBinding)
-                .disabled(!appState.onboarding.managed.allowsICloudSync)
+                .disabled(appState.onboarding.managed.locksICloudSync)
             if appState.onboarding.isCloudSyncEnabled {
                 LabeledContent(String(localized: "Last Sync")) {
                     lastSyncLabel
@@ -71,6 +71,8 @@ struct SettingsView: View {
         } footer: {
             if !appState.onboarding.managed.allowsICloudSync {
                 Text("Your organization turned off iCloud sync for TablePro.")
+            } else if appState.onboarding.managed.locksICloudSync {
+                Text("Your organization manages iCloud sync for TablePro.")
             } else if appState.onboarding.isCloudSyncEnabled {
                 Text("Passwords sync through iCloud Keychain, which is end-to-end encrypted. Turning it on affects new saves only, so re-save a password to sync it.")
             } else {

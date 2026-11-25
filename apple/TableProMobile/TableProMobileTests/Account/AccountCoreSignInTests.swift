@@ -73,13 +73,14 @@ struct AccountCoreSignInTests {
         #expect(server.apiOrigin.absoluteString == "https://127.0.0.1:1")
     }
 
-    @Test("The config names the iOS client, the device's system with its version, and no file from before the core")
+    @Test("The config names the iOS client, the device's system with its version, the managed values and no file from before the core")
     func config() {
+        let managed = ManagedAppConfiguration(accountServerURL: "https://tablepro.example.com", personalSyncProvider: ["off"])
         let config = MobileAccountSetup.config(
             deviceID: "id",
             device: Self.device,
             accountFolder: URL(fileURLWithPath: "/data/Account", isDirectory: true),
-            managed: ManagedAppConfiguration(accountServerURL: "https://tablepro.example.com"),
+            managed: managed,
             developmentStack: nil
         )
 
@@ -87,8 +88,7 @@ struct AccountCoreSignInTests {
         #expect(config.machineId == "id")
         #expect(config.osVersion == "iOS 26.1")
         #expect(config.accountFile == "/data/Account/account.json")
-        #expect(config.managedServerUrl == "https://tablepro.example.com")
-        #expect(config.allowOtherServers == nil)
+        #expect(config.policy == managed.coreArgument)
         #expect(config.legacyEntitlementFile == nil)
         #expect(config.accountUrl == nil && config.apiUrl == nil)
     }

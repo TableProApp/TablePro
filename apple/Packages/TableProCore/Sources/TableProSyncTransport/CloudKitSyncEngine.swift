@@ -450,6 +450,8 @@ public actor CloudKitSyncEngine {
     private func withRetry<T>(_ operation: () async throws -> T) async throws -> T {
         var attempt = 0
         while true {
+            // A caller that stopped syncing sends no further batch or retry.
+            try Task.checkCancellation()
             do {
                 return try await operation()
             } catch let error as CKError where isTransientError(error) && attempt < Self.maxRetries - 1 {

@@ -16,7 +16,7 @@ nonisolated struct FirstRunPlan: Sendable {
     let hasSeenWelcome: Bool
     let syncChoice: Bool?
     let usageDataChoice: Bool?
-    // The organization's managed configuration answers these for the person.
+    // False when the organization's managed configuration answers the question for the person.
     var iCloudSyncAllowed = true
     var usageDataAllowed = true
     let lastSeenVersion: String?

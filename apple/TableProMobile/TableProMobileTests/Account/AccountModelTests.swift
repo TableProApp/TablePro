@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProFFI
 @testable import TableProMobile
 import TableProTestSupport
 import Testing
@@ -13,6 +14,7 @@ private final class ScriptedAccountBackend: AccountBackend, @unchecked Sendable 
         var signIns = 0
         var refreshesPastLimit = 0
         var signInError: AccountError?
+        var policies: [ManagedPolicyArg] = []
     }
 
     let machineID = String(repeating: "5f", count: 32)
@@ -24,6 +26,7 @@ private final class ScriptedAccountBackend: AccountBackend, @unchecked Sendable 
     var signIns: Int { state.withLock { $0.signIns } }
     var chosen: [URL?] { state.withLock { $0.chosen } }
     var refreshesPastLimit: Int { state.withLock { $0.refreshesPastLimit } }
+    var policies: [ManagedPolicyArg] { state.withLock { $0.policies } }
 
     func set(_ snapshot: AccountSnapshot) {
         state.withLock { $0.snapshot = snapshot }
@@ -78,6 +81,12 @@ private final class ScriptedAccountBackend: AccountBackend, @unchecked Sendable 
     }
 
     func accessTokenRejected(_ token: String) async {}
+
+    func applyPolicy(_ policy: ManagedPolicyArg) async {
+        state.withLock { $0.policies.append(policy) }
+    }
+
+    func allowsTableProRequests() async -> Bool { true }
 }
 
 @MainActor
@@ -203,74 +212,39 @@ struct AccountModelTests {
         #expect(account.isPastDeviceLimit)
     }
 
-    @Test("New server values from the organization open the account again with them, and other values do not")
-    func serverValuesReopen() async throws {
+    @Test("New values from the organization reach the core in order, and the same values do not again")
+    func valuesReachTheCore() async throws {
+        let backend = ScriptedAccountBackend()
         var opened: [ManagedAppConfiguration] = []
         let account = AccountModel { _, managed in
             opened.append(managed)
-            return ScriptedAccountBackend()
-        }
-        account.openIfNeeded()
-
-        account.apply(ManagedAppConfiguration(usageDataAllowed: false))
-        let held = ManagedAppConfiguration(accountServerURL: "https://tablepro.example.com", allowOtherAccountServers: false)
-        account.apply(held)
-
-        try await waitUntil { opened.count == 2 }
-        #expect(opened == [.unmanaged, held])
-        #expect(account.availability == .open)
-    }
-
-    @Test("A sign-in or a refresh in flight finishes before new server values open the account again")
-    func reopenWaitsForEveryCall() async throws {
-        let gate = AsyncGate()
-        let backend = GatedAccountBackend(gate: gate)
-        var opens = 0
-        let account = AccountModel { _, _ in
-            opens += 1
             return backend
         }
         account.openIfNeeded()
+        let held = ManagedAppConfiguration(accountServerURL: "https://tablepro.example.com", allowOtherAccountServers: false)
+        let released = ManagedAppConfiguration(usageDataAllowed: false)
 
-        let signingIn = Task { try await account.signIn(using: NoPage()) }
-        let refreshing = Task { try await account.refresh() }
-        await gate.arrived(2)
-        account.apply(ManagedAppConfiguration(accountServerURL: "https://tablepro.example.com"))
-        #expect(opens == 1)
+        account.apply(held)
+        account.apply(held)
+        account.apply(released)
 
-        await gate.open()
-        try await signingIn.value
-        try await refreshing.value
-        try await waitUntil { opens == 2 }
-        #expect(!account.isBusy)
-    }
-}
-
-// Holds a sign-in at the person's page, and a refresh on the network, until the test lets them come back.
-private final class GatedAccountBackend: AccountBackend, @unchecked Sendable {
-    private let gate: AsyncGate
-    let machineID = ""
-
-    init(gate: AsyncGate) {
-        self.gate = gate
+        try await waitUntil { backend.policies.count == 2 }
+        #expect(backend.policies == [held.coreArgument, released.coreArgument])
+        #expect(opened == [.unmanaged])
     }
 
-    var isRestored: Bool { true }
-    func waitUntilRestored() async {}
-    func status() -> AccountSnapshot { AccountSnapshot() }
-    func featureAccess(code: String) -> ProFeatureAccess { .signedOut }
-    func server() -> AccountServer { .production }
-    func license() -> AccountServerLicense? { nil }
-    func signIn(using authenticator: any WebAuthenticating) async throws(AccountError) { await gate.wait() }
-    func signOut() async throws(AccountError) {}
-    func refresh() async throws(AccountError) { await gate.wait() }
-    func refreshPastDeviceLimit() async throws(AccountError) -> Bool { false }
-    func useLicenseKey(_ key: String) async throws(AccountError) {}
-    func importOfflineFile(at url: URL) async throws(AccountError) {}
-    func chooseServer(_ url: URL?) async throws(AccountError) {}
-    func profile() async throws(AccountError) -> AccountProfile { AccountProfile(email: "", name: nil, memberships: []) }
-    func devices() async throws(AccountError) -> [AccountDevice] { [] }
-    func removeDevice(_ id: String) async throws(AccountError) {}
-    func accessToken() async throws(AccountError) -> AccountAccessToken { throw .signedOut }
-    func accessTokenRejected(_ token: String) async {}
+    @Test("An account opened after new values came opens with them")
+    func laterOpenTakesTheValues() {
+        var opened: [ManagedAppConfiguration] = []
+        let account = AccountModel { _, managed throws(AccountKeychainFailure) in
+            opened.append(managed)
+            throw .locked
+        }
+        let held = ManagedAppConfiguration(accountServerURL: "https://tablepro.example.com", allowOtherAccountServers: false)
+
+        account.apply(held)
+        account.openIfNeeded()
+
+        #expect(opened == [held])
+    }
 }

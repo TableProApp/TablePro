@@ -713,7 +713,7 @@ final class AppState {
             hasSeenWelcome: onboarding.hasSeenWelcome,
             syncChoice: onboarding.syncChoice,
             usageDataChoice: onboarding.usageDataChoice,
-            iCloudSyncAllowed: onboarding.managed.allowsICloudSync,
+            iCloudSyncAllowed: !onboarding.managed.locksICloudSync,
             usageDataAllowed: onboarding.managed.allowsUsageData,
             lastSeenVersion: onboarding.lastSeenVersion,
             currentVersion: version,
@@ -753,15 +753,15 @@ final class AppState {
         onboarding.setUsageDataChoice(enabled)
     }
 
-    // ADR 0055: iCloud sync stops at once when the organization turns it off, with no last pass, and comes back with
-    // the person's own choice when it lets go.
+    // ADR 0055: iCloud sync stops at once when the organization takes it away, with no last pass, starts when it
+    // forces it, and comes back to the person's own choice when it lets go.
     func refreshManagedConfiguration() {
-        let wasAllowed = onboarding.managed.allowsICloudSync
+        let wasEnabled = onboarding.isCloudSyncEnabled
         onboarding.refreshManagedConfiguration()
         account.apply(onboarding.managed)
-        let allowed = onboarding.managed.allowsICloudSync
-        guard allowed != wasAllowed, onboarding.syncChoice == true else { return }
-        syncCoordinator.setEnabled(allowed)
+        let enabled = onboarding.isCloudSyncEnabled
+        guard enabled != wasEnabled else { return }
+        syncCoordinator.setEnabled(enabled)
     }
 
     // An MDM's new values post a defaults change, as any write to the domain does (Apple's managed app configuration).

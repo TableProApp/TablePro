@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProCloudAPI
+import TableProFFI
 
 struct FakeEntitlementAnswer: @unchecked Sendable {
     let isOffline: Bool
@@ -52,6 +53,8 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     private var refreshCalls = 0
     private var keychainRefuses = false
     private var bearerFailure: AccountError?
+    private var allowsTableProRequestsValue = true
+    private var policies: [ManagedPolicyArg] = []
     // Runs as the core is told its token was refused, as if the person changed server at that moment.
     var onTokenRejected: (@Sendable (FakeAccountBackend) -> Void)?
 
@@ -65,6 +68,15 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     // What a configuration profile hands the core.
     func manage(_ server: AccountServer?) {
         locked { managed = server }
+    }
+
+    // As the core while a profile holds the app to a company server.
+    func holdTableProRequests(_ held: Bool) {
+        locked { allowsTableProRequestsValue = !held }
+    }
+
+    var appliedPolicies: [ManagedPolicyArg] {
+        locked { policies }
     }
 
     func refuse(_ host: String, with problem: AccountError.CompanyServerProblem) {
@@ -329,6 +341,14 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     func accessTokenRejected(_ token: String) async {
         locked { rejectedTokens.append(token) }
         onTokenRejected?(self)
+    }
+
+    func applyPolicy(_ policy: ManagedPolicyArg) async {
+        locked { policies.append(policy) }
+    }
+
+    func allowsTableProRequests() async -> Bool {
+        locked { allowsTableProRequestsValue }
     }
 
     func switchServerKeepingTheSession(to server: AccountServer) {

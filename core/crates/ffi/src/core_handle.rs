@@ -59,7 +59,7 @@ pub struct Core {
     // One AI client for the app, built on first use.
     ai_client: Arc<OnceCell<AiClient>>,
     // Refreshed into the storage folder's cache, or the bundled copy without one.
-    ai_catalog: ModelCatalog,
+    pub(crate) ai_catalog: ModelCatalog,
     // The saved connections' sessions `connect_saved` opened, which the MCP server reaches.
     open_sessions: Arc<OpenSessions>,
     mcp_tokens: Arc<dyn TokenVault>,
