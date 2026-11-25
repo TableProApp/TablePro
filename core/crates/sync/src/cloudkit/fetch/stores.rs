@@ -5,14 +5,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 use tablepro_records::Kind;
-use tablepro_records::cloudkit::{Carries, record_type_of};
-use tablepro_records::record_id::shortened;
+use tablepro_records::cloudkit::{CloudFields, from_wire, record_name, record_type_of, to_wire};
+use tablepro_records::record_id::{DIGEST_PREFIX, shortened};
 use uuid::Uuid;
 
 use super::settle::{Settle, View};
 use super::{SCOPE, identity_row};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
-use crate::api::error::SyncError;
+use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{KindName, RecordKey};
 use crate::api::state::{Row, RowKey, RowRange, Standing, StandingRow, StoreRow, Table};
 
@@ -28,26 +28,67 @@ pub(super) enum Planned {
     Delete,
 }
 
-// The pull wins only over what iCloud carries. Device-only fields and those only TablePro Sync carries stay as the
-// store holds them.
-pub(super) fn pulled_over(kind: Kind, local: Option<&Value>, server: &Value) -> Value {
-    let (Some(mut kept @ Value::Object(_)), Some(record_type)) = (local.cloned(), record_type_of(kind)) else {
-        return server.clone();
+// What iCloud holds of a local copy: its fields through the projection and back, so a field the zone never carries,
+// device-only or TablePro Sync's alone, reads as neither an edit nor a removal. None when the projection does not
+// take the copy, as for a type Production does not hold.
+pub(super) fn carried(kind: Kind, id: &str, local: &Value) -> Option<Value> {
+    let record_type = record_type_of(kind)?;
+    let saved = from_wire(kind, id, local, 0).ok()??;
+    let fields: CloudFields = saved
+        .into_iter()
+        .filter_map(|(name, value)| Some((name.to_owned(), value?)))
+        .collect();
+    to_wire(record_type.name, &record_name(kind, id)?, &fields)
+        .ok()
+        .map(|wire| wire.fields)
+}
+
+fn member_names(value: &Value) -> impl Iterator<Item = String> + '_ {
+    let members = match value {
+        Value::Object(members) => Some(members.keys().cloned()),
+        _ => None,
     };
-    for field in record_type.fields {
-        let Carries::Wire(key) = field.carries else {
-            continue;
+    members.into_iter().flatten()
+}
+
+// The merge of the carried fields put back on the local copy. Where the merge left a carried value as the local copy
+// had it, the local value stays whole, with whatever it holds that iCloud does not carry.
+pub(super) fn overlay(local: &Value, carried: &Value, merged: &Value) -> Value {
+    if carried == merged || !local.is_object() || !merged.is_object() {
+        return if carried == merged {
+            local.clone()
+        } else {
+            merged.clone()
         };
-        match server.get(key) {
-            Some(value) => kept[key] = value.clone(),
+    }
+    let mut out = local.clone();
+    let names: BTreeSet<String> = member_names(carried).chain(member_names(merged)).collect();
+    for name in names {
+        match merged.get(&name) {
+            Some(value) => {
+                let mine = local.get(&name).unwrap_or(&Value::Null);
+                let held = carried.get(&name).unwrap_or(&Value::Null);
+                out[&name] = overlay(mine, held, value);
+            }
             None => {
-                if let Value::Object(members) = &mut kept {
-                    members.remove(key);
+                if let Value::Object(members) = &mut out {
+                    members.remove(&name);
                 }
             }
         }
     }
-    kept
+    out
+}
+
+// A record new to the store whose id is a digest takes the id its fields name, as the store keeps it (0052, Long ids).
+fn stored_id(kind: Kind, wire: &str, fields: &Value) -> String {
+    if kind.is_settings() && wire.starts_with(DIGEST_PREFIX) {
+        let named = fields.get("category").and_then(Value::as_str);
+        if let Some(category) = named.filter(|category| shortened(kind, (*category).to_owned()) == wire) {
+            return category.to_owned();
+        }
+    }
+    wire.to_owned()
 }
 
 impl Settle<'_, '_> {
@@ -81,6 +122,19 @@ impl Settle<'_, '_> {
             return Ok(());
         };
         let stamp = adapter.identity().await?;
+        // Restored or replaced after the fetch started: its copies would merge as edits, so the pass ends and the next
+        // one refills the store.
+        if self
+            .started
+            .get(adapter.store())
+            .is_some_and(|started| stamp.needs_refill(*started))
+        {
+            return Err(AdapterError::Store {
+                store: adapter.store().to_owned(),
+                detail: "restored while the fetch ran".to_owned(),
+            }
+            .into());
+        }
         match self.loaded.get(adapter.store()) {
             Some(seen) if *seen != stamp => self.moved = Some(adapter.store().to_owned()),
             Some(_) => {}
@@ -89,12 +143,16 @@ impl Settle<'_, '_> {
             }
         }
         let held = adapter.records().await?;
+        let mut records: BTreeMap<String, LocalRecord> = BTreeMap::new();
+        for record in held.records {
+            let wire = shortened(kind, record.record_id.clone());
+            // Two copies under one name: the one kept under the long id is the store's own.
+            if records.get(&wire).is_none_or(|kept| kept.record_id == wire) {
+                records.insert(wire, record);
+            }
+        }
         let local = Local {
-            records: held
-                .records
-                .into_iter()
-                .map(|record| (shortened(kind, record.record_id.clone()), record))
-                .collect(),
+            records,
             unreadable: held
                 .unreadable
                 .into_iter()
@@ -138,7 +196,10 @@ impl Settle<'_, '_> {
     // id its store keeps.
     pub(super) fn plan(&mut self, kind: Kind, key: &RecordKey, planned: Planned) {
         let wire = &key.record_id;
-        let mut record_id = wire.clone();
+        let mut record_id = match &planned {
+            Planned::Put(fields) => stored_id(kind, wire, fields),
+            Planned::Delete => wire.clone(),
+        };
         let change = match self.locals.get_mut(&kind) {
             Some(Some(local)) => {
                 if let Some(id) = local
@@ -212,13 +273,22 @@ impl Settle<'_, '_> {
                 }
             }
             let stamp = adapter.apply(changes).await?;
-            // A store in refill moves its row only once the refill ends, so a fetch stopped midway refills again.
-            if !self.pull_wins.contains(&kind) {
-                self.note_stamp(&identity_row(kind, adapter.store()), stamp, false)
-                    .await?;
-            }
+            self.note_store(adapter.store(), stamp).await?;
         }
         Ok(Some(()))
+    }
+
+    // Each identity of a store this fetch sees moves the rows of the kinds it keeps, so a later rollback of the file
+    // below it shows for every kind, written by this pull or not. A kind in refill moves its row only once the refill
+    // ends, so a fetch stopped midway refills again.
+    pub(super) async fn note_store(&mut self, store: &str, stamp: StoreStamp) -> Result<(), SyncError> {
+        let fetcher = self.fetcher;
+        for (kind, adapter) in &fetcher.adapters {
+            if adapter.store() == store && !self.pull_wins.contains(kind) {
+                self.note_stamp(&identity_row(*kind, store), stamp, false).await?;
+            }
+        }
+        Ok(())
     }
 
     // A stamp moves an identity row forward only. One of another generation, or behind the row, means the store was

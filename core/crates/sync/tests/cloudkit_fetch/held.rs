@@ -235,3 +235,39 @@ async fn a_copy_this_build_cannot_project_is_held_and_not_asked_for_on_every_pas
         Some(projected(Kind::Connection, A, &json!({"name": "prod"})))
     );
 }
+
+#[tokio::test]
+async fn a_value_waiting_for_approval_gives_way_to_a_newer_unread_change_and_goes_with_a_deletion() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    rig.fetch().await.unwrap();
+    rig.hold_for_approval(Kind::Connection, A).await;
+    rig.store(Kind::Connection).make_unreadable(A);
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "renamed"}));
+    rig.fetch().await.unwrap();
+    let replaced = rig.held(Kind::Connection, A).await.unwrap().reason;
+    rig.hold_for_approval(Kind::Connection, B).await;
+    rig.save_elsewhere(Kind::Connection, B, &json!({"name": "b"}));
+    rig.fetch().await.unwrap();
+    let kept = rig.held(Kind::Connection, B).await.map(|row| row.reason);
+    rig.delete_elsewhere(Kind::Connection, B);
+    rig.fetch().await.unwrap();
+
+    assert_eq!(replaced, HeldReason::Unreadable);
+    assert_eq!(kept, Some(HeldReason::AwaitingApproval));
+    assert!(rig.held(Kind::Connection, B).await.is_none());
+}
+
+#[tokio::test]
+async fn an_answer_for_a_name_not_asked_for_is_dropped() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Group, A, &json!({"name": "a"}));
+    let transport = Unreliable::new(&rig.cloud);
+    transport.leave_unfetched(&name(Kind::Group, A));
+    transport.rename_answer(&name(Kind::Group, A), &name(Kind::Group, C));
+
+    rig.fetch_through(&transport).await.unwrap();
+
+    assert!(rig.held(Kind::Group, A).await.is_some());
+    assert!(!rig.store(Kind::Group).holds(C));
+}

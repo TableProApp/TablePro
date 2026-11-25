@@ -324,3 +324,25 @@ async fn a_scope_refill_leaves_a_kind_that_is_off_to_refill_once_it_is_on() {
         Some(projected(Kind::Tag, A, &json!({"name": "prod"})))
     );
 }
+
+// Time Machine puts a shared file back within its generation: every kind it keeps refills, written by the last pull
+// or not.
+#[tokio::test]
+async fn a_rollback_of_a_shared_store_refills_each_kind_it_keeps() {
+    let rig = Rig::new().await;
+    let favourite = tablepro_records::record_id::favourite_table(uuid::Uuid::nil(), Some("shop"), None, "orders").id;
+    let table = json!({"connection_id": A, "database": "shop", "name": "orders"});
+    rig.save_elsewhere(Kind::FavouriteTable, &favourite, &table);
+    rig.fetch().await.unwrap();
+    let at_favourite = rig.store(Kind::FavouriteTable).sequence();
+    for id in [B, C, D] {
+        rig.save_elsewhere(Kind::SavedQuery, id, &json!({"name": id, "query": "SELECT 1"}));
+        rig.fetch().await.unwrap();
+    }
+    rig.store(Kind::FavouriteTable).roll_back(at_favourite, Vec::new());
+
+    let report = rig.fetch().await.unwrap();
+
+    assert!(report.refilled.contains(&Kind::FavouriteTable));
+    assert!(rig.store(Kind::FavouriteTable).holds(&favourite));
+}

@@ -79,6 +79,9 @@ impl Settle<'_, '_> {
                 .is_some_and(|started| started.generation == now.generation && started.sequence <= now.sequence);
             if unchanged {
                 self.note_stamp(&row, now, true).await?;
+            } else if finish.scope_refilled {
+                // The scope's own refill ends with this commit, so the row has to say that this kind still refills.
+                self.refill_later(&row).await?;
             }
         }
         if finish.scope_refilled {

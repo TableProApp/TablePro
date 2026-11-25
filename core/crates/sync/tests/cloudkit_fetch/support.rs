@@ -8,10 +8,12 @@ use serde_json::Value;
 use tablepro_records::Kind;
 use tablepro_records::cloudkit::{CloudFields, CloudValue, from_wire, record_name, record_type_of, to_wire};
 use tablepro_sync::api::cloudkit::{CloudKitField, CloudKitTransport, CloudKitValue};
-use tablepro_sync::api::state::Standing;
+use tablepro_sync::api::ids::{ChangeTag, KindName};
 use tablepro_sync::api::state::{
     BaseRow, DeferredRow, HeldRow, Row, RowKey, StateFiles, StateIdentity, StateStore, StoreRow,
 };
+use tablepro_sync::api::state::{HeldReason, Standing};
+use tablepro_sync::api::transport::PulledRecord;
 use tablepro_sync::api::{
     AdapterError, Cursor, LocalChange, LocalRecord, LocalRecords, RecordAdapter, RecordKey, ScopeName, StoreStamp,
     SyncError,
@@ -164,6 +166,19 @@ impl MemoryStore {
 
     pub fn refuse_next_write(&self) {
         lock(&self.held).refuse_next = true;
+    }
+
+    // Time Machine put the file back: the same generation at an earlier write, holding these records.
+    pub fn roll_back(&self, sequence: u64, records: Vec<(&str, Value)>) {
+        let generation = self.generation();
+        self.restore(records);
+        let mut identity = lock(&self.identity);
+        identity.generation = generation;
+        identity.sequence = sequence;
+    }
+
+    pub fn sequence(&self) -> u64 {
+        lock(&self.identity).sequence
     }
 
     // Restored from a backup: the file it shares with other kinds gets a new generation, holding these records.
@@ -439,6 +454,27 @@ impl Rig {
             Some(Row::Held(held)) => Some(held),
             _ => None,
         }
+    }
+
+    // The approval queue's hold on a pulled value.
+    pub async fn hold_for_approval(&self, kind: Kind, id: &str) {
+        let mut txn = self.state.begin().await.unwrap();
+        txn.put(Row::Held(HeldRow {
+            key: key(kind, id),
+            reason: HeldReason::AwaitingApproval,
+            record: PulledRecord {
+                kind: KindName::of(kind),
+                record_id: id.to_owned(),
+                tag: ChangeTag::CloudKit(Vec::new()),
+                fields: None,
+                fields_json: None,
+                deleted: None,
+                service: None,
+            },
+        }))
+        .await
+        .unwrap();
+        txn.commit().await.unwrap();
     }
 
     pub async fn deferred(&self, kind: Kind, id: &str) -> Option<DeferredRow> {

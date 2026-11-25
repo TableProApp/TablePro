@@ -17,6 +17,8 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+type Hook<'a> = Box<dyn FnOnce() + Send + 'a>;
+
 #[derive(Default)]
 struct Faults {
     unfetched: BTreeSet<String>,
@@ -26,12 +28,17 @@ struct Faults {
     names_per_call: Option<usize>,
     hide_deletions: bool,
     endless: bool,
+    repeat_token: Option<Vec<u8>>,
+    renamed_answers: BTreeMap<String, String>,
+    calls: usize,
     names_asked: Vec<Vec<String>>,
 }
 
 pub struct Unreliable<'a> {
     inner: &'a FakeCloudKit,
     faults: Mutex<Faults>,
+    // Runs before the change fetch of that number, counted from 0.
+    hooks: Mutex<Vec<(usize, Hook<'a>)>>,
 }
 
 impl<'a> Unreliable<'a> {
@@ -39,6 +46,7 @@ impl<'a> Unreliable<'a> {
         Self {
             inner,
             faults: Mutex::new(Faults::default()),
+            hooks: Mutex::new(Vec::new()),
         }
     }
 
@@ -71,6 +79,22 @@ impl<'a> Unreliable<'a> {
         lock(&self.faults).hide_deletions = true;
     }
 
+    pub fn before_call(&self, call: usize, hook: Hook<'a>) {
+        lock(&self.hooks).push((call, hook));
+    }
+
+    // A page that says more follows ends at this token instead of its own.
+    pub fn repeat_token(&self, token: Vec<u8>) {
+        lock(&self.faults).repeat_token = Some(token);
+    }
+
+    // A read by name of `asked` answers as if the record were `given`.
+    pub fn rename_answer(&self, asked: &str, given: &str) {
+        lock(&self.faults)
+            .renamed_answers
+            .insert(asked.to_owned(), given.to_owned());
+    }
+
     // Every page is empty and says more follows, each with a new token.
     pub fn never_end(&self) {
         lock(&self.faults).endless = true;
@@ -87,7 +111,7 @@ impl<'a> Unreliable<'a> {
 }
 
 #[async_trait]
-impl CloudKitTransport for Unreliable<'_> {
+impl<'a> CloudKitTransport for Unreliable<'a> {
     async fn account_status(&self) -> Result<CloudKitAccount, CloudKitFailure> {
         self.inner.account_status().await
     }
@@ -101,6 +125,20 @@ impl CloudKitTransport for Unreliable<'_> {
     }
 
     async fn fetch_changes(&self, account: String, token: Option<Vec<u8>>) -> Result<CloudKitChanges, CloudKitFailure> {
+        let call = {
+            let mut faults = lock(&self.faults);
+            faults.calls += 1;
+            faults.calls - 1
+        };
+        let due: Vec<Hook<'a>> = {
+            let mut hooks = lock(&self.hooks);
+            let (due, later): (Vec<_>, Vec<_>) = hooks.drain(..).partition(|(at, _)| *at == call);
+            *hooks = later;
+            due.into_iter().map(|(_, hook)| hook).collect()
+        };
+        for hook in due {
+            hook();
+        }
         {
             let mut faults = lock(&self.faults);
             match faults.fetch_calls_before_failure.take() {
@@ -123,6 +161,9 @@ impl CloudKitTransport for Unreliable<'_> {
         let mut changes = self.inner.fetch_changes(account, token).await?;
         if lock(&self.faults).hide_deletions {
             changes.deleted.clear();
+        }
+        if let Some(token) = lock(&self.faults).repeat_token.clone().filter(|_| changes.more) {
+            changes.token = token;
         }
         let unfetched = lock(&self.faults).unfetched.clone();
         let (left, kept): (Vec<CloudKitRecord>, Vec<CloudKitRecord>) = changes
@@ -158,6 +199,11 @@ impl CloudKitTransport for Unreliable<'_> {
                     CloudKitFetched::Found { record } => record.name.clone(),
                     CloudKitFetched::Missing { name } | CloudKitFetched::Failed { name, .. } => name.clone(),
                 };
+                if let (CloudKitFetched::Found { record }, Some(given)) = (&answer, faults.renamed_answers.get(&name)) {
+                    let mut record = record.clone();
+                    record.name = given.clone();
+                    return CloudKitFetched::Found { record };
+                }
                 match faults.failing_reads.get_mut(&name) {
                     Some(times) if *times > 0 => {
                         *times -= 1;

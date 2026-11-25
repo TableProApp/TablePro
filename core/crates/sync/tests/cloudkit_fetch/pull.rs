@@ -8,7 +8,7 @@ use tablepro_sync::api::{DeviceRowId, SyncError};
 use tablepro_sync::cloudkit::fetch::{Categories, Fetcher};
 
 use crate::faults::{Crashing, Unreliable};
-use crate::support::{A, B, C, Rig, USER, name, projected};
+use crate::support::{A, B, C, D, Rig, USER, name, projected};
 
 #[tokio::test]
 async fn a_first_fetch_takes_the_zone_and_keeps_each_record_s_system_fields() {
@@ -295,4 +295,118 @@ async fn a_long_id_meets_the_digest_the_zone_names_it_with() {
     );
     assert!(!rig.store(Kind::MacosSettings).holds(&wire));
     assert!(rig.base(Kind::MacosSettings, &wire).await.is_some());
+}
+
+// A field the zone never carries is neither an edit nor a removal: deleted elsewhere, the record goes.
+#[tokio::test]
+async fn a_field_only_this_device_keeps_does_not_revive_a_record_deleted_elsewhere() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    rig.fetch().await.unwrap();
+    let mut opened = rig.store(Kind::Connection).fields(A).unwrap();
+    opened["last_opened_at"] = json!(1_700_000_000_000_i64);
+    rig.store(Kind::Connection).put(A, opened);
+    rig.delete_elsewhere(Kind::Connection, A);
+
+    rig.fetch().await.unwrap();
+
+    assert!(!rig.store(Kind::Connection).holds(A));
+    assert!(rig.base(Kind::Connection, A).await.is_none());
+}
+
+// A member only TablePro Sync carries inside a field iCloud carries stays through a change made elsewhere.
+#[tokio::test]
+async fn a_member_icloud_does_not_carry_stays_through_a_change_made_elsewhere() {
+    let rig = Rig::new().await;
+    let ssl = |mode: &str| json!({"name": "prod", "ssl_config": {"mode": mode}});
+    rig.save_elsewhere(Kind::Connection, A, &ssl("Preferred"));
+    rig.fetch().await.unwrap();
+    let mut local = rig.store(Kind::Connection).fields(A).unwrap();
+    local["ssl_config"]["server_name"] = json!("db.internal");
+    rig.store(Kind::Connection).put(A, local);
+    rig.save_elsewhere(Kind::Connection, A, &ssl("Required"));
+
+    rig.fetch().await.unwrap();
+
+    let stored = rig.store(Kind::Connection).fields(A).unwrap();
+    assert_eq!(stored["ssl_config"]["mode"], json!("Required"));
+    assert_eq!(stored["ssl_config"]["server_name"], json!("db.internal"));
+}
+
+// A full fetch whose first page ends at the token the state kept is no fetch that never ends.
+#[tokio::test]
+async fn a_full_fetch_page_may_end_at_the_token_the_state_kept() {
+    let rig = Rig::new().await;
+    rig.cloud.set_limits(2, 400, 1 << 20);
+    for id in [A, B] {
+        rig.save_elsewhere(Kind::Group, id, &json!({"name": id}));
+    }
+    rig.fetch().await.unwrap();
+    rig.save_elsewhere(Kind::Group, C, &json!({"name": C}));
+    rig.store(Kind::Group).restore(Vec::new());
+
+    let report = rig.fetch().await.unwrap();
+
+    assert!(report.full);
+    assert!(rig.store(Kind::Group).holds(C));
+}
+
+#[tokio::test]
+async fn a_page_that_repeats_a_token_is_refused() {
+    let rig = Rig::new().await;
+    rig.cloud.set_limits(1, 400, 1 << 20);
+    for id in [A, B] {
+        rig.save_elsewhere(Kind::Group, id, &json!({"name": id}));
+    }
+    rig.fetch().await.unwrap();
+    let token = rig.token().await;
+    let transport = Unreliable::new(&rig.cloud);
+    transport.repeat_token(token.unwrap());
+    rig.save_elsewhere(Kind::Group, C, &json!({"name": C}));
+    rig.save_elsewhere(Kind::Group, D, &json!({"name": D}));
+
+    let refused = rig.fetch_through(&transport).await;
+
+    assert_eq!(refused.unwrap_err(), SyncError::Malformed { what: "change token" });
+}
+
+// The store is put back while the fetch runs: the pass ends before its copies merge as edits, and the next refills.
+#[tokio::test]
+async fn a_store_restored_while_the_fetch_runs_ends_the_pass_and_the_next_refills() {
+    let rig = Rig::new().await;
+    rig.cloud.set_limits(1, 400, 1 << 20);
+    rig.save_elsewhere(Kind::Group, A, &json!({"name": "a"}));
+    rig.fetch().await.unwrap();
+    for id in [B, D] {
+        rig.save_elsewhere(Kind::Group, id, &json!({"name": id}));
+    }
+    let transport = Unreliable::new(&rig.cloud);
+    let group = rig.store(Kind::Group);
+    let stale = projected(Kind::Group, A, &json!({"name": "stale"}));
+    transport.before_call(1, Box::new(move || group.restore(vec![(A, stale)])));
+
+    let ended = rig.fetch_through(&transport).await;
+    let next = rig.fetch().await.unwrap();
+
+    assert!(matches!(ended, Err(SyncError::Adapter(_))));
+    assert_eq!(next.refilled, [Kind::Group]);
+    assert_eq!(
+        rig.store(Kind::Group).fields(A),
+        Some(projected(Kind::Group, A, &json!({"name": "a"})))
+    );
+}
+
+#[tokio::test]
+async fn a_new_long_id_record_is_stored_under_the_category_it_names() {
+    let rig = Rig::new().await;
+    let category =
+        tablepro_records::record_id::column_layout_category(uuid::Uuid::nil(), Some("shop"), None, &"t".repeat(240));
+    let wire = tablepro_records::record_id::shortened(Kind::MacosSettings, category.clone());
+    let layout = json!({"category": category, "options": {"columnWidths": [{"id": "id", "value": 80}]}});
+    rig.save_elsewhere(Kind::MacosSettings, &wire, &layout);
+
+    rig.fetch().await.unwrap();
+
+    assert!(rig.store(Kind::MacosSettings).holds(&category));
+    assert!(!rig.store(Kind::MacosSettings).holds(&wire));
 }

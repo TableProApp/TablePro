@@ -111,7 +111,8 @@ struct Start {
     token: Option<Vec<u8>>,
     refill: BTreeSet<Kind>,
     started: BTreeMap<String, StoreStamp>,
-    unseen: BTreeSet<String>,
+    // The same identities by store.
+    stores: BTreeMap<String, StoreStamp>,
     // The state file as a whole refills, and the identity rows of kinds whose category is off meanwhile.
     scope_refill: bool,
     refill_later: Vec<String>,
@@ -131,18 +132,13 @@ struct Pass {
 impl Pass {
     fn new(start: Start) -> Self {
         let full = start.token.is_none() || !start.refill.is_empty();
-        let stamps = start
-            .started
-            .iter()
-            .filter(|(row, _)| start.unseen.contains(*row))
-            .map(|(row, stamp)| (row.clone(), *stamp))
-            .collect();
+        let stamps = start.stores.clone();
         Self {
             next: start.token.clone().filter(|_| !full),
             full,
             started_over: false,
             listed: BTreeSet::new(),
-            seen: start.token.iter().cloned().collect(),
+            seen: start.token.iter().filter(|_| !full).cloned().collect(),
             start,
             stamps,
         }
@@ -181,6 +177,7 @@ impl Pass {
             caught_up: last,
             finish,
             stamps: std::mem::take(&mut self.stamps),
+            started: self.start.stores.clone(),
             release: Vec::new(),
         }
     }
@@ -266,7 +263,7 @@ impl<'a> Fetcher<'a> {
             token,
             refill: BTreeSet::new(),
             started: BTreeMap::new(),
-            unseen: BTreeSet::new(),
+            stores: BTreeMap::new(),
             scope_refill,
             refill_later: Vec::new(),
         };
@@ -289,9 +286,7 @@ impl<'a> Fetcher<'a> {
                 (true, false) if scope_refill => start.refill_later.push(row.clone()),
                 _ => {}
             }
-            if seen.is_none() {
-                start.unseen.insert(row.clone());
-            }
+            start.stores.insert(adapter.store().to_owned(), stamp);
             start.started.insert(row, stamp);
         }
         Ok(start)

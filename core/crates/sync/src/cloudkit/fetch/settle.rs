@@ -8,7 +8,7 @@ use tablepro_records::Kind;
 use tablepro_records::merge::{self, Merged, Mode, Sides};
 
 use super::copy::{Copy, Incoming, kind_of};
-use super::stores::{Local, Planned, pulled_over};
+use super::stores::{Local, Planned, carried, overlay};
 use super::{Counts, Fetcher, PROFILES, SCOPE};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
@@ -28,8 +28,10 @@ pub(super) struct Batch {
     pub token: Option<Vec<u8>>,
     pub caught_up: bool,
     pub finish: Option<Finish>,
-    // Identity rows the state has none of yet, with the stores' identities as the fetch found them.
+    // Each store's identity as the fetch found it: `stamps` moves the identity rows once, `started` tells a store
+    // restored since then.
     pub stamps: BTreeMap<String, StoreStamp>,
+    pub started: BTreeMap<String, StoreStamp>,
     // Held changes to drop: the zone holds no such record any more.
     pub release: Vec<RecordKey>,
 }
@@ -66,6 +68,7 @@ pub(super) struct Settle<'s, 'f> {
     // Each store's identity when the batch first read it, and a store written since.
     pub loaded: BTreeMap<String, StoreStamp>,
     pub moved: Option<String>,
+    pub started: BTreeMap<String, StoreStamp>,
 }
 
 fn held_change(copy: &Copy) -> PulledRecord {
@@ -110,6 +113,7 @@ impl Fetcher<'_> {
     async fn settle_once(&self, batch: Batch) -> Result<Result<Counts, String>, SyncError> {
         let txn = self.state.begin().await?;
         let mut settle = Settle::new(self, txn, batch.pull_wins);
+        settle.started = batch.started;
         for item in batch.items {
             settle.take(item).await?;
         }
@@ -122,8 +126,8 @@ impl Fetcher<'_> {
         if settle.write_stores().await?.is_none() {
             return Ok(Err(settle.moved.unwrap_or_default()));
         }
-        for (row, stamp) in &batch.stamps {
-            settle.note_stamp(row, *stamp, false).await?;
+        for (store, stamp) in &batch.stamps {
+            settle.note_store(store, *stamp).await?;
         }
         if let Some(finish) = &batch.finish {
             settle.refilled(finish).await?;
@@ -146,6 +150,7 @@ impl<'s, 'f> Settle<'s, 'f> {
             pull_wins,
             loaded: BTreeMap::new(),
             moved: None,
+            started: BTreeMap::new(),
         }
     }
 
@@ -174,16 +179,21 @@ impl<'s, 'f> Settle<'s, 'f> {
             View::Missing => None,
         };
         let local = record.as_ref().map(|record| &record.fields);
+        let held = local.and_then(|local| carried(copy.kind, &key.record_id, local));
         let merged = if self.pull_wins.contains(&copy.kind) {
-            Merged::Record(pulled_over(copy.kind, local, &copy.fields))
+            Merged::Record(copy.fields.clone())
         } else {
             let base = self.base(&key).await?;
             let sides = Sides {
                 base: base.as_ref().and_then(|base| base.fields.as_ref()),
-                local,
+                local: held.as_ref().or(local),
                 server: Some(&copy.fields),
             };
             merge::merge(copy.kind, Mode::Personal, sides)
+        };
+        let merged = match (merged, local, &held) {
+            (Merged::Record(fields), Some(local), Some(held)) => Merged::Record(overlay(local, held, &fields)),
+            (merged, ..) => merged,
         };
         self.settle_local(copy.kind, &key, record.as_ref(), merged);
         self.txn
@@ -240,9 +250,11 @@ impl<'s, 'f> Settle<'s, 'f> {
             View::Missing => None,
         };
         let base = self.base(key).await?;
+        let local = record.as_ref().map(|record| &record.fields);
+        let held = local.and_then(|local| carried(kind, &key.record_id, local));
         let sides = Sides {
             base: base.as_ref().and_then(|base| base.fields.as_ref()),
-            local: record.as_ref().map(|record| &record.fields),
+            local: held.as_ref().or(local),
             server: None,
         };
         // Otherwise a content edit here revives the record: it stays, and with no base it goes up as a create. A
