@@ -46,7 +46,10 @@ Every construction is a standard one from an audited library. `tablepro-keys` co
 | Local MAC | HMAC-SHA256 | RFC 2104 |
 
 - **Allowlist.** Every wrap, envelope, history entry, ring and blob names its suite. A client refuses a suite it does not list, since RFC 9180 §9.7.2 leaves downgrade prevention to the application. The suite is also inside each HPKE `info` and each AAD, so a ciphertext cannot be relabeled.
-- **Post-quantum path.** A later suite `tp2` replaces the KEM with the hybrid MLKEM768-P256 once draft-ietf-hpke-pq is an RFC and a vetted Rust implementation runs on AWS-LC. Only key versions are wrapped again. Envelopes and history stay under AES-256 and are not touched. A client that has seen a signed `tp2` key for a recipient refuses `tp1` wraps to it.
+- **Post-quantum path.** A later suite `tp2` replaces the KEM with the hybrid MLKEM768-P256 once draft-ietf-hpke-pq is an RFC and a vetted Rust implementation runs on AWS-LC.
+  - The move issues new RK, SK and holder HPKE keys, then new AK and TK versions that reach anyone only through `tp2` wraps. New writes go under those versions.
+  - Wrapping the old versions again would protect nothing. A `tp1` wrap someone archived today still opens to the old key on a future quantum computer, since HPKE gives no forward secrecy against the recipient's key (RFC 9180 §9.7.4). Everything written under a `tp1`-wrapped version stays exposed to that attacker, history included, and the threat model says so.
+  - A client that has seen a signed `tp2` key for a recipient refuses `tp1` wraps to it.
 
 **Encoding.**
 
@@ -212,11 +215,11 @@ The server also leaves out holders whose device row an admin removed, as a hint 
 **Ordering rules between the two account logs.** These rules stop a removed device's old ASK from adding a holder after the removal, which counters alone do not (Tailscale TKA, SYN C3):
 
 - A device statement's `ih` never goes back, and is at or after every `rotate` or `reset` whose `dh.seq` is below the statement's `seq`.
-- An `add` by approval verifies under the ASK the identity log certifies at its `ih`. Its `by` is in the device set at `seq - 1`.
+- An `add` by approval names the `ask_v` in force at its `ih`, the one the newest `genesis`, `rotate` or `reset` at or before `ih` introduced, and verifies under that ASK. An older `ask_v` is refused even if it was valid once. Its `by` is in the device set at `seq - 1`.
 - A holder id is never added twice.
 - The server takes `rotate`, `recovery` and `reset` only with `dh` equal to the current device head, and device statements only with `ih` equal to the current identity head. That is compare-and-set both ways, and a client whose append is refused pulls, then signs again.
 
-**Team log.** Kind `key.team`, type `tablepro-team+jws`. Each statement carries `by`: the signer's `acct`, `ask_v` and `ih`. A verifier finds the signer's IK in the team log and the ASK at `ask_v` in the signer's member bundle, and requires `ih` to never go back for that signer.
+**Team log.** Kind `key.team`, type `tablepro-team+jws`. Each statement carries `by`: the signer's `acct`, `ask_v` and `ih`. A verifier finds the signer's IK in the team log and the signer's identity statements in its member bundle. `ask_v` must be the ASK in force at `ih`, the one the newest `genesis`, `rotate` or `reset` at or before `ih` introduced, and `ih` never goes back for that signer. So a removed device that still holds an old ASK can neither claim the newest head nor, at any client that has seen the rotation, an older one.
 
 | `op` | Members | Rule |
 |---|---|---|
@@ -419,7 +422,7 @@ The server checks it as RFC 9449 §4.3 lists. Check 12's key binding becomes one
 - write an `add` (method `recovery`) that verifies under the current IK and names its own DPoP key;
 - while the account has no identity log, or has one with an empty device set, write the genesis or reset records naming itself.
 
-**Floors.** Each personal and team scope has a floor, raised as Flows says. An honest server refuses an envelope or history entry whose `kv` is below it with `key_version_stale`.
+**Floors.** Each personal and team scope has a floor: the lowest key version a new envelope or history entry may use. Flows says when it rises. An honest server refuses a `kv` below it with `key_version_stale`. After a removal raises it from v to v+1, a write under v is refused, one under v+1 is taken, and the writes queued meanwhile go out once the rotation lands.
 
 ### Key holders and sessions
 
@@ -490,7 +493,7 @@ A reader checks each `K_i` against the `kid` the log names for version i. A devi
   - Residual risk: a confirmed member with the server's help can write a team secret, since roles are server data, not signed data.
 - **Ordering.**
   - Clients pull key objects before they push envelopes.
-  - They never encrypt under a version below the highest one seen, at or below a floor, or below the version that a signed removal requires.
+  - They never encrypt under a version below the highest one seen, below a floor, or below the version that a signed removal requires.
   - A client refuses an envelope or history change under such a version when its pull order puts the change after that removal.
 
 ### History entries
@@ -550,7 +553,8 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 - **Negative vectors**, each with the error code it must produce:
   - an unsigned statement, a wrong `typ` or `alg`, an extra header member, and duplicate JSON members;
   - a statement that is badly chained, or out of order with `dh` or `ih`;
-  - an `add` by an ASK that a `rotate` replaced;
+  - an `add` by an ASK that a `rotate` replaced, and a team statement signed with an old `ask_v` while it names the newest `ih`;
+  - a floor raised from v to v+1: a write under v refused, and one under v+1 taken;
   - a `reset` without an endorsement, and one by a holder outside the set;
   - a swapped SK, and a `kid` mismatch after unwrap;
   - a recovery blob with the wrong origin, account or `rk_v`, and a recovery key with a bad checksum or the wrong length;
@@ -621,7 +625,7 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 - **The server reads more than versions.** It reads the key-object fields its table lists, DPoP proofs and `kv`, and verifies the account logs. It reads no secret and no history.
 - **An install that changes its API origin** is a new server for keys too, as it already is for tokens and the license (0047). People enroll again and devices seal the secrets they hold again. History written under the old origin is not readable there.
 - **Teammates see each other's identity logs** through member bundles: when a person removed devices, how many, and when they replaced or reset their recovery key.
-- **The threat model's residual risks hold:** trust on first use at genesis and at a reset with no holder left, split views, withholding, a full rollback for a device that never saw the newer head, and a confirmed member writing a team secret with the server's help.
+- **The threat model's residual risks hold:** trust on first use at genesis and at a reset with no holder left, split views, withholding, a full rollback for a device that never saw the newer head, a confirmed member writing a team secret with the server's help, and data under `tp1` key versions against a future quantum computer.
 - **Docs.** The cloud repository's `SECURITY.md` links the threat model. No text claims third-party verification. Whether to commission an external audit is decided before end-to-end encryption leaves beta.
 
 ## Alternatives considered

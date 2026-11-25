@@ -13,7 +13,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 
 **Review status.**
 
-- The design passes internal review only: gates G0 to G3, each a Codex review plus an independent security agent, and the formal model in `models/`.
+- The design gets internal review only: gates G0 to G3, each a Codex review plus an independent security agent, and the formal model in `models/`.
 - No third party has reviewed it, and no text may say otherwise.
 - Whether to commission an external audit is decided before end-to-end encryption leaves beta.
 
@@ -48,7 +48,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | A stolen device working with the server | Taking over the identity: IK is not on the device, and a reset needs a comparison with an own device or a teammate | Reading new data until the person removes the device; envelopes under old key versions shown to a device that never saw the earlier value |
 | A removed member | Team key versions after the rotation. The floor stops writers on old keys | Secrets they could already read, which is why "Credentials to rotate" exists |
 | A malicious current member, with the server's help | Other people's personal scopes | Writing a team secret under a valid writer signature |
-| A malicious signer | Other people's personal scopes. Removing a signer alone when there are three or more | Every team secret. Confirming puppet accounts and sealing keys to them. Adding signers. All of it shows in every member's app |
+| A malicious signer | Other people's personal scopes. With three signers or more, one signer cannot remove another alone | Every team secret. Confirming puppet accounts and sealing keys to them. Adding signers. All of it shows in every member's app |
 | Self-hosted customer IT as operator, IdP admin, install admin and endpoint manager | Secrets against dumps, backups and database staff | Anything on endpoints it controls. It can install software, read device memory or sign in as anyone through its IdP. End-to-end encryption does not protect against the organization itself |
 
 ## A malicious server operator
@@ -224,7 +224,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 7. **A person who confirms a comparison without reading it** approves whatever is on the other screen.
 8. **Plaintext records and metadata** are readable by the operator.
 9. **The organization running a self-hosted install** controls its endpoints and its IdP, which end-to-end encryption does not cover.
-10. **Ed25519 and P-256 are not post-quantum.** Wraps stored today could be opened by a future quantum computer. `tp2` wraps the key versions again under a hybrid KEM (0053, Suite). Envelopes and history are under AES-256 and are not affected.
+10. **P-256 and Ed25519 are not post-quantum.** Someone who archives `tp1` wraps today could open them on a future quantum computer, and with them every envelope and history entry written under those key versions, however strong AES-256 is. Moving to `tp2` issues new keys that reach anyone only through hybrid wraps, so it protects what is written after the move, not what was written before (0053, Suite).
 
 ## Out of scope
 
