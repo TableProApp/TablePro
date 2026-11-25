@@ -1505,6 +1505,46 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2761,6 +2801,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_queryhistorystore_table_folders(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_clone_csvimport(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -3147,6 +3198,116 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_update_tag(ulong @ptr,RustBuffer @id,RustBuffer @name,RustBuffer @color
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_connection_details(ulong @ptr,RustBuffer @id
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_credential_profiles(ulong @ptr
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_credential_profile(ulong @ptr,RustBuffer @id
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_ssh_profile(ulong @ptr,RustBuffer @id
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_device_settings(ulong @ptr,RustBuffer @id
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_save_credential_profile(ulong @ptr,RustBuffer @profile
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_save_ssh_profile(ulong @ptr,RustBuffer @profile
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_set_connection_details(ulong @ptr,RustBuffer @id,RustBuffer @details
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_set_device_settings(ulong @ptr,RustBuffer @id,RustBuffer @settings
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_ssh_profiles(ulong @ptr
     );
 
     #if NET8_0_OR_GREATER
@@ -4434,6 +4595,116 @@ static class _UniFFILib {
     public static extern
 #endif
      uint uniffi_tablepro_ffi_fn_method_tablepageread_visible_columns(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_clone_tablefolderstore(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_free_tablefolderstore(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_tablefolderstore_create(ulong @ptr,RustBuffer @connectionId,RustBuffer @database,RustBuffer @schema,RustBuffer @name
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_tablefolderstore_delete(ulong @ptr,RustBuffer @id
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_tablefolderstore_file(ulong @ptr,RustBuffer @connectionId,RustBuffer @tables,RustBuffer @folderId
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_tablefolderstore_folders(ulong @ptr,RustBuffer @connectionId
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_tablefolderstore_items(ulong @ptr,RustBuffer @connectionId
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_tablefolderstore_put(ulong @ptr,RustBuffer @folder
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_tablefolderstore_rename(ulong @ptr,RustBuffer @id,RustBuffer @name
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_tablefolderstore_unfile(ulong @ptr,RustBuffer @connectionId,RustBuffer @tables
     );
 
     #if NET8_0_OR_GREATER
@@ -6413,6 +6684,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_queryhistorystore_table_folders(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_csvimport_columns(
     );
 
@@ -6733,6 +7015,116 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_update_tag(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_connection_details(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_credential_profiles(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_credential_profile(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_ssh_profile(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_device_settings(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_credential_profile(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_ssh_profile(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_connection_details(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_device_settings(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_ssh_profiles(
     );
 
     #if NET8_0_OR_GREATER
@@ -7810,6 +8202,94 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_tablefolderstore_create(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_tablefolderstore_delete(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_tablefolderstore_file(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_tablefolderstore_folders(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_tablefolderstore_items(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_tablefolderstore_put(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_tablefolderstore_rename(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_tablefolderstore_unfile(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_constructor_canceltoken_new(
     );
 
@@ -8704,6 +9184,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_queryhistorystore_table_folders();
+            if (checksum != 54603) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_queryhistorystore_table_folders` checksum `54603`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_csvimport_columns();
             if (checksum != 53368) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_csvimport_columns` checksum `53368`, library returned `{checksum}`");
@@ -8881,6 +9367,66 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_update_tag();
             if (checksum != 62856) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_update_tag` checksum `62856`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_connection_details();
+            if (checksum != 41691) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_connection_details` checksum `41691`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_credential_profiles();
+            if (checksum != 11632) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_credential_profiles` checksum `11632`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_credential_profile();
+            if (checksum != 26864) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_credential_profile` checksum `26864`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_ssh_profile();
+            if (checksum != 2869) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_delete_ssh_profile` checksum `2869`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_device_settings();
+            if (checksum != 24615) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_device_settings` checksum `24615`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_credential_profile();
+            if (checksum != 36548) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_credential_profile` checksum `36548`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_ssh_profile();
+            if (checksum != 9652) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_save_ssh_profile` checksum `9652`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_connection_details();
+            if (checksum != 4068) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_connection_details` checksum `4068`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_device_settings();
+            if (checksum != 57428) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_set_device_settings` checksum `57428`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_ssh_profiles();
+            if (checksum != 48811) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_ssh_profiles` checksum `48811`, library returned `{checksum}`");
             }
         }
         {
@@ -9463,6 +10009,54 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablepageread_visible_columns();
             if (checksum != 21678) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablepageread_visible_columns` checksum `21678`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablefolderstore_create();
+            if (checksum != 55602) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablefolderstore_create` checksum `55602`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablefolderstore_delete();
+            if (checksum != 19118) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablefolderstore_delete` checksum `19118`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablefolderstore_file();
+            if (checksum != 22927) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablefolderstore_file` checksum `22927`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablefolderstore_folders();
+            if (checksum != 42325) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablefolderstore_folders` checksum `42325`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablefolderstore_items();
+            if (checksum != 5594) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablefolderstore_items` checksum `5594`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablefolderstore_put();
+            if (checksum != 33778) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablefolderstore_put` checksum `33778`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablefolderstore_rename();
+            if (checksum != 41173) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablefolderstore_rename` checksum `41173`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_tablefolderstore_unfile();
+            if (checksum != 42640) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_tablefolderstore_unfile` checksum `42640`, library returned `{checksum}`");
             }
         }
         {
@@ -11302,6 +11896,26 @@ internal interface IConnectionLibrary {
     Task TagConnections(string[] @ids, string @tagId, bool @tagged);
     /// <exception cref="CoreException"></exception>
     Task UpdateTag(string @id, string @name, string @color);
+    /// <exception cref="CoreException"></exception>
+    Task<ConnectionDetailsRecord> ConnectionDetails(string @id);
+    /// <exception cref="CoreException"></exception>
+    Task<CredentialProfileRecord[]> CredentialProfiles();
+    /// <exception cref="CoreException"></exception>
+    Task<bool> DeleteCredentialProfile(string @id);
+    /// <exception cref="CoreException"></exception>
+    Task<bool> DeleteSshProfile(string @id);
+    /// <exception cref="CoreException"></exception>
+    Task<DeviceSettingsRecord> DeviceSettings(string @id);
+    /// <exception cref="CoreException"></exception>
+    Task<CredentialProfileRecord> SaveCredentialProfile(CredentialProfileRecord @profile);
+    /// <exception cref="CoreException"></exception>
+    Task<SshProfileRecord> SaveSshProfile(SshProfileRecord @profile);
+    /// <exception cref="CoreException"></exception>
+    Task SetConnectionDetails(string @id, ConnectionDetailsRecord @details);
+    /// <exception cref="CoreException"></exception>
+    Task SetDeviceSettings(string @id, DeviceSettingsRecord @settings);
+    /// <exception cref="CoreException"></exception>
+    Task<SshProfileRecord[]> SshProfiles();
 }
 internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
     protected ulong pointer;
@@ -11815,6 +12429,218 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
         },
         // Free
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<ConnectionDetailsRecord> ConnectionDetails(string @id) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_connection_details(thisPtr, FfiConverterString.INSTANCE.Lower(@id));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeConnectionDetailsRecord.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<CredentialProfileRecord[]> CredentialProfiles() {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_credential_profiles(thisPtr);
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterSequenceTypeCredentialProfileRecord.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<bool> DeleteCredentialProfile(string @id) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_credential_profile(thisPtr, FfiConverterString.INSTANCE.Lower(@id));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_i8(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_i8(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_i8(future),
+        // Lift
+        (result) => FfiConverterBoolean.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<bool> DeleteSshProfile(string @id) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_delete_ssh_profile(thisPtr, FfiConverterString.INSTANCE.Lower(@id));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_i8(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_i8(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_i8(future),
+        // Lift
+        (result) => FfiConverterBoolean.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<DeviceSettingsRecord> DeviceSettings(string @id) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_device_settings(thisPtr, FfiConverterString.INSTANCE.Lower(@id));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeDeviceSettingsRecord.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<CredentialProfileRecord> SaveCredentialProfile(CredentialProfileRecord @profile) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_save_credential_profile(thisPtr, FfiConverterTypeCredentialProfileRecord.INSTANCE.Lower(@profile));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeCredentialProfileRecord.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<SshProfileRecord> SaveSshProfile(SshProfileRecord @profile) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_save_ssh_profile(thisPtr, FfiConverterTypeSshProfileRecord.INSTANCE.Lower(@profile));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeSshProfileRecord.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task SetConnectionDetails(string @id, ConnectionDetailsRecord @details) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_set_connection_details(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterTypeConnectionDetailsRecord.INSTANCE.Lower(@details));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task SetDeviceSettings(string @id, DeviceSettingsRecord @settings) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_set_device_settings(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterTypeDeviceSettingsRecord.INSTANCE.Lower(@settings));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<SshProfileRecord[]> SshProfiles() {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_ssh_profiles(thisPtr);
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterSequenceTypeSshProfileRecord.INSTANCE.Lift(result),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -14609,6 +15435,7 @@ internal interface IQueryHistoryStore {
     Task<HistoryPageInfo> Search(string @text, string? @connectionId, HistoryCursorArg? @after, uint @limit);
     /// <exception cref="CoreException"></exception>
     Task SetPinned(long @id, bool @pinned);
+    TableFolderStore TableFolders();
 }
 internal class QueryHistoryStore : IQueryHistoryStore, IDisposable {
     protected ulong pointer;
@@ -14852,6 +15679,14 @@ internal class QueryHistoryStore : IQueryHistoryStore, IDisposable {
         FfiConverterTypeCoreError.INSTANCE
     );
     }
+    
+    public TableFolderStore TableFolders() {
+        return CallWithPointer(thisPtr => FfiConverterTypeTableFolderStore.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_queryhistorystore_table_folders(thisPtr,  ref _status)
+)));
+    }
+    
     
 
     
@@ -16144,6 +16979,303 @@ class FfiConverterTypeTableEditor: FfiConverter<TableEditor, ulong> {
 
 
 
+internal interface ITableFolderStore {
+    /// <exception cref="CoreException"></exception>
+    Task<TableFolderRecord> Create(string @connectionId, string @database, string @schema, string @name);
+    /// <exception cref="CoreException"></exception>
+    Task<bool> Delete(string @id);
+    /// <exception cref="CoreException"></exception>
+    Task File(string @connectionId, TableRefRecord[] @tables, string @folderId);
+    /// <exception cref="CoreException"></exception>
+    Task<TableFolderRecord[]> Folders(string @connectionId);
+    /// <exception cref="CoreException"></exception>
+    Task<TableFolderItemRecord[]> Items(string @connectionId);
+    /// <exception cref="CoreException"></exception>
+    Task Put(TableFolderRecord @folder);
+    /// <exception cref="CoreException"></exception>
+    Task Rename(string @id, string @name);
+    /// <exception cref="CoreException"></exception>
+    Task Unfile(string @connectionId, TableRefRecord[] @tables);
+}
+internal class TableFolderStore : ITableFolderStore, IDisposable {
+    protected ulong pointer;
+    private int _wasDestroyed = 0;
+    private long _callCounter = 1;
+
+    public TableFolderStore(ulong pointer) {
+        this.pointer = pointer;
+    }
+
+    ~TableFolderStore() {
+        Destroy();
+    }
+
+    protected void FreeRustArcPtr() {
+        _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            _UniFFILib.uniffi_tablepro_ffi_fn_free_tablefolderstore(this.pointer, ref status);
+        });
+    }
+
+    protected ulong CloneRustArcPtr() {
+        return _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_clone_tablefolderstore(this.pointer, ref status);
+        });
+    }
+
+    public void Destroy()
+    {
+        // Only allow a single call to this method.
+        if (Interlocked.CompareExchange(ref _wasDestroyed, 1, 0) == 0)
+        {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (Interlocked.Decrement(ref _callCounter) == 0)
+            {
+                FreeRustArcPtr();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        Destroy();
+        GC.SuppressFinalize(this); // Suppress finalization to avoid unnecessary GC overhead.
+    }
+
+    private void IncrementCallCounter() 
+    {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        long count;
+        do
+        {
+            count = Interlocked.Read(ref _callCounter);
+            if (count == 0L) throw new System.ObjectDisposedException(String.Format("'{0}' object has already been destroyed", this.GetType().Name));
+            if (count == long.MaxValue) throw new System.OverflowException(String.Format("'{0}' call counter would overflow", this.GetType().Name));
+
+        } while (Interlocked.CompareExchange(ref _callCounter, count + 1, count) != count);
+    }
+
+    private void DecrementCallCounter() 
+    {
+        // This decrement always matches the increment we performed above.
+        if (Interlocked.Decrement(ref _callCounter) == 0) {
+            FreeRustArcPtr();
+        }
+    }
+
+    internal void CallWithPointer(Action<ulong> action)
+    {
+        IncrementCallCounter();
+        try {
+            action(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    internal T CallWithPointer<T>(Func<ulong, T> func)
+    {   
+        IncrementCallCounter();
+        try {
+            return func(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<TableFolderRecord> Create(string @connectionId, string @database, string @schema, string @name) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_tablefolderstore_create(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId), FfiConverterString.INSTANCE.Lower(@database), FfiConverterString.INSTANCE.Lower(@schema), FfiConverterString.INSTANCE.Lower(@name));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeTableFolderRecord.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<bool> Delete(string @id) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_tablefolderstore_delete(thisPtr, FfiConverterString.INSTANCE.Lower(@id));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_i8(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_i8(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_i8(future),
+        // Lift
+        (result) => FfiConverterBoolean.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task File(string @connectionId, TableRefRecord[] @tables, string @folderId) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_tablefolderstore_file(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId), FfiConverterSequenceTypeTableRefRecord.INSTANCE.Lower(@tables), FfiConverterString.INSTANCE.Lower(@folderId));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<TableFolderRecord[]> Folders(string @connectionId) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_tablefolderstore_folders(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterSequenceTypeTableFolderRecord.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<TableFolderItemRecord[]> Items(string @connectionId) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_tablefolderstore_items(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterSequenceTypeTableFolderItemRecord.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task Put(TableFolderRecord @folder) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_tablefolderstore_put(thisPtr, FfiConverterTypeTableFolderRecord.INSTANCE.Lower(@folder));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task Rename(string @id, string @name) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_tablefolderstore_rename(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterString.INSTANCE.Lower(@name));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task Unfile(string @connectionId, TableRefRecord[] @tables) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_tablefolderstore_unfile(thisPtr, FfiConverterString.INSTANCE.Lower(@connectionId), FfiConverterSequenceTypeTableRefRecord.INSTANCE.Lower(@tables));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+
+    
+}
+class FfiConverterTypeTableFolderStore: FfiConverter<TableFolderStore, ulong> {
+    public static FfiConverterTypeTableFolderStore INSTANCE = new FfiConverterTypeTableFolderStore();
+
+
+    public override ulong Lower(TableFolderStore value) {
+        return value.CallWithPointer(thisPtr => thisPtr);
+    }
+
+    public override TableFolderStore Lift(ulong value) {
+        return new TableFolderStore(value);
+    }
+
+    public override TableFolderStore Read(BigEndianStream stream) {
+        return Lift(stream.ReadULong());
+    }
+
+    public override int AllocationSize(TableFolderStore value) {
+        return 8;
+    }
+
+    public override void Write(TableFolderStore value, BigEndianStream stream) {
+        stream.WriteULong(Lower(value));
+    }
+}
+
+
+
 internal interface ITableKeys {
     /// <exception cref="CoreException"></exception>
     FollowedReference FollowReference(ResultSet @rows, ulong @row, bool @referencing, uint @key);
@@ -17302,6 +18434,94 @@ class FfiConverterTypeCloudLibraryRecords: FfiConverterRustBuffer<CloudLibraryRe
 
 
 
+internal record CloudSqlProxyRecord (
+    string InstanceConnectionName, 
+    CloudSqlAuthTag AuthMode, 
+    bool UseIamAuth, 
+    bool UsePrivateIp, 
+    ushort? LocalPort, 
+    string BinaryPath
+) {
+}
+
+class FfiConverterTypeCloudSqlProxyRecord: FfiConverterRustBuffer<CloudSqlProxyRecord> {
+    public static FfiConverterTypeCloudSqlProxyRecord INSTANCE = new FfiConverterTypeCloudSqlProxyRecord();
+
+    public override CloudSqlProxyRecord Read(BigEndianStream stream) {
+        return new CloudSqlProxyRecord(
+            InstanceConnectionName: FfiConverterString.INSTANCE.Read(stream),
+            AuthMode: FfiConverterTypeCloudSqlAuthTag.INSTANCE.Read(stream),
+            UseIamAuth: FfiConverterBoolean.INSTANCE.Read(stream),
+            UsePrivateIp: FfiConverterBoolean.INSTANCE.Read(stream),
+            LocalPort: FfiConverterOptionalUInt16.INSTANCE.Read(stream),
+            BinaryPath: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudSqlProxyRecord value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.InstanceConnectionName)
+            + FfiConverterTypeCloudSqlAuthTag.INSTANCE.AllocationSize(value.AuthMode)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.UseIamAuth)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.UsePrivateIp)
+            + FfiConverterOptionalUInt16.INSTANCE.AllocationSize(value.LocalPort)
+            + FfiConverterString.INSTANCE.AllocationSize(value.BinaryPath);
+    }
+
+    public override void Write(CloudSqlProxyRecord value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.InstanceConnectionName, stream);
+            FfiConverterTypeCloudSqlAuthTag.INSTANCE.Write(value.AuthMode, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.UseIamAuth, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.UsePrivateIp, stream);
+            FfiConverterOptionalUInt16.INSTANCE.Write(value.LocalPort, stream);
+            FfiConverterString.INSTANCE.Write(value.BinaryPath, stream);
+    }
+}
+
+
+
+internal record CloudflareTunnelRecord (
+    string AccessHostname, 
+    ushort? LocalPort, 
+    CloudflareAuthTag AuthMethod, 
+    bool ExposeToLan, 
+    string BinaryPath
+) {
+}
+
+class FfiConverterTypeCloudflareTunnelRecord: FfiConverterRustBuffer<CloudflareTunnelRecord> {
+    public static FfiConverterTypeCloudflareTunnelRecord INSTANCE = new FfiConverterTypeCloudflareTunnelRecord();
+
+    public override CloudflareTunnelRecord Read(BigEndianStream stream) {
+        return new CloudflareTunnelRecord(
+            AccessHostname: FfiConverterString.INSTANCE.Read(stream),
+            LocalPort: FfiConverterOptionalUInt16.INSTANCE.Read(stream),
+            AuthMethod: FfiConverterTypeCloudflareAuthTag.INSTANCE.Read(stream),
+            ExposeToLan: FfiConverterBoolean.INSTANCE.Read(stream),
+            BinaryPath: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudflareTunnelRecord value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.AccessHostname)
+            + FfiConverterOptionalUInt16.INSTANCE.AllocationSize(value.LocalPort)
+            + FfiConverterTypeCloudflareAuthTag.INSTANCE.AllocationSize(value.AuthMethod)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.ExposeToLan)
+            + FfiConverterString.INSTANCE.AllocationSize(value.BinaryPath);
+    }
+
+    public override void Write(CloudflareTunnelRecord value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.AccessHostname, stream);
+            FfiConverterOptionalUInt16.INSTANCE.Write(value.LocalPort, stream);
+            FfiConverterTypeCloudflareAuthTag.INSTANCE.Write(value.AuthMethod, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.ExposeToLan, stream);
+            FfiConverterString.INSTANCE.Write(value.BinaryPath, stream);
+    }
+}
+
+
+
 /// <param name="TypeName">
 /// The type as the server spells it, for display.
 /// </param>
@@ -17468,6 +18688,64 @@ class FfiConverterTypeCompletionPage: FfiConverterRustBuffer<CompletionPage> {
 
 
 
+internal record ConnectionDetailsRecord (
+    string? StartupSql, 
+    string? AiRules, 
+    string[] AiAllowedTools, 
+    string? SshProfileId, 
+    SshRouteRecord? SshRoute, 
+    string? CredentialProfileId, 
+    CredentialReferenceRecord? CredentialReference, 
+    uint? RedisDatabase, 
+    Dictionary<string, string> AdditionalFields
+) {
+}
+
+class FfiConverterTypeConnectionDetailsRecord: FfiConverterRustBuffer<ConnectionDetailsRecord> {
+    public static FfiConverterTypeConnectionDetailsRecord INSTANCE = new FfiConverterTypeConnectionDetailsRecord();
+
+    public override ConnectionDetailsRecord Read(BigEndianStream stream) {
+        return new ConnectionDetailsRecord(
+            StartupSql: FfiConverterOptionalString.INSTANCE.Read(stream),
+            AiRules: FfiConverterOptionalString.INSTANCE.Read(stream),
+            AiAllowedTools: FfiConverterSequenceString.INSTANCE.Read(stream),
+            SshProfileId: FfiConverterOptionalString.INSTANCE.Read(stream),
+            SshRoute: FfiConverterOptionalTypeSshRouteRecord.INSTANCE.Read(stream),
+            CredentialProfileId: FfiConverterOptionalString.INSTANCE.Read(stream),
+            CredentialReference: FfiConverterOptionalTypeCredentialReferenceRecord.INSTANCE.Read(stream),
+            RedisDatabase: FfiConverterOptionalUInt32.INSTANCE.Read(stream),
+            AdditionalFields: FfiConverterDictionaryStringString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(ConnectionDetailsRecord value) {
+        return 0
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.StartupSql)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.AiRules)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.AiAllowedTools)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.SshProfileId)
+            + FfiConverterOptionalTypeSshRouteRecord.INSTANCE.AllocationSize(value.SshRoute)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.CredentialProfileId)
+            + FfiConverterOptionalTypeCredentialReferenceRecord.INSTANCE.AllocationSize(value.CredentialReference)
+            + FfiConverterOptionalUInt32.INSTANCE.AllocationSize(value.RedisDatabase)
+            + FfiConverterDictionaryStringString.INSTANCE.AllocationSize(value.AdditionalFields);
+    }
+
+    public override void Write(ConnectionDetailsRecord value, BigEndianStream stream) {
+            FfiConverterOptionalString.INSTANCE.Write(value.StartupSql, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.AiRules, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.AiAllowedTools, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.SshProfileId, stream);
+            FfiConverterOptionalTypeSshRouteRecord.INSTANCE.Write(value.SshRoute, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.CredentialProfileId, stream);
+            FfiConverterOptionalTypeCredentialReferenceRecord.INSTANCE.Write(value.CredentialReference, stream);
+            FfiConverterOptionalUInt32.INSTANCE.Write(value.RedisDatabase, stream);
+            FfiConverterDictionaryStringString.INSTANCE.Write(value.AdditionalFields, stream);
+    }
+}
+
+
+
 internal record ConnectionRecord (
     string Id, 
     string Name, 
@@ -17625,6 +18903,52 @@ class FfiConverterTypeCreatedShareInfo: FfiConverterRustBuffer<CreatedShareInfo>
             FfiConverterTypeShareInfo.INSTANCE.Write(value.Share, stream);
             FfiConverterString.INSTANCE.Write(value.Url, stream);
             FfiConverterBoolean.INSTANCE.Write(value.ColumnsTruncated, stream);
+    }
+}
+
+
+
+internal record CredentialProfileRecord (
+    string Id, 
+    string Name, 
+    string Username, 
+    CredentialPasswordRecord Password, 
+    string[] SecureFieldIds, 
+    uint Order
+) {
+}
+
+class FfiConverterTypeCredentialProfileRecord: FfiConverterRustBuffer<CredentialProfileRecord> {
+    public static FfiConverterTypeCredentialProfileRecord INSTANCE = new FfiConverterTypeCredentialProfileRecord();
+
+    public override CredentialProfileRecord Read(BigEndianStream stream) {
+        return new CredentialProfileRecord(
+            Id: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterString.INSTANCE.Read(stream),
+            Username: FfiConverterString.INSTANCE.Read(stream),
+            Password: FfiConverterTypeCredentialPasswordRecord.INSTANCE.Read(stream),
+            SecureFieldIds: FfiConverterSequenceString.INSTANCE.Read(stream),
+            Order: FfiConverterUInt32.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CredentialProfileRecord value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Username)
+            + FfiConverterTypeCredentialPasswordRecord.INSTANCE.AllocationSize(value.Password)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.SecureFieldIds)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Order);
+    }
+
+    public override void Write(CredentialProfileRecord value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
+            FfiConverterString.INSTANCE.Write(value.Username, stream);
+            FfiConverterTypeCredentialPasswordRecord.INSTANCE.Write(value.Password, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.SecureFieldIds, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.Order, stream);
     }
 }
 
@@ -18021,6 +19345,60 @@ class FfiConverterTypeDeviceInfo: FfiConverterRustBuffer<DeviceInfo> {
             FfiConverterOptionalInt64.INSTANCE.Write(value.LicensedAtSecs, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.OfflineUntilSecs, stream);
             FfiConverterBoolean.INSTANCE.Write(value.IsThisMachine, stream);
+    }
+}
+
+
+
+internal record DeviceSettingsRecord (
+    bool LocalOnly, 
+    bool IsSample, 
+    string Origin, 
+    LocalPasswordSourceRecord? PasswordSource, 
+    CloudflareTunnelRecord? CloudflareTunnel, 
+    CloudSqlProxyRecord? CloudSqlProxy, 
+    SocksProxyRecord? SocksProxy, 
+    TunnelCommandRecord? TunnelCommand
+) {
+}
+
+class FfiConverterTypeDeviceSettingsRecord: FfiConverterRustBuffer<DeviceSettingsRecord> {
+    public static FfiConverterTypeDeviceSettingsRecord INSTANCE = new FfiConverterTypeDeviceSettingsRecord();
+
+    public override DeviceSettingsRecord Read(BigEndianStream stream) {
+        return new DeviceSettingsRecord(
+            LocalOnly: FfiConverterBoolean.INSTANCE.Read(stream),
+            IsSample: FfiConverterBoolean.INSTANCE.Read(stream),
+            Origin: FfiConverterString.INSTANCE.Read(stream),
+            PasswordSource: FfiConverterOptionalTypeLocalPasswordSourceRecord.INSTANCE.Read(stream),
+            CloudflareTunnel: FfiConverterOptionalTypeCloudflareTunnelRecord.INSTANCE.Read(stream),
+            CloudSqlProxy: FfiConverterOptionalTypeCloudSqlProxyRecord.INSTANCE.Read(stream),
+            SocksProxy: FfiConverterOptionalTypeSocksProxyRecord.INSTANCE.Read(stream),
+            TunnelCommand: FfiConverterOptionalTypeTunnelCommandRecord.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(DeviceSettingsRecord value) {
+        return 0
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.LocalOnly)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.IsSample)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Origin)
+            + FfiConverterOptionalTypeLocalPasswordSourceRecord.INSTANCE.AllocationSize(value.PasswordSource)
+            + FfiConverterOptionalTypeCloudflareTunnelRecord.INSTANCE.AllocationSize(value.CloudflareTunnel)
+            + FfiConverterOptionalTypeCloudSqlProxyRecord.INSTANCE.AllocationSize(value.CloudSqlProxy)
+            + FfiConverterOptionalTypeSocksProxyRecord.INSTANCE.AllocationSize(value.SocksProxy)
+            + FfiConverterOptionalTypeTunnelCommandRecord.INSTANCE.AllocationSize(value.TunnelCommand);
+    }
+
+    public override void Write(DeviceSettingsRecord value, BigEndianStream stream) {
+            FfiConverterBoolean.INSTANCE.Write(value.LocalOnly, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.IsSample, stream);
+            FfiConverterString.INSTANCE.Write(value.Origin, stream);
+            FfiConverterOptionalTypeLocalPasswordSourceRecord.INSTANCE.Write(value.PasswordSource, stream);
+            FfiConverterOptionalTypeCloudflareTunnelRecord.INSTANCE.Write(value.CloudflareTunnel, stream);
+            FfiConverterOptionalTypeCloudSqlProxyRecord.INSTANCE.Write(value.CloudSqlProxy, stream);
+            FfiConverterOptionalTypeSocksProxyRecord.INSTANCE.Write(value.SocksProxy, stream);
+            FfiConverterOptionalTypeTunnelCommandRecord.INSTANCE.Write(value.TunnelCommand, stream);
     }
 }
 
@@ -21006,6 +22384,196 @@ class FfiConverterTypeSharedLinkInfo: FfiConverterRustBuffer<SharedLinkInfo> {
 
 
 
+internal record SocksProxyRecord (
+    string Host, 
+    ushort Port, 
+    string Username
+) {
+}
+
+class FfiConverterTypeSocksProxyRecord: FfiConverterRustBuffer<SocksProxyRecord> {
+    public static FfiConverterTypeSocksProxyRecord INSTANCE = new FfiConverterTypeSocksProxyRecord();
+
+    public override SocksProxyRecord Read(BigEndianStream stream) {
+        return new SocksProxyRecord(
+            Host: FfiConverterString.INSTANCE.Read(stream),
+            Port: FfiConverterUInt16.INSTANCE.Read(stream),
+            Username: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SocksProxyRecord value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Host)
+            + FfiConverterUInt16.INSTANCE.AllocationSize(value.Port)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Username);
+    }
+
+    public override void Write(SocksProxyRecord value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Host, stream);
+            FfiConverterUInt16.INSTANCE.Write(value.Port, stream);
+            FfiConverterString.INSTANCE.Write(value.Username, stream);
+    }
+}
+
+
+
+internal record SshProfileRecord (
+    string Id, 
+    string Name, 
+    SshSettings Ssh
+) {
+}
+
+class FfiConverterTypeSshProfileRecord: FfiConverterRustBuffer<SshProfileRecord> {
+    public static FfiConverterTypeSshProfileRecord INSTANCE = new FfiConverterTypeSshProfileRecord();
+
+    public override SshProfileRecord Read(BigEndianStream stream) {
+        return new SshProfileRecord(
+            Id: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterString.INSTANCE.Read(stream),
+            Ssh: FfiConverterTypeSshSettings.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SshProfileRecord value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterTypeSshSettings.INSTANCE.AllocationSize(value.Ssh);
+    }
+
+    public override void Write(SshProfileRecord value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
+            FfiConverterTypeSshSettings.INSTANCE.Write(value.Ssh, stream);
+    }
+}
+
+
+
+internal record SshRouteHopRecord (
+    string Id, 
+    string Alias, 
+    string Host, 
+    ushort Port, 
+    string Username
+) {
+}
+
+class FfiConverterTypeSshRouteHopRecord: FfiConverterRustBuffer<SshRouteHopRecord> {
+    public static FfiConverterTypeSshRouteHopRecord INSTANCE = new FfiConverterTypeSshRouteHopRecord();
+
+    public override SshRouteHopRecord Read(BigEndianStream stream) {
+        return new SshRouteHopRecord(
+            Id: FfiConverterString.INSTANCE.Read(stream),
+            Alias: FfiConverterString.INSTANCE.Read(stream),
+            Host: FfiConverterString.INSTANCE.Read(stream),
+            Port: FfiConverterUInt16.INSTANCE.Read(stream),
+            Username: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SshRouteHopRecord value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Alias)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Host)
+            + FfiConverterUInt16.INSTANCE.AllocationSize(value.Port)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Username);
+    }
+
+    public override void Write(SshRouteHopRecord value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.Alias, stream);
+            FfiConverterString.INSTANCE.Write(value.Host, stream);
+            FfiConverterUInt16.INSTANCE.Write(value.Port, stream);
+            FfiConverterString.INSTANCE.Write(value.Username, stream);
+    }
+}
+
+
+
+internal record SshRouteRecord (
+    uint Version, 
+    string Publisher, 
+    string Basis, 
+    SshRouteHopRecord[] Hops, 
+    SshRouteTargetRecord Target
+) {
+}
+
+class FfiConverterTypeSshRouteRecord: FfiConverterRustBuffer<SshRouteRecord> {
+    public static FfiConverterTypeSshRouteRecord INSTANCE = new FfiConverterTypeSshRouteRecord();
+
+    public override SshRouteRecord Read(BigEndianStream stream) {
+        return new SshRouteRecord(
+            Version: FfiConverterUInt32.INSTANCE.Read(stream),
+            Publisher: FfiConverterString.INSTANCE.Read(stream),
+            Basis: FfiConverterString.INSTANCE.Read(stream),
+            Hops: FfiConverterSequenceTypeSshRouteHopRecord.INSTANCE.Read(stream),
+            Target: FfiConverterTypeSshRouteTargetRecord.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SshRouteRecord value) {
+        return 0
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Version)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Publisher)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Basis)
+            + FfiConverterSequenceTypeSshRouteHopRecord.INSTANCE.AllocationSize(value.Hops)
+            + FfiConverterTypeSshRouteTargetRecord.INSTANCE.AllocationSize(value.Target);
+    }
+
+    public override void Write(SshRouteRecord value, BigEndianStream stream) {
+            FfiConverterUInt32.INSTANCE.Write(value.Version, stream);
+            FfiConverterString.INSTANCE.Write(value.Publisher, stream);
+            FfiConverterString.INSTANCE.Write(value.Basis, stream);
+            FfiConverterSequenceTypeSshRouteHopRecord.INSTANCE.Write(value.Hops, stream);
+            FfiConverterTypeSshRouteTargetRecord.INSTANCE.Write(value.Target, stream);
+    }
+}
+
+
+
+internal record SshRouteTargetRecord (
+    string Alias, 
+    string Host, 
+    ushort Port, 
+    string Username
+) {
+}
+
+class FfiConverterTypeSshRouteTargetRecord: FfiConverterRustBuffer<SshRouteTargetRecord> {
+    public static FfiConverterTypeSshRouteTargetRecord INSTANCE = new FfiConverterTypeSshRouteTargetRecord();
+
+    public override SshRouteTargetRecord Read(BigEndianStream stream) {
+        return new SshRouteTargetRecord(
+            Alias: FfiConverterString.INSTANCE.Read(stream),
+            Host: FfiConverterString.INSTANCE.Read(stream),
+            Port: FfiConverterUInt16.INSTANCE.Read(stream),
+            Username: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SshRouteTargetRecord value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Alias)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Host)
+            + FfiConverterUInt16.INSTANCE.AllocationSize(value.Port)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Username);
+    }
+
+    public override void Write(SshRouteTargetRecord value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Alias, stream);
+            FfiConverterString.INSTANCE.Write(value.Host, stream);
+            FfiConverterUInt16.INSTANCE.Write(value.Port, stream);
+            FfiConverterString.INSTANCE.Write(value.Username, stream);
+    }
+}
+
+
+
 internal record SshSettings (
     string Host, 
     ushort? Port, 
@@ -21258,6 +22826,86 @@ class FfiConverterTypeTableFilterArg: FfiConverterRustBuffer<TableFilterArg> {
 
 
 
+internal record TableFolderItemRecord (
+    TableRefRecord Table, 
+    string FolderId
+) {
+}
+
+class FfiConverterTypeTableFolderItemRecord: FfiConverterRustBuffer<TableFolderItemRecord> {
+    public static FfiConverterTypeTableFolderItemRecord INSTANCE = new FfiConverterTypeTableFolderItemRecord();
+
+    public override TableFolderItemRecord Read(BigEndianStream stream) {
+        return new TableFolderItemRecord(
+            Table: FfiConverterTypeTableRefRecord.INSTANCE.Read(stream),
+            FolderId: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(TableFolderItemRecord value) {
+        return 0
+            + FfiConverterTypeTableRefRecord.INSTANCE.AllocationSize(value.Table)
+            + FfiConverterString.INSTANCE.AllocationSize(value.FolderId);
+    }
+
+    public override void Write(TableFolderItemRecord value, BigEndianStream stream) {
+            FfiConverterTypeTableRefRecord.INSTANCE.Write(value.Table, stream);
+            FfiConverterString.INSTANCE.Write(value.FolderId, stream);
+    }
+}
+
+
+
+internal record TableFolderRecord (
+    string Id, 
+    string ConnectionId, 
+    string Database, 
+    string Schema, 
+    string Name, 
+    long CreatedAtMs, 
+    long UpdatedAtMs
+) {
+}
+
+class FfiConverterTypeTableFolderRecord: FfiConverterRustBuffer<TableFolderRecord> {
+    public static FfiConverterTypeTableFolderRecord INSTANCE = new FfiConverterTypeTableFolderRecord();
+
+    public override TableFolderRecord Read(BigEndianStream stream) {
+        return new TableFolderRecord(
+            Id: FfiConverterString.INSTANCE.Read(stream),
+            ConnectionId: FfiConverterString.INSTANCE.Read(stream),
+            Database: FfiConverterString.INSTANCE.Read(stream),
+            Schema: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterString.INSTANCE.Read(stream),
+            CreatedAtMs: FfiConverterInt64.INSTANCE.Read(stream),
+            UpdatedAtMs: FfiConverterInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(TableFolderRecord value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.ConnectionId)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Database)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Schema)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterInt64.INSTANCE.AllocationSize(value.CreatedAtMs)
+            + FfiConverterInt64.INSTANCE.AllocationSize(value.UpdatedAtMs);
+    }
+
+    public override void Write(TableFolderRecord value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.ConnectionId, stream);
+            FfiConverterString.INSTANCE.Write(value.Database, stream);
+            FfiConverterString.INSTANCE.Write(value.Schema, stream);
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
+            FfiConverterInt64.INSTANCE.Write(value.CreatedAtMs, stream);
+            FfiConverterInt64.INSTANCE.Write(value.UpdatedAtMs, stream);
+    }
+}
+
+
+
 internal record TableInfoRecord (
     RowEstimate Rows, 
     string? Comment, 
@@ -21328,6 +22976,40 @@ class FfiConverterTypeTableName: FfiConverterRustBuffer<TableName> {
 
     public override void Write(TableName value, BigEndianStream stream) {
             FfiConverterOptionalString.INSTANCE.Write(value.Schema, stream);
+            FfiConverterString.INSTANCE.Write(value.Name, stream);
+    }
+}
+
+
+
+internal record TableRefRecord (
+    string Database, 
+    string Schema, 
+    string Name
+) {
+}
+
+class FfiConverterTypeTableRefRecord: FfiConverterRustBuffer<TableRefRecord> {
+    public static FfiConverterTypeTableRefRecord INSTANCE = new FfiConverterTypeTableRefRecord();
+
+    public override TableRefRecord Read(BigEndianStream stream) {
+        return new TableRefRecord(
+            Database: FfiConverterString.INSTANCE.Read(stream),
+            Schema: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(TableRefRecord value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Database)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Schema)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Name);
+    }
+
+    public override void Write(TableRefRecord value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Database, stream);
+            FfiConverterString.INSTANCE.Write(value.Schema, stream);
             FfiConverterString.INSTANCE.Write(value.Name, stream);
     }
 }
@@ -21473,6 +23155,64 @@ class FfiConverterTypeTlsSettings: FfiConverterRustBuffer<TlsSettings> {
             FfiConverterOptionalString.INSTANCE.Write(value.ClientCertificate, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.ClientKey, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.ServerName, stream);
+    }
+}
+
+
+
+internal record TunnelCommandRecord (
+    TunnelCommandMethodTag Method, 
+    string Command, 
+    string ExecutablePath, 
+    string KubernetesNamespace, 
+    string KubernetesResource, 
+    string KubernetesContext, 
+    string AwsTarget, 
+    string AwsProfile, 
+    string AwsRegion
+) {
+}
+
+class FfiConverterTypeTunnelCommandRecord: FfiConverterRustBuffer<TunnelCommandRecord> {
+    public static FfiConverterTypeTunnelCommandRecord INSTANCE = new FfiConverterTypeTunnelCommandRecord();
+
+    public override TunnelCommandRecord Read(BigEndianStream stream) {
+        return new TunnelCommandRecord(
+            Method: FfiConverterTypeTunnelCommandMethodTag.INSTANCE.Read(stream),
+            Command: FfiConverterString.INSTANCE.Read(stream),
+            ExecutablePath: FfiConverterString.INSTANCE.Read(stream),
+            KubernetesNamespace: FfiConverterString.INSTANCE.Read(stream),
+            KubernetesResource: FfiConverterString.INSTANCE.Read(stream),
+            KubernetesContext: FfiConverterString.INSTANCE.Read(stream),
+            AwsTarget: FfiConverterString.INSTANCE.Read(stream),
+            AwsProfile: FfiConverterString.INSTANCE.Read(stream),
+            AwsRegion: FfiConverterString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(TunnelCommandRecord value) {
+        return 0
+            + FfiConverterTypeTunnelCommandMethodTag.INSTANCE.AllocationSize(value.Method)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Command)
+            + FfiConverterString.INSTANCE.AllocationSize(value.ExecutablePath)
+            + FfiConverterString.INSTANCE.AllocationSize(value.KubernetesNamespace)
+            + FfiConverterString.INSTANCE.AllocationSize(value.KubernetesResource)
+            + FfiConverterString.INSTANCE.AllocationSize(value.KubernetesContext)
+            + FfiConverterString.INSTANCE.AllocationSize(value.AwsTarget)
+            + FfiConverterString.INSTANCE.AllocationSize(value.AwsProfile)
+            + FfiConverterString.INSTANCE.AllocationSize(value.AwsRegion);
+    }
+
+    public override void Write(TunnelCommandRecord value, BigEndianStream stream) {
+            FfiConverterTypeTunnelCommandMethodTag.INSTANCE.Write(value.Method, stream);
+            FfiConverterString.INSTANCE.Write(value.Command, stream);
+            FfiConverterString.INSTANCE.Write(value.ExecutablePath, stream);
+            FfiConverterString.INSTANCE.Write(value.KubernetesNamespace, stream);
+            FfiConverterString.INSTANCE.Write(value.KubernetesResource, stream);
+            FfiConverterString.INSTANCE.Write(value.KubernetesContext, stream);
+            FfiConverterString.INSTANCE.Write(value.AwsTarget, stream);
+            FfiConverterString.INSTANCE.Write(value.AwsProfile, stream);
+            FfiConverterString.INSTANCE.Write(value.AwsRegion, stream);
     }
 }
 
@@ -22294,6 +24034,78 @@ class FfiConverterTypeCellEdit : FfiConverterRustBuffer<CellEdit>{
 
 
 
+internal enum CloudSqlAuthTag: int {
+    ApplicationDefault,
+    ServiceAccountKey
+}
+
+class FfiConverterTypeCloudSqlAuthTag: FfiConverterRustBuffer<CloudSqlAuthTag> {
+    public static FfiConverterTypeCloudSqlAuthTag INSTANCE = new FfiConverterTypeCloudSqlAuthTag();
+
+    public override CloudSqlAuthTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return CloudSqlAuthTag.ApplicationDefault;
+            case 2: return CloudSqlAuthTag.ServiceAccountKey;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCloudSqlAuthTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CloudSqlAuthTag value) {
+        return 4;
+    }
+
+    public override void Write(CloudSqlAuthTag value, BigEndianStream stream) {
+        switch (value) {
+            case CloudSqlAuthTag.ApplicationDefault: stream.WriteInt(1); break;
+            case CloudSqlAuthTag.ServiceAccountKey: stream.WriteInt(2); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCloudSqlAuthTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal enum CloudflareAuthTag: int {
+    BrowserSso,
+    ServiceToken
+}
+
+class FfiConverterTypeCloudflareAuthTag: FfiConverterRustBuffer<CloudflareAuthTag> {
+    public static FfiConverterTypeCloudflareAuthTag INSTANCE = new FfiConverterTypeCloudflareAuthTag();
+
+    public override CloudflareAuthTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return CloudflareAuthTag.BrowserSso;
+            case 2: return CloudflareAuthTag.ServiceToken;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCloudflareAuthTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CloudflareAuthTag value) {
+        return 4;
+    }
+
+    public override void Write(CloudflareAuthTag value, BigEndianStream stream) {
+        switch (value) {
+            case CloudflareAuthTag.BrowserSso: stream.WriteInt(1); break;
+            case CloudflareAuthTag.ServiceToken: stream.WriteInt(2); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCloudflareAuthTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal enum CombinatorTag: int {
     And,
     Or
@@ -22458,6 +24270,240 @@ class FfiConverterTypeCoreError : FfiConverterRustBuffer<CoreException>, CallSta
         }
     }
 }
+
+
+
+
+
+internal record CredentialPasswordRecord {
+    
+    public record Stored: CredentialPasswordRecord {}
+    
+    
+    public record Prompt: CredentialPasswordRecord {}
+    
+    
+    public record Pgpass: CredentialPasswordRecord {}
+    
+    
+    public record Reference (
+        CredentialReferenceRecord ReferenceValue
+    ) : CredentialPasswordRecord {}
+    
+    public record Local (
+        LocalPasswordSourceRecord Source
+    ) : CredentialPasswordRecord {}
+    
+
+    
+}
+
+class FfiConverterTypeCredentialPasswordRecord : FfiConverterRustBuffer<CredentialPasswordRecord>{
+    public static FfiConverterRustBuffer<CredentialPasswordRecord> INSTANCE = new FfiConverterTypeCredentialPasswordRecord();
+
+    public override CredentialPasswordRecord Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new CredentialPasswordRecord.Stored(
+                );
+            case 2:
+                return new CredentialPasswordRecord.Prompt(
+                );
+            case 3:
+                return new CredentialPasswordRecord.Pgpass(
+                );
+            case 4:
+                return new CredentialPasswordRecord.Reference(
+                    FfiConverterTypeCredentialReferenceRecord.INSTANCE.Read(stream)
+                );
+            case 5:
+                return new CredentialPasswordRecord.Local(
+                    FfiConverterTypeLocalPasswordSourceRecord.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCredentialPasswordRecord.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CredentialPasswordRecord value) {
+        switch (value) {
+            case CredentialPasswordRecord.Stored variant_value:
+                return 4;
+            case CredentialPasswordRecord.Prompt variant_value:
+                return 4;
+            case CredentialPasswordRecord.Pgpass variant_value:
+                return 4;
+            case CredentialPasswordRecord.Reference variant_value:
+                return 4
+                    + FfiConverterTypeCredentialReferenceRecord.INSTANCE.AllocationSize(variant_value.ReferenceValue);
+            case CredentialPasswordRecord.Local variant_value:
+                return 4
+                    + FfiConverterTypeLocalPasswordSourceRecord.INSTANCE.AllocationSize(variant_value.Source);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCredentialPasswordRecord.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(CredentialPasswordRecord value, BigEndianStream stream) {
+        switch (value) {
+            case CredentialPasswordRecord.Stored variant_value:
+                stream.WriteInt(1);
+                break;
+            case CredentialPasswordRecord.Prompt variant_value:
+                stream.WriteInt(2);
+                break;
+            case CredentialPasswordRecord.Pgpass variant_value:
+                stream.WriteInt(3);
+                break;
+            case CredentialPasswordRecord.Reference variant_value:
+                stream.WriteInt(4);
+                FfiConverterTypeCredentialReferenceRecord.INSTANCE.Write(variant_value.ReferenceValue, stream);
+                break;
+            case CredentialPasswordRecord.Local variant_value:
+                stream.WriteInt(5);
+                FfiConverterTypeLocalPasswordSourceRecord.INSTANCE.Write(variant_value.Source, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCredentialPasswordRecord.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record CredentialReferenceRecord {
+    
+    public record Env (
+        string Variable
+    ) : CredentialReferenceRecord {}
+    
+    public record OnePassword (
+        string Reference
+    ) : CredentialReferenceRecord {}
+    
+    public record Vault (
+        string Path,
+        string Field
+    ) : CredentialReferenceRecord {}
+    
+    public record AwsSecretsManager (
+        string SecretId,
+        string? JsonKey
+    ) : CredentialReferenceRecord {}
+    
+    public record VaultDatabaseRole (
+        string? Address,
+        string Mount,
+        string Role,
+        VaultAuthRecord Auth
+    ) : CredentialReferenceRecord {}
+    
+
+    
+}
+
+class FfiConverterTypeCredentialReferenceRecord : FfiConverterRustBuffer<CredentialReferenceRecord>{
+    public static FfiConverterRustBuffer<CredentialReferenceRecord> INSTANCE = new FfiConverterTypeCredentialReferenceRecord();
+
+    public override CredentialReferenceRecord Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new CredentialReferenceRecord.Env(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new CredentialReferenceRecord.OnePassword(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 3:
+                return new CredentialReferenceRecord.Vault(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 4:
+                return new CredentialReferenceRecord.AwsSecretsManager(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterOptionalString.INSTANCE.Read(stream)
+                );
+            case 5:
+                return new CredentialReferenceRecord.VaultDatabaseRole(
+                    FfiConverterOptionalString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterTypeVaultAuthRecord.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCredentialReferenceRecord.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(CredentialReferenceRecord value) {
+        switch (value) {
+            case CredentialReferenceRecord.Env variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Variable);
+            case CredentialReferenceRecord.OnePassword variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Reference);
+            case CredentialReferenceRecord.Vault variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Path)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Field);
+            case CredentialReferenceRecord.AwsSecretsManager variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.SecretId)
+                    + FfiConverterOptionalString.INSTANCE.AllocationSize(variant_value.JsonKey);
+            case CredentialReferenceRecord.VaultDatabaseRole variant_value:
+                return 4
+                    + FfiConverterOptionalString.INSTANCE.AllocationSize(variant_value.Address)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Mount)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Role)
+                    + FfiConverterTypeVaultAuthRecord.INSTANCE.AllocationSize(variant_value.Auth);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCredentialReferenceRecord.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(CredentialReferenceRecord value, BigEndianStream stream) {
+        switch (value) {
+            case CredentialReferenceRecord.Env variant_value:
+                stream.WriteInt(1);
+                FfiConverterString.INSTANCE.Write(variant_value.Variable, stream);
+                break;
+            case CredentialReferenceRecord.OnePassword variant_value:
+                stream.WriteInt(2);
+                FfiConverterString.INSTANCE.Write(variant_value.Reference, stream);
+                break;
+            case CredentialReferenceRecord.Vault variant_value:
+                stream.WriteInt(3);
+                FfiConverterString.INSTANCE.Write(variant_value.Path, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Field, stream);
+                break;
+            case CredentialReferenceRecord.AwsSecretsManager variant_value:
+                stream.WriteInt(4);
+                FfiConverterString.INSTANCE.Write(variant_value.SecretId, stream);
+                FfiConverterOptionalString.INSTANCE.Write(variant_value.JsonKey, stream);
+                break;
+            case CredentialReferenceRecord.VaultDatabaseRole variant_value:
+                stream.WriteInt(5);
+                FfiConverterOptionalString.INSTANCE.Write(variant_value.Address, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Mount, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Role, stream);
+                FfiConverterTypeVaultAuthRecord.INSTANCE.Write(variant_value.Auth, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeCredentialReferenceRecord.Write()", value));
+        }
+    }
+}
+
+
 
 
 
@@ -24192,6 +26238,78 @@ class FfiConverterTypeLicenseStateTag: FfiConverterRustBuffer<LicenseStateTag> {
             case LicenseStateTag.Grace: stream.WriteInt(2); break;
             case LicenseStateTag.Lapsed: stream.WriteInt(3); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeLicenseStateTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record LocalPasswordSourceRecord {
+    
+    public record File (
+        string Path
+    ) : LocalPasswordSourceRecord {}
+    
+    public record Command (
+        string Shell,
+        uint? ReuseSeconds
+    ) : LocalPasswordSourceRecord {}
+    
+
+    
+}
+
+class FfiConverterTypeLocalPasswordSourceRecord : FfiConverterRustBuffer<LocalPasswordSourceRecord>{
+    public static FfiConverterRustBuffer<LocalPasswordSourceRecord> INSTANCE = new FfiConverterTypeLocalPasswordSourceRecord();
+
+    public override LocalPasswordSourceRecord Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new LocalPasswordSourceRecord.File(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new LocalPasswordSourceRecord.Command(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterOptionalUInt32.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeLocalPasswordSourceRecord.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(LocalPasswordSourceRecord value) {
+        switch (value) {
+            case LocalPasswordSourceRecord.File variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Path);
+            case LocalPasswordSourceRecord.Command variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Shell)
+                    + FfiConverterOptionalUInt32.INSTANCE.AllocationSize(variant_value.ReuseSeconds);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeLocalPasswordSourceRecord.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(LocalPasswordSourceRecord value, BigEndianStream stream) {
+        switch (value) {
+            case LocalPasswordSourceRecord.File variant_value:
+                stream.WriteInt(1);
+                FfiConverterString.INSTANCE.Write(variant_value.Path, stream);
+                break;
+            case LocalPasswordSourceRecord.Command variant_value:
+                stream.WriteInt(2);
+                FfiConverterString.INSTANCE.Write(variant_value.Shell, stream);
+                FfiConverterOptionalUInt32.INSTANCE.Write(variant_value.ReuseSeconds, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeLocalPasswordSourceRecord.Write()", value));
         }
     }
 }
@@ -27444,6 +29562,45 @@ class FfiConverterTypeTruncationTag: FfiConverterRustBuffer<TruncationTag> {
 
 
 
+internal enum TunnelCommandMethodTag: int {
+    Kubectl,
+    AwsSsm,
+    Custom
+}
+
+class FfiConverterTypeTunnelCommandMethodTag: FfiConverterRustBuffer<TunnelCommandMethodTag> {
+    public static FfiConverterTypeTunnelCommandMethodTag INSTANCE = new FfiConverterTypeTunnelCommandMethodTag();
+
+    public override TunnelCommandMethodTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return TunnelCommandMethodTag.Kubectl;
+            case 2: return TunnelCommandMethodTag.AwsSsm;
+            case 3: return TunnelCommandMethodTag.Custom;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTunnelCommandMethodTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(TunnelCommandMethodTag value) {
+        return 4;
+    }
+
+    public override void Write(TunnelCommandMethodTag value, BigEndianStream stream) {
+        switch (value) {
+            case TunnelCommandMethodTag.Kubectl: stream.WriteInt(1); break;
+            case TunnelCommandMethodTag.AwsSsm: stream.WriteInt(2); break;
+            case TunnelCommandMethodTag.Custom: stream.WriteInt(3); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTunnelCommandMethodTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 /// <summary>
 /// What a column or a cell holds. A window carries it as a byte per
 /// column and per cell, and these numbers are that byte: never renumber
@@ -27594,6 +29751,97 @@ class FfiConverterTypeValueKind: FfiConverterRustBuffer<ValueKind> {
             case ValueKind.Xml: stream.WriteInt(22); break;
             case ValueKind.Undecodable: stream.WriteInt(23); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeValueKind.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record VaultAuthRecord {
+    
+    public record Token: VaultAuthRecord {}
+    
+    
+    public record AppRole (
+        string Mount,
+        string RoleId,
+        string SecretIdPath
+    ) : VaultAuthRecord {}
+    
+    public record Oidc (
+        string Mount,
+        string Role
+    ) : VaultAuthRecord {}
+    
+
+    
+}
+
+class FfiConverterTypeVaultAuthRecord : FfiConverterRustBuffer<VaultAuthRecord>{
+    public static FfiConverterRustBuffer<VaultAuthRecord> INSTANCE = new FfiConverterTypeVaultAuthRecord();
+
+    public override VaultAuthRecord Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new VaultAuthRecord.Token(
+                );
+            case 2:
+                return new VaultAuthRecord.AppRole(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 3:
+                return new VaultAuthRecord.Oidc(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeVaultAuthRecord.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(VaultAuthRecord value) {
+        switch (value) {
+            case VaultAuthRecord.Token variant_value:
+                return 4;
+            case VaultAuthRecord.AppRole variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Mount)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.RoleId)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.SecretIdPath);
+            case VaultAuthRecord.Oidc variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Mount)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Role);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeVaultAuthRecord.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(VaultAuthRecord value, BigEndianStream stream) {
+        switch (value) {
+            case VaultAuthRecord.Token variant_value:
+                stream.WriteInt(1);
+                break;
+            case VaultAuthRecord.AppRole variant_value:
+                stream.WriteInt(2);
+                FfiConverterString.INSTANCE.Write(variant_value.Mount, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.RoleId, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.SecretIdPath, stream);
+                break;
+            case VaultAuthRecord.Oidc variant_value:
+                stream.WriteInt(3);
+                FfiConverterString.INSTANCE.Write(variant_value.Mount, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Role, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeVaultAuthRecord.Write()", value));
         }
     }
 }
@@ -29363,6 +31611,68 @@ class FfiConverterOptionalTypeCellTextHead: FfiConverterRustBuffer<CellTextHead?
 
 
 
+class FfiConverterOptionalTypeCloudSqlProxyRecord: FfiConverterRustBuffer<CloudSqlProxyRecord?> {
+    public static FfiConverterOptionalTypeCloudSqlProxyRecord INSTANCE = new FfiConverterOptionalTypeCloudSqlProxyRecord();
+
+    public override CloudSqlProxyRecord? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeCloudSqlProxyRecord.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(CloudSqlProxyRecord? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeCloudSqlProxyRecord.INSTANCE.AllocationSize((CloudSqlProxyRecord)value);
+        }
+    }
+
+    public override void Write(CloudSqlProxyRecord? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeCloudSqlProxyRecord.INSTANCE.Write((CloudSqlProxyRecord)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeCloudflareTunnelRecord: FfiConverterRustBuffer<CloudflareTunnelRecord?> {
+    public static FfiConverterOptionalTypeCloudflareTunnelRecord INSTANCE = new FfiConverterOptionalTypeCloudflareTunnelRecord();
+
+    public override CloudflareTunnelRecord? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeCloudflareTunnelRecord.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(CloudflareTunnelRecord? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeCloudflareTunnelRecord.INSTANCE.AllocationSize((CloudflareTunnelRecord)value);
+        }
+    }
+
+    public override void Write(CloudflareTunnelRecord? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeCloudflareTunnelRecord.INSTANCE.Write((CloudflareTunnelRecord)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalTypeColumnSort: FfiConverterRustBuffer<ColumnSort?> {
     public static FfiConverterOptionalTypeColumnSort INSTANCE = new FfiConverterOptionalTypeColumnSort();
 
@@ -29704,6 +32014,68 @@ class FfiConverterOptionalTypeServerMessage: FfiConverterRustBuffer<ServerMessag
 
 
 
+class FfiConverterOptionalTypeSocksProxyRecord: FfiConverterRustBuffer<SocksProxyRecord?> {
+    public static FfiConverterOptionalTypeSocksProxyRecord INSTANCE = new FfiConverterOptionalTypeSocksProxyRecord();
+
+    public override SocksProxyRecord? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeSocksProxyRecord.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(SocksProxyRecord? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeSocksProxyRecord.INSTANCE.AllocationSize((SocksProxyRecord)value);
+        }
+    }
+
+    public override void Write(SocksProxyRecord? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeSocksProxyRecord.INSTANCE.Write((SocksProxyRecord)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeSshRouteRecord: FfiConverterRustBuffer<SshRouteRecord?> {
+    public static FfiConverterOptionalTypeSshRouteRecord INSTANCE = new FfiConverterOptionalTypeSshRouteRecord();
+
+    public override SshRouteRecord? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeSshRouteRecord.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(SshRouteRecord? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeSshRouteRecord.INSTANCE.AllocationSize((SshRouteRecord)value);
+        }
+    }
+
+    public override void Write(SshRouteRecord? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeSshRouteRecord.INSTANCE.Write((SshRouteRecord)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalTypeSshSettings: FfiConverterRustBuffer<SshSettings?> {
     public static FfiConverterOptionalTypeSshSettings INSTANCE = new FfiConverterOptionalTypeSshSettings();
 
@@ -29859,6 +32231,37 @@ class FfiConverterOptionalTypeTeamInfo: FfiConverterRustBuffer<TeamInfo?> {
 
 
 
+class FfiConverterOptionalTypeTunnelCommandRecord: FfiConverterRustBuffer<TunnelCommandRecord?> {
+    public static FfiConverterOptionalTypeTunnelCommandRecord INSTANCE = new FfiConverterOptionalTypeTunnelCommandRecord();
+
+    public override TunnelCommandRecord? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeTunnelCommandRecord.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(TunnelCommandRecord? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeTunnelCommandRecord.INSTANCE.AllocationSize((TunnelCommandRecord)value);
+        }
+    }
+
+    public override void Write(TunnelCommandRecord? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeTunnelCommandRecord.INSTANCE.Write((TunnelCommandRecord)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalTypeAiPolicyTag: FfiConverterRustBuffer<AiPolicyTag?> {
     public static FfiConverterOptionalTypeAiPolicyTag INSTANCE = new FfiConverterOptionalTypeAiPolicyTag();
 
@@ -29914,6 +32317,37 @@ class FfiConverterOptionalTypeAiProviderTag: FfiConverterRustBuffer<AiProviderTa
         } else {
             stream.WriteByte(1);
             FfiConverterTypeAiProviderTag.INSTANCE.Write((AiProviderTag)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeCredentialReferenceRecord: FfiConverterRustBuffer<CredentialReferenceRecord?> {
+    public static FfiConverterOptionalTypeCredentialReferenceRecord INSTANCE = new FfiConverterOptionalTypeCredentialReferenceRecord();
+
+    public override CredentialReferenceRecord? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeCredentialReferenceRecord.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(CredentialReferenceRecord? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeCredentialReferenceRecord.INSTANCE.AllocationSize((CredentialReferenceRecord)value);
+        }
+    }
+
+    public override void Write(CredentialReferenceRecord? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeCredentialReferenceRecord.INSTANCE.Write((CredentialReferenceRecord)value, stream);
         }
     }
 }
@@ -30038,6 +32472,37 @@ class FfiConverterOptionalTypeFilterValueArg: FfiConverterRustBuffer<FilterValue
         } else {
             stream.WriteByte(1);
             FfiConverterTypeFilterValueArg.INSTANCE.Write((FilterValueArg)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeLocalPasswordSourceRecord: FfiConverterRustBuffer<LocalPasswordSourceRecord?> {
+    public static FfiConverterOptionalTypeLocalPasswordSourceRecord INSTANCE = new FfiConverterOptionalTypeLocalPasswordSourceRecord();
+
+    public override LocalPasswordSourceRecord? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeLocalPasswordSourceRecord.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(LocalPasswordSourceRecord? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeLocalPasswordSourceRecord.INSTANCE.AllocationSize((LocalPasswordSourceRecord)value);
+        }
+    }
+
+    public override void Write(LocalPasswordSourceRecord? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeLocalPasswordSourceRecord.INSTANCE.Write((LocalPasswordSourceRecord)value, stream);
         }
     }
 }
@@ -31039,6 +33504,52 @@ class FfiConverterSequenceTypeConnectionRecord: FfiConverterRustBuffer<Connectio
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeConnectionRecord.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeCredentialProfileRecord: FfiConverterRustBuffer<CredentialProfileRecord[]> {
+    public static FfiConverterSequenceTypeCredentialProfileRecord INSTANCE = new FfiConverterSequenceTypeCredentialProfileRecord();
+
+    public override CredentialProfileRecord[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new CredentialProfileRecord[length];
+        var readFn = FfiConverterTypeCredentialProfileRecord.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(CredentialProfileRecord[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeCredentialProfileRecord.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(CredentialProfileRecord[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeCredentialProfileRecord.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }
@@ -32564,6 +35075,98 @@ class FfiConverterSequenceTypeShareTeamInfo: FfiConverterRustBuffer<ShareTeamInf
 
 
 
+class FfiConverterSequenceTypeSshProfileRecord: FfiConverterRustBuffer<SshProfileRecord[]> {
+    public static FfiConverterSequenceTypeSshProfileRecord INSTANCE = new FfiConverterSequenceTypeSshProfileRecord();
+
+    public override SshProfileRecord[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new SshProfileRecord[length];
+        var readFn = FfiConverterTypeSshProfileRecord.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(SshProfileRecord[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeSshProfileRecord.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(SshProfileRecord[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeSshProfileRecord.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeSshRouteHopRecord: FfiConverterRustBuffer<SshRouteHopRecord[]> {
+    public static FfiConverterSequenceTypeSshRouteHopRecord INSTANCE = new FfiConverterSequenceTypeSshRouteHopRecord();
+
+    public override SshRouteHopRecord[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new SshRouteHopRecord[length];
+        var readFn = FfiConverterTypeSshRouteHopRecord.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(SshRouteHopRecord[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeSshRouteHopRecord.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(SshRouteHopRecord[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeSshRouteHopRecord.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeStructureColumn: FfiConverterRustBuffer<StructureColumn[]> {
     public static FfiConverterSequenceTypeStructureColumn INSTANCE = new FfiConverterSequenceTypeStructureColumn();
 
@@ -32702,6 +35305,98 @@ class FfiConverterSequenceTypeStructureIndex: FfiConverterRustBuffer<StructureIn
 
 
 
+class FfiConverterSequenceTypeTableFolderItemRecord: FfiConverterRustBuffer<TableFolderItemRecord[]> {
+    public static FfiConverterSequenceTypeTableFolderItemRecord INSTANCE = new FfiConverterSequenceTypeTableFolderItemRecord();
+
+    public override TableFolderItemRecord[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new TableFolderItemRecord[length];
+        var readFn = FfiConverterTypeTableFolderItemRecord.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(TableFolderItemRecord[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeTableFolderItemRecord.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(TableFolderItemRecord[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeTableFolderItemRecord.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeTableFolderRecord: FfiConverterRustBuffer<TableFolderRecord[]> {
+    public static FfiConverterSequenceTypeTableFolderRecord INSTANCE = new FfiConverterSequenceTypeTableFolderRecord();
+
+    public override TableFolderRecord[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new TableFolderRecord[length];
+        var readFn = FfiConverterTypeTableFolderRecord.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(TableFolderRecord[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeTableFolderRecord.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(TableFolderRecord[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeTableFolderRecord.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeTableName: FfiConverterRustBuffer<TableName[]> {
     public static FfiConverterSequenceTypeTableName INSTANCE = new FfiConverterSequenceTypeTableName();
 
@@ -32741,6 +35436,52 @@ class FfiConverterSequenceTypeTableName: FfiConverterRustBuffer<TableName[]> {
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeTableName.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeTableRefRecord: FfiConverterRustBuffer<TableRefRecord[]> {
+    public static FfiConverterSequenceTypeTableRefRecord INSTANCE = new FfiConverterSequenceTypeTableRefRecord();
+
+    public override TableRefRecord[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new TableRefRecord[length];
+        var readFn = FfiConverterTypeTableRefRecord.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(TableRefRecord[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeTableRefRecord.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(TableRefRecord[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeTableRefRecord.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }
@@ -33478,6 +36219,57 @@ class FfiConverterSequenceTypeSecretString: FfiConverterRustBuffer<SecretString[
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeSecretString.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterDictionaryStringString: FfiConverterRustBuffer<Dictionary<string, string>> {
+    public static FfiConverterDictionaryStringString INSTANCE = new FfiConverterDictionaryStringString();
+
+    public override Dictionary<string, string> Read(BigEndianStream stream) {
+        var len = stream.ReadInt();
+        var result = new Dictionary<string, string>(len);
+        var readerKey = FfiConverterString.INSTANCE.Read;
+        var readerValue = FfiConverterString.INSTANCE.Read;
+        for (int i = 0; i < len; i++) {
+            var key = readerKey(stream);
+            var value = readerValue(stream);
+            result[key] = value;
+        }
+
+        return result;
+    }
+
+    public override int AllocationSize(Dictionary<string, string> value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationKeySizeFn = FfiConverterString.INSTANCE.AllocationSize;
+        var allocationKValueSizeFn = FfiConverterString.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationKeySizeFn(item.Key) + allocationKValueSizeFn(item.Value));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(Dictionary<string, string> value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Count);
+        var writerKey = FfiConverterString.INSTANCE.Write;
+        var writerValue = FfiConverterString.INSTANCE.Write;
+        foreach (var item in value) {
+            writerKey(item.Key, stream);
+            writerValue(item.Value, stream);
+        }
     }
 }
 
