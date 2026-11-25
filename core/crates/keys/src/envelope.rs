@@ -144,6 +144,9 @@ pub struct EnvelopeId {
 impl EnvelopeId {
     pub fn new(parent_kind: ParentKind, parent_id: &str, secret_kind: SecretKind) -> Result<Self, KeysError> {
         check_record_id(parent_id)?;
+        if let SecretKind::Plugin(field) | SecretKind::AiKey(field) = &secret_kind {
+            check_record_id(field)?;
+        }
         check_record_id(&secret_kind.name())?;
         let id = Self {
             parent_kind,
@@ -517,6 +520,14 @@ mod tests {
             .is_err()
         );
         assert!(EnvelopeId::parse("connection//password").is_err());
+        assert!(
+            EnvelopeId::new(
+                ParentKind::LibraryConnection,
+                "x",
+                SecretKind::Plugin("x".repeat(1 << 20))
+            )
+            .is_err()
+        );
         let long = format!("library_connection/{}/password", "x".repeat(1 << 20));
         assert_eq!(
             EnvelopeId::parse(&long).unwrap_err(),

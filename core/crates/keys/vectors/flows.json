@@ -2,7 +2,7 @@
   "area": "flows",
   "suite": "tp1",
   "format": 1,
-  "about": "ADR 0056's Vectors rows a flow or the server decides: each row's key objects from one world, with its client and server columns. tablepro-keys checks every object; the flows and the server check the outcomes.",
+  "about": "ADR 0056's Vectors rows a flow or the server decides: each row's key objects from one world, with its client and server columns. tablepro-keys checks every object as its recipient would: each signature its `verify` names, and every wrap, ring, recovery blob and envelope opened. An object whose `verify` has `error` fails with that code; the flows and the server check the outcomes.",
   "origin": "https://sync.example.com",
   "world": {
     "accounts": [
@@ -2395,7 +2395,7 @@
       ]
     },
     {
-      "name": "a change set with one bad object",
+      "name": "a genesis with one bad object",
       "op": "scenario",
       "row": "A genesis, rotation, approval, reset or team rotation change set with one bad object",
       "layer": ["flow","server"],
@@ -2487,7 +2487,7 @@
               "verify": {
                 "signer_hex": "08923bead7951826882862b6bc9b919d69fce22f31d9d5f8b9a6f184d58839e3",
                 "digest_hex": "08885e60f548ff5d741a91828d487ad46f921b06bc05dcf023b012d306e865bd",
-                "valid": false
+                "error": "keys.signature"
               }
             },
             {
@@ -2563,7 +2563,22 @@
           "client": "keys.signature for the version record",
           "server": "bad_statement for it, change_set for the rest",
           "clause": "A genesis, rotation, approval, reset or team rotation change set with one bad object"
-        },
+        }
+      ]
+    },
+    {
+      "name": "a rotation with one bad object",
+      "op": "scenario",
+      "row": "A genesis, rotation, approval, reset or team rotation change set with one bad object",
+      "layer": ["flow","server"],
+      "client": "that object's error",
+      "client_codes": [],
+      "server": "that object's code, change_set for the rest; nothing applies",
+      "server_codes": ["change_set"],
+      "given": {
+        "account_av": 1
+      },
+      "steps": [
         {
           "who": "B",
           "does": "push change set",
@@ -2669,7 +2684,7 @@
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
                 "digest_hex": "f8c3d514dda5f932b17f25d32ff5d217fe646e99c1d55c2d6e0f6693aa07c27e",
-                "valid": false
+                "error": "keys.signature"
               }
             },
             {
@@ -2781,7 +2796,25 @@
           "client": "keys.signature for the version record",
           "server": "bad_statement for it, change_set for the rest",
           "clause": "A genesis, rotation, approval, reset or team rotation change set with one bad object"
-        },
+        }
+      ]
+    },
+    {
+      "name": "an approval with one bad object",
+      "op": "scenario",
+      "row": "A genesis, rotation, approval, reset or team rotation change set with one bad object",
+      "layer": ["flow","server"],
+      "client": "that object's error",
+      "client_codes": [],
+      "server": "that object's code, change_set for the rest; nothing applies",
+      "server_codes": ["change_set"],
+      "given": {
+        "account_av": 2,
+        "session": "revealed",
+        "nonce_from": "B",
+        "compared_dsk": "B"
+      },
+      "steps": [
         {
           "who": "B",
           "does": "push change set",
@@ -2827,7 +2860,7 @@
                 "recipient_secret_hex": "d4c402184502df877fd4e09da9e51f2db68bb116fd73031b00d95d51246703a6",
                 "certificate_ask_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
                 "certificate_aek_hex": "55d17517369e501d21bd36eaab50e50321fe6be066b28bc53ab0406f13e8eb7e",
-                "valid": false
+                "error": "keys.not_compared"
               }
             },
             {
@@ -2854,10 +2887,28 @@
               }
             }
           ],
-          "client": "keys.signature for the account wrap",
+          "client": "keys.not_compared for the account wrap",
           "server": "bad_statement for it, change_set for the rest",
           "clause": "A genesis, rotation, approval, reset or team rotation change set with one bad object"
-        },
+        }
+      ]
+    },
+    {
+      "name": "a reset activation with one bad object",
+      "op": "scenario",
+      "row": "A genesis, rotation, approval, reset or team rotation change set with one bad object",
+      "layer": ["flow","server"],
+      "client": "that object's error",
+      "client_codes": [],
+      "server": "that object's code, change_set for the rest; nothing applies",
+      "server_codes": ["change_set"],
+      "given": {
+        "account_av": 1,
+        "pending_reset": true,
+        "proposed_by": "B",
+        "held_until_passed": true
+      },
+      "steps": [
         {
           "who": "B",
           "does": "push change set",
@@ -3001,7 +3052,7 @@
               "verify": {
                 "signer_hex": "2db7b9d89fbb0e30650118b1e51dbbbf1760819d6f9d9699cbe6ca5ceb556d1b",
                 "digest_hex": "87f84054457db76ca2f6157032a89c5df7359d0ca05c23a82f6b7003316ce983",
-                "valid": false
+                "error": "keys.signature"
               }
             },
             {
@@ -3050,7 +3101,51 @@
           "client": "keys.signature for the version record",
           "server": "bad_statement for it, change_set for the rest",
           "clause": "A genesis, rotation, approval, reset or team rotation change set with one bad object"
+        }
+      ]
+    },
+    {
+      "name": "a team rotation with one bad object",
+      "op": "scenario",
+      "row": "A genesis, rotation, approval, reset or team rotation change set with one bad object",
+      "layer": ["flow","server"],
+      "client": "that object's error",
+      "client_codes": [],
+      "server": "that object's code, change_set for the rest; nothing applies",
+      "server_codes": ["change_set"],
+      "given": {
+        "roster": [
+          {
+            "account": "A",
+            "role": "admin"
+          },
+          {
+            "account": "O",
+            "role": "owner"
+          },
+          {
+            "account": "M",
+            "role": "member"
+          },
+          {
+            "account": "E",
+            "role": "editor"
+          },
+          {
+            "account": "P",
+            "role": "member"
+          }
+        ],
+        "server_holds": {
+          "team_version": 6,
+          "holders": ["A@2"]
         },
+        "account_av": {
+          "A": 2,
+          "M": 2
+        }
+      },
+      "steps": [
         {
           "who": "A",
           "does": "push change set",
@@ -3116,7 +3211,7 @@
                 "pk_r_hex": "363a0f521e363e580721c35ffb39bd9cbd589ebaa22bd9ff516612e8ed598003",
                 "recipient_secret_hex": "a2550db18bdc423b57064069287f3b07e438a8d06f38f27c14847ccae792642d",
                 "kid_hex": "25b41ecf987e50ad767960cca34fb9a2105295a87946c01bc3234a121b1cb163",
-                "valid": false
+                "error": "keys.signature"
               }
             }
           ],

@@ -297,9 +297,10 @@ pub(super) fn bodies() -> JsonValue {
     .unwrap();
     let replace_text = body_json(&KeyBody::Account(AccountBody::of(&replace)));
     let replace_sig = crate::b64::encode(&replace.replace_sig.unwrap().0);
+    // 0051's body rule refuses a kind 1 body without `replace_sig` before any IK is compared.
     cases.push(bad(
         "a replace with no replace_sig",
-        "A replace without the old IK's endorsement",
+        ROW_ENCODING,
         "key.account",
         &KeyRecordId::Account {
             account: a.id,

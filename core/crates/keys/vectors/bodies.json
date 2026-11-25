@@ -366,7 +366,7 @@
     {
       "name": "a replace with no replace_sig",
       "op": "key_object",
-      "row": "A replace without the old IK's endorsement",
+      "row": "Non-canonical base64url, a wrong length, a version of 0 or at or above 2^31; a key object body with a duplicate, missing, unknown or wrongly typed member; a plaintext with a duplicate, missing or wrongly typed member",
       "input": {
         "object": {
           "kind": "key.account",
@@ -376,7 +376,7 @@
       },
       "error": "keys.encoding",
       "server": "bad_statement",
-      "clause": "A replace without the old IK's endorsement"
+      "clause": "a key object body with a duplicate, missing, unknown or wrongly typed member"
     },
     {
       "name": "a reset proposal",

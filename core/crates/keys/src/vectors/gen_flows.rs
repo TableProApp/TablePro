@@ -1345,74 +1345,100 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         "signer_hex",
         h(&w.p.at(1).ask.public().expect("public").0),
     );
-    set_verify(&mut broken_version, "valid", b(false));
+    set_verify(&mut broken_version, "error", s("keys.signature"));
     bad_genesis[3] = broken_version;
-    rows.push(scenario(
-        "a change set with one bad object",
-        Row {
-            row: "A genesis, rotation, approval, reset or team rotation change set with one bad object",
-            client: "that object's error",
-            server: "that object's code, change_set for the rest; nothing applies",
-            layer: &["flow", "server"],
-            given: obj(vec![("account_has_keys", b(false))]),
-            steps: vec![
-                step(
-                    "B",
+    // One scenario per kind of change set, each from the state that kind needs, so the bad object is
+    // the only thing wrong with it.
+    let bad_object = |name: &str, given: JsonValue, who: &str, records: Vec<JsonValue>, client: &str| {
+        scenario(
+            name,
+            Row {
+                row: "A genesis, rotation, approval, reset or team rotation change set with one bad object",
+                client: "that object's error",
+                server: "that object's code, change_set for the rest; nothing applies",
+                layer: &["flow", "server"],
+                given,
+                steps: vec![step(
+                    who,
                     "push change set",
-                    bad_genesis,
-                    "keys.signature for the version record",
+                    records,
+                    client,
                     "bad_statement for it, change_set for the rest",
-                ),
-                step(
-                    "B",
-                    "push change set",
-                    with_bad_object(
-                        w.rotation("B's rotation", "P", 2, &[&dev_b], &dev_b),
-                        "B's rotation: personal version 2",
-                        &w.p.at(1).ask,
-                    ),
-                    "keys.signature for the version record",
-                    "bad_statement for it, change_set for the rest",
-                ),
-                step(
-                    "B",
-                    "push change set",
-                    with_bad_object(
-                        w.approval("B approves N", "P", 2, &dev_n, &dev_b, &trust_for_p),
-                        "B approves N: account wrap",
-                        &dev_c.dsk,
-                    ),
-                    "keys.signature for the account wrap",
-                    "bad_statement for it, change_set for the rest",
-                ),
-                step(
-                    "B",
-                    "push change set",
-                    with_bad_object(
-                        w.activation("P's reset proposal", "P", 2, CertKind::ResetKeepingKeys, &dev_b),
-                        "P's reset proposal: history version 2",
-                        &w.p.at(1).ask,
-                    ),
-                    "keys.signature for the version record",
-                    "bad_statement for it, change_set for the rest",
-                ),
-                step(
-                    "A",
-                    "push change set",
-                    with_bad_object(
-                        vec![
-                            w.team_version("version 7", 7, Start::Next, "A", 2),
-                            w.team_ring("its ring", 7),
-                            w.team_wrap("version 7 to M", 7, "M", 2, "A", 2, &a1),
-                        ],
-                        "version 7 to M",
-                        &w.o.at(2).ask,
-                    ),
-                    "keys.signature for the wrap",
-                    "bad_statement for it, change_set for the rest",
-                ),
+                )],
+            },
+        )
+    };
+    rows.push(bad_object(
+        "a genesis with one bad object",
+        obj(vec![("account_has_keys", b(false))]),
+        "B",
+        bad_genesis,
+        "keys.signature for the version record",
+    ));
+    rows.push(bad_object(
+        "a rotation with one bad object",
+        obj(vec![("account_av", n(1))]),
+        "B",
+        with_bad_object(
+            w.rotation("B's rotation", "P", 2, &[&dev_b], &dev_b),
+            "B's rotation: personal version 2",
+            &w.p.at(1).ask,
+            "keys.signature",
+        ),
+        "keys.signature for the version record",
+    ));
+    rows.push(bad_object(
+        "an approval with one bad object",
+        obj(vec![
+            ("account_av", n(2)),
+            ("session", s("revealed")),
+            ("nonce_from", s("B")),
+            ("compared_dsk", s("B")),
+        ]),
+        "B",
+        with_bad_object(
+            w.approval("B approves N", "P", 2, &dev_n, &dev_b, &trust_for_p),
+            "B approves N: account wrap",
+            &dev_c.dsk,
+            "keys.not_compared",
+        ),
+        "keys.not_compared for the account wrap",
+    ));
+    rows.push(bad_object(
+        "a reset activation with one bad object",
+        obj(vec![
+            ("account_av", n(1)),
+            ("pending_reset", b(true)),
+            ("proposed_by", s("B")),
+            ("held_until_passed", b(true)),
+        ]),
+        "B",
+        with_bad_object(
+            w.activation("P's reset proposal", "P", 2, CertKind::ResetKeepingKeys, &dev_b),
+            "P's reset proposal: history version 2",
+            &w.p.at(1).ask,
+            "keys.signature",
+        ),
+        "keys.signature for the version record",
+    ));
+    rows.push(bad_object(
+        "a team rotation with one bad object",
+        given(vec![
+            ("server_holds", holds(6, &["A@2"])),
+            ("account_av", obj(vec![("A", n(2)), ("M", n(2))])),
+        ]),
+        "A",
+        with_bad_object(
+            vec![
+                w.team_version("version 7", 7, Start::Next, "A", 2),
+                w.team_ring("its ring", 7),
+                w.team_wrap("version 7 to M", 7, "M", 2, "A", 2, &a1),
             ],
-        },
+            "version 7 to M",
+            &w.o.at(2).ask,
+            "keys.signature",
+        ),
+        "keys.signature for the wrap",
     ));
 
     rows.push(scenario(
@@ -2018,7 +2044,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
 
     super::out::file(
         "flows",
-        "ADR 0056's Vectors rows a flow or the server decides: each row's key objects from one world, with its client and server columns. tablepro-keys checks every object; the flows and the server check the outcomes.",
+        "ADR 0056's Vectors rows a flow or the server decides: each row's key objects from one world, with its client and server columns. tablepro-keys checks every object as its recipient would: each signature its `verify` names, and every wrap, ring, recovery blob and envelope opened. An object whose `verify` has `error` fails with that code; the flows and the server check the outcomes.",
         vec![
             ("origin", s(ORIGIN)),
             ("world", world_json(&w)),
@@ -2028,7 +2054,7 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
 }
 
 // A change set whose object of `label` is signed again under `wrong`, so it alone fails its check.
-fn with_bad_object(mut records: Vec<JsonValue>, label: &str, wrong: &Ed25519Seed) -> Vec<JsonValue> {
+fn with_bad_object(mut records: Vec<JsonValue>, label: &str, wrong: &Ed25519Seed, error: &str) -> Vec<JsonValue> {
     let position = records.iter().position(
         |record| matches!(In::of(record).optional("label"), Some(JsonValue::String(text)) if text.ends_with(label)),
     );
@@ -2071,7 +2097,7 @@ fn with_bad_object(mut records: Vec<JsonValue>, label: &str, wrong: &Ed25519Seed
             }
         }
     }
-    set_verify(record, "valid", b(false));
+    set_verify(record, "error", s(error));
     records
 }
 
@@ -2648,7 +2674,7 @@ fn collect_records<'a>(value: &'a JsonValue, out: &mut Vec<&'a JsonValue>) {
     match value {
         JsonValue::Object(members) => {
             let has = |name: &str| members.iter().any(|(member, _)| member == name);
-            if has("kind") && has("id") && has("fields") && has("verify") {
+            if has("kind") && has("id") && has("fields") {
                 out.push(value);
             } else {
                 members.iter().for_each(|(_, member)| collect_records(member, out));
@@ -2690,7 +2716,9 @@ fn check_record(name: &str, record: &JsonValue) {
     let object =
         KeyObject::parse(&kind, &id, fields.as_bytes()).unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
     let mut verify = input.sub("verify");
-    let valid = !matches!(verify.optional("valid"), Some(JsonValue::Bool(false)));
+    let error = verify
+        .optional("error")
+        .map(|code| crate::json::as_str(code).expect("error").to_owned());
     let o = origin();
     let certificate_keys = |verify: &mut In<'_>| crate::keys::AccountPublicKeys {
         ask: Ed25519Public(verify.hex32("certificate_ask_hex")),
@@ -2739,7 +2767,8 @@ fn check_record(name: &str, record: &JsonValue) {
             let pk_r = X25519Public(verify.hex32("pk_r_hex"));
             let signer = Ed25519Public(verify.hex32("signer_hex"));
             let secret = X25519Secret::from_bytes(verify.hex32("recipient_secret_hex"));
-            wrap.verify(&o, &pk_r, &signer).and_then(|()| match target.purpose {
+            // Each purpose's own check, since the code of a bad signature depends on whose it should be.
+            match target.purpose {
                 WrapPurpose::Account => wrap
                     .open_account(&o, &secret, &pk_r, &signer, &certificate_keys(&mut verify))
                     .map(|_| ()),
@@ -2753,7 +2782,7 @@ fn check_record(name: &str, record: &JsonValue) {
                     let record = kid_record(key, verify.hex32("kid_hex"));
                     wrap.open_scope_key(&o, &secret, &pk_r, &signer, &record).map(|_| ())
                 }
-            })
+            }
         }
         (KeyRecordId::Ring(key), KeyBody::Ring(ring)) => {
             let below = KeyRef {
@@ -2840,10 +2869,13 @@ fn check_record(name: &str, record: &JsonValue) {
         (KeyRecordId::Sas { .. }, KeyBody::Sas(_)) => Ok(()),
         _ => panic!("{name}: {label}: a kind the checker does not know"),
     };
-    if valid {
-        result.unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
-    } else {
-        assert!(result.is_err(), "{name}: {label} should not verify");
+    match error {
+        None => result.unwrap_or_else(|error| panic!("{name}: {label}: {error:?}")),
+        Some(code) => assert_eq!(
+            result.map_err(|error| error.code()),
+            Err(code.as_str()),
+            "{name}: {label}"
+        ),
     }
 }
 
