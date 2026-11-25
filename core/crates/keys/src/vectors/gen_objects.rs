@@ -353,6 +353,7 @@ fn add_l(s_bytes: &[u8]) -> Option<[u8; 32]> {
     (carry == 0).then_some(out)
 }
 
+#[expect(clippy::too_many_lines, reason = "one case per vector the ADR lists")]
 fn ed25519_negatives() -> Vec<JsonValue> {
     let row = "An Ed25519 A of small order, a non-canonical A or R, S at or above L";
     let seed = Ed25519Seed::from_bytes(draw("ed25519/seed"));

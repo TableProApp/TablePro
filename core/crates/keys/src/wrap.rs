@@ -164,7 +164,7 @@ impl Wrap {
     ) -> Result<Self, KeysError> {
         require_purpose(target, WrapPurpose::Trust)?;
         trust.check_unique()?;
-        let padded = crate::padding::pad(trust.encode().as_bytes())?;
+        let padded = crate::padding::pad(trust.encode_zeroizing().as_bytes())?;
         Self::seal(origin, target, dek, &padded, wrapper, dsk)
     }
 

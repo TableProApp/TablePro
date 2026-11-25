@@ -2,7 +2,7 @@
   "area": "limits",
   "suite": "tp1",
   "format": 1,
-  "about": "Trust wrap records at and past the 1 MiB record limit, measured on the compact `fields` (ADR 0051, Limits; ADR 0056, Pins)",
+  "about": "Trust wrap records at and past the 1 MiB record limit, measured on the compact `fields` (ADR 0051, Limits; ADR 0056, Pins). A `generated` input is `count` pins alike but for their accounts, with `versions` after them: pin i's account, from 0, is `first_account` plus i times `account_step`, read as a 128-bit big-endian integer.",
   "trust_wraps": [
     {
       "name": "a trust wrap record of the most compared pins that fit 1 MiB",

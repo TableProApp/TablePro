@@ -2,7 +2,7 @@
   "area": "trust",
   "suite": "tp1",
   "format": 1,
-  "about": "The trust plaintext, its reading and what is left out for size (ADR 0056, Pins)",
+  "about": "The trust plaintext, its reading and what is left out for size (ADR 0056, Pins). A `generated` input is `count` pins alike but for their accounts, with `versions` after them: pin i's account, from 0, is `first_account` plus i times `account_step`, read as a 128-bit big-endian integer.",
   "encode": [
     {
       "name": "an open alert, a replaced IK and a version per purpose",

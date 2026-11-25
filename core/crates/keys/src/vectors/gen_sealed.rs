@@ -656,30 +656,17 @@ pub(super) fn history() -> JsonValue {
 
 const FIRST_ACCOUNT: &str = "019A0000-0000-7000-8000-000000000000";
 
-// `count` pins alike but for their accounts: pin i's account is `first_account` plus i, read as a
-// 128-bit big-endian integer.
-fn generated_trust_from(
-    count: usize,
-    first_account: uuid::Uuid,
-    ik: Ed25519Public,
-    av: crate::encoding::Version,
-    how: PinHow,
-) -> TrustPlaintext {
-    let first = first_account.as_u128();
-    let pins = (0..count)
+// `count` copies of `pin` but for their accounts: pin i's account, from 0, is `pin`'s account plus i
+// times `step`, read as a 128-bit big-endian integer.
+fn generated_trust_from(count: usize, step: u128, pin: &TrustPin, versions: Vec<TrustVersion>) -> TrustPlaintext {
+    let first = pin.account.0.as_u128();
+    let pins = (0..count as u128)
         .map(|index| TrustPin {
-            account: crate::encoding::AccountId(uuid::Uuid::from_u128(first + index as u128)),
-            ik,
-            av,
-            how,
-            alert: false,
-            replaced: Vec::new(),
+            account: crate::encoding::AccountId(uuid::Uuid::from_u128(first + index * step)),
+            ..pin.clone()
         })
         .collect();
-    TrustPlaintext {
-        pins,
-        versions: Vec::new(),
-    }
+    TrustPlaintext { pins, versions }
 }
 
 fn generated_ik() -> Ed25519Public {
@@ -689,13 +676,15 @@ fn generated_ik() -> Ed25519Public {
 }
 
 pub(super) fn generated_trust_of(count: usize) -> TrustPlaintext {
-    generated_trust_from(
-        count,
-        crate::encoding::uuid_from_wire(FIRST_ACCOUNT).unwrap(),
-        generated_ik(),
-        v(1),
-        PinHow::Compared,
-    )
+    let pin = TrustPin {
+        account: account_id(FIRST_ACCOUNT),
+        ik: generated_ik(),
+        av: v(1),
+        how: PinHow::Compared,
+        alert: false,
+        replaced: Vec::new(),
+    };
+    generated_trust_from(count, 1, &pin, Vec::new())
 }
 
 pub(super) fn generated_json(count: usize) -> JsonValue {
@@ -712,23 +701,32 @@ pub(super) fn generated_json(count: usize) -> JsonValue {
     ])
 }
 
-// Every member the description declares, and no other.
+// Built from every member the description declares, refusing any other.
 pub(super) fn generated_trust(value: &JsonValue) -> TrustPlaintext {
     let mut members = crate::json::Members::of(value).unwrap();
     let count = usize::try_from(crate::json::as_integer(members.required("count").unwrap()).unwrap()).unwrap();
-    let first_account = crate::encoding::uuid_from_wire(members.string("first_account").unwrap()).unwrap();
-    assert_eq!(
-        crate::json::as_integer(members.required("account_step").unwrap()).unwrap(),
-        1,
-        "account_step"
-    );
-    let ik = Ed25519Public(crate::b64::decode_exact(members.string("ik").unwrap()).unwrap());
-    let av = members.version("av").unwrap();
-    let how = PinHow::parse(members.string("how").unwrap()).unwrap();
-    assert!(!members.boolean("alert").unwrap(), "generated pins have no alert");
-    assert!(members.array("replaced").unwrap().is_empty() && members.array("versions").unwrap().is_empty());
+    let step = u128::try_from(crate::json::as_integer(members.required("account_step").unwrap()).unwrap()).unwrap();
+    let pin = TrustPin {
+        account: account_id(members.string("first_account").unwrap()),
+        ik: Ed25519Public(crate::b64::decode_exact(members.string("ik").unwrap()).unwrap()),
+        av: members.version("av").unwrap(),
+        how: PinHow::parse(members.string("how").unwrap()).unwrap(),
+        alert: members.boolean("alert").unwrap(),
+        replaced: members
+            .array("replaced")
+            .unwrap()
+            .iter()
+            .map(|item| Ed25519Public(crate::b64::decode_exact(crate::json::as_str(item).unwrap()).unwrap()))
+            .collect(),
+    };
+    let versions = members
+        .array("versions")
+        .unwrap()
+        .iter()
+        .map(|item| crate::trust::parse_version(item).unwrap())
+        .collect();
     members.finish_strict().unwrap();
-    generated_trust_from(count, first_account, ik, av, how)
+    generated_trust_from(count, step, &pin, versions)
 }
 
 // The largest compared-pin trust plaintext whose wrap record fits 1 MiB.
@@ -963,7 +961,7 @@ pub(super) fn trust() -> JsonValue {
     }
     file(
         "trust",
-        "The trust plaintext, its reading and what is left out for size (ADR 0056, Pins)",
+        "The trust plaintext, its reading and what is left out for size (ADR 0056, Pins). A `generated` input is `count` pins alike but for their accounts, with `versions` after them: pin i's account, from 0, is `first_account` plus i times `account_step`, read as a 128-bit big-endian integer.",
         vec![
             ("encode", arr(encode)),
             ("parse", arr(parse)),
@@ -1035,7 +1033,7 @@ pub(super) fn limits(cache: &super::fixtures::HpkeCache) -> JsonValue {
     }
     file(
         "limits",
-        "Trust wrap records at and past the 1 MiB record limit, measured on the compact `fields` (ADR 0051, Limits; ADR 0056, Pins)",
+        "Trust wrap records at and past the 1 MiB record limit, measured on the compact `fields` (ADR 0051, Limits; ADR 0056, Pins). A `generated` input is `count` pins alike but for their accounts, with `versions` after them: pin i's account, from 0, is `first_account` plus i times `account_step`, read as a 128-bit big-endian integer.",
         vec![("trust_wraps", arr(cases))],
     )
 }

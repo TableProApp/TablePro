@@ -1,4 +1,4 @@
-// The codes are ADR 0056's Errors table; a server's codes are 0051's and never appear here.
+// The codes are ADR 0056's Errors table as 0059 amends it; a server's codes are 0051's and never appear here.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum KeysError {
     #[error("suite {found:?} is not tp1")]

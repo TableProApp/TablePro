@@ -1,13 +1,14 @@
 use std::collections::HashSet;
 
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::KeysError;
 use crate::b64;
 use crate::body::{KeyBody, WrapBody, body_json};
 use crate::crypto::TAG_LEN;
 use crate::encoding::{AccountId, KeyDeviceId, KeyPurpose, Version, uuid_from_wire, uuid_to_wire};
-use crate::json::{self, JsonValue, Members, push_string};
+use crate::json::{self, Count, JsonValue, Members, Sink, push_string};
 use crate::keys::Ed25519Public;
 use crate::keys::Signature;
 use crate::padding;
@@ -78,7 +79,7 @@ pub struct TrustPlaintext {
 // 1 MiB a record, on its `fields` encoded without HTML escaping (ADR 0051, Limits).
 pub const RECORD_LIMIT: usize = 1 << 20;
 
-fn encode_pin(pin: &TrustPin, out: &mut String) {
+fn encode_pin(pin: &TrustPin, out: &mut impl Sink) {
     out.push_str("{\"account\":");
     push_string(out, &pin.account.to_wire());
     out.push_str(",\"ik\":");
@@ -99,7 +100,7 @@ fn encode_pin(pin: &TrustPin, out: &mut String) {
     out.push_str("]}");
 }
 
-fn encode_version(version: &TrustVersion, out: &mut String) {
+fn encode_version(version: &TrustVersion, out: &mut impl Sink) {
     out.push_str("{\"owner\":");
     push_string(out, &uuid_to_wire(version.owner));
     out.push_str(",\"purpose\":");
@@ -130,28 +131,40 @@ pub fn trust_wrap_record_len(plaintext_len: usize, wrapper_av: Version) -> Resul
 
 impl TrustPlaintext {
     pub fn encode(&self) -> String {
-        let mut out = String::from("{\"v\":1,\"pins\":[");
+        std::mem::take(&mut *self.encode_zeroizing())
+    }
+
+    // Sized before it is written, so no copy of the plaintext is left behind by a reallocation.
+    pub(crate) fn encode_zeroizing(&self) -> Zeroizing<String> {
+        let mut count = Count::default();
+        self.encode_into(&mut count);
+        let mut out = Zeroizing::new(String::with_capacity(count.0));
+        self.encode_into(&mut *out);
+        out
+    }
+
+    fn encode_into(&self, out: &mut impl Sink) {
+        out.push_str("{\"v\":1,\"pins\":[");
         for (index, pin) in self.pins.iter().enumerate() {
             if index > 0 {
                 out.push(',');
             }
-            encode_pin(pin, &mut out);
+            encode_pin(pin, out);
         }
         out.push_str("],\"versions\":[");
         for (index, version) in self.versions.iter().enumerate() {
             if index > 0 {
                 out.push(',');
             }
-            encode_version(version, &mut out);
+            encode_version(version, out);
         }
         out.push_str("]}");
-        out
     }
 
     // Refuses a duplicate, missing or wrongly typed member and an unknown `v`; ignores an unknown
     // member. `pins` holds one entry per account and `versions` one per scope key.
     pub fn parse(bytes: &[u8]) -> Result<Self, KeysError> {
-        let value = json::parse(bytes)?;
+        let value = Zeroizing::new(json::parse(bytes)?);
         let mut members = Members::of(&value)?;
         check_format(&mut members)?;
         let pins = members.array("pins")?.iter().map(parse_pin).collect::<Result<_, _>>()?;
@@ -184,19 +197,20 @@ impl TrustPlaintext {
     // takes with `how` `first_use`, no alert and no replaced IK; None when it still does not fit, since
     // no alert, comparison or replaced IK is dropped (ADR 0056, Pins).
     pub fn fit_record(&self, limit: usize, wrapper_av: Version) -> Result<Option<Self>, KeysError> {
-        let empty = Self {
+        let mut empty = Count::default();
+        Self {
             pins: Vec::new(),
             versions: self.versions.clone(),
         }
-        .encode()
-        .len();
+        .encode_into(&mut empty);
+        let empty = empty.0;
         let pin_lens: Vec<usize> = self
             .pins
             .iter()
             .map(|pin| {
-                let mut out = String::new();
-                encode_pin(pin, &mut out);
-                out.len()
+                let mut count = Count::default();
+                encode_pin(pin, &mut count);
+                count.0
             })
             .collect();
         let mut kept = vec![true; self.pins.len()];
@@ -259,7 +273,7 @@ fn parse_pin(value: &JsonValue) -> Result<TrustPin, KeysError> {
     })
 }
 
-fn parse_version(value: &JsonValue) -> Result<TrustVersion, KeysError> {
+pub(crate) fn parse_version(value: &JsonValue) -> Result<TrustVersion, KeysError> {
     let mut members = Members::of(value)?;
     let owner = uuid_from_wire(members.string("owner")?)?;
     let purpose = KeyPurpose::parse(members.string("purpose")?)?;
@@ -308,6 +322,8 @@ mod tests {
     #[test]
     fn round_trips() {
         let trust = sample();
+        let encoded = trust.encode_zeroizing();
+        assert_eq!(encoded.capacity(), encoded.len(), "sized once, so never moved");
         assert_eq!(TrustPlaintext::parse(trust.encode().as_bytes()).unwrap(), trust);
     }
 

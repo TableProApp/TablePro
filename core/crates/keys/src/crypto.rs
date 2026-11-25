@@ -365,7 +365,7 @@ pub(crate) mod forgery {
         let mut counter = 0_u32;
         loop {
             let message = format!("tablepro-keys small-order forgery {label} {counter}").into_bytes();
-            if challenge(&r_point, public, &message)[0] % order == 0 {
+            if challenge(&r_point, public, &message)[0].is_multiple_of(order) {
                 let mut signature = [0_u8; 64];
                 signature[..32].copy_from_slice(&r_point);
                 signature[32..].copy_from_slice(&s);
