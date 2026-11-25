@@ -25,7 +25,7 @@ On 2026-11-25 the maintainer decided:
 - Content edits revive a deleted record. Placement changes never do.
 - The server detects a restore from Postgres's system identifier and timeline and opens a new epoch itself. It refuses `/v2/sync` only when it cannot run that check. The version check carries the epoch.
 - The facade lives until fewer than 2% of Team Library devices run older builds for 30 days. Team connection keys are not frozen meanwhile.
-- A self-hosted `personalSync` switch (0055).
+- A self-hosted `personalSync` switch ([0055](0055-managed-policies-for-the-sync-provider-and-tablepro-app-traffic.md)).
 
 ## Decision
 
@@ -100,7 +100,7 @@ Under `/v2`, OAuth scope `app`, with clients generated from the OpenAPI document
 ### `GET /v2/sync/scopes`
 
 - **The epoch:** `epoch`, the current epoch's id.
-- **Per scope:** `id`, `type`, `team` for a team scope, `role`, `horizon`, `epochs` (the lineage, oldest first, each epoch's id with the scope's `kept_revision`, 0 when it has no cut), `writable` (false past grace or after a lapse), the policies that apply to it, `quota`, and, for the personal and history scopes when the request carries a DPoP proof, `approved`.
+- **Per scope:** `id`, `type`, `team` for a team scope, `role`, `horizon`, `epochs` (the lineage, oldest first, each epoch's id with the scope's `kept_revision`, 0 when it has no cut), `writable` (false past grace or after a lapse), `policies` (Policies), `quota`, and, for the personal and history scopes when the request carries a DPoP proof, `approved`.
 - **For the server:** `limits`, `server_version`, `capabilities`, `idempotency_retention` (86,400 seconds) and `poll_interval` (60 seconds).
 - **ETag.** A strong ETag over the whole body: the SHA-256 of its bytes, base64url, quoted (RFC 9110 section 8.8.3), with `Cache-Control: private, max-age=<poll_interval>` (RFC 9111). `If-None-Match` answers 304. A role change, a new team, a policy or a limit shows on the next poll.
 
@@ -236,7 +236,9 @@ The client merges; the server only versions. This amends 0044's table:
 
 - A tombstone keeps its ids, version, revision, change tag and writer, and is kept for good, as migration 00010 decided.
 - Its fields are cleared, except on the library kinds, which keep theirs until `/v1` sunsets for its parent walk. `/v2/sync` never sends a tombstone's fields.
-- `deleted_reason` is `user` for a client's delete and `policy` for a policy's, which has no writer. A device keeps its local copy on a policy tombstone.
+- **`deleted_reason`**, on every tombstone on the wire:
+  - `user`: a client deleted the record. A device deletes its copy, under the conflict rules.
+  - `policy`: a policy job tombstoned it, with no writer. A device that pulls it keeps its local copy, whenever it pulls it and whatever policy state it last read, and does not push that kind while the switch stays off.
 
 ## Restore
 
@@ -276,9 +278,10 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 | `personalSync` | Every kind in the personal scope except `key.*`, and `history_entry` |
 | A SaaS team's `password_sync` | `secret_envelope` in that team's scope |
 
-- `personalSync` off keeps the `key.*` kinds, since team secrets and device approval rest on the account's identity, device log and sharing key.
-- When a switch turns off, a job tombstones the records it covers with `deleted_reason: policy` and no writer. Devices keep their copies.
-- `GET /v2/sync/scopes` gives each scope the policies that apply to it. Clients stop pushing what is off and shape their UI with it; the server enforces.
+- `personalSync` off keeps the `key.*` kinds, since team secrets and device approval rest on the account's identity, device log and sharing key. Team Library's envelopes therefore keep working on an install that serves only Team Library.
+- When a switch turns off, a job tombstones the records it covers with `deleted_reason: policy` and no writer. Devices keep their copies (Tombstones).
+- **`policies` in the scopes body:** the switches that apply to each scope, as booleans, true when on. The personal scope has `personal_sync` and `password_sync`, the history scope `personal_sync` and `history_sync`, and a team scope `password_sync`, the install's and the team's together. Clients stop pushing what is off and shape their UI with it; the server enforces.
+- **No provider change.** `personal_sync` false makes TablePro Sync unavailable on that server, so a device on it stops there. Neither it, a `policy` answer nor a policy tombstone moves a device to another provider; only the device's own managed policy or the person does (0055).
 - **Back on:** devices push their local copies as patches on the policy tombstones' tags. The first revives each record and the rest merge.
 - A SaaS team's `password_sync` defaults on, follows the `public_links_disabled` pattern, and is set by owners and admins. Every change of any switch is audited.
 
