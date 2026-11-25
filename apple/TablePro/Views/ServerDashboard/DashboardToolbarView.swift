@@ -2,6 +2,12 @@ import SwiftUI
 
 struct DashboardToolbarView: View {
     @ObservedObject var viewModel: ServerDashboardViewModel
+    @ObservedObject private var status: DashboardRefreshStatus
+
+    init(viewModel: ServerDashboardViewModel) {
+        _viewModel = ObservedObject(wrappedValue: viewModel)
+        _status = ObservedObject(wrappedValue: viewModel.refreshStatus)
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -44,16 +50,16 @@ struct DashboardToolbarView: View {
             .buttonStyle(.borderless)
             .help(String(localized: "Refresh Now"))
             .accessibilityLabel(String(localized: "Refresh Now"))
-            .disabled(viewModel.isRefreshing)
+            .disabled(status.isRefreshing)
 
             Spacer()
 
-            if viewModel.isRefreshing {
+            if status.isRefreshing {
                 ProgressView()
                     .controlSize(.small)
             }
 
-            if let date = viewModel.lastRefreshDate {
+            if let date = status.lastRefreshDate {
                 Text(date, style: .time)
                     .font(.caption)
                     .foregroundStyle(.secondary)

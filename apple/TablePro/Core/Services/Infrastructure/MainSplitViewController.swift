@@ -687,8 +687,10 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// hands one over with a live session and no phase change to follow, so its panes still
         /// held the empty view they were constructed with and the connection opened blank. This
         /// costs a key comparison when nothing has moved, which is what the record is for.
+        let detailHeldKeyboard = detailPaneHoldsKeyboard
         syncSelectedPanes()
         showSelectedPanes()
+        keepKeyboardInDetailPane(detailHeldKeyboard: detailHeldKeyboard)
 
         /// A workspace put into Agent mode while another connection was on screen never reached
         /// the branch that reveals its columns, because that branch only ever touched the selected

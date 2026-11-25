@@ -75,17 +75,22 @@ enum AIProviderFactory {
         config: AIProviderConfig,
         model: String,
         onlyWhereRequired: Bool = false,
-        catalog: AIModelCatalog = .shared
+        catalog: AIModelCatalog = .shared,
+        reference: AIModelReference = .shared
     ) -> ReasoningEffort? {
         guard let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) else {
             return onlyWhereRequired ? nil : requested
         }
-        let fetched = catalog.fetchedInfo(providerID: config.id, modelID: model)
-        if onlyWhereRequired,
-           !descriptor.reasoning(forModelID: model, fetched: fetched, preset: config.preset).isMandatory {
+        let info = catalog.info(
+            providerID: config.id,
+            source: AIModelSource(config: config),
+            modelID: model,
+            reference: reference
+        )
+        if onlyWhereRequired, !descriptor.reasoning(for: info).isMandatory {
             return nil
         }
-        return descriptor.effort(requested, forModelID: model, fetched: fetched, preset: config.preset)
+        return descriptor.effort(requested, for: info)
     }
 
     static func resolve(

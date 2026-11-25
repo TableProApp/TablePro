@@ -70,6 +70,32 @@ extension TextLayoutManager {
         return NSRange(start: firstLine.range.location, end: lastLine.range.max)
     }
 
+    // Like `textRange(covering:)`, but the first and last line count only the fragments the rect reaches.
+    public func fragmentTextRange(covering rect: CGRect) -> NSRange? {
+        let minY = max(rect.minY, 0)
+        let maxY = min(rect.maxY, estimatedHeight())
+        guard maxY >= minY,
+              let firstLine = textLineForPosition(minY),
+              let lastLine = textLineForPosition(maxY) else {
+            return nil
+        }
+        let start = fragmentRange(in: firstLine, atY: minY).location
+        let end = fragmentRange(in: lastLine, atY: maxY).max
+        return NSRange(start: start, end: max(start, end))
+    }
+
+    private func fragmentRange(in line: TextLineStorage<TextLine>.TextLinePosition, atY y: CGFloat) -> NSRange {
+        let fragments = line.data.lineFragments
+        guard fragments.count > 1,
+              !line.data.needsLayout(maxWidth: maxLineLayoutWidth),
+              line.height == fragments.height,
+              attachments.getAttachmentsOverlapping(line.range).isEmpty,
+              let fragment = fragments.getLine(atPosition: y - line.yPos) else {
+            return line.range
+        }
+        return fragment.range.translate(location: line.range.location)
+    }
+
     /// Finds text line and returns it if found.
     /// Lines are 0 indexed.
     /// - Parameter index: The line to find.
@@ -110,7 +136,12 @@ extension TextLayoutManager {
         } else if fragment.width <= point.x - edgeInsets.left {
             return findOffsetAfterEndOf(fragmentPosition: fragmentPosition, in: linePosition)
         } else {
-            return findOffsetAtPoint(inFragment: fragment, xPos: point.x, inLine: linePosition)
+            return findOffsetAtPoint(
+                inFragment: fragment,
+                at: fragmentPosition.range.location,
+                xPos: point.x,
+                inLine: linePosition
+            )
         }
     }
 
@@ -154,12 +185,14 @@ extension TextLayoutManager {
     /// Finds a document offset for a point that lies in a line fragment.
     /// - Parameters:
     ///   - fragment: The fragment the point lies in.
+    ///   - fragmentStart: Where the fragment starts, relative to its line.
     ///   - xPos: The point being queried, relative to the text view.
     ///   - linePosition: The position that contains the `fragment`.
     /// - Returns: The offset (relative to the document) that's closest to the given point, or `nil` if it could not be
     ///            found.
     func findOffsetAtPoint(
         inFragment fragment: LineFragment,
+        at fragmentStart: Int,
         xPos: CGFloat,
         inLine linePosition: TextLineStorage<TextLine>.TextLinePosition
     ) -> Int? {
@@ -172,7 +205,9 @@ extension TextLayoutManager {
                 ctLine,
                 CGPoint(x: xPos - edgeInsets.left - contentPosition.xPos, y: fragment.height / 2)
             )
-            return fragmentIndex + contentPosition.offset + linePosition.range.location
+            // A restyled line starts at 0, a typeset one at where its fragment starts.
+            return fragmentIndex - CTLineGetStringRange(ctLine).location
+                + fragmentStart + contentPosition.offset + linePosition.range.location
         case .attachment:
             return contentPosition.offset + linePosition.range.location
         }

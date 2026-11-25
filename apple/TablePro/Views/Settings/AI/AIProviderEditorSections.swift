@@ -170,6 +170,14 @@ struct AIProviderEditorSections: View {
         }
     }
 
+    private var reasoningBinding: Binding<ReasoningEffort?> {
+        let model = model
+        return Binding(
+            get: { AIProviderDraftRules.displayedEffort(model.draft.reasoningEffort, reasoning: model.reasoningForCurrentModel) },
+            set: { model.draft.reasoningEffort = $0 }
+        )
+    }
+
     private var keyBinding: Binding<String> {
         let model = model
         return Binding(
@@ -195,7 +203,7 @@ struct AIProviderEditorSections: View {
                 }
             }
             if model.showsReasoningPicker {
-                Picker(selection: $model.draft.reasoningEffort) {
+                Picker(selection: reasoningBinding) {
                     AIReasoningPickerItems(reasoning: model.reasoningForCurrentModel)
                 } label: {
                     Text("Reasoning")
@@ -251,17 +259,19 @@ struct AIModelPickerItems: View {
     let choices: AIModelChoices
 
     var body: some View {
-        if !choices.curated.isEmpty {
+        if !choices.active.isEmpty {
             Section {
-                ForEach(choices.curated) { model in
-                    Text(verbatim: model.displayName).tag(AIModelSelection.curated(model.id))
+                ForEach(choices.active) { model in
+                    Text(verbatim: choices.title(for: model)).tag(AIModelSelection.model(model.id))
                 }
             }
         }
-        if !choices.fetched.isEmpty {
-            Section {
-                ForEach(choices.fetched, id: \.self) { id in
-                    Text(verbatim: id).tag(AIModelSelection.fetched(id))
+        if !choices.deprecated.isEmpty {
+            Section("Deprecated") {
+                ForEach(choices.deprecated) { model in
+                    Text(verbatim: choices.title(for: model))
+                        .foregroundStyle(.secondary)
+                        .tag(AIModelSelection.model(model.id))
                 }
             }
         }
@@ -269,12 +279,21 @@ struct AIModelPickerItems: View {
     }
 }
 
+// Sending no effort reads "Default", since most models then reason at the server's default; only manual
+// thinking is off without one. A model that always reasons offers its levels alone.
 struct AIReasoningPickerItems: View {
     let reasoning: AIReasoningSupport
 
     var body: some View {
         if !reasoning.isMandatory {
-            Text("Off").tag(ReasoningEffort?.none)
+            if reasoning.mode == .budgeted {
+                Text("Off").tag(ReasoningEffort?.none)
+            } else {
+                Text("Default").tag(ReasoningEffort?.none)
+            }
+        }
+        if reasoning.canTurnOff {
+            Text("Off").tag(ReasoningEffort?.some(.off))
         }
         ForEach(reasoning.effortLevels) { effort in
             Text(effort.displayName).tag(ReasoningEffort?.some(effort))

@@ -283,7 +283,7 @@
     </key>
 
     <key name="ai-anthropic-model" type="s">
-      <default>'claude-opus-5-5'</default>
+      <default>''</default>
       <summary>Anthropic model</summary>
       <description>The model id the assistant asks Anthropic for.</description>
     </key>

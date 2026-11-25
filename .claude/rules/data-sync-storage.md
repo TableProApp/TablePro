@@ -187,6 +187,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Reopen the last session once after Relaunch to Update | UserDefaults, device-local, never synced, cleared by the next launch | `AppRelauncher` |
 | Highest plugin manifest `serial` accepted, so an older signed manifest is refused | UserDefaults, device-local, never synced | `RegistryManifestVerifier` through `RegistryClient` |
+| The AI model catalog last accepted from `updates.tablepro.app`, used over the bundled copy when its `generated` is newer; its HTTP cache only revalidates | `AIModels/models-v1.json` and `AIModels/URLCache` in the support directory, device-local, never synced | `AIModelReference` |
 | Approved environment variable references, per connection, names and destination digest | UserDefaults, device-local, never synced | `ConnectionApprovalStore.envVarReferences` |
 | Approved sign-ins with this Mac's own credentials (Entra, AWS profile or SSO, Google ADC or OAuth, Kerberos, `~/.pgpass`), per connection, field values and destination digest | UserDefaults `com.TablePro.localCredentialApprovals`, plus `com.TablePro.localCredentialApprovalsMigrated` for the one-time approval of this Mac's rows; device-local, never synced | `ConnectionApprovalStore.localCredentials` |
 | Snowflake SSO and MFA tokens, per host and user. A bare account's `NAME.USER` item stays for 0.83.1, which reads only that key | Keychain, device-local | `SnowflakeTokenCache` |

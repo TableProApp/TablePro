@@ -48,6 +48,9 @@ internal static partial class Mapping
     public static AiProviderInfo ProviderInfo(Native.AiProviderInfo info) =>
         new(Provider(info.Provider), info.DefaultBaseUrl, info.RequiresKey, info.TakesAddress);
 
+    public static AiModelInfo ModelInfo(Native.AiModelInfo model) =>
+        new(model.Id, model.Name, model.Deprecated, model.IsDefault, model.Offline);
+
     public static Native.AiSettingsArg Settings(AiSettings settings) =>
         new(Provider(settings.Provider), settings.Model, settings.Address);
 

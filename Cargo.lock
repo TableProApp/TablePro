@@ -7658,6 +7658,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "chrono",
  "futures-util",
  "http",
  "http-body-util",
@@ -7670,6 +7671,7 @@ dependencies = [
  "sse-stream",
  "tablepro-core",
  "tablepro-net",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",

@@ -10,13 +10,6 @@ import TableProMCP
 enum ResponsesDialect: Sendable {
     case openAI
     case xai
-
-    var defaultTestModel: String {
-        switch self {
-        case .openAI: return "gpt-5.5"
-        case .xai:    return "grok-4.5"
-        }
-    }
 }
 
 final class OpenAIResponsesProvider: ChatTransport {
@@ -26,6 +19,8 @@ final class OpenAIResponsesProvider: ChatTransport {
     private let model: String
     private let maxOutputTokens: Int?
     private let dialect: ResponsesDialect
+    private let providerID: UUID?
+    private let source: AIModelSource
 
     init(
         endpoint: String,
@@ -33,6 +28,8 @@ final class OpenAIResponsesProvider: ChatTransport {
         model: String = "",
         maxOutputTokens: Int? = nil,
         dialect: ResponsesDialect = .openAI,
+        providerID: UUID? = nil,
+        source: AIModelSource = .unlisted,
         session: URLSession = URLSession(configuration: .ephemeral)
     ) {
         self.transport = AIProviderTransport(
@@ -44,6 +41,8 @@ final class OpenAIResponsesProvider: ChatTransport {
         self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
         self.maxOutputTokens = maxOutputTokens
         self.dialect = dialect
+        self.providerID = providerID
+        self.source = source
     }
 
     func streamChat(
@@ -55,16 +54,33 @@ final class OpenAIResponsesProvider: ChatTransport {
         }
     }
 
+    // OpenAI's list carries an id, a date and a shutdown date only; the catalog says which ids are chat models.
     func fetchAvailableModels() async throws -> [AIModelInfo] {
         if dialect == .xai, let languageModels = await fetchXAILanguageModels() {
             return languageModels
         }
-        let host = transport.endpoint?.apiBase.host
         return try await fetchModelEntries(resource: AIEndpointStyle.responses.modelsResource, key: "data")
-            .filter { Self.listsChatModel($0, dialect: dialect, host: host) }
-            .compactMap { $0["id"] as? String }
-            .sorted()
-            .map { AIModelInfo(id: $0) }
+            .filter { dialect == .openAI || Self.listsXAIChatModel($0) }
+            .compactMap(Self.decodeListedModel(_:))
+            .sorted { $0.id < $1.id }
+    }
+
+    static func decodeListedModel(_ json: [String: Any]) -> AIModelInfo? {
+        guard let id = json["id"] as? String, !id.isEmpty else { return nil }
+        let shutdown = date(json["shutdown_date"])
+        return AIModelInfo(
+            id: id,
+            isDeprecated: shutdown != nil,
+            retiresAt: shutdown,
+            released: date(json["created"])
+        )
+    }
+
+    // Seconds since 1970, or an ISO 8601 date.
+    static func date(_ value: Any?) -> Date? {
+        if let seconds = value as? Double { return Date(timeIntervalSince1970: seconds) }
+        if let seconds = value as? Int { return Date(timeIntervalSince1970: TimeInterval(seconds)) }
+        return AnthropicProvider.date(value)
     }
 
     // `/v1/models` carries no modality; a gateway in xAI's place may not serve `language-models`.
@@ -81,39 +97,25 @@ final class OpenAIResponsesProvider: ChatTransport {
               let outputs = json["output_modalities"] as? [String], outputs.contains("text")
         else { return nil }
         let inputs = json["input_modalities"] as? [String] ?? []
-        return AIModelInfo(id: id, modalities: inputs.contains("image") ? [.text, .image] : [.text])
+        let capabilities = json["capabilities"] as? [String: Any]
+        let efforts = capabilities?["reasoning_effort"] as? [String] ?? []
+        let reasoning: AIReasoningSupport? = efforts.isEmpty ? nil : AIReasoningSupport(
+            mode: .effortOnly,
+            effortLevels: ReasoningEffort.levels(fromWire: efforts),
+            defaultEffort: (capabilities?["default_reasoning_effort"] as? String).flatMap(ReasoningEffort.init(wireValue:)),
+            canTurnOff: efforts.contains { $0.lowercased() == "none" }
+        )
+        return AIModelInfo(
+            id: id,
+            modalities: inputs.contains("image") ? [.text, .image] : [.text],
+            reasoning: reasoning,
+            released: date(json["created"])
+        )
     }
 
-    static func listsChatModel(_ json: [String: Any], dialect: ResponsesDialect, host: String?) -> Bool {
-        guard let id = json["id"] as? String, !id.isEmpty else { return false }
-        switch dialect {
-        case .xai:
-            if json["image_price"] != nil { return false }
-            return !["imagine", "-image", "voice"].contains(where: { id.contains($0) })
-        case .openAI:
-            guard let host, isOpenAIHost(host) else { return true }
-            return isOpenAIChatModel(id)
-        }
-    }
-
-    // Only OpenAI's own hosts are known to list its non-chat models; a gateway lists what it routes.
-    private static func isOpenAIHost(_ host: String) -> Bool {
-        let host = host.lowercased()
-        return host == "api.openai.com" || host.hasSuffix(".api.openai.com")
-    }
-
-    // Checked against the Responses column of every live model on platform.openai.com/docs/models.
-    // A fine-tune is `ft:<base>:<org>:<suffix>:<id>`; only its base model says what it is.
-    static func isOpenAIChatModel(_ id: String) -> Bool {
-        let base = id.hasPrefix("ft:") ? String(id.dropFirst(3).prefix { $0 != ":" }) : id
-        let families = ["gpt-", "chatgpt-", "chat-latest", "codex-"]
-        let isOSeries = base.first == "o" && base.dropFirst().first?.isNumber == true
-        guard isOSeries || families.contains(where: { base.hasPrefix($0) }) else { return false }
-        let nonChat = [
-            "image", "audio", "realtime", "transcribe", "tts", "whisper", "-live", "search",
-            "embedding", "moderation", "instruct", "deep-research", "computer-use"
-        ]
-        return !nonChat.contains(where: { base.contains($0) })
+    static func listsXAIChatModel(_ json: [String: Any]) -> Bool {
+        guard let id = json["id"] as? String, !id.isEmpty, json["image_price"] == nil else { return false }
+        return !["imagine", "-image", "voice"].contains(where: { id.contains($0) })
     }
 
     private func fetchModelEntries(resource: String, key: String) async throws -> [[String: Any]] {
@@ -121,17 +123,27 @@ final class OpenAIResponsesProvider: ChatTransport {
         switch await transport.modelList(at: url, key: key) {
         case .unreachable(let error):
             Self.logger.warning("OpenAI Responses model fetch failed: \(error.publicLogShape, privacy: .public)")
-            throw AIProviderError.networkError("Failed to fetch models")
-        case .notHTTP, .rejected, .entries(nil):
-            throw AIProviderError.networkError("Failed to fetch models")
+            throw AIProviderError.networkError(String(localized: "Failed to fetch models"))
+        case .notHTTP, .entries(nil):
+            throw AIProviderError.networkError(String(localized: "Failed to fetch models"))
+        case .rejected(let reply):
+            throw transport.httpError(reply, url: url)
         case .entries(let entries?):
             return entries
         }
     }
 
+    // With no model chosen yet the key is proven by listing the models, which costs nothing.
     func testConnection() async throws -> Bool {
-        let testModel = model.isEmpty ? dialect.defaultTestModel : model
-        let testOptions = ChatTransportOptions(model: testModel, maxOutputTokens: 16)
+        guard !model.isEmpty else {
+            let url = try transport.url(AIEndpointStyle.responses.modelsResource)
+            guard let reply = try await transport.connectionReply(to: transport.get(url, timeout: nil)) else {
+                return false
+            }
+            guard reply.statusCode == 200 else { throw transport.httpError(reply, url: url) }
+            return true
+        }
+        let testOptions = ChatTransportOptions(model: model, maxOutputTokens: 16)
         let testTurn = ChatTurnWire(role: .user, blocks: [.text("Hi")])
         let request = try buildRequest(turns: [testTurn], options: testOptions, stream: false)
         guard let reply = try await transport.connectionReply(to: request) else { return false }
@@ -159,20 +171,23 @@ final class OpenAIResponsesProvider: ChatTransport {
             body["instructions"] = systemPrompt
         }
 
-        let resolvedMaxTokens = options.maxOutputTokens
+        let modelLimit = AIModelCatalog.shared.info(providerID: providerID, source: source, modelID: options.model)?
+            .maxOutputTokens
+        if let resolvedMaxTokens = options.maxOutputTokens
             ?? maxOutputTokens
-            ?? options.reasoningEffort?.autoScaledMaxOutputTokens
-        if let resolvedMaxTokens {
-            body["max_output_tokens"] = resolvedMaxTokens
+            ?? options.reasoningEffort?.autoScaledMaxOutputTokens {
+            body["max_output_tokens"] = modelLimit.map { min(resolvedMaxTokens, $0) } ?? resolvedMaxTokens
         }
 
         if let effort = options.reasoningEffort {
             switch dialect {
+            case .openAI where effort == .off:
+                body["reasoning"] = ["effort": effort.wireValue]
             case .openAI:
-                body["reasoning"] = ["effort": effort.openAIWireValue, "summary": "auto"]
+                body["reasoning"] = ["effort": effort.wireValue, "summary": "auto"]
                 body["include"] = ["reasoning.encrypted_content"]
             case .xai:
-                body["reasoning"] = ["effort": effort.xaiReasoningEffort]
+                body["reasoning"] = ["effort": effort.wireValue]
             }
         }
 

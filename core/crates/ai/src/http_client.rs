@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::Bytes;
-use http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderName, HeaderValue, USER_AGENT};
+use http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, ETAG, HeaderName, HeaderValue, IF_NONE_MATCH, USER_AGENT};
 use http::{Method, Request, Response, StatusCode};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::Incoming;
@@ -100,6 +100,47 @@ impl AiClient {
         let status = response.status();
         let message = read_error_message(response).await;
         Err(status_error(endpoint, status, message))
+    }
+
+    /// A GET of a file TablePro publishes: no key, no user agent, no
+    /// header beyond `Accept` and `If-None-Match`. The body is read only
+    /// on 200, with the response's ETag.
+    pub(crate) async fn fetch_published(
+        &self,
+        url: &str,
+        etag: Option<&str>,
+        limit: usize,
+    ) -> Result<(StatusCode, Option<String>, Bytes), AiError> {
+        let uri: http::Uri = url.parse().map_err(|_| AiError::InvalidAddress)?;
+        let host = uri.host().unwrap_or_default().to_owned();
+        let mut builder = Request::builder()
+            .method(Method::GET)
+            .uri(uri)
+            .header(ACCEPT, "application/json");
+        if let Some(etag) = etag.and_then(|etag| HeaderValue::from_str(etag).ok()) {
+            builder = builder.header(IF_NONE_MATCH, etag);
+        }
+        let request = builder
+            .body(Full::new(Bytes::new()))
+            .map_err(|_| AiError::InvalidAddress)?;
+        let response = tokio::time::timeout(HEADERS_TIMEOUT, self.http.request(request))
+            .await
+            .map_err(|_| AiError::TimedOut { host: host.clone() })?
+            .map_err(|error| AiError::Unreachable {
+                host: host.clone(),
+                detail: error_chain(&error),
+            })?;
+        let status = response.status();
+        if status != StatusCode::OK {
+            return Ok((status, None, Bytes::new()));
+        }
+        let etag = response
+            .headers()
+            .get(ETAG)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let body = read_body(response, limit, &host).await?;
+        Ok((status, etag, body))
     }
 
     fn request(

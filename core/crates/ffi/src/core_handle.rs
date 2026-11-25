@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use futures::future::BoxFuture;
 use secrecy::SecretString;
 use tablepro_account::RefreshTokenVaults;
-use tablepro_ai::AiClient;
+use tablepro_ai::{AiClient, ModelCatalog};
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
@@ -58,6 +58,8 @@ pub struct Core {
     client_version: String,
     // One AI client for the app, built on first use.
     ai_client: Arc<OnceCell<AiClient>>,
+    // Refreshed into the storage folder's cache, or the bundled copy without one.
+    ai_catalog: ModelCatalog,
     // The saved connections' sessions `connect_saved` opened, which the MCP server reaches.
     open_sessions: Arc<OpenSessions>,
     mcp_tokens: Arc<dyn TokenVault>,
@@ -118,6 +120,7 @@ impl Core {
             self.tasks.clone(),
             self.client_version.clone(),
             self.ai_client.clone(),
+            self.ai_catalog.clone(),
         ))
     }
 
@@ -356,6 +359,9 @@ impl Core {
         };
         let paths = storage_dir.map(|dir| storage_paths(Path::new(&dir)));
         let store = paths.as_ref().map(ConnectionStore::new);
+        let ai_catalog = paths.as_ref().map_or_else(ModelCatalog::bundled, |paths| {
+            ModelCatalog::new(paths.cache.join("ai-models"))
+        });
         Arc::new(Self {
             registry: Arc::new(drivers::registry()),
             connector: Arc::new(DriverConnector::new(services, deadlines.clone())),
@@ -371,6 +377,7 @@ impl Core {
             ssh,
             client_version,
             ai_client: Arc::default(),
+            ai_catalog,
             open_sessions: Arc::default(),
             mcp_tokens,
         })

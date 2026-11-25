@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import TableProMCP
@@ -233,27 +234,27 @@ struct ServerDashboardViewModelTests {
     @Test("A selected session that ends leaves the selection, and a new session reusing its id starts unselected")
     func endedSessionLeavesTheSelection() {
         let vm = makeViewModel(databaseType: .mssql)
-        vm.sessions = [listed("57"), listed("60")]
+        vm.board.sessions = [listed("57"), listed("60")]
         vm.sessionSelection.ids = ["57"]
 
-        vm.sessions = [listed("60")]
+        vm.board.sessions = [listed("60")]
         #expect(vm.sessionSelection.ids.isEmpty)
 
-        vm.sessions = [listed("60"), listed("57", user: "other")]
+        vm.board.sessions = [listed("60"), listed("57", user: "other")]
         #expect(vm.sessionSelection.ids.isEmpty)
-        #expect(SessionGridColumns.actionTarget(vm.sessionSelection.ids, in: vm.sessions) == nil)
+        #expect(SessionGridColumns.actionTarget(vm.sessionSelection.ids, in: vm.board.sessions) == nil)
     }
 
     @Test("A refresh that still lists the selected session keeps it selected")
     func listedSessionKeepsItsSelection() {
         let vm = makeViewModel(databaseType: .postgresql)
-        vm.sessions = [listed("10"), listed("7")]
+        vm.board.sessions = [listed("10"), listed("7")]
         vm.sessionSelection.ids = ["10", "7"]
 
-        vm.sessions = [listed("7"), listed("10"), listed("12")]
+        vm.board.sessions = [listed("7"), listed("10"), listed("12")]
         #expect(vm.sessionSelection.ids == ["10", "7"])
 
-        vm.sessions = [listed("10")]
+        vm.board.sessions = [listed("10")]
         #expect(vm.sessionSelection.ids == ["10"])
     }
 
@@ -295,8 +296,44 @@ struct ServerDashboardViewModelTests {
     @Test("stopAutoRefresh clears the refreshing flag")
     func stopAutoRefreshClearsRefreshingFlag() {
         let vm = makeViewModel(databaseType: .mysql)
-        vm.isRefreshing = true
+        vm.refreshStatus.isRefreshing = true
         vm.stopAutoRefresh()
-        #expect(!vm.isRefreshing)
+        #expect(!vm.refreshStatus.isRefreshing)
+    }
+
+    @Test("The spinner and the clock do not publish through the model")
+    func refreshStatusStaysOffTheModel() {
+        let vm = makeViewModel(databaseType: .mysql)
+        var publishes = 0
+        let token = vm.objectWillChange.sink { publishes += 1 }
+        vm.refreshStatus.isRefreshing = true
+        vm.refreshStatus.lastRefreshDate = Date()
+        #expect(publishes == 0)
+        token.cancel()
+    }
+
+    @Test("A board of freshly fetched slow queries has the same content")
+    func boardContentIgnoresRowIdentity() {
+        var first = DashboardBoard()
+        first.slowQueries = [DashboardSlowQuery(duration: "4s", query: "SELECT 1", user: "app", database: "shop")]
+        var second = first
+        second.slowQueries = [DashboardSlowQuery(duration: "4s", query: "SELECT 1", user: "app", database: "shop")]
+        #expect(first.hasSameContent(as: second))
+
+        second.panelErrors[.slowQueries] = "denied"
+        #expect(!first.hasSameContent(as: second))
+    }
+
+    @Test("Setting the board publishes once")
+    func boardPublishesOnce() {
+        let vm = makeViewModel(databaseType: .postgresql)
+        var publishes = 0
+        let token = vm.objectWillChange.sink { publishes += 1 }
+        var board = DashboardBoard()
+        board.sessions = [listed("1")]
+        board.metrics = [DashboardMetric(id: "uptime", label: "Uptime", value: "3", unit: "days", icon: "clock")]
+        vm.board = board
+        #expect(publishes == 1)
+        token.cancel()
     }
 }

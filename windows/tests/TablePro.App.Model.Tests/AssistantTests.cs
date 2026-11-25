@@ -196,9 +196,51 @@ public sealed class AssistantTests
         File.WriteAllText(path, """{ "aiProvider": "Gemini" }""");
 
         Assert.Equal(new AiSettings(AiProvider.OpenAICompatible, "qwen3", AppSettings.DefaultCompatibleAddress), loaded.Assistant);
-        Assert.Equal(AppSettings.DefaultAnthropicModel, loaded.ModelOf(AiProvider.Anthropic));
+        Assert.Equal(string.Empty, loaded.ModelOf(AiProvider.Anthropic));
         Assert.Null(loaded.AssistantFor(AiProvider.Anthropic).Address);
         Assert.Null(new SettingsStore(path).Load().AiProvider);
+    }
+
+    [Fact]
+    public void AnEmptyModelTakesTheCatalogDefaultAndASavedOneStays()
+    {
+        static string? Catalog(AiProvider provider) =>
+            provider == AiProvider.OpenAICompatible ? null : "default-" + provider;
+
+        var chosen = new AppSettings { AiProvider = AiProvider.Anthropic }.WithDefaultModel(Catalog);
+        var saved = new AppSettings { AiProvider = AiProvider.Anthropic, AnthropicModel = "claude-haiku-4-5" }
+            .WithDefaultModel(Catalog);
+        var off = new AppSettings().WithDefaultModel(Catalog);
+        var compatible = new AppSettings { AiProvider = AiProvider.OpenAICompatible }.WithDefaultModel(Catalog);
+
+        Assert.Equal("default-Anthropic", chosen.AnthropicModel);
+        Assert.Equal(string.Empty, chosen.OpenAIModel);
+        Assert.Equal("claude-haiku-4-5", saved.AnthropicModel);
+        Assert.Equal(new AppSettings(), off);
+        Assert.Equal(string.Empty, compatible.CompatibleModel);
+        Assert.Equal("default-Anthropic", chosen.WithDefaultModel(_ => "a later default").AnthropicModel);
+    }
+
+    [Fact]
+    public void AModelShowsItsNameElseItsIdAndASharedNameCarriesTheId()
+    {
+        IReadOnlyList<AiModelInfo> models =
+        [
+            new("gpt-5.5", "GPT-5.5", IsDeprecated: false, IsDefault: true, IsOffline: false),
+            new("gpt-5.5-2026-04-23", "GPT-5.5", IsDeprecated: false, IsDefault: false, IsOffline: false),
+            new("my-tune", null, IsDeprecated: false, IsDefault: false, IsOffline: false),
+            new("gpt-4.1", "GPT-4.1", IsDeprecated: true, IsDefault: false, IsOffline: false),
+        ];
+
+        var choices = AiModelChoice.For(models, label => label + " (deprecated)", (name, id) => $"{name} ({id})");
+
+        Assert.Equal(
+            ["GPT-5.5 (gpt-5.5)", "GPT-5.5 (gpt-5.5-2026-04-23)", "my-tune", "GPT-4.1 (deprecated)"],
+            choices.Select(choice => choice.Label));
+        Assert.Equal("gpt-4.1", AiModelChoice.IdFor(choices, "GPT-4.1 (deprecated)"));
+        Assert.Equal("typed-model", AiModelChoice.IdFor(choices, " typed-model "));
+        Assert.Equal("GPT-4.1 (deprecated)", AiModelChoice.LabelFor(choices, "gpt-4.1"));
+        Assert.Equal("typed-model", AiModelChoice.LabelFor(choices, "typed-model"));
     }
 
     [Fact]

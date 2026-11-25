@@ -53,9 +53,6 @@ public sealed record AppSettings
     // As macOS offers them, in seconds: 5, 10, 20 or 30 seconds, or 1, 2, 5 or 10 minutes.
     public static IReadOnlyList<int> NotifyAfterChoices { get; } = [5, 10, 20, 30, 60, 120, 300, 600];
 
-    // The Linux app's default, so a key is all a new user needs.
-    public const string DefaultAnthropicModel = "claude-opus-5-5";
-
     public const string DefaultCompatibleAddress = "http://localhost:11434/v1";
 
     // The MCP server's, as the other apps listen on: McpServer.DefaultPort.
@@ -126,7 +123,8 @@ public sealed record AppSettings
     // Who answers the AI assistant; null while it is off, which is how it starts, so nothing is sent anywhere.
     public AiProvider? AiProvider { get; set; }
 
-    public string AnthropicModel { get; set; } = DefaultAnthropicModel;
+    // Empty until first use, when WithDefaultModel takes the model catalog's default.
+    public string AnthropicModel { get; set; } = string.Empty;
 
     public string OpenAIModel { get; set; } = string.Empty;
 
@@ -178,6 +176,19 @@ public sealed record AppSettings
         Interop.AiProvider.OpenAI => this with { OpenAIModel = model },
         _ => this with { CompatibleModel = model },
     };
+
+    // The chosen provider's empty model takes the catalog's default, so a later catalog never moves a user off the
+    // model they started on; a model already saved stays.
+    public AppSettings WithDefaultModel(Func<AiProvider, string?> catalogDefault)
+    {
+        ArgumentNullException.ThrowIfNull(catalogDefault);
+        if (AiProvider is not { } provider || !string.IsNullOrWhiteSpace(ModelOf(provider)))
+        {
+            return this;
+        }
+
+        return catalogDefault(provider) is { Length: > 0 } model ? WithModel(provider, model) : this;
+    }
 
     public AppSettings Normalized() => this with
     {

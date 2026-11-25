@@ -262,6 +262,16 @@ extension TextLayoutManager {
         )
     }
 
+    func makeDisplayData(maxWidth: CGFloat) -> TextLine.DisplayData {
+        TextLine.DisplayData(
+            maxWidth: maxWidth,
+            lineHeightMultiplier: lineHeightMultiplier,
+            estimatedLineHeight: estimateLineHeight(),
+            breakStrategy: lineBreakStrategy,
+            specialCharacterStyle: specialCharacterStyle
+        )
+    }
+
     // MARK: - Layout Single Line
 
     private func layoutLine(
@@ -311,13 +321,7 @@ extension TextLayoutManager {
         layoutData: LineLayoutData,
         laidOutFragmentIDs: inout Set<LineFragment.ID>
     ) -> CGSize {
-        let lineDisplayData = TextLine.DisplayData(
-            maxWidth: layoutData.maxWidth,
-            lineHeightMultiplier: lineHeightMultiplier,
-            estimatedLineHeight: estimateLineHeight(),
-            breakStrategy: lineBreakStrategy,
-            specialCharacterStyle: specialCharacterStyle
-        )
+        let lineDisplayData = makeDisplayData(maxWidth: layoutData.maxWidth)
 
         let line = position.data
         if let renderDelegate {

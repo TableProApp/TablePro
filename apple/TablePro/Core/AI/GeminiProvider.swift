@@ -38,41 +38,25 @@ final class GeminiProvider: ChatTransport {
         }
     }
 
-    private static let offlineModels: [AIModelInfo] = [
-        "gemini-3.6-flash",
-        "gemini-3.5-flash",
-        "gemini-3.5-flash-lite",
-        "gemini-3.1-pro-preview",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash"
-    ].map {
-        AIModelInfo(
-            id: $0,
-            modalities: [.text, .image],
-            reasoning: AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high], defaultEffort: .medium)
-        )
-    }
-
     func fetchAvailableModels() async throws -> [AIModelInfo] {
-        let url = try transport.url(AIEndpointStyle.gemini.modelsResource)
+        let url = try transport.url(
+            AIEndpointStyle.gemini.modelsResource,
+            query: [URLQueryItem(name: "pageSize", value: "1000")]
+        )
         switch await transport.modelList(at: url, key: "models") {
         case .unreachable(let error):
-            Self.logger.warning("Gemini model fetch failed; using known models: \(error.publicLogShape, privacy: .public)")
-            return Self.offlineModels
-        case .notHTTP:
-            Self.logger.warning("Gemini model fetch returned no HTTP response; using known models")
-            return Self.offlineModels
+            Self.logger.warning("Gemini model fetch failed: \(error.publicLogShape, privacy: .public)")
+            throw AIProviderError.networkError(String(localized: "Failed to fetch models"))
+        case .notHTTP, .entries(nil):
+            throw AIProviderError.networkError(String(localized: "Failed to fetch models"))
         case .rejected(let reply):
             throw transport.httpError(reply, url: url)
-        case .entries(nil):
-            Self.logger.warning("Gemini model fetch returned unexpected response; using known models")
-            return Self.offlineModels
         case .entries(let models?):
-            let fetched = models.compactMap(Self.decodeModel(_:))
-            return fetched.isEmpty ? Self.offlineModels : fetched
+            return models.compactMap(Self.decodeModel(_:))
         }
     }
 
+    // The list says nothing about image input; the catalog does. Gemini sends no thinking configuration here.
     static func decodeModel(_ json: [String: Any]) -> AIModelInfo? {
         guard let name = json["name"] as? String,
               let methods = json["supportedGenerationMethods"] as? [String],
@@ -80,17 +64,11 @@ final class GeminiProvider: ChatTransport {
         else { return nil }
 
         let id = name.hasPrefix("models/") ? String(name.dropFirst(7)) : name
-        let supportsThinking = json["thinking"] as? Bool ?? false
-
         return AIModelInfo(
             id: id,
             displayName: json["displayName"] as? String,
             contextWindow: json["inputTokenLimit"] as? Int,
-            maxOutputTokens: json["outputTokenLimit"] as? Int,
-            modalities: [.text, .image],
-            reasoning: supportsThinking
-                ? AIReasoningSupport(mode: .effortOnly, effortLevels: [.low, .medium, .high], defaultEffort: .medium)
-                : .unsupported
+            maxOutputTokens: json["outputTokenLimit"] as? Int
         )
     }
 

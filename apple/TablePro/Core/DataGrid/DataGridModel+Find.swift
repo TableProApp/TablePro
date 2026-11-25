@@ -62,6 +62,7 @@ extension DataGridModel {
             find.showsReplace = true
         }
         let wasVisible = find.isVisible
+        find.requestsFieldFocus = true
         find.isVisible = true
         if !wasVisible {
             refreshFind()
@@ -73,6 +74,7 @@ extension DataGridModel {
         if replace, canReplaceInFind {
             find.showsReplace = true
         }
+        find.requestsFieldFocus = true
         find.isVisible = true
         findQueryDidChange()
     }
@@ -82,6 +84,7 @@ extension DataGridModel {
         find.reset()
         find.options.columnScope = nil
         find.showsReplace = false
+        find.requestsFieldFocus = false
         find.isVisible = false
         focus()
     }
@@ -179,6 +182,7 @@ extension DataGridModel {
             : storedText(in: row, column: active.column)
         guard let text = shown else { return }
         find.term = find.options.usesRegularExpression ? NSRegularExpression.escapedPattern(for: text) : text
+        find.requestsFieldFocus = true
         find.isVisible = true
         findQueryDidChange()
     }
