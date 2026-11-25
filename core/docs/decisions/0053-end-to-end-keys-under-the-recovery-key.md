@@ -1,6 +1,6 @@
 # 0053: End-to-end keys: the identity under the recovery key, signed logs, envelopes, removal and recovery
 
-- **Status**: Accepted; amends 0044 (Secrets)
+- **Status**: Accepted; amends 0044 (Secrets, and its Consequences line that teammates confirm a person again after a device removal or recovery)
 - **Date**: 2026-11-25
 
 ## Context
@@ -206,6 +206,15 @@ Each account has an identity log and a device log, and each team has a team log.
 
 A statement's place in its log orders it. Neither `iat` nor the server's revision orders anything a client decides.
 
+**Waits run on the server's clock, as the log records it.** Three rules wait on time: a reset's `activate` (7 days), a time-locked removal's `signer_remove_complete` (7 days), and a proposal's lapse (30 days). A client's own clock alone never decides them.
+
+- Each statement record carries `taken_at`, the time the server applied it (0051). Along one log, `taken_at` never goes back. A client refuses one more than 300 s ahead of its own clock when it first receives it.
+- A statement that ends a wait or approves a proposal names, in its signed payload, `after`: the `taken_at` of the statement it follows. `activate` names the reset's, `signer_remove_complete` the start's, and `approve` the proposal's.
+  - It is valid when its own `taken_at` is at least 7 days after `after`, or for an `approve` at most 30 days after, and `after` equals the record the client holds.
+  - So every client that holds the same head reaches the same state, and a comparison of heads covers the times. A client whose record differs from a signed `after` raises a fork alarm.
+- **The hold.** A client that saw a reset, a time-locked start or a proposal while it was still open also holds the log at a statement that ends the wait, until its own clock is 7 days past when it first saw the start, less the 300 s bound. It holds and never refuses: when the wait ends it evaluates the statement again.
+- **Joining later.** A device that joins later has no first-seen time. It takes a past `activate`, completion or `reroot` as the log records it, and then confirms with a new root as every member must.
+
 **Identity log.** Kind `key.identity`, type `tablepro-identity+jws`. Teams read it through member bundles.
 
 | `op` | Members | Signed by |
@@ -215,7 +224,7 @@ A statement's place in its log orders it. Neither `iat` nor the server's revisio
 | `replace` | `ik`, `rk`, `rk_v`, `blob`, `sk`, `sk_v`, `ak_v`, `ak_kid`, `dh` | IK in force, endorsed by the new `ik` |
 | `reset` | `ik`, `rk`, `rk_v`, `blob`, `sk`, `sk_v`, `ak_v`, `ak_kid`, `holder` with its `row`, `platform`, `hpke` and `sig`, `dh`, and `fresh`, true when the holder is outside the device set | The new `ik`, endorsed by the named holder |
 | `cancel` | `reset`, the hash of a pending reset, and `holder` when a holder signs it | IK in force, or the holder it names, which the logs list at the reset's `dh` |
-| `activate` | `reset`, the reset's hash, and `dh` | The reset's new `ik`, from the holder the reset names |
+| `activate` | `reset`, the reset's hash, `after`, and `dh` | The reset's new `ik`, from the holder the reset names |
 
 - **IK in force** is the `ik` of the newest `genesis`, `replace` or activated `reset`.
 - **Versions.** Each version in a statement is above the previous one on its chain and above every version a fork resolution burned. Its writer takes the highest version of that key it has seen on any branch, plus 1.
@@ -229,7 +238,7 @@ A statement's place in its log orders it. Neither `iat` nor the server's revisio
 - **A pending `reset`.** A `reset` stays pending until an `activate`.
   - Only these may come between them: statements the old IK signs, in either account log, and `cancel`.
   - Any statement the old IK signs after a pending reset cancels it, a recovery `add` included, and so does a `cancel`.
-  - `activate` is taken only 7 days after the server took the `reset`. Each client also waits 7 days from when it first verified the reset.
+  - `activate` is taken only 7 days after the server took the `reset`, under the waits above.
   - The server takes a `reset` only from the holder it names, in the device set at the reset's `dh`, or from any signed-in holder after a step-up when the set it derives is empty (Flows, No holder left).
   - A client verifies a reset's chain, signature and endorsement, but follows it only after a comparison: an own device through approval from the reset's holder, a teammate through a new `confirm`. The endorsement tells own devices which device made it.
 - **An endorsement** is a `tablepro-endorse+jws` in the same record. Its payload is `v`, `origin`, `acct`, `op` (`endorse`), `statement` (the endorsed statement's hash) and `role` (`holder` or `identity`).
@@ -274,10 +283,10 @@ Each statement carries `by`: the signer's `acct`, its `holder`, and its `ih` and
 | `genesis` | `root`: `acct`, `ik` | The first signer, an owner or admin in the server's roles. The root counts as confirmed |
 | `signer_add` | `who`: `acct`, `ik` | The account is a confirmed member with that IK. A proposal, named by its own hash |
 | `signer_remove` | `target`, `timelock` | Takes effect at once when `target` is `by.acct`. Otherwise a proposal. With `timelock`, it starts a time-locked removal (below) |
-| `approve` | `proposal` | A proposal takes effect at the statement where the distinct signers other than its target, counting the proposer, reach `k = min(2, n)`, with n the signers at that statement. So a lone signer adds the first co-signer alone, and with two signers or more nobody adds a signer or removes another alone without the time lock |
+| `approve` | `proposal`, `after` | A proposal takes effect at the statement where the distinct signers other than its target, counting the proposer, reach `k = min(2, n)`, with n the signers at that statement. So a lone signer adds the first co-signer alone, and with two signers or more nobody adds a signer or removes another alone without the time lock |
 | `withdraw` | `proposal` | Its proposer ends a proposal |
-| `signer_remove_cancel` | `proposal` | Ends a time-locked removal. Signed by any holder of the targeted signer, in that signer's device set, whatever its server role |
-| `signer_remove_complete` | `proposal` | Completes a time-locked removal. Taken only 7 days after the server took the `signer_remove`, and never after its cancel. Each client also waits 7 days from when it first verified the start |
+| `signer_remove_cancel` | `proposal` | Ends a time-locked removal. Signed by any holder that the targeted signer's logs list at the cancel's `dh`, whatever its row, server role or team seat (Rows and the veto). It is a grant: a `rotate` that names its holder voids it, and the removal is pending again |
+| `signer_remove_complete` | `proposal`, `after` | Completes a time-locked removal, 7 days after the start under the waits above, and never after a cancel in force |
 | `confirm` | `member`: `acct`, `ik`, `ih`, `dh` | After a comparison (below). Confirming a member again after a reset is allowed |
 | `remove_member` | `acct` | Refused while the account is a signer. A signer leaves the signer set first |
 | `revoke_sk` | `acct`, `sk_v` | After a server hint that the person's device was removed, or a reset |
@@ -289,23 +298,26 @@ Each statement carries `by`: the signer's `acct`, its `holder`, and its `ih` and
 **Rules over the team log.**
 
 - **The signer set** starts as the root and changes only through a `signer_add` or a `signer_remove` that takes effect, and `reroot`. n counts every signer in the set, a suspended one included. Nothing the server says, and no reset, lowers n or k on its own.
-- **Proposals.** Every condition of a proposal is checked again at the statement where it takes effect, and only signers at that statement count. A proposal lapses when its proposer withdraws it or leaves the signer set, and 30 days after the server took it. Each client also counts the 30 days from when it first verified the proposal.
+- **Proposals.** Every condition of a proposal is checked again at the statement where it takes effect, and only signers at that statement count. A proposal lapses when its proposer withdraws it or leaves the signer set, and for any `approve` taken more than 30 days after it, under the waits above.
 - **Time-locked removal**, as the maintainer decided. The signers left, even fewer than k, may remove a signer that will not or cannot act.
-  - Any one other signer starts it with `signer_remove` and `timelock`. When the target is the last signer, an owner or admin in the server's roles who is a confirmed member starts it.
+  - Any one other signer starts it with `signer_remove` and `timelock`. When the target is the last signer, an owner in the server's roles who is a confirmed member starts it.
   - Every member's app shows it from the start.
   - The targeted signer cancels it by signing `signer_remove_cancel` from any of its holders. A wiped or lost signer cannot, and one that reset cannot either, since its new IK is not the one the team pinned.
   - 7 days on, with no cancel, any signer or the starter signs `signer_remove_complete`, and the target leaves the set.
   - This is the same time lock with a veto as a reset. A thief holding one signer's device cannot act fast, and the honest signer can stop it. It also ends the two-signer freeze, and a last signer that lost its keys or reset leaves through it, which opens D15's re-root.
 - **Self-removal** takes effect at once (D15). So a thief holding the only signer's device can remove that signer and open a visible re-root at once. The threat model lists it.
-- **One or two signers.** While a team has fewer than three signers, the apps of its owners warn them to add more. With one, losing it leaves only a re-root. With two, a removal needs the time lock.
+- **One or two signers.** While a team has fewer than three signers, the apps of its owners warn them to add more. With one, losing it leaves only a re-root. With two, a removal needs the time lock, and a signer that keeps cancelling it leaves only by its own action, or once its IdP account ends and it can sign in nowhere.
 - **Confirmed members** come from `confirm`, less those named by `remove_member`.
 - **After a reset.** A member whose identity log shows an activated `reset` is unconfirmed until a new `confirm` names the new IK. If it is a signer, it is suspended: its statements made under the new IK have no effect until other signers add the new IK through `signer_add` after a comparison. It still counts in n until it is removed.
 - **A revoked SK** is one that `revoke_sk` names or that the member's own `rotate`, `replace` or `reset` replaced.
-- **Voided grants.** When a `rotate` of a signer's account names a holder, or one it descends from, the grants that holder signed have no effect. A grant here is a `confirm`, a `signer_add`, an `approve` of an addition, or a `key` or `grant` as far as its recipients go. Revocations stay in force whoever signed them: `remove_member`, `revoke_sk`, `signer_remove` and its `approve`, `signer_remove_complete`, and a `resolve`'s drop. The team's `genesis` and a `reroot` are never voided.
+- **Voided grants.** When a `rotate` of a signer's account names a holder, or one it descends from, the grants that holder signed have no effect. A grant here is a `confirm`, a `signer_add`, an `approve` of an addition, a `signer_remove_cancel`, or a `key` or `grant` as far as its recipients go. Revocations stay in force whoever signed them: `remove_member`, `revoke_sk`, `signer_remove` and its `approve`, `signer_remove_complete`, `withdraw`, and a `resolve`'s drop. The team's `genesis` and a `reroot` are never voided.
   - Clients replay the team log skipping voided grants. A statement that is not valid on the replayed state has no effect either.
   - Voided statements keep their place for the chain and for version numbering.
   - A TK version that a voided `key` introduced counts as known to the attacker, so the team enters rotation pending. It stays readable for envelopes a client already held under it, and nothing is written under it again.
-  - With IK in hand during the removal, the app lists the voided grants. The person signs again, from a remaining holder in the same chain, the ones they recognize: a `confirm` again without a new comparison, since they made the first one, and their own `approve` of an addition, which counts with the approvals still in force. Teammates compare again only for the grants the person does not sign again, so honest history keeps D7's "teammates see no change".
+  - With IK in hand during the removal, the app lists the voided grants, and beside them the revocations the removed holder signed, which stay. For each it shows the account id, the IK fingerprint, the signing holder and the `seq`, and preselects none.
+  - The person signs again the grants they recognize, as a team chain once the account chain has applied: a `confirm` again, and their own `approve` of an addition, which counts with the approvals still in force.
+  - A grant may be signed again without a new comparison only if a remaining holder of the account verified it before the time the person gives for the loss. That holder's own first-seen time is one a thief cannot set. A later grant needs a new comparison, since a thief may have made it.
+  - Teammates compare again only for the grants the person does not sign again, so honest history keeps D7's "teammates see no change".
 - **What a signer can do.** One signer can confirm members, seal team keys to them and remove members. Once a team has two signers, it can neither add a signer nor remove another without either k approvals or the time lock the target can cancel. A malicious signer is still trusted with the team's secrets, and every statement it signs shows in every member's app. The threat model covers this.
 
 **Member bundle.** Kind `key.member` in the team scope, writer-bound to the member's account, one record per statement.
@@ -321,12 +333,12 @@ Each statement carries `by`: the signer's `acct`, its `holder`, and its `ih` and
 - **Ending an account fork.**
   - **A replaced key never decides.** A client never follows a statement signed by an IK that a `replace` or activated `reset` it has verified, on any branch, replaced. That holds for fork resolutions too. This is The Update Framework's rule for its root role, where a client trusts a new root only through the root it holds and never goes back to one it saw replaced, and Keybase's rule that a client never accepts a sigchain without a link it has seen.
   - **A fork with no identity change** on either branch ends with a `rotate` carrying `fork`, signed by the IK in force on both. `fork` names the `seq`, the kept hash, the dropped hash, and `burned`: the highest AK, SK and RK versions on the dropped branch. The `rotate`'s new versions are above them, and its `removed` names every holder that signed a statement on the dropped branch, and their descendants.
-  - **A fork where either branch holds a `replace`, `reset` or `activate`** ends by no `rotate`, since the key that would sign it may be the one an attacker holds through an old S. It ends only by comparison: each own device pins again on the kept branch through a device approval comparison with a holder on it, and teammates confirm the person again.
+  - **A fork where either branch holds a `replace`, `reset` or `activate`** ends by no `rotate`, since the key that would sign it may be the one an attacker holds through an old S. It ends only by comparison: each own device pins again on the kept branch through a fork re-pin with a holder on it (Comparing keys), and teammates confirm the person again through a member comparison that covers the fork the same way.
   - A client whose pin is on the dropped branch moves it back to the fork point and onto the kept branch, after the `rotate` or the comparison. 0054's anchor moves with it. This is the one exception to the stored-head rule and to anchored heads and floors only moving forward.
   - Holders, keys and records that exist only on the dropped branch are gone, and their versions are burned. Queued edits stay queued and are sealed under the new versions.
 - **Ending a team fork.**
   - A `resolve` on the kept branch does the same for a team. It names `burned`, the highest TK version on the dropped branch.
-  - It takes effect with k approvals from signers that both branches have as signers at the fork point, and that neither branch, as the client has verified, removes.
+  - It takes effect with k approvals from signers that both branches have as signers at the fork point, and that neither branch, as the client has verified, removes. n for that k is the signer count at the fork point.
   - The team enters rotation pending, and the next `key` is above `burned`.
 - **Observing a rotation.** A client refuses a team statement by a signer whose identity log has rotated or reset when the statement names an `ih` older than one the client had already verified before it received it. Writers pull before they push, and sign again any statement made under a holder or IK that has since left.
 - **The limit.** This is not key transparency (draft-ietf-keytrans-protocol). A server can show two devices two consistent histories. They notice only when they compare, and every comparison below covers the log heads.
@@ -338,7 +350,7 @@ Key objects are records of reserved kinds under 0051's record rules. Ids are wri
 - **Create-only.** Every key kind except `key.wrap` and `key.ring` is create-only: a second create of one id is refused with `create_only`, which serializes two devices or two signers appending at once.
 - **Replaceable.** The writer the table names may replace a wrap or a ring. A recipient checks every wrap anyway, so a wrap that a stolen holder squatted can be replaced after its removal.
 - **Who may write.** Every write of a key kind carries a DPoP proof from a holder in the writing account's device set (Server enforcement), except the personal-scope writes allowed before approval. A phished session with no approved holder therefore writes no key object anywhere, and cannot squat a log position.
-- **Which license.** Key-object writes in the personal scope need `service_sync` or a team seat (`team_library`), and the first one creates the scope (0051). A license that grants Team Library only still lets a member build an identity and read team secrets.
+- **Which license.** Key-object writes in the personal scope need the feature `service_sync` or `team_library`, and the first one creates the scope (0051). A license that grants Team Library only still lets a member build an identity and read team secrets.
 - **Past grace.** Key-object writes and `leave` stay open past a license's grace, as the maintainer decided and 0051 carries, since they are how a person removes a stolen device.
 
 | Kind | Scope | Id parts | Writer-bound | What the server verifies |
@@ -374,9 +386,10 @@ The exchange is Vaudenay's SAS-based message cross-authentication (CRYPTO 2005; 
 4. Each side computes `d = SHA-256(LP(label) || ctx || LP(r_I) || LP(r_R))` from its own view of `ctx`. The words are the first five base-7776 digits of d read as a big-endian integer, least significant first, each picking a word of the EFF large word list.
 
 - **Never backwards.** A holder never pins, from a comparison, a head older than one it has anchored (0054). Such a session ends as a mismatch.
+- **A fork re-pin** is the one exception. When a holder's pin, or a teammate's pin of the person, sits on a fork's dropped branch, its `ctx` ends with `u64(fork seq) || LP(kept hash) || LP(dropped hash)`, so the words cover both branches. Once they match, the holder or teammate moves that pin, and 0054's anchor, to the kept branch.
 - **When each side fixes its view.** Each side fixes its `ctx` (the request bytes and the heads it compares) before it publishes its own random value: I before step 1, R before step 2. A session ends if one of the account's own logs moves before the person confirms. A team log that moves between the two sides' views gives a mismatch, and they start again. The formal model found that a side reading its heads later lets the server pick heads after `r_I` is public.
 - The person compares the five words on both screens and confirms on both.
-- A session allows one comparison and expires 10 minutes after `c`. A mismatch ends it and is shown as a possible interception.
+- A session allows one comparison and expires 10 minutes after `c`. Words that differ end it and are shown as a possible interception. A followed log that moved ends it with its own message, "something changed, start again", since in a large team that is common.
 - An attacker who changes either side's view must commit before it sees the other side's random value, so it succeeds with a probability of 7776^-5, about 2^-64.6, per session.
 
 **Device approval**, label `tablepro/v1/device-approval`. I is the new holder N, R the approving holder A, and the session is N's request.
@@ -442,10 +455,11 @@ The exchange is Vaudenay's SAS-based message cross-authentication (CRYPTO 2005; 
 
 1. The app first removes the device row through the account (0016), with the proof and step-up Server enforcement asks for. That revokes its tokens, so the honest server refuses it before it can append anything.
 2. The person picks the device and enters S. The device may still be in the set or may have signed out. The app lists every holder and preselects only the one the person picked. The holder opens the blob.
-3. The acting device makes a fresh holder of its own. In one log chain it signs that holder's `add` (method `recovery`) with IK, then a `rotate` with IK that names the current device head, the lost holder and every holder it approved. The `rotate` also names the acting device's old holder, which may descend from the lost device anyway, so the device keeps one holder. The fresh holder pushes the chain.
+3. It signs a `rotate` with IK that names the current device head, the lost holder and every holder it approved. When the acting device's own holder descends from a named one, the device first makes a fresh holder. In one log chain it signs that holder's `add` (method `recovery`) with IK, then the `rotate`, which also names the old holder, and the fresh holder pushes the chain. Otherwise the acting device keeps its holder and pushes the `rotate` alone.
 4. It generates SK and AK v+1 for that `rotate`. Once the chain applies, it seals the new keys only to the set the `rotate` leaves, and to RK, and writes AK ring v+1. It zeroizes IK and RK.
 5. It lists the personal envelopes a removed holder wrote, asks before sealing each again under AK v+1, and clears the ones the person does not keep (Envelopes).
-6. The person's client copies the chain into every team's member bundle.
+6. The app tells the person to end every IdP session of the account, since a thief that can still sign in keeps a reset cancel until the `rotate` names its holder.
+7. The person's client copies the chain into every team's member bundle.
    - Teammates see a new SK certified by the IK they pinned and accept it with no comparison (D7).
    - Each team enters rotation pending. Grants the removed holders signed are voided, and the app lists them. The person signs again the ones they recognize (Voided grants).
 
@@ -495,7 +509,7 @@ The exchange is Vaudenay's SAS-based message cross-authentication (CRYPTO 2005; 
 **Removing a member.**
 
 1. The server raises the team floor to the current TK version plus 1.
-2. The first signer client to open signs `remove_member`, then a `key` for TK v+1 sealed to every confirmed member with an unrevoked SK, then TK ring v+1. It seals again, under TK v+1, every team envelope the removed member's holders wrote.
+2. The first signer client to open signs `remove_member`, then a `key` for TK v+1 sealed to every confirmed member with an unrevoked SK, then TK ring v+1. It lists the team envelopes the removed member's holders wrote and asks before sealing each again under TK v+1. One it does not keep is cleared.
 3. "Credentials to rotate" lists the database credentials the removed party could read.
 4. **Reconciling.** Signer apps compare the team log's confirmed members with the server's roster. A member confirmed in the log but no longer on the roster shows as removed but not yet rotated. The portal shows a removal as pending until `remove_member` and the next `key` are in the team log. So an operator that ignores a removal is seen.
 
@@ -555,8 +569,10 @@ The only things a signed-in holder may start alone are these two:
 - **From the apps,** removing a device row of an account that has an identity needs a DPoP proof from an approved holder and a fresh IdP sign-in within 300 s.
 - **From the portal,** an install admin can still remove a row, behind the portal's step-up (0044, S5). The browser holds no keys, so this is the admin removal in Flows.
 - Either kind is audited, and every holder of the account is told.
-- **Neither kind changes keys or the veto.** It only locks the row: its holders get `device_removed`, and the server refuses them everything but what follows. The server takes a `cancel` from any holder the logs list at a pending reset's `dh`, and answers that holder's reads of `key.identity` even when its row was removed.
-- `device_removed` carries any pending reset, so a locked device shows it and offers the recovery key.
+- **Neither kind changes keys or either veto.** It only locks the row: its holders, and the holders those approved, get `device_removed`, and the server refuses them everything but what follows.
+  - **The reset veto.** The server takes a `cancel` from any holder the logs list at a pending reset's `dh`, and answers that holder's reads of `key.identity`.
+  - **The signer veto.** The server takes a `signer_remove_cancel` from any holder that the targeted signer's logs list at the cancel's `dh`, whatever its row, server role or team seat. It answers that holder's reads of `key.team` and the member bundles in each team where a removal targets it.
+- `device_removed` names any pending reset and every pending time-locked removal that targets the account, with its team. A locked device shows them and offers the recovery key and the cancel.
 - For a `fresh` reset, a removed row counts as empty only after it has stayed removed for 7 days.
 
 **Floors.** Each personal and team scope has a floor: the lowest key version a new envelope or history entry may use. Flows says when it rises. An honest server refuses a `kv` below it with `key_version_stale`. After a removal raises it from v to v+1, a write under v is refused, one under v+1 is taken, and the writes queued meanwhile go out once the rotation lands.
@@ -682,7 +698,7 @@ The K3 wire schema spells each destination field. A new secret kind needs a row 
 
 So a removed holder cannot slip a forged envelope under an old key version past a client that knows of the removal, whatever order the server uses. A superseded envelope under the same version also fails the counter. A counter a stolen holder pushed high is cleared by the next version, where `n` starts again.
 
-**Sealing again after a removal.** The client that makes the new version seals again, under it and its own signature, every envelope whose writer the removal took out. It keeps the sealed destination from the old plaintext, never the record's current one. If it stops halfway, any holder of the account, or for a team any signer, finishes. A device that already holds the secret keeps using it meanwhile. Other envelopes stay under the version they were written with (lazy revocation).
+**Sealing again after a removal.** The client that makes the new version lists every envelope whose writer the removal took out, and asks before sealing each again under it and its own signature. One the person does not keep is cleared, so a secret a thief planted never loses its mark silently. It keeps the sealed destination from the old plaintext, never the record's current one. If it stops halfway, any holder of the account, or for a team any signer, finishes. A device that already holds the secret keeps using it meanwhile. Other envelopes stay under the version they were written with (lazy revocation).
 
 **At use.** The client compares the sealed destination with the record's current destination (F3).
 
@@ -779,7 +795,11 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
     - a `signer_remove_complete` before 7 days or after a `signer_remove_cancel`, a cancel from a holder outside the target's device set, and a time-locked removal of the last signer started by someone not an owner or admin;
     - `remove_member` of a signer, and `reroot` while a signer is left;
     - a `remove_member` and a team `genesis` signed by a holder a later `rotate` names, which stay in force, and a `confirm` by that holder, which is voided;
-    - a `reroot` once the last signer reset, removed itself or has an empty device set, which must be taken.
+    - a `reroot` once the last signer removed itself, which must be taken, and one after the last signer reset or has an empty device set, which must be refused until a time-locked removal of it completes;
+    - a `signer_remove_cancel` from a holder on a removed row, and from a target with no team seat, both taken;
+    - one log replayed by two clients with different first-seen times, which gives one signer set; a completion whose `after` differs from the record; and a grant signed again without a comparison although first seen after the stated loss;
+    - a thief's self-removal of one of two signers, and its `approve` of a removal among three, which stay after the device is removed;
+    - a fork re-pin that moves an anchored device from a dropped `replace` branch;
   - **Keys:** a swapped SK, and a `kid` mismatch after unwrap.
   - **Recovery:** a blob with the wrong origin, account or `rk_v`, and a recovery key with a bad checksum or the wrong length.
   - **Comparisons:** an `r_I` that does not open its commitment, a commitment over another `m_I`, and words that do not match.
@@ -823,6 +843,7 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 - that no holder a removed holder approved, directly or not, receives a later key version;
 - that no account a removed holder confirmed, and no signer it added, receives a later TK version;
 - that no reset takes effect without S, or without the full delay with no cancel, and that removing device rows never takes the cancel away from a holder the logs list;
+- that no time-locked removal completes after the server refused a cancel from a holder the target's logs list, or within 7 days of its start by the log's recorded times;
 - that no signer is added, and no signer removed by another, with fewer than k = min(2, n) approvals unless a time-locked removal ran 7 days without its target's cancel, so one signer never takes a team of two or more alone, and no re-root takes effect while a signer is left;
 - that no removed member receives a TK version after the device that removed it is removed;
 - that an old S after a `replace` can extend no log a client that verified the `replace` follows, nor end a fork against it;
