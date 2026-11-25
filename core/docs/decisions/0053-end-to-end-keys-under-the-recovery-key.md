@@ -208,7 +208,7 @@ A statement's place in its log orders it. Neither `iat` nor the server's revisio
 
 **Waits run on the server's clock, as the log records it.** Three rules wait on time: a reset's `activate` (7 days), a time-locked removal's `signer_remove_complete` (7 days), and a proposal's lapse (30 days). A client's own clock alone never decides them.
 
-- Each statement record carries `taken_at`, the time the server applied it (0051). Along one log, `taken_at` never goes back. A client refuses one more than 300 s ahead of its own clock when it first receives it.
+- Each statement record carries `taken_at`, the RFC 3339 UTC time the server first took it, which never changes (0051). Along one log, `taken_at` never goes back, and a restore can lengthen a wait but never shorten one. A client refuses one more than 300 s ahead of its own clock when it first receives it.
 - A statement that ends a wait or approves a proposal names, in its signed payload, `after`: the `taken_at` of the statement it follows. `activate` names the reset's, `signer_remove_complete` the start's, and `approve` the proposal's.
   - It is valid when its own `taken_at` is at least 7 days after `after`, or for an `approve` at most 30 days after, and `after` equals the record the client holds.
   - So every client that holds the same head reaches the same state, and a comparison of heads covers the times. A client whose record differs from a signed `after` raises a fork alarm.
@@ -285,7 +285,7 @@ Each statement carries `by`: the signer's `acct`, its `holder`, and its `ih` and
 | `signer_remove` | `target`, `timelock` | Takes effect at once when `target` is `by.acct`. Otherwise a proposal. With `timelock`, it starts a time-locked removal (below) |
 | `approve` | `proposal`, `after` | A proposal takes effect at the statement where the distinct signers other than its target, counting the proposer, reach `k = min(2, n)`, with n the signers at that statement. So a lone signer adds the first co-signer alone, and with two signers or more nobody adds a signer or removes another alone without the time lock |
 | `withdraw` | `proposal` | Its proposer ends a proposal |
-| `signer_remove_cancel` | `proposal` | Ends a time-locked removal. Signed by any holder that the targeted signer's logs list at the cancel's `dh`, whatever its row, server role or team seat (Rows and the veto). It is a grant: a `rotate` that names its holder voids it, and the removal is pending again |
+| `signer_remove_cancel` | `proposal` | Ends a time-locked removal. Signed by any holder that the targeted signer's logs list at the cancel's `dh`, whatever its row, server role or team seat (Rows and the veto). It is a grant: a `rotate` that names its holder voids its cancels, pending and later, and the removal is pending again |
 | `signer_remove_complete` | `proposal`, `after` | Completes a time-locked removal, 7 days after the start under the waits above, and never after a cancel in force |
 | `confirm` | `member`: `acct`, `ik`, `ih`, `dh` | After a comparison (below). Confirming a member again after a reset is allowed |
 | `remove_member` | `acct` | Refused while the account is a signer. A signer leaves the signer set first |
@@ -315,7 +315,7 @@ Each statement carries `by`: the signer's `acct`, its `holder`, and its `ih` and
   - Voided statements keep their place for the chain and for version numbering.
   - A TK version that a voided `key` introduced counts as known to the attacker, so the team enters rotation pending. It stays readable for envelopes a client already held under it, and nothing is written under it again.
   - With IK in hand during the removal, the app lists the voided grants, and beside them the revocations the removed holder signed, which stay. For each it shows the account id, the IK fingerprint, the signing holder and the `seq`, and preselects none.
-  - The person signs again the grants they recognize, as a team chain once the account chain has applied: a `confirm` again, and their own `approve` of an addition, which counts with the approvals still in force.
+  - The person signs again the grants they recognize. A flow that signs account and team statements pushes the account chain first, then the team chain: a `confirm` again, and their own `approve` of an addition, which counts with the approvals still in force.
   - A grant may be signed again without a new comparison only if a remaining holder of the account verified it before the time the person gives for the loss. That holder's own first-seen time is one a thief cannot set. A later grant needs a new comparison, since a thief may have made it.
   - Teammates compare again only for the grants the person does not sign again, so honest history keeps D7's "teammates see no change".
 - **What a signer can do.** One signer can confirm members, seal team keys to them and remove members. Once a team has two signers, it can neither add a signer nor remove another without either k approvals or the time lock the target can cancel. A malicious signer is still trusted with the team's secrets, and every statement it signs shows in every member's app. The threat model covers this.
