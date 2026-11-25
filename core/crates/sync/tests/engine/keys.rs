@@ -375,7 +375,7 @@ async fn a_team_envelope_pulled_before_approval_is_taken_once_the_device_is_appr
         .await;
     assert!(matches!(outcomes[0], ChangeOutcome::Applied { .. }), "{outcomes:?}");
     let secrets = envelopes();
-    let keys = Arc::new(KeyLog::default());
+    let keys = Arc::new(KeyLog::waiting_for_approval());
     let mini = DeviceBuilder::new(&server, "dev_mini")
         .unapproved()
         .keys(Arc::clone(&keys))
@@ -389,9 +389,14 @@ async fn a_team_envelope_pulled_before_approval_is_taken_once_the_device_is_appr
         &tablepro_sync::api::ids::DeviceRowId("dev_mini".to_owned()),
         mini.seed.public().unwrap().0,
     );
+    let approved_by_the_server_alone = mini.sync().await;
+    let still_kept = secrets.get(&envelope);
+    keys.approved();
     mini.sync().await;
 
     assert_eq!(before, None);
+    assert_eq!(approved_by_the_server_alone.pushed, 0);
+    assert_eq!(still_kept, None, "the server's flag alone let an envelope in");
     assert_eq!(secrets.get(&envelope), Some(sealed(1)));
     assert!(keys.events().contains(&KeyEvent::Opened {
         id: envelope.clone(),

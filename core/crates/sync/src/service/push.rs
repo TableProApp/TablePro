@@ -39,10 +39,11 @@ fn framed(hasher: &mut Sha256, part: &[u8]) {
 fn hash_change(hasher: &mut Sha256, change: &Change) {
     framed(hasher, change.kind.as_str().as_bytes());
     framed(hasher, change.record_id.as_bytes());
+    // Tagged, so a create and a change on an empty tag never hash alike.
     match &change.base {
-        Some(ChangeTag::Service(tag)) => framed(hasher, tag.as_bytes()),
-        Some(ChangeTag::CloudKit(bytes)) => framed(hasher, bytes),
-        None => framed(hasher, b""),
+        Some(ChangeTag::Service(tag)) => framed(hasher, &[&[1][..], tag.as_bytes()].concat()),
+        Some(ChangeTag::CloudKit(bytes)) => framed(hasher, &[&[2][..], bytes].concat()),
+        None => framed(hasher, &[0]),
     }
     match &change.op {
         ChangeOp::Write { patch, .. } => {
@@ -185,6 +186,7 @@ impl ServiceSync {
         let rotation_due = matches!(scope, ScopeName::Team(_)) && row.rotation_due;
         !ctx.locked
             && ctx.approved
+            && ctx.keys_ready
             && !rotation_due
             && !ctx.held_secrets.contains(&scope)
             && !self.hooks.holds_secrets(scope)

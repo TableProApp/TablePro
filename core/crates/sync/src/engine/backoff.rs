@@ -16,6 +16,9 @@ pub struct Backoff {
 impl Backoff {
     pub const STANDARD: Self = Self::new(2_000, 15 * 60 * 1_000);
 
+    // A `Retry-After` longer than this is read as this, so a server cannot hold sync off until a restart.
+    pub const MAX_RETRY_AFTER_MS: u64 = 60 * 60 * 1_000;
+
     pub const fn new(base_ms: u64, max_ms: u64) -> Self {
         Self {
             base_ms,
@@ -50,7 +53,7 @@ impl Backoff {
         let half = ceiling / 2;
         let spread = ceiling - half;
         let drawn = if spread == 0 { 0 } else { jitter % (spread + 1) };
-        (half + drawn).max(retry_after_ms.unwrap_or(0))
+        (half + drawn).max(retry_after_ms.unwrap_or(0).min(Self::MAX_RETRY_AFTER_MS))
     }
 }
 

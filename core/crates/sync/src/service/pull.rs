@@ -36,9 +36,35 @@ struct Pull {
     seen: HashSet<(String, String)>,
     // A locked or unapproved device holds no key to check an envelope with: it keeps each one until it can.
     can_open: bool,
+    // The bytes of key objects and envelopes a snapshot keeps until it is caught up.
+    buffered: usize,
+}
+
+// A server that never lets a pull catch up, or a snapshot too large to keep, ends the pass instead of the device.
+const MAX_PAGES: usize = 100_000;
+const MAX_BUFFERED: usize = 256 << 20;
+
+fn buffered_bytes(record: &PulledRecord) -> usize {
+    record.fields_json.as_ref().map_or(0, String::len) + record.record_id.len() + 128
 }
 
 impl Pull {
+    // A snapshot's key objects and envelopes wait until it is caught up.
+    fn keep(&mut self, record: PulledRecord) -> Result<(), SyncError> {
+        self.buffered += buffered_bytes(&record);
+        if self.buffered > MAX_BUFFERED {
+            return Err(SyncError::Malformed {
+                what: "snapshot larger than a device keeps",
+            });
+        }
+        if family(self.scope, &record.kind).is_some() {
+            self.held_keys.push(record);
+        } else {
+            self.held_envelopes.push(record);
+        }
+        Ok(())
+    }
+
     fn judge(&self, kind: Kind, base: Option<&BaseRow>, record: &PulledRecord) -> Judgement {
         if self.pull_wins.contains(&kind) {
             return Judgement::PullWins;
@@ -107,7 +133,11 @@ impl ServiceSync {
             .filter(|adapter| ctx.refills(adapter.store()))
             .map(|adapter| adapter.kind())
             .collect();
-        let snapshot = row.cursor.is_none() || row.refill || !pull_wins.is_empty();
+        let can_open = ctx.keys_ready;
+        // Envelopes kept while the device could not check them are read again in a snapshot once it can, which
+        // serves each one's current copy after the key objects (0051, Pull).
+        let waiting = can_open && !self.waiting_envelopes(scope).await?.is_empty();
+        let snapshot = row.cursor.is_none() || row.refill || !pull_wins.is_empty() || waiting;
         let mut pull = Pull {
             scope,
             snapshot,
@@ -119,7 +149,8 @@ impl ServiceSync {
             held_keys: Vec::new(),
             held_envelopes: Vec::new(),
             seen: HashSet::new(),
-            can_open: ctx.approved && !ctx.locked,
+            can_open,
+            buffered: 0,
         };
         refresh(&mut row, info);
         if row.epoch.is_none() {
@@ -134,7 +165,6 @@ impl ServiceSync {
         if pull.snapshot {
             self.finish_snapshot(ctx, &mut pull, &adapters, &mut row, info).await?;
         }
-        self.retake_waiting(&pull, &adapters).await?;
         self.read_roster(info).await;
         Ok(())
     }
@@ -146,7 +176,7 @@ impl ServiceSync {
         adapters: &[Arc<dyn RecordAdapter>],
         row: &mut ScopeRow,
     ) -> Result<(), SyncError> {
-        loop {
+        for _ in 0..MAX_PAGES {
             self.stop.check()?;
             let request = PullRequest {
                 scope: pull.scope,
@@ -165,6 +195,11 @@ impl ServiceSync {
             };
             let caught_up = page.caught_up || page.records.is_empty();
             let next = next_cursor(pull, &page);
+            if !caught_up && (next.is_none() || next == pull.cursor) {
+                return Err(SyncError::Malformed {
+                    what: "pull page that does not move its cursor",
+                });
+            }
             ctx.report.pulled += page.records.len();
             let writes = self.take_page(pull, adapters, page.records).await?;
             pull.cursor = next;
@@ -186,6 +221,9 @@ impl ServiceSync {
                 return Ok(());
             }
         }
+        Err(SyncError::Malformed {
+            what: "pull that never catches up",
+        })
     }
 
     // In revision order on a delta page: runs of key objects go to their flow, each envelope is checked under the
@@ -202,9 +240,15 @@ impl ServiceSync {
         for record in records {
             pull.seen
                 .insert((record.kind.as_str().to_owned(), record.record_id.clone()));
+            let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
+            // A live record always carries its fields; one without them is no deletion this device would sign.
+            if record.deleted.is_none() && record.fields.is_none() {
+                writes.held.push(held(HeldReason::Unreadable, key, record));
+                continue;
+            }
             if let Some(next) = family(pull.scope, &record.kind) {
                 if pull.snapshot {
-                    pull.held_keys.push(record);
+                    pull.keep(record)?;
                 } else {
                     match run.as_mut() {
                         Some((held, records)) if *held == next => records.push(record),
@@ -219,15 +263,19 @@ impl ServiceSync {
             self.flush_run(pull, run.take()).await?;
             if record.kind.known() == Some(Kind::SecretEnvelope) {
                 if pull.snapshot {
-                    pull.held_envelopes.push(record);
+                    pull.keep(record)?;
                     continue;
                 }
-                let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
                 if !pull.can_open {
                     writes.held.push(held(HeldReason::AwaitingApproval, key, record));
                     continue;
                 }
-                if !self.envelope_opens(pull.scope, &record, pull.in_force).await? {
+                // In revision order an envelope is only ever checked under a version, never under a snapshot's rule.
+                let taken = match pull.in_force {
+                    Some(in_force) => self.envelope_opens(pull.scope, &record, Some(in_force)).await?,
+                    None => record.deleted.is_some(),
+                };
+                if !taken {
                     writes.held.push(held(HeldReason::Unreadable, key, record));
                     continue;
                 }
@@ -369,6 +417,8 @@ impl ServiceSync {
         if !keys.is_empty() {
             pull.in_force = self.arrive_set(pull.scope, keys).await?;
         }
+        // Versions only move forward: a snapshot that served no key object leaves the one in force as it was.
+        pull.in_force = pull.in_force.or(row.key_version);
         let mut opened = Vec::new();
         for record in std::mem::take(&mut pull.held_envelopes) {
             let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
@@ -395,8 +445,17 @@ impl ServiceSync {
                 writes.dropped = self.unseen_bases(pull).await?;
             }
             writes.rows = self.settled_stores(ctx, pull.scope).await?;
+            if pull.can_open {
+                writes
+                    .unheld
+                    .extend(self.waiting_envelopes(pull.scope).await?.into_iter().filter(|key| {
+                        !pull
+                            .seen
+                            .contains(&(key.kind.as_str().to_owned(), key.record_id.clone()))
+                    }));
+            }
             if row.refill {
-                ctx.adopt.push((pull.scope, info.epochs.clone()));
+                ctx.adopt.push((pull.scope, ctx.body.epoch, info.epochs.clone()));
             } else {
                 row.epoch = Some(ctx.body.epoch);
                 row.lineage.clone_from(&info.epochs);
@@ -411,47 +470,22 @@ impl ServiceSync {
         Ok(())
     }
 
-    // Envelopes kept while the device could not check them are taken once it can, as a snapshot takes envelopes: with
-    // no order, never below the copy held. One the pull just brought again is already settled by it.
-    async fn retake_waiting(&self, pull: &Pull, adapters: &[Arc<dyn RecordAdapter>]) -> Result<(), SyncError> {
-        if !pull.can_open {
-            return Ok(());
-        }
+    async fn waiting_envelopes(&self, scope: ScopeName) -> Result<Vec<RecordKey>, SyncError> {
         let rows = begin(&self.state)
             .await?
             .scan(&RowRange::ScopeKind(
                 Table::Held,
-                pull.scope,
+                scope,
                 KindName::of(Kind::SecretEnvelope),
             ))
             .await?;
-        let waiting: Vec<PulledRecord> = rows
+        Ok(rows
             .into_iter()
             .filter_map(|row| match row {
-                Row::Held(row) if row.reason == HeldReason::AwaitingApproval => Some(row.record),
+                Row::Held(row) if row.reason == HeldReason::AwaitingApproval => Some(row.key),
                 _ => None,
             })
-            .filter(|record| {
-                !pull
-                    .seen
-                    .contains(&(record.kind.as_str().to_owned(), record.record_id.clone()))
-            })
-            .collect();
-        if waiting.is_empty() {
-            return Ok(());
-        }
-        let mut writes = PageWrites::default();
-        let mut opened = Vec::new();
-        for record in waiting {
-            if self.envelope_opens(pull.scope, &record, None).await? {
-                opened.push(record);
-            } else {
-                let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
-                writes.held.push(held(HeldReason::Unreadable, key, record));
-            }
-        }
-        self.settle_all(pull, adapters, opened, &mut writes).await?;
-        self.commit_page(writes, None).await
+            .collect())
     }
 
     async fn unseen_bases(&self, pull: &Pull) -> Result<Vec<RecordKey>, SyncError> {

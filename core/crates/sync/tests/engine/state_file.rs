@@ -291,6 +291,36 @@ async fn a_commit_raises_the_counter_and_an_unfinished_one_writes_nothing() {
 }
 
 #[tokio::test]
+async fn a_binding_put_changes_only_the_state_mac() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = SqliteStateFiles::at(dir.path().to_path_buf())
+        .open(identity("dev_mac"))
+        .await
+        .unwrap();
+    let mut txn = state.begin().await.unwrap();
+    let Some(Row::Binding(held)) = txn.get(&RowKey::Binding).await.unwrap() else {
+        panic!("no binding row");
+    };
+    let mut forged = held.clone();
+    forged.account = "someone else".to_owned();
+    forged.device = "dev_other".to_owned();
+    forged.counter = 0;
+    forged.state_mac = [9; 32];
+
+    txn.put(Row::Binding(forged)).await.unwrap();
+    txn.commit().await.unwrap();
+
+    let Some(Row::Binding(now)) = state.begin().await.unwrap().get(&RowKey::Binding).await.unwrap() else {
+        panic!("no binding row");
+    };
+    assert_eq!(now.account, held.account);
+    assert_eq!(now.device, held.device);
+    assert_eq!(now.file_id, held.file_id);
+    assert_eq!(now.counter, held.counter + 1);
+    assert_eq!(now.state_mac, [9; 32]);
+}
+
+#[tokio::test]
 async fn a_file_made_for_another_device_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let files = SqliteStateFiles::at(dir.path().to_path_buf());

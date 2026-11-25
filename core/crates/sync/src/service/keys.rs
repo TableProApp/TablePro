@@ -148,18 +148,25 @@ impl ServiceSync {
     }
 
     // The refilled scopes take the epoch and its lineage only now, so a pass cut short before the push-back answered
-    // refills and pushes back again.
+    // refills and pushes back again. A scope that refilled against another epoch than the one pushed back for stays in
+    // refill for the next pass.
     async fn adopt_epoch(&self, ctx: &mut PassCtx) -> Result<(), SyncError> {
-        let adopt = std::mem::take(&mut ctx.adopt);
+        let Some(epoch) = ctx.pushed_back else {
+            return Ok(());
+        };
+        let adopt: Vec<_> = std::mem::take(&mut ctx.adopt)
+            .into_iter()
+            .filter(|(_, against, _)| *against == epoch)
+            .collect();
         if adopt.is_empty() {
             return Ok(());
         }
         self.stop.check()?;
         let mut txn = begin(&self.state).await?;
-        for (scope, lineage) in adopt {
+        for (scope, against, lineage) in adopt {
             if let Some(Row::Scope(mut row)) = txn.get(&RowKey::Scope(scope)).await? {
                 row.refill = false;
-                row.epoch = Some(ctx.body.epoch);
+                row.epoch = Some(against);
                 row.lineage = lineage;
                 txn.put(Row::Scope(row)).await?;
             }

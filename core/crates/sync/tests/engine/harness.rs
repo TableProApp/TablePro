@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use tablepro_keys::encoding::{AccountId, Origin, TeamId, Version};
+use tablepro_keys::encoding::{AccountId, KeyDeviceId, Origin, TeamId, Version};
 use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Seed;
 use tablepro_records::Kind;
@@ -15,8 +15,8 @@ use tablepro_sync::api::adapter::{LocalChange, LocalRecord, LocalRecords, Record
 use tablepro_sync::api::error::{AdapterError, StateError, SyncError};
 use tablepro_sync::api::ids::{ChangeTag, DeviceRowId, IdempotencyKey, KindName, ScopeName};
 use tablepro_sync::api::key_flows::{
-    AccountFlows, ApprovalFlows, ArrivalOrder, DeviceFlows, KeyApplied, KeyArrival, KeyChangeSet, OpenedEnvelope,
-    PushBackVerdict, ResetFlows, RestoreFlows, Roster, StopAction, StopFlows, TeamFlows,
+    AccountFlows, ApprovalFlows, ArrivalOrder, DeviceFlows, KeyApplied, KeyArrival, KeyChangeSet, KeyState,
+    OpenedEnvelope, PushBackVerdict, ResetFlows, RestoreFlows, Roster, StopAction, StopFlows, TeamFlows,
 };
 use tablepro_sync::api::scopes::ScopesAnswer;
 use tablepro_sync::api::state::{
@@ -396,6 +396,7 @@ pub struct KeyLog {
     answered: Mutex<Vec<Vec<ChangeOutcome>>>,
     verdict: Mutex<Option<PushBackVerdict>>,
     newest: Mutex<BTreeMap<String, u32>>,
+    waiting_for_approval: AtomicBool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -413,6 +414,17 @@ pub enum KeyEvent {
 }
 
 impl KeyLog {
+    // The device holds no keys until `approved`.
+    pub fn waiting_for_approval() -> Self {
+        let keys = Self::default();
+        keys.waiting_for_approval.store(true, Ordering::SeqCst);
+        keys
+    }
+
+    pub fn approved(&self) {
+        self.waiting_for_approval.store(false, Ordering::SeqCst);
+    }
+
     pub fn events(&self) -> Vec<KeyEvent> {
         lock(&self.events).clone()
     }
@@ -492,6 +504,17 @@ impl KeyLog {
 
 #[async_trait]
 impl AccountFlows for KeyLog {
+    async fn key_state(&self) -> Result<KeyState, SyncError> {
+        Ok(if self.waiting_for_approval.load(Ordering::SeqCst) {
+            KeyState::NeedsApproval { request: None }
+        } else {
+            KeyState::Approved {
+                av: Version::FIRST,
+                key_device: KeyDeviceId(Uuid::nil()),
+            }
+        })
+    }
+
     async fn apply_account_objects(&self, arrival: KeyArrival) -> Result<KeyApplied, SyncError> {
         Ok(self.applied(&arrival, "personal"))
     }

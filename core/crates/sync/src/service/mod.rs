@@ -99,11 +99,15 @@ struct PassCtx {
     // A refill against a new epoch was pulled, and the key objects still have to go back before anything else.
     new_epoch: bool,
     pushed_back: Option<EpochId>,
-    // The scopes whose refill snapshot is done: each adopts the epoch and its lineage once the push-back answered.
-    adopt: Vec<(ScopeName, Vec<LineageEpoch>)>,
+    // The scopes whose refill snapshot is done, with the epoch they refilled against: each adopts it and its lineage
+    // once the push-back for that epoch answered.
+    adopt: Vec<(ScopeName, EpochId, Vec<LineageEpoch>)>,
     // Nothing personal syncs while the device is locked, and no secret goes up under a stopped or ended key.
     locked: bool,
     approved: bool,
+    // This device's own key state says it holds its keys, whatever the server says: only then is an envelope checked
+    // or sealed.
+    keys_ready: bool,
     held_secrets: HashSet<ScopeName>,
     // A journal pass diffs only these records.
     named: Option<JournalIds>,
@@ -215,6 +219,7 @@ impl ServiceSync {
             adopt: Vec::new(),
             locked: false,
             approved,
+            keys_ready: false,
             held_secrets: HashSet::new(),
             named,
             report: PassReport::default(),
@@ -260,8 +265,10 @@ impl ServiceSync {
     // What outlives the process: a lock the key flows hold, and the scopes whose key version stopped or ended
     // (0054, `key_versions`).
     async fn read_key_state(&self, ctx: &mut PassCtx) -> Result<(), SyncError> {
-        let locked = matches!(self.keys.key_state().await, Ok(KeyState::Locked { .. }));
-        ctx.locked = locked || self.hooks.locked().is_some();
+        let state = self.keys.key_state().await;
+        let hooks_locked = self.hooks.locked().is_some();
+        ctx.locked = hooks_locked || matches!(state, Ok(KeyState::Locked { .. }));
+        ctx.keys_ready = !hooks_locked && matches!(state, Ok(KeyState::Approved { .. }));
         let mut txn = begin(&self.state).await?;
         for row in txn.scan(&RowRange::Table(Table::KeyVersions)).await? {
             if let Row::KeyVersion(row) = row

@@ -165,12 +165,25 @@ async fn connect(path: &Path) -> Result<SqlitePool, StateError> {
     Ok(pool)
 }
 
+// A file is bound once, when it is made. One that holds rows and no binding was not made by this code, and is refused.
 async fn bind(pool: &SqlitePool, identity: &StateIdentity) -> Result<(), StateError> {
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(sql)?;
     match read(&mut tx, &RowKey::Binding).await? {
         Some(Row::Binding(binding)) if bound_to(&binding, identity) => {}
         Some(_) => return Err(StateError::WrongIdentity),
-        None => write(&mut tx, &Row::Binding(fresh_binding(identity))).await?,
+        None => {
+            for table in Table::SYNC.into_iter().chain(Table::KEY) {
+                let statement = format!("SELECT EXISTS (SELECT 1 FROM {})", table.name());
+                let held: bool = sqlx::query_scalar(AssertSqlSafe(statement))
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(sql)?;
+                if held {
+                    return Err(StateError::Integrity);
+                }
+            }
+            write(&mut tx, &Row::Binding(fresh_binding(identity))).await?;
+        }
     }
     tx.commit().await.map_err(sql)
 }
@@ -196,7 +209,8 @@ impl StateFiles for SqliteStateFiles {
         let path = self.path(&identity);
         let lock = take_lock(&path)?;
         self.close(&path).await;
-        for suffix in ["", "-wal", "-shm"] {
+        // The WAL first: one left beside a new file of the same name would be replayed into it.
+        for suffix in ["-wal", "-shm", ""] {
             let mut name = path.clone().into_os_string();
             name.push(suffix);
             match std::fs::remove_file(PathBuf::from(name)) {
@@ -305,14 +319,17 @@ impl StateTxn for SqliteTxn {
             .collect()
     }
 
-    // The counter is the store's: a binding row put keeps the stored one.
+    // What the file is bound to and its counter are the store's: a binding row put changes only the state MAC.
     async fn put(&mut self, row: Row) -> Result<(), StateError> {
-        let row = match (row, read(&mut self.tx, &RowKey::Binding).await?) {
-            (Row::Binding(mut binding), Some(Row::Binding(stored))) => {
-                binding.counter = stored.counter;
-                Row::Binding(binding)
-            }
-            (row, _) => row,
+        let row = match row {
+            Row::Binding(binding) => match read(&mut self.tx, &RowKey::Binding).await? {
+                Some(Row::Binding(mut stored)) => {
+                    stored.state_mac = binding.state_mac;
+                    Row::Binding(stored)
+                }
+                _ => return Err(StateError::Integrity),
+            },
+            row => row,
         };
         write(&mut self.tx, &row).await
     }
