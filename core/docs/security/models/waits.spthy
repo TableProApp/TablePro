@@ -109,7 +109,7 @@ lemma waits_never_shortened:
 
 // 0053: a client adds a receipt key only through a chain from the key it pinned, so every key it trusts is one the
 // server made, unless a receipt key leaked. A key nothing links needs the person's acceptance, outside this lemma.
-lemma receipt_keys_chain_to_the_pin [use_induction]:
+lemma receipt_keys_chain_to_the_pin [reuse, use_induction]:
   "All c o k #i. Trusts(c, o, k)@i ==> (Ex #s. ServerKey(o, k)@s) | (Ex #l. ReceiptKeyLeaked(o)@l)"
 
 // The honest server never signs two receipts of one epoch with different days, even across a restore.

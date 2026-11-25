@@ -5,6 +5,8 @@ begin
 // bundles, Flows: Removing a member, Rotation pending. G is an honest signer client that verifies the team log and
 // seals team keys. The root signer account has a second holder a thief can steal. The server is malicious and
 // relays statements and member bundles as it likes.
+// Flag EXEC leaves out rules that only add attacker behavior the executability lemmas do not use, so the search for
+// an honest run finishes; a run found without them exists with them.
 // Team statements are signed by one holder's key and stay valid after that holder is removed: nothing is voided, and
 // the person revokes what they do not recognize with new statements. An authority is a root signer holder, or a
 // signer some authority added.
@@ -21,7 +23,7 @@ rule Member:
   in
   [ Fr(~ik), Fr(~sk) ]
   --[ OnlyOnce(<'member', $m>), HonestSK($m, pk(~sk)) ]->
-  [ !MemberIK($m, ~ik), MemberCur($m, ~sk), Out(<mp, sign(mp, ~ik)>) ]
+  [ !MemberIK($m, ~ik), MemberCur($m, ~sk), !MemberSK($m, ~sk), Out(<mp, sign(mp, ~ik)>) ]
 
 // The member removes a lost device with S: a `rotate` signed by IK with a new SK, copied to its member bundle.
 rule Member_Rotate:
@@ -30,23 +32,27 @@ rule Member_Rotate:
   in
   [ MemberCur(m, sk), !MemberIK(m, ik), Fr(~sk2) ]
   --[ RevokedSK(m, pk(sk)), HonestSK(m, pk(~sk2)) ]->
-  [ MemberCur(m, ~sk2), !Replaced(m, pk(sk)), Out(<rp, sign(rp, ik)>) ]
+  [ MemberCur(m, ~sk2), !MemberSK(m, ~sk2), !Replaced(m, pk(sk)), Out(<rp, sign(rp, ik)>) ]
 
 // The member checks what is sealed to it: it uses a TK sealed to its current SK, and refuses one sealed to an SK its
 // `rotate` replaced, raising an alarm.
 rule Member_UseTK:
-  [ MemberCur(m, sk), In(<'grant', t, kid(tk), m, pk(sk)>), In(aenc(<wrapinfo(t, m, pk(sk)), tk>, pk(sk))) ]
-  --[ MemberUsesTK(t, m, tk, pk(sk)) ]->
-  [ MemberCur(m, sk) ]
+  [ !MemberSK(m, sk), In(<'grant', t, kid(tk), m, pk(sk)>), In(aenc(<wrapinfo(t, m, pk(sk)), tk>, pk(sk))) ]
+  --[ NotReplaced(m, pk(sk)), MemberUsesTK(t, m, tk, pk(sk)) ]->
+  [ ]
 
 rule Member_RefuseTK:
   [ !Replaced(m, skpub), In(<'grant', t, ktk, m, skpub>) ]
   --[ MemberAlarm(t, m, skpub) ]->
   [ ]
 
-// A thief gets the SK of the member device it stole.
+#ifdef EXEC
+#else
+// A thief gets the SK of a member device it stole.
 rule StealMemberDevice:
-  [ MemberCur(m, sk) ] --[ SKRevealed(m, pk(sk)) ]-> [ MemberCur(m, sk), Out(sk) ]
+  [ !MemberSK(m, sk) ] --[ SKRevealed(m, pk(sk)) ]-> [ Out(sk) ]
+
+#endif
 
 // The root signer account, its ASK as 0053 had it, the holder G runs on, and a second holder.
 rule Team:
@@ -65,7 +71,7 @@ rule H_Confirm:
     cp = <'confirm', t, m, pk(ik), pk(hs)>
   in
   [ !SignerHolder(t, hs, ask), !MemberIK(m, ik) ]
-  -->
+  --[ HonestConfirm(t, m) ]->
   [ Out(<cp, sign(cp, hs)>) ]
 
 // A statement is signed by a holder G verified in a signer's device log.
@@ -77,6 +83,8 @@ rule G_AcceptConfirm:
   -->
   [ !TConf(t, m, ikpub, lin) ]
 
+#ifdef EXEC
+#else
 // A signer added by a statement holds the authority of the statement's signer below it.
 rule G_AcceptSignerAdd:
   let
@@ -113,6 +121,8 @@ rule G_AcceptRemoveMemberByAddedSigner:
   --[ RemoveMember(t, m), RemovedBy(t, m, pk(ph)) ]->
   [ ]
 
+#endif
+
 // The person removes the stolen signer holder with S. G sees the signer's `rotate`.
 rule SignerRemovesHolder:
   [ !Stealable(t, g2, ask), Fr(~ask2) ]
@@ -137,11 +147,15 @@ rule G_AcceptMemberRotate:
   --[ GSawRevoked(t, m, skold) ]->
   [ !GSK(t, m, pk(skx)) ]
 
+#ifdef EXEC
+#else
 // A server hint that a member's device was removed: G signs `revoke_sk` for the SK it holds for that member.
 rule G_RevokeOnHint:
   [ !GSK(t, m, skpub), In(<'hint', t, m, skpub>) ]
   --[ GSawRevoked(t, m, skpub) ]->
   [ Out(<'revoke_sk', t, m, skpub>) ]
+
+#endif
 
 rule G_RemoveMember:
   [ !TConf(t, m, ik, lin) ] --[ RemoveMember(t, m) ]-> [ Out(<'remove_member', t, m>) ]
@@ -157,6 +171,10 @@ rule G_Seal:
   --[ SealTK(t, tk, m, pk(skx)), UseConf(t, m), UseSK(t, m, pk(skx)) ]->
   [ Out(<'grant', t, kid(tk), m, pk(skx)>), Out(aenc(<wrapinfo(t, m, pk(skx)), tk>, pk(skx))) ]
 
+// The member's own check: an SK its `rotate` replaced is no longer its current one.
+restriction NotReplaced:
+  "All m sk #i #r. NotReplaced(m, sk)@i & RevokedSK(m, sk)@r & #r < #i ==> F"
+
 restriction ConfirmedAndNotRemoved:
   "All t m #i #j. UseConf(t, m)@i & RemoveMember(t, m)@j & #j < #i ==> F"
 
@@ -168,7 +186,8 @@ restriction OnlyOnce:
 
 lemma team_executable:
   exists-trace
-  "Ex t r m tk sk #rm #n #s. RemoveMember(t, r)@rm & NewTK(t, tk)@n & SealTK(t, tk, m, sk)@s & #rm < #n
+  "Ex t r m tk sk #c1 #c2 #rm #n #s. HonestConfirm(t, r)@c1 & HonestConfirm(t, m)@c2 & not (r = m)
+     & RemoveMember(t, r)@rm & NewTK(t, tk)@n & SealTK(t, tk, m, sk)@s & #rm < #n
      & not (Ex m2 sk2 #c. SKRevealed(m2, sk2)@c) & not (Ex h #c. StealSigner(t, h)@c)"
 
 // 0053's claim: a member removed by a holder that is itself removed later still gets no later TK.

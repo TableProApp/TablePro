@@ -72,6 +72,17 @@ rule C_Extend2:
   --[ ClientExtended(a, x) ]->
   [ ]
 
+// A reset that starts a new generation, after a fork, is endorsed by the IK in force.
+rule C_FollowGeneration1:
+  [ !ClientIK1(a, pk(ik)), In(<<'generation', a, x>, sign(<'generation', a, x>, ik)>) ]
+  --[ BeforeClientReplace(a), ClientFollowsGeneration(a, pk(ik)) ]->
+  [ ]
+
+rule C_FollowGeneration2:
+  [ !ClientIK2(a, pk(ik)), In(<<'generation', a, x>, sign(<'generation', a, x>, ik)>) ]
+  --[ ClientFollowsGeneration(a, pk(ik)) ]->
+  [ ]
+
 rule PersonSigns1:
   [ !Phase1(a, S, ik, rk, ak), Fr(~x) ]
   --[ BeforeReplace(a), PersonStatement(a, ~x) ]->
@@ -126,5 +137,10 @@ lemma old_recovery_key_extends_no_log_after_the_replace:
   "All a ik2 x #r #q #e. ClientSawReplaceTo(a, ik2)@r & PersonReplaceTo(a, ik2)@q & ClientExtended(a, x)@e & #r < #e ==>
      (Ex #p. PersonStatement(a, x)@p)
      | (Ex #y. RevealCurrentS(a)@y)"
+
+// 0053's claim: no IK a client saw replaced starts a new generation for it.
+lemma replaced_ik_starts_no_generation:
+  "All a ik2 ik #r #q #i. ClientSawReplaceTo(a, ik2)@r & PersonReplaceTo(a, ik2)@q & ClientFollowsGeneration(a, ik)@i
+     & #r < #i ==> ik = ik2 | (Ex #y. RevealCurrentS(a)@y)"
 
 end

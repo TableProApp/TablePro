@@ -2,9 +2,10 @@
 
 Tamarin theories for the flows and claims of [ADR 0053](../../decisions/0053-end-to-end-keys-under-the-recovery-key.md), Formal model and review, under the attacker of [the sync threat model](../sync-threat-model.md).
 
-- Every theory models 0053 at `31c90f1f01` (#4485), the text frozen for G0 round 5: forks are terminal, nothing is voided, versions step by one.
-- The Results below are from one run of every lemma against that head. Each run records its 0053 head here.
-- A flag named `OLD...` models the text before G0 round 1 (`e8879f95ee`), where the model found the attack that the fix closes. `NOCOMMIT` and `LATEVIEW` show why the comparison needs its commitment and its timing.
+- Every theory models 0053 on main at `9bdaa24f8a`, the text G0 round 6 reviews (its 0053 is #4502's `81ae48462f`): forks are equivocation only and freeze a generation, a new generation leaves one, nothing is voided, `revoke_add` undoes what removed holders alone added, versions step by one.
+- **Runs behind the Results:** `r6` and `r7`, at 0053 `81ae48462f`, which main's `9bdaa24f8a` carries unchanged. `r7` reran every lemma of a theory changed after `r6` started, and `r6` holds the rest.
+- **Flags that model older text.** A flag named `OLD...` models the text before G0 round 1 (`e8879f95ee`), where the model found the attack that the fix closes. `NOCOMMIT` and `LATEVIEW` show why the comparison needs its commitment and its timing. `UNCHECKED` drops three checks of `team-signers`, so its 2-step lemmas are shown not to be vacuous.
+- **Flags that speed a search.** `EXEC`, `CANCELS` and `NOCOLLISION` leave out rules an exists-trace lemma does not use; a trace found without them exists with them. `NOINSET` and `NOCUT` drop a restriction for an all-traces lemma that does not rest on it; a lemma that holds on more runs holds on fewer.
 
 ## Running
 
@@ -23,14 +24,17 @@ A timeout, an out-of-memory stop or a stop by signal is never a pass. Every theo
 | `replace-recovery.spthy` | Identity log, `replace`, a replaced key never decides; Flows: Replace Recovery Key | `OLDREPLACE`: Replace keeps IK and AK |
 | `sas-commitment.spthy` | Comparing keys: the exchange, when each side fixes its view | `NOCOMMIT`: no commitment; `LATEVIEW`: the initiator reads its heads after its reveal |
 | `device-approval.spthy` | Comparing keys: device approval; Flows: Approving a device; Stale or missing state (re-pin by comparison) | |
-| `member-confirmation.spthy` | Comparing keys: member confirmation and the QR code; Flows: Confirming a member | |
-| `device-removal.spthy` | Device log, the device set, descendants; Flows: Removing a lost device, including a holder that signed out | `OLDLEAVE`: a rotate names only holders in the set |
+| `member-confirmation.spthy` | Comparing keys: member confirmation and the QR code; Flows: Confirming a member | `NOCOLLISION` |
+| `device-removal.spthy` | Device log, the device set, descendants; Flows: Removing a lost device, including a holder that signed out | `OLDLEAVE`: a rotate names only holders in the set; `NOINSET` |
 | `identity-heads.spthy` | Identity log: `dh` never goes back; the reset's holder | `OLDDH`: `dh` may go back |
 | `log-chain.spthy` | Rollback and forks: a fork freezes the log; Restore; Stale or missing state (the anchored re-pin) | |
+| `generations.spthy` | Rollback and forks: a fork is two statements at one position, one statement per position, a new generation with S | |
 | `versions.spthy` | Keys and Logs: versions step by exactly one; Floors and the current version: no `kv` above it | |
-| `server-enforcement.spthy` | Server enforcement (D8), Key objects as records, Rows and the veto (a row removal only locks); Flows: Reset and the `fresh` reset, the delay, and the cancel by any holder the logs list | `OLDRESET`: a reset applies at once |
-| `team-keys.spthy` | Team log: holder-signed statements that stay valid after a removal, `remove_member`, `key`; member bundles, the member's own check; Flows: Removing a member, Rotation pending | |
-| `team-signers.spthy` | Team log: `signer_add`, `signer_remove`, `approve`, k = min(2, n), the time-locked removal and its cancel from a pinned holder, the sole owner after a reset, `reroot` | |
+| `server-enforcement.spthy` | Server enforcement (D8), Key objects as records, Rows and the veto (a row removal only locks); Flows: Reset and the `fresh` reset, the delay, and the cancel by any holder the logs list | `OLDRESET`: a reset applies at once; `EXEC`, `CANCELS`, `NOCUT` |
+| `team-keys.spthy` | Team log: holder-signed statements that stay valid after a removal, `remove_member`, `key`; member bundles, the member's own check; Flows: Removing a member, Rotation pending | `EXEC` |
+| `team-signers.spthy` | Team log: `signer_add`, `signer_remove`, `approve`, k = min(2, n), the time-locked removal and its cancel from a pinned holder, the sole owner after a reset, `reroot` | `UNCHECKED` |
+| `revoke-add.spthy` | Team log: `revoke_add` and statements under IK; the removal sheet | |
+| `team-positions.spthy` | Team log: references move forward along the team log | |
 | `waits.spthy` | Waits on the server's clock, `after`, time receipts with their epoch, rotating the receipt key, Restore | |
 | `envelopes.spthy` | Envelopes: the counter, the writer signature, Accepting an envelope; Floors | `OLDCOUNTER`: one counter across versions, compared alone |
 
@@ -97,6 +101,7 @@ Rows 1 to 8 were found on the text before G0 round 1 (`e8879f95ee`), and each fl
 - **An assumption the model makes explicit.** The honest server's waits rest on the secrecy of its receipt key: with it, anyone who can republish after a restore can backdate a start. `waits_never_shortened` holds unless that key leaks.
 - **Not modeled.** These flows are outside the theories, and G0 weighs them by text:
   - the no-holder reset's step-up and its deletion at `activate`, beyond the delay and cancel in `server-enforcement`;
-  - a suspended signer's `signer_add` under its new IK, and the review list of what a removed device signed;
+  - a suspended signer's `signer_add` under its new IK, and the removal sheet beyond `revoke_add` and `remove_member`;
+  - a new generation without S, which is a reset under its 7-day veto as `server-enforcement` models it, and a team's new team after a team fork;
   - `prev_at` and the hold on a completion seen with its start, beyond the waits in `waits` and the chain in `log-chain`;
   - the server's side of a restore (epochs and refill), beyond the client's refusal of a shorter log and its republish in `log-chain`, and the receipts in `waits`.

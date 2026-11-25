@@ -6,6 +6,8 @@ begin
 // an owner role, so it can write any statement B or an attacker account signs, and can claim that A reset. G
 // verifies the team log. n counts every signer in the set; nothing the server says and no reset lowers it.
 // The model has no clock: a time-locked removal completes any time after its start unless its target cancelled.
+// Flag UNCHECKED drops three checks G makes: a cancel ends a removal, only the holders the team pinned may cancel, and
+// a re-root needs an empty signer set. Each lemma that rests on one of them is then falsified, so none is vacuous.
 
 builtins: hashing, signing
 
@@ -19,10 +21,19 @@ rule Team:
 
 // A reset of A's account, which the server may have made up. Its new IK and the holder it names are the attacker's.
 // As the sole owner, the reset account may start A's time-locked removal, but its holder is not one the team pinned.
+#ifdef UNCHECKED
+rule ResetAccountOfA:
+  [ !Key(t, 'A', ka), Fr(~ik2), Fr(~hr) ]
+  --[ OnlyOnce(<'reset', t>), Suspended(t, 'A'), ResetHolder(t, pk(~hr)) ]->
+  [ !ResetAccount(t, 'A', ~ik2), !ListedHolder(t, 'A', pk(~hr)), Out(<~ik2, ~hr, pk(~hr)>) ]
+
+#else
 rule ResetAccountOfA:
   [ !Key(t, 'A', ka), Fr(~ik2), Fr(~hr) ]
   --[ OnlyOnce(<'reset', t>), Suspended(t, 'A'), ResetHolder(t, pk(~hr)) ]->
   [ !ResetAccount(t, 'A', ~ik2), Out(<~ik2, ~hr, pk(~hr)>) ]
+
+#endif
 
 rule CorruptB:
   [ !Key(t, 'B', kb) ] --[ Corrupt(t, 'B') ]-> [ Out(kb) ]
@@ -140,8 +151,15 @@ rule V_Reroot:
   --[ NoSignerLeft(t), Reroot(t, r) ]->
   [ ]
 
+#ifdef UNCHECKED
+#else
 restriction NoCancelInForce:
   "All t pid h #i #c. NoCancelInForce(t, pid)@i & TimelockCancelled(t, pid, h)@c & #c < #i ==> F"
+
+restriction NoSignerLeft:
+  "All t #i. NoSignerLeft(t)@i ==>
+     All s #j. SignerIn(t, s)@j & #j < #i ==> Ex #o. SignerOut(t, s)@o & #o < #i"
+#endif
 
 restriction InSet:
   "All t s #i. InSet(t, s)@i ==> (Ex #j. SignerIn(t, s)@j & #j < #i) & not (Ex #o. SignerOut(t, s)@o & #o < #i)"
@@ -149,10 +167,6 @@ restriction InSet:
 restriction OnlySigner:
   "All t s #i. OnlySigner(t, s)@i ==>
      not (Ex s2 #j. SignerIn(t, s2)@j & #j < #i & not (s2 = s) & not (Ex #o. SignerOut(t, s2)@o & #o < #i))"
-
-restriction NoSignerLeft:
-  "All t #i. NoSignerLeft(t)@i ==>
-     All s #j. SignerIn(t, s)@j & #j < #i ==> Ex #o. SignerOut(t, s)@o & #o < #i"
 
 restriction JoinOnce:
   "All t s #i #j. SignerIn(t, s)@i & SignerIn(t, s)@j ==> #i = #j"
@@ -165,6 +179,11 @@ restriction Once:
 
 restriction OnlyOnce:
   "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+// Both signers leave, and an owner re-roots the team.
+lemma reroot_executable:
+  exists-trace
+  "Ex t r #i. Reroot(t, r)@i"
 
 // A adds a third signer with B's approval.
 lemma signers_executable:

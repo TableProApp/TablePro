@@ -9,6 +9,9 @@ begin
 // and the device set, and checks DPoP proofs against the set.
 // A reset waits 7 days as pending, and any holder in the set or S can cancel it. The model has no clock: an
 // activation may come at any time after the reset, so "the full delay" means a pending reset nobody cancelled.
+// Flag CANCELS leaves out the rules the two cancel lemmas do not use, so their search finishes.
+// Flag EXEC leaves out the attacker's own requests, theft and leaks, for the honest executability lemma; NOCUT drops
+// the row lock, for safety lemmas that do not rest on it, since it only removes runs.
 // Flag OLDRESET models 0053 before G0 round 1 (e8879f95ee), where a reset applied at once.
 
 builtins: hashing, signing
@@ -16,8 +19,11 @@ builtins: hashing, signing
 macros:
   dpop(jti, htm, a) = <'dpop+jwt', jti, htm, a, h(<'access-token', a>)>
 
+#ifdef EXEC
+#else
 rule Attacker_Request:
   [ In(m) ] --> [ ToServer(m) ]
+#endif
 
 rule SignUp:
   [ Fr(~a) ] --> [ SrvEmpty(~a), !PersonAccount(~a), Out(~a) ]
@@ -43,6 +49,8 @@ rule Srv_Genesis:
     , Accepted(a, pk(hsig), <'genesis', gp>) ]->
   [ !IKTaken(a, pk(ik)), !SMem(a, pk(hsig), <'root', hid>, pk(ik)) ]
 
+#ifdef CANCELS
+#else
 // An approved holder approves an honest new holder after a comparison (device-approval.spthy).
 rule H_Approve:
   let
@@ -52,7 +60,10 @@ rule H_Approve:
   [ !Holder(a, hsig), Fr(~nsig), Fr(~nid), Fr(~jti) ]
   --[ HonestKey(a, pk(~nsig)), HolderSent(a, pk(hsig), <'add', ap>) ]->
   [ !Holder(a, ~nsig), ToServer(<'add', <ap, sign(ap, hsig)>, <dp, sign(dp, hsig)>>) ]
+#endif
 
+#ifdef CANCELS
+#else
 // The approver signs the add with its own key and proves that key with DPoP; it must be in the set under the IK
 // in force.
 rule Srv_Add:
@@ -64,7 +75,10 @@ rule Srv_Add:
   --[ InForce(a, ik), JtiUsed(jti), Unique(nid), UseMem(a, blin), SrvMember(a, pk(nk), <'lin', nid, blin>)
     , Accepted(a, pk(bysig), <'add', ap>) ]->
   [ !SMem(a, pk(nk), <'lin', nid, blin>, ik) ]
+#endif
 
+#ifdef CANCELS
+#else
 // Recovery with S: the new holder signs its own add with IK and proves its own key.
 rule P_Recover:
   let
@@ -74,7 +88,10 @@ rule P_Recover:
   [ !IK(a, ik), Fr(~nsig), Fr(~nid), Fr(~jti) ]
   --[ HonestKey(a, pk(~nsig)), HolderSent(a, pk(~nsig), <'add-recovery', ap>) ]->
   [ !Holder(a, ~nsig), ToServer(<'add-recovery', <ap, sign(ap, ik)>, <dp, sign(dp, ~nsig)>>) ]
+#endif
 
+#ifdef CANCELS
+#else
 rule Srv_Recover:
   let
     ap = <'add', a, 'recovery', pk(nsig), nid>
@@ -84,6 +101,7 @@ rule Srv_Recover:
   --[ InForce(a, pk(ik)), JtiUsed(jti), Unique(nid), SrvMember(a, pk(nsig), <'root', nid>)
     , Accepted(a, pk(nsig), <'add-recovery', ap>) ]->
   [ !SMem(a, pk(nsig), <'root', nid>, pk(ik)) ]
+#endif
 
 // Reset when S is lost: a new IK, endorsed by the holder it names, which must be in the set. Its place in the log
 // makes each reset statement unique, which the nonce stands for.
@@ -183,6 +201,8 @@ rule H_Activate:
   [ !PersonReset(a, ik2, rid) ] --> [ ToServer(<'activate', <ap, sign(ap, ik2)>>) ]
 #endif
 
+#ifdef CANCELS
+#else
 // Any other key-object or envelope write, and every personal read, passes the same check.
 rule H_Write:
   let
@@ -191,7 +211,10 @@ rule H_Write:
   [ !Holder(a, hsig), Fr(~jti), Fr(~body) ]
   --[ HolderSent(a, pk(hsig), <'write', ~body>) ]->
   [ ToServer(<'write', ~body, <dp, sign(dp, hsig)>>) ]
+#endif
 
+#ifdef CANCELS
+#else
 rule Srv_Write:
   let
     dp = dpop(jti, 'write', a)
@@ -199,23 +222,30 @@ rule Srv_Write:
   [ !IKTaken(a, ik), !SMem(a, pk(hsig), lin, ik), ToServer(<'write', body, <dp, sign(dp, hsig)>>) ]
   --[ InForce(a, ik), JtiUsed(jti), UseMem(a, lin), Accepted(a, pk(hsig), <'write', body>) ]->
   [ ]
+#endif
 
 // An admin's portal removal, or the person's removal of the device row: the holder and those it approved.
 rule AdminRemove:
   [ !SMem(a, hk, lin, ik) ] --[ Cut(a, lin), RowRemoved(a, hk) ]-> [ ]
 
+#ifdef EXEC
+#else
 rule Compromise:
   [ !Holder(a, hsig) ] --[ Compromise(a, pk(hsig)) ]-> [ Out(hsig) ]
 
 rule RevealIK:
   [ !IK(a, ik) ] --[ RevealIK(a) ]-> [ Out(ik) ]
+#endif
 
 // The IK in force is the one the server took last.
 restriction InForce:
   "All a ik ik2 #i #g #h. InForce(a, ik)@i & SrvIK(a, ik)@g & SrvIK(a, ik2)@h & #g < #h & #h < #i ==> F"
 
+#ifdef NOCUT
+#else
 restriction NotCut:
   "All a lin linX #i #j. UseMem(a, lin)@i & Cut(a, linX)@j & #j < #i ==> not (linX = lin) & not (linX << lin)"
+#endif
 
 // Each jti is kept for longer than a proof's iat window, so a proof is taken once.
 restriction JtiOnce:

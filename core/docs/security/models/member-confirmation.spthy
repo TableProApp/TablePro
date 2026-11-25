@@ -3,6 +3,8 @@ begin
 
 // ADR 0053: Comparing keys (member confirmation, the QR code) and Flows: Confirming a member.
 // G is the signer and the initiator I, M the member and the responder R.
+// Flag NOCOLLISION leaves out the second-preimage rules. They only add attacker behavior, so an honest run found
+// without them exists with them; the executability lemmas run that way, since the search drowns in them otherwise.
 
 builtins: hashing, signing, asymmetric-encryption
 
@@ -18,7 +20,7 @@ macros:
 // The member's identity log, as its member bundle copies it.
 rule Member:
   let
-    mp  = <'genesis', $origin, $m, pk(~ikM), pk(~skM)>
+    mp  = <'genesis', $origin, $m, pk(~ikM), pk(~skM), 'iat'>
     mst = <mp, sign(mp, ~ikM)>
   in
   [ Fr(~ikM), Fr(~skM) ]
@@ -38,7 +40,7 @@ rule Team:
 // G fixes its view of M's identity log before it commits.
 rule G_Commit:
   let
-    mst = <<'genesis', o, m, pk(ikx), skpub>, sign(<'genesis', o, m, pk(ikx), skpub>, ikx)>
+    mst = <<'genesis', o, m, pk(ikx), pk(skx), iat>, sign(<'genesis', o, m, pk(ikx), pk(skx), iat>, ikx)>
   in
   [ !Signer(o, t, g, askG, tk, tst), In(<'confirm-member', m, mst>), Fr(~sid), Fr(~rG) ]
   --[ GView(o, t, ~sid, m, pk(ikx), h(mst), h(tst)) ]->
@@ -66,7 +68,7 @@ rule M_Open:
 
 rule Compare:
   let
-    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    mstG = <<'genesis', o, m, ikGv, pk(skGx), iatG>, sigG>
   in
   [ GShow(o, t, g, askG, tk, tst, sid, m, mstG, rG, xM)
   , MShow(o, t, m, ikM, skM, mst, tstM, sidM, xG, rM) ]
@@ -75,9 +77,11 @@ rule Compare:
     , CompareWords() ]->
   [ GConfirmed(o, t, g, askG, tk, tst, m, mstG), MConfirmed(o, t, m, ikM, skM, mst, tstM) ]
 
+#ifdef NOCOLLISION
+#else
 rule Compare_SecondPreimage_G:
   let
-    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    mstG = <<'genesis', o, m, ikGv, pk(skGx), iatG>, sigG>
     wM   = words(<o, t, m, pk(ikM), h(mst), h(tstM)>, xG, rM)
   in
   [ GShow(o, t, g, askG, tk, tst, sid, m, mstG, rG, xM)
@@ -87,7 +91,7 @@ rule Compare_SecondPreimage_G:
 
 rule Compare_SecondPreimage_M:
   let
-    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    mstG = <<'genesis', o, m, ikGv, pk(skGx), iatG>, sigG>
     wG   = words(<o, t, m, ikGv, h(mstG), h(tst)>, rG, xM)
   in
   [ GShow(o, t, g, askG, tk, tst, sid, m, mstG, rG, xM)
@@ -95,21 +99,21 @@ rule Compare_SecondPreimage_M:
   --[ Eq(xG, spre(<'m', <o, t, m, pk(ikM), h(mst), h(tstM)>, rM>, wG)), Collision('m') ]->
   [ GConfirmed(o, t, g, askG, tk, tst, m, mstG), MConfirmed(o, t, m, ikM, skM, mst, tstM) ]
 
-// The attacker made up the identity log it showed G, with its SK field a second preimage of M's words.
+// The attacker made up the identity log it showed G, with a free field of it a second preimage of M's words.
 rule Compare_SecondPreimage_GView:
   let
-    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    mstG = <<'genesis', o, m, ikGv, pk(skGx), iatG>, sigG>
     wM   = words(<o, t, m, pk(ikM), h(mst), h(tstM)>, xG, rM)
   in
   [ GShow(o, t, g, askG, tk, tst, sid, m, mstG, rG, xM)
   , MShow(o, t, m, ikM, skM, mst, tstM, sidM, xG, rM) ]
-  --[ Eq(skGv, spre(<'gv', <o, t, m, ikGv, h(tst)>, rG, xM>, wM)), Collision('gv') ]->
+  --[ Eq(iatG, spre(<'gv', <o, t, m, ikGv, pk(skGx), h(tst)>, rG, xM>, wM)), Collision('gv') ]->
   [ GConfirmed(o, t, g, askG, tk, tst, m, mstG), MConfirmed(o, t, m, ikM, skM, mst, tstM) ]
 
 // The attacker made up the team log it showed M, with its signer field a second preimage of G's words.
 rule Compare_SecondPreimage_MView:
   let
-    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    mstG = <<'genesis', o, m, ikGv, pk(skGx), iatG>, sigG>
     tstM = <<'team-genesis', o, t, gx, askpubx>, sigT>
     wG   = words(<o, t, m, ikGv, h(mstG), h(tst)>, rG, xM)
   in
@@ -118,10 +122,12 @@ rule Compare_SecondPreimage_MView:
   --[ Eq(gx, spre(<'mv', <o, t, m, pk(ikM), h(mst), askpubx>, xG, rM>, wG)), Collision('mv') ]->
   [ GConfirmed(o, t, g, askG, tk, tst, m, mstG), MConfirmed(o, t, m, ikM, skM, mst, tstM) ]
 
+#endif
+
 // In person: G scans M's QR code of the full digest, and M confirms after it sees G's result.
 rule Compare_QR:
   let
-    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    mstG = <<'genesis', o, m, ikGv, pk(skGx), iatG>, sigG>
     tst  = <<'team-genesis', o, t, g, pk(askx)>, sign(<'team-genesis', o, t, g, pk(askx)>, askx)>
   in
   [ !Signer(o, t, g, askG, tk, tstG), In(<'confirm-member', m, mstG>)
@@ -134,14 +140,14 @@ rule Compare_QR:
 
 rule G_Confirm:
   let
-    mstG = <<'genesis', o, m, ikv, skv>, sigG>
+    mstG = <<'genesis', o, m, ikv, pk(skx), iat>, sigG>
     cp   = <'confirm', o, t, h(tst), m, ikv, h(mstG)>
-    kp   = <'grant', o, t, h(<cp, sign(cp, askG)>), '1', kid(tk), m, skv>
+    kp   = <'grant', o, t, h(<cp, sign(cp, askG)>), '1', kid(tk), m, pk(skx)>
   in
   [ GConfirmed(o, t, g, askG, tk, tst, m, mstG) ]
-  --[ Confirm(o, t, pk(askG), m, ikv, h(mstG), h(tst)), SealTK(o, t, m, skv, tk) ]->
+  --[ Confirm(o, t, pk(askG), m, ikv, h(mstG), h(tst)), SealTK(o, t, m, pk(skx), tk) ]->
   [ Out(<cp, sign(cp, askG)>), Out(<kp, sign(kp, askG)>)
-  , Out(aenc(<wrapinfo(t, m, skv), tk>, skv)) ]
+  , Out(aenc(<wrapinfo(t, m, pk(skx)), tk>, pk(skx))) ]
 
 // M trusts only the signer its pinned team log names, and statements that extend that log.
 rule M_Accept:

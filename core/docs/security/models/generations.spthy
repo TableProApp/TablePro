@@ -1,0 +1,108 @@
+theory SyncGenerations
+begin
+
+// ADR 0053: Rollback and forks (a fork, one statement per position, a new generation), Identity log (a reset that
+// starts a generation). An account's log has two holders, H1 and H2, each signing with its own key; the IK, which only
+// S opens, endorses a new generation. The server is malicious: it serves statements as applied and withholds others.
+// C follows the log. Two different statements at one position, each signed and served as applied, are a fork, which
+// freezes that generation. With S, the person starts the next generation at once.
+
+builtins: hashing, signing
+
+rule Account:
+  [ Fr(~a), Fr(~ik), Fr(~h1), Fr(~h2) ]
+  --[ OnlyOnce('account') ]->
+  [ !IK(~a, ~ik), !Holder(~a, 'h1', ~h1), !Holder(~a, 'h2', ~h2)
+  , !Trusted(~a, 'gen1', pk(~h1)), !Trusted(~a, 'gen1', pk(~h2))
+  , Out(<~a, pk(~ik), pk(~h1), pk(~h2)>) ]
+
+// One statement per position: a holder signs at a position only once.
+rule HolderSigns:
+  let
+    sp = <'statement', a, g, pos, ~x>
+  in
+  [ !Holder(a, hn, hk), In(<g, pos>), Fr(~x) ]
+  --[ OncePerHolderPosition(a, hn, g, pos), Signed(a, hn, g, pos, h(sp)) ]->
+  [ Out(<sp, sign(sp, hk)>) ]
+
+rule StealHolder:
+  [ !Holder(a, hn, hk) ] --[ HolderStolen(a, hn) ]-> [ Out(hk) ]
+
+rule RevealS:
+  [ !IK(a, ik) ] --[ RevealS(a) ]-> [ Out(ik) ]
+
+// C takes a statement served as applied at a position.
+rule C_Applied:
+  let
+    sp = <'statement', a, g, pos, x>
+  in
+  [ !Trusted(a, g, pk(hk)), In(<'applied', sp, sign(sp, hk)>) ]
+  --[ NotFrozen(a, g), Applied(a, g, pos, h(sp)) ]->
+  [ !CApplied(a, g, pos, h(sp)) ]
+
+// Two different statements at one position, each signed by a trusted key and served as applied: a fork.
+rule C_Fork:
+  let
+    sp = <'statement', a, g, pos, x>
+  in
+  [ !CApplied(a, g, pos, hs1), !Trusted(a, g, pk(hk)), In(<'applied', sp, sign(sp, hk)>) ]
+  --[ Neq(hs1, h(sp)), Fork(a, g, pos), Frozen(a, g) ]->
+  [ !CFrozen(a, g) ]
+
+// With S, the person starts generation 2 at once: a reset at its seq 0 endorsed by the IK in force.
+rule P_NewGenerationWithS:
+  let
+    rp = <'reset-generation', a, 'gen1', 'gen2', pk(~h3)>
+  in
+  [ !IK(a, ik), Fr(~h3) ]
+  --[ PersonStartsGeneration(a) ]->
+  [ !Holder(a, 'h3', ~h3), Out(<rp, sign(rp, ik)>) ]
+
+rule C_FollowGeneration:
+  let
+    rp = <'reset-generation', a, 'gen1', 'gen2', pk(h3)>
+  in
+  [ !CFrozen(a, 'gen1'), !IK(a, ik), In(<rp, sign(rp, ik)>) ]
+  --[ FollowedGeneration(a, pk(h3)) ]->
+  [ !Trusted(a, 'gen2', pk(h3)) ]
+
+restriction OncePerHolderPosition:
+  "All a hn g pos #i #j. OncePerHolderPosition(a, hn, g, pos)@i & OncePerHolderPosition(a, hn, g, pos)@j ==> #i = #j"
+
+restriction NotFrozen:
+  "All a g #i #f. NotFrozen(a, g)@i & Frozen(a, g)@f & #f < #i ==> F"
+
+restriction Neq:
+  "All x y #i. Neq(x, y)@i ==> not (x = y)"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+// Two holders can fork the log the server shows: that is the case 0053 accepts.
+lemma fork_by_two_holders_executable:
+  exists-trace
+  "Ex a pos #f. Fork(a, 'gen1', pos)@f & not (Ex hn #s. HolderStolen(a, hn)@s)"
+
+// 0053's claim: a fork needs two different statements a trusted key signed at one position, so a server without a
+// key cannot fork a log one holder writes.
+lemma fork_needs_two_signers_or_a_key:
+  "All a g pos #f. Fork(a, g, pos)@f ==>
+     (Ex h1 h2 x1 x2 #i #j. Signed(a, h1, g, pos, x1)@i & Signed(a, h2, g, pos, x2)@j & not (h1 = h2))
+     | (Ex hn #s. HolderStolen(a, hn)@s)
+     | (Ex #r. RevealS(a)@r)"
+
+// 0053's claim: after a fork, C accepts no statement on that generation.
+lemma fork_freezes_the_generation:
+  "All a g pos #f. Fork(a, g, pos)@f ==> not (Ex pos2 x #i. Applied(a, g, pos2, x)@i & #f < #i)"
+
+// 0053's claim: with S the person leaves the fork through a new generation, where C accepts statements again.
+lemma new_generation_with_s_executable:
+  exists-trace
+  "Ex a pos x #f #g #i. Fork(a, 'gen1', pos)@f & PersonStartsGeneration(a)@g & Applied(a, 'gen2', '1', x)@i & #f < #i
+     & not (Ex #r. RevealS(a)@r)"
+
+// Only S starts a generation C follows.
+lemma only_s_starts_a_generation:
+  "All a h #i. FollowedGeneration(a, h)@i ==> (Ex #g. PersonStartsGeneration(a)@g) | (Ex #r. RevealS(a)@r)"
+
+end

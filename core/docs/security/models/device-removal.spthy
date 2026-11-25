@@ -86,11 +86,15 @@ rule V_Seal:
   --[ UseMem(a, hk, lin), SealTo(a, ak, lin) ]->
   [ Out(aenc(<wrapinfo(a, ak, pk(hpke)), ak>, pk(hpke))) ]
 
+#ifdef NOINSET
+#else
 // A holder that left, or that a rotate took out, or that descends from one a rotate took out, is not in the set.
 restriction InSet:
   "All a hk lin #i. UseMem(a, hk, lin)@i ==>
      not (Ex #j. Left(a, hk)@j & #j < #i)
      & not (Ex linX #j. Cut(a, linX)@j & #j < #i & (linX = lin | linX << lin))"
+
+#endif
 
 restriction OnlyOnce:
   "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"

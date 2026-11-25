@@ -1,0 +1,58 @@
+theory SyncTeamPositions
+begin
+
+// ADR 0053: Team log, References move forward along the team log. Member M's identity log has heads h1 and h2; a
+// rotate at h2 removes holder X, which a thief stole. The team log fixes, at each position, M's lowest head: the
+// newest an earlier team statement names. C replays the team log by position, so the order in which member bundles
+// arrive changes nothing. Positions p1, p2, p3 are in that order.
+
+builtins: hashing, signing
+
+rule Setup:
+  [ Fr(~t), Fr(~x) ]
+  --[ OnlyOnce('setup') ]->
+  [ !HolderX(~t, ~x), CAt(~t, 'p0'), Out(<~t, ~x>) ]
+
+// A team statement at the next position names M's identity head: an honest one names h2 after the rotate; the thief
+// signs with X and may name h1, when X was still in M's set.
+rule C_Take:
+  let
+    sp = <'team-statement', t, p, 'M', ih, by>
+  in
+  [ CAt(t, prev), !HolderX(t, x), In(<sp, sign(sp, x)>) ]
+  --[ Next(prev, p), Head(ih), NotOlderThanFixed(t, p, ih), Taken(t, p, ih, by) ]->
+  [ CAt(t, p) ]
+
+rule C_TakeHonest:
+  [ CAt(t, prev), In(p) ]
+  --[ Next(prev, p), Head('h2'), NotOlderThanFixed(t, p, 'h2'), Taken(t, p, 'h2', 'honest') ]->
+  [ CAt(t, p) ]
+
+restriction Next:
+  "All a b #i. Next(a, b)@i ==> (a = 'p0' & b = 'p1') | (a = 'p1' & b = 'p2') | (a = 'p2' & b = 'p3')"
+
+restriction Heads:
+  "All h #i. Head(h)@i ==> h = 'h1' | h = 'h2'"
+
+// A statement naming h1 is refused at a position after one that names h2.
+restriction NotOlderThanFixed:
+  "All t p ih q by #i #j. NotOlderThanFixed(t, p, ih)@i & Taken(t, q, 'h2', by)@j & #j < #i ==> not (ih = 'h1')"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+lemma positions_executable:
+  exists-trace
+  "Ex t #i. Taken(t, 'p3', 'h2', 'x')@i"
+
+// 0053's claim: once a team statement names M's newer head, the thief's statement under X naming the older head is
+// refused at every later position, however the server orders what it serves.
+lemma old_head_refused_after_a_newer_one:
+  "All t p q by by2 #i #j. Taken(t, q, 'h2', by2)@j & Taken(t, p, 'h1', by)@i & #j < #i ==> F"
+
+// Before any statement names the newer head, the thief's old-head statement is still taken. 0053 says so.
+lemma old_head_taken_before_a_newer_one:
+  exists-trace
+  "Ex t #i. Taken(t, 'p1', 'h1', 'x')@i"
+
+end

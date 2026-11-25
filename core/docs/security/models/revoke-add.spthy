@@ -1,0 +1,98 @@
+theory SyncRevokeAdd
+begin
+
+// ADR 0053: Team log, `revoke_add` and statements under IK; Flows: Removing a lost device (the removal sheet).
+// Signer account A has holders a1 and a2; a thief can steal a2. In a solo team A is the only signer, so k = 1; in a
+// pair team B is a second, honest signer, so k = 2. `revoke_add` is signed under A's IK, which only S opens.
+
+builtins: hashing, signing
+
+rule TeamSolo:
+  [ Fr(~t), Fr(~ik), Fr(~a1), Fr(~a2) ]
+  --[ Team(~t, 'solo') ]->
+  [ !AHolder(~t, 'a1', ~a1), !AHolder(~t, 'a2', ~a2), !AStealable(~t, ~a2), !AIK(~t, ~ik), !Solo(~t)
+  , Out(<~t, pk(~a1), pk(~a2), pk(~ik)>) ]
+
+rule TeamPair:
+  [ Fr(~t), Fr(~ik), Fr(~a1), Fr(~a2), Fr(~b) ]
+  --[ Team(~t, 'pair') ]->
+  [ !AHolder(~t, 'a1', ~a1), !AHolder(~t, 'a2', ~a2), !AStealable(~t, ~a2), !AIK(~t, ~ik), !BKey(~t, ~b)
+  , Out(<~t, pk(~a1), pk(~a2), pk(~ik), pk(~b)>) ]
+
+rule StealA2:
+  [ !AStealable(t, a2) ] --[ StolenA2(t) ]-> [ Out(a2) ]
+
+rule RevealS:
+  [ !AIK(t, ik) ] --[ RevealS(t) ]-> [ Out(ik) ]
+
+// B approves only additions A's honest holder proposed.
+rule B_Approves:
+  let
+    ap = <'approve', t, p, 'B'>
+  in
+  [ !BKey(t, b), In(<'proposed-by-a1', t, p>) ]
+  -->
+  [ Out(<ap, sign(ap, b)>) ]
+
+rule A1_Proposes:
+  [ !AHolder(t, 'a1', a1), Fr(~p) ] --[ AProposed(t, ~p) ]-> [ Out(<'proposed-by-a1', t, ~p>) ]
+
+// In a solo team a holder of A adds a signer alone; G records the holder that brought it to k.
+rule V_AddSolo:
+  let
+    sp = <'signer_add', t, p, hn>
+  in
+  [ !Solo(t), !AHolder(t, hn, hk), In(<sp, sign(sp, hk)>) ]
+  --[ Added(t, p), BroughtToK(t, p, 'A', hn) ]->
+  [ !AddedSigner(t, p) ]
+
+// In a pair team the addition needs A's holder and B.
+rule V_AddPair:
+  let
+    sp = <'signer_add', t, p, hn>
+    ap = <'approve', t, p, 'B'>
+  in
+  [ !BKey(t, b), !AHolder(t, hn, hk), In(<sp, sign(sp, hk)>), In(<ap, sign(ap, b)>) ]
+  --[ Added(t, p), BroughtToK(t, p, 'A', hn), BroughtToK(t, p, 'B', 'bholder') ]->
+  [ !AddedSigner(t, p) ]
+
+// A removes the stolen a2 with S.
+rule A_RotatesOutA2:
+  [ !AStealable(t, a2) ] --[ HolderRemoved(t, 'a2'), OnlyOnce(<'rotate', t>) ]-> [ ]
+
+// `revoke_add`, signed under A's IK. G takes it only when A's holders alone brought the addition to k and a later
+// rotate took every one of them out.
+rule V_RevokeAdd:
+  let
+    rp = <'revoke_add', t, p>
+  in
+  [ !AIK(t, ik), !AddedSigner(t, p), In(<rp, sign(rp, ik)>) ]
+  --[ OnlyAsAloneAndRemoved(t, p), RevokeAdd(t, p) ]->
+  [ ]
+
+restriction OnlyAsAloneAndRemoved:
+  "All t p #i. OnlyAsAloneAndRemoved(t, p)@i ==>
+     (All acct hn #b. BroughtToK(t, p, acct, hn)@b ==> acct = 'A' & (Ex #r. HolderRemoved(t, hn)@r & #r < #i))"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+// The thief adds a puppet with a2 alone; A removes a2 and revokes the addition at once.
+lemma revoke_add_executable:
+  exists-trace
+  "Ex t p #s #a #r. StolenA2(t)@s & Added(t, p)@a & RevokeAdd(t, p)@r & not (Ex #x. RevealS(t)@x)"
+
+// 0053's claim: a `revoke_add` takes effect only for an addition the account's own removed holders alone brought to k.
+lemma revoke_add_only_for_removed_holders_alone:
+  "All t p #i. RevokeAdd(t, p)@i ==>
+     All acct hn #b. BroughtToK(t, p, acct, hn)@b ==> acct = 'A' & (Ex #r. HolderRemoved(t, hn)@r & #r < #i)"
+
+// An addition B approved never falls to a `revoke_add`.
+lemma no_revoke_add_of_what_another_signer_approved:
+  "All t p #b #i. BroughtToK(t, p, 'B', 'bholder')@b & RevokeAdd(t, p)@i ==> F"
+
+// Only S signs a `revoke_add`.
+lemma revoke_add_needs_s:
+  "All t p #i. RevokeAdd(t, p)@i ==> (Ex #h. HolderRemoved(t, 'a2')@h) | (Ex #x. RevealS(t)@x)"
+
+end
