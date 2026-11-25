@@ -39,9 +39,11 @@ final class IOSSyncCoordinator {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "Sync")
 
-    // Plus a kind for each field an older build pulled without reading. Membership joins only while a pull reads it.
+    // Plus a kind for each field an older build pulled without reading. Projects and membership join only while a
+    // pull reads them.
     static func readableRecordTypes(projectSyncWritable: Bool) -> Set<String> {
-        Set([SyncRecordType.connection, .group, .tag, .favorite, .favoriteFolder, .project].map(\.rawValue))
+        Set([SyncRecordType.connection, .group, .tag, .favorite, .favoriteFolder].map(\.rawValue))
+            .union(projectSyncWritable ? [SyncRecordType.project.rawValue] : [])
             .union([ConnectionSyncField.sshRouteContentKind])
             .union(SyncSchemaGate.membershipContentKinds(readsProjects: projectSyncWritable))
     }

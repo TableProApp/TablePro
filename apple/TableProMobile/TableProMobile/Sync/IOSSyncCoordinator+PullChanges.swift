@@ -17,7 +17,8 @@ extension IOSSyncCoordinator {
         var savedQueries = SavedQueryRemoteChanges()
 
         // `local` is the library the records land on. While project sync is off no record carries a project, so
-        // each pulled connection and group keeps the one its copy here stores.
+        // each pulled connection and group keeps the one its copy here stores, and a project record or deletion
+        // waits for the full fetch the first run that reads them makes, as on the Mac.
         init(_ result: PullResult, over local: LibraryState? = nil, projectSyncWritable: Bool = SyncSchemaGate.isProjectSyncWritable) {
             let localConnections = Dictionary(
                 (local?.connections ?? []).map { ($0.id, $0) },
@@ -44,7 +45,7 @@ extension IOSSyncCoordinator {
                         changedGroups.append(group)
                     }
                 case SyncRecordType.project.rawValue:
-                    if let project = SyncRecordMapper.toProject(record) {
+                    if projectSyncWritable, let project = SyncRecordMapper.toProject(record) {
                         changedProjects.append(project)
                     }
                 case SyncRecordType.tag.rawValue:
@@ -75,7 +76,9 @@ extension IOSSyncCoordinator {
                 case .tag:
                     deletedTagIDs.insert(uuid)
                 case .project:
-                    deletedProjectIDs.insert(uuid)
+                    if projectSyncWritable {
+                        deletedProjectIDs.insert(uuid)
+                    }
                 case .favorite:
                     savedQueries.deletedQueryIds.insert(uuid)
                 case .favoriteFolder:

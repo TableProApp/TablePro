@@ -194,7 +194,7 @@ struct ProjectSyncWiringTests {
     func projectsPullAndPush() async throws {
         let remote = ConnectionProject(name: "From the Mac", sortOrder: 2)
         let transport = RecordingSyncTransport(remoteRecords: [projectRecord(remote)])
-        let state = makeState(transport: transport, writable: false)
+        let state = makeState(transport: transport, writable: true)
         guard case .applied(let localId) = state.addProject(named: "Local") else {
             Issue.record("the project was not added")
             return
@@ -210,8 +210,9 @@ struct ProjectSyncWiringTests {
     @Test("A project deleted on another device goes, its members stay in no project, and the list shows everything")
     func remoteProjectDeletionClearsMembership() async throws {
         let transport = RecordingSyncTransport()
-        let state = makeState(transport: transport, writable: false)
+        let state = makeState(transport: transport, writable: true)
         let seeded = seed(state)
+        fixture.defaults.set(true, forKey: IOSSyncCoordinator.membershipUploadedKey)
         state.setActiveProject(project.id)
         await transport.answerPulls(
             with: [],
@@ -374,14 +375,39 @@ struct ProjectSyncWiringTests {
         #expect(await transport.fullFetchCount == 2)
     }
 
-    @Test("The readable set names the membership fields only while a pull reads them")
+    @Test("The readable set names projects and the membership fields only while a pull reads them")
     func readableSetFollowsTheGate() {
         let closed = IOSSyncCoordinator.readableRecordTypes(projectSyncWritable: false)
         let open = IOSSyncCoordinator.readableRecordTypes(projectSyncWritable: true)
 
+        #expect(!closed.contains(SyncRecordType.project.rawValue))
         #expect(!closed.contains(ConnectionSyncField.projectContentKind))
         #expect(!closed.contains(ConnectionGroupSyncField.projectContentKind))
-        #expect(open == closed.union([ConnectionSyncField.projectContentKind, ConnectionGroupSyncField.projectContentKind]))
+        #expect(open == closed.union([
+            SyncRecordType.project.rawValue,
+            ConnectionSyncField.projectContentKind,
+            ConnectionGroupSyncField.projectContentKind
+        ]))
+    }
+
+    @Test("While project sync is off, a pulled project and a project's deletion leave the projects and the scope as they are")
+    func projectRecordsWaitWhileUnwritable() async throws {
+        let transport = RecordingSyncTransport()
+        let state = makeState(transport: transport, writable: false)
+        let seeded = seed(state)
+        state.setActiveProject(project.id)
+        let arriving = ConnectionProject(name: "From the Mac")
+        await transport.answerPulls(
+            with: [projectRecord(arriving)],
+            deletions: [SyncRecordMapper.recordID(type: .project, id: project.id.uuidString, in: zoneID)]
+        )
+
+        await state.syncCoordinator.sync()
+
+        #expect(state.projects.map(\.name) == ["Acme"])
+        #expect(state.activeProjectId == project.id)
+        #expect(state.connections.first { $0.id == seeded.connection.id }?.projectId == project.id)
+        #expect(state.groups.first?.projectId == project.id)
     }
 
     @Test("A group and its project deleted in one pull leave the connection in no project and no group")
@@ -427,7 +453,7 @@ struct ProjectSyncWiringTests {
         try Data("not json".utf8).write(to: fixture.libraryDirectory.appendingPathComponent("projects.json"))
         let token = try RecordingSyncTransport.makeChangeToken()
         let transport = RecordingSyncTransport(remoteRecords: [projectRecord(project)], newToken: token)
-        let state = makeState(transport: transport, writable: false)
+        let state = makeState(transport: transport, writable: true)
 
         await state.syncCoordinator.sync()
 
