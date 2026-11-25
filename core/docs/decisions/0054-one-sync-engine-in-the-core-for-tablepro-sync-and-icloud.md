@@ -200,9 +200,9 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
     - each `key_floors` row. Since `seen` counts every branch and 0053 allocates a new version above it, burning a dropped branch's versions, a floor never has to move back after a fork ends;
     - each `envelope_counters` row.
 
-    **The one exception** is a **fork ending** 0053 verifies, which moves an anchored head from the dropped branch to the kept one:
-    - a `rotate` or `resolve` that names the fork point;
-    - for a fork that ends only by comparison, a fork re-pin: the device approval comparison whose context carries both branches' heads at the fork point, with words that match.
+    **The one exception** is a **fork ending**, which moves an anchored head from the dropped branch to the kept one. Two are allowed:
+    1. a fork resolution 0053 verifies: a `rotate` or `resolve` that names the fork point;
+    2. for a fork that ends only by comparison, a fork re-pin: a comparison whose context ends with the fork's `seq`, the kept hash and the dropped hash, as 0053 defines it, with words that match. A teammate's member comparison covers a fork the same way.
 
     Either way, the dropped branch's statements must chain from the fork point to the anchored head, each checked as 0053 checks a log, and a missing or substituted link moves nothing. No other statement or comparison moves an anchored head back. `deleted_history` stays in the file alone.
   - **Size.** A checkpoint is written to items of its own only when it changes, before the entry that names it, and items no entry names are deleted once the entry settles. Each commit rewrites only the root. A checkpoint grows with the logs followed and the envelopes held, about 60 bytes an envelope.
