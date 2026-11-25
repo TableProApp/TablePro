@@ -177,7 +177,7 @@ internal final class RegistryClient: ObservableObject {
 
     private func load(policy: RegistryFetchPolicy, from session: URLSession) async -> RegistryManifest? {
         var outcome = await loadVerified(policy: policy, from: session, bypassingCDNCache: nil)
-        if case .refused = outcome {
+        if case .refused = outcome, allowsCatalog {
             // The manifest and its signature are cached apart, so a deploy between them leaves a pair that disagrees.
             Self.logger.info("Fetching the plugin manifest and its signature again from the server")
             outcome = await loadVerified(policy: .mustBeCurrent, from: session, bypassingCDNCache: UUID().uuidString)

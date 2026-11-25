@@ -75,6 +75,10 @@ impl Account {
             ServerKind::Company => Some(server::discover(&self.inner.http, &target.origin, loopback).await?),
             ServerKind::Production | ServerKind::Development => None,
         };
+        // Values read during the discovery may hold the person elsewhere by now.
+        if self.is_held() || !self.policy().allows_server(&target.origin) {
+            return Err(ServerError::Managed.into());
+        }
         let path = choice_file(&self.inner.settings.account_file);
         write_choice(&path, &Choice { chosen: chosen.clone() }).await?;
         let next = Server::build(
@@ -109,7 +113,15 @@ impl Account {
             production = next.target.kind == ServerKind::Production,
             "chose the account server"
         );
-        self.inner.server.send_replace(Arc::new(next));
+        {
+            // The choice is written and the old sign-in gone, so a server values read since then refuse still takes
+            // over, and the account calls it no more until the next launch.
+            let _switching = self.switching();
+            if !self.policy().allows_server(&next.target.origin) {
+                self.hold();
+            }
+            self.inner.server.send_replace(Arc::new(next));
+        }
         self.inner.status.send_modify(|_| {});
         Ok(())
     }
@@ -134,6 +146,7 @@ impl Account {
             .as_ref()
             .map(|discovered| discovered.jwks_uri.clone())
             .ok_or_else(|| ServerError::NotTablePro(server.target.origin.clone(), "no jwks_uri".to_owned()))?;
+        self.reachable()?;
         session.waited(Call::Keys)?;
         let fetched = self.jwks(&jwks_uri).await;
         let jwks = session.answered(Call::Keys, fetched)?;

@@ -14,15 +14,19 @@ import TableProSyncTransport
 internal final class SyncProviderPolicy {
     static let shared = SyncProviderPolicy()
 
-    static let offered: [SyncProviderTag] = [.off, .icloud]
+    nonisolated static let offered: [SyncProviderTag] = [.off, .icloud]
 
     private var subscription: AnyCancellable?
 
-    // Keeps the switch on the provider the values leave this Mac, now and at every change.
+    // Keeps the switch on the provider the values leave this Mac, now and whenever the values or the switch change,
+    // so a settings import or a reset cannot turn on a provider the profile left out. The write waits a turn, since
+    // the setting is published before it is stored.
     func start(center: ManagedPolicyCenter = .shared, settings: AppSettingsManager = .shared) {
         guard subscription == nil else { return }
         subscription = center.$snapshot
-            .sink { [weak settings] snapshot in
+            .combineLatest(settings.syncSlice.publisher.map(\.enabled).removeDuplicates())
+            .receive(on: DispatchQueue.main)
+            .sink { [weak settings] snapshot, _ in
                 guard let settings else { return }
                 let enabled = Self.settledEnabled(settings.sync.enabled, under: snapshot)
                 guard enabled != settings.sync.enabled else { return }
@@ -36,18 +40,18 @@ internal final class SyncProviderPolicy {
         let isLocked: Bool
     }
 
-    static func iCloud(_ snapshot: ManagedPolicySnapshot) -> ICloudStanding {
+    nonisolated static func iCloud(_ snapshot: ManagedPolicySnapshot) -> ICloudStanding {
         let choices = personalSyncChoices(policy: snapshot.coreArgument, offered: offered)
         return ICloudStanding(isAllowed: choices.providers.contains(.icloud), isLocked: choices.locked)
     }
 
-    static func disableReason(_ snapshot: ManagedPolicySnapshot) -> DisableReason? {
+    nonisolated static func disableReason(_ snapshot: ManagedPolicySnapshot) -> DisableReason? {
         iCloud(snapshot).isAllowed ? nil : .managedPolicy
     }
 
     // A forced iCloud turns the switch on as the person would, and iCloud taken away turns it off; with a choice left,
     // the person's switch stands. A server's answer never moves it: no server takes this Mac's personal data yet.
-    static func settledEnabled(_ enabled: Bool, under snapshot: ManagedPolicySnapshot) -> Bool {
+    nonisolated static func settledEnabled(_ enabled: Bool, under snapshot: ManagedPolicySnapshot) -> Bool {
         settledSyncProvider(
             policy: snapshot.coreArgument,
             offered: offered,

@@ -40,6 +40,10 @@ final class SyncCoordinator: ObservableObject {
     private var triggers: SyncTriggers?
     private var licenseCancellable: AnyCancellable?
     private var policyCancellable: AnyCancellable?
+    // Counts the organization's stops, so a run that began before one keeps nothing after it, even once iCloud is
+    // allowed again.
+    private var policyStops = 0
+    private var runPolicyStops = 0
     private var debounceTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var hasStarted = false
@@ -93,6 +97,8 @@ final class SyncCoordinator: ObservableObject {
         policyChanges: AnyPublisher<Void, Never> = ManagedPolicyCenter.shared.$snapshot
             .dropFirst()
             .map { _ in () }
+            // The gate reads the center, which holds the new values only after it publishes them.
+            .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher(),
         recordCreationDate: @escaping (CKRecord) -> Date? = { $0.creationDate },
         activationClock: any Clock<Duration> = ContinuousClock(),
@@ -116,14 +122,6 @@ final class SyncCoordinator: ObservableObject {
         self.policyGate = policyGate
         self.policyChanges = policyChanges
         lastSyncDate = metadataStorage.lastSyncDate
-    }
-
-    nonisolated static func makeRecordCache() -> SyncRecordCache {
-        SyncRecordCache(
-            directory: AppStorageEnvironment.shared.supportDirectory
-                .appendingPathComponent("SyncRecordCache", isDirectory: true),
-            defaults: AppStorageEnvironment.shared.defaults
-        )
     }
 
     deinit {
@@ -258,6 +256,7 @@ final class SyncCoordinator: ObservableObject {
 
     private func accountThenPushThenPull(_ requested: SyncAdmission, startedBy trigger: SyncTrigger) async -> CycleResult {
         var admission = requested
+        runPolicyStops = policyStops
         downloadIsAheadInRun = true
         defer { downloadIsAheadInRun = false }
         switch await confirmAccount() {
@@ -557,6 +556,7 @@ final class SyncCoordinator: ObservableObject {
     /// nothing left to move it.
     private func decide(_ status: SyncStatus) {
         statusGeneration += 1
+        policyStops += status == .disabled(.managedPolicy) ? 1 : 0
         syncStatus = status
         guard !status.isEnabled else {
             arm()
@@ -574,11 +574,11 @@ final class SyncCoordinator: ObservableObject {
     }
 
     private var isStoppedByPolicy: Bool {
-        policyGate() != nil
+        policyGate() != nil || policyStops != runPolicyStops
     }
 
     private func canSync() -> Bool {
-        guard !isStoppedByPolicy else {
+        guard policyGate() == nil else {
             Self.logger.trace("Sync skipped: the organization's policy leaves iCloud out")
             return false
         }
@@ -624,8 +624,10 @@ final class SyncCoordinator: ObservableObject {
                 records: batch.records,
                 deletions: deletions,
                 edits: batch.editsByRecordID
-            ) {
-                try await transport.push(records: $0, deletions: $1)
+            ) { records, deletions in
+                // Each batch, the conflict retries included, is a push not yet sent.
+                guard !isStoppedByPolicy else { throw CancellationError() }
+                return try await transport.push(records: records, deletions: deletions)
             } fetch: {
                 try await transport.fetch(recordIDs: $0)
             }
@@ -738,10 +740,12 @@ final class SyncCoordinator: ObservableObject {
             }
             return PullReport(broughtRemoteChanges: token != nil && result.carriesRemoteChanges(besides: echoGuard))
         } catch let error where Self.isTokenExpired(error) {
+            guard !isStoppedByPolicy else { return PullReport() }
             Self.logger.warning("Change token expired, clearing and retrying with full fetch")
             metadataStorage.saveToken(nil)
             do {
                 let result = try await transport.pull(since: nil)
+                guard !isStoppedByPolicy else { return PullReport() }
                 return await applyPull(result, isFullFetch: true, settings: settings, echoGuard: echoGuard)
                     ? PullReport() : PullReport(failure: .pullNotSaved)
             } catch {
@@ -797,6 +801,7 @@ final class SyncCoordinator: ObservableObject {
             echoGuard?.withholdsDeletion(recordID, tracker: changeTracker) != true
         }
         let pendingEdits = await recordNamesWithPendingEdits()
+        guard !isStoppedByPolicy else { return false }
         let admitted = PullResult(
             changedRecords: result.changedRecords.filter { !pendingEdits.contains($0.recordID.recordName) },
             deletedRecordIDs: result.deletedRecordIDs,
@@ -819,8 +824,8 @@ final class SyncCoordinator: ObservableObject {
         /// were never written and the server never sent them again, and the cached record then
         /// stood in as the merge base for an edit that had no local base at all. Not saving it
         /// means the next pull replays the batch, which every apply here is written to survive.
-        guard storesPersisted, favoritesOutcome != .failed else {
-            Self.logger.error("Pull not acknowledged: a store refused to persist part of the batch")
+        guard storesPersisted, favoritesOutcome != .failed, !isStoppedByPolicy else {
+            Self.logger.error("Pull not acknowledged: a store refused part of the batch, or the policy stopped iCloud")
             return false
         }
 

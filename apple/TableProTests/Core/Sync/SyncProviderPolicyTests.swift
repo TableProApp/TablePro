@@ -96,6 +96,27 @@ struct SyncCoordinatorPolicyTests {
         #expect(coordinator.lastSyncDate == nil)
     }
 
+    @Test("A run the organization stopped keeps nothing, even when iCloud is allowed again before it goes on")
+    func stoppedRunStaysStoppedWhenAllowedAgain() async throws {
+        let gate = PolicyGate()
+        let transport = ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID)
+        let coordinator = environment.makeCoordinator(transport: transport, policyGate: { gate.reason })
+        await transport.whileZoneIsRead {
+            guard !gate.fired else { return }
+            gate.fired = true
+            gate.reason = .managedPolicy
+            coordinator.disableSync()
+            gate.reason = nil
+        }
+
+        await coordinator.sync(.userRequest)
+
+        #expect(gate.fired)
+        #expect(await transport.pullCount == 0)
+        #expect(await transport.pushCount == 0)
+        #expect(coordinator.lastSyncDate == nil)
+    }
+
     @Test("Allowed again, sync waits for the switch")
     func allowedAgainFollowsTheSwitch() async throws {
         let gate = PolicyGate()
@@ -121,4 +142,5 @@ struct SyncCoordinatorPolicyTests {
 @MainActor
 private final class PolicyGate {
     var reason: DisableReason?
+    var fired = false
 }

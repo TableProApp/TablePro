@@ -68,7 +68,7 @@ struct SyncSettingsView: View {
             }
 
             Section {
-                Toggle(isOn: $settings.enabled) {
+                Toggle(isOn: iCloud.isAllowed ? $settings.enabled : .constant(false)) {
                     Text("Sync this Mac with iCloud")
                     if layout.showsManagedNote {
                         Text("Managed by your organization")

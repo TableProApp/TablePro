@@ -107,6 +107,8 @@ struct Inner {
     // Set once those values stop allowing the server, which only a launch changes: from then on the account calls it
     // no more.
     held: AtomicBool,
+    // Held, never across an await, while the values or the server change, so each change sees the other's result.
+    switching: std::sync::Mutex<()>,
 }
 
 #[derive(Default)]
@@ -243,6 +245,7 @@ impl Account {
                 license: watch::Sender::new(None),
                 policy: watch::Sender::new(policy),
                 held: AtomicBool::new(held),
+                switching: std::sync::Mutex::new(()),
             }),
         })
     }
@@ -284,18 +287,19 @@ impl Account {
     // Values the host read again. They apply at once, but the server changes only at a launch: when they no longer
     // allow it, the account stops calling it until then, and a call already sent has its answer dropped.
     pub async fn apply_policy(&self, policy: ManagedPolicy) {
-        let changed = self.inner.policy.send_if_modified(|held| {
-            let changed = *held != policy;
-            *held = policy.clone();
-            changed
-        });
-        if !changed || self.is_held() || policy.allows_server(&self.current().target.origin) {
+        let stopped = {
+            let _switching = self.switching();
+            let changed = self.inner.policy.send_if_modified(|held| {
+                let changed = *held != policy;
+                *held = policy.clone();
+                changed
+            });
+            changed && !self.is_held() && !policy.allows_server(&self.current().target.origin)
+        };
+        if !stopped {
             return;
         }
-        self.inner.held.store(true, Ordering::SeqCst);
-        tracing::warn!(
-            "the organization's policy no longer allows the account server, so the account stops calling it"
-        );
+        self.hold();
         let session = self.inner.session.lock().await;
         if session.refresh.is_some() {
             let kept = self.inner.status.borrow().entitlement().cloned();
@@ -306,6 +310,21 @@ impl Account {
 
     fn is_held(&self) -> bool {
         self.inner.held.load(Ordering::SeqCst)
+    }
+
+    fn hold(&self) {
+        if !self.inner.held.swap(true, Ordering::SeqCst) {
+            tracing::warn!(
+                "the organization's policy no longer allows the account server, so the account stops calling it"
+            );
+        }
+    }
+
+    fn switching(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.inner
+            .switching
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     // Before every request to the server signed in to, and again before an answer is kept.
@@ -488,6 +507,8 @@ impl Account {
             () = cancelled => return Err(AccountError::SignInCanceled),
         };
         let code = callback.map_err(|_| AccountError::SignInTimedOut)?.code_for(issuer)?;
+        // The browser can come back after the organization's values stopped the account.
+        self.reachable()?;
         oauth.exchange_code(code, authorization).await
     }
 
@@ -525,6 +546,8 @@ impl Account {
         let answered = callback(url.query().unwrap_or_default(), authorization.state.secret())
             .ok_or_else(|| AccountError::Protocol("the sign-in came back for another request".to_owned()))?;
         let code = answered.code_for(issuer)?;
+        // The browser can come back after the organization's values stopped the account.
+        self.reachable()?;
         oauth.exchange_code(code, authorization).await
     }
 
@@ -742,6 +765,7 @@ impl Account {
         let mut devices = Vec::new();
         let mut cursor = None;
         for _ in 0..DEVICE_PAGES {
+            self.reachable()?;
             let page = match api.list_devices(cursor.as_deref(), Some(DEVICE_PAGE)).await {
                 Ok(answer) => answer.into_inner(),
                 Err(error) => return session.answered(Call::Devices, Err(answer_error(error).await)),
@@ -821,7 +845,9 @@ impl Account {
         let tokens = session.answered(Call::Token, tokens)?;
         server_calls::audience_check(&server, &tokens.access)?;
         let access = tokens.access.clone();
+        // A rotated refresh token is kept whatever happened meanwhile, or the sign-in would be lost.
         self.adopt(session, tokens).await;
+        self.reachable()?;
         Ok(access)
     }
 

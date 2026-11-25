@@ -27,9 +27,16 @@ actor PluginInstaller: RegistryPluginInstalling {
     static let logger = Logger(subsystem: "com.TablePro", category: "PluginInstaller")
 
     private let session: @Sendable () async -> URLSession
+    // Asked before each download, so a retry or an update pass that holds a manifest from before PluginCatalogAllowed
+    // turned the registry off downloads nothing.
+    private let catalogAllowed: @Sendable () async -> Bool
 
-    init(session: @escaping @Sendable () async -> URLSession = { await MainActor.run { RegistryClient.shared.session } }) {
+    init(
+        session: @escaping @Sendable () async -> URLSession = { await MainActor.run { RegistryClient.shared.session } },
+        catalogAllowed: @escaping @Sendable () async -> Bool = { await MainActor.run { RegistryClient.shared.allowsCatalog } }
+    ) {
         self.session = session
+        self.catalogAllowed = catalogAllowed
     }
 
     func install(
@@ -87,6 +94,7 @@ actor PluginInstaller: RegistryPluginInstalling {
         into userPluginsDir: URL,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> ExtractedBundle {
+        guard await catalogAllowed() else { throw PluginError.pluginInstallManaged(registryPlugin.name) }
         // The manifest is network input: the signature check is the real gate, but nothing travels over cleartext.
         guard let downloadURL = URL(string: release.url),
               downloadURL.scheme?.lowercased() == "https" else {

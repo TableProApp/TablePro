@@ -5,7 +5,8 @@ use chrono::Utc;
 use secrecy::SecretString;
 use tablepro_account::{
     Account, AccountHosts, AccountSettings, AccountStatus, CallbackPage, DeviceDescription, Endpoints, EntitlementKeys,
-    FixedServer, LicenseKeys, MachineId, OfflineFileError, ServerPolicy, ServerSettings, read_offline_file_blocking,
+    FixedServer, LicenseKeys, MachineId, ManagedPolicy, OfflineFileError, ServerPolicy, ServerSettings,
+    read_offline_file_blocking,
 };
 use tablepro_ai::ModelCatalog;
 use tablepro_session::runtime::Tasks;
@@ -96,7 +97,7 @@ impl Core {
         });
         let listener: Arc<dyn AccountListener> = Arc::from(listener);
         on_runtime(&self.tasks, async move {
-            let policy = config.policy.clone().into();
+            let policy: ManagedPolicy = config.policy.clone().into();
             // Reading the registry, the server choice and the system's certificates can block.
             let account = tasks
                 .spawn_blocking_task(move || {
@@ -112,8 +113,8 @@ impl Core {
                 .await
                 .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??;
             // A development stack's server takes no values at launch, so they come here.
+            ai_catalog.allow_refresh(policy.allows_tablepro_requests());
             account.apply_policy(policy).await;
-            ai_catalog.allow_refresh(account.allows_tablepro_requests());
             Ok(Arc::new(AccountService::start(account, listener, tasks, ai_catalog)))
         })
         .await
@@ -188,9 +189,11 @@ impl AccountService {
     pub async fn apply_policy(&self, policy: ManagedPolicyArg) {
         let account = self.account.clone();
         let ai_catalog = self.ai_catalog.clone();
+        let policy: ManagedPolicy = policy.into();
+        // Before the account, which can wait on a call in flight.
+        ai_catalog.allow_refresh(policy.allows_tablepro_requests());
         let _ = on_runtime(&self.tasks, async move {
-            account.apply_policy(policy.into()).await;
-            ai_catalog.allow_refresh(account.allows_tablepro_requests());
+            account.apply_policy(policy).await;
             Ok::<_, CoreError>(())
         })
         .await;

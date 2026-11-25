@@ -1251,3 +1251,58 @@ async fn a_launch_follows_the_values_and_a_later_value_for_another_server_stops_
     assert_eq!(refused.expect_err("held").code(), "account.server_managed");
     assert!(!account.allows_tablepro_requests());
 }
+
+// A token refresh that is out when the values change brings back no token to send with.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn values_that_arrive_during_a_token_refresh_keep_its_token_from_any_request() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let hold_tokens = Arc::new(AtomicBool::new(false));
+    let token_waiting = Arc::new(AtomicBool::new(false));
+    let base = company(&LICENSED, {
+        let (hold_tokens, token_waiting) = (hold_tokens.clone(), token_waiting.clone());
+        move |_, method, path, _| {
+            if (method, path) == ("POST", "/oauth/token") && hold_tokens.load(Ordering::SeqCst) {
+                token_waiting.store(true, Ordering::SeqCst);
+                while hold_tokens.load(Ordering::SeqCst) {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+            }
+            None
+        }
+    });
+    let items = Arc::new(Items::default());
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, None)),
+        &items,
+        browser.clone(),
+    );
+    account.restore().await;
+    let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), approve(&browser));
+    signed.expect("signed in");
+    let first = account.access_token().await.expect("a token");
+    account.access_token_rejected(&first.token).await;
+    hold_tokens.store(true, Ordering::SeqCst);
+
+    let refreshing = tokio::spawn({
+        let account = account.clone();
+        async move { account.access_token().await }
+    });
+    while !token_waiting.load(Ordering::SeqCst) {
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let elsewhere = held_to("https://tablepro.other.example", Some(false));
+    // It publishes the stop under the session the refresh holds, so it finishes after the refresh.
+    let applying = tokio::spawn({
+        let (account, elsewhere) = (account.clone(), elsewhere.clone());
+        async move { account.apply_policy(elsewhere).await }
+    });
+    while account.policy() != elsewhere {
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    hold_tokens.store(false, Ordering::SeqCst);
+    let refreshed = refreshing.await.expect("the refresh");
+    applying.await.expect("the values applied");
+
+    assert_eq!(refreshed.expect_err("held").code(), "account.server_managed");
+}

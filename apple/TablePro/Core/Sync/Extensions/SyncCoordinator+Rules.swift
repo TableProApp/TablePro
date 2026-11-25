@@ -6,8 +6,16 @@
 import Foundation
 import TableProSyncTransport
 
-// Rules that read nothing but their arguments.
+// Rules that read nothing but their arguments, and the cache the coordinator starts with.
 extension SyncCoordinator {
+    nonisolated static func makeRecordCache() -> SyncRecordCache {
+        SyncRecordCache(
+            directory: AppStorageEnvironment.shared.supportDirectory
+                .appendingPathComponent("SyncRecordCache", isDirectory: true),
+            defaults: AppStorageEnvironment.shared.defaults
+        )
+    }
+
     // Exhaustive, so a paying customer the app could not reach the server about is never told to buy.
     nonisolated static func licenseDisableReason(for access: ProFeatureAccess) -> DisableReason? {
         switch access {

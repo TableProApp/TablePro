@@ -160,10 +160,10 @@ final class KeychainHelper: KeychainStoring {
         followsPasswordSync && passwordSyncSetting()
     }
 
-    // ICloudSyncAllowed=false writes every item device-only from then on; items already synced stay and stay readable,
-    // since deleting one deletes it on every device (core ADR 0055, The Mac's new keys).
+    // A profile that leaves iCloud out, ICloudSyncAllowed=false included, writes every item device-only from then on;
+    // items already synced stay and stay readable, since deleting one deletes it on every device (core ADR 0055).
     static func storedPasswordSyncSetting(policy: any ManagedPolicyReading = ManagedPolicyReader.shared) -> Bool {
-        policy.bool(.iCloudSyncAllowed) != false
+        SyncProviderPolicy.iCloud(ManagedPolicySnapshot(reading: policy)).isAllowed
             && AppStorageEnvironment.shared.defaults.bool(forKey: passwordSyncEnabledKey)
     }
 
