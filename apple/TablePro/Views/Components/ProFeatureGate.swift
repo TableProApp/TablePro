@@ -11,7 +11,7 @@ struct ProFeatureGateModifier: ViewModifier {
     @ObservedObject private var featureAccess = FeatureAccess.shared
 
     func body(content: Content) -> some View {
-        let notice = LicensePresentation.gate(for: feature, state: featureAccess.state, now: Date())
+        let notice = LicensePresentation.gate(for: feature, state: featureAccess.state)
 
         content
             .disabled(notice != nil)

@@ -58,7 +58,7 @@ impl CredentialManager {
         format!("{}/{}", self.prefix, item_name(item))
     }
 
-    // One sign-in's refresh token, by `AccountSettings::sign_in_key`, so another server or another build's state
+    // One sign-in's refresh token, by its `SignInKey`, so another server or another build's state
     // folder never reads or overwrites it. tablepro.app's first read moves a token the shared target holds.
     pub(crate) fn refresh_token(self: &Arc<Self>, sign_in_key: &str, production: bool) -> SignInToken {
         SignInToken {
@@ -385,6 +385,15 @@ impl SecretItems for CredentialManager {
     async fn delete_item(&self, item: SecretItem) -> Result<(), SecretError> {
         let target = self.item_target(item);
         self.blocking(move || delete(&target)).await
+    }
+}
+
+// Each sign-in's item in Credential Manager.
+pub(crate) struct SignInTokens(pub(crate) Arc<CredentialManager>);
+
+impl tablepro_account::RefreshTokenVaults for SignInTokens {
+    fn vault(&self, sign_in: &tablepro_account::SignInKey) -> Arc<dyn RefreshTokenVault> {
+        Arc::new(self.0.refresh_token(&sign_in.key, sign_in.production))
     }
 }
 

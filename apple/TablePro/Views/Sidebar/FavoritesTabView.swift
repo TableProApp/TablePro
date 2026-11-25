@@ -282,6 +282,7 @@ internal struct FavoritesTabView: View {
     }
 
     private func publishSavedQueriesToTeam(teamID: String) {
+        let destination = teamLibrarySync.destination(teamID)
         Task { @MainActor in
             let favorites = await SQLFavoriteManager.shared.fetchFavorites()
             let folders = await SQLFavoriteManager.shared.fetchFolders()
@@ -295,7 +296,7 @@ internal struct FavoritesTabView: View {
                 outcome = .finished(try await teamLibrarySync.publishSavedQueries(
                     favorites: favorites,
                     folders: folders,
-                    to: teamID
+                    to: destination
                 ))
             } catch {
                 outcome = .failed(error)

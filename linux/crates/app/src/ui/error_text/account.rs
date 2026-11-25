@@ -59,6 +59,8 @@ pub fn account_error_message(error: &AccountError) -> String {
             gettext("The account service is busy. Try again in a few minutes.")
         }
         AccountError::Entitlement(error) => entitlement_message(error),
+        AccountError::Server(_) => gettext("TablePro could not use this account server."),
+        AccountError::License(_) => gettext("The account server’s TablePro license could not be verified."),
         AccountError::Storage { path, .. } => gettext_f(
             "TablePro could not keep the account’s state in {path}.",
             &[("path", path)],
@@ -182,7 +184,8 @@ fn entitlement_message(error: &EntitlementError) -> String {
         | EntitlementError::Algorithm(_)
         | EntitlementError::Type(_)
         | EntitlementError::Signature
-        | EntitlementError::Audience => gettext("This is not a TablePro entitlement, or it was changed."),
+        | EntitlementError::Audience
+        | EntitlementError::Issuer => gettext("This is not a TablePro entitlement, or it was changed."),
     }
 }
 

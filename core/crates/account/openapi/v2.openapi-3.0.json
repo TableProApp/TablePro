@@ -529,6 +529,62 @@
         ],
         "type": "object"
       },
+      "JWK": {
+        "properties": {
+          "alg": {
+            "example": "EdDSA",
+            "type": "string"
+          },
+          "crv": {
+            "description": "Always Ed25519",
+            "example": "Ed25519",
+            "type": "string"
+          },
+          "kid": {
+            "description": "RFC 7638 thumbprint of the key, the kid an entitlement names",
+            "example": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+            "type": "string"
+          },
+          "kty": {
+            "description": "Always OKP",
+            "example": "OKP",
+            "type": "string"
+          },
+          "use": {
+            "example": "sig",
+            "type": "string"
+          },
+          "x": {
+            "description": "The public key, base64url without padding",
+            "example": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kty",
+          "crv",
+          "x",
+          "kid",
+          "use",
+          "alg"
+        ],
+        "type": "object"
+      },
+      "JWKSet": {
+        "properties": {
+          "keys": {
+            "description": "The key that signs entitlements now, then the one it replaced while a rotation is under way",
+            "items": {
+              "$ref": "#/components/schemas/JWK"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "type": "object"
+      },
       "LibraryChange": {
         "properties": {
           "client_id": {
@@ -808,6 +864,19 @@
           "cycle",
           "source",
           "status"
+        ],
+        "type": "object"
+      },
+      "LicenseFile": {
+        "properties": {
+          "license": {
+            "description": "JWS compact serialization, typ license+jwt, signed with Ed25519 by TablePro; see the license file in the API design",
+            "example": "eyJhbGciOiJFZERTQSIsImtpZCI6ImtQcksiLCJ0eXAiOiJsaWNlbnNlK2p3dCJ9.eyJpc3MiOiJodHRwczovL3RhYmxlcHJvLmFwcCJ9.c2lnbmF0dXJl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "license"
         ],
         "type": "object"
       },
@@ -3193,6 +3262,190 @@
         "summary": "Check a discount code",
         "tags": [
           "Checkout"
+        ]
+      }
+    },
+    "/entitlement-keys": {
+      "get": {
+        "description": "A JWK Set (RFC 7517), the jwks_uri of the server's protected resource metadata (RFC 9728).",
+        "operationId": "list-entitlement-keys",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JWKSet"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "The keys that sign this server's entitlements",
+        "tags": [
+          "License"
+        ]
+      }
+    },
+    "/license": {
+      "get": {
+        "description": "A self-hosted server answers its installed license file, which the app verifies with the license keys it ships before it trusts the server's entitlement keys. The SaaS holds none and always answers license_not_installed.",
+        "operationId": "get-license",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseFile"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired.",
+                      "status": 401,
+                      "title": "Unauthorized",
+                      "type": "https://api.tablepro.app/problems/unauthorized"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope.",
+                      "status": 403,
+                      "title": "Forbidden",
+                      "type": "https://api.tablepro.app/problems/forbidden"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "license_not_installed": {
+                    "summary": "License not installed",
+                    "value": {
+                      "code": "license_not_installed",
+                      "detail": "This server holds no license file.",
+                      "status": 404,
+                      "title": "License not installed",
+                      "type": "https://api.tablepro.app/problems/license-not-installed"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later.",
+                      "status": 429,
+                      "title": "Rate limited",
+                      "type": "https://api.tablepro.app/problems/rate-limited"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/Retry-After"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "X-RateLimit-Reset": {
+                "$ref": "#/components/headers/X-RateLimit-Reset"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "The license file this server holds",
+        "tags": [
+          "License"
         ]
       }
     },

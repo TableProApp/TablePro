@@ -2778,6 +2778,19 @@
         }
       }
     },
+    "%@ (not sent: %@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (not sent: %2$@)"
+          }
+        }
+      }
+    },
+    "%@ (not sent: changed on the team since)" : {
+
+    },
     "%@ (reader)" : {
       "localizations" : {
         "fr" : {
@@ -4749,6 +4762,9 @@
     "%@ is not on the server this connection uses, so TablePro did not send the credentials there." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%@ is not part of your organization's license" : {
+
     },
     "%@ is read-only, so nothing can be written to it." : {
       "localizations" : {
@@ -11018,6 +11034,9 @@
     "%d new" : {
 
     },
+    "%d Not Uploaded" : {
+
+    },
     "%d of %d" : {
       "localizations" : {
         "en" : {
@@ -11707,6 +11726,9 @@
 
     },
     "%d saved queries were not imported." : {
+
+    },
+    "%d seats" : {
 
     },
     "%d selected" : {
@@ -15586,6 +15608,9 @@
     "1 new column" : {
 
     },
+    "1 Not Uploaded" : {
+
+    },
     "1 of %lld conflicts" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15813,6 +15838,9 @@
 
     },
     "1 saved query was not imported." : {
+
+    },
+    "1 seat" : {
 
     },
     "1 statement" : {
@@ -32906,6 +32934,9 @@
     "Ask the SSH server's administrator to turn on a method TablePro supports." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Ask your administrator about it." : {
+
     },
     "Ask your administrator to register postgres/host.domain.com in the realm, and connect by hostname rather than IP address." : {
       "extractionState" : "manual",
@@ -52359,6 +52390,9 @@
           }
         }
       }
+    },
+    "Company server" : {
+
     },
     "Compare" : {
       "localizations" : {
@@ -75257,6 +75291,12 @@
         }
       }
     },
+    "Discard and Quit" : {
+
+    },
+    "Discard and Sign Out" : {
+
+    },
     "Discard Changes" : {
       "localizations" : {
         "fr" : {
@@ -83391,6 +83431,9 @@
     "Enter the address of jump host %lld." : {
 
     },
+    "Enter the address of your organization's TablePro server. Your administrator has it." : {
+
+    },
     "Enter the client ID and secret." : {
 
     },
@@ -83691,6 +83734,9 @@
           }
         }
       }
+    },
+    "Enter the server's https address, such as https://tablepro.example.com." : {
+
     },
     "Enter the sort key of index %@" : {
       "extractionState" : "manual",
@@ -85066,6 +85112,9 @@
     "Europe and Africa" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Evaluation license" : {
+
     },
     "Event" : {
       "extractionState" : "manual",
@@ -87519,6 +87568,22 @@
           }
         }
       }
+    },
+    "Expired on %@. Ask your administrator to renew it." : {
+
+    },
+    "Expired on %@. Team Library takes changes until %@; ask your administrator to renew it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Expired on %1$@. Team Library takes changes until %2$@; ask your administrator to renew it."
+          }
+        }
+      }
+    },
+    "Expired on %@. Team Library takes no changes until your administrator renews it." : {
+
     },
     "Expires" : {
       "localizations" : {
@@ -122532,6 +122597,9 @@
         }
       }
     },
+    "Managed by your organization" : {
+
+    },
     "Manual" : {
       "localizations" : {
         "fr" : {
@@ -133880,6 +133948,9 @@
         }
       }
     },
+    "No end date" : {
+
+    },
     "No etcd v3 API found at %@. Point the connection at the client port, 2379 by default, and not the peer port on 2380." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -137158,6 +137229,9 @@
           }
         }
       }
+    },
+    "no seat in the team" : {
+
     },
     "No selection" : {
       "localizations" : {
@@ -140728,6 +140802,12 @@
           }
         }
       }
+    },
+    "Not uploaded before TablePro updated: %@. Later keeps them in memory until you quit or sign out, which ask again." : {
+
+    },
+    "Not uploaded before TablePro updated: %@. They are not kept on disk any more, so TablePro asks once." : {
+
     },
     "Not used" : {
       "localizations" : {
@@ -144663,8 +144743,51 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Only the team's owner and admins publish to its library." : {
+    "only the team's owner and admins publish" : {
 
+    },
+    "only the team's owner, admins and editors publish" : {
+
+    },
+    "Only the team's owner, admins and editors publish to its library." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seuls le propriétaire, les administrateurs et les éditeurs de l’équipe publient dans sa bibliothèque."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "팀 소유자, 관리자, 편집자만 팀 라이브러리에 게시할 수 있습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Takım kitaplığına yalnızca takımın sahibi, yöneticileri ve editörleri yayınlayabilir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chỉ chủ sở hữu, quản trị viên và biên tập viên của nhóm mới được xuất bản lên thư viện nhóm."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有团队的拥有者、管理员和编辑者可以发布到团队库。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有團隊的擁有者、管理員和編輯者可以發佈到團隊庫。"
+          }
+        }
+      }
     },
     "Only this filter is applied. Click to apply all checked filters." : {
 
@@ -158098,6 +158221,9 @@
         }
       }
     },
+    "Profile and teams" : {
+
+    },
     "Profile Details" : {
       "localizations" : {
         "fr" : {
@@ -168581,6 +168707,9 @@
           }
         }
       }
+    },
+    "Removing a device signs TablePro out there." : {
+
     },
     "Removing…" : {
 
@@ -185412,6 +185541,9 @@
         }
       }
     },
+    "Server address" : {
+
+    },
     "Server Configuration" : {
       "localizations" : {
         "fr" : {
@@ -191601,6 +191733,9 @@
     "Sign in again to sync the team library." : {
 
     },
+    "Sign in to %@" : {
+
+    },
     "Sign in to Google with your browser?" : {
       "localizations" : {
         "fr" : {
@@ -191829,6 +191964,9 @@
 
     },
     "Sign in to Vault with your browser?" : {
+
+    },
+    "Sign in to your organization's own TablePro server." : {
 
     },
     "Sign in to your TablePro account to share links." : {
@@ -192180,6 +192318,9 @@
           }
         }
       }
+    },
+    "Sign out first, then sign in to the other account or server." : {
+
     },
     "Sign out of TablePro on this Mac?" : {
       "localizations" : {
@@ -194490,6 +194631,9 @@
       }
     },
     "Some tabs have unsaved edits. Relaunching will discard these changes." : {
+
+    },
+    "Some Team Library changes from before the update were not uploaded" : {
 
     },
     "Some values are set outside this file" : {
@@ -207459,6 +207603,9 @@
         }
       }
     },
+    "TablePro uploaded the changes left from before the update once. These were not taken and were dropped: %@." : {
+
+    },
     "TablePro Website" : {
       "localizations" : {
         "fr" : {
@@ -208856,8 +209003,62 @@
         }
       }
     },
+    "Team Library changes were discarded" : {
+
+    },
+    "Team Library ended for this sign-in before these changes were uploaded: %@." : {
+
+    },
     "Team library updated %@" : {
 
+    },
+    "team.role.editor" : {
+      "comment" : "A team role that adds, changes and removes the team's library items",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Editor"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Éditeur"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "편집자"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editör"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biên tập viên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑者"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編輯者"
+          }
+        }
+      }
     },
     "Team's Version" : {
 
@@ -219788,6 +219989,9 @@
     "The server refused a change. The changes before it were saved." : {
 
     },
+    "The server refused the request. Try again in a moment." : {
+
+    },
     "The server rejected TablePro's credential." : {
       "localizations" : {
         "fr" : {
@@ -219966,6 +220170,9 @@
       "generatesSymbol" : false
     },
     "The server's socket file on this Mac. SELECT @@socket in the mysql client shows it." : {
+
+    },
+    "The server's TablePro license has expired, so it takes no changes. They stay on this Mac until your administrator renews the license." : {
 
     },
     "The server's TLS certificate could not be verified against any trusted root." : {
@@ -222019,6 +222226,9 @@
     "The team library refused “%@”. It may be too large or hold a field the library never stores." : {
 
     },
+    "the team library refused it" : {
+
+    },
     "The team library refused the change. It may be too large or hold a field the library never stores." : {
 
     },
@@ -222517,6 +222727,12 @@
           }
         }
       }
+    },
+    "The upload did not finish. %@" : {
+
+    },
+    "the upload did not go through" : {
+
     },
     "The URL matches this connection." : {
 
@@ -223301,6 +223517,9 @@
         }
       }
     },
+    "These changes are not uploaded yet and are lost if you discard them: %@." : {
+
+    },
     "These changes drop %@, the account this connection uses." : {
       "localizations" : {
         "fr" : {
@@ -223731,6 +223950,9 @@
           }
         }
       }
+    },
+    "This address does not answer as a TablePro server. Check it with your administrator." : {
+
     },
     "This app also asks to list connections hidden from AI. To allow that, turn on “Allow apps to list connections hidden from AI” in Settings > MCP, then pair again." : {
       "localizations" : {
@@ -227918,6 +228140,9 @@
     "This offline file has expired. Create a new one in your account." : {
 
     },
+    "This offline file is for another account. Sign out first, or create one for the account signed in." : {
+
+    },
     "This offline file is not valid yet. Check this Mac's date and time." : {
 
     },
@@ -229251,6 +229476,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This server has no TablePro license installed. Ask your administrator to install one." : {
+
+    },
     "This server has no users or roles you can manage." : {
       "localizations" : {
         "fr" : {
@@ -229372,6 +229600,9 @@
     "This server signs in with Kerberos. Set Authentication to Kerberos (GSSAPI), then reconnect." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This server's TablePro license is not valid for this server. Ask your administrator." : {
+
     },
     "This sets %1$lld of %2$lld cells. The others cannot be edited." : {
 
@@ -239269,9 +239500,27 @@
         }
       }
     },
+    "Upload" : {
+
+    },
     "Upload Again" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Upload and Quit" : {
+
+    },
+    "Upload and Sign Out" : {
+
+    },
+    "Upload Team Library changes before quitting?" : {
+
+    },
+    "Upload Team Library changes from before the update?" : {
+
+    },
+    "Uploaded when the team library answers. Signing out or quitting asks first, since they are not kept on this Mac." : {
+
     },
     "Upper Bound" : {
 
@@ -239788,6 +240037,12 @@
           }
         }
       }
+    },
+    "Use a Company Server" : {
+
+    },
+    "Use a Company Server…" : {
+
     },
     "Use a license key" : {
 
@@ -240511,6 +240766,9 @@
           }
         }
       }
+    },
+    "Use TablePro's Server Instead" : {
+
     },
     "Use text mode to enter JSON." : {
 
@@ -248947,6 +249205,9 @@
         }
       }
     },
+    "You were signed out before these changes were uploaded: %@." : {
+
+    },
     "You were signed out. Sign in again." : {
 
     },
@@ -249556,6 +249817,9 @@
         }
       }
     },
+    "Your organization manages which server TablePro signs in to." : {
+
+    },
     "Your organization requires Safe Mode to be at least %@ on every connection." : {
       "localizations" : {
         "fr" : {
@@ -249565,6 +249829,18 @@
           }
         }
       }
+    },
+    "Your organization set up this TablePro server. Sign in with your work account." : {
+
+    },
+    "Your organization's server licenses this Mac. A license key or an offline file is not needed." : {
+
+    },
+    "Your organization's TablePro server." : {
+
+    },
+    "Your organization's TablePro server. Sign in with your work account." : {
+
     },
     "Your plan could not be verified" : {
       "localizations" : {

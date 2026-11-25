@@ -15,6 +15,9 @@ pub trait HostBrowser: Send + Sync {
 pub enum HostBrowserError {
     #[error("the browser did not open: {detail}")]
     Failed { detail: String },
+    // The person closed the web authentication session.
+    #[error("the sign-in was cancelled")]
+    Cancelled,
 }
 
 impl From<uniffi::UnexpectedUniFFICallbackError> for HostBrowserError {

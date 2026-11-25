@@ -760,6 +760,20 @@
     SQLite and libSQL driver plugins, with its symbols hidden. The app itself still uses the macOS
     libsqlite3 for its own storage. Public domain; the SPDX id "blessing" names the notice the sources
     carry in place of a license.'
+- id: tablepro-core-crates
+  name: TablePro core's Rust crates
+  version: Cargo.lock
+  spdx: MIT AND Apache-2.0 AND ISC AND BSD-3-Clause AND MPL-2.0 AND OpenSSL AND Unicode-3.0 AND Zlib
+  copyrights:
+  - Each crate's own, in the license text that lists it
+  homepageURL: https://crates.io
+  licenseTextURL: https://github.com/TableProApp/TablePro/blob/main/apple/TablePro/Resources/ThirdPartyLicenses/texts/tablepro-core-crates.txt
+  textFile: texts/tablepro-core-crates.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: The crates the core library links (scripts/build-core.sh, no engines). scripts/update-core-licenses.sh writes
+    the text from Cargo.lock with cargo-about, and core.yml fails while it is out of date.
 - id: swift-argument-parser
   name: swift-argument-parser
   version: 1.8.2

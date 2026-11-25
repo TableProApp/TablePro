@@ -212,7 +212,7 @@ extension DataGridViewController {
         if gridCommands.offers(.exportResults) {
             items.append(menuItem(String(localized: "Export Results…"), #selector(exportResultsFromMenu(_:)), context))
         }
-        if gridCommands.offers(.shareResult) {
+        if gridCommands.offers(.shareResult), ShareAvailability.isAvailable {
             items.append(menuItem(String(localized: "Share Result…"), #selector(shareResultFromMenu(_:)), context))
         }
         if gridCommands.offers(.clearResults) {

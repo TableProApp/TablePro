@@ -32,7 +32,7 @@ internal struct SignInPrompt {
                     uiTestRequestsSheet: UITestLaunchEnvironment.requestsWelcomeSheet
                 )
             },
-            isSignedIn: { AccountServices.shared.session.isSignedIn },
+            isSignedIn: { AccountServices.shared.isSignedIn },
             hasStoredLicenseKey: { AccountServices.shared.hasLicenseKeyToExchange },
             present: { SignInWindowController.present(purpose: .firstLaunch) }
         )

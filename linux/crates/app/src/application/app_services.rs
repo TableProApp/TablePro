@@ -515,7 +515,8 @@ mod tests {
 
     use chrono::{TimeDelta, Utc};
     use tablepro_account::{
-        Account, AccountError, AccountSettings, AppClient, CallbackPage, DeviceDescription, Endpoints, MachineId, fakes,
+        Account, AccountError, AccountSettings, AppClient, CallbackPage, DeviceDescription, Endpoints, FixedServer,
+        MachineId, ServerSettings, fakes,
     };
     use tablepro_session::SessionKey;
     use tablepro_session::fakes::FakeConnector;
@@ -576,19 +577,23 @@ mod tests {
     fn account(stub: &CloudStub, machine: MachineId, dir: &Path) -> (Account, AccountHandle) {
         let settings = AccountSettings {
             client: AppClient::LINUX,
-            endpoints: Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints"),
+            server: ServerSettings::Fixed(FixedServer {
+                endpoints: Endpoints::new(&stub.url, &format!("{}/v2", stub.url)).expect("the endpoints"),
+                keys: fakes::keys().expect("the test key"),
+                issuer: fakes::ISSUER.to_owned(),
+            }),
             device: DeviceDescription {
                 name: "Ada's laptop".to_owned(),
                 app_version: "0.1.0".to_owned(),
                 os_version: "Ubuntu 26.04".to_owned(),
             },
             machine_id: machine,
-            keys: fakes::keys().expect("the test key"),
             account_file: dir.join("account.json"),
             callback_page: CallbackPage {
                 finished: String::new(),
                 unknown: String::new(),
             },
+            legacy_entitlement_file: None,
         };
         let (status, receiver) = watch::channel(AccountStatus::SignedOut);
         let account = Account::new(

@@ -1,6 +1,6 @@
 # 0016: TablePro accounts live in the core, with features gated by the entitlement
 
-- **Status**: Accepted; the Windows app amended by [0026](0026-the-windows-app-signs-in-through-the-ffi.md), share links amended by [0027](0027-share-links.md), the server and the keys a release build trusts amended by [0044](0044-sync-through-one-service-run-by-us-or-on-premises.md)
+- **Status**: Accepted; the Windows app amended by [0026](0026-the-windows-app-signs-in-through-the-ffi.md), share links amended by [0027](0027-share-links.md), the server and the keys a release build trusts amended by [0044](0044-sync-through-one-service-run-by-us-or-on-premises.md), the Apple apps amended by [0047](0047-the-apple-apps-sign-in-through-the-core.md)
 - **Date**: 2026-11-05
 
 ## Context

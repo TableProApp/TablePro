@@ -28,7 +28,7 @@ Every capability is core, a module or a plugin. The first rule that fits decides
 - `Plugins/`: drivers and import/export formats as `.tableplugin` bundles, plus `TableProPluginKit`. Bundled plugins are the `copy: { destination: plugins }` targets in `project.yml`; the app never offers a registry install or update over one.
 - `Packages/`: `TableProCore` (both apps), `TableProMacCore` (macOS only, never in the iOS project), `TableProOracle`, `TableProEditor`, `TableProGrammars`. Edit PluginKit in `Plugins/TableProPluginKit/` only; `TableProCore` symlinks it. Never pass `SWIFT_VERSION=` to `xcodebuild`.
 - `Native/`: Rust and Go bridges. `Libs/`: static libraries from `scripts/download-libs.sh`, not in git.
-- `Packages/TableProFFI`: the shared Rust core (`core/`) as the module `TableProFFI`. `scripts/build-core.sh` builds its XCFramework and generates its Swift from the same library, neither in git; then `swift test --package-path Packages/TableProFFI`. Nothing in the app links it yet (`core/docs/decisions/0010-macos-on-the-core.md`).
+- `Packages/TableProFFI`: the shared Rust core (`core/`) as the module `TableProFFI`. `scripts/build-core.sh` builds its XCFramework and generates its Swift from the same library, neither in git; then `swift test --package-path Packages/TableProFFI`. The app links it for the TablePro account (`core/docs/decisions/0010-macos-on-the-core.md`, `0044-sync-through-one-service-run-by-us-or-on-premises.md`), so SwiftPM resolves nothing in the macOS project until it is built; `verify.sh build` and `test` build it when stale. On Apple targets the core links the system SQLite the app opens its own files with, and `build-core.sh` fails when it would bundle its own or call a function newer than the deployment target.
 - XcodeGen generates `TablePro.xcodeproj` and `TableProMobile/TableProMobile.xcodeproj`; never hand-edit them. Signing overrides go in `Configs/Secrets.xcconfig`.
 - Architecture lives in `.claude/rules/`: `plugin-system.md`, `connection-window.md`, `editor.md`, `theme.md` and `data-sync-storage.md`.
 
@@ -38,6 +38,7 @@ From the repository root:
 
 ```bash
 apple/scripts/download-libs.sh  # first time, and after a libs update
+apple/scripts/build-core.sh arm64  # first time, and after a core change; verify.sh does it when stale
 apple/scripts/generate-project.sh [both|macos|ios]  # after a project.yml or Configs/ edit, or a new, moved or deleted source file
 .claude/skills/fix-issue/scripts/verify.sh build
 .claude/skills/fix-issue/scripts/verify.sh test [<Suite>|<Suite>/<case>()|<Target>/<Suite>...]  # none: the Unit plan

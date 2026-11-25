@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
 use secrecy::SecretString;
-use tablepro_account::{AccountSettings, RefreshTokenVault};
+use tablepro_account::RefreshTokenVaults;
 use tablepro_ai::{AiClient, ModelCatalog};
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
@@ -27,7 +27,7 @@ use crate::cancel_token::{CancelToken, token};
 use crate::drivers::{self, DriverInfo};
 use crate::error::CoreError;
 use crate::history::QueryHistoryStore;
-use crate::host::{HostConfig, HostSecretStore, HostSecrets};
+use crate::host::{HostConfig, HostRefreshTokens, HostSecretStore, HostSecrets};
 use crate::library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, LibraryWrites, apply, blank, keep_proved_secrets, parse_id,
     tls_config,
@@ -87,8 +87,7 @@ impl Core {
             SystemSecrets {
                 vault: host.clone(),
                 items: host.clone(),
-                // A host keeps one item for it, whichever server the sign-in is with.
-                refresh_tokens: Arc::new(move |_: &AccountSettings| host.clone() as Arc<dyn RefreshTokenVault>),
+                refresh_tokens: Arc::new(HostRefreshTokens(host.clone())),
                 folder_token: None,
             },
             tasks,
@@ -455,8 +454,8 @@ fn no_storage() -> CoreError {
     CoreError::failed("ffi.no_storage", "the core was started without a storage folder")
 }
 
-// Where one sign-in keeps its refresh token, chosen by its settings.
-pub(crate) type RefreshTokens = Arc<dyn Fn(&AccountSettings) -> Arc<dyn RefreshTokenVault> + Send + Sync>;
+// Where each sign-in keeps its refresh token, chosen by its server and account file.
+pub(crate) type RefreshTokens = Arc<dyn RefreshTokenVaults>;
 
 struct SystemSecrets {
     vault: Arc<dyn SecretVault>,
@@ -477,13 +476,7 @@ fn system_secrets(tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
     Ok(SystemSecrets {
         vault: manager.clone(),
         items: manager.clone(),
-        refresh_tokens: Arc::new({
-            let manager = manager.clone();
-            move |settings: &AccountSettings| {
-                Arc::new(manager.refresh_token(&settings.sign_in_key(), settings.is_production()))
-                    as Arc<dyn RefreshTokenVault>
-            }
-        }),
+        refresh_tokens: Arc::new(crate::credential_manager::SignInTokens(manager.clone())),
         folder_token: Some(Arc::new(move |dir: &str| {
             Arc::new(crate::credential_manager::FolderToken::new(manager.clone(), dir)) as Arc<dyn TokenVault>
         })),
@@ -688,7 +681,7 @@ mod tests {
     struct NoItems;
 
     #[async_trait]
-    impl RefreshTokenVault for NoItems {
+    impl tablepro_account::RefreshTokenVault for NoItems {
         async fn load_refresh_token(&self) -> Result<Option<SecretString>, SecretError> {
             Ok(None)
         }
@@ -728,7 +721,7 @@ mod tests {
             SystemSecrets {
                 vault: Arc::new(Vault::default()),
                 items: Arc::new(NoItems),
-                refresh_tokens: Arc::new(|_: &AccountSettings| Arc::new(NoItems) as Arc<dyn RefreshTokenVault>),
+                refresh_tokens: Arc::new(tablepro_account::SingleVault(Arc::new(NoItems))),
                 folder_token: None,
             },
             runtime::tasks().unwrap(),

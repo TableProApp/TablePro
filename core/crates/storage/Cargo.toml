@@ -21,11 +21,13 @@ tempfile.workspace = true
 tracing.workspace = true
 
 # Linux links the distribution's SQLite, so its security fixes arrive
-# through the distribution; the other targets build the copy sqlx ships.
-[target.'cfg(target_os = "linux")'.dependencies]
+# through the distribution. Apple targets link the system's, the one the
+# app opens its own files with: two copies in one process break each
+# other's POSIX locks (core ADR 0010). Windows builds the copy sqlx ships.
+[target.'cfg(any(target_os = "linux", target_vendor = "apple"))'.dependencies]
 sqlx = { workspace = true, features = ["sqlite-unbundled"] }
 
-[target.'cfg(not(target_os = "linux"))'.dependencies]
+[target.'cfg(not(any(target_os = "linux", target_vendor = "apple")))'.dependencies]
 sqlx = { workspace = true, features = ["sqlite"] }
 
 [dev-dependencies]

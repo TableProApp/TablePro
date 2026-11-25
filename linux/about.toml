@@ -237,3 +237,23 @@ license = "BSD-3-Clause AND MIT"
 [[sha1_smol.clarify.files]]
 path = "LICENSE"
 checksum = "282a21b0710441c364025461a447362daf18f5798a7b72ae2f801a2aa536da51"
+
+# The crates below are only in the macOS app's library (apple/scripts/update-core-licenses.sh),
+# through tablepro-ssh's in-process transport.
+
+# LICENSE.md holds both licenses; the MIT text carries the copyright.
+[md5.clarify]
+license = "MIT OR Apache-2.0"
+[[md5.clarify.files]]
+path = "LICENSE.md"
+license = "MIT"
+start = "Copyright 2015–2026 The md5 Developers\n\nPermission"
+end = "OTHER DEALINGS IN THE SOFTWARE."
+checksum = "feb310a5addea34a288532fc9f6727caa271f66c4d1f82ad705291683ba66dec"
+
+[delegate.clarify]
+license = "MIT OR Apache-2.0"
+[[delegate.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "be7ee8aa49dc586023669a0c600a0536fce6a9f61264a53a67cdd842564ed899"

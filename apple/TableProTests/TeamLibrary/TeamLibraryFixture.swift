@@ -18,7 +18,13 @@ final class TeamLibraryFixture {
     let defaults: EphemeralDefaults
     let directory: URL
     let clock = ManualClock()
+    let storage: TeamLibraryStorage
+    // The read cache of the account the fixture signs in.
     let store: TeamLibraryStateStore
+    // What each involuntary sign-out discarded.
+    let discarded = DiscardedLog()
+    // What each one-time upload of the edits 0.88 left could not get taken.
+    let notTaken = DiscardedLog()
     private(set) var sync: TeamLibrarySync
 
     init(role: String = "owner", hasSeat: Bool = true, seed: (inout FakeTeamLibrary) -> Void = { _ in }) async throws {
@@ -36,12 +42,20 @@ final class TeamLibraryFixture {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TeamLibraryTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        store = TeamLibraryStateStore(
-            directory: directory.appendingPathComponent("TeamLibrary", isDirectory: true),
-            legacyFile: directory.appendingPathComponent("team_library.json"),
+        storage = TeamLibraryStorage(
+            flat: TeamLibraryStateStore(
+                directory: directory.appendingPathComponent("TeamLibrary", isDirectory: true),
+                legacyFile: directory.appendingPathComponent("team_library.json"),
+                defaults: defaults.defaults
+            ),
+            cacheRoot: directory.appendingPathComponent("TeamLibraryCache", isDirectory: true),
             defaults: defaults.defaults
         )
-        sync = TeamLibrarySync(account: account.services, store: store, clock: clock)
+        store = storage.cache(in: storage.folder(server: AccountServer.production.apiOrigin, accountID: "acct_test"))
+        sync = TeamLibrarySync(
+            account: account.services, storage: storage, clock: clock,
+            reportDiscarded: discarded.record, reportEarlierEditsNotTaken: notTaken.record
+        )
         sync.loadIfNeeded()
     }
 
@@ -56,8 +70,38 @@ final class TeamLibraryFixture {
     // A new launch reading what the last one stored.
     func relaunch() {
         sync.stop()
-        sync = TeamLibrarySync(account: account.services, store: store, clock: clock)
+        sync = TeamLibrarySync(
+            account: account.services, storage: storage, clock: clock,
+            reportDiscarded: discarded.record, reportEarlierEditsNotTaken: notTaken.record
+        )
         sync.loadIfNeeded()
+    }
+
+    // A team file as 0.88 and earlier wrote it, unsent edits and conflicts included, on a Mac that has not read it yet;
+    // with `owner`, the JSON development builds of the account move wrote there.
+    func writeFlat(_ state: TeamLibraryTeamState, owner: Any? = nil) throws {
+        let file = storage.flat.directory.appendingPathComponent("\(state.teamID).json")
+        try JSONFileStore<TeamLibraryTeamState>(url: file).write(state)
+        if let owner {
+            guard var json = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any] else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            json["owner"] = owner
+            try JSONSerialization.data(withJSONObject: json).write(to: file)
+        }
+        defaults.defaults.removeObject(forKey: TeamLibraryStorage.flatConsideredKey)
+    }
+
+    // The /v1 cache as 0.88 and earlier kept it, on a Mac that has not read it yet.
+    func writeFlatLegacyCache(_ cache: [String: Any]) throws {
+        try JSONSerialization.data(withJSONObject: cache).write(to: storage.flat.legacyFile)
+        defaults.defaults.removeObject(forKey: TeamLibraryStorage.flatConsideredKey)
+    }
+
+    // The folders of the read cache on disk, one per server and account.
+    var cacheFolders: [String] {
+        let folders = (try? FileManager.default.contentsOfDirectory(atPath: storage.cacheRoot.path)) ?? []
+        return folders.sorted()
     }
 
     func library(_ change: @escaping @Sendable (inout FakeTeamLibrary) -> Void) async {
@@ -110,5 +154,21 @@ final class TeamLibraryFixture {
             data["parent_client_id"] = parent
         }
         return data
+    }
+}
+
+@MainActor
+final class DiscardedLog {
+    private(set) var reports: [[String]] = []
+
+    func record(_ changes: [String]) {
+        reports.append(changes)
+    }
+}
+
+// Defaults whose writes never reach the disk, as when synchronize fails.
+final class UnsavedDefaults: UserDefaults {
+    override func synchronize() -> Bool {
+        false
     }
 }

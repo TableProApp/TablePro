@@ -9,8 +9,8 @@ import TableProCloudAPI
 import TableProTestSupport
 
 // GET and POST /v2/teams/{team_id}/library/changes as tablepro-cloud's library use cases answer them: a seat reads, an
-// owner or admin writes, items are keyed by kind and the client ID exactly as sent, and every write takes the next
-// revision.
+// owner, admin or editor writes, items are keyed by kind and the client ID exactly as sent, and every write takes the
+// next revision.
 struct FakeTeamLibrary: Sendable {
     struct Item: Sendable {
         var kind: String
@@ -34,6 +34,8 @@ struct FakeTeamLibrary: Sendable {
     // Answered, one per pull or per push, before anything else.
     var faults: [Int] = []
     var pushFaults: [Int] = []
+    // A company server past its license's grace: pushes are refused, pulls go on.
+    var licenseExpired = false
     // Seconds, sent as Retry-After on each 429 fault.
     var retryAfter: Int?
     // Each writer's updated_by_name, as the server reads it from the accounts at answer time.
@@ -138,11 +140,14 @@ struct FakeTeamLibrary: Sendable {
         if !pushFaults.isEmpty {
             return fault(pushFaults.removeFirst())
         }
+        if licenseExpired {
+            return FakeAccountServer.problem(status: 403, code: "license_expired")
+        }
         guard let team = Self.team(in: path), let member = Self.member(team, in: memberships) else {
             return FakeAccountServer.problem(status: 404, code: "not_found")
         }
         guard member.hasSeat else { return FakeAccountServer.problem(status: 403, code: "forbidden") }
-        guard member.role == "owner" || member.role == "admin" else {
+        guard ["owner", "admin", "editor"].contains(member.role) else {
             return FakeAccountServer.problem(status: 403, code: "library_write_forbidden")
         }
         let parsed = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]

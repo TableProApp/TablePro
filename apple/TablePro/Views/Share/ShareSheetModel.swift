@@ -684,8 +684,8 @@ extension ShareSheetModel {
         ShareSheetModel(
             request: request,
             service: AccountServices.shared.shares,
-            isSignedIn: { FeatureAccess.shared.state.isSignedIn },
-            signInChanges: FeatureAccess.shared.$state.map(\.isSignedIn).eraseToAnyPublisher(),
+            isSignedIn: { ShareAvailability.isSignedIn(FeatureAccess.shared.state) },
+            signInChanges: FeatureAccess.shared.$state.map(ShareAvailability.isSignedIn).eraseToAnyPublisher(),
             copyToClipboard: { ClipboardService.shared.writeText($0) }
         )
     }

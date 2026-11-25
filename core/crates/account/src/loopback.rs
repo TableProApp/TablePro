@@ -37,6 +37,8 @@ pub(crate) struct Loopback {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Callback {
     Code(String),
+    // RFC 9207: the code and the issuer the authorization server named, which must be the one asked.
+    CodeFrom { code: String, issuer: String },
     Refused { error: String, description: Option<String> },
 }
 
@@ -127,9 +129,10 @@ fn reply<B>(request: &Request<B>, state: &str, page: &CallbackPage) -> Reply {
 }
 
 pub(crate) fn callback(query: &str, state: &str) -> Option<Callback> {
-    let (mut code, mut error, mut description, mut returned) = (None, None, None, None);
+    let (mut code, mut error, mut description, mut returned, mut issuer) = (None, None, None, None, None);
     for (name, value) in url::form_urlencoded::parse(query.as_bytes()) {
         match &*name {
+            "iss" => issuer = Some(value.into_owned()),
             "code" => code = Some(value.into_owned()),
             "error" => error = Some(value.into_owned()),
             "error_description" => description = Some(value.into_owned()),
@@ -142,7 +145,10 @@ pub(crate) fn callback(query: &str, state: &str) -> Option<Callback> {
     }
     Some(match (code, error) {
         (_, Some(error)) => Callback::Refused { error, description },
-        (Some(code), None) => Callback::Code(code),
+        (Some(code), None) => match issuer {
+            Some(issuer) => Callback::CodeFrom { code, issuer },
+            None => Callback::Code(code),
+        },
         (None, None) => Callback::Refused {
             error: "invalid_request".to_owned(),
             description,

@@ -106,18 +106,6 @@ private struct AccountPresentations: ViewModifier {
             } message: { _ in
                 Text("TablePro on that device signs out the next time it checks your account. Its paid features keep working until its last check expires.")
             }
-            .alert(
-                String(localized: "Sign out of TablePro on this Mac?"),
-                isPresented: Binding(get: { model.confirmsSignOut }, set: { if !$0 { model.cancelSignOut() } }),
-                presenting: model.signOutConfirmation
-            ) { confirmation in
-                Button(String(localized: "Sign Out"), role: confirmation.discardsSomething ? .destructive : nil) {
-                    Task { await model.signOut() }
-                }
-                Button(String(localized: "Cancel"), role: .cancel) {}
-            } message: { confirmation in
-                Text(confirmation.message)
-            }
     }
 
     private var signedInEmail: String? {

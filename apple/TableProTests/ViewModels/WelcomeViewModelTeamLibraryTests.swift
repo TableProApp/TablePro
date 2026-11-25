@@ -30,6 +30,27 @@ struct WelcomeViewModelTeamLibraryTests {
         #expect(await fixture.libraryRequests().isEmpty)
     }
 
+    @Test("A sign-in that ends while the confirmation is open sends nothing, though the next one has the same team")
+    func switchWhileConfirmingPublishesNothing() async throws {
+        let fixture = try await TeamLibraryFixture()
+        await fixture.sync.sync()
+
+        let outcome = await WelcomeViewModel.publishConnections(
+            [DatabaseConnection(name: "Prod")],
+            to: TeamLibraryFixture.team,
+            through: fixture.sync,
+            confirm: { _ in
+                await fixture.account.services.signOut()
+                try? await fixture.account.signIn()
+                await fixture.sync.sync()
+                return true
+            }
+        )
+
+        #expect(outcome == .failed(.failed(.signedOut)))
+        #expect(await fixture.pushes().isEmpty)
+    }
+
     @Test("Confirming pushes each connection under its lowercase ID, settings without passwords")
     func confirmedPublishSendsConnections() async throws {
         let fixture = try await TeamLibraryFixture()
@@ -89,6 +110,21 @@ struct WelcomeViewModelTeamLibraryTests {
 
         #expect(outcome == .failed(.notWritable))
         #expect(await fixture.pushes().isEmpty)
+    }
+
+    @Test("An editor publishes connections")
+    func editorPublishesConnections() async throws {
+        let fixture = try await TeamLibraryFixture(role: "editor")
+
+        let outcome = await WelcomeViewModel.publishConnections(
+            [DatabaseConnection(name: "Prod")],
+            to: TeamLibraryFixture.team,
+            through: fixture.sync,
+            confirm: { _ in true }
+        )
+
+        #expect(outcome == .finished(.published(1)))
+        #expect(fixture.sync.content.connections.map(\.settings.name) == ["Prod"])
     }
 
     @Test("The confirmation names one connection and counts several")

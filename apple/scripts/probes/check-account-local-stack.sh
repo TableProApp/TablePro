@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 #
 # Run the account services against a local tablepro-cloud stack (web/e2e's global setup, with its fake Resend and
-# fake Polar), end to end: an interactive sign-in through the account pages in headless Chrome, device
-# registration, the token refresh that names the device, the entitlement checked with the stack's key, refresh
-# token rotation, GET /v2/me, Use License Key replacing and revoking the interactive session, sign-out revoking the
-# refresh token, a seeded legacy key migrating with no refresh, an unknown key refused, and a fourth device answered
+# fake Polar), end to end through the core: an interactive sign-in through the account pages in headless Chrome, the
+# entitlement checked with the stack's key, a refresh, GET /v2/me, Use License Key replacing the session, sign-out
+# removing the refresh token, a seeded legacy key migrating, an unknown key set aside, and a fourth device answered
 # with device_limit_reached and its 3 holders, one of which it then removes to take the slot. Then the team library:
 # an old build publishes over /v1 with a team's license key and caches its pull, the update exchanges the key and its
 # first /v2 sync takes that cache over item by item, this Mac pushes, a member's second device pulls with this Mac's
-# account named as each item's writer and cannot push, an admin's stale push comes back as a conflict naming that
-# writer, which Keep Mine resolves, the owner then sees the nameless admin by address and the member sees no name,
-# deleting the folder the old build published deletes it from the team, and deleting a folder that holds the admin's
-# query moves that query up and leaves it the admin's.
+# account named as each item's writer and cannot push, an editor's device publishes and the server applies it, an
+# admin's stale push comes back as a conflict naming that writer, which Keep Mine resolves, the owner then sees the
+# nameless admin by address and the member sees no name, deleting the folder the old build published deletes it from
+# the team, and deleting a folder that holds the admin's query moves that query up and leaves it the admin's.
 #
 # account-local-stack/main.swift drives the app's own Core/Services/Account and Core/Services/TeamLibrary sources,
 # built into a SwiftPM executable beside AppStubs.swift. seed.cjs and seed-library.cjs insert the accounts and the team
@@ -29,7 +28,8 @@
 # PROBE_CHROME      a Chrome or chrome-headless-shell for Puppeteer, else Puppeteer's own
 # PROBE_STEPS       account, library or both (the default), comma-separated
 #
-# Needs node with puppeteer installed globally, and xcrun swift. Exits 0 when every check passes, 1 when one
+# Needs node with puppeteer installed globally, xcrun swift, and a core that takes a development stack:
+# CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true scripts/build-core.sh arm64. Exits 0 when every check passes, 1 when one
 # fails, 3 when it cannot run.
 
 set -uo pipefail
@@ -70,14 +70,17 @@ mkdir -p "$WORK/Sources/Probe"
 SOURCES="$WORK/Sources/Probe"
 for source in "$ROOT"/TablePro/Core/Services/Account/*.swift; do
     case "$(basename "$source")" in
-        AccountServices+Live.swift | LicenseSignatureVerifier.swift) continue ;;
+        AccountServices+Live.swift) continue ;;
     esac
     ln -s "$source" "$SOURCES/$(basename "$source")"
 done
 for source in "$ROOT"/TablePro/Core/Services/TeamLibrary/*.swift; do
     ln -s "$source" "$SOURCES/$(basename "$source")"
 done
-for source in Models/Settings/ProFeature.swift Core/Diagnostics/LogRedaction.swift Extensions/Bundle+AppInfo.swift; do
+for source in Models/Settings/ProFeature.swift Core/Diagnostics/LogRedaction.swift Extensions/Bundle+AppInfo.swift \
+    Core/Services/Shares/CloudShareService.swift Core/Services/Shares/ShareCreateRequest.swift \
+    Core/Services/Shares/ShareModels.swift Core/Services/Shares/ShareService.swift Core/Services/Masking/MaskingRule.swift \
+    Core/Storage/Preferences/JSONFileStore.swift Core/Storage/Preferences/StoreRead.swift; do
     ln -s "$ROOT/TablePro/$source" "$SOURCES/$(basename "$source")"
 done
 ln -s "$PROBE/AppStubs.swift" "$SOURCES/AppStubs.swift"
@@ -90,13 +93,15 @@ let package = Package(
     name: "AccountLocalStackProbe", platforms: [.macOS(.v14)],
     dependencies: [
         .package(path: "$ROOT/Packages/TableProCore"),
-        .package(path: "$ROOT/Packages/TableProMacCore")
+        .package(path: "$ROOT/Packages/TableProMacCore"),
+        .package(path: "$ROOT/Packages/TableProFFI")
     ],
     targets: [
         .executableTarget(name: "Probe", dependencies: [
             .product(name: "TableProCloudAPI", package: "TableProMacCore"),
             .product(name: "TableProImport", package: "TableProCore"),
-            .product(name: "TableProLogRedaction", package: "TableProCore")
+            .product(name: "TableProLogRedaction", package: "TableProCore"),
+            .product(name: "TableProFFI", package: "TableProFFI")
         ], swiftSettings: [
             .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
             .enableUpcomingFeature("InferIsolatedConformances"),

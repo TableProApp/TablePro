@@ -10,6 +10,8 @@ internal struct AccountSettingsView: View {
         Form {
             AccountIdentitySection(model: model, identity: content.identity, canRefresh: content.canRefresh)
 
+            AccountServerSection(model: model, content: content)
+
             if content.showsPlan {
                 AccountPlanSection(model: model, content: content, showDevices: showDevices)
             }
@@ -33,7 +35,9 @@ internal struct AccountSettingsView: View {
                     )
                 }
 
-                SettingsDrillRow(route: SettingsRoute.page(.accountOffline), title: SettingsPage.accountOffline.title)
+                if content.sellsPlans {
+                    SettingsDrillRow(route: SettingsRoute.page(.accountOffline), title: SettingsPage.accountOffline.title)
+                }
             }
         }
         .formStyle(.grouped)
@@ -54,8 +58,6 @@ private struct AccountIdentitySection: View {
                 signedIn(name: name, email: email)
             case .account(let name, let email, false):
                 offlineFile(name: name, email: email)
-            case .licenseKey(let isValid):
-                licenseKey(isValid: isValid)
             case .signedOut:
                 signedOut
             }
@@ -78,7 +80,7 @@ private struct AccountIdentitySection: View {
             }
 
             Button(String(localized: "Sign Out…")) {
-                model.requestSignOut()
+                Task { await model.signOut() }
             }
             .disabled(model.isBusy)
             .fixedSize()
@@ -87,12 +89,16 @@ private struct AccountIdentitySection: View {
 
         LabeledContent {
             Button(String(localized: "Manage Account…")) {
-                model.openPortal(model.services.configuration.accountURL)
+                model.openPortal(model.services.portal.accountURL)
             }
             .fixedSize()
             .accessibilityIdentifier("account-manage")
         } label: {
-            Text("Profile, sign-in methods and billing")
+            if model.services.server.isProduction {
+                Text("Profile, sign-in methods and billing")
+            } else {
+                Text("Profile and teams")
+            }
         }
     }
 
@@ -112,37 +118,40 @@ private struct AccountIdentitySection: View {
         signInFailure
     }
 
-    // The key exchange signs this Mac in, so a sign-in here would leave the key unexchanged.
-    private func licenseKey(isValid: Bool) -> some View {
-        AccountIdentityRow(
-            systemImage: isValid ? "checkmark.seal.fill" : "seal",
-            tint: isValid ? .green : .secondary,
-            title: String(localized: "License key"),
-            subtitles: [
-                isValid
-                    ? String(localized: "TablePro signs you in with your license key the next time it reaches the server.")
-                    : String(localized: "Connect to the internet to verify your license."),
-            ],
-            wrapsSubtitles: true
-        ) {
-            if canRefresh {
-                AccountRefreshControl(model: model)
-            }
-        }
-    }
-
     @ViewBuilder
     private var signedOut: some View {
+        let server = model.services.server
         LabeledContent {
             signInControl
         } label: {
-            Text("Sign in to TablePro")
-            Text("Your account unlocks the features your plan includes on this Mac. Everything else works without an account.")
+            if server.isProduction {
+                Text("Sign in to TablePro")
+                Text("Your account unlocks the features your plan includes on this Mac. Everything else works without an account.")
+            } else {
+                Text(String(format: String(localized: "Sign in to %@"), server.host))
+                Text("Your organization's TablePro server.")
+            }
         }
 
         signInFailure
 
-        SettingsHelpRow(SignInCopy.codeHint)
+        if server.isProduction, server.othersAllowed {
+            LabeledContent {
+                Button(String(localized: "Use a Company Server…")) {
+                    SignInWindowController.present(entersCompanyServer: true)
+                }
+                .disabled(model.isBusy)
+                .fixedSize()
+                .accessibilityIdentifier("account-use-company-server")
+            } label: {
+                Text("Company server")
+                Text("Sign in to your organization's own TablePro server.")
+            }
+        }
+
+        if server.isProduction {
+            SettingsHelpRow(SignInCopy.codeHint)
+        }
     }
 
     private var signInControl: some View {
@@ -240,7 +249,7 @@ private struct AccountPlanSection: View {
                 LabeledContent {
                     Button(String(localized: "Upgrade…")) {
                         Telemetry.shared.upgradeClicked(from: .licenseSettings)
-                        model.openPortal(model.services.configuration.portalBilling)
+                        model.openPortal(model.services.portal.portalBilling)
                     }
                     .fixedSize()
                     .accessibilityIdentifier("account-upgrade")
@@ -250,7 +259,8 @@ private struct AccountPlanSection: View {
                 }
             }
 
-            if content.notices.isEmpty, content.plans.isEmpty, !content.isFree {
+            // A company server's license is in the Server section, and its entitlement may name no plan of its own.
+            if content.notices.isEmpty, content.plans.isEmpty, !content.isFree, content.sellsPlans {
                 AccountLoadingRow(label: String(localized: "Checking your plan"))
             }
 
@@ -412,8 +422,10 @@ private struct AccountVerificationRow: View {
 
     private var title: String {
         switch state {
-        case .verified(let at, _):
+        case .verified(let at?, _):
             String(format: String(localized: "Verified %@"), at.formatted(.relative(presentation: .named)))
+        case .verified(nil, _):
+            String(localized: "Verified")
         case .offlineFile, .offlineFileExpired:
             String(localized: "Offline file")
         case .expired:
@@ -488,7 +500,11 @@ internal struct AccountDevicesPage: View {
                     }
                 }
 
-                SettingsHelpRow("A plan works on up to 3 devices at a time. Removing one signs TablePro out there.")
+                if model.services.server.isProduction {
+                    SettingsHelpRow("A plan works on up to 3 devices at a time. Removing one signs TablePro out there.")
+                } else {
+                    SettingsHelpRow("Removing a device signs TablePro out there.")
+                }
             }
         }
         .formStyle(.grouped)
