@@ -580,13 +580,13 @@ A key holder belongs to (origin, account id, device row id), not to a session (F
 
 ### Security state
 
-A holder's security state is what it has verified, apart from its keys. It lives in the account's TablePro Sync state file. 0054 owns the file's format and MAC, its freshness, and the key checkpoint it keeps in an anchor in the device store, after ROTE. The checkpoint holds every followed log's head, every key version floor, and each envelope's highest counter with that ciphertext's hash. This ADR fixes what each key table holds and the rules on it. 0054 holds the one column list:
+A holder's security state is what it has verified, apart from its keys. It lives in the account's TablePro Sync state file. 0054 owns the file's format and MAC, its freshness, and the key checkpoint it keeps in an anchor in the device store, after ROTE. Its digest frames each value with 0054's `W`, an 8-byte length, since key objects can pass 65,535 bytes. This ADR's `LP` stays for its own crypto inputs. The checkpoint holds every followed log's head, every key version floor, and each envelope's highest counter with that ciphertext's hash. This ADR fixes what each key table holds and the rules on it. 0054 holds the one column list:
 
 | Table | Holds |
 |---|---|
 | `key_statements` | Every key object the holder keeps verbatim: the statements of the logs it follows (its account's two logs, and each team's log and member bundles), the newest blob's ciphertext, and key objects not yet pushed. A holder's own statement moves a head, in `key_heads` and in 0054's anchor, only once the server reports it `applied` |
 | `key_heads` | Each followed log's head |
-| `key_pins` | Its pins: the account's heads it compared or verified under IK, and per team the team head, the confirmed members and their bundle heads |
+| `key_pins` | Its pins: the account's heads it compared or verified under IK, and per team the team head, the confirmed members, and each member's two chain heads, identity and device (0054's `member:<account>:identity` and `member:<account>:device`). One shared head would let a server replay a member's device chain from before a `leave` |
 | `key_comparisons` | Open comparison sessions, with the view this side fixed |
 | `key_floors` | Per scope, the lowest key version it may write: the higher of the server's floor and the version the signed removals require. Versions seen on any branch, a dropped one included, also count, so a new version is above them. It also marks rotation pending |
 | `envelope_counters` | Per envelope, the highest (`kv`, `n`) it accepted and that ciphertext's hash |
@@ -598,7 +598,7 @@ A holder's security state is what it has verified, apart from its keys. It lives
 
 - **With another holder of the account.**
   - It runs the device approval comparison as N, with its existing keys. The request is marked as a re-pin, and the flow ends with no `add` and no wraps.
-  - The context carries the account's identity and device heads and floor, and every team's head, member bundle heads and floor (Comparing keys).
+  - The context carries the account's identity and device heads and floor, and every team's head and floor with each member's identity and device heads (Comparing keys).
   - Once the words match, the holder pins what it compared and rebuilds its key tables from the logs it verifies from there.
 - **With S.** The holder runs Recovery's steps 2 to 6 with a fresh holder of its own. It opens the blob and verifies the account logs under IK. Then, in one chain, it signs the fresh holder's `add` (method `recovery`) and the `rotate` that removes every other holder, its old one included. The team logs and member bundles it then reads are pinned uncompared, as after a recovery, until a device approval or member confirmation compares them.
 
