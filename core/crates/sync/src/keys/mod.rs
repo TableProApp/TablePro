@@ -16,14 +16,14 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use serde_json::Value;
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{KeyObject, check_same_object};
-use tablepro_keys::encoding::{AccountId, Origin, random_uuid};
+use tablepro_keys::encoding::{AccountId, Origin, TeamId, random_uuid};
 use tablepro_keys::record_id::KeyKind;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::api::device_store::HostDeviceStore;
 use crate::api::error::SyncError;
 use crate::api::ids::{DeviceRowId, IdempotencyKey, KindName, ScopeName};
-use crate::api::key_flows::{DraftId, KeyHooks, KeyNotice, KeyNoticeKind, NoticeId};
+use crate::api::key_flows::{DraftId, KeyHooks, KeyNotice, KeyNoticeKind, NoticeId, Roster};
 use crate::api::state::{KeyObjectRow, KeyTrust, Row, RowKey, RowRange, StateStore, StateTxn, Table};
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PushBatch, ServiceTransport};
 
@@ -72,6 +72,7 @@ pub struct KeyService {
     // One key flow or `apply_*` call changes the key tables at a time.
     serial: AsyncMutex<()>,
     notices: Mutex<Vec<KeyNotice>>,
+    rosters: Rosters,
     // A file opened with no anchor handles no secret until an approval or a recovery applies (0054, A stale file).
     unanchored: AtomicBool,
 }
@@ -92,6 +93,7 @@ impl KeyService {
             serial: AsyncMutex::new(()),
             notices: Mutex::new(Vec::new()),
             unanchored: AtomicBool::new(unanchored),
+            rosters: Rosters::default(),
         }
     }
 
@@ -129,6 +131,10 @@ impl KeyService {
 
     pub fn drafts(&self) -> &Drafts {
         &self.drafts
+    }
+
+    pub fn rosters(&self) -> &Rosters {
+        &self.rosters
     }
 
     // Held for the whole of a flow or an `apply_*` call, so two never interleave their reads and writes.
@@ -343,6 +349,20 @@ pub fn create_change(object: &KeyObject) -> Result<Change, SyncError> {
             fields,
         },
     })
+}
+
+// Each team's last roster read once its pull was caught up (0051, `members`): a server assertion, never a holder check.
+#[derive(Debug, Default)]
+pub struct Rosters(Mutex<HashMap<TeamId, Roster>>);
+
+impl Rosters {
+    pub fn get(&self, team: TeamId) -> Option<Roster> {
+        lock(&self.0).get(&team).cloned()
+    }
+
+    pub fn put(&self, team: TeamId, roster: Roster) {
+        lock(&self.0).insert(team, roster);
+    }
 }
 
 // What a flow keeps between two calls, by draft id: a recovery key shown and not yet typed back, a review, a session.
