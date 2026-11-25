@@ -17,6 +17,8 @@
 # There is no lint step: windows.yml runs none, and the build fails on any analyzer or style warning.
 # CARGO_TARGET_DIR and CARGO_BUILD_JOBS reach Cargo as set. Here --offline keeps Cargo off the network, and NuGet
 # restores from its cache when that holds every package. --no-wait changes nothing: Cargo waits for its own lock.
+# --jobs <n> sets CARGO_BUILD_JOBS over the environment's, passes -m to MSBuild and --max-parallel-test-modules to
+# dotnet test. A capped test or ui step builds with dotnet build first, then tests that build.
 
 # Sourced by verify.sh, which owns the options, the log and the verdict. STEP_DETAIL is read by
 # emit over there, which is all SC2034 is off for.
@@ -141,6 +143,19 @@ report_errors() {
     printf '%s\n' "$errors" | sed 's/^/  /'
     total="$(grep -E "$DOTNET_ERROR_PATTERN" "$log" 2> /dev/null | sed -E 's/ \[[^]]*\]$//' | sort -u | wc -l | tr -d ' ')"
     [ "${total:-0}" -gt 12 ] && echo "  … $((total - 12)) more, see the log"
+}
+
+# Microsoft.Testing.Platform's dotnet test hands an MSBuild switch such as -m to the test application, which exits 5
+# on it, so a capped run builds first.
+dotnet_test() {
+    local scope="$1" path="$2"
+    shift 2
+    if [ -z "$JOBS" ]; then
+        dotnet test "$scope" "$path" "$@"
+        return
+    fi
+    dotnet build "$path" -nologo -tl:off -m:"$JOBS" || return
+    dotnet test "$scope" "$path" --no-build --max-parallel-test-modules "$JOBS" "$@"
 }
 
 # ---------------------------------------------------------------------------- test reporting
@@ -317,7 +332,7 @@ platform_step() {
             STEP_DETAIL="TablePro.slnx"
             prepare
             log="$(new_log build)"
-            (cd "$WINDOWS_DIR" && dotnet build TablePro.slnx -nologo -tl:off) > "$log" 2>&1
+            (cd "$WINDOWS_DIR" && dotnet build TablePro.slnx -nologo -tl:off ${JOBS:+-m:"$JOBS"}) > "$log" 2>&1
             code=$?
             if [ $code -eq 0 ]; then
                 STATUS=PASS
@@ -354,11 +369,11 @@ platform_step() {
             if [ -n "$project" ]; then
                 STEP_DETAIL="${project##*/}${1:+ $*}"
                 log="$(new_log "test-${project##*/}")"
-                (cd "$WINDOWS_DIR" && dotnet test --project "$project" ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"}) > "$log" 2>&1
+                (cd "$WINDOWS_DIR" && dotnet_test --project "$project" ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"}) > "$log" 2>&1
             else
                 STEP_DETAIL="TablePro.slnx${1:+ $*}"
                 log="$(new_log test-solution)"
-                (cd "$WINDOWS_DIR" && dotnet test --solution TablePro.slnx ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"}) > "$log" 2>&1
+                (cd "$WINDOWS_DIR" && dotnet_test --solution TablePro.slnx ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"}) > "$log" 2>&1
             fi
             code=$?
             if dotnet_compile_failed "$log"; then
@@ -433,7 +448,8 @@ platform_step() {
             log="$(new_log bindings)"
             snapshot="$(mktemp -d)" || { STATUS=INCONCLUSIVE; note "cause: no temporary directory for the snapshot. Nothing was run."; emit "" 2; }
             cp -R "$GENERATED_DIR/." "$snapshot/"
-            (cd "$WINDOWS_DIR" && dotnet msbuild src/TablePro.Interop -t:GenerateBindings -p:UniffiBindgenCs="$tool" -nologo -tl:off) > "$log" 2>&1
+            (cd "$WINDOWS_DIR" && dotnet msbuild src/TablePro.Interop -t:GenerateBindings -p:UniffiBindgenCs="$tool" -nologo -tl:off \
+                ${JOBS:+-m:"$JOBS"}) > "$log" 2>&1
             code=$?
             if [ $code -ne 0 ]; then
                 # A generator that stopped halfway leaves neither the old files nor the new ones.
@@ -479,7 +495,7 @@ platform_step() {
             log="$(new_log "app-$rid")"
             # The Native AOT build windows.yml runs the UI tests on, over the debug core the other steps share.
             (cd "$WINDOWS_DIR" && dotnet publish src/TablePro.App -c Release -r "$rid" -p:Platform="$platform" \
-                -p:CargoProfile=dev -nologo -tl:off) > "$log" 2>&1
+                -p:CargoProfile=dev -nologo -tl:off ${JOBS:+-m:"$JOBS"}) > "$log" 2>&1
             code=$?
             if [ $code -eq 0 ]; then
                 STATUS=PASS
@@ -510,8 +526,8 @@ platform_step() {
             log="$(new_log ui)"
             shots="${log%.log}-screenshots"
             # Each launch gets a data folder of its own; the screenshots land under <shots>/light and <shots>/dark.
-            (cd "$WINDOWS_DIR" && TABLEPRO_APP="$exe" TABLEPRO_UI_SCREENSHOTS="$shots" \
-                dotnet test --project tests/TablePro.App.UITests ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"}) > "$log" 2>&1
+            (cd "$WINDOWS_DIR" && export TABLEPRO_APP="$exe" TABLEPRO_UI_SCREENSHOTS="$shots" \
+                && dotnet_test --project tests/TablePro.App.UITests ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"}) > "$log" 2>&1
             code=$?
             if dotnet_compile_failed "$log"; then
                 STATUS=FAIL

@@ -1,6 +1,6 @@
 # 0054: One sync engine in the core for TablePro Sync and iCloud
 
-- **Status**: Accepted; amends 0010 and 0044
+- **Status**: Proposed until G0 passes; amends 0010 and 0044
 - **Date**: 2026-11-25
 
 ## Context
@@ -48,7 +48,7 @@ One engine in `tablepro-sync` syncs every app with TablePro Sync and the Apple a
 - **Adapters.** Each kind has a `RecordAdapter` over its core store. Settings take a `HostSettings` adapter that each app implements, since each platform keeps them its own way.
 - **A pass** pulls, then pushes.
   - A pull merges three ways against the base, then writes the store, the bases, and last the cursor or change token. A crash replays it with no effect.
-  - On the service a pull applies key objects before what depends on them: a delta page holds whole change sets ([0051](0051-sync-protocol-and-record-rules.md), Pull), and the key objects of a snapshot wait until it reaches its mark, then go in as one set before its envelopes (0056, Rollback). While it applies deltas, the engine tracks the scope key version in force at each place in the revision order; that is not stored.
+  - On the service a pull applies key objects before what depends on them: a delta page holds whole change sets ([0051](0051-sync-protocol-and-record-rules.md), Pull), and the key objects of a snapshot wait until the pull is caught up (0051, Pull), then go in as one set before its envelopes (0056, Rollback). While it applies deltas, the engine tracks the scope key version in force at each place in the revision order. The `scopes` row stores it with the cursor, in the same commit, and only applying a pull moves it; a push does not.
   - A push builds its batch from the diff and splits it by bytes and on CloudKit's `limitExceeded`. On a conflict the engine reads the stored copy, merges it field by field against the base, and pushes again on the stored tag. On the service it pulls the record, since the conflict answer holds no fields. On CloudKit it takes the copy `serverRecordChanged` carries, and fetches the record by name when the error carries none.
 - **Dirty state is a diff.** A record is dirty when its store copy differs from its base. It is deleted when its base exists, the store lacks it, and the adapter does not hold it as unreadable. Create-once kinds, such as history entries, differ: a local prune drops the entry and its base and pushes nothing, and a deletion goes up only from a tombstone the store keeps, until it is pushed, when the person deletes an entry or clears history. The diff leaves out fields held for approval, fields a rejection keeps as device-local overrides, and fields a pull drops. Each store's write path calls a change journal that names the kind and asks for a pass soon. The diff, not the journal, decides what goes up, so a missed call delays a push and loses nothing. This replaces 0044's dirty mark before the store write and the Mac's "Persist, then notify".
 - **Store identity.** Each store keeps a generation id and a write sequence, and the state keeps both beside the bases.
@@ -161,7 +161,7 @@ pub enum CloudKitFailure {
 | Table | Holds |
 | --- | --- |
 | `binding` | The provider, the server origin, the account id or iCloud user record name, the device id and the schema version; the file id, 16 random bytes set when the file is made; the write counter; the state MAC |
-| `scopes` | Per scope: its type and role; on the service, its epoch, cursor, horizon and policies; on iCloud, the zone's change token; whether it is in refill |
+| `scopes` | Per scope: its type and role; on the service, its epoch, cursor, the scope key version in force at that cursor, horizon and policies; on iCloud, the zone's change token; whether it is in refill |
 | `stores` | Each store's generation id and write sequence |
 | `bases` | Per (scope, kind, record id): the change tag (the service's opaque tag, or CloudKit's system fields), the version, the revision, and the fields as last agreed. Create-once kinds, such as history entries, keep no fields |
 | `standing` | Per record id: syncs, Local only, or unknown |
@@ -176,18 +176,18 @@ The key tables, in digest order. Columns are listed in order, the primary key fi
 
 | Table | Columns | Holds |
 | --- | --- | --- |
-| `key_objects` | `scope`, `kind`, `record_id`; `fields`, `applied` | Each key object's `fields`, as the server served them or as this device wrote them, one row per 0052 record id. The device republishes them with the same fields after a new epoch (0051, Republishing). `applied` is set once an object is in force: served by the server, or written by this device and applied by it. Every key kind is create-only, so at the id of an applied object a different object is refused with an alarm (0056, Rollback). An object not applied, this device's own candidate, gives way to whatever the server later serves at its id. The device pushes its own candidates again until they apply or give way. A `key.reset` row stays while the reset is pending and goes with its tombstone |
+| `key_objects` | `scope`, `kind`, `record_id`; `fields`, `applied` | Each key object's `fields`, as the server served them or as this device wrote them, one row per 0052 record id. After a new epoch the device pushes back, with the same fields, those the server lacks (0051, After a restore). What cannot go back stops or ends its scope in `key_versions` (0051, What cannot go back). `applied` is set once an object is in force: served by the server, or written by this device and applied by it. Every key kind is create-only, so at the id of an applied object a different object is refused with an alarm (0056, Rollback). An object not applied, this device's own candidate, gives way to whatever the server later serves at its id. The device pushes its own candidates again until they apply or give way. A `key.reset` row stays while the reset is pending and goes with its tombstone |
 | `key_pins` | `account`; `ik`, `av`, `how`, `alert`, `replaced` | Per account the device meets, its own included: the pinned IK, the newest `av` verified under it, how it pinned (`first_use`, `compared` or `replaced`), whether an alert is open, and the IKs it saw replaced, 32 bytes each in the order replaced, which it never goes back to |
-| `key_device_pins` | `key_device`; `dek`, `dsk` | Own-device pins: each key device of the account this device compared with, with the DEK and DSK the words covered, never taken from a certificate (0056, Approving a device) |
-| `key_versions` | `scope`, `purpose`; `version` | The newest version of each scope key the device verified. It never writes below it, and a version record below it is historical (0056, Rollback) |
+| `key_device_pins` | `key_device`; `dek`, `dsk` | Own-device pins: each key device of the account this device compared with, with the DEK and DSK the words covered, never taken from a certificate (0056, Approving a device). A device approved again keeps only its approver here |
+| `key_versions` | `scope`, `purpose`; `version`, `record`, `holders`, `state`, `epoch` | The newest version of each scope key the device verified, and `record`, the SHA-256 of that version record's signed bytes. It never writes below that version, a version record below it is historical, and at it only the record with that digest counts (0056, Rollback). `holders` lists the accounts the device counts as holders of that version, as it accepts their wraps under Advancing; while the scope is stopped it does not change. `state` is `ok`, `stopped` while a catch-up or a restore leaves the device waiting (0056, Teams), or `ended`, which nothing clears, with `epoch` the epoch it ended in (0051, What cannot go back). An approval merges these as 0056 step 7 says |
 | `key_envelopes` | `scope`, `record_id`; `kv` | Per envelope, the highest `kv` the device accepted. It never takes a copy under a lower one (0056, Rollback) |
 | `key_comparisons` | `session`; `role`, `peer`, `view`, `state`, `expires_at` | Comparison sessions: the view this side fixed and the session's state (0056, Approving a device). A session that ended keeps its row until its request is purged, so its words never show twice |
-| `key_pending` | `flow`; `state` | Key flows that span pushes and must survive a crash: an account rotation's team rotations still to write, with the members its review marked for removal, and an approval this device is completing. The engine resumes them at the next pass |
+| `key_pending` | `flow`; `state` | Key flows that span pushes and must survive a crash: an account rotation's team rotations still to write, with the members its review marked for removal; an approval this device is completing; and a reset this device proposed, whose new private keys wait in the device store until it activates or ends. The engine resumes them at the next pass |
 | `deleted_history` | `record_id` | The ids of history entries with a `user` tombstone |
 
 `scope` is the scope id, `account` and `key_device` the 16 bytes of an account or key device id, and `purpose` `personal`, `history` or `team` (0056).
 
-A device that erases its keys, on Sign Out or when another account signs in on its row (0056), clears its key tables in the same commit, so its next checkpoint is empty and it joins again as a new device would. An approval replaces its key tables with what the trust plaintext gives, in one commit. A device left out of a rotation, or told `device_removed`, locks and keeps them.
+A device that erases its keys, on Sign Out or when another account signs in on its row (0056), clears its key tables in the same commit, so its next checkpoint is empty and it joins again as a new device would. An approval merges what the trust plaintext gives into its key tables in one commit (0056, Approving a device), with its new device keys and key device id. A device left out of a rotation, or told `device_removed`, locks and keeps them.
 
 ### Integrity and freshness
 
@@ -202,7 +202,7 @@ A device that erases its keys, on Sign Out or when another account signs in on i
   - **The root** holds the file id, a current entry and at most one pending entry. An entry holds the counter, the MAC, the key tables' digest and the digest of its checkpoint.
   - **The checkpoint** holds what only moves forward:
     - each `key_pins` row, so a restored file cannot forget a newer `av`, an IK it saw replaced or an open alert;
-    - each `key_versions` row, so it cannot forget a newer scope key version;
+    - each `key_versions` row, so it cannot forget a newer scope key version, take another record at it, or forget that a scope stopped or ended;
     - each `key_envelopes` row, so it cannot take an envelope it held back under an older version.
 
     `key_objects`, own-device pins, comparisons, pending flows and `deleted_history` stay in the file alone.
@@ -219,12 +219,12 @@ A device that erases its keys, on Sign Out or when another account signs in on i
   - Its sync tables go into refill, as a restored store does: the pull wins, records the provider has never seen go up as creates, then the diff runs again.
   - Its key tables are not trusted, and the device keys stay, so it is the same device. It rebuilds the key tables from the key objects the server holds, accepting only what is at or above the anchor's checkpoint, the pending entry's when one is left:
     - for each anchored pin, a certificate under that IK at the anchored `av` or above, or under an IK that it endorsed, never under an IK the anchor lists as replaced. An alert the anchor holds stays open until the person re-confirms;
-    - for each anchored scope key, a version record at the anchored version or above. Older versions still open what they sealed, through the newest version's ring;
+    - for each anchored scope key, the version record at the anchored version whose digest the anchor holds, then its successors. Older versions still open what they sealed, through the rings;
     - for each anchored envelope, a copy at the anchored `kv` or above.
 
     Until the server shows every anchored pin and version, it accepts no wrap or envelope and writes no secret.
   - An anchor with no file, as after a reinstall that kept the device store, rebuilds the same way.
-  - A file with no anchor has no checkpoint. It handles no secret until another device approves it again, as a new device is, and it starts from that device's pins and versions, or until the person recovers with the recovery key (0056). It falls under the limit below.
+  - A file with no anchor has no checkpoint. It handles no secret until another device approves it again, with new device keys and a new key device id as a new device has, and it starts from that device's pins and versions, or until the person recovers with the recovery key (0056). It falls under the limit below.
 - **The limit.** Nothing on the device then proves a newer `av` or version than the ones it holds:
   - a restore that brings back the file and its anchor together goes unseen. On Linux a restore of the home folder brings back the keyring, and on Windows a restore of the user profile brings back Credential Manager;
   - a file with no anchor starts from what its approving device holds, so an approver that missed a newer version gives it that older view, as for a new device, and a recovery starts with no pins;
@@ -346,10 +346,10 @@ A copy whose content changed after the move is kept, since a content edit wins. 
   - a crash at each step of a commit and its anchor opens as the rules say. A restore of the copy before a commit whose anchor did not settle leaves the key tables untrusted when that commit changed them, and rebuilds them on the pending checkpoint;
   - an anchor with no file rebuilds from key objects at or above its checkpoint; a file with no anchor handles no secret until it is approved again or recovered;
   - after a restore, a certificate below an anchored `av`, a version record below an anchored version, an envelope below its anchored `kv`, and a certificate under an IK the anchor lists as replaced are refused, and an alert the anchor holds stays open;
-  - each key object kept is republished with the same fields after a new epoch; a different object at the id of an applied one is refused, while the winner over this device's own candidate and a reset after two cancelled ones that the device was offline for are taken; a device that a rotation leaves out locks and keeps its key tables until an approval replaces them; a crash between an account rotation and its team rotations resumes from `key_pending` with the review's choices; a snapshot that serves envelopes before their key objects applies them in dependency order, and a delta page never splits a change set;
+  - after a new epoch, key objects the server lacks are pushed back with the same fields in 0051's order, and a refusal is final: the scope ends and stays ended after a restart, even once another device puts the version back, while a version another account signed stops the team until it is back; a rotation this device pushed, then a restart before its next pull, then an envelope another device wrote under the old version before that rotation, taken; after a file-only restore, a version record at an anchored version with another digest is refused; a different object at the id of an applied one is refused, while the winner over this device's own candidate and a reset after two cancelled ones that the device was offline for are taken; a device that a rotation leaves out locks and keeps its key tables until an approval merges into them; a crash between an account rotation and its team rotations resumes from `key_pending` with the review's choices; a snapshot that serves envelopes before their key objects applies them in dependency order, and a delta page never splits a change set;
   - digest vectors cover a null, an empty value and a key object at the record limit;
   - a key table row copied from another copy of the file fails the MAC, and so does a base, approval, cursor or outbox row swapped in while the binding, counter and key tables stay current; writing the MAC changes neither digest;
-  - after a restore, envelopes and history sealed under older key versions still open through the newest version's ring;
+  - after a restore, envelopes and history sealed under older key versions still open through the rings, when the restore kept those versions or devices pushed them back;
   - the first run keeps every consent decision and refusal, and leaves an unapproved synced connection unapproved;
   - the moves with three devices on two fake transports: a deletion on iCloud after another device moved, with and without a later content edit or reorder on the service; an edit on iCloud after another device moved; a record created on the service after the move; and the move back, where a `policy` tombstone deletes nothing on iCloud and nothing is deleted before the person confirms the count.
 - **Bindings:** Swift tests over a Swift fake transport.

@@ -1,6 +1,6 @@
 # 0048: A self-hosted install signs in through an OIDC or a SAML 2.0 IdP
 
-- **Status**: Accepted
+- **Status**: Accepted; step-up amended by 0051
 - **Date**: 2026-11-24
 
 ## Context

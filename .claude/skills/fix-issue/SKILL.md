@@ -112,6 +112,7 @@ The profile lists the platform's steps and when each runs; the guide's Every cha
 - Check that the `root:` line names your tree, then read the verdict line. What each verdict means is in the platform guide's Commands section.
 - **Verify in batches**: build once after a coherent set of edits, then re-run only a failed step.
 - **Never run two builds in one tree.** `--no-wait` does not wait for a build already running there, and the second one fails on the locked build database.
+- **Pass `--jobs <n>` when other lanes build on the same machine**: it caps the build jobs and test processes of every tool the step starts.
 - **Pick tests by what you changed**, not by the test files you edited, and compare the executed count with what you meant to run.
 - **INCONCLUSIVE is the environment**: report it, never debug your code for it. The profile's verification file has the remedies.
 - When cheap, show the new test failing on the old code.

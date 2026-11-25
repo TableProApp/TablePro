@@ -1,6 +1,6 @@
 # Verification traps: Linux
 
-Read this when a `verify.sh` verdict needs interpreting for the Linux app, or before writing a test. The usage line is `verify.sh [--platform linux] [--root <tree>] [--run <dir>] [--offline] <step> [args]`; on a Linux machine the platform is this one unless the option names another.
+Read this when a `verify.sh` verdict needs interpreting for the Linux app, or before writing a test. The usage line is `verify.sh [--platform linux] [--root <tree>] [--run <dir>] [--offline] [--jobs <n>] <step> [args]`; on a Linux machine the platform is this one unless the option names another.
 
 ## Why the wrapper, always
 

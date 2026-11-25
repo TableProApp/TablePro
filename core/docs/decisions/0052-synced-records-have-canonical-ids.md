@@ -1,6 +1,6 @@
 # 0052: Synced records have canonical ids; saved queries and folders have UUIDs and may have no connection
 
-- **Status**: Accepted
+- **Status**: Proposed until G0 passes
 - **Date**: 2026-11-25
 
 ## Context
@@ -91,7 +91,7 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
 | `key.ring` | `<owner>/<purpose>/<version>` | `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/5` |
 | `key.member` | `<account>/<av>` | `019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2` |
 
-- One id per version, recipient, step or reset, so two writers of one meet on one id, and the create-only rule ([0051](0051-sync-protocol-and-record-rules.md)) keeps the first. A device that signs in again after Sign Out draws a new key device id, so its certificate never meets the old one's id at the same `av`.
+- One id per version, recipient, step or reset, so two writers of one meet on one id, and the create-only rule ([0051](0051-sync-protocol-and-record-rules.md)) keeps the first. Every approval takes a new key device id, so a device approved again, after Sign Out or a lock, never meets its earlier certificate's or wraps' ids at the same `av`.
 - Where the bound writer is an account the id names, the server compares that part as bytes with the caller's account id in upper case: the account of `key.account`, `key.device`, `key.recovery`, `key.reset`, `key.cancel` and `key.member`, and the owner of a personal `key.version`, `key.wrap` or `key.ring`. A mismatch is refused with `writer_bound`.
 - A key kind added later writes its parts the same way.
 
