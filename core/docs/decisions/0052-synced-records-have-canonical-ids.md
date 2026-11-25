@@ -70,7 +70,7 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
 
 - An envelope's id is its parent record's kind, the parent's record id and the secret kind, joined with `/`, such as `connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/ssh_key_passphrase`, `library_connection/6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44/password` or `macos_settings/ai/ai_key.<provider id>`.
 - 0053's table lists the secret kinds and their parents. A kind holds no `/` (0051, Kinds), and a secret kind holds none either: a plugin field whose id has one does not sync. So the parent's id is what lies between the first and the last `/`.
-- One secret of one record has one envelope. Two devices that seal it at once meet on one id, and the last push wins (0044, Conflict rules).
+- One secret of one record has one envelope, so two devices that seal it at once meet on one id. The write is conditional on its change tag and one counter step after the stored one, so the second push conflicts, and that device pulls the key objects and seals again on the stored tag ([0051](0051-sync-protocol-and-record-rules.md), Conflict rules).
 
 ### Key objects
 
