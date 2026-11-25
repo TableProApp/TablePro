@@ -25576,6 +25576,9 @@ internal record LegacyMetadataArg (
     LegacyRecordArg[] Dirty, 
     LegacyTombstoneArg[] Tombstones, 
     string[] DeferredDeletions, 
+    string[] ChangesHeldForUnreadable, 
+    string[] RemovalsPendingForUnreadable, 
+    string[] DeletionsHeldForUnreadable, 
     string[] OwnersKeptOffSync, 
     LegacyStandingArg[] Standing, 
     string[] ReadableRecordTypes, 
@@ -25594,6 +25597,9 @@ class FfiConverterTypeLegacyMetadataArg: FfiConverterRustBuffer<LegacyMetadataAr
             Dirty: FfiConverterSequenceTypeLegacyRecordArg.INSTANCE.Read(stream),
             Tombstones: FfiConverterSequenceTypeLegacyTombstoneArg.INSTANCE.Read(stream),
             DeferredDeletions: FfiConverterSequenceString.INSTANCE.Read(stream),
+            ChangesHeldForUnreadable: FfiConverterSequenceString.INSTANCE.Read(stream),
+            RemovalsPendingForUnreadable: FfiConverterSequenceString.INSTANCE.Read(stream),
+            DeletionsHeldForUnreadable: FfiConverterSequenceString.INSTANCE.Read(stream),
             OwnersKeptOffSync: FfiConverterSequenceString.INSTANCE.Read(stream),
             Standing: FfiConverterSequenceTypeLegacyStandingArg.INSTANCE.Read(stream),
             ReadableRecordTypes: FfiConverterSequenceString.INSTANCE.Read(stream),
@@ -25609,6 +25615,9 @@ class FfiConverterTypeLegacyMetadataArg: FfiConverterRustBuffer<LegacyMetadataAr
             + FfiConverterSequenceTypeLegacyRecordArg.INSTANCE.AllocationSize(value.Dirty)
             + FfiConverterSequenceTypeLegacyTombstoneArg.INSTANCE.AllocationSize(value.Tombstones)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.DeferredDeletions)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.ChangesHeldForUnreadable)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.RemovalsPendingForUnreadable)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.DeletionsHeldForUnreadable)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.OwnersKeptOffSync)
             + FfiConverterSequenceTypeLegacyStandingArg.INSTANCE.AllocationSize(value.Standing)
             + FfiConverterSequenceString.INSTANCE.AllocationSize(value.ReadableRecordTypes)
@@ -25622,6 +25631,9 @@ class FfiConverterTypeLegacyMetadataArg: FfiConverterRustBuffer<LegacyMetadataAr
             FfiConverterSequenceTypeLegacyRecordArg.INSTANCE.Write(value.Dirty, stream);
             FfiConverterSequenceTypeLegacyTombstoneArg.INSTANCE.Write(value.Tombstones, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.DeferredDeletions, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.ChangesHeldForUnreadable, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.RemovalsPendingForUnreadable, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.DeletionsHeldForUnreadable, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.OwnersKeptOffSync, stream);
             FfiConverterSequenceTypeLegacyStandingArg.INSTANCE.Write(value.Standing, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.ReadableRecordTypes, stream);
@@ -25695,6 +25707,7 @@ class FfiConverterTypeLegacyStandingArg: FfiConverterRustBuffer<LegacyStandingAr
 
 internal record LegacyTombstoneArg (
     LegacyRecordArg Record, 
+    long DeletedAtMs, 
     string? Owner
 ) {
 }
@@ -25705,6 +25718,7 @@ class FfiConverterTypeLegacyTombstoneArg: FfiConverterRustBuffer<LegacyTombstone
     public override LegacyTombstoneArg Read(BigEndianStream stream) {
         return new LegacyTombstoneArg(
             Record: FfiConverterTypeLegacyRecordArg.INSTANCE.Read(stream),
+            DeletedAtMs: FfiConverterInt64.INSTANCE.Read(stream),
             Owner: FfiConverterOptionalString.INSTANCE.Read(stream)
         );
     }
@@ -25712,11 +25726,13 @@ class FfiConverterTypeLegacyTombstoneArg: FfiConverterRustBuffer<LegacyTombstone
     public override int AllocationSize(LegacyTombstoneArg value) {
         return 0
             + FfiConverterTypeLegacyRecordArg.INSTANCE.AllocationSize(value.Record)
+            + FfiConverterInt64.INSTANCE.AllocationSize(value.DeletedAtMs)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Owner);
     }
 
     public override void Write(LegacyTombstoneArg value, BigEndianStream stream) {
             FfiConverterTypeLegacyRecordArg.INSTANCE.Write(value.Record, stream);
+            FfiConverterInt64.INSTANCE.Write(value.DeletedAtMs, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Owner, stream);
     }
 }
@@ -28728,6 +28744,7 @@ internal record TeamKeysInfo (
     string Team, 
     uint? Version, 
     KeyVersionStateTag State, 
+    StopCauseTag? StoppedCause, 
     bool RotationDue, 
     bool Holder, 
     MemberKeysInfo[] Members, 
@@ -28743,6 +28760,7 @@ class FfiConverterTypeTeamKeysInfo: FfiConverterRustBuffer<TeamKeysInfo> {
             Team: FfiConverterString.INSTANCE.Read(stream),
             Version: FfiConverterOptionalUInt32.INSTANCE.Read(stream),
             State: FfiConverterTypeKeyVersionStateTag.INSTANCE.Read(stream),
+            StoppedCause: FfiConverterOptionalTypeStopCauseTag.INSTANCE.Read(stream),
             RotationDue: FfiConverterBoolean.INSTANCE.Read(stream),
             Holder: FfiConverterBoolean.INSTANCE.Read(stream),
             Members: FfiConverterSequenceTypeMemberKeysInfo.INSTANCE.Read(stream),
@@ -28755,6 +28773,7 @@ class FfiConverterTypeTeamKeysInfo: FfiConverterRustBuffer<TeamKeysInfo> {
             + FfiConverterString.INSTANCE.AllocationSize(value.Team)
             + FfiConverterOptionalUInt32.INSTANCE.AllocationSize(value.Version)
             + FfiConverterTypeKeyVersionStateTag.INSTANCE.AllocationSize(value.State)
+            + FfiConverterOptionalTypeStopCauseTag.INSTANCE.AllocationSize(value.StoppedCause)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.RotationDue)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.Holder)
             + FfiConverterSequenceTypeMemberKeysInfo.INSTANCE.AllocationSize(value.Members)
@@ -28765,6 +28784,7 @@ class FfiConverterTypeTeamKeysInfo: FfiConverterRustBuffer<TeamKeysInfo> {
             FfiConverterString.INSTANCE.Write(value.Team, stream);
             FfiConverterOptionalUInt32.INSTANCE.Write(value.Version, stream);
             FfiConverterTypeKeyVersionStateTag.INSTANCE.Write(value.State, stream);
+            FfiConverterOptionalTypeStopCauseTag.INSTANCE.Write(value.StoppedCause, stream);
             FfiConverterBoolean.INSTANCE.Write(value.RotationDue, stream);
             FfiConverterBoolean.INSTANCE.Write(value.Holder, stream);
             FfiConverterSequenceTypeMemberKeysInfo.INSTANCE.Write(value.Members, stream);
@@ -36955,8 +36975,7 @@ class FfiConverterTypeSshAuthTag : FfiConverterRustBuffer<SshAuthTag>{
 
 internal enum StopCauseTag: int {
     CatchUp,
-    AwaitingPushBack,
-    RotationDue
+    RestoreWait
 }
 
 class FfiConverterTypeStopCauseTag: FfiConverterRustBuffer<StopCauseTag> {
@@ -36966,8 +36985,7 @@ class FfiConverterTypeStopCauseTag: FfiConverterRustBuffer<StopCauseTag> {
         var value = stream.ReadInt();
         switch (value) {
             case 1: return StopCauseTag.CatchUp;
-            case 2: return StopCauseTag.AwaitingPushBack;
-            case 3: return StopCauseTag.RotationDue;
+            case 2: return StopCauseTag.RestoreWait;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeStopCauseTag.Read()", value));
         }
     }
@@ -36979,8 +36997,7 @@ class FfiConverterTypeStopCauseTag: FfiConverterRustBuffer<StopCauseTag> {
     public override void Write(StopCauseTag value, BigEndianStream stream) {
         switch (value) {
             case StopCauseTag.CatchUp: stream.WriteInt(1); break;
-            case StopCauseTag.AwaitingPushBack: stream.WriteInt(2); break;
-            case StopCauseTag.RotationDue: stream.WriteInt(3); break;
+            case StopCauseTag.RestoreWait: stream.WriteInt(2); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeStopCauseTag.Write()", value));
         }
     }
@@ -41445,6 +41462,37 @@ class FfiConverterOptionalTypeShareRefusal: FfiConverterRustBuffer<ShareRefusal?
         } else {
             stream.WriteByte(1);
             FfiConverterTypeShareRefusal.INSTANCE.Write((ShareRefusal)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeStopCauseTag: FfiConverterRustBuffer<StopCauseTag?> {
+    public static FfiConverterOptionalTypeStopCauseTag INSTANCE = new FfiConverterOptionalTypeStopCauseTag();
+
+    public override StopCauseTag? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeStopCauseTag.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(StopCauseTag? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeStopCauseTag.INSTANCE.AllocationSize((StopCauseTag)value);
+        }
+    }
+
+    public override void Write(StopCauseTag? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeStopCauseTag.INSTANCE.Write((StopCauseTag)value, stream);
         }
     }
 }

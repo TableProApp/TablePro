@@ -39,6 +39,26 @@ fn settle(model: &mut Model) {
     }
 }
 
+// Kind 2 comes from an approved device; kind 3 from a sign-in whose device is not, stepped up; one pending at most.
+fn may_propose(model: &Model, kind: ResetKind) -> Result<(), SyncError> {
+    let approved = matches!(model.key_state, KeyState::Approved { .. });
+    match kind {
+        ResetKind::KeepScopeKeys if !approved => return Err(rejected(RejectedCode::BadStatement)),
+        ResetKind::StartEmpty if approved => return Err(rejected(RejectedCode::BadStatement)),
+        ResetKind::StartEmpty if !model.step_up_fresh => {
+            return Err(SyncError::Transport(TransportError::StepUpRequired(StepUpChallenge {
+                acr_values: vec!["urn:tablepro:acr:passkey".to_owned()],
+                max_age_secs: 300,
+            })));
+        }
+        _ => {}
+    }
+    if pending(model).is_some() {
+        return Err(rejected(RejectedCode::BadStatement));
+    }
+    Ok(())
+}
+
 fn pending(model: &Model) -> Option<&PendingReset> {
     model.reset.as_ref().filter(|reset| reset.state == ResetState::Pending)
 }
@@ -54,22 +74,7 @@ impl ResetFlows for FakeKeyFlows {
     async fn begin_reset(&self, kind: ResetKind) -> Result<RecoveryKeyDraft, SyncError> {
         let mut model = self.lock();
         settle(&mut model);
-        let approved = matches!(model.key_state, KeyState::Approved { .. });
-        // Kind 2 comes from an approved device; kind 3 from a sign-in whose device is not, stepped up.
-        match kind {
-            ResetKind::KeepScopeKeys if !approved => return Err(rejected(RejectedCode::BadStatement)),
-            ResetKind::StartEmpty if approved => return Err(rejected(RejectedCode::BadStatement)),
-            ResetKind::StartEmpty if !model.step_up_fresh => {
-                return Err(SyncError::Transport(TransportError::StepUpRequired(StepUpChallenge {
-                    acr_values: vec!["urn:tablepro:acr:passkey".to_owned()],
-                    max_age_secs: 300,
-                })));
-            }
-            _ => {}
-        }
-        if pending(&model).is_some() {
-            return Err(rejected(RejectedCode::BadStatement));
-        }
+        may_propose(&model, kind)?;
         let (draft, made) = new_draft(&mut model, DraftPurpose::Reset(kind))?;
         Ok(RecoveryKeyDraft {
             draft,
@@ -80,6 +85,7 @@ impl ResetFlows for FakeKeyFlows {
 
     async fn finish_reset_proposal(&self, draft: DraftId, typed: TypedBack) -> Result<PendingReset, SyncError> {
         let mut model = self.lock();
+        settle(&mut model);
         let held = model
             .drafts
             .get(&draft)
@@ -89,9 +95,9 @@ impl ResetFlows for FakeKeyFlows {
             return Err(SyncError::Unknown { what: "reset draft" });
         };
         check_typed_back(&held, &typed)?;
-        // At most one reset is pending, and a draft proposes once.
-        settle(&mut model);
-        if pending(&model).is_some() || model.reset_drafts.values().any(|proposed| *proposed == draft) {
+        // What held when the draft began must hold now, and a draft proposes once.
+        may_propose(&model, kind)?;
+        if model.reset_drafts.values().any(|proposed| *proposed == draft) {
             return Err(rejected(RejectedCode::BadStatement));
         }
         let reset = PendingReset {
@@ -155,11 +161,13 @@ impl ResetFlows for FakeKeyFlows {
         if model.clock_us < held.held_until_us {
             return Err(rejected(RejectedCode::ResetHeld));
         }
-        if let Some(draft) = model.reset_drafts.remove(&reset)
-            && let Some(proposed) = model.drafts.remove(&draft)
-        {
-            model.recovery = Some(proposed.text);
-        }
+        // R' waits with the reset's keys; without them the activation cannot be built.
+        let proposed = model
+            .reset_drafts
+            .remove(&reset)
+            .and_then(|draft| model.drafts.remove(&draft))
+            .ok_or(rejected(RejectedCode::BadStatement))?;
+        model.recovery = Some(proposed.text);
         if let Some(stored) = &mut model.reset {
             stored.state = ResetState::Active;
         }
@@ -175,7 +183,7 @@ impl ResetFlows for FakeKeyFlows {
 
     async fn apply_reset_objects(&self, arrival: KeyArrival) -> Result<KeyApplied, SyncError> {
         let _ = arrival;
-        Ok(KeyApplied::default())
+        Ok(self.applied())
     }
 
     async fn resume_reset(&self, reset: ResetId) -> Result<(), SyncError> {

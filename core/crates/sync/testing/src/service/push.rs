@@ -1,10 +1,10 @@
 // `POST /v2/sync/scopes/{scope}/changes` (0051, Push).
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_records::{kind as kinds, limits, merge_patch, record_id};
-use tablepro_sync::api::ids::{KindName, ScopeName};
+use tablepro_sync::api::ids::{ChangeTag, KindName, ScopeName};
 use tablepro_sync::api::scopes::Role;
 use tablepro_sync::api::transport::{
     AppliedStamp, Change, ChangeOp, ChangeOutcome, DeletedReason, PushAnswer, PushBatch, RejectedCode, StoredCopy,
@@ -34,30 +34,29 @@ pub(crate) fn policy_refuses(state: &State, owner: ScopeOwner, kind: &KindName) 
         || (matches!(owner, ScopeOwner::Personal(_)) && !kind.is_key() && !policies.personal_sync)
 }
 
-// Over what the service request carries: the epoch and each change's kind, id, base and patch.
-fn digest(batch: &PushBatch) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(format!("{:?}", batch.epoch).as_bytes());
-    for change in &batch.changes {
-        let op = match &change.op {
-            ChangeOp::Write { patch, .. } => patch.to_string(),
-            ChangeOp::Delete => "delete".to_owned(),
-        };
-        hasher.update(format!("|{}|{}|{:?}|{op}", change.kind, change.record_id, change.base).as_bytes());
-    }
-    hasher.finalize().into()
-}
-
-// The request body's size, as the 4 MiB limit measures it.
-fn body_bytes(batch: &PushBatch) -> usize {
-    batch
+// The push body as the service receives it: the epoch, then each change as its JSON. Measured for the 4 MiB limit and
+// hashed for idempotency, so neither depends on what stays on the device.
+fn body(batch: &PushBatch) -> String {
+    let changes: Vec<Value> = batch
         .changes
         .iter()
-        .map(|change| match &change.op {
-            ChangeOp::Write { patch, .. } => limits::encoded_len(patch) + change.record_id.len(),
-            ChangeOp::Delete => change.record_id.len(),
+        .map(|change| {
+            let base = change.base.as_ref().map(|tag| match tag {
+                ChangeTag::Service(text) => Value::String(text.clone()),
+                ChangeTag::CloudKit(_) => Value::Null,
+            });
+            match &change.op {
+                ChangeOp::Write { patch, .. } => json!({
+                    "kind": change.kind.as_str(), "record_id": change.record_id, "op": "patch",
+                    "base_tag": base, "patch": patch,
+                }),
+                ChangeOp::Delete => json!({
+                    "kind": change.kind.as_str(), "record_id": change.record_id, "op": "delete", "base_tag": base,
+                }),
+            }
         })
-        .sum()
+        .collect();
+    json!({"epoch": batch.epoch.map(|epoch| epoch.0.to_string()), "changes": changes}).to_string()
 }
 
 impl FakeClient {
@@ -72,7 +71,8 @@ impl FakeClient {
         if batch.changes.is_empty() || batch.changes.len() > limit || named_twice(&batch.changes) {
             return Err(TransportError::ValidationFailed);
         }
-        if body_bytes(batch) > MAX_BODY_BYTES {
+        let body = body(batch);
+        if body.len() > MAX_BODY_BYTES {
             return Err(TransportError::Server {
                 status: 413,
                 code: "payload_too_large".to_owned(),
@@ -88,7 +88,7 @@ impl FakeClient {
             .idempotency
             .retain(|_, answer| now - answer.created_at_us < IDEMPOTENCY_RETENTION_US);
         let slot = (owner, self.account, key.0.clone());
-        let digest = digest(batch);
+        let digest: [u8; 32] = Sha256::digest(body.as_bytes()).into();
         let stored = state.idempotency.get(&slot).cloned();
         if stored.as_ref().is_some_and(|stored| stored.digest != digest) {
             return Err(TransportError::IdempotencyMismatch);
@@ -138,7 +138,7 @@ impl FakeClient {
         for (index, change) in batch.changes.iter().enumerate() {
             let replayed = stored.and_then(|stored| stored.applied.get(index).cloned().flatten());
             let (outcome, wrote) = match replayed {
-                Some(outcome) => match self.check(state, owner, change) {
+                Some(outcome) => match self.authorize(state, owner, change) {
                     Ok(()) => (outcome, false),
                     Err(code) => (ChangeOutcome::Rejected { code }, false),
                 },
@@ -237,18 +237,22 @@ impl FakeClient {
         if !kinds::admits(owner.scope().records_scope(), kind) {
             return Err(RejectedCode::KindNotInScope);
         }
+        self.authorize(state, owner, change)?;
+        if let ChangeOp::Write { patch, .. } = &change.op
+            && let Err(refusal) = limits::check(patch)
+        {
+            return Err(RejectedCode::parse(refusal.code()));
+        }
+        check_case(state, owner, change)
+    }
+
+    // What a replay checks again before it answers from the store: the policies, the caller's role and the writer.
+    fn authorize(&self, state: &State, owner: ScopeOwner, change: &Change) -> Result<(), RejectedCode> {
         if policy_refuses(state, owner, &change.kind) {
             return Err(RejectedCode::Policy);
         }
         self.check_role(state, owner, &change.kind)?;
-        self.check_writer(change)?;
-        if let ChangeOp::Write { patch, .. } = &change.op {
-            if let Err(refusal) = limits::check(patch) {
-                return Err(RejectedCode::parse(refusal.code()));
-            }
-            check_sealed(state, owner, kind, patch)?;
-        }
-        check_case(state, owner, change)
+        self.check_writer(change)
     }
 
     // 0051, Roles in a team scope, without the holder checks a key object's statement carries.
@@ -316,6 +320,9 @@ impl FakeClient {
         let fields = merge_patch::apply(&base, patch);
         if let Err(refusal) = limits::check(&fields) {
             return rejected(RejectedCode::parse(refusal.code()));
+        }
+        if let Err(code) = check_sealed(state, owner, change.kind.as_str(), &fields) {
+            return rejected(code);
         }
         let record = self.stamp(state, change, stored, Some(fields), None);
         (self.commit(state, owner, record), true)
@@ -385,8 +392,14 @@ pub(crate) fn held_until(record: &StoredRecord) -> Option<i64> {
 // rotation or reset activation, each led by its `key.account`; a reset proposal; an IK-signed cancel.
 fn before_approval(changes: &[Change]) -> bool {
     let all = |kinds: &[&str]| changes.iter().all(|change| kinds.contains(&change.kind.as_str()));
-    let account_set = changes.iter().any(|change| change.kind.as_str() == "key.account");
-    all(&["key.request", "key.sas"]) || all(&["key.reset"]) || all(&["key.cancel"]) || account_set
+    let own_steps = changes.iter().all(|change| match change.kind.as_str() {
+        "key.request" => true,
+        "key.sas" => change.record_id.ends_with("/reveal") || change.record_id.ends_with("/cancel"),
+        _ => false,
+    });
+    let account_set = changes.iter().all(|change| change.kind.is_key())
+        && changes.iter().any(|change| change.kind.as_str() == "key.account");
+    own_steps || all(&["key.reset"]) || all(&["key.cancel"]) || account_set
 }
 
 // The newest version of a scope key, from the version records the scope holds: `<owner>/<purpose>/<version>`.
@@ -407,7 +420,7 @@ fn current_version(state: &State, owner: ScopeOwner, purpose: &str) -> Option<u3
 
 // An envelope or history entry only under its scope key's current version, and a team envelope not while the team is
 // due a rotation (0051, Scopes and records; Teams).
-fn check_sealed(state: &State, owner: ScopeOwner, kind: &str, patch: &Value) -> Result<(), RejectedCode> {
+fn check_sealed(state: &State, owner: ScopeOwner, kind: &str, fields: &Value) -> Result<(), RejectedCode> {
     let (key_owner, purpose) = match (kind, owner) {
         ("secret_envelope", ScopeOwner::Personal(account)) => (ScopeOwner::Personal(account), "personal"),
         ("secret_envelope", ScopeOwner::Team(team)) => {
@@ -419,8 +432,8 @@ fn check_sealed(state: &State, owner: ScopeOwner, kind: &str, patch: &Value) -> 
         ("history_entry", ScopeOwner::History(account)) => (ScopeOwner::Personal(account), "history"),
         _ => return Ok(()),
     };
-    let Some(kv) = patch.get("kv").and_then(Value::as_u64) else {
-        return Ok(());
+    let Some(kv) = fields.get("kv").and_then(Value::as_u64) else {
+        return Err(RejectedCode::KeyVersionUnknown);
     };
     match current_version(state, key_owner, purpose).map(u64::from) {
         Some(current) if kv < current => Err(RejectedCode::KeyVersionStale),
@@ -439,7 +452,7 @@ fn check_case(state: &State, owner: ScopeOwner, change: &Change) -> Result<(), R
         data.records.values().any(|record| {
             record.kind == change.kind
                 && record.record_id != change.record_id
-                && record.record_id.eq_ignore_ascii_case(&change.record_id)
+                && record_id::library_ids_match(&record.record_id, &change.record_id)
         })
     });
     if collides {

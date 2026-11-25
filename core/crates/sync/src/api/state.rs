@@ -427,8 +427,61 @@ pub struct KeyVersionRow {
     // Empty for personal and history rows.
     pub holders: Vec<Holder>,
     pub state: KeyVersionState,
+    // Why a `stopped` row waits, None otherwise (0062). Anchored with the row, so a file restore keeps it.
+    pub stopped_cause: Option<StoppedCause>,
     // The epoch it ended in; None unless ended.
     pub epoch: Option<EpochId>,
+}
+
+impl KeyVersionRow {
+    // Stops the row for `cause`. A scope that meets both causes keeps `catch_up`, the stricter rule, and a personal or
+    // history row only ever stops as `catch_up` (0062). A row that ended stays ended.
+    pub fn stop(&mut self, cause: StoppedCause) {
+        if self.state == KeyVersionState::Ended {
+            return;
+        }
+        let cause = if self.purpose == KeyPurpose::Team {
+            cause
+        } else {
+            StoppedCause::CatchUp
+        };
+        let kept = match self.stopped_cause {
+            Some(StoppedCause::CatchUp) => StoppedCause::CatchUp,
+            _ => cause,
+        };
+        self.state = KeyVersionState::Stopped;
+        self.stopped_cause = Some(kept);
+    }
+
+    // A catch-up stop clears through re-confirmation, a restore stop once the server holds what it waited for.
+    pub fn clear_stop(&mut self) {
+        if self.state == KeyVersionState::Stopped {
+            self.state = KeyVersionState::Ok;
+            self.stopped_cause = None;
+        }
+    }
+}
+
+// 0062: a catch-up the device could not verify, or a wait for a version a restore lost to come back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StoppedCause {
+    CatchUp,
+    RestoreWait,
+}
+
+impl StoppedCause {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CatchUp => "catch_up",
+            Self::RestoreWait => "restore_wait",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        [Self::CatchUp, Self::RestoreWait]
+            .into_iter()
+            .find(|cause| cause.as_str() == text)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -707,6 +760,63 @@ mod tests {
         assert_eq!(all, sorted);
         assert!(Table::SYNC.iter().all(|table| !table.is_key_table()));
         assert!(Table::KEY.iter().all(|table| table.is_key_table()));
+    }
+
+    fn team_row(purpose: KeyPurpose) -> KeyVersionRow {
+        KeyVersionRow {
+            scope: ScopeName::Personal,
+            purpose,
+            version: Version::new(3).unwrap(),
+            record: [0; 32],
+            holders: Vec::new(),
+            state: KeyVersionState::Ok,
+            stopped_cause: None,
+            epoch: None,
+        }
+    }
+
+    #[test]
+    fn a_scope_that_meets_both_causes_keeps_catch_up() {
+        let mut waiting = team_row(KeyPurpose::Team);
+        waiting.stop(StoppedCause::RestoreWait);
+        let restore_only = waiting.stopped_cause;
+        waiting.stop(StoppedCause::CatchUp);
+        let mut caught = team_row(KeyPurpose::Team);
+        caught.stop(StoppedCause::CatchUp);
+        caught.stop(StoppedCause::RestoreWait);
+
+        assert_eq!(restore_only, Some(StoppedCause::RestoreWait));
+        assert_eq!(waiting.stopped_cause, Some(StoppedCause::CatchUp));
+        assert_eq!(caught.stopped_cause, Some(StoppedCause::CatchUp));
+        assert_eq!(caught.state, KeyVersionState::Stopped);
+    }
+
+    #[test]
+    fn a_personal_or_history_row_stops_only_as_catch_up_and_an_ended_row_stays_ended() {
+        let mut personal = team_row(KeyPurpose::History);
+        personal.stop(StoppedCause::RestoreWait);
+        let mut ended = team_row(KeyPurpose::Team);
+        ended.state = KeyVersionState::Ended;
+        ended.stop(StoppedCause::CatchUp);
+        personal.clear_stop();
+        let mut cleared = team_row(KeyPurpose::Team);
+        cleared.stop(StoppedCause::RestoreWait);
+        cleared.clear_stop();
+
+        assert_eq!(ended.state, KeyVersionState::Ended);
+        assert_eq!(ended.stopped_cause, None);
+        assert_eq!((cleared.state, cleared.stopped_cause), (KeyVersionState::Ok, None));
+        assert_eq!(StoppedCause::parse("restore_wait"), Some(StoppedCause::RestoreWait));
+        assert_eq!(StoppedCause::CatchUp.as_str(), "catch_up");
+    }
+
+    #[test]
+    fn a_personal_row_asked_to_wait_on_a_restore_records_catch_up() {
+        let mut personal = team_row(KeyPurpose::Personal);
+
+        personal.stop(StoppedCause::RestoreWait);
+
+        assert_eq!(personal.stopped_cause, Some(StoppedCause::CatchUp));
     }
 
     #[test]

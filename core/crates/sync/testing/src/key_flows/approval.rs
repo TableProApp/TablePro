@@ -151,7 +151,7 @@ impl ApprovalFlows for FakeKeyFlows {
 
     async fn apply_session_objects(&self, arrival: KeyArrival) -> Result<KeyApplied, SyncError> {
         let _ = arrival;
-        Ok(KeyApplied::default())
+        Ok(self.applied())
     }
 
     async fn resume_approval(&self, request: RequestId) -> Result<(), SyncError> {

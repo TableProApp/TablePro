@@ -81,10 +81,11 @@ pub enum ResetKindTag {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+// Why a team stopped on this device (core ADR 0062): a catch-up an owner or admin confirms again, or a wait for a
+// version a restore lost, which clears by itself once its signer's device pushes it back.
 pub enum StopCauseTag {
     CatchUp,
-    AwaitingPushBack,
-    RotationDue,
+    RestoreWait,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -229,6 +230,7 @@ pub struct TeamKeysInfo {
     pub team: String,
     pub version: Option<u32>,
     pub state: KeyVersionStateTag,
+    pub stopped_cause: Option<StopCauseTag>,
     pub rotation_due: bool,
     pub holder: bool,
     pub members: Vec<MemberKeysInfo>,
