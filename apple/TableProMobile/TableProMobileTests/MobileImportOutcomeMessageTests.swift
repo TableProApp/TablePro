@@ -60,6 +60,38 @@ struct MobileImportOutcomeMessageTests {
         #expect(message.message == String(localized: "The saved queries could not be saved."))
     }
 
+    @Test("Passwords the Keychain refused make the import incomplete and are counted")
+    func passwordsNotKept() {
+        let one = MobileImportOutcomeMessage(ImportOutcome(connectionsAdded: 2, passwordsNotKept: 1))
+        let several = MobileImportOutcomeMessage(ImportOutcome(connectionsAdded: 1, passwordsNotKept: 3, savedQueriesNotImported: 2))
+
+        #expect(one.title == String(localized: "Import Incomplete"))
+        #expect(one.message == "\(String(format: String(localized: "%d connections were imported."), 2)) "
+            + String(localized: "1 password could not be kept in the Keychain."))
+        #expect(several.title == String(localized: "Import Incomplete"))
+        #expect(several.message == [
+            String(localized: "1 connection was imported."),
+            String(format: String(localized: "%d passwords could not be kept in the Keychain."), 3),
+            Self.queriesNotImported(2),
+        ].joined(separator: " "))
+    }
+
+    @Test("A query store failure still reports the passwords the Keychain refused")
+    func passwordsNotKeptWithQueryFailure() {
+        let message = MobileImportOutcomeMessage(ImportOutcome(
+            connectionsAdded: 1,
+            passwordsNotKept: 1,
+            failure: .savedQueriesNotSaved
+        ))
+
+        #expect(message.title == String(localized: "Import Incomplete"))
+        #expect(message.message == [
+            String(localized: "1 connection was imported."),
+            String(localized: "1 password could not be kept in the Keychain."),
+            String(localized: "The saved queries could not be saved."),
+        ].joined(separator: " "))
+    }
+
     @Test(
         "A library or connection failure reports the failure only",
         arguments: [ImportFailure.libraryUnreadable, ImportFailure.connectionsNotSaved]

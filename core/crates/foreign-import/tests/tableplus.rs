@@ -211,7 +211,9 @@ fn the_app_is_tableplus_reading_keychain_passwords_and_global_queries() {
 
 #[test]
 fn inventory_counts_every_readable_connection_and_every_non_empty_favorite() {
-    let inventory = importer(ForeignPlatform::MacOs, &fixture("macos"), None).inventory_blocking();
+    let inventory = importer(ForeignPlatform::MacOs, &fixture("macos"), None)
+        .inventory_blocking()
+        .expect("an inventory");
     // The two entries with no name that collect skips are not counted.
     assert_eq!(
         inventory,
@@ -227,7 +229,10 @@ fn an_empty_home_has_nothing_on_any_platform() {
     let home = tempfile::tempdir().expect("a temp dir");
     for platform in PLATFORMS {
         let tableplus = importer(platform, home.path(), None);
-        assert_eq!(tableplus.inventory_blocking(), Inventory::default());
+        assert_eq!(
+            tableplus.inventory_blocking().expect("an inventory"),
+            Inventory::default()
+        );
         assert!(!tableplus.is_available_blocking());
         assert!(matches!(
             tableplus.collect_blocking(&CONNECTIONS_ONLY, &CancellationToken::new()),
@@ -564,7 +569,9 @@ fn collect_with_only_unnamed_connections_finds_nothing() {
     );
     assert!(matches!(outcome, Err(ForeignImportError::NothingFound)));
     // Entries collect cannot read are not counted as found.
-    let inventory = importer(ForeignPlatform::MacOs, &fixture("macos-invalid"), None).inventory_blocking();
+    let inventory = importer(ForeignPlatform::MacOs, &fixture("macos-invalid"), None)
+        .inventory_blocking()
+        .expect("an inventory");
     assert_eq!(inventory.connections, 0);
 }
 
@@ -577,10 +584,11 @@ fn collect_refuses_a_connection_file_that_is_not_a_list_of_dictionaries() {
     fs::write(&file, "not a plist").expect("a file");
     let outcome = try_collect(ForeignPlatform::MacOs, home.path(), CONNECTIONS_ONLY, None);
     assert!(matches!(outcome, Err(ForeignImportError::UnsupportedFormat { .. })));
-    assert_eq!(
+    // Counted as zero, the broken file would drop out of a list ranked by count.
+    assert!(matches!(
         importer(ForeignPlatform::MacOs, home.path(), None).inventory_blocking(),
-        Inventory::default()
-    );
+        Err(ForeignImportError::UnsupportedFormat { .. })
+    ));
 }
 
 #[test]
@@ -841,7 +849,9 @@ fn a_shared_favorites_folder_lands_under_its_own_name_inside_the_tableplus_folde
     let shared = query(&collected, "shared").expect("shared");
     assert_eq!(shared.keyword.as_deref(), Some("kwshared"));
     assert_eq!(shared.folder_path, ["TablePlus", "tp_shared"]);
-    let inventory = importer(ForeignPlatform::MacOs, &home, None).inventory_blocking();
+    let inventory = importer(ForeignPlatform::MacOs, &home, None)
+        .inventory_blocking()
+        .expect("an inventory");
     assert_eq!(
         inventory,
         Inventory {
@@ -908,7 +918,9 @@ fn windows_reads_the_local_folder_then_every_listed_connection_source() {
     );
     assert_eq!(connection(&collected, "Team Redis").group_path, ["Shared"]);
     assert_eq!(
-        importer(ForeignPlatform::Windows, home.path(), None).inventory_blocking(),
+        importer(ForeignPlatform::Windows, home.path(), None)
+            .inventory_blocking()
+            .expect("an inventory"),
         Inventory {
             connections: 5,
             saved_queries: 2

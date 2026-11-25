@@ -18,9 +18,10 @@ public sealed partial class ShellTests
         var folder = AppSession.NewDataFolder(theme);
         File.WriteAllText(
             Path.Combine(folder, "settings.json"),
-            JsonSerializer.Serialize(new Dictionary<string, string>
+            JsonSerializer.Serialize(new Dictionary<string, object>
             {
                 ["theme"] = theme,
+                ["setupGuideSeen"] = true,
                 ["aiProvider"] = "OpenAICompatible",
                 ["compatibleAddress"] = server.Address,
                 ["compatibleModel"] = "test-model",
@@ -85,7 +86,7 @@ public sealed partial class ShellTests
         using var server = new FakeAiServer(AssistantReply);
         using var app = LaunchWithAssistant(theme, server);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         ShowAssistant(app);
         Assert.StartsWith("Questions go to the server at 127.0.0.1", AppSession.TextOf(app.Find("AssistantEmptyText")), StringComparison.Ordinal);
@@ -121,7 +122,7 @@ public sealed partial class ShellTests
         using var server = new FakeAiServer(AssistantReply);
         using var app = LaunchWithAssistant(theme, server);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "SELECT Name FROM Track LIMIT 5;");
         app.Click(app.Find("QueryMenu"), () => app.TryFindMenuItem("Explain with AI") is { IsEnabled: true });

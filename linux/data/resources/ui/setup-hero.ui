@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProSetupHero" parent="GtkBox">
+    <property name="orientation">vertical</property>
+    <property name="spacing">6</property>
+    <child>
+      <object class="GtkImage" id="art">
+        <property name="pixel-size">64</property>
+        <property name="margin-bottom">12</property>
+        <property name="accessible-role">presentation</property>
+        <style>
+          <class name="icon-dropshadow"/>
+        </style>
+      </object>
+    </child>
+    <child>
+      <object class="GtkLabel" id="step_label">
+        <property name="wrap">true</property>
+        <property name="justify">center</property>
+        <style>
+          <class name="caption-heading"/>
+          <class name="dimmed"/>
+        </style>
+      </object>
+    </child>
+    <child>
+      <object class="GtkLabel" id="title_label">
+        <property name="accessible-role">heading</property>
+        <property name="wrap">true</property>
+        <property name="justify">center</property>
+        <accessibility>
+          <property name="level">1</property>
+        </accessibility>
+        <style>
+          <class name="title-1"/>
+        </style>
+      </object>
+    </child>
+    <child>
+      <object class="GtkLabel" id="description_label">
+        <property name="halign">center</property>
+        <property name="wrap">true</property>
+        <property name="justify">center</property>
+        <property name="max-width-chars">50</property>
+      </object>
+    </child>
+  </template>
+</interface>

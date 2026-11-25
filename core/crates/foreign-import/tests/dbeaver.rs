@@ -141,7 +141,7 @@ fn is_available_when_the_app_is_installed_without_data() {
 #[test]
 fn inventory_counts_connections_and_scripts_that_have_text() {
     assert_eq!(
-        macos().inventory_blocking(),
+        macos().inventory_blocking().expect("an inventory"),
         Inventory {
             connections: MACOS_CONNECTION_COUNT,
             saved_queries: 5,
@@ -153,7 +153,9 @@ fn inventory_counts_connections_and_scripts_that_have_text() {
 fn inventory_is_empty_when_the_data_is_missing() {
     let home = tempfile::tempdir().expect("a temp dir");
     assert_eq!(
-        importer(ForeignPlatform::MacOs, home.path()).inventory_blocking(),
+        importer(ForeignPlatform::MacOs, home.path())
+            .inventory_blocking()
+            .expect("an inventory"),
         Inventory::default()
     );
 }
@@ -463,7 +465,7 @@ fn colours_map_from_rgb() {
 }
 
 #[test]
-fn connections_are_keyed_by_their_data_source_id_and_sorted_by_name_then_id() {
+fn connections_are_keyed_by_their_project_and_data_source_id_and_sorted_by_name_then_id() {
     let import = collect(&macos(), CONNECTIONS_ONLY);
     let names: Vec<&str> = import.connections.iter().map(|c| c.settings.name.as_str()).collect();
     let mut sorted = names.clone();
@@ -475,8 +477,8 @@ fn connections_are_keyed_by_their_data_source_id_and_sorted_by_name_then_id() {
         .filter(|c| c.settings.name == "Twin")
         .map(|c| c.reference.as_str())
         .collect();
-    assert_eq!(twins, ["twin-a", "twin-b"]);
-    assert_eq!(connection(&import, "PG with password").reference, "pg-1");
+    assert_eq!(twins, ["General/twin-a", "General/twin-b"]);
+    assert_eq!(connection(&import, "PG with password").reference, "General/pg-1");
 }
 
 #[test]
@@ -609,7 +611,7 @@ fn a_script_is_bound_to_the_data_source_dbeaver_opens_it_on() {
     let import = collect(&macos(), WITH_SAVED_QUERIES);
     let daily = query(&import, "Daily users");
     assert_eq!(daily.content, SavedQueryContent::Text("select ${days};".to_owned()));
-    assert_eq!(daily.connection.as_deref(), Some("pg-1"));
+    assert_eq!(daily.connection.as_deref(), Some("General/pg-1"));
     assert_eq!(daily.folder_path, ["Reports"]);
     assert!(daily.suggested);
 }
@@ -641,7 +643,7 @@ fn default_named_scripts_start_unchecked_and_empty_files_are_skipped() {
         BTreeSet::from(["Script", "Script-3", "Daily users", "Unbound", "Elsewhere"])
     );
     let script = query(&import, "Script");
-    assert_eq!(script.connection.as_deref(), Some("pg-1"));
+    assert_eq!(script.connection.as_deref(), Some("General/pg-1"));
     assert!(!script.suggested);
     assert!(!query(&import, "Script-3").suggested);
 }
@@ -670,7 +672,7 @@ fn no_scripts_are_read_unless_saved_queries_are_requested() {
 #[test]
 fn linux_reads_every_data_sources_file_with_its_own_credentials_file() {
     let linux = importer(ForeignPlatform::Linux, &fixture("linux"));
-    assert_eq!(linux.inventory_blocking().connections, 2);
+    assert_eq!(linux.inventory_blocking().expect("an inventory").connections, 2);
 
     let import = collect(&linux, WITH_PASSWORDS);
     let names: Vec<&str> = import.connections.iter().map(|c| c.settings.name.as_str()).collect();
@@ -751,4 +753,102 @@ fn each_platform_reads_only_its_own_location() {
     assert!(!importer(ForeignPlatform::Linux, &fixture("macos")).is_available_blocking());
     assert!(!importer(ForeignPlatform::MacOs, &fixture("linux")).is_available_blocking());
     assert!(!importer(ForeignPlatform::Windows, &fixture("linux")).is_available_blocking());
+}
+
+fn write_project(home: &Path, project: &str, data_sources: &str) {
+    let metadata = home
+        .join("Library/DBeaverData/workspace6")
+        .join(project)
+        .join(".dbeaver");
+    fs::create_dir_all(&metadata).expect("a folder");
+    fs::write(metadata.join("data-sources.json"), data_sources).expect("a file");
+}
+
+fn one_connection(id: &str, folder: &str) -> String {
+    format!(
+        r#"{{"folders": {{"{folder}": {{}}}}, "connections": {{"{id}": {{"provider": "postgresql", "name": "{id}",
+            "folder": "{folder}", "configuration": {{"host": "{id}.example.com"}}}}}}}}"#
+    )
+}
+
+#[test]
+fn every_project_of_the_workspace_is_counted_and_read() {
+    let home = tempfile::tempdir().expect("a temp dir");
+    write_project(home.path(), "General", &one_connection("general-pg", "Dev"));
+    write_project(home.path(), "Production", &one_connection("production-pg", "Dev"));
+    fs::create_dir_all(home.path().join("Library/DBeaverData/workspace6/Production/Scripts")).expect("a folder");
+    fs::write(
+        home.path()
+            .join("Library/DBeaverData/workspace6/Production/Scripts/Report.sql"),
+        "select 1;",
+    )
+    .expect("a script");
+    let importer = importer(ForeignPlatform::MacOs, home.path());
+
+    let inventory = importer.inventory_blocking().expect("an inventory");
+    let import = collect(&importer, WITH_SAVED_QUERIES);
+
+    assert_eq!(
+        inventory,
+        Inventory {
+            connections: 2,
+            saved_queries: 1,
+        }
+    );
+    let names: Vec<&str> = import.connections.iter().map(|c| c.settings.name.as_str()).collect();
+    assert_eq!(names, ["general-pg", "production-pg"]);
+    assert_eq!(connection(&import, "production-pg").group_path, ["Dev"]);
+    assert_eq!(query(&import, "Report").name, "Report");
+}
+
+fn write_bound_script(home: &Path, project: &str, script: &str, data_source: &str) {
+    let project = home.join("Library/DBeaverData/workspace6").join(project);
+    fs::create_dir_all(project.join("Scripts")).expect("a folder");
+    fs::write(project.join("Scripts").join(format!("{script}.sql")), "select 1;").expect("a script");
+    fs::write(
+        project.join(".dbeaver/project-metadata.json"),
+        format!(r#"{{"resources": {{"Scripts/{script}.sql": {{"default-datasource": "{data_source}"}}}}}}"#),
+    )
+    .expect("the project metadata");
+}
+
+#[test]
+fn a_data_source_id_two_projects_share_binds_each_project_s_script_to_its_own_connection() {
+    let home = tempfile::tempdir().expect("a temp dir");
+    let data_sources = |name: &str| {
+        format!(
+            r#"{{"connections": {{"shared-pg": {{"provider": "postgresql", "name": "{name}",
+                "configuration": {{"host": "db.example.com"}}}}}}}}"#
+        )
+    };
+    write_project(home.path(), "General", &data_sources("Original PG"));
+    write_project(home.path(), "General copy", &data_sources("Copied PG"));
+    write_bound_script(home.path(), "General", "Original report", "shared-pg");
+    write_bound_script(home.path(), "General copy", "Copied report", "shared-pg");
+
+    let import = collect(&importer(ForeignPlatform::MacOs, home.path()), WITH_SAVED_QUERIES);
+
+    let original = &connection(&import, "Original PG").reference;
+    let copied = &connection(&import, "Copied PG").reference;
+    assert_ne!(original, copied);
+    assert_eq!(query(&import, "Original report").connection.as_ref(), Some(original));
+    assert_eq!(query(&import, "Copied report").connection.as_ref(), Some(copied));
+}
+
+#[test]
+fn a_broken_project_leaves_the_others_importable_and_only_all_broken_is_an_error() {
+    let home = tempfile::tempdir().expect("a temp dir");
+    write_project(home.path(), "General", "{ not json");
+    write_project(home.path(), "Production", &one_connection("production-pg", "Dev"));
+    let importer = importer(ForeignPlatform::MacOs, home.path());
+
+    assert_eq!(importer.inventory_blocking().expect("an inventory").connections, 1);
+    assert_eq!(collect(&importer, CONNECTIONS_ONLY).connections.len(), 1);
+
+    write_project(home.path(), "Production", "{ not json either");
+    assert!(matches!(
+        importer.inventory_blocking(),
+        Err(ForeignImportError::Parse { .. })
+    ));
+    assert!(matches!(collect_error(&importer), ForeignImportError::Parse { .. }));
 }

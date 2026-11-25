@@ -18,6 +18,10 @@ struct DataGripImporter: ForeignAppImporter {
     var jetBrainsRoot: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/JetBrains")
 
+    var resolveAppURL: @Sendable (_ bundleIdentifier: String) -> URL? = {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+    }
+
     var savedQuerySupport: ForeignSavedQuerySupport {
         .reads(caption: String(
             localized: "Query consoles import with their data source. Consoles with a default name start unchecked."
@@ -38,17 +42,32 @@ struct DataGripImporter: ForeignAppImporter {
     private struct Scan {
         var sources: [ScannedSource] = []
         var consoleSources: [DataGripConsoleReader.DataSource] = []
+        var readLocations = 0
+        var unreadable: [URL] = []
+    }
+
+    func installedAppURL() -> URL? {
+        resolveAppURL(appBundleIdentifier)
+    }
+
+    // A recent project can sit in Documents or Desktop, which macOS guards, so the probe stops at the config folders.
+    func hasDataAtDefaultLocation() -> Bool {
+        !dataGripConfigDirs().isEmpty
     }
 
     func isAvailable() -> Bool {
         installedAppURL() != nil || !locations().isEmpty
     }
 
-    func inventory() -> ForeignAppInventory {
+    func inventory() throws -> ForeignAppInventory {
         let scan = scanDataSources(locations())
+        if scan.readLocations == 0, let unreadable = scan.unreadable.first {
+            throw ForeignAppImportError.unreadableFile(unreadable)
+        }
         return ForeignAppInventory(
             connections: scan.sources.count,
-            savedQueries: DataGripConsoleReader.count(dataSources: scan.consoleSources, configDirs: dataGripConfigDirs())
+            savedQueries: DataGripConsoleReader.count(dataSources: scan.consoleSources, configDirs: dataGripConfigDirs()),
+            keychainPrompts: scan.sources.reduce(0) { $0 + ($1.source.ssh?.configId == nil ? 1 : 2) }
         )
     }
 
@@ -115,7 +134,12 @@ struct DataGripImporter: ForeignAppImporter {
         var result = Scan()
 
         for location in locations {
-            for fragment in fragments(at: location) {
+            guard let read = fragments(at: location) else {
+                result.unreadable.append(location.dataSourcesURL)
+                continue
+            }
+            result.readLocations += 1
+            for fragment in read {
                 if fragmentsByUUID[fragment.uuid] == nil {
                     fragmentsByUUID[fragment.uuid] = fragment
                     order.append(fragment.uuid)
@@ -268,13 +292,14 @@ struct DataGripImporter: ForeignAppImporter {
     }
 
     // The shared file carries the driver and JDBC URL, the local file the user name, SSH and SSL; per field,
-    // and per SSH or SSL section it names, the local file wins.
-    private func fragments(at location: Location) -> [DataGripDataSourceFragment] {
+    // and per SSH or SSL section it names, the local file wins. Nil when the shared file cannot be read.
+    private func fragments(at location: Location) -> [DataGripDataSourceFragment]? {
+        guard let shared = try? ForeignAppFile.read(location.dataSourcesURL) else { return nil }
+        let local = location.localURL.flatMap { try? ForeignAppFile.read($0) }
         var fragments: [String: DataGripDataSourceFragment] = [:]
         var order: [String] = []
 
-        for url in [location.dataSourcesURL, location.localURL].compactMap({ $0 }) {
-            guard let data = try? ForeignAppFile.read(url) else { continue }
+        for data in [shared, local].compactMap({ $0 }) {
             for fragment in DataGripDataSourceParser.parseFragments(data) {
                 if fragments[fragment.uuid] == nil {
                     order.append(fragment.uuid)

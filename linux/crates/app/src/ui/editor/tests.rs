@@ -1260,6 +1260,26 @@ fn editor_keys_that_the_view_binds_run_in_capture() {
     }
 }
 
+// A shortcut preset leaves the keys it reads to the editor, so they are the editor view's own, its subclass included.
+#[gtk4::test]
+fn a_preset_reads_the_keys_the_editors_view_binds() {
+    use crate::test_support::shortcut_keys::{class_binding_keys, keystroke};
+    let harness = editor_with(answering(), "SELECT 1");
+    let view = harness.editor.imp().source_view.get();
+
+    let read = crate::application::keymap::editor_view_keys();
+
+    assert!(
+        read.contains(&keystroke("<Primary>space")),
+        "GtkSourceView's own were missed"
+    );
+    assert!(
+        read.contains(&keystroke("<Primary>period")),
+        "GtkTextView's own were missed"
+    );
+    assert_eq!(read, class_binding_keys(&view));
+}
+
 #[gtk4::test]
 fn ctrl_slash_toggles_the_comment() {
     let harness = editor_with(answering(), "select 1");

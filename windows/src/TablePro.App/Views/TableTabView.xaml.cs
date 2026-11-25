@@ -37,6 +37,7 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         ITableColumns? columns = null)
     {
         InitializeComponent();
+        DisplaySettings.FollowKeys(this, ShowKeys);
         Results.ShowsEdits = true;
         var grid = Results.GridView;
         _model = new TableTab(
@@ -1054,6 +1055,17 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
         }
     }
 
+
+    // The keys come from the shortcut preset, so the tooltips name them from it.
+    private void ShowKeys()
+    {
+        ToolTipService.SetToolTip(StopButton, DisplaySettings.Tip(StopButton.Label, "cancelQuery"));
+        ToolTipService.SetToolTip(FilterButton, DisplaySettings.Tip(FilterButton.Label, "toggleFilters"));
+        ToolTipService.SetToolTip(AddRowButton, DisplaySettings.Tip(AddRowButton.Label, "addRow"));
+        ToolTipService.SetToolTip(DuplicateRowButton, DisplaySettings.Tip(DuplicateRowButton.Label, "duplicateRow"));
+        ToolTipService.SetToolTip(SaveChangesButton, DisplaySettings.Tip(SaveChangesButton.Label, "saveChanges"));
+        ToolTipService.SetToolTip(PreviewSqlButton, DisplaySettings.Tip(PreviewSqlButton.Label, "previewSQL"));
+    }
     private void OnFilterToggled(object sender, RoutedEventArgs e)
     {
         var show = FilterButton.IsChecked == true;

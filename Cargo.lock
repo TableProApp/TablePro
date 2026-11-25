@@ -7635,14 +7635,11 @@ dependencies = [
  "hyper-util",
  "jsonwebtoken",
  "oauth2",
- "openapiv3",
- "progenitor",
- "progenitor-client",
- "regress",
  "reqwest",
  "secrecy",
  "serde",
  "serde_json",
+ "tablepro-cloud-api",
  "tablepro-core",
  "tablepro-storage",
  "tempfile",
@@ -7713,6 +7710,25 @@ dependencies = [
  "tracing",
  "unicode-width",
  "uuid",
+]
+
+[[package]]
+name = "tablepro-cloud-api"
+version = "0.0.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "http",
+ "openapiv3",
+ "progenitor",
+ "progenitor-client",
+ "regress",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]

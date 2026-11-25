@@ -1,0 +1,35 @@
+[package]
+name = "tablepro-cloud-api"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The document's date-time strings, in the generated types.
+chrono.workspace = true
+progenitor-client = "0.15.1"
+# The generated client checks the document's string patterns with it.
+regress = "0.12.0"
+reqwest.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[build-dependencies]
+openapiv3 = "2.2"
+progenitor = { version = "0.15.1", default-features = false }
+serde_json.workspace = true
+
+[dev-dependencies]
+bytes.workspace = true
+http.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+
+[lints]
+workspace = true
+
+# Only the v2 client build.rs generates into OUT_DIR uses them, and shear does not read that.
+[package.metadata.cargo-shear]
+ignored = ["chrono", "regress"]

@@ -1,4 +1,4 @@
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -76,6 +76,8 @@ pub struct AppServices {
     account: RefCell<AccountService>,
     telemetry: Telemetry,
     app_opened: RefCell<Option<AppOpenedChecks>>,
+    // A second picker window in one launch never opens the setup guide (core ADR 0057, G11).
+    first_picker_claimed: Cell<bool>,
 }
 
 // The usage data follows the account, which a sign-out, a removed device or a refused sign-in leaves
@@ -153,7 +155,12 @@ impl AppServices {
             account: RefCell::new(AccountService::signed_out()),
             telemetry: Telemetry::default(),
             app_opened: RefCell::default(),
+            first_picker_claimed: Cell::new(false),
         }
+    }
+
+    pub(crate) fn claim_first_picker_window(&self) -> bool {
+        !self.first_picker_claimed.replace(true)
     }
 
     /// A second launch builds this too before it hands its command line

@@ -35,15 +35,16 @@ struct TablePlusImporter: ForeignAppImporter {
     }
 
     var dataDirectoryOverride: URL?
+    var homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
 
     var savedQuerySupport: ForeignSavedQuerySupport { .globalFolder(named: displayName) }
 
     var connectionsFileURL: URL {
-        connectionsDirectory(viewSetting: viewSetting).appendingPathComponent("Connections.plist")
+        connectionsDirectory(resolveLocations()).appendingPathComponent("Connections.plist")
     }
 
     var groupsFileURL: URL {
-        connectionsDirectory(viewSetting: viewSetting).appendingPathComponent("ConnectionGroups.plist")
+        connectionsDirectory(resolveLocations()).appendingPathComponent("ConnectionGroups.plist")
     }
 
     func installedAppURL() -> URL? {
@@ -54,32 +55,40 @@ struct TablePlusImporter: ForeignAppImporter {
         Self.knownBundleIdentifiers.first { resolveAppURL($0) != nil }
     }
 
-    private var dataDirectory: URL {
-        if let dataDirectoryOverride {
-            return dataDirectoryOverride
-        }
-        return Self.dataDirectory(
-            forBundleIdentifier: installedBundleIdentifier ?? appBundleIdentifier,
-            home: FileManager.default.homeDirectoryForCurrentUser
-        )
-    }
-
     static func dataDirectory(forBundleIdentifier bundleIdentifier: String, home: URL) -> URL {
         home.appendingPathComponent("Library/Application Support/\(bundleIdentifier)/Data")
     }
 
-    func inventory() -> ForeignAppInventory {
-        let prefs = viewSetting
+    func hasDataAtDefaultLocation() -> Bool {
+        if let dataDirectoryOverride {
+            return Self.holdsConnections(dataDirectoryOverride)
+        }
+        return editionWithData != nil
+    }
+
+    private var editionWithData: String? {
+        Self.knownBundleIdentifiers.first {
+            Self.holdsConnections(Self.dataDirectory(forBundleIdentifier: $0, home: homeDirectory))
+        }
+    }
+
+    private static func holdsConnections(_ directory: URL) -> Bool {
+        FileManager.default.fileExists(atPath: directory.appendingPathComponent("Connections.plist").path)
+    }
+
+    func inventory() throws -> ForeignAppInventory {
+        let locations = resolveLocations()
+        let named = try storedEntries(in: connectionsDirectory(locations)).filter { Self.connectionName($0) != nil }
         return ForeignAppInventory(
-            connections: loadEntries(from: connectionsDirectory(viewSetting: prefs))?
-                .count(where: { Self.connectionName($0) != nil }) ?? 0,
-            savedQueries: TablePlusFavoriteReader.count(in: favoriteRoots(viewSetting: prefs))
+            connections: named.count,
+            savedQueries: TablePlusFavoriteReader.count(in: favoriteRoots(locations)),
+            keychainPrompts: named.reduce(0) { $0 + Self.keychainReads(for: $1) }
         )
     }
 
     func collect(_ request: ForeignImportRequest) throws -> CollectedImport {
-        let prefs = viewSetting
-        let connectionsFolder = connectionsDirectory(viewSetting: prefs)
+        let locations = resolveLocations()
+        let connectionsFolder = connectionsDirectory(locations)
         let connectionsURL = connectionsFolder.appendingPathComponent("Connections.plist")
         guard FileManager.default.fileExists(atPath: connectionsURL.path) else {
             throw ForeignAppImportError.fileNotFound(displayName)
@@ -131,7 +140,7 @@ struct TablePlusImporter: ForeignAppImporter {
 
         let savedQueries = request.includeSavedQueries
             ? try TablePlusFavoriteReader.savedQueries(
-                in: favoriteRoots(viewSetting: prefs),
+                in: favoriteRoots(locations),
                 limit: SavedQuerySize.maximumSyncableByteCount
             )
             : []
@@ -146,21 +155,31 @@ struct TablePlusImporter: ForeignAppImporter {
 
     // MARK: - Locations
 
-    private var viewSetting: [String: Any] {
-        readViewSetting(installedBundleIdentifier ?? appBundleIdentifier) ?? [:]
+    private struct Locations {
+        let dataDirectory: URL
+        let viewSetting: [String: Any]
+    }
+
+    // One edition answers both: the installed one, else the one a deleted edition left its connections in.
+    private func resolveLocations() -> Locations {
+        let edition = installedBundleIdentifier ?? editionWithData ?? appBundleIdentifier
+        return Locations(
+            dataDirectory: dataDirectoryOverride ?? Self.dataDirectory(forBundleIdentifier: edition, home: homeDirectory),
+            viewSetting: readViewSetting(edition) ?? [:]
+        )
     }
 
     // Moving the data in TablePlus preferences writes the connection files directly under the chosen folder.
-    private func connectionsDirectory(viewSetting: [String: Any]) -> URL {
-        Self.sharedPath(viewSetting["SharedConnectionPath"]) ?? dataDirectory
+    private func connectionsDirectory(_ locations: Locations) -> URL {
+        Self.sharedPath(locations.viewSetting["SharedConnectionPath"]) ?? locations.dataDirectory
     }
 
-    private func favoriteRoots(viewSetting: [String: Any]) -> [TablePlusFavoriteReader.Root] {
-        let favoriteRoot = (Self.sharedPath(viewSetting["SharedQueryPath"]) ?? dataDirectory)
+    private func favoriteRoots(_ locations: Locations) -> [TablePlusFavoriteReader.Root] {
+        let favoriteRoot = (Self.sharedPath(locations.viewSetting["SharedQueryPath"]) ?? locations.dataDirectory)
             .appendingPathComponent("Favorite", isDirectory: true)
         return TablePlusFavoriteReader.roots(
             favoriteRoot: favoriteRoot,
-            sharedFolders: TablePlusFavoriteReader.sharedFolders(in: viewSetting)
+            sharedFolders: TablePlusFavoriteReader.sharedFolders(in: locations.viewSetting)
         )
     }
 
@@ -173,10 +192,13 @@ struct TablePlusImporter: ForeignAppImporter {
 
     // MARK: - Private
 
-    private func loadEntries(from directory: URL) -> [[String: Any]]? {
-        guard let data = try? Data(contentsOf: directory.appendingPathComponent("Connections.plist")),
-              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) else { return nil }
-        return plist as? [[String: Any]]
+    private func storedEntries(in directory: URL) throws -> [[String: Any]] {
+        let url = directory.appendingPathComponent("Connections.plist")
+        guard let data = try ForeignAppStoredFile.data(at: url) else { return [] }
+        guard let entries = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [[String: Any]] else {
+            throw ForeignAppImportError.unreadableFile(url)
+        }
+        return entries
     }
 
     private func loadGroups(from directory: URL) -> [String: String] {
@@ -308,6 +330,14 @@ struct TablePlusImporter: ForeignAppImporter {
             clientCertificatePath: certPath(form.slots.clientCertificate),
             clientKeyPath: certPath(form.slots.clientKey)
         )
+    }
+
+    // The items readCredentials asks for: collect reads credentials only for an entry with an ID.
+    private static func keychainReads(for entry: [String: Any]) -> Int {
+        guard entry["ID"] is String else { return 0 }
+        let database = TablePlusPasswordMode.resolve(entry["DatabasePasswordMode"]).storesPasswordInKeychain ? 1 : 0
+        let server = TablePlusPasswordMode.resolve(entry["ServerPasswordMode"]).storesPasswordInKeychain ? 1 : 0
+        return database + server + 1
     }
 
     private func readCredentials(

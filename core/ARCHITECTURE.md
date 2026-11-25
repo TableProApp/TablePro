@@ -17,6 +17,7 @@ core/crates/
 ├── foreign-import/                connections and saved queries read from other apps' files, and their review
 ├── ai/                            the AI assistant's providers, prompts and replies
 ├── account/                       the TablePro account: sign-in, device, entitlement and the feature gate
+├── cloud-api/                     tablepro-cloud's /v2 client, generated from the vendored document
 ├── mcp/                           the MCP server: transport, token and tools
 ├── cli/                           the tablepro command line: parsing, the MCP client and the output formats
 ├── ffi/                           the library C# and Swift load: one UniFFI API and the grid's C ABI
@@ -50,8 +51,9 @@ core/crates/
 | `mcp` | `core`, `session`, `storage`; `net` on Windows |
 | `cli` | no workspace crate |
 | `ai` | `core`, `net` |
-| `account` | `core`, `storage` |
-| `ffi` | `account`, `ai`, `cli`, `core`, `mcp`, `net`, `records`, `session`, `ssh`, `storage`, and every driver behind its default `engines` feature |
+| `cloud-api` | no workspace crate |
+| `account` | `cloud-api`, `core`, `storage` |
+| `ffi` | `account`, `ai`, `cli`, `core`, `foreign-import`, `mcp`, `net`, `records`, `session`, `ssh`, `storage`, and every driver behind its default `engines` feature |
 | An app, such as `linux/crates/app` | every crate above, and its platform crate |
 
 Rules, enforced by review:
@@ -65,7 +67,8 @@ Rules, enforced by review:
 - `mcp` depends on `core`, `session` and `storage`, on `net` on Windows for a peer's user, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
 - `cli` depends on no workspace crate: it speaks to the app's MCP server over HTTP and reaches the port, the token and the app's state through the `Host` trait the app implements ([0018](docs/decisions/0018-command-line.md)).
 - `ai` depends on `core` and `net`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
-- `account` depends on `core` and `storage`. It reaches the browser, the keyring and the machine ID through what the app passes in ([0016](docs/decisions/0016-tablepro-accounts.md)).
+- `cloud-api` depends on no workspace crate. It holds the `/v2` client `build.rs` generates from `openapi/v2.openapi-3.0.json`, what a call's problem or 429 answer means, and the one HTTP client a TablePro server is called through; the caller brings the token. `core/scripts/update-cloud-api.sh` refreshes the document.
+- `account` depends on `cloud-api`, `core` and `storage`. It reaches the browser, the keyring and the machine ID through what the app passes in ([0016](docs/decisions/0016-tablepro-accounts.md)).
 - `ffi` stands in for an app outside Rust: it names every driver and passes the host's services in. No other core crate depends on it.
 - No core crate depends on a GUI toolkit or on a platform crate. An app, or `ffi` for one outside Rust, is the only crate that names every driver.
 - `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only an app's dev-dependencies turn on.
@@ -121,6 +124,7 @@ Each boundary error has a stable `code()`, such as `driver.timeout` or `ssh.host
 - `Core::open_account` opens the TablePro account as an `AccountService`, whose `AccountListener` only signals that `status()` changed. It also shares links: `create_share` builds a result's snapshot from a `ResultSet` in Rust, and a table page's `view_sql` is the query its view stands for ([ADR 0027](docs/decisions/0027-share-links.md)). `create_share` takes the share sheet's Keep, Mask or Remove for each column, and `ResultSet::share_masking`, `share_preview` and `share_summary` start the sheet's columns from the detectors and show and count what a share sends ([ADR 0028](docs/decisions/0028-data-masking.md)). `scan_sql_for_secrets`, `scan_columns_for_secrets`, `scan_sql_for_personal_data` and `share_token_from_link` are functions of their own. So are `format_sql` and `format_sql_selection`, which reformat a script or a selection through `tablepro_core::sql_syntax::format` and keep a statement as typed where the formatter would change its tokens.
 - `Core::ai_assistant` gives an `AiAssistant` over the core's one AI client and its secret store: it says whether a provider's key is kept and keeps or removes one (the key never crosses back), lists the provider's models, reads a session's catalog into the system prompt of a conversation (`start_conversation`), and streams a reply as an `AiReply`, drained after an `AiReplyListener` call as a run is. Both refuse a saved connection whose AI policy is Never with `ai.blocked`; asking under Ask is the app's ([ADR 0032](docs/decisions/0032-ai-through-the-ffi.md)).
 - `Core::mcp_server` gives an `McpService` that runs the MCP server on the sessions `connect_saved` opened, keeps its token in the Core's secret store, and asks the app to open a connection or approve a write through `McpAppHost`; `McpListener` only signals that `status()` or `seen_clients()` changed. The package also builds `tablepro-cli`, the Windows package's command ([0036](docs/decisions/0036-mcp-and-the-command-line-through-the-ffi.md)).
+- `Core::foreign_sources(dirs, depth)` lists the other apps over `tablepro_foreign_import::sources_blocking`, each with its availability (`Unreadable` with a code when its data is there and cannot be read), password offer, and whether it starts ticked or preselected; `ScanDepthTag::Presence` reads no count. `ForeignImportReview::apply` returns the ids it wrote in `ForeignImportOutcome.connection_ids` ([0057](docs/decisions/0057-a-setup-guide-shows-on-an-empty-library.md)). `keymap_preset(id, platform)` and `keymap_presets(platform)` read `tablepro_core::keymap` for the platform named, never the build target ([0058](docs/decisions/0058-shortcut-presets-from-one-file.md)).
 - The grid reads a `ResultSet` through the C ABI in `src/window_abi.rs`: `tablepro_cursor_fetch` packs the display text of one visible range, and `tablepro_cursor_free` ends the cursor. The editor reads SQL there from its own UTF-16 text: `tablepro_syntax_tokens` gives the highlight tokens, and `tablepro_script_statements` every statement as `ScriptPlan` splits the text for `statement_at` and the drivers.
 - The library owns one tokio runtime. Each async export runs on it and is aborted when the foreign side drops the call; a `CancelToken` stops it sooner, since UniFFI cannot cancel.
 - A result set takes rows as the driver reads them. Each column keeps a kind byte, a raw `i64` and the exact text `tablepro_core::export::value_text` writes, or a binary value's bytes, in chunks of 65,536 rows. A window only cuts and copies.
