@@ -1,28 +1,28 @@
 theory SyncTeamSigners
 begin
 
-// ADR 0053: Team log (`signer_add`, `signer_remove`, `approve`, the time-locked removal, `reroot`), D15 and the
-// maintainer's k = min(2, n). Signers A and B; A is honest. The attacker holds B's key, runs the server and may hold
+// ADR 0053: Team log (`signer_add`, `signer_remove`, `approve`, the time-locked removal and its cancel, `reroot`),
+// The sole owner after a reset, D15 and the maintainer's k = min(2, n). Signers A and B; A is honest. The attacker holds B's key, runs the server and may hold
 // an owner role, so it can write any statement B or an attacker account signs, and can claim that A reset. G
 // verifies the team log. n counts every signer in the set; nothing the server says and no reset lowers it.
 // The model has no clock: a time-locked removal completes any time after its start unless its target cancelled.
 
 builtins: hashing, signing
 
-// A's holders a1 and a2 are listed in A's logs; a thief can steal a2.
+// A's holder a1 is listed in the logs the team pinned for A.
 rule Team:
-  [ Fr(~t), Fr(~ka), Fr(~kb), Fr(~a1), Fr(~a2) ]
+  [ Fr(~t), Fr(~ka), Fr(~kb), Fr(~a1) ]
   --[ OnlyOnce('team'), SignerIn(~t, 'A'), SignerIn(~t, 'B'), AEndorsed(~t, 'B') ]->
   [ !Key(~t, 'A', ~ka), !Key(~t, 'B', ~kb), !AKey(~t, ~ka)
-  , !ListedHolder(~t, 'A', pk(~a1)), !ListedHolder(~t, 'A', pk(~a2)), !AHonestHolder(~t, ~a1), !AStealable(~t, ~a2)
-  , Out(<~t, pk(~ka), pk(~kb), pk(~a1), pk(~a2)>) ]
+  , !ListedHolder(~t, 'A', pk(~a1)), !AHonestHolder(~t, ~a1)
+  , Out(<~t, pk(~ka), pk(~kb), pk(~a1)>) ]
 
-rule StealA2:
-  [ !AStealable(t, a2) ] --[ StolenA2(t) ]-> [ Out(a2) ]
-
-// A removes the stolen a2 with S: the cancels a2 signed are void.
-rule A_RotatesOutA2:
-  [ !AStealable(t, a2) ] --[ VoidHolder(t, pk(a2)), OnlyOnce(<'void', t>) ]-> [ ]
+// A reset of A's account, which the server may have made up. Its new IK and the holder it names are the attacker's.
+// As the sole owner, the reset account may start A's time-locked removal, but its holder is not one the team pinned.
+rule ResetAccountOfA:
+  [ !Key(t, 'A', ka), Fr(~ik2), Fr(~hr) ]
+  --[ OnlyOnce(<'reset', t>), Suspended(t, 'A'), ResetHolder(t, pk(~hr)) ]->
+  [ !ResetAccount(t, 'A', ~ik2), Out(<~ik2, ~hr, pk(~hr)>) ]
 
 rule CorruptB:
   [ !Key(t, 'B', kb) ] --[ Corrupt(t, 'B') ]-> [ Out(kb) ]
@@ -83,9 +83,6 @@ rule V_Approve:
   --[ InSet(t, s) ]->
   [ !Approval(t, pid, s) ]
 
-// A reset of A, real or made up by the server: A is suspended, and stays in the set and in n.
-rule V_ResetOfA:
-  [ In(<'reset', t, 'A', ik2>) ] --[ Suspended(t, 'A') ]-> [ ]
 
 rule V_AddAlone:
   [ !Proposal(t, pid, 'add', p, s) ]
@@ -113,14 +110,23 @@ rule V_TimelockStart:
   --[ InSet(t, s), InSet(t, x), Neq(x, s), TimelockStarted(t, x, h(rp)), Once(h(rp)) ]->
   [ PendingRemoval(t, x, h(rp)) ]
 
-// A cancel from any holder the target's logs list, whatever its row or role. It is a grant: a rotate that names its
-// holder voids it, and the removal is pending again.
+// A cancel from any holder the logs the team pinned for the target list, whatever its row or role. It ends the
+// removal for good; nothing voids it.
+// The sole owner after a reset starts the removal of its own old signer identity.
+rule V_TimelockStartByResetAccount:
+  let
+    rp = <'signer_remove', t, x, 'reset-account', 'timelock'>
+  in
+  [ !ResetAccount(t, x, ik2), In(<rp, sign(rp, ik2)>) ]
+  --[ InSet(t, x), TimelockStarted(t, x, h(rp)), StartedByResetAccount(t, x, h(rp)), Once(h(rp)) ]->
+  [ PendingRemoval(t, x, h(rp)) ]
+
 rule V_TimelockCancel:
   let
     cp = <'signer_remove_cancel', t, pid, x, pk(hk)>
   in
   [ !ListedHolder(t, x, pk(hk)), In(<cp, sign(cp, hk)>) ]
-  --[ TimelockCancelled(t, pid, pk(hk)) ]->
+  --[ TimelockCancelled(t, pid, pk(hk)), CancelledBy(t, x, pk(hk)) ]->
   [ ]
 
 rule V_TimelockComplete:
@@ -135,8 +141,7 @@ rule V_Reroot:
   [ ]
 
 restriction NoCancelInForce:
-  "All t pid h #i #c. NoCancelInForce(t, pid)@i & TimelockCancelled(t, pid, h)@c & #c < #i ==>
-     Ex #v. VoidHolder(t, h)@v & #v < #i"
+  "All t pid h #i #c. NoCancelInForce(t, pid)@i & TimelockCancelled(t, pid, h)@c & #c < #i ==> F"
 
 restriction InSet:
   "All t s #i. InSet(t, s)@i ==> (Ex #j. SignerIn(t, s)@j & #j < #i) & not (Ex #o. SignerOut(t, s)@o & #o < #i)"
@@ -170,7 +175,7 @@ lemma signers_executable:
 lemma timelock_cancelled:
   exists-trace
   "Ex t pid h #s #c. TimelockStarted(t, 'A', pid)@s & TimelockCancelled(t, pid, h)@c
-     & not (Ex #o. SignerOut(t, 'A')@o)"
+     & not (Ex #r. StartedByResetAccount(t, 'A', pid)@r) & not (Ex #o. SignerOut(t, 'A')@o)"
 
 // While A is a signer, B adds no signer without A.
 lemma no_signer_added_alone:
@@ -181,14 +186,21 @@ lemma no_signer_added_alone:
 // delay without the target's cancel.
 lemma no_signer_removed_by_one_other:
   "All t #i. RemovedByOthers(t, 'A')@i ==>
-     Ex pid #s. TimelockStarted(t, 'A', pid)@s & #s < #i
-       & (All h #c. TimelockCancelled(t, pid, h)@c & #c < #i ==> Ex #v. VoidHolder(t, h)@v & #v < #i)"
+     Ex pid #s. TimelockStarted(t, 'A', pid)@s & #s < #i & not (Ex h #c. TimelockCancelled(t, pid, h)@c & #c < #i)"
 
-// 0053's claim: no time-locked removal completes after a cancel from a holder the target's logs list and no rotate
-// removed.
-lemma no_removal_completes_after_a_listed_holders_cancel:
-  "All t x pid h #c #i. TimelockCancelled(t, pid, h)@c & TimelockCompleted(t, x, pid)@i & #c < #i ==>
-     Ex #v. VoidHolder(t, h)@v & #v < #i"
+// 0053's claim: a cancel ends a time-locked removal for good.
+lemma cancel_ends_a_removal_for_good:
+  "All t x pid h #c #i. TimelockCancelled(t, pid, h)@c & TimelockCompleted(t, x, pid)@i & #c < #i ==> F"
+
+// 0053's claim: the old signer's veto holds against a removal its own reset account starts, and the holder the
+// reset names cannot cancel.
+lemma old_signers_veto_holds_against_its_reset_account:
+  exists-trace
+  "Ex t pid h #s #c. StartedByResetAccount(t, 'A', pid)@s & TimelockCancelled(t, pid, h)@c & #s < #c
+     & not (Ex #o. SignerOut(t, 'A')@o)"
+
+lemma reset_holder_cannot_cancel:
+  "All t x h hr #c #r. CancelledBy(t, x, h)@c & ResetHolder(t, hr)@r & h = hr ==> F"
 
 // 0053's claim: a reset, even one the server made up, removes no signer, so it lowers neither n nor k.
 lemma reset_removes_no_signer:

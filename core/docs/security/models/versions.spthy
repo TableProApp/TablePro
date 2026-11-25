@@ -1,0 +1,67 @@
+theory SyncVersions
+begin
+
+// ADR 0053: Keys (versions), Logs (versions), Floors and the current version, Envelopes (accepting one). A key's
+// chain names versions 1, 2, ... A thief with a stolen holder writes envelopes and, with the signing key, chain
+// statements of its own. C follows the chain and reads envelopes.
+
+builtins: hashing, signing, symmetric-encryption, natural-numbers
+
+rule Chain:
+  [ Fr(~c), Fr(~k), Fr(~k1) ]
+  --[ OnlyOnce('chain'), KeyVersion(~c, %1, ~k1) ]->
+  [ !ChainKey(~c, ~k), Signed(~c, %1), !Version(~c, %1, ~k1), CAt(~c, %1) , Out(~c) ]
+
+// The honest writer names the next version, exactly one above the last.
+rule NextVersion:
+  let
+    sp = <'key', c, %v %+ %1, h(~kn)>
+  in
+  [ Signed(c, %v), !ChainKey(c, k), Fr(~kn) ]
+  --[ KeyVersion(c, %v %+ %1, ~kn) ]->
+  [ Signed(c, %v %+ %1), !Version(c, %v %+ %1, ~kn), Out(<sp, sign(sp, k)>) ]
+
+rule StealChainKey:
+  [ !ChainKey(c, k) ] --[ KeyStolen(c) ]-> [ Out(k) ]
+
+// C takes a statement only when its version is exactly one above the last it holds.
+rule C_TakeVersion:
+  let
+    sp = <'key', c, %w, kh>
+  in
+  [ CAt(c, %v), !ChainKey(c, k), In(<sp, sign(sp, k)>) ]
+  --[ Eq(%w, %v %+ %1), CTook(c, %w) ]->
+  [ CAt(c, %w) ]
+
+// An envelope under version kv. C takes it only when kv is a version it holds, so never above the current one.
+rule StealHolder:
+  [ !Version(c, %v, kv) ] --[ HolderStolen(c, %v) ]-> [ Out(kv) ]
+
+rule C_TakeEnvelope:
+  [ !Version(c, %kv, k), In(<%kv, senc(<'envelope', c, %kv, s>, k)>) ]
+  --[ CEnvelope(c, %kv) ]->
+  [ ]
+
+restriction Eq:
+  "All x y #i. Eq(x, y)@i ==> x = y"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+lemma versions_executable:
+  exists-trace
+  "Ex c #i. CTook(c, %1 %+ %1 %+ %1)@i & not (Ex #s. KeyStolen(c)@s)"
+
+// 0053's claim: every version C takes is exactly one above the last, so no statement uses up a key's versions,
+// even one signed with a stolen key.
+lemma versions_step_by_one [use_induction]:
+  "All c v w #i #j. CTook(c, v)@i & CTook(c, w)@j & #i < #j ==> v << w"
+
+lemma no_version_skipped:
+  "All c w #j. CTook(c, w %+ %1)@j & not (w = %1) ==> Ex #i. CTook(c, w)@i & #i < #j"
+
+// 0053's claim: no envelope C takes names a kv above the newest version on the chain.
+lemma no_kv_above_the_current_version:
+  "All c kv #i. CEnvelope(c, kv)@i ==> Ex k #v. KeyVersion(c, kv, k)@v & #v < #i"
+
+end

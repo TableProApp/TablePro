@@ -5,9 +5,9 @@ begin
 // bundles, Flows: Removing a member, Rotation pending. G is an honest signer client that verifies the team log and
 // seals team keys. The root signer account has a second holder a thief can steal. The server is malicious and
 // relays statements and member bundles as it likes.
-// Team statements are signed by one holder's key, and a statement whose authority runs through a holder a rotate
-// named is void. An authority is a lineage: a root signer holder, or a signer some authority added.
-// Flag ASKSIGNED models 0053 before G0 round 1 (e8879f95ee): team statements signed with the account-wide ASK.
+// Team statements are signed by one holder's key and stay valid after that holder is removed: nothing is voided, and
+// the person revokes what they do not recognize with new statements. An authority is a root signer holder, or a
+// signer some authority added.
 
 builtins: hashing, signing, asymmetric-encryption
 
@@ -60,33 +60,6 @@ rule Team:
 rule StealSignerDevice:
   [ !Stealable(t, g2, ask) ] --[ StealSigner(t, pk(g2)) ]-> [ Out(<g2, ask>) ]
 
-#ifdef ASKSIGNED
-// After a comparison (member-confirmation.spthy) a signer holder confirms an honest member's IK.
-rule H_Confirm:
-  let
-    cp = <'confirm', t, m, pk(ik)>
-  in
-  [ !SignerHolder(t, hs, ask), !MemberIK(m, ik) ]
-  -->
-  [ Out(<cp, sign(cp, ask)>) ]
-
-// 0053 at e8879f95ee: `by` names the account, `ask_v` and `ih`, so nothing ties a statement to one holder.
-rule G_AcceptConfirm:
-  let
-    cp = <'confirm', t, m, ikpub>
-  in
-  [ !SignerASK(t, pk(ask)), In(<cp, sign(cp, ask)>) ]
-  -->
-  [ !TConf(t, m, ikpub, 'account') ]
-
-rule G_AcceptSignerAdd:
-  let
-    sp = <'signer_add', t, p, pk(ph)>
-  in
-  [ !SignerASK(t, pk(ask)), In(<sp, sign(sp, ask)>) ]
-  -->
-  [ !AddedSigner(t, pk(ph), 'account') ]
-#else
 rule H_Confirm:
   let
     cp = <'confirm', t, m, pk(ik), pk(hs)>
@@ -101,7 +74,7 @@ rule G_AcceptConfirm:
     cp = <'confirm', t, m, ikpub, pk(hs)>
   in
   [ !Authority(t, pk(hs), lin), In(<cp, sign(cp, hs)>) ]
-  --[ UseAuthority(t, lin) ]->
+  -->
   [ !TConf(t, m, ikpub, lin) ]
 
 // A signer added by a statement holds the authority of the statement's signer below it.
@@ -110,9 +83,8 @@ rule G_AcceptSignerAdd:
     sp = <'signer_add', t, p, pk(ph), pk(hs)>
   in
   [ !Authority(t, pk(hs), lin), In(<sp, sign(sp, hs)>) ]
-  --[ UseAuthority(t, lin) ]->
+  -->
   [ !AddedSigner(t, pk(ph), <'added', pk(ph), lin>) ]
-#endif
 
 // A signer that a statement added confirms through its own holders.
 rule G_AcceptConfirmByAddedSigner:
@@ -120,19 +92,10 @@ rule G_AcceptConfirmByAddedSigner:
     cp = <'confirm', t, m, ikpub, pk(ph)>
   in
   [ !AddedSigner(t, pk(ph), lin), In(<cp, sign(cp, ph)>) ]
-  --[ UseAuthority(t, lin) ]->
+  -->
   [ !TConf(t, m, ikpub, lin) ]
 
 // A `remove_member` from any signer holder. A revocation is never voided, so it stays when that holder is removed.
-#ifdef ASKSIGNED
-rule G_AcceptRemoveMember:
-  let
-    rp = <'remove_member', t, m>
-  in
-  [ !SignerASK(t, pk(ask)), !TConf(t, m, ik, lin), In(<rp, sign(rp, ask)>) ]
-  --[ RemoveMember(t, m) ]->
-  [ ]
-#else
 rule G_AcceptRemoveMember:
   let
     rp = <'remove_member', t, m, pk(hs)>
@@ -140,22 +103,20 @@ rule G_AcceptRemoveMember:
   [ !Authority(t, pk(hs), alin), !TConf(t, m, ik, lin), In(<rp, sign(rp, hs)>) ]
   --[ RemoveMember(t, m), RemovedBy(t, m, pk(hs)) ]->
   [ ]
-#endif
 
-// A signer that a statement added removes a member. The revocation is checked once, when G first verifies it, and
-// stays even when a later voiding takes away the grant that made its signer a signer.
+// A signer that a statement added removes a member.
 rule G_AcceptRemoveMemberByAddedSigner:
   let
     rp = <'remove_member', t, m, pk(ph)>
   in
   [ !AddedSigner(t, pk(ph), lin), !TConf(t, m, ik, mlin), In(<rp, sign(rp, ph)>) ]
-  --[ UseAuthority(t, lin), RemoveMember(t, m), RemovedBy(t, m, pk(ph)) ]->
+  --[ RemoveMember(t, m), RemovedBy(t, m, pk(ph)) ]->
   [ ]
 
 // The person removes the stolen signer holder with S. G sees the signer's `rotate`.
 rule SignerRemovesHolder:
   [ !Stealable(t, g2, ask), Fr(~ask2) ]
-  --[ SawRemovedHolder(t, pk(g2)), Voids(t, <'holder', pk(g2)>), OnlyOnce(<'signer-rotate', t>) ]->
+  --[ SawRemovedHolder(t, pk(g2)), OnlyOnce(<'signer-rotate', t>) ]->
   [ Out(<'rotate', t, pk(g2), pk(~ask2)>) ]
 
 // G reads a confirmed member's identity statements from the member bundle, as the server relays them.
@@ -193,7 +154,7 @@ rule G_NewTK:
 // G seals a version to a confirmed member's SK, never to one it has seen revoked.
 rule G_Seal:
   [ !TK(t, tk), !TConf(t, m, ik, lin), !GSK(t, m, pk(skx)) ]
-  --[ SealTK(t, tk, m, pk(skx)), UseConf(t, m), UseAuthority(t, lin), UseSK(t, m, pk(skx)) ]->
+  --[ SealTK(t, tk, m, pk(skx)), UseConf(t, m), UseSK(t, m, pk(skx)) ]->
   [ Out(<'grant', t, kid(tk), m, pk(skx)>), Out(aenc(<wrapinfo(t, m, pk(skx)), tk>, pk(skx))) ]
 
 restriction ConfirmedAndNotRemoved:
@@ -201,10 +162,6 @@ restriction ConfirmedAndNotRemoved:
 
 restriction NotRevokedInView:
   "All t m sk #i #j. UseSK(t, m, sk)@i & GSawRevoked(t, m, sk)@j & #j < #i ==> F"
-
-// Voided statements: no effect once G has seen a rotate name a holder the authority runs through.
-restriction NotVoided:
-  "All t lin linX #i #j. UseAuthority(t, lin)@i & Voids(t, linX)@j & #j < #i ==> not (linX = lin) & not (linX << lin)"
 
 restriction OnlyOnce:
   "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
@@ -247,10 +204,11 @@ lemma member_alarms_on_tk_sealed_to_its_replaced_sk:
   "Ex t m tk sk #s #r #a. SealTK(t, tk, m, sk)@s & RevokedSK(m, sk)@r & #r < #s & MemberAlarm(t, m, sk)@a
      & not (Ex h #c. StealSigner(t, h)@c)"
 
-// 0053's claim, G0 round 1 H3: once G has seen the stolen signer holder removed, the team keys it makes reach no
-// account that holder confirmed and no signer it added, only stolen member SKs.
-lemma tk_secret_after_signer_device_removal:
-  "All t tk h #c #r #n #j. StealSigner(t, h)@c & SawRemovedHolder(t, h)@r & NewTK(t, tk)@n & #r < #n & K(tk)@j ==>
-     Ex m sk #s #x. SealTK(t, tk, m, sk)@s & SKRevealed(m, sk)@x"
+// 0053's claim: removal never changes past statements. A puppet the stolen holder confirmed stays confirmed after
+// that holder is removed, until the person revokes it with `remove_member`.
+lemma removal_keeps_past_statements:
+  exists-trace
+  "Ex t h m tk sk #c #r #n #s. StealSigner(t, h)@c & SawRemovedHolder(t, h)@r & NewTK(t, tk)@n & #r < #n
+     & SealTK(t, tk, m, sk)@s & not (Ex #x. HonestSK(m, sk)@x)"
 
 end

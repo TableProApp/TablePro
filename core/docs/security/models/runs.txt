@@ -1,4 +1,4 @@
-# theory                  flag          lemma                                               expected
+# theory                  flag          lemma                                               expected   options
 sas-commitment.spthy      -             exchange_executable                                 verified
 sas-commitment.spthy      -             commitment_leaves_one_guess                         verified
 sas-commitment.spthy      -             comparison_agreement                                verified
@@ -13,34 +13,39 @@ identity-heads.spthy      -             removed_holder_cannot_endorse_a_reset   
 identity-heads.spthy      OLDDH         removed_holder_cannot_endorse_a_reset               falsified
 log-chain.spthy           -             chain_executable                                    verified
 log-chain.spthy           -             repin_executable                                    verified
+log-chain.spthy           -             fork_executable                                     verified   --stop-on-trace=BFS
 log-chain.spthy           -             appended_seq_grows                                  verified
 log-chain.spthy           -             appended_once_per_seq                               verified
-log-chain.spthy           -             no_rollback                                         verified
 log-chain.spthy           -             heads_are_the_signers                               verified
+log-chain.spthy           -             no_rollback                                         verified
 log-chain.spthy           -             no_false_fork_alarm                                 verified
+log-chain.spthy           -             fork_freezes_the_log                                verified
+versions.spthy            -             versions_executable                                 verified
+versions.spthy            -             versions_step_by_one                                verified
+versions.spthy            -             no_version_skipped                                  verified
+versions.spthy            -             no_kv_above_the_current_version                     verified
 team-signers.spthy        -             signers_executable                                  verified   --stop-on-trace=BFS
 team-signers.spthy        -             timelock_cancelled                                  verified   --stop-on-trace=BFS
+team-signers.spthy        -             old_signers_veto_holds_against_its_reset_account    verified   --stop-on-trace=BFS
 team-signers.spthy        -             no_signer_added_alone                               verified
 team-signers.spthy        -             no_signer_removed_by_one_other                      verified
-team-signers.spthy        -             no_removal_completes_after_a_listed_holders_cancel  verified
+team-signers.spthy        -             cancel_ends_a_removal_for_good                      verified
+team-signers.spthy        -             reset_holder_cannot_cancel                          verified
 team-signers.spthy        -             reset_removes_no_signer                             verified
 team-signers.spthy        -             no_reroot_while_a_signer_is_left                    verified
 waits.spthy               -             wait_executable                                     verified
 waits.spthy               -             restore_executable                                  verified
+waits.spthy               -             receipt_alarm_executable                            verified   --stop-on-trace=BFS
 waits.spthy               -             waits_never_shortened                               verified
 waits.spthy               -             receipt_keys_chain_to_the_pin                       verified
-waits.spthy               -             two_receipts_raise_an_alarm                         verified   --stop-on-trace=BFS
-team-fork.spthy           -             resolve_executable                                  verified
-team-fork.spthy           -             resolve_counts_k_at_the_fork_point                  verified
-team-fork.spthy           -             resolve_never_drops_a_cancel                        verified
-team-fork.spthy           -             resolve_never_drops_a_revocation                    verified
+waits.spthy               -             no_false_receipt_alarm                              verified
 recovery.spthy            -             recovery_executable                                 verified
 recovery.spthy            -             recovery_ik_authentic                               verified
 recovery.spthy            -             recovery_open_ik_authentic                          verified
 recovery.spthy            -             ik_rk_secret                                        verified
 recovery.spthy            -             ak_secret                                           verified
 recovery.spthy            -             ak_after_recovery_rotate_secret                     verified
-replace-recovery.spthy    -             replace_executable                                  verified   --stop-on-trace=BFS
+replace-recovery.spthy    -             replace_executable                                  verified
 replace-recovery.spthy    -             old_recovery_key_gives_no_identity                  verified
 replace-recovery.spthy    -             old_recovery_key_gives_no_account_key               verified
 replace-recovery.spthy    -             old_recovery_key_extends_no_log                     falsified
@@ -65,24 +70,23 @@ member-confirmation.spthy -             signer_agreement_injective              
 member-confirmation.spthy -             member_agreement                                    verified
 member-confirmation.spthy -             tk_secret                                           verified
 team-keys.spthy           -             team_executable                                     verified   --stop-on-trace=BFS
+team-keys.spthy           -             removal_keeps_past_statements                       verified   --stop-on-trace=BFS
+team-keys.spthy           -             member_alarms_on_tk_sealed_to_its_replaced_sk       verified   --stop-on-trace=BFS
 team-keys.spthy           -             tk_reaches_only_sealed_sks                          verified
 team-keys.spthy           -             removed_member_gets_no_new_tk                       verified
 team-keys.spthy           -             removal_stays_when_its_signer_is_removed            verified
 team-keys.spthy           -             no_tk_to_revoked_sk                                 falsified
 team-keys.spthy           -             no_tk_to_sk_the_signer_saw_revoked                  verified
 team-keys.spthy           -             member_never_uses_tk_sealed_to_its_replaced_sk      verified
-team-keys.spthy           -             member_alarms_on_tk_sealed_to_its_replaced_sk       verified   --stop-on-trace=BFS
-team-keys.spthy           -             tk_secret_after_signer_device_removal               verified
-team-keys.spthy           ASKSIGNED     tk_secret_after_signer_device_removal               falsified
 device-removal.spthy      -             removal_executable                                  verified   --stop-on-trace=BFS
+device-removal.spthy      -             can_remove_stolen_holder_after_it_signed_out        verified   --stop-on-trace=BFS
 device-removal.spthy      -             attacker_approvals_descend_from_stolen              verified
 device-removal.spthy      -             ak_after_removal_secret                             verified
-device-removal.spthy      -             can_remove_stolen_holder_after_it_signed_out        verified   --stop-on-trace=BFS
 device-removal.spthy      OLDLEAVE      can_remove_stolen_holder_after_it_signed_out        falsified
-server-enforcement.spthy  -             members_are_honest_or_a_break_in                    verified
 server-enforcement.spthy  -             enforcement_executable                              verified   --stop-on-trace=BFS
-server-enforcement.spthy  -             write_needs_approved_holder                         verified
-server-enforcement.spthy  -             reset_needs_s_or_full_delay                         verified
 server-enforcement.spthy  -             row_removal_keeps_the_cancel                        verified   --stop-on-trace=BFS
 server-enforcement.spthy  -             stolen_holder_reset_cancelled                       verified   --stop-on-trace=BFS
+server-enforcement.spthy  -             members_are_honest_or_a_break_in                    verified
+server-enforcement.spthy  -             write_needs_approved_holder                         verified
+server-enforcement.spthy  -             reset_needs_s_or_full_delay                         verified
 server-enforcement.spthy  OLDRESET      reset_needs_s_or_full_delay                         falsified

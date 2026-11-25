@@ -3,38 +3,42 @@ begin
 
 // ADR 0053: Waits run on the server's clock, as the log records it; Time receipts; Rotating the receipt key; Restore.
 // Two waits matter: a reset's `activate` and a time-locked removal's `signer_remove_complete`, each 7 days after its
-// start. The server is honest here, and a restore loses its records but keeps its receipt key. Days are numbers.
+// start. The server is honest here, and a restore loses its records, opens a new epoch and keeps its receipt key.
+// Days are numbers. A receipt names the epoch and the day the server took the statement.
 // C is a client that pins the server's receipt key and adds a new one only through a chain from it.
 
 builtins: hashing, signing, natural-numbers
 
 macros:
   plus7(t) = t %+ %1 %+ %1 %+ %1 %+ %1 %+ %1 %+ %1 %+ %1,
-  receipt(o, st, t) = <'tablepro/v1/receipt', o, h(st), t>
+  receipt(o, st, e, t) = <'tablepro/v1/receipt', o, h(st), e, t>
 
 rule Server:
-  [ Fr(~o), Fr(~rk) ]
+  [ Fr(~o), Fr(~rk), Fr(~e) ]
   --[ OnlyOnce('server'), ServerKey(~o, pk(~rk)) ]->
-  [ !ReceiptKey(~o, ~rk), Out(<~o, pk(~rk)>) ]
+  [ !ReceiptKey(~o, ~rk), !Epoch(~o, ~e), Out(<~o, pk(~rk)>) ]
+
+rule Srv_Restore:
+  [ !ReceiptKey(o, rk), Fr(~e2) ] --[ NewEpoch(o, ~e2) ]-> [ !Epoch(o, ~e2) ]
 
 // The server takes a start (a reset or a time-locked removal) at day t and signs its receipt.
 rule Srv_TakeStart:
-  [ !ReceiptKey(o, rk), Fr(~st), In(%t) ]
-  --[ Day(%t), StartTaken(o, ~st, %t), Original(o, ~st, %t) ]->
-  [ !Record(o, ~st, %t), Out(<~st, %t, sign(receipt(o, ~st, %t), rk)>) ]
+  [ !ReceiptKey(o, rk), !Epoch(o, e), Fr(~st), In(%t) ]
+  --[ Day(%t), StartTaken(o, ~st, %t), Original(o, ~st, %t), TakenIn(o, ~st, e) ]->
+  [ !Record(o, ~st, %t), Out(<~st, e, %t, sign(receipt(o, ~st, e, %t), rk)>) ]
 
 // A restore loses the records. A client republishes the start with its receipt, and the server checks its own
 // signature and keeps the original day.
 rule Srv_RestoreWithReceipt:
-  [ !ReceiptKey(o, rk), In(<st, %t0, sign(receipt(o, st, %t0), rk)>), In(%t) ]
+  [ !ReceiptKey(o, rk), In(<st, e0, %t0, sign(receipt(o, st, e0, %t0), rk)>), In(%t) ]
   --[ Day(%t), Restored(o, st), StartTaken(o, st, %t0) ]->
   [ !Record(o, st, %t0) ]
 
 // Without its receipt, the start is taken again at the current day, so its wait starts again.
 rule Srv_RestoreWithoutReceipt:
-  [ !ReceiptKey(o, rk), In(<'republish', st>), In(%t) ]
-  --[ Day(%t), Restored(o, st), StartTaken(o, st, %t) ]->
-  [ !Record(o, st, %t), Out(<st, %t, sign(receipt(o, st, %t), rk)>) ]
+  [ !ReceiptKey(o, rk), !Epoch(o, e), In(<'republish', st>), In(%t) ]
+  --[ Day(%t), Restored(o, st), StartTaken(o, st, %t), RetakenIn(o, st, e), OnlyOnce(<'retake', st, e>) ]->
+  [ !Record(o, st, %t), Out(<st, e, %t, sign(receipt(o, st, e, %t), rk)>) ]
 
 // The statement that ends the wait names `after`, the start's day. The server takes it 7 days on or later.
 rule Srv_EndWait:
@@ -45,6 +49,10 @@ rule Srv_EndWait:
 // The server's clock never goes back. The scheduler picks each day, so time passes as it likes.
 restriction ClockForward:
   "All t u #i #j. Day(t)@i & Day(u)@j & #i < #j ==> t = u | t << u"
+
+// A statement is taken again only after a restore lost it, so in a later epoch than its first take.
+restriction RetakenInALaterEpoch:
+  "All o st e #i #j. RetakenIn(o, st, e)@i & TakenIn(o, st, e)@j ==> F"
 
 restriction AtLeast:
   "All a b #i. AtLeast(a, b)@i ==> a = b | a << b"
@@ -68,11 +76,12 @@ rule C_AddKey:
   --[ Trusts(c, o, k2) ]->
   [ !CTrusts(c, o, k2) ]
 
-// Two receipts under trusted keys for one statement with different days prove the server lied.
+// Two receipts of one epoch under trusted keys for one statement with different days prove the server lied. A later
+// epoch's receipt only lengthens a wait.
 rule C_TwoReceipts:
   [ !CTrusts(c, o, pk(k1)), !CTrusts(c, o, pk(k2))
-  , In(<st, t1, sign(receipt(o, st, t1), k1)>), In(<st, t2, sign(receipt(o, st, t2), k2)>) ]
-  --[ Neq(t1, t2), ForkAlarm(c, o, st) ]->
+  , In(<st, e, t1, sign(receipt(o, st, e, t1), k1)>), In(<st, e, t2, sign(receipt(o, st, e, t2), k2)>) ]
+  --[ Neq(t1, t2), ReceiptAlarm(c, o, st) ]->
   [ ]
 
 rule LeakReceiptKey:
@@ -103,9 +112,13 @@ lemma waits_never_shortened:
 lemma receipt_keys_chain_to_the_pin [use_induction]:
   "All c o k #i. Trusts(c, o, k)@i ==> (Ex #s. ServerKey(o, k)@s) | (Ex #l. ReceiptKeyLeaked(o)@l)"
 
-// Two receipts for one statement with different days reach a client as evidence of a lying server.
-lemma two_receipts_raise_an_alarm:
+// The honest server never signs two receipts of one epoch with different days, even across a restore.
+lemma no_false_receipt_alarm:
+  "All c o st #a. ReceiptAlarm(c, o, st)@a ==> Ex #l. ReceiptKeyLeaked(o)@l"
+
+// With the receipt key, a lying server's two receipts reach the client as evidence.
+lemma receipt_alarm_executable:
   exists-trace
-  "Ex c o st #a. ForkAlarm(c, o, st)@a"
+  "Ex c o st #a. ReceiptAlarm(c, o, st)@a"
 
 end

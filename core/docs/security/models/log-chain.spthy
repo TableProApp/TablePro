@@ -2,9 +2,10 @@ theory SyncLogChain
 begin
 
 // ADR 0053: Rollback and forks, Restore, Stale or missing state (the re-pin), with 0054's anchored checkpoint.
-// One log, appended by its honest signer. The server is malicious: it can present any prefix, replay statements
-// and lose the log's tail in a restore. C follows the log and keeps every head it pinned. A device whose state went
-// stale pins again from its anchor, never at a head below it.
+// One log, appended by its signer. The server is malicious: it can present any prefix, replay statements and lose
+// the log's tail in a restore. C follows the log and keeps every head it pinned. A device whose state went stale
+// pins again from its anchor, never at a head below it. A fork needs the signing key, which a thief can steal, and
+// it freezes the log for good.
 
 builtins: hashing, signing, natural-numbers
 
@@ -40,7 +41,7 @@ rule C_Extend:
     sp = <'statement', l, %n %+ %1, h(pst), x>
   in
   [ !CAt(c, l, %n, h(pst)), !LogKey(l, k), In(<sp, sign(sp, k)>) ]
-  --[ UseHead(c, l, %n), CHead(c, l, %n %+ %1, h(<sp, sign(sp, k)>)) ]->
+  --[ UseHead(c, l, %n), NotFrozen(c, l), CHead(c, l, %n %+ %1, h(<sp, sign(sp, k)>)) ]->
   [ !CAt(c, l, %n %+ %1, h(<sp, sign(sp, k)>)), !Held(c, l, %n %+ %1, <sp, sign(sp, k)>) ]
 
 // A server that lost the tail in a restore: C publishes again every statement it holds above the server's head.
@@ -53,19 +54,31 @@ rule C_Fork:
     sp = <'statement', l, %m, p, x>
   in
   [ !Held(c, l, %m, st), !LogKey(l, k), In(<sp, sign(sp, k)>) ]
-  --[ Neq(st, <sp, sign(sp, k)>), ForkAlarm(c, l, %m) ]->
+  --[ Neq(st, <sp, sign(sp, k)>), ForkAlarm(c, l, %m), Frozen(c, l) ]->
   [ ]
+
+// C writes a secret under the log's keys only while the log is not frozen.
+rule C_WriteSecret:
+  [ !CAt(c, l, %n, hd), Fr(~s) ]
+  --[ NotFrozen(c, l), SecretWritten(c, l, ~s) ]->
+  [ ]
+
+rule StealLogKey:
+  [ !LogKey(l, k) ] --[ KeyStolen(l) ]-> [ Out(k) ]
 
 // The state went stale: C trusts only its anchor's head, and pins again through a comparison with another holder,
 // which gives it a head that holder verified.
 rule C_Repin:
   [ !CAt(c, l, %a, ha), !SignedHead(l, %m, hd) ]
-  --[ UseHead(c, l, %a), NotBelow(%a, %m), Repinned(c, l, %m), CHead(c, l, %m, hd) ]->
+  --[ UseHead(c, l, %a), NotBelow(%a, %m), NotFrozen(c, l), Repinned(c, l, %m), CHead(c, l, %m, hd) ]->
   [ !CAt(c, l, %m, hd) ]
 
 // C builds only on its newest head; for a re-pin that is the anchor's.
 restriction NewestHead:
   "All c l n m hm #i #j. UseHead(c, l, n)@i & CHead(c, l, m, hm)@j & #j < #i ==> m = n | m << n"
+
+restriction NotFrozen:
+  "All c l #i #f. NotFrozen(c, l)@i & Frozen(c, l)@f & #f < #i ==> F"
 
 restriction NotBelow:
   "All a m #i. NotBelow(a, m)@i ==> a = m | a << m"
@@ -91,16 +104,27 @@ lemma appended_seq_grows [reuse, use_induction]:
 lemma appended_once_per_seq [reuse]:
   "All l n h1 h2 #i #j. Appended(l, n, h1)@i & Appended(l, n, h2)@j ==> #i = #j"
 
-// Every head C pins is one the signer appended, at that seq.
+// Every head C pins is one the signer appended, at that seq, unless the key was stolen.
 lemma heads_are_the_signers [reuse]:
-  "All c l n hd #i. CHead(c, l, n, hd)@i ==> Ex #a. Appended(l, n, hd)@a & #a < #i"
+  "All c l n hd #i. CHead(c, l, n, hd)@i ==> (Ex #a. Appended(l, n, hd)@a & #a < #i) | (Ex #s. KeyStolen(l)@s)"
 
-// 0053's claim: rollback is refused through chained heads, re-pins included.
+// 0053's claim: rollback is refused through chained heads, re-pins included. A stolen signing key makes forks,
+// which fork_freezes_the_log covers.
 lemma no_rollback:
-  "All c l n m h1 h2 #i #j. CHead(c, l, n, h1)@i & CHead(c, l, m, h2)@j & #i < #j ==> n << m | (n = m & h1 = h2)"
+  "All c l n m h1 h2 #i #j. CHead(c, l, n, h1)@i & CHead(c, l, m, h2)@j & #i < #j ==>
+     n << m | (n = m & h1 = h2) | (Ex #s. KeyStolen(l)@s)"
 
-// The honest signer never forks its own log, so C never raises a false alarm on it.
+// An honest signer never forks its own log, so C raises no fork alarm unless the signing key was stolen.
 lemma no_false_fork_alarm:
-  "All c l m #i. ForkAlarm(c, l, m)@i ==> F"
+  "All c l m #i. ForkAlarm(c, l, m)@i ==> Ex #s. KeyStolen(l)@s & #s < #i"
+
+lemma fork_executable:
+  exists-trace
+  "Ex c l m #i. ForkAlarm(c, l, m)@i"
+
+// 0053's claim: a fork freezes its log. After C sees one, it accepts no statement on that log and writes no secret.
+lemma fork_freezes_the_log:
+  "All c l m #f. ForkAlarm(c, l, m)@f ==>
+     not (Ex n hd #i. CHead(c, l, n, hd)@i & #f < #i) & not (Ex s #w. SecretWritten(c, l, s)@w & #f < #w)"
 
 end
