@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Copies the /v2 document the generated client is built from out of tablepro-cloud. The entitlement vectors live with
-# the core's verifier (linux/build-aux/update-cloud-api.sh). Prints the tablepro-cloud commit it came from, for the
+# the core's verifier (core/scripts/update-cloud-api.sh). Prints the tablepro-cloud commit it came from, for the
 # commit message.
 #
 # Usage: update-cloud-api.sh [tablepro-cloud checkout]   # default: ../tablepro-cloud beside the repository
