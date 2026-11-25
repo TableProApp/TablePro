@@ -317,6 +317,32 @@ pub(super) fn sas() -> JsonValue {
             "approver",
             &["receive_reveal", "words", "confirm", "receive_reveal"],
         ),
+        negative(
+            "the person says the words differ: the session ends with a mismatch cancel",
+            "sas_session",
+            "Words that differ, with one field changed on one side, N's key device id included",
+            vec![
+                ("view", obj(view_input(&base))),
+                ("role", s("approver")),
+                (
+                    "steps",
+                    arr(["receive_reveal", "words", "words_differ"]
+                        .iter()
+                        .map(|step| s(step))
+                        .collect()),
+                ),
+                (
+                    "cancel_record",
+                    obj(vec![
+                        ("kind", s("key.sas")),
+                        ("id", s(&format!("{}/cancel", base.transcript.request.to_wire()))),
+                        ("fields", super::out::fields(r#"{"suite":"tp1","reason":"mismatch"}"#)),
+                    ]),
+                ),
+            ],
+            "keys.sas_mismatch",
+            None,
+        ),
         case(
             "the whole session in order, on N's side",
             "sas_session",

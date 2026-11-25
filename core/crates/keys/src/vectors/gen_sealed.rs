@@ -383,6 +383,7 @@ pub(super) fn envelopes() -> JsonValue {
             ("fields", fields(&sealed_json(&unknown))),
         ],
         vec![("secret", s("hunter2")), ("dest", small_dest.clone())],
+        None,
     ));
     let padding_row = "Padding with no 0x80, a non-zero byte after it, or a length off the scale";
     let text = br#"{"v":1,"secret":"a","dest":{}}"#;
@@ -653,22 +654,24 @@ pub(super) fn history() -> JsonValue {
     )
 }
 
-// `count` compared pins, the account of pin i being 019A0000-0000-7000-8000- and i in 12 hex digits.
-fn generated_trust_of(count: usize) -> TrustPlaintext {
-    let ik = Ed25519Public(
-        crate::keys::Ed25519Seed::from_bytes(draw("trust/generated IK"))
-            .public()
-            .unwrap()
-            .0,
-    );
+const FIRST_ACCOUNT: &str = "019A0000-0000-7000-8000-000000000000";
+
+// `count` pins alike but for their accounts: pin i's account is `first_account` plus i, read as a
+// 128-bit big-endian integer.
+fn generated_trust_from(
+    count: usize,
+    first_account: uuid::Uuid,
+    ik: Ed25519Public,
+    av: crate::encoding::Version,
+    how: PinHow,
+) -> TrustPlaintext {
+    let first = first_account.as_u128();
     let pins = (0..count)
         .map(|index| TrustPin {
-            account: crate::encoding::AccountId(uuid::Uuid::from_u128(
-                0x019a_0000_0000_7000_8000_0000_0000_0000 + index as u128,
-            )),
+            account: crate::encoding::AccountId(uuid::Uuid::from_u128(first + index as u128)),
             ik,
-            av: v(1),
-            how: PinHow::Compared,
+            av,
+            how,
             alert: false,
             replaced: Vec::new(),
         })
@@ -679,22 +682,69 @@ fn generated_trust_of(count: usize) -> TrustPlaintext {
     }
 }
 
-fn generated_json(count: usize) -> JsonValue {
-    let ik = crate::keys::Ed25519Seed::from_bytes(draw("trust/generated IK"))
+fn generated_ik() -> Ed25519Public {
+    crate::keys::Ed25519Seed::from_bytes(draw("trust/generated IK"))
         .public()
-        .unwrap();
+        .unwrap()
+}
+
+pub(super) fn generated_trust_of(count: usize) -> TrustPlaintext {
+    generated_trust_from(
+        count,
+        crate::encoding::uuid_from_wire(FIRST_ACCOUNT).unwrap(),
+        generated_ik(),
+        v(1),
+        PinHow::Compared,
+    )
+}
+
+pub(super) fn generated_json(count: usize) -> JsonValue {
     obj(vec![
         ("count", n(count as u64)),
-        ("first_account", s("019A0000-0000-7000-8000-000000000000")),
-        ("ik", s(&crate::b64::encode(&ik.0))),
+        ("first_account", s(FIRST_ACCOUNT)),
+        ("account_step", n(1)),
+        ("ik", s(&crate::b64::encode(&generated_ik().0))),
         ("av", n(1)),
         ("how", s("compared")),
+        ("alert", b(false)),
+        ("replaced", arr(Vec::new())),
+        ("versions", arr(Vec::new())),
     ])
 }
 
+// Every member the description declares, and no other.
 pub(super) fn generated_trust(value: &JsonValue) -> TrustPlaintext {
-    let mut input = super::verify::In::of(value);
-    generated_trust_of(usize::try_from(input.u64("count")).unwrap())
+    let mut members = crate::json::Members::of(value).unwrap();
+    let count = usize::try_from(crate::json::as_integer(members.required("count").unwrap()).unwrap()).unwrap();
+    let first_account = crate::encoding::uuid_from_wire(members.string("first_account").unwrap()).unwrap();
+    assert_eq!(
+        crate::json::as_integer(members.required("account_step").unwrap()).unwrap(),
+        1,
+        "account_step"
+    );
+    let ik = Ed25519Public(crate::b64::decode_exact(members.string("ik").unwrap()).unwrap());
+    let av = members.version("av").unwrap();
+    let how = PinHow::parse(members.string("how").unwrap()).unwrap();
+    assert!(!members.boolean("alert").unwrap(), "generated pins have no alert");
+    assert!(members.array("replaced").unwrap().is_empty() && members.array("versions").unwrap().is_empty());
+    members.finish_strict().unwrap();
+    generated_trust_from(count, first_account, ik, av, how)
+}
+
+// The largest compared-pin trust plaintext whose wrap record fits 1 MiB.
+pub(super) fn pins_at_the_limit(av: crate::encoding::Version) -> usize {
+    let fits =
+        |count: usize| trust_wrap_record_len(generated_trust_of(count).encode().len(), av).unwrap() <= RECORD_LIMIT;
+    let (mut low, mut high) = (1_usize, 1_usize << 15);
+    while low + 1 < high {
+        let middle = usize::midpoint(low, high);
+        if fits(middle) {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    low
 }
 
 #[expect(clippy::too_many_lines, reason = "one case per vector the ADR lists")]
@@ -767,6 +817,7 @@ pub(super) fn trust() -> JsonValue {
             )),
         )],
         vec![("pins", n(2)), ("versions", n(3))],
+        None,
     )];
     for (name, changed) in [
         (
@@ -858,16 +909,24 @@ pub(super) fn trust() -> JsonValue {
             Some(&floor),
         ),
     ] {
-        fit.push(case(
-            &name,
-            "trust_fit",
-            vec![
-                ("text", s(&encoded)),
-                ("record_limit", n(limit as u64)),
-                ("wrapper_av", n(2)),
-            ],
-            output,
-        ));
+        let input = vec![
+            ("text", s(&encoded)),
+            ("record_limit", n(limit as u64)),
+            ("wrapper_av", n(2)),
+        ];
+        // Pin 2 is first-use with a replaced IK: it stays while plain first-use pins go.
+        fit.push(if name.starts_with("first-use") {
+            case_row(
+                &name,
+                "trust_fit",
+                "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit; a first-use pin with a replaced IK, kept",
+                input,
+                output,
+                None,
+            )
+        } else {
+            case(&name, "trust_fit", input, output)
+        });
     }
     fit.push(case_row(
         "alerts and replaced IKs alone pass the limit: nothing is dropped and the approval fails, as the server's too_large would",
@@ -875,16 +934,10 @@ pub(super) fn trust() -> JsonValue {
         "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit; a first-use pin with a replaced IK, kept",
         vec![("text", s(&encoded)), ("record_limit", n((record_len(&floor) - 1) as u64)), ("wrapper_av", n(2))],
         vec![("record_len", n(full as u64)), ("fits", b(false))],
+        Some("too_large"),
     ));
     // At the record limit itself: compared pins, which are never left out, up to 1 MiB.
-    let fits =
-        |count: usize| trust_wrap_record_len(generated_trust_of(count).encode().len(), av).unwrap() <= RECORD_LIMIT;
-    let (mut low, mut high) = (1_usize, 1_usize << 15);
-    while low + 1 < high {
-        let middle = usize::midpoint(low, high);
-        if fits(middle) { low = middle } else { high = middle }
-    }
-    let at_limit = low;
+    let at_limit = pins_at_the_limit(av);
     for (name, count, fits) in [
         ("the most compared pins that fit 1 MiB", at_limit, true),
         ("one compared pin more", at_limit + 1, false),
@@ -905,6 +958,7 @@ pub(super) fn trust() -> JsonValue {
                 ("wrapper_av", n(2)),
             ],
             output,
+            Some(if fits { "applied" } else { "too_large" }),
         ));
     }
     file(
@@ -916,5 +970,72 @@ pub(super) fn trust() -> JsonValue {
             ("fit", arr(fit)),
             ("team", s(TEAM_T)),
         ],
+    )
+}
+
+// Real `trust` wrap records on each side of 1 MiB, of compared pins, which are never left out.
+pub(super) fn limits(cache: &super::fixtures::HpkeCache) -> JsonValue {
+    let account = account_id(ACCOUNT_A);
+    let approver = super::fixtures::device("limits/approver");
+    let new_device = super::fixtures::device("limits/new device");
+    let av = v(2);
+    let target = crate::wrap::device_target(account, crate::encoding::WrapPurpose::Trust, av, new_device.key_device);
+    let wrapper = crate::wrap::Wrapper {
+        account,
+        av,
+        key_device: approver.key_device,
+    };
+    let at_limit = pins_at_the_limit(av);
+    let mut cases = Vec::new();
+    for (name, count, row, server) in [
+        (
+            "a trust wrap record of the most compared pins that fit 1 MiB",
+            at_limit,
+            "A rotation or a trust record at the record limit",
+            "applied",
+        ),
+        (
+            "a trust wrap record of one compared pin more: past 1 MiB, nothing to leave out",
+            at_limit + 1,
+            "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit; a first-use pin with a replaced IK, kept",
+            "too_large",
+        ),
+    ] {
+        let trust = generated_trust_of(count);
+        let padded = padding::pad(trust.encode().as_bytes()).unwrap();
+        let wrap = cache.wrap(target, &new_device.dek, &padded, wrapper, &approver.dsk);
+        let body = crate::body::KeyBody::Wrap(crate::body::WrapBody::of(&wrap));
+        let fields = crate::body::body_json(&body);
+        cases.push(case_row(
+            name,
+            "trust_wrap_record",
+            row,
+            vec![
+                ("origin", s(super::fixtures::ORIGIN)),
+                (
+                    "record",
+                    obj(vec![
+                        ("kind", s("key.wrap")),
+                        ("id", s(&crate::record_id::KeyRecordId::Wrap(target).to_wire())),
+                        ("fields", super::out::fields(&fields)),
+                    ]),
+                ),
+                ("recipient_secret_hex", h(new_device.dek.expose())),
+                ("dsk_hex", h(&approver.dsk.public().unwrap().0)),
+                ("generated", generated_json(count)),
+                ("record_limit", n(RECORD_LIMIT as u64)),
+            ],
+            vec![
+                ("fields_len", n(fields.len() as u64)),
+                ("within_limit", b(fields.len() <= RECORD_LIMIT)),
+                ("fits", b(trust.fit_record(RECORD_LIMIT, av).unwrap().is_some())),
+            ],
+            Some(server),
+        ));
+    }
+    file(
+        "limits",
+        "Trust wrap records at and past the 1 MiB record limit, measured on the compact `fields` (ADR 0051, Limits; ADR 0056, Pins)",
+        vec![("trust_wraps", arr(cases))],
     )
 }

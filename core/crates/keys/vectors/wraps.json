@@ -198,7 +198,8 @@
         "certificate_aek_hex": "00abb6497ce4cea07636c49ff9cf3cbd485988384e89191c1dd7274a37f6f36e"
       },
       "error": "keys.not_compared",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An approval wrap signed by ASK, or by a DSK other than the compared one"
     },
     {
       "name": "an approval wrap checked under a DSK this side did not compare",
@@ -227,7 +228,36 @@
         "certificate_aek_hex": "00abb6497ce4cea07636c49ff9cf3cbd485988384e89191c1dd7274a37f6f36e"
       },
       "error": "keys.not_compared",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An approval wrap signed by ASK, or by a DSK other than the compared one"
+    },
+    {
+      "name": "a trust wrap checked under a DSK this side did not compare",
+      "op": "open_wrap",
+      "row": "An approval wrap signed by ASK, or by a DSK other than the compared one",
+      "input": {
+        "origin": "https://sync.example.com",
+        "mode": "trust",
+        "record": {
+          "kind": "key.wrap",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/trust/2/device/4764A25F-E627-4E46-A216-6D9BA5DB6AE3/2",
+          "fields": {
+            "suite": "tp1",
+            "enc": "MJNOrmoQVlX6MTp1WCe4RxjHnz5mJbr9Wrd80LuizVM",
+            "ct": "a-HzsquE-LkVMreTInmh5dMKWe8pzYgPgS6Kws_GRJ5fraJKgSB50JYOoA5sg9r5i-3SFTuNoEIrCKyA5I91ARpt7VlWg8m5ld8RBMrlwAbgIVe_94rvdDxep5lprkLtS4eVyOgpFMFnKgp7-YUijHAbSyo5NHgOP3WoXFSy-L3iAbqYH0_-IZt5QAUa-g_EKBOHVnUOtS7nU8n608SAVPr1GhhygIx38qtlbuBi1OndClXxOuK32FPDf_OkUqWh97Dg0GvKg4V_9UdSYZ0tRBF0i7D5EgGmrKMVUHvMnQyT50BDmJuR9R-NCVhicBQ_rB62bM3xKpmDXB6Slc-WQ48Z1yqjpmXLkAfUa8dv7A06SLPbJuU10EiSmpO_lMLScQVUxpKZDIb3LBrjbTntF-lbFlr4GwffyJToWaelFm6O9Kb2CWVEzhod4chUSoR8i_QnAlS4pEZlGreKF0wHlKSE_fUeORQd04LKDBdmEJ1vw7tApivrqDd-uuTjL5hfeqNn4veeorkW-H426ECi9dS-Yj_CO95hpoLVFLy-3ki73gr5Bsg8swRSI_5Cst9_xWBQ2qnLDA0iVEjj60xGituuf4swcJiQ09ui30-l-M-obNxjLw-KWrkw6WIVy3FniQj44Hi8nsh2NCldBu_pdLUFq4qi-x-sONVyRxu7p1dcDRgyz7oG9sfnHLRwmJzgPw7BF-6kvFYh2PIsnwdekA9UBX0EOuq9A_bqITxVD7UXfPIrdvG6PnBpxEhoDIprqiIyJNz0gLMDXNQXsz3WUwA9ymW_rV-vvw5l-8zykmAIna96YtfSysg9Hq5CVQRBGnjrtCA4KiLi3AO1413tIrYOmFzhKFFFhO4F5aYkGkWVGWSfObSTjX2A7ZjXW4KF1iMyAOCno25yp81JMTLFC4t6YMPqWcmo2YyoKr6gMP3o0yAE83YKBz1n8fSruzzJV_ymJpI4C3hIhphltq7YV-0EhzKbgk-mdxOgof0Ev3VS6rdAomPKBi3JjTskpkME7Bi3c1Fap2mrCHEXbPRnI9G_hu0bXMVfBIVNQanj2SuN6EKrb8JHUrL4IKdZ4XL_f9S2E28iuw5XM6F2fvqkwz-Xb0DesPTFnJUR1QWJVnRMqB-ElO78mbRBWASl-ZwY-ms-7a5FCC55EcfxUa8amJ3AAWHE4xwx-7t3ECNqqfw0h5_mCRPSCwse6DnLVfmmEv33IvKHq44pYaC0M7dpT-LUL8ES9q1wKQHxPXWU4hW3l_PTZ55zmlOMQKvHdfKmq7mLMBr5zv4gkyOpFJTjvzMONJ70_2MBm8qt2STTNrCoWNhlZBJhaxQrFXW0r6ras18aPD32eohK1c1c0l1BJpCo3yUbK5h0vEsDMeSC1cs",
+            "wrapper": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "wrapper_av": 2,
+            "wrapper_device": "787A0869-B5F3-4B8D-B1F5-E854089D7DFD",
+            "sig": "oodbgLP1ko-vfPIqFZIOPvx7WN4pgh9cZ81pdfKzojOaSPF_HIEfwSMJnU_OJFS_pzbeeE8_2ac4qYMHVFYxDg"
+          }
+        },
+        "recipient_secret_hex": "510f538f8ee2facde1b426c3691f3cf7097f4d1376fb5284ae05ea6da2c0e356",
+        "certified_pk_hex": "718010a337e9550fea1095b9871bb89b1782ab6ef44e83ce7bd267755211a902",
+        "signer_hex": "aad3224c633820f3553ed972fc6e434fa4de7eaf503159bd1f171c5c9bd7f211"
+      },
+      "error": "keys.not_compared",
+      "server": "bad_statement",
+      "clause": "An approval wrap signed by ASK, or by a DSK other than the compared one"
     },
     {
       "name": "account keys that do not give the certificate's public keys",
@@ -256,7 +286,8 @@
         "certificate_aek_hex": "00abb6497ce4cea07636c49ff9cf3cbd485988384e89191c1dd7274a37f6f36e"
       },
       "error": "keys.mismatch",
-      "server": null
+      "server": null,
+      "clause": "Account keys in a wrap or blob that do not match their certificate"
     },
     {
       "name": "a wrap whose pkR differs from the recipient's certificate",
@@ -295,7 +326,8 @@
         }
       },
       "error": "keys.mismatch",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "A wrap whose signature fails, or whose `pkR` differs from the recipient's certificate"
     },
     {
       "name": "a wrap whose signature fails",
@@ -334,7 +366,8 @@
         }
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "A wrap whose signature fails, or whose `pkR` differs from the recipient's certificate"
     },
     {
       "name": "a wrapped key that does not match its version's kid",
@@ -373,7 +406,8 @@
         }
       },
       "error": "keys.kid",
-      "server": null
+      "server": null,
+      "clause": "A `kid` mismatch, from a wrap or a ring"
     },
     {
       "name": "a team key opens for its member",
@@ -454,7 +488,8 @@
         "info_hex": "000000107461626c6570726f2f76312f77726170000000037470310000001968747470733a2f2f6f746865722e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000007000000076163636f756e7400000010019a6b314c8d7f029a163e7d5b2c8f900000000100000020ce218b643ca31bfb4764e572e037aa68fb49c85fbe9c2b5974feaf91bb994c6e"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "the wrap info with its owner changed",
@@ -467,7 +502,8 @@
         "info_hex": "000000107461626c6570726f2f76312f77726170000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b8000000047465616d00000007000000076163636f756e7400000010019a6b314c8d7f029a163e7d5b2c8f900000000100000020ce218b643ca31bfb4764e572e037aa68fb49c85fbe9c2b5974feaf91bb994c6e"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "the wrap info with its purpose changed",
@@ -480,7 +516,8 @@
         "info_hex": "000000107461626c6570726f2f76312f77726170000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000008706572736f6e616c00000010019a6b301d277e9a8c442f5b7a1e0c6300000008706572736f6e616c00000007000000076163636f756e7400000010019a6b314c8d7f029a163e7d5b2c8f900000000100000020ce218b643ca31bfb4764e572e037aa68fb49c85fbe9c2b5974feaf91bb994c6e"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "the wrap info with its version changed",
@@ -493,7 +530,8 @@
         "info_hex": "000000107461626c6570726f2f76312f77726170000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000008000000076163636f756e7400000010019a6b314c8d7f029a163e7d5b2c8f900000000100000020ce218b643ca31bfb4764e572e037aa68fb49c85fbe9c2b5974feaf91bb994c6e"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "the wrap info with its recipient id changed",
@@ -506,7 +544,8 @@
         "info_hex": "000000107461626c6570726f2f76312f77726170000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000007000000076163636f756e7400000010019a6b2e8f3c7d41b2a56c0e9f14d7b80000000100000020ce218b643ca31bfb4764e572e037aa68fb49c85fbe9c2b5974feaf91bb994c6e"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "the wrap info with its recipient version changed",
@@ -519,7 +558,8 @@
         "info_hex": "000000107461626c6570726f2f76312f77726170000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000007000000076163636f756e7400000010019a6b314c8d7f029a163e7d5b2c8f900000000200000020ce218b643ca31bfb4764e572e037aa68fb49c85fbe9c2b5974feaf91bb994c6e"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "the wrap info with its pkR changed",
@@ -532,7 +572,8 @@
         "info_hex": "000000107461626c6570726f2f76312f77726170000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000007000000076163636f756e7400000010019a6b314c8d7f029a163e7d5b2c8f900000000100000020783de4fd97330f4dc930e1d2683eaae488149b9f27987b476d62e0db98d1a138"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "the wrap info with its label changed",
@@ -545,7 +586,8 @@
         "info_hex": "000000107461626c6570726f2f76312f57726170000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000007000000076163636f756e7400000010019a6b314c8d7f029a163e7d5b2c8f900000000100000020ce218b643ca31bfb4764e572e037aa68fb49c85fbe9c2b5974feaf91bb994c6e"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "an enc that is zero",
@@ -558,7 +600,8 @@
         "info_hex": "000000107461626c6570726f2f76312f77726170000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000007000000076163636f756e7400000010019a6b314c8d7f029a163e7d5b2c8f900000000100000020ce218b643ca31bfb4764e572e037aa68fb49c85fbe9c2b5974feaf91bb994c6e"
       },
       "error": "keys.public_key",
-      "server": null
+      "server": null,
+      "clause": "Errors table: keys.public_key, an X25519 key whose shared secret is all zero (RFC 9180 section 7.1.4)"
     },
     {
       "name": "sealing to a recipient key that is zero",
@@ -570,7 +613,8 @@
         "plaintext_hex": "16ce7bba1429708d852b2ab2b799cf047c8a745765a46f715fb702e4beab47f6"
       },
       "error": "keys.public_key",
-      "server": null
+      "server": null,
+      "clause": "Errors table: keys.public_key, an X25519 key whose shared secret is all zero (RFC 9180 section 7.1.4)"
     },
     {
       "name": "an enc that is a point of order 8",
@@ -583,7 +627,8 @@
         "info_hex": "000000107461626c6570726f2f76312f77726170000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000007000000076163636f756e7400000010019a6b314c8d7f029a163e7d5b2c8f900000000100000020ce218b643ca31bfb4764e572e037aa68fb49c85fbe9c2b5974feaf91bb994c6e"
       },
       "error": "keys.public_key",
-      "server": null
+      "server": null,
+      "clause": "Errors table: keys.public_key, an X25519 key whose shared secret is all zero (RFC 9180 section 7.1.4)"
     },
     {
       "name": "sealing to a recipient key that is a point of order 8",
@@ -595,7 +640,8 @@
         "plaintext_hex": "16ce7bba1429708d852b2ab2b799cf047c8a745765a46f715fb702e4beab47f6"
       },
       "error": "keys.public_key",
-      "server": null
+      "server": null,
+      "clause": "Errors table: keys.public_key, an X25519 key whose shared secret is all zero (RFC 9180 section 7.1.4)"
     }
   ],
   "advancing": [
@@ -608,7 +654,8 @@
         "newest_known": 2
       },
       "error": "keys.stale",
-      "server": null
+      "server": null,
+      "clause": "A wrap signed under an older `av` than its signer's newest: opens, adds no holder"
     }
   ],
   "trust": [

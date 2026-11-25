@@ -581,6 +581,36 @@ impl World<'_> {
         records
     }
 
+    // A connection password envelope under `who`'s personal key version `kv`.
+    fn envelope(&self, label: &str, who: &str, kv: u32, connection: &str) -> JsonValue {
+        let person = self.person(who);
+        let key = personal_key(person.name, kv);
+        let id = crate::envelope::EnvelopeId::parse(&format!("connection/{connection}/password")).expect("id");
+        let dest = crate::json::parse(br#"{"host":"db.internal","port":5432}"#).expect("dest");
+        let plaintext = crate::envelope::envelope_plaintext("hunter2", &dest).expect("plaintext");
+        let sealed = crate::envelope::seal_envelope_plaintext(
+            &key,
+            &origin(),
+            crate::encoding::Scope::Personal(person.id),
+            &id,
+            v(kv),
+            plaintext.as_bytes(),
+            draw(&format!("flows/{label}/nonce")),
+        )
+        .expect("seal");
+        obj(vec![
+            ("label", s(label)),
+            ("scope", scope_json(person.id.0, false)),
+            ("kind", s("secret_envelope")),
+            ("id", s(&id.to_wire())),
+            ("fields", super::out::fields(&crate::body::sealed_json(&sealed))),
+            (
+                "verify",
+                obj(vec![("key_hex", h(key.expose())), ("secret", s("hunter2"))]),
+            ),
+        ])
+    }
+
     // A reset's IK comes from its own new recovery key, so each attempt has its own (ADR 0056, Reset).
     fn reset_ik(&self, proposal: &str, who: &str) -> Ed25519Seed {
         let person = self.person(who);
@@ -782,6 +812,33 @@ fn step(who: &str, does: &str, records: Vec<JsonValue>, client: &str, server: &s
         ("client", s(client)),
         ("server", s(server)),
     ])
+}
+
+fn step_with(
+    who: &str,
+    does: &str,
+    records: Vec<JsonValue>,
+    extra: Vec<(&str, JsonValue)>,
+    client: &str,
+    server: &str,
+) -> JsonValue {
+    let mut members = vec![("who", s(who)), ("does", s(does)), ("records", arr(records))];
+    members.extend(extra);
+    members.push(("client", s(client)));
+    members.push(("server", s(server)));
+    obj(members)
+}
+
+// Sign Out's revoke, a DPoP proof under the device's DSK (ADR 0051, Sign Out).
+fn sign_out_proof(device: &DeviceKeys, label: &str) -> String {
+    let request = crate::dpop::DpopRequest {
+        method: "DELETE",
+        url: "https://sync.example.com/v2/sync/key-device",
+        access_token: "access-token-for-vectors",
+        iat: 1_764_000_000,
+        nonce: None,
+    };
+    crate::dpop::proof_with_jti(&device.dsk, request, draw(&format!("flows/sign out {label}/jti"))).expect("proof")
 }
 
 fn codes(text: &str) -> JsonValue {
@@ -1013,15 +1070,25 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
             layer: &["flow"],
             given: obj(vec![
                 ("personal_state", s("stopped")),
+                ("history_state", s("stopped")),
                 ("other_devices", arr(Vec::new())),
             ]),
-            steps: vec![step(
-                "P",
-                "decide",
-                vec![],
-                "recovery with R or a reset is offered",
-                "none",
-            )],
+            steps: vec![
+                step(
+                    "P",
+                    "decide on the personal key",
+                    vec![],
+                    "recovery with R or a reset is offered",
+                    "none",
+                ),
+                step(
+                    "P",
+                    "decide on the history key",
+                    vec![],
+                    "recovery with R or a reset is offered",
+                    "none",
+                ),
+            ],
         },
     ));
 
@@ -1131,10 +1198,17 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         client: "keys.stale",
         server: "key_version_stale",
         layer: &["flow", "server"],
-        given: obj(vec![("pull_order", arr(vec![s("envelope under PK 2"), s("PK version 3"), s("envelope under PK 2")]))]),
-        steps: vec![step("server", "pull", vec![
-            w.version("PK version 3", pk(3), Start::Next, &personal_key("P", 3), "P", 2, &w.p.at(2).ask),
-        ], "the envelope before version 3 is taken; the one after it is keys.stale", "key_version_stale for a write under 2 once 3 is current")],
+        given: obj(vec![("client_holds", obj(vec![("personal", n(2))])), ("order", s("records in each step come in revision order"))]),
+        steps: vec![
+            step("server", "pull", vec![
+                w.version("PK version 3", pk(3), Start::Next, &personal_key("P", 3), "P", 2, &w.p.at(2).ask),
+                w.envelope("an envelope under PK 2 after version 3", "P", 2, "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44"),
+            ], "keys.stale for the envelope after version 3", "key_version_stale for a write under 2 once 3 is current"),
+            step("server", "pull", vec![
+                w.envelope("the same envelope under PK 2, before version 3", "P", 2, "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44"),
+                w.version("PK version 3", pk(3), Start::Next, &personal_key("P", 3), "P", 2, &w.p.at(2).ask),
+            ], "taken", "applied"),
+        ],
     }));
 
     let request = RequestId(draw_uuid("flows/request"));
@@ -1250,7 +1324,10 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         server: "none",
         layer: &["flow"],
         given: obj(vec![("own_device_pins", arr(vec![s("B")])), ("certified_devices", arr(vec![s("B"), s("C")]))]),
-        steps: vec![step("B", "decide", vec![w.device_cert("C's certificate, never compared", "P", 2, &dev_c)], "keys.not_compared", "none")],
+        steps: vec![
+            step("B", "decide", vec![w.device_cert("C's certificate, never compared", "P", 2, &dev_c)], "keys.not_compared", "none"),
+            step("B", "decide", vec![w.device_cert("N's certificate, the only source of the DEK a pin would hold", "P", 2, &dev_n)], "keys.not_compared", "none"),
+        ],
     }));
 
     let mut bad_genesis = w.genesis("B's genesis", "P", &dev_b);
@@ -1278,13 +1355,63 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
             server: "that object's code, change_set for the rest; nothing applies",
             layer: &["flow", "server"],
             given: obj(vec![("account_has_keys", b(false))]),
-            steps: vec![step(
-                "B",
-                "push change set",
-                bad_genesis,
-                "keys.signature for the version record",
-                "bad_statement for it, change_set for the rest",
-            )],
+            steps: vec![
+                step(
+                    "B",
+                    "push change set",
+                    bad_genesis,
+                    "keys.signature for the version record",
+                    "bad_statement for it, change_set for the rest",
+                ),
+                step(
+                    "B",
+                    "push change set",
+                    with_bad_object(
+                        w.rotation("B's rotation", "P", 2, &[&dev_b], &dev_b),
+                        "B's rotation: personal version 2",
+                        &w.p.at(1).ask,
+                    ),
+                    "keys.signature for the version record",
+                    "bad_statement for it, change_set for the rest",
+                ),
+                step(
+                    "B",
+                    "push change set",
+                    with_bad_object(
+                        w.approval("B approves N", "P", 2, &dev_n, &dev_b, &trust_for_p),
+                        "B approves N: account wrap",
+                        &dev_c.dsk,
+                    ),
+                    "keys.signature for the account wrap",
+                    "bad_statement for it, change_set for the rest",
+                ),
+                step(
+                    "B",
+                    "push change set",
+                    with_bad_object(
+                        w.activation("P's reset proposal", "P", 2, CertKind::ResetKeepingKeys, &dev_b),
+                        "P's reset proposal: history version 2",
+                        &w.p.at(1).ask,
+                    ),
+                    "keys.signature for the version record",
+                    "bad_statement for it, change_set for the rest",
+                ),
+                step(
+                    "A",
+                    "push change set",
+                    with_bad_object(
+                        vec![
+                            w.team_version("version 7", 7, Start::Next, "A", 2),
+                            w.team_ring("its ring", 7),
+                            w.team_wrap("version 7 to M", 7, "M", 2, "A", 2, &a1),
+                        ],
+                        "version 7 to M",
+                        &w.o.at(2).ask,
+                    ),
+                    "keys.signature for the wrap",
+                    "bad_statement for it, change_set for the rest",
+                ),
+            ],
         },
     ));
 
@@ -1400,6 +1527,18 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
                     "none",
                     "bad_statement",
                 ),
+            ],
+        },
+    ));
+    rows.push(scenario(
+        "kinds from the wrong caller, with no reset pending",
+        Row {
+            row: "A reset proposal while one is pending; kind 2 from a sign-in, kind 3 from an approved device",
+            client: "none",
+            server: "bad_statement",
+            layer: &["server"],
+            given: obj(vec![("pending_reset", b(false))]),
+            steps: vec![
                 step(
                     "N, not approved",
                     "push",
@@ -1492,7 +1631,10 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         server: "204 both",
         layer: &["server"],
         given: obj(vec![("pending_reset", b(true)), ("reset_dsk_hex", h(&dev_b.dsk.public().expect("public").0))]),
-        steps: vec![step("B", "DELETE /v2/sync/key-device", vec![proposal.clone()], "the reset ends with the reset's DSK; nothing changes under another key", "204 both")],
+        steps: vec![
+            step_with("B", "DELETE /v2/sync/key-device", vec![proposal.clone()], vec![("dpop", s(&sign_out_proof(&dev_b, "under the reset's DSK")))], "the reset ends", "204"),
+            step_with("B", "DELETE /v2/sync/key-device", vec![], vec![("dpop", s(&sign_out_proof(&device("P device C"), "under another key")))], "nothing changes", "204"),
+        ],
     }));
     rows.push(scenario(
         "a pending reset 7 days past held_until",
@@ -1610,7 +1752,10 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
         server: "role",
         layer: &["flow", "server"],
         given: given(vec![("server_holds", holds(6, &["M@2"])), ("client", s("M"))]),
-        steps: vec![step("O", "push change set", vec![w.team_version("version 7 by O with start 1", 7, Start::Over, "O", 2), w.team_wrap("version 7 to O", 7, "O", 2, "O", 2, &o1)], "keys.not_holder", "role")],
+        steps: vec![
+            step("O", "the restart reaches M, a holder", vec![w.team_version("version 7 by O with start 1", 7, Start::Over, "O", 2), w.team_wrap("version 7 to O", 7, "O", 2, "O", 2, &o1)], "keys.not_holder", "none"),
+            step("O", "push change set while M, a holder, is on the roster", vec![w.team_version("version 7 by O with start 1", 7, Start::Over, "O", 2), w.team_wrap("version 7 to O", 7, "O", 2, "O", 2, &o1)], "none", "role"),
+        ],
     }));
 
     rows.push(scenario(
@@ -1880,6 +2025,54 @@ pub(super) fn flows(cache: &HpkeCache) -> JsonValue {
             ("scenarios", arr(rows)),
         ],
     )
+}
+
+// A change set whose object of `label` is signed again under `wrong`, so it alone fails its check.
+fn with_bad_object(mut records: Vec<JsonValue>, label: &str, wrong: &Ed25519Seed) -> Vec<JsonValue> {
+    let position = records.iter().position(
+        |record| matches!(In::of(record).optional("label"), Some(JsonValue::String(text)) if text.ends_with(label)),
+    );
+    let position = position.unwrap_or_else(|| panic!("no record {label}"));
+    let record = &mut records[position];
+    let mut input = In::of(record);
+    let kind = input.str("kind").to_owned();
+    let id = input.str("id").to_owned();
+    let mut object = KeyObject::parse(&kind, &id, input.value("fields").to_json().as_bytes()).expect("object");
+    let message = match (&object.id, &object.body) {
+        (KeyRecordId::Version(_), KeyBody::Version(_)) => object
+            .version_record()
+            .expect("version")
+            .message(&origin())
+            .expect("message"),
+        (KeyRecordId::Wrap(_), KeyBody::Wrap(_)) => {
+            let wrap = object.wrap().expect("wrap");
+            let pk_r = X25519Public(In::of(record).sub("verify").hex32("pk_r_hex"));
+            crate::wrap::wrap_sig_message(
+                &wrap.info(&origin(), &pk_r).expect("info"),
+                &wrap.enc,
+                &wrap.ct,
+                wrap.wrapper,
+            )
+            .expect("message")
+        }
+        _ => panic!("{label}: only a version record or a wrap is broken here"),
+    };
+    let sig = wrong.sign(&message).expect("sign");
+    match &mut object.body {
+        KeyBody::Version(body) => body.sig = sig,
+        KeyBody::Wrap(body) => body.sig = sig,
+        _ => {}
+    }
+    let fields = super::out::fields(&object.fields_json());
+    if let JsonValue::Object(members) = record {
+        for (name, value) in members.iter_mut() {
+            if name == "fields" {
+                *value = fields.clone();
+            }
+        }
+    }
+    set_verify(record, "valid", b(false));
+    records
 }
 
 // What opens a blob and what its keys must give: the recovery key and the certificate's public keys.
@@ -2473,6 +2666,27 @@ fn check_record(name: &str, record: &JsonValue) {
     let kind = input.str("kind").to_owned();
     let id = input.str("id").to_owned();
     let fields = input.value("fields").to_json();
+    if kind == "secret_envelope" {
+        let mut verify = input.sub("verify");
+        let sealed =
+            crate::body::parse_sealed(fields.as_bytes()).unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
+        let envelope_id = crate::envelope::EnvelopeId::parse(&id).expect("envelope id");
+        let scope = crate::encoding::Scope::Personal(AccountId(input_owner(record)));
+        let opened = crate::envelope::open_envelope(
+            &ScopeKey::from_bytes(verify.hex32("key_hex")),
+            &origin(),
+            scope,
+            &envelope_id,
+            &sealed,
+        )
+        .unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
+        assert_eq!(
+            secrecy::ExposeSecret::expose_secret(&opened.secret),
+            verify.str("secret"),
+            "{name}: {label}"
+        );
+        return;
+    }
     let object =
         KeyObject::parse(&kind, &id, fields.as_bytes()).unwrap_or_else(|error| panic!("{name}: {label}: {error:?}"));
     let mut verify = input.sub("verify");

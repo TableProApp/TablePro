@@ -319,7 +319,8 @@
         }
       },
       "error": "keys.ring",
-      "server": null
+      "server": null,
+      "clause": "A ring entry other than the version below"
     },
     {
       "name": "a ring key that does not match the version's kid",
@@ -351,7 +352,8 @@
         }
       },
       "error": "keys.kid",
-      "server": null
+      "server": null,
+      "clause": "A `kid` mismatch, from a wrap or a ring"
     },
     {
       "name": "a ring opened with another key",
@@ -383,7 +385,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "a ring ct of 51 bytes",
@@ -401,7 +404,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes"
     },
     {
       "name": "the ring AAD with its origin changed",
@@ -414,7 +418,8 @@
         "aad_hex": "000000107461626c6570726f2f76312f72696e67000000037470310000001968747470733a2f2f6f746865722e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000004"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "the ring AAD with its owner changed",
@@ -427,7 +432,8 @@
         "aad_hex": "000000107461626c6570726f2f76312f72696e67000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b8000000047465616d00000004"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "the ring AAD with its version changed",
@@ -440,7 +446,8 @@
         "aad_hex": "000000107461626c6570726f2f76312f72696e67000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000005"
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     }
   ],
   "digests": [
@@ -465,7 +472,8 @@
         }
       },
       "error": "keys.conflict",
-      "server": null
+      "server": null,
+      "clause": "After a state file restore, a version record at an anchored version whose digest differs"
     }
   ]
 }

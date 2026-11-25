@@ -262,6 +262,30 @@ pub(super) fn certificates() -> JsonValue {
         ],
         vec![("ik_change", s("same"))],
     ));
+    // The certificate under the IK a replace retired still verifies what was signed under it.
+    let retired = sign_certificate(&a, 1, CertKind::GenesisOrRotation, &a.ik, None);
+    let older = VersionRecord::sign(
+        &origin(),
+        KeyRef {
+            owner: a.id.0,
+            purpose: KeyPurpose::Personal,
+            version: v(1),
+        },
+        Start::Over,
+        &scope_key("certificates/PK1"),
+        a.id,
+        v(1),
+        &a.at(1).ask,
+    )
+    .unwrap();
+    verify.push(super::out::case_row(
+        "the certificate under the retired IK verifies a version record signed before the replace",
+        "verify_under_certificate",
+        "A certificate under an IK seen replaced, offered as the newest; the same certificate verifying an object signed before the replace",
+        vec![("origin", s(ORIGIN)), ("certificate", account_record(&retired)), ("record", version_record_json(&older))],
+        vec![("ok", super::out::b(true))],
+        None,
+    ));
 
     let steps = vec![
         negative(
@@ -999,6 +1023,18 @@ pub(super) fn wraps(cache: &HpkeCache) -> JsonValue {
             &new_device.dek.public().unwrap().0,
             &device("wraps/stranger").dsk.public().unwrap().0,
             account_certificate(),
+            "keys.not_compared",
+            BAD_STATEMENT,
+        ),
+        open(
+            "a trust wrap checked under a DSK this side did not compare",
+            "An approval wrap signed by ASK, or by a DSK other than the compared one",
+            "trust",
+            &made[1].wrap,
+            &new_device.dek,
+            &new_device.dek.public().unwrap().0,
+            &device("wraps/stranger").dsk.public().unwrap().0,
+            vec![],
             "keys.not_compared",
             BAD_STATEMENT,
         ),

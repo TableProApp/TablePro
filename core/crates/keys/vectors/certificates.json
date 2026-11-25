@@ -185,7 +185,8 @@
         "sig_hex": "b800bd220066216558e2f31fcda249569e91621c6db222d3341ffc1d8261f1ba50530312825910b3fd933a1f40b197c6969102385b29b115d6610b90feb74805"
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "A cancel signed for one reset, replayed against a later reset at the same `av`"
     }
   ],
   "verify": [
@@ -209,7 +210,8 @@
         }
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "A certificate under another IK"
     },
     {
       "name": "a replace endorsed by the new IK instead of the old",
@@ -233,7 +235,8 @@
         "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
       },
       "error": "keys.unendorsed",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "A replace without the old IK's endorsement"
     },
     {
       "name": "an IK change with no endorsement, as after a reset",
@@ -256,7 +259,8 @@
         "previous_ik_hex": "ccb93728bff26c50ccc77b106e3fa7b0757f86dcadd72b8266be3bc29ed1fb06"
       },
       "error": "keys.unendorsed",
-      "server": null
+      "server": null,
+      "clause": "An IK change with no endorsement"
     },
     {
       "name": "a replace the old IK endorsed",
@@ -304,6 +308,43 @@
       "output": {
         "ik_change": "same"
       }
+    },
+    {
+      "name": "the certificate under the retired IK verifies a version record signed before the replace",
+      "op": "verify_under_certificate",
+      "row": "A certificate under an IK seen replaced, offered as the newest; the same certificate verifying an object signed before the replace",
+      "input": {
+        "origin": "https://sync.example.com",
+        "certificate": {
+          "kind": "key.account",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1",
+          "fields": {
+            "suite": "tp1",
+            "kind": 0,
+            "ik": "zLk3KL_ybFDMx3sQbj-nsHV_htyt1yuCZr47wp7R-wY",
+            "ask": "yGMH2wA0maHwoh5yK_I7OoNM12jmr6P6f2yFaCXymvU",
+            "aek": "VZ7AXmwSK_nMR7RzjgBCkjzOO1Uwt9o-SEu_gmqKH2U",
+            "sig": "9u_-6A7WGbpoSnKquvb7oynyBvLRMr25aDq8h8KUM_eEH2JxeyojwP1d0bcFlfqP0jZSkL3XJbrpwv0vmanuAQ"
+          }
+        },
+        "record": {
+          "kind": "key.version",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/personal/1",
+          "fields": {
+            "suite": "tp1",
+            "start": 1,
+            "kid": "0dh7ajjIRrMnoZrmyRfAM7mA4IJ06U89au1qgJFAfsw",
+            "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "signer_av": 1,
+            "sig": "YW0LRhVg_Pu6Be4KFi0ScyOZ32blqCyrNEv9Z5X6GkxrSCoMkAEJg-QJDdRfwgT4zemJOazxok1eo372Gmq-DA"
+          }
+        }
+      },
+      "output": {
+        "ok": true
+      },
+      "server": null,
+      "clause": "the same certificate verifying an object signed before the replace"
     }
   ],
   "steps": [
@@ -316,7 +357,8 @@
         "offered": 3
       },
       "error": "keys.stale",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An `av` that goes back"
     },
     {
       "name": "an av that repeats",
@@ -327,7 +369,8 @@
         "offered": 4
       },
       "error": "keys.stale",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An `av` that goes back"
     },
     {
       "name": "an av that skips",
@@ -338,7 +381,8 @@
         "offered": 6
       },
       "error": "keys.step",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "one that skips"
     },
     {
       "name": "the next av",
@@ -388,7 +432,8 @@
         "library_takes_it": true
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a forgery under A of order 2 (ecffffff)",
@@ -402,7 +447,8 @@
         "library_takes_it": true
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a forgery under A of order 4 (00000000)",
@@ -416,7 +462,8 @@
         "library_takes_it": true
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a forgery under A of order 4 (00000000, sign bit set)",
@@ -430,7 +477,8 @@
         "library_takes_it": true
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a forgery under A of order 8 (c7176a70)",
@@ -444,7 +492,8 @@
         "library_takes_it": true
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a forgery under A of order 8 (c7176a70, sign bit set)",
@@ -458,7 +507,8 @@
         "library_takes_it": true
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a forgery under A of order 8 (26e8958f)",
@@ -472,7 +522,8 @@
         "library_takes_it": true
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a forgery under A of order 8 (26e8958f, sign bit set)",
@@ -486,7 +537,8 @@
         "library_takes_it": true
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a forgery under A of order 1 (01000000, sign bit set)",
@@ -500,7 +552,8 @@
         "library_takes_it": false
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a forgery under A of order 2 (ecffffff, sign bit set)",
@@ -514,7 +567,8 @@
         "library_takes_it": false
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a forgery under a non-canonical A, y = p + 1",
@@ -528,7 +582,8 @@
         "library_takes_it": false
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "R the identity with the sign bit set",
@@ -540,7 +595,8 @@
         "sig_hex": "0100000000000000000000000000000000000000000000000000000000000080333836bc4795a9b27ec2723063dbe03b0960f5386e417ee1b43d6d258cba510e"
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "a non-canonical R",
@@ -552,7 +608,8 @@
         "sig_hex": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f333836bc4795a9b27ec2723063dbe03b0960f5386e417ee1b43d6d258cba510e"
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     },
     {
       "name": "S + L, at or above L",
@@ -564,7 +621,8 @@
         "sig_hex": "bb1bd9ab598680081b450de0b1b6d9992b2a8a56d0bb5203e90c368cc31cc95b200c2c1962f8bb0a555f6ad341d5bf500960f5386e417ee1b43d6d258cba511e"
       },
       "error": "keys.signature",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "An Ed25519 A of small order, a non-canonical A or R, S at or above L"
     }
   ]
 }

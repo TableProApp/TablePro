@@ -451,6 +451,22 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                 ok()
             }
         }
+        "verify_under_certificate" => {
+            let origin = input.origin();
+            let certificate = record_object(input.value("certificate"))?;
+            let (KeyRecordId::Account { account, av }, KeyBody::Account(body)) = (&certificate.id, &certificate.body)
+            else {
+                panic!("an account record");
+            };
+            let certificate = body.certificate(*account, *av);
+            certificate.verify(&origin)?;
+            let record = record_object(input.value("record"))?
+                .version_record()
+                .expect("version record");
+            assert_eq!(record.signer_av, certificate.av, "signed under that certificate's av");
+            record.verify(&origin, &certificate.ask)?;
+            ok()
+        }
         "check_step" => {
             let held = input.has("held").then(|| input.version("held"));
             check_step(held, input.version("offered"))?;
@@ -856,6 +872,31 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                 None => vec![("record_len", n(record_len as u64)), ("fits", b(false))],
             }
         }
+        "trust_wrap_record" => {
+            let origin = input.origin();
+            let object = record_object(input.value("record"))?;
+            let wrap = object.wrap().expect("a wrap");
+            let secret = X25519Secret::from_bytes(input.hex32("recipient_secret_hex"));
+            let dsk = Ed25519Public(input.hex32("dsk_hex"));
+            let trust = wrap.open_trust(&origin, &secret, &secret.public()?, &dsk)?;
+            assert_eq!(
+                trust,
+                super::gen_sealed::generated_trust(input.value("generated")),
+                "the wrap holds the generated plaintext"
+            );
+            let fields = object.fields_json();
+            let limit = usize::try_from(input.u64("record_limit")).expect("limit");
+            assert_eq!(
+                crate::trust::trust_wrap_record_len(trust.encode().len(), wrap.wrapper.av)?,
+                fields.len(),
+                "the predicted length"
+            );
+            vec![
+                ("fields_len", n(fields.len() as u64)),
+                ("within_limit", b(fields.len() <= limit)),
+                ("fits", b(trust.fit_record(limit, wrap.wrapper.av)?.is_some())),
+            ]
+        }
         "sas" => {
             let view = sas_view(&mut input);
             let commit = view.transcript.commitment(&view.n, &view.r_n)?;
@@ -935,6 +976,23 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                     }
                     "receive_reveal" => session.receive_reveal(view.r_n)?,
                     "words" => shown = session.words()?,
+                    "words_differ" => {
+                        let error = session.words_differ();
+                        assert_eq!(session.state(), crate::sas::SessionState::Cancelled, "the session ends");
+                        if input.has("cancel_record") {
+                            let cancel = record_object(input.value("cancel_record"))?;
+                            assert!(
+                                matches!(
+                                    cancel.body,
+                                    KeyBody::Sas(crate::body::SasBody::Cancel {
+                                        reason: crate::body::CancelReason::Mismatch
+                                    })
+                                ),
+                                "a mismatch cancel"
+                            );
+                        }
+                        return Err(error);
+                    }
                     "confirm" => session.confirm()?,
                     "receive_cancel" => session.receive_cancel()?,
                     "expire" => {
