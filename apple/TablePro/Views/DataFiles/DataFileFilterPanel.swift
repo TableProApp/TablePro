@@ -39,6 +39,6 @@ extension DataFileController: FilterPanelActions {
     }
 
     func addBlankFilter(columnName: String) {
-        filterState.addFilter(forColumn: columnName, settings: FilterSettingsStorage.shared.loadSettings())
+        filterState.addFilter(forColumn: columnName, settings: FilterSettingsStorage.shared.settings)
     }
 }

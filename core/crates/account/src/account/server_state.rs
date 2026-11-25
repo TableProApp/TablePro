@@ -5,6 +5,7 @@ use crate::account_settings::{AccountSettings, AppClient, Endpoints, SignInKey};
 use crate::entitlement_keys::EntitlementKeys;
 use crate::license::License;
 use crate::license_keys::LicenseKeys;
+use crate::loopback::ExpectedIssuer;
 use crate::oauth::OAuth;
 use crate::server::{
     Discovered, PRODUCTION_ORIGIN, ServerError, ServerInfo, ServerKind, ServerSettings, Target, fixed_target,
@@ -140,6 +141,22 @@ impl Server {
                 self.target.origin.clone(),
                 "not discovered yet".to_owned(),
             ))
+        })
+    }
+
+    // RFC 9207 section 2.4. A company server's discovery says whether its answers name it. tablepro.app's always do, which
+    // the build knows as it knows its endpoints; a development stack may predate that.
+    pub(crate) fn expected_issuer(&self) -> Result<ExpectedIssuer, AccountError> {
+        let connection = self.connection()?;
+        Ok(match &connection.discovered {
+            Some(discovered) => ExpectedIssuer {
+                issuer: discovered.issuer.clone(),
+                required: discovered.iss_parameter_supported,
+            },
+            None => ExpectedIssuer {
+                issuer: connection.endpoints.account_origin(),
+                required: self.target.kind == ServerKind::Production,
+            },
         })
     }
 

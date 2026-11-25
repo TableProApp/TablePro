@@ -20,7 +20,7 @@ struct FilterRowLayoutTests {
     private func row(_ filter: TableFilter, focusedId: Binding<UUID?> = .constant(nil)) -> FilterRowView {
         FilterRowView(
             filter: .constant(filter),
-            columns: Self.columns,
+            columnMenu: FilterColumnMenu.build(columns: Self.columns, fieldPaths: [], order: .table),
             completions: [],
             caseMatching: .inMemory,
             enumValuesByColumn: Self.enumValues,
@@ -197,10 +197,9 @@ struct FilterRowLayoutTests {
         let starts = try [scoped, badged, Self.textEquals].map { filter in
             let view = FilterRowView(
                 filter: .constant(filter),
-                columns: Self.columns,
+                columnMenu: FilterColumnMenu.build(columns: Self.columns, fieldPaths: paths, order: .table),
                 completions: [],
                 caseMatching: .inMemory,
-                columnMenu: FilterColumnMenu.build(columns: Self.columns, fieldPaths: paths),
                 fieldPaths: paths,
                 reservesElementScope: true,
                 onAdd: {},

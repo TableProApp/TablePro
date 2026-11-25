@@ -17,7 +17,7 @@ use crate::browser::{BrowserLauncher, WebAuthenticationError, WebAuthenticator};
 use crate::cloud_api::{Bearer, answer_error, v2};
 use crate::entitlement::{Entitlement, EntitlementError};
 use crate::license::{License, LicenseError};
-use crate::loopback::{Callback, Loopback, callback};
+use crate::loopback::{ExpectedIssuer, Loopback, callback};
 use crate::machine_id::MachineId;
 use crate::oauth::{OAuth, Tokens};
 use crate::profile::{Device, Profile};
@@ -396,12 +396,8 @@ impl Account {
             connected = discovering => connected?,
             () = &mut cancelled => return Err(AccountError::SignInCanceled),
         };
-        let connection = server.connection()?;
-        let oauth = &connection.oauth;
-        let issuer = connection.discovered.as_ref().map_or_else(
-            || connection.endpoints.account_origin(),
-            |discovered| discovered.issuer.clone(),
-        );
+        let oauth = &server.connection()?.oauth;
+        let issuer = server.expected_issuer()?;
         let tokens = match self.inner.settings.client.redirect {
             Redirect::Loopback => self.browser_sign_in(oauth, &issuer, &mut cancelled).await?,
             Redirect::Scheme(scheme) => self.web_sign_in(oauth, &issuer, scheme, &mut cancelled).await?,
@@ -412,7 +408,7 @@ impl Account {
     async fn browser_sign_in(
         &self,
         oauth: &OAuth,
-        issuer: &str,
+        issuer: &ExpectedIssuer,
         cancelled: impl Future<Output = ()> + Send,
     ) -> Result<Tokens, AccountError> {
         let loopback = Loopback::bind()
@@ -429,7 +425,7 @@ impl Account {
             waited = tokio::time::timeout(SIGN_IN_TIMEOUT, waiting) => waited,
             () = cancelled => return Err(AccountError::SignInCanceled),
         };
-        let code = code_from(callback.map_err(|_| AccountError::SignInTimedOut)?, issuer)?;
+        let code = callback.map_err(|_| AccountError::SignInTimedOut)?.code_for(issuer)?;
         oauth.exchange_code(code, authorization).await
     }
 
@@ -437,7 +433,7 @@ impl Account {
     async fn web_sign_in(
         &self,
         oauth: &OAuth,
-        issuer: &str,
+        issuer: &ExpectedIssuer,
         scheme: &str,
         cancelled: impl Future<Output = ()> + Send,
     ) -> Result<Tokens, AccountError> {
@@ -466,7 +462,7 @@ impl Account {
         }
         let answered = callback(url.query().unwrap_or_default(), authorization.state.secret())
             .ok_or_else(|| AccountError::Protocol("the sign-in came back for another request".to_owned()))?;
-        let code = code_from(answered, issuer)?;
+        let code = answered.code_for(issuer)?;
         oauth.exchange_code(code, authorization).await
     }
 
@@ -910,19 +906,6 @@ impl Account {
 
     fn api(&self, bearer: Bearer) -> v2::Client {
         v2::Client::new_with_client(&self.current().api, self.inner.http.clone(), bearer)
-    }
-}
-
-// RFC 9207: an `iss` in the answer must be the issuer asked, so a code meant for another server is never sent to this
-// one. An answer without one is taken until servers send it (core ADR 0044, Discovery and mix-up).
-fn code_from(answered: Callback, issuer: &str) -> Result<String, AccountError> {
-    match answered {
-        Callback::Code(code) => Ok(code),
-        Callback::CodeFrom { code, issuer: named } if named.trim_end_matches('/') == issuer.trim_end_matches('/') => {
-            Ok(code)
-        }
-        Callback::CodeFrom { .. } => Err(ServerError::Mismatch("issuer").into()),
-        Callback::Refused { error, description } => Err(AccountError::SignInRefused { error, description }),
     }
 }
 
@@ -1955,6 +1938,11 @@ mod tests {
 
     // Answers the redirect the sign-in waits for, as the browser would once the user approves.
     pub(super) async fn approve(browser: &HeldBrowser) {
+        answer(browser, &[("code", "late-code")]).await;
+    }
+
+    // The redirect the server sends the browser to: `pairs`, then the request's own state.
+    pub(super) async fn answer(browser: &HeldBrowser, pairs: &[(&str, &str)]) {
         let url = loop {
             if let Some(url) = browser.opened.lock().expect("the URL").clone() {
                 break url;
@@ -1969,7 +1957,7 @@ mod tests {
         let mut redirect = Url::parse(&asked("redirect_uri").expect("a redirect")).expect("a URL");
         redirect
             .query_pairs_mut()
-            .append_pair("code", "late-code")
+            .extend_pairs(pairs)
             .append_pair("state", &asked("state").expect("a state"));
         reqwest::get(redirect).await.expect("the redirect delivered");
     }

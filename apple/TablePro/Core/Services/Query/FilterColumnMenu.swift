@@ -33,40 +33,55 @@ struct FilterColumnMenu: Equatable {
     static func build(
         columns: [String],
         fieldPaths: [PluginFieldPath],
+        order: FilterColumnOrder,
         depthLimit: Int = inlineDepthLimit,
         itemLimit: Int = inlineItemLimit
     ) -> FilterColumnMenu {
         let known = Set(columns)
         let nested = fieldPaths.filter { $0.depth > 1 && !known.contains($0.path) }
 
-        var order: [String] = []
-        var byParent: [String: [PluginFieldPath]] = [:]
-        var inlineCount = 0
+        // Picked in the driver's order before any sorting, so the order setting never changes which paths are inline.
+        var inline: [PluginFieldPath] = []
         var skipped = false
-
         for path in nested {
-            guard path.depth <= depthLimit, inlineCount < itemLimit else {
+            guard path.depth <= depthLimit, inline.count < itemLimit else {
                 skipped = true
                 continue
             }
-            let parent = topLevelParent(of: path.path)
-            if byParent[parent] == nil {
-                order.append(parent)
-            }
-            byParent[parent, default: []].append(path)
-            inlineCount += 1
-        }
-
-        let groups = order.compactMap { parent -> Group? in
-            guard let paths = byParent[parent], !paths.isEmpty else { return nil }
-            return Group(parent: parent, paths: paths)
+            inline.append(path)
         }
 
         return FilterColumnMenu(
-            columns: columns,
-            groups: groups,
+            columns: order.ordered(columns),
+            groups: grouped(inline, order: order),
             hasMorePaths: skipped || !nested.isEmpty
         )
+    }
+
+    static func grouped(_ paths: [PluginFieldPath], order: FilterColumnOrder) -> [Group] {
+        var parents: [String] = []
+        var byParent: [String: [PluginFieldPath]] = [:]
+        for path in paths {
+            let parent = topLevelParent(of: path.path)
+            if byParent[parent] == nil {
+                parents.append(parent)
+            }
+            byParent[parent, default: []].append(path)
+        }
+
+        let groups = parents.compactMap { parent -> Group? in
+            guard let paths = byParent[parent], !paths.isEmpty else { return nil }
+            return Group(parent: parent, paths: paths)
+        }
+        guard order == .alphabetical else { return groups }
+        return groups
+            .map { group in
+                Group(
+                    parent: group.parent,
+                    paths: group.paths.sorted { FilterColumnOrder.precedesAlphabetically($0.path, $1.path) }
+                )
+            }
+            .sorted { FilterColumnOrder.precedesAlphabetically($0.parent, $1.parent) }
     }
 
     static func topLevelParent(of path: String) -> String {
@@ -85,5 +100,21 @@ struct FilterColumnMenu: Equatable {
 
     func contains(_ column: String) -> Bool {
         columns.contains(column) || groups.contains { $0.paths.contains { $0.path == column } }
+    }
+}
+
+// A filter bar redraws on every keystroke in a value field, and sorting a wide table's columns each time shows.
+@MainActor
+final class FilterColumnMenuCache {
+    private var inputs: (columns: [String], fieldPaths: [PluginFieldPath], order: FilterColumnOrder)?
+    private var menu = FilterColumnMenu.empty
+
+    func menu(columns: [String], fieldPaths: [PluginFieldPath], order: FilterColumnOrder) -> FilterColumnMenu {
+        if let inputs, inputs.order == order, inputs.columns == columns, inputs.fieldPaths == fieldPaths {
+            return menu
+        }
+        menu = FilterColumnMenu.build(columns: columns, fieldPaths: fieldPaths, order: order)
+        inputs = (columns, fieldPaths, order)
+        return menu
     }
 }

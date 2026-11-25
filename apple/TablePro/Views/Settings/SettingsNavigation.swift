@@ -455,6 +455,7 @@ extension SettingsPage {
             [
                 String(localized: "Default column"),
                 String(localized: "Default operator"),
+                String(localized: "Column order"),
                 String(localized: "Saved filters"),
                 String(localized: "Always show the filter bar"),
             ]

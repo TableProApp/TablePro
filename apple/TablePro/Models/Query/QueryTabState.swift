@@ -770,3 +770,50 @@ struct TabDisplayState: Equatable {
             && lhs.highlightRulesPresentationRequest == rhs.highlightRulesPresentationRequest
     }
 }
+
+extension ColumnLayoutState {
+    // Every key at once, so two columns that trade names keep their own entries. A nil name drops the column's entries.
+    func remappingColumns(_ newName: (String) -> String?) -> ColumnLayoutState {
+        var layout = self
+        layout.columnWidths = Self.remapping(columnWidths, newName)
+        layout.columnContentWidths = columnContentWidths.map { Self.remapping($0, newName) }
+        layout.columnOrder = columnOrder?.compactMap { newName($0) }
+        layout.hiddenColumns = Set(hiddenColumns.compactMap { newName($0) })
+        return layout
+    }
+
+    // Columns an undo brings back take the entries they had then; every other column keeps what it has now.
+    func restoringColumns(_ names: Set<String>, from saved: ColumnLayoutState) -> ColumnLayoutState {
+        guard !names.isEmpty else { return self }
+        var layout = self
+        for name in names {
+            if saved.hiddenColumns.contains(name) {
+                layout.hiddenColumns.insert(name)
+            }
+            if let width = saved.columnWidths[name] {
+                layout.columnWidths[name] = width
+            }
+            if let width = saved.columnContentWidths?[name] {
+                layout.columnContentWidths = (layout.columnContentWidths ?? [:]).merging([name: width]) { $1 }
+            }
+        }
+        // A name missing from the order lands after every ordered column, so put it back in its old slot.
+        if var order = layout.columnOrder, let savedOrder = saved.columnOrder {
+            for (index, name) in savedOrder.enumerated() where names.contains(name) && !order.contains(name) {
+                order.insert(name, at: min(index, order.count))
+            }
+            layout.columnOrder = order
+        }
+        return layout
+    }
+
+    private static func remapping(_ widths: [String: CGFloat], _ newName: (String) -> String?) -> [String: CGFloat] {
+        var remapped: [String: CGFloat] = [:]
+        for (name, width) in widths {
+            if let moved = newName(name) {
+                remapped[moved] = width
+            }
+        }
+        return remapped
+    }
+}

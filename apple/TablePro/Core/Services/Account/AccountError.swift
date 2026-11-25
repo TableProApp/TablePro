@@ -36,6 +36,8 @@ internal enum AccountError: Error, Equatable {
     case oauth(String, description: String?)
     case server(status: Int, code: String?)
     case invalidResponse
+    // The sign-in answer named another server than the one asked, or none where it always names itself (RFC 9207).
+    case otherIssuer
     case offlineFileRejected(OfflineFileProblem)
     case companyServer(CompanyServerProblem)
     // Another account or server while signed in: that goes through Sign Out, which asks about unsent Team Library edits.

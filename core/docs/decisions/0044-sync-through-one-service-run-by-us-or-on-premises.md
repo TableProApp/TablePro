@@ -1,6 +1,6 @@
 # 0044: Sync goes through one TablePro service, run by us or entirely on a customer's servers
 
-- **Status**: Accepted; the license types and the calls to tablepro.app amended by 0045; SSO amended by 0048; who opens a license request amended by 0050
+- **Status**: Accepted; the license types and the calls to tablepro.app amended by 0045; the grace after `exp` amended by 0046; the Apple apps' sign-in amended by 0047; SSO amended by 0048; who opens a license request amended by 0050; the record store, the protocol, the conflict rules, what syncs, the policies' wire and past grace amended by 0051, and restore superseded by it; record ids amended by 0052; the secrets and their end-to-end keys, and the consequence that teammates confirm a person again after a device removal or recovery, amended by 0053; the client in the core, the iCloud engine and the moves between providers amended by 0054; app configuration, policies and a refused Linux policy source amended by 0055
 - **Date**: 2026-11-24
 
 ## Context
@@ -222,7 +222,7 @@ Values a device moves into the service with count as approved on that device.
 - **The apps' flow does not change:** the browser, the static public clients and their redirects (RFC 8252). tablepro-cloud adds `tablepro-ios` with the custom scheme, and the device platform `ios`. A client reports its own platform, so the platform never decides what counts against a limit.
 - **Discovery and mix-up.**
   - The server serves RFC 9728 metadata, which points the app to OIDC discovery. It adds the RFC 9207 `iss` to authorization responses, and the apps compare that `iss` with the server they chose, as RFC 9700 section 4.4 requires once a client can reach more than one server.
-  - RFC 9207 support, with `authorization_response_iss_parameter_supported` in the metadata, is contributed to zitadel/oidc. A pinned release that has it gates the first self-hosted release.
+  - tablepro-cloud sends `iss` and `authorization_response_iss_parameter_supported` in its own handlers, through zitadel/oidc's public seams, with no fork and no zitadel release needed. Self-hosted images 0.1.0 and 0.1.1 send neither, so the apps require `iss` only from a server whose metadata promises it, and from tablepro.app.
 - **One server per install.** Switching is a sign-out and a sign-in. Tokens are keyed by server: the core's `sign_in_key` already does this, and the Mac and iOS use it through the account slice.
 
 ### Licensing

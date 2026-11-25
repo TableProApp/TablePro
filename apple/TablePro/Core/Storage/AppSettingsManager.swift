@@ -144,6 +144,7 @@ final class AppSettingsManager {
             // The reset alert promises every section, so Sparkle's update preferences go too.
             SoftwareUpdater.shared.resetUpdatePreferences()
             AppModuleActivation.resetToDefaults()
+            FilterSettingsStorage.shared.resetSettings()
         }
     ) {
         self.storage = storage

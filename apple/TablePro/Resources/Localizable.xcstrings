@@ -27436,6 +27436,9 @@
         }
       }
     },
+    "Alphabetical" : {
+
+    },
     "Already in the target." : {
       "localizations" : {
         "fr" : {
@@ -51242,6 +51245,9 @@
         }
       }
     },
+    "Column Picker" : {
+
+    },
     "Column Reorder Failed" : {
       "localizations" : {
         "fr" : {
@@ -60558,6 +60564,9 @@
           }
         }
       }
+    },
+    "Could not confirm the sign-in came from the server TablePro asked. Sign in again." : {
+
     },
     "Could not connect through the SOCKS proxy at %@:%@. %@" : {
       "localizations" : {
@@ -118306,6 +118315,9 @@
           }
         }
       }
+    },
+    "List Columns Alphabetically" : {
+
     },
     "List Connections" : {
       "localizations" : {
@@ -205244,6 +205256,9 @@
           }
         }
       }
+    },
+    "Table Order" : {
+
     },
     "Table rebuild" : {
       "localizations" : {

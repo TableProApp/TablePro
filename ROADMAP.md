@@ -38,9 +38,9 @@ Phase 7 runs now as its own lane, ahead of this order (D-06).
 | Phase 4: Advanced tier | 57 | 0 |
 | Phase 5: Engines | 27 | 0 |
 | Phase 6: Quality bars | 8 | 0 |
-| Phase 7: Sync and teams | 22 | 0 |
+| Phase 7: Sync and teams | 24 | 0 |
 | Phase 8: Beyond the market | 40 | 0 |
-| Total | 373 | 61 |
+| Total | 375 | 61 |
 
 ## Where each app stands
 
@@ -558,15 +558,15 @@ Linux already holds each bar; these bring Windows to it, plus one shared item.
 
 ## Phase 7: Sync and teams
 
-A TablePro sync service on every platform (D-01), run by us or on a customer's servers, as [core ADR 0044](core/docs/decisions/0044-sync-through-one-service-run-by-us-or-on-premises.md) designs it. macOS and iOS keep iCloud beside it, and each device picks one. It syncs connections and groups, secrets encrypted end to end, saved queries, query history and settings, and Team Library; Team Catalog stays a shared folder. iCloud Sync, Team Library and Team Catalog are 3 of the 10 paid features.
+A TablePro sync service on every platform (D-01), run by us or on a customer's servers, as [core ADR 0044](core/docs/decisions/0044-sync-through-one-service-run-by-us-or-on-premises.md) designs it. macOS and iOS keep iCloud beside it, and each device picks one. One engine in the core runs both, with CloudKit as a Swift transport, and iCloud gains no new kind ([core ADR 0054](core/docs/decisions/0054-one-sync-engine-in-the-core-for-tablepro-sync-and-icloud.md)). It syncs connections and groups, secrets encrypted end to end, saved queries, query history and settings, and Team Library; Team Catalog stays a shared folder. iCloud Sync, Team Library and Team Catalog are 3 of the 10 paid features.
 
-Phase 7 runs now as its own lane, ahead of [Order](#order) (D-06). macOS ships first: a new account slice of [core ADR 0010](core/docs/decisions/0010-macos-on-the-core.md) moves the Mac's account onto `tablepro-account` through TableProFFI before the macOS preview, and the macOS release comes after the preview. iOS, Linux and Windows follow as each is ready.
+Phase 7 runs now as its own lane, ahead of [Order](#order) (D-06). The account slice of [core ADR 0010](core/docs/decisions/0010-macos-on-the-core.md) moved the Mac's account onto `tablepro-account` through TableProFFI in #4470. macOS comes first, then iOS. Linux comes after its 0.1.0, and Windows after its first public release. Every part is built first, and how releases stage it is decided later.
 
 - **T-01** Design ADR: the data model, conflict rules (field by field, as core ADR 0010 merges CloudKit records), end-to-end encryption of secrets and key recovery, whether query history syncs, and iCloud beside the service on macOS
   - [ ] core
 - **T-02** The service: storage per account and team, the sync API, the entitlement check (core ADR 0016)
   - [ ] server
-- **T-03** Sync client in the core: pull, push, merge, an offline queue, and the device list
+- **T-03** Sync engine in the core (`tablepro-sync`): pull, push, an offline queue on disk, approvals and moves between providers, for TablePro Sync and for iCloud through a CloudKit transport the Swift apps implement ([core ADR 0054](core/docs/decisions/0054-one-sync-engine-in-the-core-for-tablepro-sync-and-icloud.md)). Records are T-10 and keys T-11
   - [ ] core
 - **T-04** Connections, groups, tags, colours and SSH profiles, without their secrets
   - [ ] Linux
@@ -587,12 +587,16 @@ Phase 7 runs now as its own lane, ahead of [Order](#order) (D-06). macOS ships f
   - [ ] Linux
   - [ ] Windows
   - [ ] iOS
-- **T-08** macOS and iOS on the service: everything T-04 to T-07 sync, beside iCloud, a setting to pick one, and a move from iCloud to the service
+- **T-08** macOS and iOS on the service: everything T-04 to T-07 sync, beside iCloud, a setting to pick one, and a move from iCloud to the service and back. iCloud sync itself moves onto the core engine first, with the Swift sync metadata still written while the previous stable reads it
   - [ ] macOS
   - [ ] iOS
 - **T-09** iOS account: sign-in through `tablepro-account` via TableProFFI, the `tablepro-ios` OAuth client and the `ios` device platform
   - [ ] server
   - [ ] iOS
+- **T-10** Records in the core (`tablepro-records`): kinds, record ids, field classes, the field merge and the CloudKit mapping, one set for both providers
+  - [ ] core
+- **T-11** Keys in the core (`tablepro-keys`): the end-to-end crypto, with signed logs, envelopes and recovery
+  - [ ] core
 
 ## Phase 8: Beyond the market
 
