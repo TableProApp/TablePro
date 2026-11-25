@@ -117,7 +117,7 @@ This is the case the end-to-end design exists for.
 
 - Team plaintext records, as far as the account's seat and role allow.
 - Genesis on an account with no identity yet is trust on first use. An attacker who gets there first owns that identity. The person's own genesis then fails, and the account is recovered by an admin removing the attacker's device row, then a reset.
-- A reset on an account with no holder left is also trust on first use. The server purges the personal and history scopes first, so it exposes nothing earlier.
+- A reset on an account with no holder left is also trust on first use. The server first deletes the account's personal and history records, keeping only its logs, so it exposes nothing earlier.
 - The logs, which an attacker can read before approval: public keys, device platforms and when the person removed devices.
 
 ## A lost or stolen device

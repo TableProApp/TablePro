@@ -616,7 +616,7 @@ They are JSON in `core/crates/keys/vectors/`, one file per area. Every random in
 - **A recovery key comes first.** It is needed before any personal sync and before any team secret, since both need an identity. Team plaintext records need none.
 - **Device approval and member confirmation need both devices online at once,** or in the same room for the QR code. An asynchronous member compare is not offered: it would need about 200 bits to resist the birthday search.
 - **A lost device is removed only with the recovery key.** An admin's portal removal stops the device at once. The person's personal floor holds new secret and history writes in the local queue until they enter the key.
-- **Losing every holder and the recovery key loses the personal and history scopes on the server.** The account starts again with a reset, which purges them.
+- **Losing every holder and the recovery key loses the personal and history scopes on the server.** The account starts again with a reset, which first deletes those records.
 - **Team secrets wait during rotation pending** until a signer's app opens. Members keep reading under the versions they hold.
 - **The server reads more than versions.** It reads the key-object fields its table lists, DPoP proofs and `kv`, and verifies the account logs. It reads no secret and no history.
 - **An install that changes its API origin** is a new server for keys too, as it already is for tokens and the license (0047). People enroll again and devices seal the secrets they hold again. History written under the old origin is not readable there.
