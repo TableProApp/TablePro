@@ -185,6 +185,7 @@ A role that writes nothing gets `role` per change rather than a whole refusal, s
 | 16 | `write_tag` |
 
 - Clients keep it and send it back as `base_tag`. They never parse it.
+- It is the service's tag. The CloudKit change tag a move marker keeps (0054) is another value, held in an inert field the server never reads.
 - The server compares it with the stored record's byte for byte. A base from a history the database lost carries random bytes the restored database never had, so it never matches, even when its version comes back.
 - The facade keeps comparing `version` until it retires. Its writes draw a new write tag like any other.
 
@@ -309,6 +310,7 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 - **External Clients.** A connection's External Clients level ([0036](0036-mcp-and-the-command-line-through-the-ffi.md)) syncs, and a looser value is approval-required.
 - **Column layouts** (`columnLayout.<key>` in a settings kind) sync as inert.
 - **Wire schemas.** Each kind has an explicit wire schema in `tablepro-records`, and every key in it passes the server's secret rule, so no field the apps keep is refused for its name.
+- **Move markers.** The move marker 0054 writes on a record moved from iCloud is an inert reserved field like any other: the server never reads it, clients patch around it, and a facade write keeps it.
 
 ## The library moves in
 
