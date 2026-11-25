@@ -19,7 +19,8 @@ enum StatementNavigationDirection {
 // never offers to run something other than what it is drawn beside. The band runs on every caret move, so a SQL
 // document resolves it through `SQLStatementCursorIndex`, which rescans only from the last boundary before the caret,
 // and a JavaScript or Redis document through a `QueryStatementCaretTable` read once per text.
-// The controls need every statement, a full pass of 31ms at the size limit, so that refresh is debounced.
+// The controls need every statement, a full pass of 31ms at the size limit, so on a large document that refresh is
+// debounced and scanned off the main thread.
 @MainActor
 final class StatementRunController {
     /// The largest document decorations are computed for, in UTF-16 units.
@@ -136,9 +137,9 @@ final class StatementRunController {
     /// every keystroke rather than for everything but the last 150ms of typing.
     func scheduleControlsRefresh(in controller: TextViewController?) {
         pendingRefresh?.cancel()
-        guard let controller else { return }
+        guard let controller, let textView = controller.textView else { return }
 
-        if (controller.textView?.string as NSString?)?.length ?? 0 <= Self.synchronousRefreshLimit {
+        if textView.textStorage.length <= Self.synchronousRefreshLimit {
             refreshControls(in: controller)
             return
         }
@@ -150,18 +151,61 @@ final class StatementRunController {
         }
     }
 
-    /// Recomputes the run controls now, without waiting out the debounce.
+    /// Recomputes the run controls without waiting out the debounce.
+    ///
+    /// A small document is scanned here, so its controls are in step when this returns. A larger one is scanned off
+    /// the main thread on a snapshot of the text, and its controls are replaced only if no edit landed meanwhile:
+    /// the edit schedules a scan of its own.
     func refreshControls(in controller: TextViewController?) {
-        guard let controller, let textView = controller.textView else { return }
-        let text = textView.string
+        pendingRefresh?.cancel()
+        pendingRefresh = nil
+        guard let controller, let textView = controller.textView, let storage = textView.textStorage else { return }
 
-        guard (text as NSString).length <= sizeLimit else {
+        guard storage.length <= sizeLimit else {
             controller.runnableStatements = []
             return
         }
 
-        controller.runnableStatements = QueryStatementScanner
-            .navigableStatements(in: text, model: statementModel, grammar: grammar)
+        guard storage.length > Self.synchronousRefreshLimit else {
+            controller.runnableStatements = Self.statementRuns(in: textView.string, model: statementModel, grammar: grammar)
+            return
+        }
+
+        if caretIndexStorage !== storage {
+            observeEdits(on: storage)
+        }
+        // Started on the next turn of the main actor, so a call made inside an editing batch reads the text, and
+        // counts the edit, after the storage has finished processing it.
+        pendingRefresh = Task { [weak self, weak controller, weak storage] in
+            guard let self, let controller, let storage, controller.textView?.textStorage === storage else { return }
+            // Bridging the storage shares its buffer, so the snapshot costs nothing until an edit touches a block.
+            let text = controller.textView.string
+            let serial = self.editSerial
+            let model = self.statementModel
+            let grammar = self.grammar
+            let runs = await Self.scanStatementRuns(in: text, model: model, grammar: grammar)
+            guard !Task.isCancelled, controller.textView?.textStorage === storage,
+                  self.editSerial == serial, self.statementModel == model, self.grammar == grammar else { return }
+            controller.runnableStatements = runs
+        }
+    }
+
+    @concurrent
+    nonisolated private static func scanStatementRuns(
+        in text: String,
+        model: QueryStatementModel,
+        grammar: SQLLexicalGrammar
+    ) async -> [StatementRun] {
+        statementRuns(in: text, model: model, grammar: grammar)
+    }
+
+    nonisolated private static func statementRuns(
+        in text: String,
+        model: QueryStatementModel,
+        grammar: SQLLexicalGrammar
+    ) -> [StatementRun] {
+        QueryStatementScanner
+            .navigableStatements(in: text, model: model, grammar: grammar)
             .map { StatementRun(range: $0.contentRange) }
     }
 
@@ -229,6 +273,27 @@ final class StatementRunController {
             )
         }
         return indexedStatement(at: cursor, in: text, storage: storage)
+    }
+
+    /// Where the statement holding `offset` starts, or 0 where the index does not answer for this document or grammar.
+    ///
+    /// A statement never starts inside a literal or a comment, so a reader that has to know whether `offset` is in one
+    /// can begin here rather than at the top of the document. Not remembered as the caret's statement: `offset` is
+    /// rarely the caret.
+    func statementStart(containing offset: Int, in textView: TextView, grammar requested: SQLLexicalGrammar) -> Int {
+        guard statementModel == .sql, grammar == requested,
+              let storage = textView.textStorage, storage.length <= sizeLimit else { return 0 }
+        if caretIndexStorage !== storage {
+            observeEdits(on: storage)
+        }
+        if storage.editedMask.contains(.editedCharacters) {
+            textDidChange(at: storage.editedRange.location)
+        }
+        if caretIndex == nil {
+            caretIndex = SQLStatementCursorIndex(grammar: grammar)
+        }
+        let start = caretIndex?.statementAtCursor(offset, in: textView.string).offset ?? 0
+        return min(start, offset)
     }
 
     // Only where the band keeps the index warm at the caret. `text` is the storage's text as it is now.
