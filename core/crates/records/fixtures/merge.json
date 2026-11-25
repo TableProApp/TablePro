@@ -1,0 +1,155 @@
+[
+  {
+    "name": "a reorder against a deletion lets the deletion stand",
+    "kind": "connection",
+    "mode": "personal",
+    "base": {"name": "prod", "host": "db", "sort_order": 1, "schema_version": 1},
+    "local": null,
+    "server": {"name": "prod", "host": "db", "sort_order": 4, "schema_version": 1},
+    "merged": "deleted"
+  },
+  {
+    "name": "a move to another group against a deletion lets the deletion stand",
+    "kind": "connection",
+    "mode": "personal",
+    "base": {"name": "prod", "group_id": "E6C12C96-3CBD-4A0E-9F41-E36B47F35D84", "is_favorite": false},
+    "local": {"name": "prod", "group_id": "84BC7D00-A144-4C18-80C0-A11C6070D4F9", "is_favorite": true},
+    "server": null,
+    "merged": "deleted"
+  },
+  {
+    "name": "a rename against a deletion revives the record with the rename",
+    "kind": "connection",
+    "mode": "personal",
+    "base": {"name": "prod", "host": "db", "sort_order": 1},
+    "local": null,
+    "server": {"name": "production", "host": "db", "sort_order": 2},
+    "merged": {"record": {"name": "production", "host": "db", "sort_order": 2}}
+  },
+  {
+    "name": "a content edit made here revives a record deleted elsewhere",
+    "kind": "saved_query",
+    "mode": "personal",
+    "base": {"name": "Top", "query": "SELECT 1", "sort_order": 0, "updated_at": 1700000000000},
+    "local": {"name": "Top", "query": "SELECT 2", "sort_order": 0, "updated_at": 1700000005000},
+    "server": null,
+    "merged": {"record": {"name": "Top", "query": "SELECT 2", "sort_order": 0, "updated_at": 1700000005000}}
+  },
+  {
+    "name": "a reorder that only moved the edit stamp lets the deletion stand",
+    "kind": "saved_query",
+    "mode": "personal",
+    "base": {"name": "Top", "query": "SELECT 1", "sort_order": 0, "updated_at": 1700000000000},
+    "local": {"name": "Top", "query": "SELECT 1", "sort_order": 3, "updated_at": 1700000005000},
+    "server": null,
+    "merged": "deleted"
+  },
+  {
+    "name": "a new member a newer build wrote counts as content",
+    "kind": "group",
+    "mode": "personal",
+    "base": {"name": "Work", "sort_order": 0},
+    "local": null,
+    "server": {"name": "Work", "sort_order": 0, "from_a_newer_build": true},
+    "merged": {"record": {"name": "Work", "sort_order": 0, "from_a_newer_build": true}}
+  },
+  {
+    "name": "edits to different fields both land and an unknown member survives",
+    "kind": "connection",
+    "mode": "personal",
+    "base": {"name": "prod", "host": "db", "port": 5432, "future": {"a": 1}},
+    "local": {"name": "prod 2", "host": "db", "port": 5432, "future": {"a": 1}},
+    "server": {"name": "prod", "host": "db", "port": 6432, "future": {"a": 2}},
+    "merged": {"record": {"name": "prod 2", "host": "db", "port": 6432, "future": {"a": 2}}}
+  },
+  {
+    "name": "a field both sides changed takes the pushing device's value",
+    "kind": "connection",
+    "mode": "personal",
+    "base": {"name": "prod"},
+    "local": {"name": "mine"},
+    "server": {"name": "theirs"},
+    "merged": {"record": {"name": "mine"}}
+  },
+  {
+    "name": "a member removed here goes and one added there stays",
+    "kind": "connection",
+    "mode": "personal",
+    "base": {"name": "prod", "group_id": "E6C12C96-3CBD-4A0E-9F41-E36B47F35D84"},
+    "local": {"name": "prod"},
+    "server": {"name": "prod", "group_id": "E6C12C96-3CBD-4A0E-9F41-E36B47F35D84", "icon_name": "server.rack"},
+    "merged": {"record": {"name": "prod", "icon_name": "server.rack"}}
+  },
+  {
+    "name": "one favourite marked on two devices is one record with no conflict",
+    "kind": "favourite_table",
+    "mode": "personal",
+    "base": null,
+    "local": {"connection_id": "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44", "database": "shop", "name": "orders"},
+    "server": {"connection_id": "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44", "database": "shop", "name": "orders"},
+    "merged": {"record": {"connection_id": "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44", "database": "shop", "name": "orders"}}
+  },
+  {
+    "name": "both sides deleted",
+    "kind": "tag",
+    "mode": "personal",
+    "base": {"name": "prod"},
+    "local": null,
+    "server": null,
+    "merged": "deleted"
+  },
+  {
+    "name": "editor options changed on two devices both land",
+    "kind": "macos_settings",
+    "mode": "personal",
+    "base": {"category": "editor", "options": {"tabWidth": 4, "wordWrap": false}},
+    "local": {"category": "editor", "options": {"tabWidth": 2, "wordWrap": false}},
+    "server": {"category": "editor", "options": {"tabWidth": 4, "wordWrap": true}},
+    "merged": {"record": {"category": "editor", "options": {"tabWidth": 2, "wordWrap": true}}}
+  },
+  {
+    "name": "the keyboard goes whole",
+    "kind": "macos_settings",
+    "mode": "personal",
+    "base": {"category": "keyboard", "options": {"shortcuts": [{"id": "a", "value": {"keyCode": 1}}]}},
+    "local": {"category": "keyboard", "options": {"shortcuts": [{"id": "b", "value": {"keyCode": 1}}]}},
+    "server": {"category": "keyboard", "options": {"shortcuts": [{"id": "a", "value": {"keyCode": 1}}, {"id": "c", "value": {"keyCode": 2}}]}},
+    "merged": {"record": {"category": "keyboard", "options": {"shortcuts": [{"id": "b", "value": {"keyCode": 1}}]}}}
+  },
+  {
+    "name": "column widths merge column by column",
+    "kind": "macos_settings",
+    "mode": "personal",
+    "base": {"category": "columnLayout.6F1C2A9E%2D0B4D%2D4C8E%2D9A51%2D3D7E2B1F0C44.shop.public.orders", "options": {"columnWidths": [{"id": "email", "value": 200}, {"id": "id", "value": 80}]}},
+    "local": {"category": "columnLayout.6F1C2A9E%2D0B4D%2D4C8E%2D9A51%2D3D7E2B1F0C44.shop.public.orders", "options": {"columnWidths": [{"id": "email", "value": 200}, {"id": "id", "value": 60}]}},
+    "server": {"category": "columnLayout.6F1C2A9E%2D0B4D%2D4C8E%2D9A51%2D3D7E2B1F0C44.shop.public.orders", "options": {"columnWidths": [{"id": "email", "value": 240}, {"id": "id", "value": 80}, {"id": "password", "value": 90}]}},
+    "merged": {"record": {"category": "columnLayout.6F1C2A9E%2D0B4D%2D4C8E%2D9A51%2D3D7E2B1F0C44.shop.public.orders", "options": {"columnWidths": [{"id": "email", "value": 240}, {"id": "id", "value": 60}, {"id": "password", "value": 90}]}}}
+  },
+  {
+    "name": "a team rename against a deletion asks Keep Mine or Keep Theirs",
+    "kind": "library_folder",
+    "mode": "team",
+    "base": {"name": "Reports", "parent_client_id": "", "sort_order": 1},
+    "local": null,
+    "server": {"name": "Monthly reports", "parent_client_id": "", "sort_order": 1},
+    "merged": {"deletion_contested": {"kept": {"name": "Monthly reports", "parent_client_id": "", "sort_order": 1}, "deleted_here": true}}
+  },
+  {
+    "name": "a team reorder against a deletion lets the deletion stand without asking",
+    "kind": "library_query",
+    "mode": "team",
+    "base": {"name": "Top", "query": "SELECT 1", "sort_order": 1},
+    "local": {"name": "Top", "query": "SELECT 1", "sort_order": 5, "folder_client_id": "a1"},
+    "server": null,
+    "merged": "deleted"
+  },
+  {
+    "name": "a team field both sides set differently is contested and equal values are not",
+    "kind": "library_query",
+    "mode": "team",
+    "base": {"name": "Top", "query": "SELECT 1", "keyword": "t"},
+    "local": {"name": "Top 2", "query": "SELECT 2", "keyword": "t"},
+    "server": {"name": "Top 3", "query": "SELECT 2", "keyword": "u"},
+    "merged": {"contested": {"record": {"name": "Top 3", "query": "SELECT 2", "keyword": "u"}, "fields": ["name"]}}
+  }
+]

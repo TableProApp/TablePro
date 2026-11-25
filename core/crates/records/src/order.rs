@@ -1,18 +1,27 @@
+// The sort rule (0044, Conflict rules; 0010): an integer `sort_order`. A new sibling takes a free value between its
+// neighbours; any other change renumbers the list. Siblings read by order, then by name as Finder lists them, then
+// by id.
+
 use std::cmp::Ordering;
 
-use uuid::Uuid;
+use tablepro_core::value::order::natural_text_order;
+use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::char::is_combining_mark;
 
-use super::values::{name_order, sort_key};
-
-pub(super) struct Sibling<'a> {
-    pub id: Uuid,
+pub struct Sibling<'a, Id> {
+    pub id: Id,
     pub name: &'a str,
-    // The base record's raw `sortOrder`, when that record already places the item in this list.
+    // The base record's raw `sort_order`, when that record already places the item in this list.
     pub base: Option<Option<i64>>,
 }
 
-// Keep unchanged ordering values so reading a library sends no writes.
-pub(super) fn sort_orders(siblings: &[Sibling<'_>]) -> Vec<Option<i64>> {
+// Swift reads a missing number as 0.
+pub fn sort_key(raw: Option<i64>) -> i64 {
+    raw.unwrap_or(0)
+}
+
+// Keep unchanged ordering values so reading a list sends no writes.
+pub fn sort_orders<Id: Ord + Copy>(siblings: &[Sibling<'_, Id>]) -> Vec<Option<i64>> {
     keeping_base(siblings).unwrap_or_else(|| {
         siblings
             .iter()
@@ -25,13 +34,13 @@ pub(super) fn sort_orders(siblings: &[Sibling<'_>]) -> Vec<Option<i64>> {
     })
 }
 
-pub(super) fn reads_before(left: (i64, &str, Uuid), right: (i64, &str, Uuid)) -> Ordering {
+pub fn reads_before<Id: Ord>(left: (i64, &str, Id), right: (i64, &str, Id)) -> Ordering {
     left.0
         .cmp(&right.0)
         .then_with(|| name_order((left.1, left.2), (right.1, right.2)))
 }
 
-fn keeping_base(siblings: &[Sibling<'_>]) -> Option<Vec<Option<i64>>> {
+fn keeping_base<Id: Ord + Copy>(siblings: &[Sibling<'_, Id>]) -> Option<Vec<Option<i64>>> {
     let anchors: Vec<(usize, i64)> = siblings
         .iter()
         .enumerate()
@@ -78,8 +87,54 @@ fn fill(run: &mut [Option<i64>], previous: Option<i64>, next: Option<i64>) -> Op
     Some(())
 }
 
+// The Foundation probe checks common English name ties; other locales can order ties differently.
+pub fn name_order<Id: Ord>(left: (&str, Id), right: (&str, Id)) -> Ordering {
+    let (l, r) = (left.0, right.0);
+    natural_text_order(&letters(l), &letters(r))
+        .then_with(|| natural_text_order(&accented(l), &accented(r)))
+        .then_with(|| cases(l).cmp(&cases(r)))
+        .then_with(|| l.len().cmp(&r.len()))
+        .then_with(|| l.cmp(r))
+        .then(left.1.cmp(&right.1))
+}
+
+fn accented(text: &str) -> String {
+    text.nfd().flat_map(char::to_lowercase).collect()
+}
+
+fn letters(text: &str) -> String {
+    let mut folded = String::with_capacity(text.len());
+    for c in text
+        .nfd()
+        .filter(|c| !is_combining_mark(*c))
+        .flat_map(char::to_lowercase)
+    {
+        match c {
+            'ß' => folded.push_str("ss"),
+            'æ' => folded.push_str("ae"),
+            'œ' => folded.push_str("oe"),
+            'þ' => folded.push_str("th"),
+            'ø' => folded.push('o'),
+            'đ' | 'ð' => folded.push('d'),
+            'ł' => folded.push('l'),
+            'ı' => folded.push('i'),
+            _ => folded.push(c),
+        }
+    }
+    folded
+}
+
+fn cases(text: &str) -> Vec<bool> {
+    text.chars()
+        .filter(|c| c.is_alphabetic())
+        .map(char::is_uppercase)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
+    use uuid::Uuid;
+
     use super::*;
 
     fn ids(count: usize) -> Vec<Uuid> {
@@ -88,7 +143,7 @@ mod tests {
         ids
     }
 
-    fn siblings<'a>(ids: &[Uuid], names: &[&'a str], bases: &[Option<Option<i64>>]) -> Vec<Sibling<'a>> {
+    fn siblings<'a>(ids: &[Uuid], names: &[&'a str], bases: &[Option<Option<i64>>]) -> Vec<Sibling<'a, Uuid>> {
         ids.iter()
             .zip(names)
             .zip(bases)
@@ -156,5 +211,49 @@ mod tests {
 
         assert_eq!(sort_orders(&after), [Some(0), Some(1)]);
         assert_eq!(sort_orders(&before), [Some(0), Some(1)]);
+    }
+
+    // Foundation's verdicts on macOS 27 in English, as the probe prints them.
+    const FOUNDATION: [(&str, &str); 16] = [
+        ("é", "z"),
+        ("a", "A"),
+        ("a", "B"),
+        ("Prod 9", "Prod 10"),
+        ("e", "é"),
+        ("é", "f"),
+        ("work", "Work"),
+        ("a", "ä"),
+        ("ss", "ß"),
+        ("é", "Z"),
+        ("_a", "a"),
+        ("a b", "ab"),
+        ("ü", "v"),
+        ("Ø", "p"),
+        ("1", "a"),
+        ("a1", "a01"),
+    ];
+
+    #[test]
+    fn names_order_as_finder_lists_them() {
+        let id = Uuid::nil();
+        for (first, second) in FOUNDATION {
+            assert_eq!(
+                name_order((first, id), (second, id)),
+                Ordering::Less,
+                "{first} before {second}"
+            );
+            assert_eq!(
+                name_order((second, id), (first, id)),
+                Ordering::Greater,
+                "{second} after {first}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_same_name_falls_back_to_the_id() {
+        let (low, high) = (Uuid::from_u128(1), Uuid::from_u128(2));
+
+        assert_eq!(name_order(("Work", low), ("Work", high)), Ordering::Less);
     }
 }

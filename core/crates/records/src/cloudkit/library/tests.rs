@@ -6,7 +6,7 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 use super::*;
-use crate::{
+use tablepro_storage::{
     ConnectionColor, ConnectionGroupName, ConnectionIcon, ConnectionStore, GroupIcon, StoragePaths, SymbolName,
 };
 
@@ -561,7 +561,7 @@ impl Device {
 
     // A push saves each edit onto the server's copy, then takes the saved copies in as a pull would: a copy rebased onto another device's change holds fields this library has not read yet.
     fn push(&mut self, server: &mut Server) {
-        let sent = self.store.cloud_edits_blocking(&self.cache).expect("the edits");
+        let sent = edits_of(&self.store, &self.cache).expect("the edits");
         let mut saved = CloudRecords::default();
         for record in sent.groups {
             let base = self
@@ -602,7 +602,7 @@ impl Device {
             deleted: deleted.clone(),
             ..CloudPull::default()
         };
-        self.store.apply_cloud_pull_blocking(&pull).expect("the saved records");
+        apply_pull(&self.store, &pull).expect("the saved records");
         let gone: HashSet<String> = deleted
             .groups
             .iter()
@@ -645,7 +645,7 @@ impl Device {
             deleted_here: self.deleted_here.clone(),
             favorites_order: None,
         };
-        self.store.apply_cloud_pull_blocking(&pull).expect("the pull");
+        apply_pull(&self.store, &pull).expect("the pull");
         self.cache = current;
     }
 
@@ -833,7 +833,7 @@ fn two_devices_editing_apart_converge_and_then_send_nothing() {
         let [first, second] = &devices;
         assert_eq!(shape(&first.list()), shape(&second.list()), "seed {seed}");
         for device in &devices {
-            let sent = device.store.cloud_edits_blocking(&device.cache).expect("the edits");
+            let sent = edits_of(&device.store, &device.cache).expect("the edits");
             assert_eq!(sent, CloudRecords::default(), "seed {seed}");
         }
     }
