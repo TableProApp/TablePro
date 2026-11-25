@@ -87,8 +87,8 @@ impl KeyService {
         }
     }
 
-    // One push of a team's key objects. Once the server applied all of them they are held as applied in the returned
-    // transaction, for the caller to add its rows and commit.
+    // Nothing is held before the server applied the whole set, so a refused or lost push leaves no candidate behind; a
+    // lost answer heals on the next pull, which serves the objects this device wrote.
     async fn push_team_set(&self, team: TeamId, objects: &[KeyObject]) -> Result<Box<dyn StateTxn>, SyncError> {
         let scope = ScopeName::Team(team);
         let changes = objects.iter().map(create_change).collect::<Result<Vec<_>, _>>()?;
@@ -104,7 +104,9 @@ impl KeyService {
     // This account's certificates the team lacks: the current one, every replace it made, and every `av` from its
     // first copy in the team up, so a teammate can walk its replaces with no `av` missing (0056, Teams, Certificates in
     // the team).
-    pub(super) async fn publish_certificates(&self, team: TeamId) -> Result<(), SyncError> {
+    // `again` sends the current certificate even when the team holds it, as a member does that sees a wrap to an `av`
+    // it left (0056, Teams, A member checks what reaches it).
+    pub(super) async fn publish_certificates(&self, team: TeamId, again: bool) -> Result<(), SyncError> {
         let scope = ScopeName::Team(team);
         let mut txn = self.begin().await?;
         // Certificates are public, so this needs the account's keys held but no check on the key tables' secrets.
@@ -135,7 +137,7 @@ impl KeyService {
             })
             .filter(|certificate| {
                 certificate.av <= own.av
-                    && !in_team.contains(&certificate.av)
+                    && (!in_team.contains(&certificate.av) || again && certificate.av == own.av)
                     && (certificate.av == own.av
                         || certificate.kind == CertKind::Replace
                         || first.is_some_and(|first| certificate.av > first))
@@ -205,7 +207,8 @@ impl KeyService {
         );
         self.put_team_row(&mut *txn, None, &row).await?;
         txn.commit().await?;
-        Ok(())
+        // A creator copies in every replace it made too, as a member that joins does.
+        self.publish_certificates(team, false).await
     }
 
     // The team as this account acts on it now: its own keys, the roster, and a current version it holds.
@@ -217,6 +220,7 @@ impl KeyService {
         let own = self.acting(txn).await?;
         let roster = self.roster_of(team)?;
         let book = self.load_team(txn, team).await?;
+        book.check_anchor()?;
         let row = book
             .row()
             .filter(|row| row.state == KeyVersionState::Ok)
@@ -230,7 +234,7 @@ impl KeyService {
     // An owner's or admin's Confirm: the current version wrapped to the member's newest certificate, which is pinned on
     // first use. A member under an alert is re-confirmed only after the person compares or accepts its new key.
     pub(super) async fn confirm(&self, team: TeamId, account: AccountId) -> Result<(), SyncError> {
-        self.publish_certificates(team).await?;
+        self.publish_certificates(team, false).await?;
         let scope = ScopeName::Team(team);
         let mut txn = self.begin().await?;
         let (own, roster, book, row) = self.held_team(&mut *txn, team).await?;
@@ -265,7 +269,7 @@ impl KeyService {
             txn.commit().await?;
             return Ok(());
         }
-        roster::check_room(&row.holders, account)?;
+        roster::check_room(&roster, &row.holders, account)?;
         let key = secrets::team_key(self, team, &book, &mut facts, row.version, row.version).await?;
         let wrap = build::wrap_to(
             self.origin(),
@@ -299,16 +303,14 @@ impl KeyService {
 
     // The next version, its ring and a wrap to each holder on the roster without an open alert, less `remove`. An
     // owner or admin rotates at any time and any other holder only while the team is due (0051, Roles in a team
-    // scope); a holder of a stopped device's version confirms it again this way.
+    // scope). The server judges that: the mark this device last read can lag behind its own account rotation, after
+    // which its review's team rotations come at once. A holder of a stopped device's version confirms it again this
+    // way.
     pub(super) async fn rotate(&self, team: TeamId, remove: &[AccountId]) -> Result<(), SyncError> {
-        self.publish_certificates(team).await?;
+        self.publish_certificates(team, false).await?;
         let scope = ScopeName::Team(team);
         let mut txn = self.begin().await?;
         let (own, roster, book, row) = self.held_team(&mut *txn, team).await?;
-        let due = roster.rotation_due || self.scope_row(&mut *txn, scope).await?.rotation_due;
-        if !roster.role.is_some_and(Role::manages_keys) && !due {
-            return Err(rejected(RejectedCode::Role));
-        }
         let mut cache = FactsCache::default();
         let mut facts = ServiceFacts {
             service: self,
@@ -341,7 +343,7 @@ impl KeyService {
     // An owner's restart once no member on the roster holds the current version: the next version with `start` 1, a
     // ring when this device still holds the current key, and wraps to this account and the members it confirms.
     pub(super) async fn restart(&self, team: TeamId, confirm: &[AccountId]) -> Result<(), SyncError> {
-        self.publish_certificates(team).await?;
+        self.publish_certificates(team, false).await?;
         let scope = ScopeName::Team(team);
         let mut txn = self.begin().await?;
         let (own, roster, book, row) = self.held_team(&mut *txn, team).await?;
@@ -369,6 +371,9 @@ impl KeyService {
             if !roster.members.iter().any(|member| member.account == account) {
                 return Err(SyncError::Unknown { what: "member" });
             }
+            if let Some(newest) = facts.chain_newest(account).await? {
+                facts.offer(&newest).await?;
+            }
             let certificate = match TeamFacts::pin(&mut facts, account).await? {
                 Some(pin) if !pin.alert => roster::current_certificate(&mut facts, account).await?,
                 _ => None,
@@ -379,9 +384,11 @@ impl KeyService {
             recipients.push(certificate);
         }
         roster::check_fits(recipients.len())?;
-        let previous = secrets::team_key(self, team, &book, &mut facts, row.version, row.version)
-            .await
-            .ok();
+        let previous = match secrets::team_key(self, team, &book, &mut facts, row.version, row.version).await {
+            Ok(key) => Some(key),
+            Err(SyncError::NotAllowed { .. }) => None,
+            Err(other) => return Err(other),
+        };
         drop(txn);
         let next = row.version.next()?;
         let key = ScopeKey::generate()?;

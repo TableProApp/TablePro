@@ -46,7 +46,7 @@ impl TeamFlows for KeyService {
 
     async fn publish_member_certificate(&self, team: TeamId) -> Result<(), SyncError> {
         let _serial = self.serialized().await;
-        self.publish_certificates(team).await
+        self.publish_certificates(team, false).await
     }
 
     async fn confirm_member(&self, team: TeamId, account: AccountId) -> Result<(), SyncError> {

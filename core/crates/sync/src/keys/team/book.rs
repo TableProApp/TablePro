@@ -203,7 +203,6 @@ impl TeamBook {
         owner == self.team.0 && purpose == KeyPurpose::Team
     }
 
-    // Takes every version the rules allow, from the one held up, and reports what it refused or holds.
     pub(crate) async fn advance(&mut self, facts: &mut dyn TeamFacts) -> Result<Progress, SyncError> {
         let mut progress = Progress::default();
         if self.row.is_none() {
@@ -238,6 +237,17 @@ impl TeamBook {
         }
         self.hold_what_lies_ahead(&mut progress);
         Ok(progress)
+    }
+
+    // A flow that uses the version the device holds checks first that the record it holds there is the anchored one.
+    pub(crate) fn check_anchor(&self) -> Result<(), SyncError> {
+        if let Some(row) = &self.row
+            && let Some(item) = self.versions.get(&row.version)
+            && item.value.digest(&self.origin)? != row.record
+        {
+            return Err(KeysError::Conflict.into());
+        }
+        Ok(())
     }
 
     // Whether this account holds the version the device advanced to, under its current IK.
@@ -464,6 +474,7 @@ impl TeamBook {
         }
         let wraps = self.wraps.get(&row.version).cloned().unwrap_or_default();
         let mut open: Vec<&Item<Wrap>> = wraps.iter().collect();
+        let mut waiting = false;
         loop {
             let mut added = false;
             let mut still = Vec::new();
@@ -471,7 +482,10 @@ impl TeamBook {
                 match wrap_check(&self.origin, facts, &holders, &item.value, true).await? {
                     WrapCheck::Holder(holder) => added |= holders.insert(holder),
                     WrapCheck::NotYet => still.push(item),
-                    WrapCheck::Wait => progress.hold(item),
+                    WrapCheck::Wait => {
+                        waiting = true;
+                        progress.hold(item);
+                    }
                     WrapCheck::Fail(error) => progress.refuse(item, error),
                 }
             }
@@ -480,8 +494,14 @@ impl TeamBook {
                 break;
             }
         }
+        // A wrap held for a missing certificate may be the one that makes a wrapper a holder, so its wrapper's wraps
+        // wait with it rather than being refused (0056, Rollback).
         for item in open {
-            progress.refuse(item, KeysError::NotHolder);
+            if waiting {
+                progress.hold(item);
+            } else {
+                progress.refuse(item, KeysError::NotHolder);
+            }
         }
         if let Some(row) = &mut self.row {
             row.holders = holders.into_iter().collect();
@@ -522,6 +542,12 @@ impl TeamBook {
             }
             if let Err(error) = check_signed_under_newest(record.signer_av, pin.av) {
                 progress.refuse(&item, error);
+                continue;
+            }
+            // A restart replaces a key a member holds, so it never clears the stop of a device whose account held
+            // the stopped version (0056, Teams, No holder left).
+            if record.start == Start::Over && account_holds(&self.origin, facts, &row.holders, self.me).await? {
+                progress.refuse(&item, KeysError::NotHolder);
                 continue;
             }
             let own_wraps: Vec<Item<Wrap>> = self

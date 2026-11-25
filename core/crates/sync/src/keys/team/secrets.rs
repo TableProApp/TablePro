@@ -15,7 +15,7 @@ use super::facts::{Certificate, TeamFacts};
 use crate::api::error::SyncError;
 use crate::keys::KeyService;
 
-// This account's keys at each `av` the device still holds, which open the wraps addressed to that `av`.
+// Behind a trait so the reading rules run in tests without a device store.
 #[async_trait]
 pub(crate) trait Keyring: Send + Sync {
     fn origin(&self) -> &Origin;

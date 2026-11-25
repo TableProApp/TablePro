@@ -10,7 +10,6 @@ use tablepro_keys::record_id::KeyRecordId;
 use tablepro_keys::scope_key::{KeyRef, Ring, Start, VersionRecord};
 use tablepro_keys::wrap::{Wrap, Wrapper, scope_key_target};
 
-// This account at its current `av`, signing from this key device.
 pub(crate) struct Signer<'a> {
     pub(crate) account: AccountId,
     pub(crate) av: Version,
@@ -53,7 +52,6 @@ fn wrap_object(wrap: &Wrap) -> KeyObject {
     }
 }
 
-// The wrap of `key` to a recipient at the `av` its certificate names, signed by the signer's ASK.
 pub(crate) fn wrap_to(
     origin: &Origin,
     key: KeyRef,
@@ -84,7 +82,6 @@ pub(crate) struct NewVersion<'a> {
     pub(crate) recipients: &'a [AccountCertificate],
 }
 
-// A team creation's or rotation's version objects: the version record, its ring, then a wrap to each recipient.
 pub(crate) fn version_objects(
     origin: &Origin,
     plan: &NewVersion<'_>,

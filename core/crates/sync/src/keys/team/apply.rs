@@ -32,17 +32,26 @@ fn parse(record: &PulledRecord) -> Result<KeyObject, KeysError> {
     KeyObject::parse(record.kind.as_str(), &record.record_id, fields.as_bytes())
 }
 
-// A snapshot carries no order: its certificates go to the pins first, then its versions are judged as one set.
-fn arrival_order(arrival: &KeyArrival) -> Vec<&PulledRecord> {
-    let live = arrival.records.iter().filter(|record| record.deleted.is_none());
-    match arrival.order {
-        ArrivalOrder::InOrder => live.collect(),
-        ArrivalOrder::Snapshot => {
-            let (members, rest): (Vec<&PulledRecord>, Vec<&PulledRecord>) =
-                live.partition(|record| record.kind.as_str() == KeyKind::Member.name());
-            members.into_iter().chain(rest).collect()
-        }
+// The records a call takes, each parsed. A snapshot carries no order: its certificates go to the pins first, each
+// account's in ascending `av` so an endorsement is held before the replace it follows, then its versions are judged
+// as one set.
+fn arrival_order(arrival: &KeyArrival) -> Vec<(&PulledRecord, Result<KeyObject, KeysError>)> {
+    let mut parsed: Vec<(&PulledRecord, Result<KeyObject, KeysError>)> = arrival
+        .records
+        .iter()
+        .filter(|record| record.deleted.is_none())
+        .map(|record| (record, parse(record)))
+        .collect();
+    if arrival.order == ArrivalOrder::Snapshot {
+        parsed.sort_by_key(|(_, object)| match object {
+            Ok(KeyObject {
+                id: KeyRecordId::Member { account, av },
+                ..
+            }) => (0, Some((*account, *av))),
+            _ => (1, None),
+        });
     }
+    parsed
 }
 
 fn merge(into: &mut Progress, from: Progress) {
@@ -65,55 +74,72 @@ impl KeyService {
         let mut txn = self.begin().await?;
         let mut book = self.load_team(&mut *txn, team).await?;
         let before = book.row().cloned();
+        // The replay position: the newest version record the server served at or before each place, which the
+        // honest server writes by, apart from the version this device verified. Only a pull moves it (0056, Rollback,
+        // In order; 0054, `scopes`).
+        let mut in_force = self.scope_row(&mut *txn, arrival.scope).await?.key_version;
         let mut own_member_av = self.own_member_av(&mut *txn, arrival.scope).await?;
         let mut cache = FactsCache::default();
         let mut progress = Progress::default();
         let mut outcome = Outcome::default();
-        // Versions, rings or wraps taken since the last advance: a certificate in order is judged after them only.
+        // Versions, rings or wraps taken since the last advance. In order, a certificate or the next version record
+        // is judged only after what came before it.
         let mut pending = false;
-        for record in arrival_order(&arrival) {
-            let object = match parse(record) {
+        for (record, object) in arrival_order(&arrival) {
+            let object = match object {
                 Ok(object) => object,
                 Err(error) => {
                     refuse(&mut progress, &record.record_id, error);
                     continue;
                 }
             };
-            if let KeyRecordId::Member { .. } = object.id {
-                if arrival.order == ArrivalOrder::InOrder && pending {
-                    let step = self.advance_team(&mut *txn, &mut book, &mut cache).await?;
-                    merge(&mut progress, step);
-                    pending = false;
-                }
-            } else {
-                pending = true;
+            let boundary = matches!(object.id, KeyRecordId::Member { .. } | KeyRecordId::Version(_));
+            if arrival.order == ArrivalOrder::InOrder && boundary && pending {
+                let step = self.advance_team(&mut *txn, &mut book, &mut cache).await?;
+                merge(&mut progress, step);
+                pending = false;
             }
             self.take_object(&mut *txn, &mut book, &mut cache, &object, &mut progress, &mut outcome)
                 .await?;
-            if let KeyRecordId::Member { account, av } = object.id
-                && account == self.account()
-                && !progress
-                    .refused
-                    .iter()
-                    .any(|refused| refused.record_id == record.record_id)
-            {
-                own_member_av = own_member_av.max(Some(av));
-            }
-            if arrival.order == ArrivalOrder::InOrder
-                && let KeyRecordId::Wrap(target) = object.id
-                && target.recipient == Recipient::Account(self.account())
-                && own_member_av.is_some_and(|newest| target.recipient_version < newest)
-                && book.row().is_none_or(|row| target.version >= row.version)
-            {
-                // A wrap of a live version to an `av` this account had left when the team showed its newer
-                // certificate: a teammate was kept on the old view (0056, Teams, A member checks what reaches it).
-                outcome.superseded = true;
+            let kept = !progress
+                .refused
+                .iter()
+                .any(|refused| refused.record_id == record.record_id);
+            match object.id {
+                KeyRecordId::Member { account, av } => {
+                    if kept && account == self.account() {
+                        own_member_av = own_member_av.max(Some(av));
+                    }
+                }
+                KeyRecordId::Version(key) => {
+                    pending = true;
+                    if book.check_shape(&object).is_ok() {
+                        in_force = in_force.max(Some(key.version));
+                    }
+                }
+                KeyRecordId::Wrap(target) => {
+                    pending = true;
+                    if arrival.order == ArrivalOrder::InOrder
+                        && target.recipient == Recipient::Account(self.account())
+                        && own_member_av.is_some_and(|newest| target.recipient_version < newest)
+                        && in_force.is_none_or(|version| target.version >= version)
+                    {
+                        // A wrap of the version in force to an `av` this account had left when the team showed its
+                        // newer certificate: a teammate was kept on the old view (0056, Teams, A member checks what
+                        // reaches it).
+                        outcome.superseded = true;
+                    }
+                }
+                _ => pending = true,
             }
         }
         let step = self.advance_team(&mut *txn, &mut book, &mut cache).await?;
         merge(&mut progress, step);
-        self.commit_team(txn, team, before.as_ref(), book, &mut outcome, progress)
-            .await
+        let mut applied = self
+            .commit_team(txn, team, before.as_ref(), book, &mut outcome, progress)
+            .await?;
+        applied.in_force = in_force;
+        Ok(applied)
     }
 
     async fn own_member_av(&self, txn: &mut dyn StateTxn, scope: ScopeName) -> Result<Option<Version>, SyncError> {
@@ -144,7 +170,6 @@ impl KeyService {
         book.advance(&mut facts).await
     }
 
-    // Keeps one served object, then gives a certificate to the pins or a version, ring or wrap to the book.
     async fn take_object(
         &self,
         txn: &mut dyn StateTxn,
@@ -222,7 +247,7 @@ impl KeyService {
         outcome.events.extend(progress.events);
         self.tell(team, outcome).await?;
         Ok(KeyApplied {
-            in_force: after.map(|row| row.version),
+            in_force: None,
             held: progress.held.into_iter().collect(),
             refused: progress.refused,
         })
@@ -259,7 +284,7 @@ impl KeyService {
             self.raise_notice(KeyNoticeKind::SupersededWrap { team })?;
             // The alarm reports the split; copying the certificate in again is what the member can add, and a failed
             // copy is retried when the roster is next read.
-            let _ = self.publish_certificates(team).await;
+            let _ = self.publish_certificates(team, true).await;
         }
         Ok(())
     }
@@ -272,9 +297,9 @@ impl KeyService {
         self.rosters().put(team, roster.clone());
         self.end_unconfirmable_stop(team, &roster).await?;
         if self.own_account_in_team_missing(team).await? {
-            self.publish_certificates(team).await?;
+            self.publish_certificates(team, false).await?;
         }
-        if roster.rotation_due && self.may_rotate_unprompted(team).await? {
+        if roster.rotation_due && self.may_rotate_unprompted(team, &roster).await? {
             match self.rotate(team, &[]).await {
                 // Another holder's rotation landed first and met the mark.
                 Err(SyncError::Rejected {
@@ -338,9 +363,9 @@ impl KeyService {
             .is_none())
     }
 
-    // Any holder rotates while the team is due, unless this device's own account rotation still has to write the team
-    // rotations its removal review chose, which must not be pre-empted by one that keeps every member.
-    async fn may_rotate_unprompted(&self, team: TeamId) -> Result<bool, SyncError> {
+    // Any holder rotates while the team is due, unless a removal review still has to choose whom the rotation leaves
+    // out: this device's own account rotation not yet written, or another member's, which that member's app writes.
+    async fn may_rotate_unprompted(&self, team: TeamId, roster: &Roster) -> Result<bool, SyncError> {
         let mut txn = self.begin().await?;
         let pending = txn.scan(&RowRange::Table(Table::KeyPending)).await?;
         if pending.iter().any(|row| {
@@ -362,6 +387,9 @@ impl KeyService {
             scope: ScopeName::Team(team),
             cache: &mut cache,
         };
+        if roster::rotation_left_to_a_member(&book, &mut facts, roster, self.account()).await? {
+            return Ok(false);
+        }
         book.own_holds(&mut facts).await
     }
 

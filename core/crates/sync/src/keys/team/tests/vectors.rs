@@ -249,7 +249,7 @@ async fn s3_c1_an_old_key_version_and_its_recipients_next_version_stop_the_devic
     assert_eq!(after.holders, row(6, &held, KeyVersionState::Ok).holders);
     assert!(!after.holders.iter().any(|holder| holder.account == m.id));
 
-    // Pulling the same objects again, or the next version on top, moves nothing.
+    // Judging the same objects again moves nothing.
     let again = team.advance(&mut facts).await.unwrap();
     assert!(again.events.is_empty());
     assert_eq!(team.row().unwrap().version, v(6));
@@ -314,7 +314,7 @@ async fn a_stopped_device_takes_the_rotation_of_a_qualifying_admin_that_rotated_
 }
 
 #[tokio::test]
-async fn a_stopped_team_ends_when_no_owner_or_admin_on_the_roster_held_its_version() {
+async fn no_one_can_confirm_a_stopped_team_again_when_no_owner_or_admin_on_the_roster_held_its_version() {
     let world = world();
     let (a, o, m, p) = (
         world.account("A"),
@@ -502,7 +502,7 @@ async fn a_sole_owner_who_reset_takes_its_own_restart_and_its_ring_opens_version
 }
 
 #[tokio::test]
-async fn a_team_scope_an_approval_imported_builds_its_holders_from_the_version_signer() {
+async fn a_team_scope_an_approval_imported_builds_its_holders_from_the_signer_and_the_wraps_it_accepts() {
     let world = world();
     let (a, p) = (world.account("A"), world.account("P"));
     let mut facts = TestFacts::default();
@@ -512,11 +512,14 @@ async fn a_team_scope_an_approval_imported_builds_its_holders_from_the_version_s
     let mut imported = row(6, &[], KeyVersionState::Ok);
     imported.record = six.version_record().unwrap().digest(&origin()).unwrap();
     let mut team = TeamBook::new(origin(), super::team(), p.id, Some(imported));
-    take(&mut team, &[six]);
+    let six_key = tablepro_keys::keys::ScopeKey::from_slice(&world.team_key(6)).unwrap();
+    take(&mut team, &[six, super::wrap(6, &six_key, (&a, 2), (&p, 2))]);
 
     team.advance(&mut facts).await.unwrap();
 
-    assert_eq!(team.row().unwrap().holders, [a.holder(2)]);
+    let mut expected = vec![a.holder(2), p.holder(2)];
+    expected.sort();
+    assert_eq!(team.row().unwrap().holders, expected);
     assert_eq!(team.row().unwrap().state, KeyVersionState::Ok);
 }
 

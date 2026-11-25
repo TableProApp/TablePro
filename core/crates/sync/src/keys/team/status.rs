@@ -68,9 +68,9 @@ impl KeyService {
     }
 }
 
-// Whether this account held `version`: it signed its record or a wrap of it names this account, under an IK this
-// account still holds. A stopped device takes a re-confirming rotation only from such a holder, so the app offers it
-// only to an owner or admin that is one (0056, Teams, A stopped device).
+// Whether this account held `version`: it signed the version's record, or a wrap of it to this account verifies under
+// its wrapper's certificate, under an IK this account still holds. A stopped device takes a re-confirming rotation only
+// from such a holder, so the app offers it only to an owner or admin that is one (0056, Teams, A stopped device).
 async fn held_version(
     origin: &tablepro_keys::encoding::Origin,
     book: &TeamBook,
@@ -78,24 +78,42 @@ async fn held_version(
     me: AccountId,
     version: Version,
 ) -> Result<bool, SyncError> {
-    let mut named: Vec<Version> = book
+    let mut pairs = Vec::new();
+    if let Some(record) = book.version_record(version).filter(|record| record.signer == me)
+        && let Some(own) = verified(facts, me, record.signer_av).await?
+        && record.verify(origin, &own.ask).is_ok()
+    {
+        pairs.push(Holder {
+            account: me,
+            ik: own.ik,
+        });
+    }
+    let wraps: Vec<_> = book
         .wraps_of(version)
         .filter(|wrap| wrap.target.recipient == Recipient::Account(me))
-        .map(|wrap| wrap.target.recipient_version)
+        .cloned()
         .collect();
-    if let Some(record) = book.version_record(version).filter(|record| record.signer == me) {
-        named.push(record.signer_av);
-    }
-    let mut pairs = Vec::new();
-    for av in named {
-        if let Some(Certificate::Usable(certificate) | Certificate::Alerted(certificate)) =
-            facts.certificate(me, av).await?
+    for wrap in wraps {
+        if let Some(own) = verified(facts, me, wrap.target.recipient_version).await?
+            && let Some(wrapper) = verified(facts, wrap.wrapper.account, wrap.wrapper.av).await?
+            && wrap.verify(origin, &own.aek, &wrapper.ask).is_ok()
         {
             pairs.push(Holder {
                 account: me,
-                ik: certificate.ik,
+                ik: own.ik,
             });
         }
     }
     account_holds(origin, facts, &pairs, me).await
+}
+
+async fn verified(
+    facts: &mut dyn TeamFacts,
+    account: AccountId,
+    av: Version,
+) -> Result<Option<tablepro_keys::cert::AccountCertificate>, SyncError> {
+    Ok(match facts.certificate(account, av).await? {
+        Some(Certificate::Usable(certificate) | Certificate::Alerted(certificate)) => Some(certificate),
+        _ => None,
+    })
 }

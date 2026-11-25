@@ -4,10 +4,10 @@
 
 use std::collections::BTreeSet;
 
-use tablepro_keys::cert::AccountCertificate;
+use tablepro_keys::cert::{AccountCertificate, CertKind};
 use tablepro_keys::encoding::{AccountId, Origin};
 
-use super::book::account_holds;
+use super::book::{TeamBook, account_holds};
 use super::facts::{Certificate, TeamFacts};
 use crate::api::error::SyncError;
 use crate::api::key_flows::{MemberKeyStatus, Roster};
@@ -24,10 +24,12 @@ pub(crate) fn holder_accounts(holders: &[Holder]) -> BTreeSet<AccountId> {
     holders.iter().map(|holder| holder.account).collect()
 }
 
-// A confirmation gives an account that does not hold the version its key, which past 5,000 holders is `team_full`:
-// admins split the team (0056, Teams, Size).
-pub(crate) fn check_room(holders: &[Holder], account: AccountId) -> Result<(), SyncError> {
-    let accounts = holder_accounts(holders);
+// A confirmation gives an account that does not hold the version its key, which past 5,000 members holding it is
+// `team_full`: admins split the team (0056, Teams, Size; 0051, Confirming). A holder no longer on the roster is no
+// member.
+pub(crate) fn check_room(roster: &Roster, holders: &[Holder], account: AccountId) -> Result<(), SyncError> {
+    let on_roster: BTreeSet<AccountId> = roster.members.iter().map(|member| member.account).collect();
+    let accounts: BTreeSet<AccountId> = holder_accounts(holders).intersection(&on_roster).copied().collect();
     if accounts.contains(&account) || accounts.len() < holder_limit() {
         Ok(())
     } else {
@@ -137,4 +139,37 @@ pub(crate) async fn rotation_recipients(
         recipients.push(certificate);
     }
     Ok(recipients)
+}
+
+// A team due a rotation because a member's account rotated after a device removal or a recovery is rotated by that
+// member's own app, after its review of whom to leave out; a holder that rotated first would keep them. A replace, a
+// reset or a member's removal leaves it to any holder (0056, Teams, Removing a member; A member's account keys rotate).
+pub(crate) async fn rotation_left_to_a_member(
+    book: &TeamBook,
+    facts: &mut dyn TeamFacts,
+    roster: &Roster,
+    me: AccountId,
+) -> Result<bool, SyncError> {
+    let Some(row) = book.row() else { return Ok(false) };
+    for member in roster.members.iter().filter(|member| member.account != me) {
+        let signed = book
+            .version_record(row.version)
+            .filter(|record| record.signer == member.account)
+            .map(|record| record.signer_av);
+        let wrapped = book
+            .wraps_of(row.version)
+            .filter(|wrap| wrap.target.recipient == tablepro_keys::wrap::Recipient::Account(member.account))
+            .map(|wrap| wrap.target.recipient_version)
+            .max();
+        let Some(held_at) = signed.max(wrapped) else { continue };
+        if facts
+            .chain(member.account)
+            .await?
+            .iter()
+            .any(|certificate| certificate.av > held_at && certificate.kind == CertKind::GenesisOrRotation)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

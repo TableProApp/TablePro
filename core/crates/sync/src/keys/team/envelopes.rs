@@ -134,6 +134,7 @@ impl KeyService {
         let due = self.scope_row(&mut *txn, scope).await?.rotation_due;
         check_may_seal(self.rosters().get(team).as_ref(), due)?;
         let book = self.load_team(&mut *txn, team).await?;
+        book.check_anchor()?;
         let Some(row) = book.row().filter(|row| row.state == KeyVersionState::Ok).cloned() else {
             return Err(SyncError::NotAllowed {
                 what: "seal under a team key this device does not hold as current",
@@ -162,8 +163,8 @@ impl KeyService {
             secret.expose_secret(),
             &to_json(dest)?,
         )?;
-        keep_kv(&mut *txn, scope, envelope, row.version).await?;
-        txn.commit().await?;
+        // The copy this device holds is the server's: the `kv` it keeps moves when the pushed envelope comes back in a
+        // pull, so a push the server refuses leaves the copy it holds openable.
         serde_json::from_str(&sealed_json(&sealed)).map_err(|_| SyncError::Malformed { what: "envelope" })
     }
 
@@ -181,6 +182,7 @@ impl KeyService {
         let sealed = parse_sealed(&text)?;
         let mut txn = self.begin().await?;
         let book = self.load_team(&mut *txn, team).await?;
+        book.check_anchor()?;
         let newest = book.row().map(|row| row.version).ok_or(SyncError::NotAllowed {
             what: "open a team secret before this device holds the team key",
         })?;

@@ -1,5 +1,6 @@
 // The team rules the vectors leave to the flows, each refusal with its exact code: holder chains, alerts, held objects,
-// forks, restarts, joining, stops, reading keys, the 5,000-holder limit, envelope versions and roster decisions.
+// forks, restarts, joining, stops, reading keys, and the checks the service makes before it seals, confirms, rotates
+// or decides on a roster: the 5,000-holder limit, envelope versions, `rotation_due`, member standing and recipients.
 
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{KeyBody, KeyObject, VersionBody};
@@ -434,6 +435,51 @@ async fn a_stopped_device_counts_no_new_wrap_and_needs_its_own_wrap_from_a_count
 }
 
 #[tokio::test]
+async fn a_restart_by_a_counted_holder_never_clears_the_stop_of_a_device_whose_account_held_the_version() {
+    let mut t = five();
+    let held = [t.a.holder(1), t.me.holder(1)];
+    let mut team = book(&t.me, Some(row(5, &held, KeyVersionState::Stopped)));
+    let objects = version(6, Start::Over, &key(), None, (&t.a, 1), &[(&t.a, 1), (&t.me, 1)]);
+    insert_all(&mut team, &objects);
+
+    let progress = team.advance(&mut t.facts).await.unwrap();
+
+    assert_eq!(refusal(&progress, &objects, "key.version"), Some("keys.not_holder"));
+    assert_eq!(team.row().unwrap().state, KeyVersionState::Stopped);
+}
+
+#[tokio::test]
+async fn a_wrap_whose_wrapper_waits_on_a_missing_certificate_is_held_not_refused() {
+    let mut t = five();
+    let newcomer = Account::generated(12, 1);
+    let late = Account::generated(13, 1);
+    t.facts.know(&newcomer, 1);
+    t.facts.know(&late, 1);
+    t.facts.certificates.remove(&(late.id, v(1)));
+    let five_key = key();
+    let mut team = book(
+        &t.me,
+        Some(row(5, &[t.a.holder(1), t.me.holder(1)], KeyVersionState::Ok)),
+    );
+    let to_late = wrap(5, &five_key, (&t.a, 1), (&late, 1));
+    let by_late = wrap(5, &five_key, (&late, 1), (&newcomer, 1));
+    team.insert(&by_late, true).unwrap();
+    team.insert(&to_late, true).unwrap();
+
+    let waiting = team.advance(&mut t.facts).await.unwrap();
+
+    assert!(waiting.refused.is_empty(), "{:?}", waiting.refused);
+    assert!(waiting.held.contains(&to_late.id.to_wire()) && waiting.held.contains(&by_late.id.to_wire()));
+
+    t.facts.know(&late, 1);
+    let arrived = team.advance(&mut t.facts).await.unwrap();
+
+    assert!(arrived.refused.is_empty());
+    let holders = &team.row().unwrap().holders;
+    assert!(holders.contains(&late.holder(1)) && holders.contains(&newcomer.holder(1)));
+}
+
+#[tokio::test]
 async fn a_restore_stop_is_left_to_the_restore_flow_and_a_catch_up_failure_met_meanwhile_makes_it_a_catch_up() {
     let mut t = five();
     let held = [t.a.holder(1), t.me.holder(1)];
@@ -539,32 +585,46 @@ async fn a_restart_without_a_ring_ends_the_walk_down() {
 }
 
 #[test]
-fn a_confirmation_past_five_thousand_holders_is_team_full() {
+fn a_confirmation_past_five_thousand_members_holding_the_key_is_team_full() {
+    let account = |index: u128| tablepro_keys::encoding::AccountId(Uuid::from_u128(index + 1));
     let holders: Vec<Holder> = (0..5_000_u128)
         .map(|index| Holder {
-            account: tablepro_keys::encoding::AccountId(Uuid::from_u128(index + 1)),
+            account: account(index),
             ik: tablepro_keys::keys::Ed25519Public([0; 32]),
         })
         .collect();
-    let newcomer = tablepro_keys::encoding::AccountId(Uuid::from_u128(9_999));
+    let on_roster = |count: u128| Roster {
+        members: (0..count)
+            .map(|index| TeamMember {
+                account: account(index),
+                role: Role::Member,
+            })
+            .chain(std::iter::once(TeamMember {
+                account: account(9_999),
+                role: Role::Member,
+            }))
+            .collect(),
+        role: Some(Role::Admin),
+        rotation_due: false,
+        stopped: Vec::new(),
+        caught_up: true,
+    };
+    let newcomer = account(9_999);
+    let team_full = crate::api::error::SyncError::Rejected {
+        code: RejectedCode::TeamFull,
+    };
 
-    let full = roster::check_room(&holders, newcomer).unwrap_err();
     assert_eq!(
-        full,
-        crate::api::error::SyncError::Rejected {
-            code: RejectedCode::TeamFull
-        }
+        roster::check_room(&on_roster(5_000), &holders, newcomer),
+        Err(team_full.clone())
     );
     assert_eq!(RejectedCode::TeamFull.as_str(), "team_full");
-    assert!(roster::check_room(&holders, holders[0].account).is_ok());
-    assert!(roster::check_room(&holders[..4_999], newcomer).is_ok());
+    assert!(roster::check_room(&on_roster(5_000), &holders, holders[0].account).is_ok());
+    assert!(roster::check_room(&on_roster(5_000), &holders[..4_999], newcomer).is_ok());
+    // A holder that left the roster no longer counts against the limit.
+    assert!(roster::check_room(&on_roster(4_999), &holders, newcomer).is_ok());
     assert!(roster::check_fits(5_000).is_ok());
-    assert_eq!(
-        roster::check_fits(5_001),
-        Err(crate::api::error::SyncError::Rejected {
-            code: RejectedCode::TeamFull
-        })
-    );
+    assert_eq!(roster::check_fits(5_001), Err(team_full));
 }
 
 #[test]
