@@ -72,7 +72,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | Substitute a key at first contact | Not prevented. The fingerprint words or QR code catch it. Every wrap names its recipient's public key under the wrapper's signature, so a teammate's later wrap that shows another key raises an alert | Pins; Signed objects and wraps |
 | Invent a member and wait for the team key | Nothing is wrapped automatically. An owner or admin confirms each member in the app, with the words shown | Teams |
 | Invent a member or admin that rotates the team key to one the server knows | A version counts only when a holder of the previous version signs it, and a made-up account holds none | Teams |
-| Substitute keys during device approval | The words cover the new device's keys, the account's IK and the approving device's DSK. The new device commits to its view before the approving device sends its random value, so the server gets one guess at 2^-64.6 per session. The account keys and pins the new device receives are signed by that DSK, so a stolen device holding the account keys cannot stand in for the approver | Approving a device |
+| Substitute keys during device approval | The words cover the new device's keys, the account's IK and the approving device's keys, and each side pins the other's keys only from them, never from a certificate. The new device commits to its view before the approving device sends its random value, so the server gets one guess at 2^-64.6 per session. The account keys and pins the new device receives are signed by that DSK, so a stolen device holding the account keys cannot stand in for the approver | Approving a device |
 | Show a new device other teammates than the person's other devices see | The approving device sends its pins and newest versions in a wrap signed by its DSK, which the words cover | Approving a device; Pins |
 | Have a rotation send new account keys to a device that a stolen account key certified | A rotation keeps only the devices the rotating device compared with itself. Every other device joins again by approval | Account flows, Rotation |
 | Replay an older certificate, version or key | Clients keep the newest account key version and scope key versions, under 0054's anchor, and refuse anything older. The honest server takes only the next version | Rollback |
@@ -104,7 +104,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 **What holds.**
 
 - **Personal data.** A new sign-in gets no personal record, plaintext or not, until another device approves it or the recovery key is typed. The server enforces this through DPoP proofs checked against the device certificates (0056, What the server stores and checks).
-- **Secrets and keys.** It reads only the newest account certificate and the recovery blob, which is under a 256-bit key. It writes no key object or envelope.
+- **Secrets and keys.** It reads the personal scope's key objects, which hold public keys and ciphertext: wraps to keys it does not hold, and the recovery blob under a 256-bit key. It writes no key object or envelope.
 - **Social engineering.** A request from the attacker shows on the person's devices as a new device. Approving it needs the five words on the attacker's screen.
 
 **What does not hold.**
@@ -170,7 +170,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 
 - Accounts, team membership, roles, and device rows with their names, platforms and app versions.
 - The time of every push and pull, and the client IP address. Self-hosted installs keep it in their own logs.
-- Device approval requests with their platform and timing, pending resets and cancels.
+- Device approval requests with their platform and timing, pending resets and cancels. A signed-in session that is not approved sees the same key metadata, since recovery reads it before approval.
 - DPoP key thumbprints, which tie each request to a device.
 - `updated_by` and `updated_device` on every record (0051).
 
