@@ -114,6 +114,7 @@ This is the case the end-to-end design exists for.
 - It can show a holder that pins again with S, with no device to compare with, a consistent older view.
 - It can keep two groups of devices on two consistent histories (split view) until they compare.
 - It can deny service at any time.
+- It holds the time-receipt key, so it can sign any time it likes for the waits. Two receipts for one statement with different times prove it lied, but only to a client that holds both.
 - It can write `user` tombstones for any plaintext record, which carries no signature. A device that then moves back to iCloud deletes the iCloud copies of those records (0054, Moves).
 
 ## A compromised IdP or session
