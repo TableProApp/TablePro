@@ -114,21 +114,34 @@ async fn an_item_whose_folder_is_missing_is_kept() {
 }
 
 #[tokio::test]
-async fn a_deleted_connection_tells_once_and_a_missing_folder_tells_nothing() {
+async fn deleting_a_connections_data_takes_its_table_folders_and_tells_the_journal() {
     let (_root, history) = open().await;
     let folders = history.table_folders();
     let connection = Uuid::new_v4();
+    let other = Uuid::new_v4();
     let audit = folders.create(scope(connection), "Audit").await.expect("create");
+    folders
+        .file(&[table(connection, "orders")], audit.id)
+        .await
+        .expect("file");
+    let kept = folders.create(scope(other), "Kept").await.expect("create");
     let journal = Arc::new(Recording::default());
     history.set_journal(Some(journal.clone()));
 
-    folders
+    history
+        .saved_queries()
         .delete_for_connection(connection)
         .await
         .expect("connection gone");
     folders.delete(audit.id).await.expect("already gone");
 
-    assert_eq!(journal.take(), vec![vec![RecordKind::TableFolder]]);
+    assert!(folders.folders(connection).await.expect("folders").is_empty());
+    assert!(folders.items(connection).await.expect("items").is_empty());
+    assert_eq!(folders.folders(other).await.expect("folders"), vec![kept]);
+    assert_eq!(
+        journal.take(),
+        vec![vec![RecordKind::TableFolder, RecordKind::TableFolderItem]]
+    );
 }
 
 #[tokio::test]

@@ -632,3 +632,36 @@ fn a_write_that_changes_nothing_tells_nothing() {
 
     assert!(journal.calls().is_empty());
 }
+
+#[test]
+fn an_import_never_takes_the_id_of_a_connection_this_build_cannot_read() {
+    let root = TempDir::new().expect("tempdir");
+    let path = paths(&root).connections_file();
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+    let original = plain("prod");
+    let mut unreadable = serde_json::to_value(&original).expect("json");
+    unreadable["safe_mode"] = json!("paranoid");
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&json!({"version": 1, "connections": [unreadable.clone()]})).expect("json"),
+    )
+    .expect("seed");
+    let store = store(&root);
+    let crafted = SavedConnection {
+        host: "attacker.example".to_owned(),
+        ..original.clone()
+    };
+    let file = serde_json::to_vec(&json!({"version": 1, "connections": [crafted]})).expect("json");
+
+    let report = store
+        .import_blocking(std::path::Path::new("crafted.json"), &file)
+        .expect("import");
+
+    let reread = ConnectionStore::new(&paths(&root)).list_blocking().expect("the list");
+    assert_eq!(report.added, 1);
+    assert_eq!(reread.connections.len(), 1);
+    assert_ne!(reread.connections[0].id, original.id);
+    assert_eq!(reread.unreadable.to_vec(), vec![original.id]);
+    let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).expect("read")).expect("json");
+    assert!(raw["connections"].as_array().expect("entries").contains(&unreadable));
+}

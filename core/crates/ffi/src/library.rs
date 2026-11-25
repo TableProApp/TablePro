@@ -554,7 +554,10 @@ impl ConnectionLibrary {
                         return Ok((updated, before));
                     }
                 }
-                let mut created = blank(id.unwrap_or_else(Uuid::new_v4));
+                // An entry this build cannot read keeps its id, and with it the secrets filed under it.
+                let unreadable = store.list_blocking()?.unreadable;
+                let fresh = id.filter(|id| !unreadable.contains(id));
+                let mut created = blank(fresh.unwrap_or_else(Uuid::new_v4));
                 apply(&record, &tls, name, group_id, &mut created);
                 store.upsert_blocking(created.clone())?;
                 let listed = store

@@ -125,7 +125,10 @@ class CheckConnectionFieldTrustTests(unittest.TestCase):
     ("esApiKey", FieldTrust::Secret),
     ("esHosts", FieldTrust::Destination),
     ("kafkaBootstrapServers", FieldTrust::Destination),
-    ("mssqlAuthMethod", local_credential(&["sql"])),
+    (
+        "mssqlAuthMethod",
+        local_credential(&["sql"]),
+    ),
 ];
 '''
         status, output = self.run_check(CATALOG, {"KafkaFields.swift": PLUGIN}, core=core)

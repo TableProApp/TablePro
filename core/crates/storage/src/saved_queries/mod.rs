@@ -397,9 +397,8 @@ impl SavedQueries {
 
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<usize, StorageError> {
         let (queries, changed) = deletion::delete_connection(&self.pool, &self.path, connection).await?;
-        if changed {
-            self.signals
-                .changed(&[RecordKind::SavedQuery, RecordKind::SavedQueryFolder]);
+        if !changed.is_empty() {
+            self.signals.changed(&changed);
         }
         Ok(queries)
     }

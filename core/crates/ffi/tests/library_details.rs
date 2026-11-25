@@ -301,3 +301,35 @@ async fn table_folders_file_tables_and_keep_a_folder_brought_in() {
     assert!(folders.delete(sales.id).await.unwrap());
     assert!(folders.items(connection).await.unwrap().is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_save_never_takes_the_id_of_a_connection_this_build_cannot_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let held = "6f0b6a4e-3a52-4c2f-9d1e-0c6a2b7f9e11";
+    let entry = format!(
+        r#"{{"id":"{held}","name":"prod","driver_id":"postgres","host":"db","port":5432,"database":"d","username":"u","tls":{{"mode":"disable"}},"safe_mode":"paranoid","external_access":"read_only","ai_policy":"ask"}}"#
+    );
+    std::fs::write(
+        dir.path().join("connections.json"),
+        format!(r#"{{"version": 1, "connections": [{entry}]}}"#),
+    )
+    .unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+
+    let saved = library
+        .save(
+            ConnectionRecord {
+                id: held.to_owned(),
+                host: "attacker.example".to_owned(),
+                ..record("prod")
+            },
+            ConnectionSecrets::default(),
+        )
+        .await
+        .unwrap();
+
+    assert_ne!(saved.id, held);
+    let file = std::fs::read_to_string(dir.path().join("connections.json")).unwrap();
+    assert!(file.contains("paranoid"));
+}

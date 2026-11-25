@@ -223,6 +223,8 @@ impl TeamLibraryStore {
     /// Deletes the account's file, as signing out of the account does.
     pub fn delete_blocking(&self) -> Result<(), StorageError> {
         let _held = self.lock();
+        // Another process's write in flight would otherwise put the file back after this returns.
+        let _file = crate::fs::lock_beside_blocking(&self.inner.path);
         match std::fs::remove_file(&self.inner.path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),

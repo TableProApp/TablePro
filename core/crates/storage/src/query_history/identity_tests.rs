@@ -215,8 +215,41 @@ async fn every_saved_query_and_folder_write_tells_the_journal_its_kinds() {
             query_kind(),
             both(),
             query_kind(),
-            both(),
+            query_kind(),
         ]
+    );
+}
+
+#[tokio::test]
+async fn deleting_a_connections_data_names_each_kind_it_removed() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let (history, journal) = journaled(&root).await;
+    let connection = Uuid::new_v4();
+    let favourites = history.favourites();
+    favourites
+        .add_table(&FavouriteTable {
+            connection_id: connection,
+            database: None,
+            schema: None,
+            name: "orders".to_owned(),
+        })
+        .await
+        .expect("add");
+    favourites
+        .set_database(connection, "shop", DatabaseEnvironment::Production)
+        .await
+        .expect("set");
+    journal.take();
+
+    history
+        .saved_queries()
+        .delete_for_connection(connection)
+        .await
+        .expect("connection gone");
+
+    assert_eq!(
+        journal.take(),
+        vec![vec![RecordKind::FavouriteTable, RecordKind::FavouriteDatabase]]
     );
 }
 

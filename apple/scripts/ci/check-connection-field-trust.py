@@ -39,7 +39,7 @@ CONSTANT = re.compile(r"\b(?:let|var)\s+(\w+)\s*(?::\s*String\s*)?=\s*\"|\bcase\
 EXPRESSION = re.compile(r"^(?:Self\.)?([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*?)(?:\.rawValue)?$")
 CATALOG_ENTRY = re.compile(r"^\s*\"([^\"]+)\":\s*\.(\w+)", re.MULTILINE)
 SWIFT_PLAIN = re.compile(r"^\s*\"([^\"]+)\":\s*\.localCredential\(plainValues:\s*([^)]*)\)", re.MULTILINE)
-CORE_ENTRY = re.compile(r"\(\s*\"([^\"]+)\",\s*(?:FieldTrust::(\w+)|local_credential\(([^)]*)\))\s*\)")
+CORE_ENTRY = re.compile(r"\(\s*\"([^\"]+)\",\s*(?:FieldTrust::(\w+)|local_credential\(([^)]*)\))\s*,?\s*\)")
 CORE_CLASS = {
     "Setting": "setting",
     "Destination": "destination",

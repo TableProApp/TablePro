@@ -412,7 +412,10 @@ impl ConnectionList {
 
     #[must_use]
     pub fn with_groups(self, groups: impl Into<Arc<[ConnectionGroup]>>) -> Self {
-        Self { groups: groups.into(), ..self }
+        Self {
+            groups: groups.into(),
+            ..self
+        }
     }
 
     #[must_use]
@@ -859,8 +862,13 @@ impl ConnectionStore {
         let mut landed: HashMap<Uuid, Uuid> = HashMap::with_capacity(incoming.connections.len());
         // Added entries follow the list's own and keep the file's order.
         let mut after: HashMap<Option<Uuid>, u32> = HashMap::new();
+        // An entry this build cannot read still owns its secrets, which the keyring files by id.
+        let unreadable: HashSet<Uuid> = document.connections.held_ids().into_iter().collect();
         for mut connection in std::mem::take(&mut *incoming.connections) {
             let from = connection.id;
+            if unreadable.contains(&connection.id) {
+                connection.id = Uuid::new_v4();
+            }
             connection.tags = connection
                 .tags
                 .iter()

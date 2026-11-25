@@ -229,25 +229,6 @@ impl TableFolders {
         Ok(())
     }
 
-    /// Drops every folder and item of a connection the person deleted.
-    pub async fn delete_for_connection(&self, connection_id: Uuid) -> Result<(), StorageError> {
-        let mut connection = self.pool.acquire().await?;
-        let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        let items = sqlx::query("DELETE FROM table_folder_items WHERE connection_id = ?")
-            .bind(connection_id.to_string())
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
-        let folders = sqlx::query("DELETE FROM table_folders WHERE connection_id = ?")
-            .bind(connection_id.to_string())
-            .execute(&mut *transaction)
-            .await?
-            .rows_affected();
-        transaction.commit().await?;
-        self.tell(folders > 0, items > 0);
-        Ok(())
-    }
-
     fn tell(&self, folders: bool, items: bool) {
         let kinds: Vec<RecordKind> = [(folders, RecordKind::TableFolder), (items, RecordKind::TableFolderItem)]
             .into_iter()
