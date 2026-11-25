@@ -8,13 +8,13 @@ import TableProPluginKit
 
 struct FilterRowView: View {
     @Binding var filter: TableFilter
-    let columns: [String]
+    let columnMenu: FilterColumnMenu
     let completions: [String]
     var caseMatching: FilterCaseMatching = .engine(.unsupported)
     var enumValuesByColumn: [String: [String]] = [:]
     var rawSQLCompletionProvider: RawSQLFilterCompletionProvider?
-    var columnMenu: FilterColumnMenu = .empty
     var fieldPaths: [PluginFieldPath] = []
+    var columnOrder: FilterColumnOrder = .table
     var offersRawFilter = true
     var rawFilterLabel = String(localized: "Raw SQL")
     var reservesElementScope = false
@@ -200,7 +200,7 @@ struct FilterRowView: View {
     // Sized from the items every row shares, so a row with a drifted or raw item lines up with the rest.
     private var columnCellWidth: CGFloat {
         let paths = columnMenu.groups.flatMap { $0.paths.map(\.path) }
-        let titles = (offersRawFilter ? [rawFilterLabel] : []) + columns + paths
+        let titles = (offersRawFilter ? [rawFilterLabel] : []) + columnMenu.columns + paths
         return min(FilterControlMetrics.popUpWidth(titles: titles), Self.columnPickerMaximumWidth)
     }
 
@@ -210,7 +210,7 @@ struct FilterRowView: View {
                 Text(rawFilterLabel).tag(String?.none)
                 Divider()
             }
-            ForEach(columns, id: \.self) { column in
+            ForEach(columnMenu.columns, id: \.self) { column in
                 Text(column).tag(String?.some(column))
             }
             ForEach(columnMenu.groups) { group in
@@ -254,6 +254,7 @@ struct FilterRowView: View {
         .popover(isPresented: $showNestedPathPicker, arrowEdge: .bottom) {
             NestedFieldPathPicker(
                 fieldPaths: fieldPaths,
+                order: columnOrder,
                 currentValue: filter.columnName,
                 onCommit: { filter = filter.selectingColumn($0) },
                 onDismiss: { showNestedPathPicker = false }

@@ -796,8 +796,8 @@ struct DataFileControllerTests {
         #expect(column(controller, 0) == ["B"])
     }
 
-    @Test("Filters on columns a header toggle renamed stop counting as applied")
-    func headerToggleDropsUnresolvableFilters() async throws {
+    @Test("Filters follow their column through a header toggle")
+    func headerToggleCarriesFilters() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
         controller.filterState.filters = [TableFilter(columnName: "city", value: "London")]
         controller.applyCheckedFilters()
@@ -806,8 +806,90 @@ struct DataFileControllerTests {
         controller.setUsesFirstRowAsHeader(false)
         await controller.waitForPendingWork()
 
+        #expect(controller.filterState.filters.map(\.columnName) == ["Column 2"])
+        #expect(controller.filterState.applied?.filters.map(\.columnName) == ["Column 2"])
+        #expect(column(controller, 0) == ["B"])
+    }
+
+    @Test("Deleting a column keeps filters, hidden columns and Display As on their own columns")
+    func deleteKeepsColumnStateOnItsColumn() async throws {
+        let (controller, _) = try await loaded("name,name,city\nA,x,Paris\nB,y,London\n")
+        #expect(controller.columnNames.displayNames == ["name", "name (2)", "city"])
+        controller.filterState.filters = [TableFilter(columnName: "name (2)", value: "y")]
+        controller.applyCheckedFilters()
+        await controller.waitForPendingWork()
+        controller.columnLayout.hiddenColumns = ["name (2)"]
+        controller.gridModel.store.displayFormats = [nil, nil, .json]
+
+        controller.deleteColumns([controller.columnNames.ids[0]])
+        await controller.waitForPendingWork()
+
+        #expect(controller.columnNames.displayNames == ["name", "city"])
+        #expect(controller.filterState.filters.map(\.columnName) == ["name"])
+        #expect(controller.filterState.applied?.filters.map(\.columnName) == ["name"])
+        #expect(controller.columnLayout.hiddenColumns == ["name"])
+        #expect(controller.gridModel.store.displayFormats == [nil, .json])
+        #expect(column(controller, 1) == ["London"])
+
+        controller.undoManager?.undo()
+        await controller.waitForPendingWork()
+
+        #expect(controller.filterState.applied?.filters.map(\.columnName) == ["name (2)"])
+        #expect(controller.columnLayout.hiddenColumns == ["name (2)"])
+        #expect(controller.gridModel.store.displayFormats == [nil, nil, .json])
+    }
+
+    @Test("Undoing a cell edit keeps the Display As and hidden columns chosen after it")
+    func undoKeepsLaterColumnChoices() async throws {
+        let (controller, _) = try await loaded("name,payload\nA,{}\nB,[]\n")
+        controller.setCell(pageRow: 0, column: 0, text: "Z")
+        controller.gridModel.store.displayFormats = [nil, .json]
+        controller.columnLayout.hiddenColumns = ["name"]
+
+        controller.undoManager?.undo()
+        await controller.waitForPendingWork()
+
+        #expect(column(controller, 0) == ["A", "B"])
+        #expect(controller.gridModel.store.displayFormats == [nil, .json])
+        #expect(controller.columnLayout.hiddenColumns == ["name"])
+    }
+
+    @Test("Inserting a column with a taken name leaves a filter on the column it was set on")
+    func insertKeepsFilterOnItsColumn() async throws {
+        let (controller, _) = try await loaded("name,name\nA,x\nB,y\n")
+        controller.filterState.filters = [TableFilter(columnName: "name", value: "A")]
+        controller.applyCheckedFilters()
+        await controller.waitForPendingWork()
+
+        controller.insertColumn(named: "name", at: 0)
+        controller.applyCheckedFilters()
+        await controller.waitForPendingWork()
+
+        #expect(controller.columnNames.displayNames == ["name", "name (2)", "name (3)"])
+        #expect(controller.filterState.applied?.filters.map(\.columnName) == ["name (2)"])
+        #expect(column(controller, 1) == ["A"])
+    }
+
+    @Test("Splitting a filtered column drops its filter, reruns, and undo brings the filter back")
+    func splitDropsFilterAndUndoRestoresIt() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris Nord\nB,London\n")
+        controller.filterState.filters = [TableFilter(columnName: "city", filterOperator: .contains, value: "Paris")]
+        controller.applyCheckedFilters()
+        await controller.waitForPendingWork()
+        #expect(controller.visibleRowCount == 1)
+
+        controller.splitColumn(controller.columnNames.ids[1], separator: .literal(" "))
+        await controller.waitForPendingWork()
+
+        #expect(controller.filterState.filters.isEmpty)
         #expect(controller.filterState.applied == nil)
-        #expect(controller.visibleRowCount == 3)
+        #expect(controller.visibleRowCount == 2)
+
+        controller.undoManager?.undo()
+        await controller.waitForPendingWork()
+
+        #expect(controller.filterState.applied?.filters.map(\.columnName) == ["city"])
+        #expect(controller.visibleRowCount == 1)
     }
 
     @Test("Undoing a column delete brings back its filter and sort")

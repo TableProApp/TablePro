@@ -6,6 +6,8 @@ struct FilterPanelView: View {
     let configuration: FilterPanelConfiguration
     let actions: any FilterPanelActions
 
+    @ObservedObject private var filterSettings = FilterSettingsStorage.shared
+    @State private var columnMenuCache = FilterColumnMenuCache()
     @State private var showSQLSheet = false
     @State private var generatedSQL = ""
     @State private var showSavePresetAlert = false
@@ -185,6 +187,8 @@ struct FilterPanelView: View {
 
             Divider()
 
+            Toggle(String(localized: "List Columns Alphabetically"), isOn: listsColumnsAlphabetically)
+
             Button {
                 actions.openFilterSettings()
             } label: {
@@ -244,13 +248,13 @@ struct FilterPanelView: View {
             ForEach(state.filters) { filter in
                 FilterRowView(
                     filter: filterBinding(for: filter),
-                    columns: configuration.columns,
+                    columnMenu: columnMenu,
                     completions: completionItems,
                     caseMatching: configuration.caseMatching,
                     enumValuesByColumn: configuration.enumValuesByColumn,
                     rawSQLCompletionProvider: configuration.rawSQLCompletionProvider,
-                    columnMenu: columnMenu,
                     fieldPaths: configuration.fieldPaths,
+                    columnOrder: filterSettings.settings.columnOrder,
                     offersRawFilter: configuration.offersRawFilter,
                     rawFilterLabel: configuration.rawFilterLabel,
                     reservesElementScope: reservesElementScope,
@@ -315,7 +319,22 @@ struct FilterPanelView: View {
     }
 
     private var columnMenu: FilterColumnMenu {
-        FilterColumnMenu.build(columns: configuration.columns, fieldPaths: configuration.fieldPaths)
+        columnMenuCache.menu(
+            columns: configuration.columns,
+            fieldPaths: configuration.fieldPaths,
+            order: filterSettings.settings.columnOrder
+        )
+    }
+
+    private var listsColumnsAlphabetically: Binding<Bool> {
+        Binding(
+            get: { filterSettings.settings.columnOrder == .alphabetical },
+            set: { isOn in
+                var settings = filterSettings.settings
+                settings.columnOrder = isOn ? .alphabetical : .table
+                filterSettings.saveSettings(settings)
+            }
+        )
     }
 
     private func filterBinding(for filter: TableFilter) -> Binding<TableFilter> {
@@ -328,7 +347,7 @@ struct FilterPanelView: View {
 
     private func addDefaultFilter(columns: [String], after anchorID: UUID? = nil) -> UUID {
         state.addFilter(
-            settings: FilterSettingsStorage.shared.loadSettings(),
+            settings: filterSettings.settings,
             columns: columns,
             primaryKeyColumn: configuration.primaryKeyColumn,
             offersRawFilter: configuration.offersRawFilter,

@@ -180,37 +180,20 @@ extension DataFileController {
 
     func deleteColumns(_ ids: Set<TabularColumnID>) {
         guard isEditable, !ids.isEmpty, var updated = table else { return }
-        let removedNames = ids.compactMap { columnNames.name(for: $0) }
         updated.deleteColumns(ids)
-        let referencedFilters = filterState.filtersOnAnyColumn(in: Set(removedNames))
-        let referencedSort = sortReferences.contains { ids.contains($0.column) }
         commit(
             updated,
-            actionName: ids.count == 1 ? String(localized: "Delete Column") : String(localized: "Delete Columns"),
-            includesFilters: referencedFilters
-        ) { controller in
-            controller.columnLayout.hiddenColumns.subtract(removedNames)
-            controller.filterState.removeFilters(onColumns: Set(removedNames))
-        }
-        if referencedFilters || referencedSort {
-            runQuery()
-        }
+            actionName: ids.count == 1 ? String(localized: "Delete Column") : String(localized: "Delete Columns")
+        )
     }
 
     func renameColumn(_ id: TabularColumnID, to name: String) {
-        guard isEditable, var updated = table, let oldName = columnNames.name(for: id) else { return }
+        guard isEditable, var updated = table, columnNames.index(of: id) != nil else { return }
         if updated.headerRowKey == nil, updated.source.intrinsicColumnNames == nil {
             adoptDisplayNamesAsHeader(in: &updated)
         }
         updated.renameColumn(id, to: name)
-        let referencedFilters = filterState.filtersOnAnyColumn(in: [oldName])
-        commit(updated, actionName: String(localized: "Rename Column"), includesFilters: referencedFilters) { controller in
-            guard let newName = controller.columnNames.name(for: id), newName != oldName else { return }
-            controller.filterState.renameFilterColumn(from: oldName, to: newName)
-            if controller.columnLayout.hiddenColumns.remove(oldName) != nil {
-                controller.columnLayout.hiddenColumns.insert(newName)
-            }
-        }
+        commit(updated, actionName: String(localized: "Rename Column"))
     }
 
     private func adoptDisplayNamesAsHeader(in table: inout TabularTable) {
