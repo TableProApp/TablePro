@@ -1,6 +1,6 @@
 # 0056: End-to-end keys: an account key pair, device key pairs, scope keys wrapped per member, the recovery key and pinned keys
 
-- **Status**: Accepted (G0 passed, round 8, 2026-11-25); supersedes 0053; amends 0044 (Secrets, and its Consequences line that teammates confirm a person again after a device removal or recovery)
+- **Status**: Accepted; supersedes 0053; amends 0044 (Secrets, and its Consequences line that teammates confirm a person again after a device removal or recovery)
 - **Date**: 2026-11-25
 
 ## Context

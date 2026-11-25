@@ -1,6 +1,6 @@
 # 0054: One sync engine in the core for TablePro Sync and iCloud
 
-- **Status**: Accepted (G0 passed, round 8, 2026-11-25); amends 0010 and 0044
+- **Status**: Accepted; amends 0010 and 0044
 - **Date**: 2026-11-25
 
 ## Context
