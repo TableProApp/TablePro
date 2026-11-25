@@ -333,9 +333,10 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         /// twice and the copy labelled "Database" failed with the driver's own error (#2262).
         if switchTarget != .schema {
             do {
-                let databases = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-                    try await driver.fetchDatabases()
-                }
+                // The tree's list, which the sidebar read on connect: the switcher reads it only when nothing has.
+                let databases = try await DatabaseTreeMetadataService.shared.databaseNames(
+                    connectionId: connectionId, databaseType: databaseType
+                )
                 let databaseSubtitle = switchTarget == .database
                     ? services.pluginManager.containerEntityName(for: databaseType)
                     : String(localized: "Database")
@@ -363,9 +364,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
         if services.pluginManager.supportsSchemaSwitching(for: databaseType) {
             do {
-                let schemas = try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-                    try await driver.fetchSchemas()
-                }
+                let schemas = try await browsedSchemas()
                 let schemaSubtitle = switchTarget == .schema
                     ? services.pluginManager.containerEntityName(for: databaseType)
                     : String(localized: "Schema")
@@ -393,6 +392,17 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         items += triggerItems(connectionId: connectionId, database: activeDatabase, qualifier: qualifier)
         items += userTypeItems(connectionId: connectionId, database: activeDatabase, qualifier: qualifier)
         return (items, isComplete)
+    }
+
+    /// The schema list the schema service read with the browsed catalog, read here only when it holds none current.
+    private func browsedSchemas() async throws -> [String] {
+        if let database = services.databaseManager.browseScope(for: connectionId)?.database,
+           let held = services.schemaService.currentSchemas(for: connectionId, database: database) {
+            return held
+        }
+        return try await services.databaseManager.withBrowseMetadataDriver(connectionId: connectionId) { driver in
+            try await driver.fetchSchemas()
+        }
     }
 
     /// The local part of the catalog store: saved queries and history.

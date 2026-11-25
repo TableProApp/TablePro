@@ -11,7 +11,8 @@ import TableProPluginKit
 
 extension SchemaService {
     // One lease per read, so a column read asked for meanwhile goes before the next kind instead of after
-    // the whole catalog. The tables lease opens before any state moves: a refused lease leaves it untouched.
+    // the whole catalog, and a session lent to one read is never held across the catalog. The tables lease
+    // opens before any state moves: a refused lease leaves it untouched.
     func load(
         connectionId: UUID,
         connection: DatabaseConnection,
@@ -37,7 +38,7 @@ extension SchemaService {
             if let started { endRefresh(connectionId, generation: started.generation) }
         }
         // A load queued for the same lease finds the catalog the one ahead of it committed.
-        let leased = try await provider.withMetadataDriver(scope: scope) { [self] driver -> LoadRun? in
+        let leased = try await provider.withMetadataRead(scope: scope, workload: .interactive) { [self] driver -> LoadRun? in
             guard await needsLoad(connectionId, scope: scope) else { return nil }
             var run = await beginLoad(connectionId: connectionId, driver: driver, connection: connection, scope: scope)
             let tables: Result<[TableInfo], any Error>
@@ -59,6 +60,24 @@ extension SchemaService {
             await afterTables?()
         }
         await readSideKinds(run, leasingFrom: provider, scope: scope)
+    }
+
+    func generationToken(for connectionId: UUID) -> Int {
+        generations[connectionId] ?? 0
+    }
+
+    func isRefreshing(connectionId: UUID) -> Bool {
+        refreshingConnections.contains(connectionId)
+    }
+
+    /// The schema list read with `database`'s catalog, for a reader that would otherwise read it again; nil when the
+    /// catalog shown is another database's, is not current, or has no schema list.
+    func currentSchemas(for connectionId: UUID, database: String) -> [String]? {
+        guard let scope = loadedScope(for: connectionId), CatalogName.same(scope.database, database),
+              isCatalogCurrent(for: connectionId)
+        else { return nil }
+        let schemas = schemas(for: connectionId)
+        return schemas.isEmpty ? nil : schemas
     }
 
     func needsLoad(_ connectionId: UUID, scope: DatabaseScope?) -> Bool {
@@ -147,7 +166,7 @@ extension SchemaService {
         for (index, kind) in order.enumerated() {
             let reads: SideReads
             do {
-                reads = try await provider.withMetadataDriver(scope: scope) { [self] driver in
+                reads = try await provider.withMetadataRead(scope: scope, workload: .interactive) { [self] driver in
                     await readSideKind(kind, of: run, driver: driver)
                 }
             } catch {

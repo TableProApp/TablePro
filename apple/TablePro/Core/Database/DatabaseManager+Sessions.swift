@@ -180,6 +180,7 @@ extension DatabaseManager {
 
             Telemetry.shared.connectionSucceeded(databaseType: connection.type.rawValue)
             AppEvents.shared.databaseDidConnect.send(DatabaseDidConnect(connectionId: connection.id))
+            prewarmMetadataConnection(for: connection.id)
 
             await startHealthMonitor(for: connection.id)
         } catch {

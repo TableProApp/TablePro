@@ -50,10 +50,6 @@ final class SchemaService: ObservableObject {
         let scope: DatabaseScope
     }
 
-    func generationToken(for connectionId: UUID) -> Int {
-        generations[connectionId] ?? 0
-    }
-
     func bumpGeneration(_ connectionId: UUID) {
         generations[connectionId, default: 0] &+= 1
     }
@@ -157,10 +153,6 @@ final class SchemaService: ObservableObject {
 
     func catalogFacts(for connectionId: UUID) -> CatalogDriverFacts? {
         driverFacts[shownKey(connectionId)]
-    }
-
-    func isRefreshing(connectionId: UUID) -> Bool {
-        refreshingConnections.contains(connectionId)
     }
 
     func loadedScope(for connectionId: UUID) -> DatabaseScope? {
@@ -395,6 +387,13 @@ final class SchemaService: ObservableObject {
 
     func schemas(for connectionId: UUID) -> [String] {
         schemasInOrder[shownKey(connectionId)] ?? []
+    }
+
+    /// A schema list read again for the catalog on screen, which every reader of that list then sees.
+    func noteSchemasRead(_ schemas: [String], for connectionId: UUID, database: String) {
+        guard currentSchemas(for: connectionId, database: database) != nil else { return }
+        schemasInOrder[shownKey(connectionId)] = schemas
+        bumpGeneration(connectionId)
     }
 
     func attachedSchemas(for connectionId: UUID) -> [String] {
