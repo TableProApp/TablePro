@@ -51,7 +51,6 @@ struct ConnectionLibraryStorageTests {
         appEvents = events
         storage = connectionStorage
         groupStorage = GroupStorage(
-            userDefaults: suiteDefaults,
             syncTracker: tracker,
             connectionStorage: connectionStorage,
             appEvents: events

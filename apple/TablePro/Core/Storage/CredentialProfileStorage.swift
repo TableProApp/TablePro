@@ -50,7 +50,7 @@ final class CredentialProfileStorage {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CredentialProfileStorage")
 
     // TableProMobile sweeps `com.TablePro.password.` items whose UUID is not a connection, so profile secrets must not share that prefix.
-    static let secretKeyPrefix = "com.TablePro.credprofile."
+    nonisolated static let secretKeyPrefix = "com.TablePro.credprofile."
     private static let secretPrefix = secretKeyPrefix
 
     private let file: IntegrityStampedFileStore<CredentialProfile>

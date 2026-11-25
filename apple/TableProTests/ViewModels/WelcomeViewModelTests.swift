@@ -44,13 +44,12 @@ final class WelcomeViewModelTests {
         self.connectionStorage = connectionStorage
         // The parameter is an @escaping @autoclosure: `self.connectionStorage` would capture self.
         groupStorage = GroupStorage(
-            userDefaults: defaults,
             syncTracker: tracker,
             connectionStorage: connectionStorage
         )
         welcomeRouter = WelcomeRouter()
         recents = RecentConnectionsStore(defaults: defaults, appEvents: AppEvents())
-        preferences = ConnectionListPreferences(defaults: defaults, appEvents: AppEvents())
+        preferences = ConnectionListPreferences(defaults: defaults, connectionStorage: connectionStorage, appEvents: AppEvents())
         viewModel = makeViewModel()
     }
 

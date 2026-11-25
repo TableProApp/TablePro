@@ -36,7 +36,6 @@ struct GroupStorageImportPathTests {
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         )
         storage = GroupStorage(
-            userDefaults: defaults,
             syncTracker: tracker,
             connectionStorage: connections,
             appEvents: appEvents

@@ -56,12 +56,11 @@ final class SyncTestEnvironment {
         )
         connections = connectionStore
         groups = GroupStorage(
-            userDefaults: defaults,
             syncTracker: tracker,
             connectionStorage: connectionStore,
             appEvents: AppEvents()
         )
-        tags = TagStorage(userDefaults: defaults, syncTracker: tracker, appEvents: AppEvents())
+        tags = TagStorage(syncTracker: tracker, connectionStorage: connectionStore, appEvents: AppEvents())
         favoriteTables = FavoriteTablesStorage(userDefaults: defaults, syncTracker: tracker)
         favoriteDatabases = FavoriteDatabasesStorage(defaults: defaults, syncTracker: tracker)
         columnLayouts = FileColumnLayoutPersister(

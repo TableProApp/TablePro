@@ -26,23 +26,25 @@ final class ConnectionStorage {
     private let syncTracker: SyncChangeTracker
     private let appSettingsProvider: () -> AppSettingsStorage
 
-    private var cachedConnections: [DatabaseConnection]?
+    // The library's revision this store last recorded standing for.
+    private var revisionSeen = -1
 
     private(set) var lastLoadFailed = false
-    private(set) var fileReadCount = 0
-    private(set) var fileWriteCount = 0
+    var fileReadCount: Int { library.readCount }
+    var fileWriteCount: Int { library.writeCount }
 
-    // False once something else edited the file, so a connection's password source does not run.
-    var storeIsTrusted: Bool { file.isTrusted }
+    // False once something else edited the store, so a connection's password source does not run.
+    var storeIsTrusted: Bool { library.isTrusted }
 
     // Records this build cannot read; what belongs to them is kept. Loads first, as `isLibraryUnreadable` does.
     var unreadableConnectionIds: Set<UUID> {
         _ = loadConnections()
-        return file.unreadableIds
+        return library.unreadableIds
     }
 
-    private let file: IntegrityStampedFileStore<StoredConnection>
-    private var fileURL: URL { file.fileURL }
+    // The groups, tags and favourites share it, since the core writes the library in one commit.
+    let library: CoreLibraryStore
+    private var fileURL: URL { library.mirror.file.fileURL }
 
     private let keychain: any KeychainStoring
 
@@ -57,11 +59,10 @@ final class ConnectionStorage {
         appEvents: @escaping @autoclosure () -> AppEvents = .shared,
         integrity: ConnectionStoreIntegrity = .shared
     ) {
-        self.file = IntegrityStampedFileStore(
-            fileURL: fileURL,
-            label: "connections.json",
-            logger: Self.logger,
-            userSaveEstablishesTrust: true,
+        self.library = CoreLibraryStore(
+            legacyFileURL: fileURL,
+            defaults: userDefaults,
+            keychain: keychain,
             integrity: integrity
         )
         self.defaults = userDefaults
@@ -96,29 +97,23 @@ final class ConnectionStorage {
     // MARK: - Connection CRUD
 
     func loadConnections() -> [DatabaseConnection] {
-        if let cached = cachedConnections { return cached }
-
-        fileReadCount += 1
-        guard let storedConnections = file.load() else {
+        guard let image = library.current() else {
             lastLoadFailed = true
             return []
         }
         lastLoadFailed = false
+        guard library.revision != revisionSeen else { return image.connections }
+        revisionSeen = library.revision
 
-        let connections = storedConnections.map { stored in
-            stored.toConnection()
-        }
+        let connections = image.connections
         syncTracker.recordConnectionStanding(
             syncing: Set(connections.filter(\.participatesInSync).map(\.id)),
             keptOff: Set(connections.filter { !$0.participatesInSync }.map(\.id)),
-            unreadable: file.unreadableIds
+            unreadable: library.unreadableIds
         )
 
         let migrated = Self.numberingUnrankedGroups(connections)
-        if migrated != connections, storeIsTrusted {
-            persist(migrated)
-        }
-        cachedConnections = migrated
+        guard migrated != connections, storeIsTrusted, persist(migrated) else { return connections }
         return migrated
     }
 
@@ -161,21 +156,19 @@ final class ConnectionStorage {
         removingSecrets: Bool = false,
         removingUnreadable removedIds: Set<UUID> = []
     ) -> Bool {
-        guard file.save(
-            connections.map { StoredConnection(from: $0) },
+        guard var image = library.current() else { return false }
+        image.connections = connections
+        return library.commit(
+            image,
             byUser: byUser,
             removingSecrets: removingSecrets,
             removingUnreadable: removedIds
-        ) else {
-            return false
-        }
-        fileWriteCount += 1
-        cachedConnections = nil
-        return true
+        )
     }
 
+    // Reads the stores again, so a change another build made to them since is taken in.
     func invalidateCache() {
-        cachedConnections = nil
+        library.invalidate()
     }
 
     @discardableResult
@@ -235,7 +228,7 @@ final class ConnectionStorage {
         }
 
         // A record this build cannot read keeps its id, so the import leaves it alone.
-        var knownIds = Set(connections.map(\.id)).union(file.unreadableIds)
+        var knownIds = Set(connections.map(\.id)).union(library.unreadableIds)
         var added: [DatabaseConnection] = []
         for incoming in adding {
             guard knownIds.insert(incoming.id).inserted else { continue }

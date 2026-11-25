@@ -36,7 +36,7 @@ struct SyncDirtyMarkingTests {
 
     @Test("Saving the tag library marks the tag that changed and no other")
     func tagSaveMarksOnlyTheChangedTag() throws {
-        let storage = TagStorage(userDefaults: try defaults("tags"), syncTracker: tracker, appEvents: AppEvents())
+        let storage = TagStorage(syncTracker: tracker, connectionStorage: connections, appEvents: AppEvents())
         let renamed = ConnectionTag(name: "staging")
         let untouched = ConnectionTag(name: "qa")
         try storage.addTag(renamed)
@@ -56,7 +56,7 @@ struct SyncDirtyMarkingTests {
 
     @Test("Adding a tag marks the new tag alone")
     func addingATagMarksOnlyTheNewTag() throws {
-        let storage = TagStorage(userDefaults: try defaults("tags-add"), syncTracker: tracker, appEvents: AppEvents())
+        let storage = TagStorage(syncTracker: tracker, connectionStorage: connections, appEvents: AppEvents())
         try storage.addTag(ConnectionTag(name: "staging"))
         metadata.clearDirty(type: .tag)
         let added = ConnectionTag(name: "qa")
@@ -68,7 +68,7 @@ struct SyncDirtyMarkingTests {
 
     @Test("Deleting a tag tombstones it and marks none of the others")
     func deletingATagMarksNothingElse() throws {
-        let storage = TagStorage(userDefaults: try defaults("tags-delete"), syncTracker: tracker, appEvents: AppEvents())
+        let storage = TagStorage(syncTracker: tracker, connectionStorage: connections, appEvents: AppEvents())
         let doomed = ConnectionTag(name: "staging")
         try storage.addTag(doomed)
         try storage.addTag(ConnectionTag(name: "qa"))
@@ -83,7 +83,6 @@ struct SyncDirtyMarkingTests {
     @Test("Renaming a group marks that group alone")
     func groupRenameMarksOnlyThatGroup() throws {
         let storage = GroupStorage(
-            userDefaults: try defaults("groups"),
             syncTracker: tracker,
             connectionStorage: connections,
             appEvents: AppEvents()
@@ -101,7 +100,6 @@ struct SyncDirtyMarkingTests {
     @Test("Moving a group marks it for its new parent without marking its old siblings")
     func groupMoveMarksTheMovedGroup() throws {
         let storage = GroupStorage(
-            userDefaults: try defaults("groups-move"),
             syncTracker: tracker,
             connectionStorage: connections,
             appEvents: AppEvents()

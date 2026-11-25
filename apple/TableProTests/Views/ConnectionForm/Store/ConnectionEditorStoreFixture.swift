@@ -109,7 +109,7 @@ final class ConnectionEditorStoreFixture {
             kind: .localCredentials, defaults: defaults, savedConnections: { [] }, dialedDestination: dialed
         )
         recents = RecentConnectionsStore(defaults: defaults, appEvents: events)
-        listPreferences = ConnectionListPreferences(defaults: defaults, appEvents: events)
+        listPreferences = ConnectionListPreferences(defaults: defaults, connectionStorage: storage, appEvents: events)
         let live = AppServices.live
         services = AppServices(
             appEvents: events,

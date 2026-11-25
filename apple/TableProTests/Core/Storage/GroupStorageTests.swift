@@ -50,7 +50,6 @@ final class GroupStorageTests: XCTestCase {
             self?.changeCount += 1
         }
         storage = GroupStorage(
-            userDefaults: defaults,
             syncTracker: tracker,
             connectionStorage: self.connectionStorage,
             appEvents: appEvents
@@ -405,7 +404,7 @@ final class GroupStorageTests: XCTestCase {
 
         let loaded = storage.loadGroups()
         XCTAssertEqual(loaded.count, 2)
-        // Both now named "Production" — storage doesn't enforce uniqueness on update
+        // updateGroup does not check names, so both are "Production" now.
         XCTAssertEqual(loaded[0].name, "Production")
         XCTAssertEqual(loaded[1].name, "Production")
     }
