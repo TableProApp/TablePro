@@ -21,7 +21,6 @@ mod library;
 mod placement;
 
 pub use additions::ImportedConnection;
-pub(crate) use placement::cyclic;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {

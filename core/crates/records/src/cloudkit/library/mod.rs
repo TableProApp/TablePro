@@ -1,26 +1,26 @@
-// CloudKit transport stays in the host; the core only maps record fields.
+// The library's records on CloudKit: groups and where each connection sits. The host owns the CloudKit transport.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use tablepro_storage::{ConnectionGroup, ConnectionList, SavedConnection};
 use uuid::Uuid;
 
-use crate::{ConnectionGroup, ConnectionList, SavedConnection};
+use crate::cycles::cyclic;
+use crate::order::{Sibling, name_order, reads_before, sort_key, sort_orders};
+use crate::record_id::uuid_id;
 
 mod merge;
-mod order;
+mod store;
 mod values;
 
 #[cfg(test)]
 mod tests;
 
 pub use merge::merged;
+pub use store::{apply_pull, edits_of};
 
-use order::{Sibling, reads_before, sort_orders};
-use values::{
-    color, color_value, favorite, favorite_value, group_name, icon, icon_value, id_value, name_order, record_id,
-    sort_key,
-};
+use values::{color, color_value, favorite, favorite_value, group_name, icon, icon_value, record_id};
 
 // A `ConnectionGroup` record's fields. `None` is a field the record lacks.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -212,7 +212,8 @@ fn read_groups(records: &[CloudGroup]) -> Vec<ConnectionGroup> {
             group.parent_id = None;
         }
     }
-    let cyclic = crate::connections::cyclic(&groups);
+    let parents: HashMap<Uuid, Option<Uuid>> = groups.iter().map(|group| (group.id, group.parent_id)).collect();
+    let cyclic = cyclic(&parents);
     let mut siblings: HashMap<Option<Uuid>, Vec<(i64, usize)>> = HashMap::new();
     for (index, group) in groups.iter_mut().enumerate() {
         if cyclic.contains(&group.id) {
@@ -248,7 +249,7 @@ fn group_records(list: &ConnectionList, base: &CloudRecords) -> Vec<CloudGroup> 
     let mut written = Vec::with_capacity(list.groups.len());
     for parent in parents {
         let children = tree.children(parent);
-        let siblings: Vec<Sibling<'_>> = children
+        let siblings: Vec<Sibling<'_, Uuid>> = children
             .iter()
             .map(|group| Sibling {
                 id: group.id,
@@ -263,7 +264,7 @@ fn group_records(list: &ConnectionList, base: &CloudRecords) -> Vec<CloudGroup> 
             let record = held.get(&group.id).copied();
             let read = as_read.get(&group.id);
             written.push(CloudGroup {
-                group_id: record.map_or_else(|| id_value(group.id), |record| record.group_id.clone()),
+                group_id: record.map_or_else(|| uuid_id(group.id), |record| record.group_id.clone()),
                 name: match record {
                     Some(record) if group_name(record.name.as_deref()).as_ref() == Some(&group.name) => {
                         record.name.clone()
@@ -280,7 +281,7 @@ fn group_records(list: &ConnectionList, base: &CloudRecords) -> Vec<CloudGroup> 
                 },
                 parent_id: match (record, read) {
                     (Some(record), Some(read)) if read.parent_id == group.parent_id => record.parent_id.clone(),
-                    _ => group.parent_id.map(id_value),
+                    _ => group.parent_id.map(uuid_id),
                 },
                 sort_order,
             });
@@ -313,7 +314,7 @@ fn connection_records(list: &ConnectionList, base: &CloudRecords) -> Vec<CloudCo
                     .unwrap_or_else(|| saved.name.clone())
             })
             .collect();
-        let siblings: Vec<Sibling<'_>> = members
+        let siblings: Vec<Sibling<'_, Uuid>> = members
             .iter()
             .zip(&names)
             .map(|(saved, name)| Sibling {
@@ -329,11 +330,11 @@ fn connection_records(list: &ConnectionList, base: &CloudRecords) -> Vec<CloudCo
             let record = held.get(&saved.id).copied();
             let is_favorite = list.is_favorite(saved.id);
             written.push(CloudConnection {
-                connection_id: record.map_or_else(|| id_value(saved.id), |record| record.connection_id.clone()),
+                connection_id: record.map_or_else(|| uuid_id(saved.id), |record| record.connection_id.clone()),
                 name: record.map_or_else(|| Some(saved.name.clone()), |record| record.name.clone()),
                 group_id: match record {
                     Some(record) if group_as_read(record) == saved.group_id => record.group_id.clone(),
-                    _ => saved.group_id.map(id_value),
+                    _ => saved.group_id.map(uuid_id),
                 },
                 sort_order,
                 is_favorite: match record {

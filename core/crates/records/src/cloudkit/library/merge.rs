@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
+use tablepro_storage::ConnectionList;
 use uuid::Uuid;
 
 use super::values::record_id;
 use super::{CloudConnection, CloudGroup, CloudPull, CloudRecords, records};
-use crate::ConnectionList;
+use crate::cycles::keep_server_parents;
 
 // Rebase local field edits over the pull, matching the host's push conflict handling.
 pub fn merged(list: &ConnectionList, pull: &CloudPull) -> CloudRecords {
@@ -66,52 +67,27 @@ fn yield_cycles(groups: &mut [CloudGroup], pull: &CloudPull, local: &[CloudGroup
         .filter(|(id, record)| base.get(id).is_some_and(|held| held.parent_id != record.parent_id))
         .map(|(id, _)| id)
         .collect();
-    loop {
-        let parents: HashMap<Uuid, Option<Uuid>> = groups
-            .iter()
-            .filter_map(|group| {
-                let id = record_id(&group.group_id)?;
-                Some((id, group.parent_id.as_deref().and_then(record_id)))
-            })
-            .collect();
-        let cyclic = cyclic_ids(&parents);
-        let mut yielded = false;
-        for group in groups.iter_mut() {
-            let Some(id) = record_id(&group.group_id) else {
-                continue;
-            };
-            if cyclic.contains(&id) && moved_here.contains(&id) {
-                let theirs = server.get(&id).and_then(|record| record.parent_id.clone());
-                yielded |= group.parent_id != theirs;
-                group.parent_id = theirs;
-            }
-        }
-        if !yielded {
-            return;
+    let mut parents: HashMap<Uuid, Option<Uuid>> = groups
+        .iter()
+        .filter_map(|group| {
+            Some((
+                record_id(&group.group_id)?,
+                group.parent_id.as_deref().and_then(record_id),
+            ))
+        })
+        .collect();
+    let theirs: HashMap<Uuid, Option<Uuid>> = server
+        .iter()
+        .map(|(id, record)| (*id, record.parent_id.as_deref().and_then(record_id)))
+        .collect();
+    let yielded = keep_server_parents(&mut parents, &theirs, &moved_here);
+    for group in groups.iter_mut() {
+        if record_id(&group.group_id).is_some_and(|id| yielded.contains(&id)) {
+            group.parent_id = record_id(&group.group_id)
+                .and_then(|id| server.get(&id))
+                .and_then(|record| record.parent_id.clone());
         }
     }
-}
-
-fn cyclic_ids(parents: &HashMap<Uuid, Option<Uuid>>) -> HashSet<Uuid> {
-    let mut cyclic = HashSet::new();
-    let mut settled = HashSet::new();
-    for &start in parents.keys() {
-        let mut path: Vec<Uuid> = Vec::new();
-        let mut current = Some(start);
-        while let Some(id) = current {
-            if settled.contains(&id) || cyclic.contains(&id) {
-                break;
-            }
-            if let Some(at) = path.iter().position(|seen| *seen == id) {
-                cyclic.extend(path[at..].iter().copied());
-                break;
-            }
-            path.push(id);
-            current = parents.get(&id).copied().flatten();
-        }
-        settled.extend(path.into_iter().filter(|id| !cyclic.contains(id)));
-    }
-    cyclic
 }
 
 struct Side<'a, R> {
