@@ -21,7 +21,7 @@
 On 2026-11-25 the maintainer decided:
 
 - `service_sync` goes to SaaS Pro on every cycle, Lifetime included, and to Team, history included. No quota until usage is measured. A lapse is pull-only, and the data stays.
-- A new device gets nothing personal until another device or the recovery key approves it, and the server enforces that (0056).
+- A new device gets nothing personal until another device or the recovery key approves it, and the server enforces that ([0056](0056-end-to-end-keys-per-account-and-device.md)).
 - Content edits revive a deleted record. Placement changes never do.
 - The server detects a restore from Postgres's system identifier and timeline and opens a new epoch itself. It refuses `/v2/sync` only when it cannot run that check. The version check carries the epoch.
 - The facade lives until fewer than 2% of Team Library devices run older builds for 30 days. Team connection keys are not frozen meanwhile.

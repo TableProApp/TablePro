@@ -37,7 +37,7 @@ One engine in `tablepro-sync` syncs every app with TablePro Sync and the Apple a
 | --- | --- | --- |
 | `tablepro-cloud-api` | The generated `/v2` client with its bearer hooks and its problem and 429 mapping, moved out of `tablepro-account` | no workspace crate |
 | `tablepro-records` | Kinds, wire schemas and record ids; field classes; each platform's settings option registry; the field-map three-way merge; the sort and cycle rules; RFC 7396 diff and apply; a mirror of the server's secret-key rule; the CloudKit projection (`tablepro_storage::cloudkit` moves here) and the schema registry | `core`, `storage` |
-| `tablepro-keys` | The end-to-end crypto (0056) | no workspace crate |
+| `tablepro-keys` | The end-to-end crypto ([0056](0056-end-to-end-keys-per-account-and-device.md)) | no workspace crate |
 | `tablepro-sync` | The engine and its state file, the `Transport` and `RecordAdapter` traits, the service transport, the scheduler, approvals, team conflicts, moves between providers and the end-to-end flows | the three above, `account`, `storage` |
 
 `ffi` gives the apps a `SyncService` and a listener that only signals ([0002](0002-uniffi-bindings.md)).

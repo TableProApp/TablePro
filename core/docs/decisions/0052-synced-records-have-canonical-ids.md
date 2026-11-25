@@ -11,7 +11,7 @@
 - **Ids nobody stores.** A favourite table, a favourite database and a table folder item have no id of their own. The Mac hashes what each one names (`FavoriteTablesStorage.syncId`, `FavoriteDatabasesStorage.syncId`, `TableFolderItemKey.syncId`). Since 0.77 a favourite table whose names hold `|` or `\` has an escaped id and a legacy alias, and the Mac writes both. Settings records are named by their category, `theme.<id>` or `columnLayout.<table key>`.
 - **The core's saved queries.** [0017](0017-favourites.md) gave saved queries and folders `INTEGER` ids and a required connection, and a folder's subfolders go with it through `ON DELETE CASCADE`. The Mac's `SQLFavorite` and `SQLFavoriteFolder` have UUIDs and an optional connection: one without a connection is in every connection. An integer is unique on one device only, and a pulled query names a folder this device may not have yet.
 - **History** is keyed by an `INTEGER` rowid that its full-text index joins on (`content_rowid='id'`). The Mac's history entries have random UUIDs.
-- Envelopes and key objects (0056) are records too, and need ids that two writers of one secret or one key version cannot both create.
+- Envelopes and key objects ([0056](0056-end-to-end-keys-per-account-and-device.md)) are records too, and need ids that two writers of one secret or one key version cannot both create.
 
 ## Decision
 
