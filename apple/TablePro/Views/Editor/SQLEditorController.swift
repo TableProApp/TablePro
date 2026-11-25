@@ -74,6 +74,7 @@ final class SQLEditorController {
         applyInput(input)
         let host = SourceEditorHost { state in self.makeEditor(state: state) }
         host.onStateChange = { [weak self] old, new in self?.editorStateDidChange(from: old, to: new) }
+        host.controller.documentCache = input.undoHistories?.documents
         self.host = host
 
         let view = host.controller.view
@@ -105,6 +106,7 @@ final class SQLEditorController {
         }
         input = newInput
         applyInput(newInput)
+        textViewController.documentCache = newInput.undoHistories?.documents
         pushEditor()
         if switchesTab {
             restoreSelection(from: restoreTabHistory(of: newInput), orRestoredRange: newInput.restoredCursorRange)

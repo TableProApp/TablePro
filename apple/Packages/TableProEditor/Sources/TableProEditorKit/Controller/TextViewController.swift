@@ -184,6 +184,9 @@ public class TextViewController: NSViewController {
     /// This will be `nil` if another highlighter provider is passed to the source editor.
     public internal(set) var treeSitterClient: TreeSitterClient?
 
+    /// Where a document goes while another is shown, so showing it again rebuilds nothing. `nil` keeps none.
+    public var documentCache: EditorDocumentCache?
+
     var foldProvider: LineFoldProvider
 
     /// Filters used when applying edits..
@@ -284,8 +287,55 @@ public class TextViewController: NSViewController {
     /// Set the contents of the editor.
     /// - Parameter text: The new contents of the editor.
     public func setText(_ text: String) {
+        replaceDocument(with: NSTextStorage(string: text), lines: nil, parse: nil)
+    }
+
+    /// Shows another document, as ``setText(_:)`` does.
+    ///
+    /// With a ``documentCache``, the outgoing document keeps its storage, lines and parse there under `outgoing`, and
+    /// an incoming one kept under `id` that still holds `text` comes back with none of them rebuilt.
+    /// - Parameters:
+    ///   - text: The incoming document's text.
+    ///   - id: The incoming document, or `nil` when the owner names none.
+    ///   - outgoing: The document shown until now, or `nil` when it was not named.
+    public func showDocument(_ text: String, id: AnyHashable?, replacing outgoing: AnyHashable?) {
+        guard let documentCache, let textView, let storage = textView.textStorage else {
+            setText(text)
+            return
+        }
+        // Taken before the outgoing one is kept, which could otherwise push it out of the cache.
+        let incoming = id.flatMap { documentCache.take($0) }
+        if let outgoing {
+            let parse = treeSitterClient?.park(storage: storage)
+            let lines = textView.layoutManager.detachLines()
+            // Nothing edits a parked storage, and an edit reaching this view's delegates would corrupt the shown one.
+            storage.delegate = nil
+            documentCache.store(
+                EditorDocument(
+                    storage: storage,
+                    lines: lines,
+                    parse: parse,
+                    typingAttributes: textView.typingAttributes
+                ),
+                for: outgoing
+            )
+        }
+        guard let document = incoming, document.matches(text, typingAttributes: textView.typingAttributes) else {
+            setText(text)
+            return
+        }
+        replaceDocument(with: document.storage, lines: document.lines, parse: document.parse)
+    }
+
+    private func replaceDocument(
+        with storage: NSTextStorage,
+        lines: TextLayoutManager.DetachedLines?,
+        parse: TreeSitterClient.ParkedParse?
+    ) {
         endSnippetSession()
-        self.textView.setText(text)
+        self.textView.setTextStorage(storage, adopting: lines)
+        // Before the highlighter is set up, which sets up the client with this storage.
+        self.treeSitterClient?.adopt(parse)
         self.foldModel?.documentDidReplace()
         self.setUpHighlighter()
         self.gutterView.setNeedsDisplay(self.gutterView.frame)
