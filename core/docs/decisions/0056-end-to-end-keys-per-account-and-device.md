@@ -132,13 +132,14 @@ Every construction is a published standard. `tablepro-keys` composes calls into 
 - `info = LP("tablepro/v1/wrap") || LP("tp1") || LP(origin) || scope || LP(purpose) || u32(version) || LP(recipient type) || LP(recipient id) || u32(recipient version) || LP(pkR)`;
 - purpose `account` with recipient type `device` (the device id and `av`), `pkR` the device's DEK, and `pt` the ASK seed and AEK private key, 64 bytes;
 - purpose `personal`, `history` or `team` with recipient type `account` (the account id and its `av`), `pkR` that account's AEK, and `pt` the 32-byte key;
-- purpose `trust` with recipient type `device`, the approving device's pins (Pins), padded JSON.
+- purpose `trust` with recipient type `device`, the approving device's pins and newest versions (Pins), padded JSON.
 
-The wrapper signs it: `Sign(wrapper's ASK, LP("tablepro/v1/wrap-sig") || LP("tp1") || LP(info) || LP(enc) || LP(ct) || LP(wrapper account) || u32(wrapper av))`. That is RFC 9180 §9.1.1's signature over `(enc, ct)`: base mode authenticates no sender, so without it a server could wrap a key of its choice to any public key, the attack ePrint 2026/058 found in deployed password managers. The recipient's public key is inside the signed `info`, so a wrap also tells every member which key its wrapper saw for that recipient.
+The wrapper signs it: `Sign(key, LP("tablepro/v1/wrap-sig") || LP("tp1") || LP(info) || LP(enc) || LP(ct) || LP(wrapper account) || u32(wrapper av) || LP(wrapper device))`. The key is the writing device's DSK for `account` and `trust`, since every device holds ASK and a stolen one could sign as any of them, and the wrapper's ASK for a scope key. That is RFC 9180 §9.1.1's signature over `(enc, ct)`: base mode authenticates no sender, so without it a server could wrap a key of its choice to any public key, the attack ePrint 2026/058 found in deployed password managers. The recipient's public key is inside the signed `info`, so a wrap also tells every member which key its wrapper saw for that recipient.
 
 **Opening a wrap,** the recipient checks:
 
-- the signature, under the wrapper's ASK at the `av` the wrap names, which must be the newest `av` the recipient knows for that account, certified by the IK it pinned;
+- for `account` and `trust`, the signature under the writing device's DSK, which the recipient holds from a comparison of its own (Approving a device);
+- for a scope key, the signature under the wrapper's ASK at the `av` the wrap names, which must be the newest `av` the recipient knows for that account, certified by the IK it pinned;
 - for `account`, that the private keys give the public keys of the account certificate at that `av`;
 - for a scope key, the `kid` of the version record, and that the record's signer may sign it (Teams).
 
@@ -148,7 +149,19 @@ A client opens only the current version's wraps. Older versions come from that v
 
 ### Envelopes and history
 
-**Envelope**, one per (parent record, secret kind), with the id 0052 gives it. The secret kinds and sealed destinations are those of 0053's table, kept as they are: a connection's and a library connection's `password`, `ssl_key_passphrase`, SSH secrets and `plugin.<field id>`; an SSH profile's SSH secrets; a credential profile's `password`; and `ai_key.<provider id>` in a settings record.
+**Envelope**, one per (parent record, secret kind), with the id 0052 gives it.
+
+| Parent kind | Secret kind | Sealed destination |
+|---|---|---|
+| `connection` (personal) and `library_connection` (team) | `password`, `ssl_key_passphrase` | Engine, host, port, user, database, TLS mode, CA and client certificate paths, and the SSH route |
+| same | `ssh_password`, `ssh_key_passphrase`, `ssh_totp_secret` | SSH host, port, user and key path |
+| same | `plugin.<field id>`, one per secure field a driver plugin declares; a field id holding `/` does not sync | As for `password` |
+| `ssh_profile` | `ssh_password`, `ssh_key_passphrase`, `ssh_totp_secret` | SSH host, port, user and key path |
+| `credential_profile` | `password` | The profile's user. At use, each (profile secret, connection destination) pair is approved once per device, as 0044 does for typed references |
+| `<platform>_settings`, record `ai` | `ai_key.<provider id>` | The provider type and endpoint |
+
+A new secret kind needs a row here first.
+
 
 - **Subkey.** `HKDF-SHA256(salt = none, IKM = K_kv, info = LP("tablepro/v1/envelope-key") || LP("tp1") || LP(origin) || scope || LP(parent kind) || LP(record id) || LP(secret kind), L = 32)`, with K a PK version in the personal scope and a TK version in a team. A subkey per record keeps random nonces far below SP 800-38D §8.3's limit.
 - **AAD, immutable ids only** (F3): `LP("tablepro/v1/envelope") || LP("tp1") || LP(origin) || scope || LP(parent kind) || LP(record id) || LP(secret kind) || u32(kv)`.
@@ -169,7 +182,7 @@ A client keeps, per account it meets, its own included, a pin: the IK, the newes
 - **Replace.** A new IK endorsed by the pinned IK is followed with a notice ("Ana replaced her recovery key"). The client never goes back to an IK it has seen replaced.
 - **Any other change** is an alert, in every team the account is in: "Ana's keys changed. Compare her words before sharing team keys with her." Until the person re-confirms on that device, the client wraps nothing to the account and gives its version records no effect. Re-confirming offers the words. Accepting without comparing is allowed and recorded as `first use`.
 - **Fingerprint words.** `f = HKDF-SHA256(salt = none, IKM = IK pub, info = LP("tablepro/v1/fingerprint") || LP("tp1") || LP(origin) || LP(account), L = 32)`. The words are the first six base-7776 digits of f read as a big-endian integer, least significant first, each picking a word of the EFF large word list: about 77 bits. Both people read their own account's words on their own device and compare out of band. In person, one device shows a QR code of `TPF1:` and the 52 Crockford Base32 symbols of f, and the other scans it.
-- **Own devices.** A device approved by another device starts with that device's pins (Approving a device), so a server cannot show a new device a different teammate than its other devices see. A device recovered with R starts with none.
+- **Own devices.** A device approved by another device starts with that device's pins (Approving a device), so a server cannot show a new device a different teammate than its other devices see. A device recovered with R starts with none. Own-device pins, the devices a device compared with, are kept beside them.
 - **Where they live.** In the TablePro Sync state file's key tables, under 0054's anchor (Rollback).
 
 Bitwarden's fingerprint phrase is five EFF words over the public key. The sixth word here adds margin, since a teammate's pin lasts and the words are compared remotely.
@@ -179,12 +192,13 @@ Bitwarden's fingerprint phrase is five EFF words over the public key. The sixth 
 The new device N and an approved device A, both online, with a commitment so an attacker that controls both views gets one guess (Vaudenay, CRYPTO 2005; Apple's Contact Key Verification and Matrix SAS use it).
 
 1. N signs in, makes DSK and DEK, reads the account's newest certificate and fixes its view: IK, DEK and DSK. It draws a 32-byte `r_N` and writes `key.request`: its device id, DEK, DSK, `c = SHA-256(LP("tablepro/v1/sas-commit") || LP("tp1") || LP(origin) || LP(request id) || LP(IK pub) || LP(DEK pub) || LP(DSK pub) || LP(r_N))`, and `exp`, 600 s later.
-2. A shows the request with the device's name, platform and time. The person picks it. A writes the `nonce` step, a random 32-byte `r_A`.
+2. A shows the request with the device's name, platform and time. The person picks it. A writes the `nonce` step: its own device id and DSK, and a random 32-byte `r_A`.
 3. N writes the `reveal` step, `r_N`. A refuses an `r_N` that does not open `c` with the keys the request carries.
-4. Each side computes `d = SHA-256(LP("tablepro/v1/sas") || LP("tp1") || LP(origin) || LP(account) || LP(request id) || LP(IK pub) || LP(DEK pub) || LP(DSK pub) || LP(r_N) || LP(r_A))` from its own view: A with its own account's IK and the request's keys, N with the IK it read and its own keys. Five words: the first five base-7776 digits of d, as above, about 64 bits.
+4. Each side computes `d = SHA-256(LP("tablepro/v1/sas") || LP("tp1") || LP(origin) || LP(account) || LP(request id) || LP(IK pub) || LP(N's DEK pub) || LP(N's DSK pub) || LP(r_N) || LP(A's device id) || LP(A's DSK pub) || LP(r_A))` from its own view: A with its own account's IK, the request's keys and its own DSK, N with the IK it read, its own keys and the `nonce` step it received. Five words: the first five base-7776 digits of d, as above, about 64 bits. Matching words authenticate both ways: N's keys to A, and the account's IK and A's DSK to N.
 5. The person compares the words and confirms on both devices. Words that differ end the request as a possible interception.
-6. A writes N's device certificate under ASK, the `account` wrap of the account keys to N's DEK, and a `trust` wrap of its pins and newest versions.
-7. N checks the certificate and the wraps under the IK it compared, opens them, checks the keys against the certificate, pins what A sent, and reads the scope keys through their wraps to AEK.
+6. A writes N's device certificate under ASK at the current `av`, the `account` wrap of the account keys to N's DEK, and a `trust` wrap of its pins and newest versions, both wraps signed by its DSK.
+7. N checks both wraps under the DSK it compared, opens them, checks the account keys against the certificate at the `av` they name under the IK it compared, pins what A sent, and reads the scope keys through their wraps to AEK. A stolen device that holds ASK cannot sign as A, so it can neither give N old keys nor pins of its choosing.
+8. Each side keeps the other's device id, DEK and DSK as an **own-device pin**: a device whose keys it holds from a comparison of its own.
 
 The request expires after 10 minutes, a session allows one comparison, and both devices poll every 1 to 2 seconds while the sheet is open (0051's rate limits).
 
@@ -198,23 +212,23 @@ The request expires after 10 minutes, a session allows one comparison, and both 
 2. It pushes, as one change set the server applies whole: the certificate at `av` 1, the recovery blob, its own device certificate, and the PK and HK version records with their wraps to AEK.
 3. If another device's genesis won, it discards its keys and asks for approval instead. The server takes a genesis from any interactive sign-in while the account has none: it is trust on first use.
 
-**Rotation,** the one procedure behind removing devices, recovery and replace. A device X, with R typed, moves the account from `av` to `av + 1`, keeping a set D of devices:
+**Rotation,** the one procedure behind removing devices, recovery and replace. A device X, with R typed, moves the account from `av` to `av + 1`, keeping a set D of devices: X itself, and only those of its own-device pins the person ticks. A device certificate alone does not qualify a device for D, since every certificate so far is signed by an ASK a stolen device may hold.
 
 1. It makes ASK', AEK', PK and HK at their next versions, and with a replace a new R'.
-2. It pushes, as one change set the server applies whole: the certificate at `av + 1` under IK (with a replace, under the new IK with the old IK's endorsement), the recovery blob under R (with a replace, under R'), a device certificate and an `account` wrap for each device in D, and the PK and HK version records, wraps to AEK' and rings.
+2. It pushes, as one change set the server applies whole: the certificate at `av + 1` under IK (with a replace, under the new IK with the old IK's endorsement), the recovery blob under R (with a replace, under R'), a device certificate under ASK' and an `account` wrap signed by X's DSK for each device in D, and the PK and HK version records, wraps to AEK' and rings.
 3. It copies the new certificate into each team as `key.member`, and rotates each team's key (Teams).
 4. It zeroizes R, R' and IK once the change set is built and R' has been typed back.
 
-The server then treats only the devices in D as approved. Each of them pulls, finds its new certificate and wrap, checks them under IK and adopts the keys. A device left out sees a verified certificate with no entry for it, erases its keys and asks to be approved again.
+The server then treats only the devices in D as approved. Each of them pulls, finds its new certificate and wrap, checks the wrap under X's DSK from its own-device pin and the keys under IK, and adopts them. A device left out sees a verified certificate with no entry for it, erases its keys and joins again by approval from a device in D.
 
 **Removing a device** (D7).
 
-- From any approved device, the person picks the lost device. The app removes its device row first, which needs a fresh IdP sign-in within 300 s (0051): the server revokes its tokens and its certificate at once. Then the person types R, and the app runs a rotation that keeps every other device the person ticks. The sheet lists each device with its name, platform, when it was added and which device approved it (the certificate's writer), and preselects the lost device and every device it approved.
+- From any approved device, the person picks the lost device. The app removes its device row first, which needs a fresh IdP sign-in within 300 s (0051): the server revokes its tokens and its certificate at once. Then the person types R, and the app runs a rotation. The sheet lists the account's devices with name, platform and when each was added. Those this device compared with can be kept, ticked by default except the lost one; every other device joins again by approval afterwards.
 - An install admin can remove a row from the portal, behind the portal's step-up (0044). The browser holds no keys, so this only locks the device: the server answers it `device_removed`. The person's next device asks for R to finish.
 - Until R is typed nothing rotates. The device is cut off from the honest server at once, and a compromised server could still give it what is written meanwhile. The app keeps asking.
 - Every device left sees the rotation. Teammates see the same IK at a higher `av` and follow it silently.
 
-**Recovery with R** on a device with no approved device at hand: the device reads the newest certificate and blob, which any signed-in device may read, takes R, derives IK, checks the certificate, opens the blob and checks its keys. It runs a rotation that includes itself and keeps the other devices the person ticks, none preselected. IK's signature on the new certificate authorizes the change set. A server that showed it an older certificate gains nothing: the rotation issues keys no removed device ever had, and on an honest server its `av` must be the next one.
+**Recovery with R** on a device with no approved device at hand: the device reads the newest certificate and blob, which any signed-in device may read, takes R, derives IK, checks the certificate, opens the blob and checks its keys. It has compared with no device, so its rotation keeps only itself, and the person's other devices join again by approval from it. IK's signature on the new certificate authorizes the change set. A server that showed it an older certificate gains nothing: the rotation issues keys no removed device ever had, and on an honest server its `av` must be the next one.
 
 **Sign Out** revokes the device's own certificate when online and erases its keys. Nothing rotates (D7). Offline, it erases anyway and the certificate stays until a rotation leaves it out.
 
@@ -242,6 +256,7 @@ Owners and admins manage membership on the server, behind the portal's step-up (
 - **A member's account keys rotate** after a device removal, a recovery, a replace or a reset. The server marks `rotation due` each team where that member holds a team key. The member's own app rotates each team in the same flow. After a reset, another holder rotates, and the person waits for re-confirmation.
 - **Rotation due.** While it is set, the honest server refuses new team envelopes with `rotation_due`, and apps hold them in their queue. It clears when the next version applies.
 - **Re-confirming** after an alert: an owner or admin compares or accepts, then wraps the current version to the new key.
+- **No holder left.** When a reset leaves a team with no holder of its current version on the roster, an owner starts it over: the owner signs the next version as at the team's creation, with a ring of the older versions its device still holds, and members take it on first use with a notice that the team key started over. A client that holds the current version never accepts a restart, so a server cannot use one to replace a key a member holds.
 - **A member checks what reaches it.** A member whose app sees a wrap or version addressed to one of its own superseded `av` raises an alarm and copies its newest certificate into that team again. A server that withheld the member's rotation from a teammate shows up this way.
 - **Old data.** Envelopes stay under the version they were written with (lazy revocation): a removed party already read them. "Credentials to rotate" lists the database credentials it could read.
 
@@ -256,9 +271,9 @@ Key objects are records of reserved kinds under 0051's record rules, with 0052's
 | `key.recovery` | personal | `<account>/<av>` | With its `key.account` | A certificate exists at that `av`. Older blobs are deleted once a newer certificate applies |
 | `key.cancel` | personal | `<account>/<av>` | A device certified at the current `av`, or any device carrying an IK signature | A pending reset at that `av`; the IK signature when present |
 | `key.request` | personal | `<request>` | The requesting device, bound to its DPoP key | `exp` at most 600 s after `iat`; one open request per device; purged after expiry |
-| `key.sas` | personal | `<request>/<step>` | The step's device | Its form; purged with its request |
-| `key.version` | personal, team | `<owner>/<purpose>/<version>` | An approved device; in a team, the owner for version 1, then a member holding a wrap of the current version | Its signature, under the caller's ASK at its current `av`; the version is the current plus one. Create only |
-| `key.wrap` | personal, team | `<owner>/<purpose>/<version>/<recipient type>/<recipient id>/<recipient version>` | An approved device | Its signature, under the caller's ASK at its current `av`. The recipient is a device certified at that `av`, in the store or the same push, or, for a scope key, the scope's own account or a team member on the roster, at its current `av`. In a team, a wrap to an account that holds no wrap of an earlier version since its last reset comes only from an owner or admin. Only its writer replaces one |
+| `key.sas` | personal | `<request>/<step>` | The step's device | Its form; a `nonce` step's DSK is the caller's DPoP key; purged with its request |
+| `key.version` | personal, team | `<owner>/<purpose>/<version>` | An approved device; in a team, an owner for version 1 or a restart, else a member holding a wrap of the current version since its last reset | Its signature, under the caller's ASK at its current `av`; the version is the current plus one. Create only |
+| `key.wrap` | personal, team | `<owner>/<purpose>/<version>/<recipient type>/<recipient id>/<recipient version>` | An approved device | Its signature, under the caller's DSK for `account` and `trust`, else under its ASK at its current `av`. The recipient is a device certified at that `av`, in the store or the same push, or, for a scope key, the scope's own account or a team member on the roster, at its current `av`. In a team, a wrap to an account that holds no wrap of an earlier version since its last reset comes only from an owner or admin. Only its writer replaces one |
 | `key.ring` | personal, team | `<owner>/<purpose>/<version>` | The version's signer | Its form |
 | `key.member` | team | `<account>/<av>` | That account, any role | A byte-for-byte copy of the account's `key.account` at that `av` |
 | `secret_envelope` | personal, team | 0052 | Personal: approved devices. Team: owner, admin, editor, from an approved device | `kv` is the scope's current version (`key_version_stale`, `key_version_unknown`); not while the team is `rotation due` |
@@ -277,7 +292,10 @@ Key objects are records of reserved kinds under 0051's record rules, with 0052's
 
 - **Per account,** a client keeps the newest `av` and the IK it verified, and refuses a lower `av` or an IK it saw replaced.
 - **Per scope key,** it keeps the newest version, refuses a version record below it, and never writes below it.
-- **Per envelope and history entry,** it refuses a new or changed one whose `kv` is below the scope's newest version when it arrives. The honest server never takes such a write, so this stops a removed device that a server helps from slipping in content under an old key. A device's first snapshot accepts every version up to the newest, since old envelopes stay under old keys.
+- **Per envelope,** it never takes a copy under a lower `kv` than the copy it holds.
+- **In order.** A pull serves a scope's changes in revision order, and the client applies key objects and envelopes in that order. A new or changed envelope counts only under the scope's newest version at its place in the order, which is the rule the honest server writes by. A device that was offline while another wrote under v and then rotated to v + 1 meets the write before the rotation and takes it. A removed device's write that a server slips in after the rotation is refused.
+- **Snapshots,** a device's first and every refill, carry no order. A record the device does not hold may come under any version up to the newest, since old envelopes stay under old keys. A server can force a refill, so this is where a removed device with the server's help can still plant content under a key it held (threat model).
+- **History** entries live in their own scope, apart from their key's version records, so they have no order against them: an entry under any HK version up to the newest is taken.
 - These values, the pins and the open alerts live in the state file's key tables under 0054's MAC and anchor, so a restored file cannot forget a newer version or an alert.
 - **Restore on the server.** Key objects are records, so 0051's refill republishes them, and their signatures make them valid as they were. A key object at a position a client already holds with different bytes is refused and raises an alarm.
 
@@ -293,7 +311,7 @@ Key objects are records of reserved kinds under 0051's record rules, with 0052's
 JSON in `core/crates/keys/vectors/`, one file per area, with every random input (R, keys, nonces, `r_N`, `r_A`) an input of the case. HPKE draws its own ephemeral key, so wrap cases run the open direction plus a seal-then-open round trip.
 
 - **Standard:** the RFC 9180 vectors for (0x0020, 0x0001, 0x0002); Wycheproof for AES-GCM, X25519, Ed25519 and HKDF-SHA256.
-- **Known answers:** recovery key text, checksum and parsing (lower case, `I`, `L`, `O`, hyphens, spaces); IK seed and `K_rec`; the blob; account certificates of each kind with the replace endorsement; device certificates; cancels; `kid`; version records; every wrap purpose and recipient type with its signature; rings; envelopes for each secret kind at padding boundaries (63, 64, 4,096 and 4,097 bytes); history entries; the SAS commitment and words; fingerprint words and QR text; DPoP proofs.
+- **Known answers:** recovery key text, checksum and parsing (lower case, `I`, `L`, `O`, hyphens, spaces); IK seed and `K_rec`; the blob; account certificates of each kind with the replace endorsement; device certificates; cancels; `kid`; version records; every wrap purpose and recipient type with its signature; rings; envelopes for each secret kind at padding boundaries (63, 64, 4,096 and 4,097 bytes); history entries; the SAS commitment and words, both directions; fingerprint words and QR text; DPoP proofs.
 - **Negative,** each with the error code it must produce:
   - a suite not listed, a wrong label, each AAD or `info` field changed, non-canonical base64url, a version of 0 or at or above 2^31;
   - a certificate under another IK, an `av` that goes back or skips, a replace without the old IK's endorsement, a certificate under an IK seen replaced;
@@ -301,8 +319,10 @@ JSON in `core/crates/keys/vectors/`, one file per area, with every random input 
   - a wrap whose signature fails, whose signer is not on the newest `av`, or whose `pkR` differs from the recipient's certificate; a `kid` mismatch;
   - a team version signed by an account that holds no wrap of the previous version, or by a holder under an older `av`; a member the server added with no confirming wrap, given no key;
   - an IK change with no endorsement, which alerts and blocks wraps until re-confirmed;
-  - an envelope or history entry, new or changed, under a version below the newest seen;
-  - an `r_N` that does not open its commitment, a commitment over other keys, words that differ;
+  - an envelope under a version below the scope's newest at its place in the revision order, and below the copy held; the same envelope taken in order before the rotation that follows it;
+  - an `r_N` that does not open its commitment, a commitment over other keys, words that differ, an approval wrap signed by ASK or by a DSK other than the compared one;
+  - a rotation that keeps a device that is not an own-device pin of the rotating device;
+  - a team restart shown to a client that holds the current version;
   - a sealed destination that differs from the record's;
   - Ed25519 small-order points, a non-canonical R or A, and S at or above L.
 - **Go side.** The cloud repository copies the vectors and verifies every certificate, version record and wrap signature in Go, and opens every wrap with `crypto/hpke`.
@@ -331,7 +351,7 @@ The full model is the threat model document. In short:
 - **A recovery key comes first** (D6). Team secrets need the account keys, so they need it too. Team plaintext records need none.
 - **Removing a lost device needs the recovery key** (D7). Cutting it off from the server does not.
 - **Teammates see no change** when a person removes a device or recovers, a notice when the person replaces the recovery key, and an alert after a reset.
-- **Approving a device needs both devices online,** with five words to compare.
+- **Approving a device needs both devices online,** with five words to compare. After a device removal, the devices the removing device never compared with join again the same way, and after a recovery every other device does.
 - **A new member waits** for an owner or admin to confirm them in the app. A team key rotation briefly holds new team secrets in the queue.
 - **A reset takes 7 days.** With no device left, it deletes the personal and history records (decided).
 - **An API origin change** is a new identity, as for tokens and the license (0047). History written under the old origin is not readable (decided).

@@ -72,10 +72,11 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | Substitute a key at first contact | Not prevented. The fingerprint words or QR code catch it. Every wrap names its recipient's public key under the wrapper's signature, so a teammate's later wrap that shows another key raises an alert | Pins; Signed objects and wraps |
 | Invent a member and wait for the team key | Nothing is wrapped automatically. An owner or admin confirms each member in the app, with the words shown | Teams |
 | Invent a member or admin that rotates the team key to one the server knows | A version counts only when a holder of the previous version signs it, and a made-up account holds none | Teams |
-| Substitute keys during device approval | The new device commits to its view before the approving device sends its random value, so the server gets one guess at 2^-64.6 per session | Approving a device |
-| Show a new device other teammates than the person's other devices see | The approving device sends its pins and newest versions in a signed wrap | Approving a device; Pins |
+| Substitute keys during device approval | The words cover the new device's keys, the account's IK and the approving device's DSK. The new device commits to its view before the approving device sends its random value, so the server gets one guess at 2^-64.6 per session. The account keys and pins the new device receives are signed by that DSK, so a stolen device holding the account keys cannot stand in for the approver | Approving a device |
+| Show a new device other teammates than the person's other devices see | The approving device sends its pins and newest versions in a wrap signed by its DSK, which the words cover | Approving a device; Pins |
+| Have a rotation send new account keys to a device that a stolen account key certified | A rotation keeps only the devices the rotating device compared with itself. Every other device joins again by approval | Account flows, Rotation |
 | Replay an older certificate, version or key | Clients keep the newest account key version and scope key versions, under 0054's anchor, and refuse anything older. The honest server takes only the next version | Rollback |
-| Slip in an envelope or history entry under an old key that a removed device still holds | A client refuses a new or changed one below the newest version it has seen | Rollback |
+| Slip in an envelope under an old key that a removed device still holds | In a pull, an envelope counts only under the newest version at its place in the revision order, and never below the copy a client holds. A forced refill is the gap left (Residual risks) | Rollback |
 | Move an envelope to another record, secret kind, scope or version | The AAD binds them, and the subkey is per record | Envelopes and history |
 | Rewrite a connection's host so a password goes elsewhere | The sealed destination differs from the record's, and a destination change waits for approval on each device | Envelopes and history |
 | Downgrade the suite | Clients accept `tp1` only, and the suite is in every signed message, `info` and AAD | Suite and encoding |
@@ -127,7 +128,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 
 - the device's row, tokens and certificate are revoked, so the honest server refuses it;
 - new account, personal and history keys reach only the devices the person kept, and every team key rotates;
-- devices the person did not keep, including those the thief approved, lose their certificates.
+- the new account keys reach only devices the removing device compared with itself and the person kept. Every other device, including any the thief approved, loses its certificate, and the person's own join again by approval.
 
 **Before the recovery key is typed,** the device is cut off from the honest server, but a compromised server can still give it new data written under the keys it holds.
 
@@ -149,14 +150,15 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 
 **What holds.**
 
-- A device refuses an older certificate, version record or identity key, and a new or changed envelope or history entry below the newest version it has seen.
+- A device refuses an older certificate, version record or identity key, and an envelope below the copy it holds.
+- In a pull, which serves changes in revision order, a new or changed envelope counts only under the scope's newest version at its place in that order, the rule the honest server writes by. An offline device catches up on writes made before a rotation and refuses ones slipped in after it.
 - A restored state file cannot forget a newer version or an alert while its anchor survives.
 - A device approved by another starts from that device's pins and versions.
 
 **What does not hold.**
 
 - **Rollback within a version.** A server can serve an older envelope under the current version, or withhold a deletion.
-- **A first snapshot** accepts every version up to the newest, since old envelopes stay under old keys. A removed device with the server's help can plant content there under a version it held.
+- **A snapshot,** a device's first or a refill a server can force, accepts every version up to the newest for a record the device does not hold, since old envelopes stay under old keys. A removed device with the server's help can plant such a record under a version it held. History entries are taken under any version for the same reason.
 - **A device recovered with the recovery key** pins teammates on first use and can be shown an older view of its teams.
 - **A restore of the state file together with its anchor,** such as a whole-machine image, cannot be told apart locally from the moment it came from (0054). Deleted history ids live in the file only.
 - **Split views** last until devices or people compare.
@@ -195,7 +197,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 3. **A removed member with the server's help** can sign a new team key version, since it holds the previous one, and show it to members the server picks.
 4. **A stolen device before the recovery key is typed** can be given new data by a compromised server.
 5. **A confirmed member with the server's help** can replace a team secret's value.
-6. **Rollback within a version,** and old-version content planted in a first snapshot by a removed device with the server's help.
+6. **Rollback within a version,** and records a removed device with the server's help plants under a version it held: in a snapshot, which the server can force, and in history.
 7. **Full rollback** for a state file restored with its anchor, which can also bring back history the person deleted.
 8. **A reset** by someone with the person's IdP sign-in succeeds if nobody cancels it for 7 days. Teammates see an alert.
 9. **An exposed recovery key after a replace.** With the server's help, its holder can keep a device or a teammate that never saw the replace on the old identity, a split view.
