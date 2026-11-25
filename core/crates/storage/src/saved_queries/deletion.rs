@@ -67,27 +67,7 @@ pub(super) async fn delete_connection(
     let mut database = pool.acquire().await?;
     let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
     let owner = connection.to_string();
-    let mut copies: Vec<CopyDelete> = [
-        "favourite_tables",
-        "favourite_databases",
-        "table_folders",
-        "table_folder_items",
-    ]
-    .map(|table| CopyDelete {
-        table,
-        sql: format!("DELETE FROM main.{table} WHERE connection_id = ?"),
-        binds: vec![Bind::Text(owner.clone())],
-    })
-    .into();
-    // A pull can move a query or a folder between connections after a copy was made, so the copy may name it
-    // under another; its rowid is the same in both. What the live database no longer holds leaves in the sweep.
-    for table in ["saved_queries", "saved_query_folders"] {
-        let rows: Vec<i64> = sqlx::query_scalar(AssertSqlSafe(format!("SELECT id FROM {table} WHERE connection_id = ?")))
-            .bind(&owner)
-            .fetch_all(&mut *transaction)
-            .await?;
-        copies.extend(rowid_deletes(table, &rows));
-    }
+    let copies = connection_copy_deletes(&mut transaction, &owner).await?;
     trim_upgrade_copies(path, &copies).await?;
     let queries = sqlx::query("DELETE FROM saved_queries WHERE connection_id = ?")
         .bind(&owner)
@@ -118,48 +98,7 @@ pub(super) async fn delete_connection(
     if !filed.is_empty() && queries == 0 {
         changed.push(RecordKind::SavedQuery);
     }
-    let nested: Vec<(i64, Option<String>, String)> = sqlx::query_as(
-        "SELECT child.id, child.connection_id, child.name FROM saved_query_folders child \
-         JOIN saved_query_folders parent ON parent.record_id = child.parent_record_id \
-         WHERE parent.connection_id = ? AND child.connection_id IS NOT ? \
-         ORDER BY parent.id, child.sort_order, child.name COLLATE NOCASE, child.id",
-    )
-    .bind(&owner)
-    .bind(&owner)
-    .fetch_all(&mut *transaction)
-    .await?;
-    // Each takes the first free name at the top of its own connection, or of none.
-    let mut taken: HashMap<Option<String>, HashSet<String>> = HashMap::new();
-    for (id, scope, name) in &nested {
-        let held = match taken.entry(scope.clone()) {
-            Entry::Occupied(held) => held.into_mut(),
-            Entry::Vacant(vacant) => {
-                let names: Vec<String> = sqlx::query_scalar(
-                    "SELECT name FROM saved_query_folders WHERE connection_id IS ? AND parent_record_id IS NULL",
-                )
-                .bind(scope)
-                .fetch_all(&mut *transaction)
-                .await?;
-                vacant.insert(names.iter().map(|name| name_key(name)).collect())
-            }
-        };
-        let name = match held.contains(&name_key(name)) {
-            true => free_name(name, |candidate| held.contains(&name_key(candidate))),
-            false => name.clone(),
-        };
-        held.insert(name_key(&name));
-        let order = ordering::next_folder_order(&mut transaction, scope.as_deref(), None).await?;
-        sqlx::query(
-            "UPDATE saved_query_folders SET parent_record_id = NULL, name = ?, sort_order = ?, updated_at = ? \
-             WHERE id = ?",
-        )
-        .bind(name)
-        .bind(order)
-        .bind(to_unix_millis(SystemTime::now()))
-        .bind(id)
-        .execute(&mut *transaction)
-        .await?;
-    }
+    lift_nested_folders(&mut transaction, &owner).await?;
     delete_folder_rows(&mut transaction, &folders).await?;
     for (statement, kind) in [
         (
@@ -192,8 +131,87 @@ pub(super) async fn delete_connection(
     Ok((queries as usize, changed))
 }
 
+async fn connection_copy_deletes(
+    database: &mut SqliteConnection,
+    owner: &str,
+) -> Result<Vec<CopyDelete>, StorageError> {
+    let mut copies: Vec<CopyDelete> = [
+        "favourite_tables",
+        "favourite_databases",
+        "table_folders",
+        "table_folder_items",
+    ]
+    .map(|table| CopyDelete {
+        table,
+        sql: format!("DELETE FROM main.{table} WHERE connection_id = ?"),
+        binds: vec![Bind::Text(owner.to_owned())],
+    })
+    .into();
+    // A pull can move a query or a folder between connections after a copy was made, so the copy may name it
+    // under another; its rowid is the same in both. What the live database no longer holds leaves in the sweep.
+    for table in ["saved_queries", "saved_query_folders"] {
+        let rows: Vec<i64> =
+            sqlx::query_scalar(AssertSqlSafe(format!("SELECT id FROM {table} WHERE connection_id = ?")))
+                .bind(owner)
+                .fetch_all(&mut *database)
+                .await?;
+        copies.extend(rowid_deletes(table, &rows));
+    }
+    Ok(copies)
+}
+
+// Another connection's folder, or one with none, under a folder going here moves to the top of its own list, under
+// the first name free there.
+async fn lift_nested_folders(database: &mut SqliteConnection, owner: &str) -> Result<(), StorageError> {
+    let nested: Vec<(i64, Option<String>, String)> = sqlx::query_as(
+        "SELECT child.id, child.connection_id, child.name FROM saved_query_folders child \
+         JOIN saved_query_folders parent ON parent.record_id = child.parent_record_id \
+         WHERE parent.connection_id = ? AND child.connection_id IS NOT ? \
+         ORDER BY parent.id, child.sort_order, child.name COLLATE NOCASE, child.id",
+    )
+    .bind(owner)
+    .bind(owner)
+    .fetch_all(&mut *database)
+    .await?;
+    let mut taken: HashMap<Option<String>, HashSet<String>> = HashMap::new();
+    for (id, scope, name) in &nested {
+        let held = match taken.entry(scope.clone()) {
+            Entry::Occupied(held) => held.into_mut(),
+            Entry::Vacant(vacant) => {
+                let names: Vec<String> = sqlx::query_scalar(
+                    "SELECT name FROM saved_query_folders WHERE connection_id IS ? AND parent_record_id IS NULL",
+                )
+                .bind(scope)
+                .fetch_all(&mut *database)
+                .await?;
+                vacant.insert(names.iter().map(|name| name_key(name)).collect())
+            }
+        };
+        let name = match held.contains(&name_key(name)) {
+            true => free_name(name, |candidate| held.contains(&name_key(candidate))),
+            false => name.clone(),
+        };
+        held.insert(name_key(&name));
+        let order = ordering::next_folder_order(database, scope.as_deref(), None).await?;
+        sqlx::query(
+            "UPDATE saved_query_folders SET parent_record_id = NULL, name = ?, sort_order = ?, updated_at = ? \
+             WHERE id = ?",
+        )
+        .bind(name)
+        .bind(order)
+        .bind(to_unix_millis(SystemTime::now()))
+        .bind(id)
+        .execute(&mut *database)
+        .await?;
+    }
+    Ok(())
+}
+
 // Each to the end of the top level of the list it shows in, in the order given.
-async fn unfile_queries(database: &mut SqliteConnection, queries: &[(i64, Option<String>)]) -> Result<(), StorageError> {
+async fn unfile_queries(
+    database: &mut SqliteConnection,
+    queries: &[(i64, Option<String>)],
+) -> Result<(), StorageError> {
     let now = to_unix_millis(SystemTime::now());
     for (id, scope) in queries {
         let order = ordering::next_query_order(database, scope.as_deref(), None).await?;

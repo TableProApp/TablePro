@@ -29,7 +29,9 @@ fn capped(name: &str) -> String {
 // The record created first keeps the place: the earliest `created_at`, then the lowest id compared as
 // bytes, which orders the upper-case text the wire carries the same way.
 pub(super) fn holds_first(left: (i64, Uuid), right: (i64, Uuid)) -> Ordering {
-    left.0.cmp(&right.0).then_with(|| left.1.as_bytes().cmp(right.1.as_bytes()))
+    left.0
+        .cmp(&right.0)
+        .then_with(|| left.1.as_bytes().cmp(right.1.as_bytes()))
 }
 
 // `<name> (2)`, `<name> (3)` and on, the first that nobody in the place holds.
@@ -59,6 +61,12 @@ struct Query {
     settled: bool,
 }
 
+// The record id, its rowid and what the rule compares, for each query the store holds.
+type StoredQuery = (i64, String, Option<String>, String, Option<String>, i64);
+
+// Who meets in one place: each record's `created_at` and id.
+type Contenders = Vec<(i64, Uuid)>;
+
 pub(super) async fn put_queries(
     database: &mut SqliteConnection,
     incoming: &[SavedQuery],
@@ -76,11 +84,30 @@ pub(super) async fn put_queries(
             });
         }
     }
-    let stored: Vec<(i64, String, Option<String>, String, Option<String>, i64)> =
+    let mut world = stored_queries(database).await?;
+    for query in &incoming {
+        take_query(&mut world, query);
+    }
+    settle_query_names(&mut world);
+    let touched: HashSet<String> = incoming
+        .iter()
+        .filter_map(|query| world.get(&query.id)?.keyword.as_deref().map(keyword_key))
+        .collect();
+    settle_keywords(&mut world, &touched);
+    write_queries(database, &world, &incoming, now).await?;
+    Ok(world
+        .values()
+        .filter(|query| query.settled)
+        .map(|query| query.id)
+        .collect())
+}
+
+async fn stored_queries(database: &mut SqliteConnection) -> Result<BTreeMap<Uuid, Query>, StorageError> {
+    let stored: Vec<StoredQuery> =
         sqlx::query_as("SELECT id, record_id, connection_id, name, keyword, created_at FROM saved_queries")
             .fetch_all(&mut *database)
             .await?;
-    let mut world: BTreeMap<Uuid, Query> = BTreeMap::new();
+    let mut world = BTreeMap::new();
     for (rowid, id, owner, name, keyword, created_at) in stored {
         let id = Uuid::parse_str(&id).map_err(|_| StorageError::Schema("record_id is not a UUID".to_owned()))?;
         world.insert(
@@ -96,38 +123,43 @@ pub(super) async fn put_queries(
             },
         );
     }
-    for query in &incoming {
-        let rowid = world.get(&query.id).and_then(|held| held.rowid);
-        let name = capped(&query.name);
-        // The unique indexes compare the stored text, so a keyword is stored as `set_keyword` keeps it.
-        let (keyword, cleared) = match query.keyword.as_deref().map(keyword_form) {
-            None => (None, false),
-            Some(Ok(keyword)) => {
-                let changed = keyword.as_deref().is_some_and(|kept| Some(kept) != query.keyword.as_deref());
-                (keyword, changed)
-            }
-            Some(Err(_)) => (None, true),
-        };
-        world.insert(
-            query.id,
-            Query {
-                rowid,
-                id: query.id,
-                owner: query.connection_id.map(|id| id.to_string()),
-                settled: name != query.name || cleared,
-                name,
-                keyword,
-                created_at: to_unix_millis(query.created_at),
-            },
-        );
-    }
-    settle_query_names(&mut world);
-    let touched: HashSet<String> = incoming
-        .iter()
-        .filter_map(|query| world.get(&query.id)?.keyword.as_deref().map(keyword_key))
-        .collect();
-    settle_keywords(&mut world, &touched);
+    Ok(world)
+}
 
+fn take_query(world: &mut BTreeMap<Uuid, Query>, query: &SavedQuery) {
+    let rowid = world.get(&query.id).and_then(|held| held.rowid);
+    let name = capped(&query.name);
+    // The unique indexes compare the stored text, so a keyword is stored as `set_keyword` keeps it.
+    let (keyword, cleared) = match query.keyword.as_deref().map(keyword_form) {
+        None => (None, false),
+        Some(Ok(keyword)) => {
+            let changed = keyword
+                .as_deref()
+                .is_some_and(|kept| Some(kept) != query.keyword.as_deref());
+            (keyword, changed)
+        }
+        Some(Err(_)) => (None, true),
+    };
+    world.insert(
+        query.id,
+        Query {
+            rowid,
+            id: query.id,
+            owner: query.connection_id.map(|id| id.to_string()),
+            settled: name != query.name || cleared,
+            name,
+            keyword,
+            created_at: to_unix_millis(query.created_at),
+        },
+    );
+}
+
+async fn write_queries(
+    database: &mut SqliteConnection,
+    world: &BTreeMap<Uuid, Query>,
+    incoming: &[SavedQuery],
+    now: SystemTime,
+) -> Result<(), StorageError> {
     let incoming_ids: HashSet<Uuid> = incoming.iter().map(|query| query.id).collect();
     let replaced: Vec<i64> = incoming
         .iter()
@@ -135,7 +167,10 @@ pub(super) async fn put_queries(
         .collect();
     delete_rows(database, "saved_queries", &replaced).await?;
     let stamp = to_unix_millis(now);
-    for query in world.values().filter(|query| query.settled && !incoming_ids.contains(&query.id)) {
+    for query in world
+        .values()
+        .filter(|query| query.settled && !incoming_ids.contains(&query.id))
+    {
         sqlx::query("UPDATE saved_queries SET name = ?, keyword = ?, updated_at = ? WHERE id = ?")
             .bind(&query.name)
             .bind(&query.keyword)
@@ -144,7 +179,7 @@ pub(super) async fn put_queries(
             .execute(&mut *database)
             .await?;
     }
-    for query in &incoming {
+    for query in incoming {
         let Some(settled) = world.get(&query.id) else {
             continue;
         };
@@ -170,17 +205,13 @@ pub(super) async fn put_queries(
         .execute(&mut *database)
         .await?;
     }
-    Ok(world
-        .values()
-        .filter(|query| query.settled)
-        .map(|query| query.id)
-        .collect())
+    Ok(())
 }
 
 // The store holds no two queries of one connection, or of none, under one name, so every pair here
 // has one of the incoming in it.
 fn settle_query_names(world: &mut BTreeMap<Uuid, Query>) {
-    let mut places: BTreeMap<(Option<String>, String), Vec<(i64, Uuid)>> = BTreeMap::new();
+    let mut places: BTreeMap<(Option<String>, String), Contenders> = BTreeMap::new();
     let mut held: HashMap<Option<String>, HashSet<String>> = HashMap::new();
     for query in world.values() {
         places
@@ -245,6 +276,9 @@ struct Folder {
     settled: bool,
 }
 
+// The record id, its rowid, its place and what the rule compares, for each folder the store holds.
+type StoredFolder = (i64, String, Option<String>, Option<String>, String, i64);
+
 pub(super) async fn put_folders(
     database: &mut SqliteConnection,
     incoming: &[SavedQueryFolder],
@@ -259,7 +293,7 @@ pub(super) async fn put_folders(
     if names.iter().any(String::is_empty) {
         return Err(StorageError::EmptyName);
     }
-    let stored: Vec<(i64, String, Option<String>, Option<String>, String, i64)> = sqlx::query_as(
+    let stored: Vec<StoredFolder> = sqlx::query_as(
         "SELECT id, record_id, connection_id, parent_record_id, name, created_at FROM saved_query_folders",
     )
     .fetch_all(&mut *database)
@@ -310,7 +344,10 @@ pub(super) async fn put_folders(
         .collect();
     delete_rows(database, "saved_query_folders", &replaced).await?;
     let stamp = to_unix_millis(now);
-    for folder in world.values().filter(|folder| folder.settled && !incoming_ids.contains(&folder.id)) {
+    for folder in world
+        .values()
+        .filter(|folder| folder.settled && !incoming_ids.contains(&folder.id))
+    {
         sqlx::query("UPDATE saved_query_folders SET name = ?, parent_record_id = ?, updated_at = ? WHERE id = ?")
             .bind(&folder.name)
             .bind(folder.parent.map(|id| id.to_string()))
@@ -406,7 +443,7 @@ fn lift_deep_folders(world: &mut BTreeMap<Uuid, Folder>, incoming: &[Uuid]) {
 type FolderPlace = (Option<String>, Option<Uuid>);
 
 fn settle_folder_names(world: &mut BTreeMap<Uuid, Folder>) {
-    let mut places: BTreeMap<(FolderPlace, String), Vec<(i64, Uuid)>> = BTreeMap::new();
+    let mut places: BTreeMap<(FolderPlace, String), Contenders> = BTreeMap::new();
     let mut held: HashMap<FolderPlace, HashSet<String>> = HashMap::new();
     for folder in world.values() {
         let place = (folder.owner.clone(), folder.parent);

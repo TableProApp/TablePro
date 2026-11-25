@@ -179,7 +179,7 @@ fn the_keyboard_opens_the_selected_favorites_context_menu() {
         assert!(pane.menu.is_visible());
         let model = pane.menu.menu_model().expect("context menu");
         let target = target(&model, 2);
-        assert_eq!(target.get::<String>().as_deref(), Some("q2"));
+        assert_eq!(target.get::<String>(), Some(Key::Query(id(2)).target()));
         pane.menu.popdown();
     }
     assert!(actions.borrow().is_empty());
@@ -255,7 +255,10 @@ fn reordered_menu_targets_keep_their_id_and_removed_targets_do_nothing() {
     assert!(press(&pane, gtk::gdk::Key::F2, gtk::gdk::ModifierType::empty()));
     assert_eq!(
         requested(&actions),
-        [("rename", id(2), "Renamed".to_owned()), ("rename", id(2), "Renamed".to_owned()),]
+        [
+            ("rename", id(2), "Renamed".to_owned()),
+            ("rename", id(2), "Renamed".to_owned()),
+        ]
     );
     let before_switch = target(&menu_of(Key::Query(id(2))), 2);
     pane.clear();
@@ -360,8 +363,10 @@ fn new_folder_requires_a_successful_read_and_an_invalid_graph_keeps_the_last_goo
     assert!(!pane.new_folder.is_sensitive());
     pane.show(nested_snapshot("Kept"));
     assert!(pane.new_folder.is_sensitive());
+    // A folder whose parent is missing reads as the top level (core ADR 0052), so a cycle is the graph left
+    // that cannot be drawn.
     let mut invalid = nested_snapshot("Lost");
-    invalid.folders.clear();
+    invalid.folders[0].parent_id = Some(id(3));
     pane.show(invalid);
     assert_eq!(pane.names(), ["Kept"]);
     assert!(pane.stale.is_revealed());

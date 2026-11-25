@@ -100,7 +100,14 @@ impl SavedQueryFolders {
             transaction.commit().await?;
             return Ok(());
         }
-        check_name(&mut transaction, owner.as_deref(), parent.as_deref(), &name, Some(rowid)).await?;
+        check_name(
+            &mut transaction,
+            owner.as_deref(),
+            parent.as_deref(),
+            &name,
+            Some(rowid),
+        )
+        .await?;
         sqlx::query("UPDATE saved_query_folders SET name = ?, updated_at = ? WHERE id = ?")
             .bind(name)
             .bind(to_unix_millis(SystemTime::now()))
@@ -129,7 +136,14 @@ impl SavedQueryFolders {
             transaction.commit().await?;
             return Ok(());
         }
-        check_name(&mut transaction, owner.as_deref(), parent.as_deref(), &name, Some(rowid)).await?;
+        check_name(
+            &mut transaction,
+            owner.as_deref(),
+            parent.as_deref(),
+            &name,
+            Some(rowid),
+        )
+        .await?;
         let order = ordering::next_folder_order(&mut transaction, owner.as_deref(), parent.as_deref()).await?;
         sqlx::query("UPDATE saved_query_folders SET parent_record_id = ?, updated_at = ?, sort_order = ? WHERE id = ?")
             .bind(&parent)

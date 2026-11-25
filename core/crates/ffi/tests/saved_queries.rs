@@ -170,10 +170,7 @@ async fn folders_nest_hold_queries_in_order_and_give_them_back_to_the_top_when_d
         .iter()
         .map(|query| (query.id.clone(), query.folder_id.clone(), query.order))
         .collect();
-    assert_eq!(
-        order,
-        [(b, Some(monthly.clone()), 0), (a, Some(monthly), 1)]
-    );
+    assert_eq!(order, [(b, Some(monthly.clone()), 0), (a, Some(monthly), 1)]);
     assert!(after.folders.is_empty());
     assert!(after.queries.iter().all(|query| query.folder_id.is_none()));
     assert_eq!(after.queries.len(), 2);
@@ -242,10 +239,7 @@ async fn ids_are_uuid_text_and_a_query_with_no_connection_shows_in_every_connect
     everywhere.connection_id = None;
 
     let id = queries.save(everywhere, false).await.unwrap().unwrap();
-    let folder = queries
-        .create_folder(None, "Shared".to_owned(), None)
-        .await
-        .unwrap();
+    let folder = queries.create_folder(None, "Shared".to_owned(), None).await.unwrap();
     queries
         .move_query(id.clone(), Some(folder.clone()), None)
         .await

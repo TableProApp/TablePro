@@ -87,11 +87,20 @@ async fn the_query_created_first_keeps_the_name_and_the_other_takes_the_first_fr
     store.put(&[local.clone(), taken.clone()]).await.expect("local rows");
 
     let earlier = pulled(Uuid::new_v4(), "Daily", connection, at(1_000));
-    assert_eq!(store.put(std::slice::from_ref(&earlier)).await.expect("put"), [local.id]);
+    assert_eq!(
+        store.put(std::slice::from_ref(&earlier)).await.expect("put"),
+        [local.id]
+    );
     let later = pulled(Uuid::new_v4(), "Daily", connection, at(3_000));
     assert_eq!(store.put(std::slice::from_ref(&later)).await.expect("put"), [later.id]);
     let elsewhere = pulled(Uuid::new_v4(), "Daily", None, at(4_000));
-    assert!(store.put(&[elsewhere.clone()]).await.expect("put").is_empty());
+    assert!(
+        store
+            .put(std::slice::from_ref(&elsewhere))
+            .await
+            .expect("put")
+            .is_empty()
+    );
 
     let mut expected = vec![
         (earlier.id, "Daily".to_owned()),
@@ -180,10 +189,16 @@ async fn a_keyword_is_settled_against_every_query_it_expands_beside() {
     };
     let older = keyed("older", first, 1_000);
     let newer = keyed("newer", second, 3_000);
-    store.put(&[older.clone(), newer.clone()]).await.expect("one keyword in two connections");
+    store
+        .put(&[older.clone(), newer.clone()])
+        .await
+        .expect("one keyword in two connections");
 
     let everywhere = keyed("everywhere", None, 2_000);
-    assert_eq!(store.put(&[everywhere.clone()]).await.expect("put"), [everywhere.id]);
+    assert_eq!(
+        store.put(std::slice::from_ref(&everywhere)).await.expect("put"),
+        [everywhere.id]
+    );
     let keyword = |id| {
         let store = store.clone();
         async move { store.get(id).await.expect("get").expect("query").keyword }
@@ -193,11 +208,14 @@ async fn a_keyword_is_settled_against_every_query_it_expands_beside() {
 
     let mut first_of_all = keyed("first of all", None, 500);
     first_of_all.keyword = Some("rev".to_owned());
-    let mut settled = store.put(&[first_of_all.clone()]).await.expect("put");
+    let mut settled = store.put(std::slice::from_ref(&first_of_all)).await.expect("put");
     settled.sort();
     let mut expected = vec![older.id, newer.id];
     expected.sort();
-    assert_eq!(settled, expected, "a keyword with no connection takes it from every connection");
+    assert_eq!(
+        settled, expected,
+        "a keyword with no connection takes it from every connection"
+    );
     assert_eq!(keyword(first_of_all.id).await.as_deref(), Some("rev"));
 }
 
@@ -234,7 +252,11 @@ async fn a_put_over_a_held_id_replaces_that_row_and_names_can_swap_in_one_batch(
     ];
     assert!(store.put(&swapped).await.expect("swap").is_empty());
 
-    assert_eq!((rowid(x.id).await, rowid(y.id).await), before, "the copies match rows by rowid");
+    assert_eq!(
+        (rowid(x.id).await, rowid(y.id).await),
+        before,
+        "the copies match rows by rowid"
+    );
     let mut expected = vec![(x.id, "y".to_owned()), (y.id, "x".to_owned())];
     expected.sort();
     assert_eq!(names(&store).await, expected);
@@ -262,10 +284,7 @@ async fn a_pulled_query_that_breaks_the_stores_limits_writes_nothing() {
     let good = pulled(Uuid::new_v4(), "good", None, at(1));
     let blank = pulled(Uuid::new_v4(), "  ", None, at(1));
 
-    assert!(matches!(
-        store.put(&[good, blank]).await,
-        Err(StorageError::EmptyName)
-    ));
+    assert!(matches!(store.put(&[good, blank]).await, Err(StorageError::EmptyName)));
     assert!(store.list(None).await.expect("list").is_empty());
 }
 
@@ -276,13 +295,26 @@ async fn pulled_folders_settle_names_in_their_place_in_any_case() {
     let parent = Uuid::new_v4();
     let local = pulled_folder(Uuid::new_v4(), "Reports", None, at(2_000));
     let nested = pulled_folder(Uuid::new_v4(), "reports", Some(parent), at(500));
-    folders.put(&[local.clone(), nested.clone()]).await.expect("local folders");
+    folders
+        .put(&[local.clone(), nested.clone()])
+        .await
+        .expect("local folders");
 
     let earlier = pulled_folder(Uuid::new_v4(), "REPORTS", None, at(1_000));
-    assert_eq!(folders.put(&[earlier.clone()]).await.expect("put"), [local.id]);
+    assert_eq!(
+        folders.put(std::slice::from_ref(&earlier)).await.expect("put"),
+        [local.id]
+    );
 
     let shown = folders.list(Uuid::new_v4()).await.expect("list");
-    let name = |id| shown.iter().find(|folder| folder.id == id).expect("folder").name.clone();
+    let name = |id| {
+        shown
+            .iter()
+            .find(|folder| folder.id == id)
+            .expect("folder")
+            .name
+            .clone()
+    };
     assert_eq!(name(earlier.id), "REPORTS");
     assert_eq!(name(local.id), "Reports (2)");
     assert_eq!(name(nested.id), "reports", "another parent is another place");
@@ -307,7 +339,13 @@ async fn a_pulled_cycle_lifts_the_folder_created_last_and_a_missing_parent_is_ke
 
     assert_eq!(settled, [b]);
     let shown = folders.list(Uuid::new_v4()).await.expect("list");
-    let parent = |name: &str| shown.iter().find(|folder| folder.name == name).expect("folder").parent_id;
+    let parent = |name: &str| {
+        shown
+            .iter()
+            .find(|folder| folder.name == name)
+            .expect("folder")
+            .parent_id
+    };
     assert_eq!((parent("A"), parent("B"), parent("C")), (Some(b), None, Some(missing)));
 }
 
@@ -406,7 +444,10 @@ async fn deleting_a_connection_keeps_what_has_no_connection_and_unfiles_it() {
     let going = folders.create(Some(connection), "Going", None).await.expect("folder");
     let mut shared = pulled(Uuid::new_v4(), "Shared", None, at(1));
     shared.folder_id = Some(going);
-    store.put(&[shared.clone()]).await.expect("a pulled query in the folder");
+    store
+        .put(std::slice::from_ref(&shared))
+        .await
+        .expect("a pulled query in the folder");
 
     store.delete_for_connection(connection).await.expect("delete");
 
@@ -421,14 +462,21 @@ async fn a_shared_folder_lifted_out_of_a_deleted_connection_takes_a_free_name() 
     let folders = history(&root).await.saved_query_folders();
     let connection = Uuid::new_v4();
     let going = folders.create(Some(connection), "Going", None).await.expect("folder");
-    let also = folders.create(Some(connection), "Also going", None).await.expect("folder");
+    let also = folders
+        .create(Some(connection), "Also going", None)
+        .await
+        .expect("folder");
     folders.create(None, "Reports", None).await.expect("a shared folder");
     let inside = [
         pulled_folder(Uuid::new_v4(), "Reports", Some(going), at(1)),
         pulled_folder(Uuid::new_v4(), "reports", Some(also), at(2)),
     ];
     assert!(
-        folders.put(&inside).await.expect("pulled into the going folders").is_empty(),
+        folders
+            .put(&inside)
+            .await
+            .expect("pulled into the going folders")
+            .is_empty(),
         "two parents are two places"
     );
 
@@ -447,7 +495,11 @@ async fn a_shared_folder_lifted_out_of_a_deleted_connection_takes_a_free_name() 
         .map(|folder| folder.name)
         .collect();
     names.sort();
-    assert_eq!(names, ["Reports", "Reports (2)", "reports (3)"], "in the order their parents were made");
+    assert_eq!(
+        names,
+        ["Reports", "Reports (2)", "reports (3)"],
+        "in the order their parents were made"
+    );
 }
 
 // SQLite would turn the next position past i64::MAX into a REAL, which no later read decodes.
@@ -459,10 +511,13 @@ async fn a_pulled_order_at_the_end_of_the_range_leaves_room_for_the_next_save() 
     let connection = Uuid::new_v4();
     let mut last = pulled(Uuid::new_v4(), "Last", None, at(1));
     last.order = i64::MAX;
-    store.put(&[last.clone()]).await.expect("put");
+    store.put(std::slice::from_ref(&last)).await.expect("put");
     let mut last_folder = pulled_folder(Uuid::new_v4(), "Last", None, at(1));
     last_folder.order = i64::MAX;
-    folders.put(&[last_folder.clone()]).await.expect("put folder");
+    folders
+        .put(std::slice::from_ref(&last_folder))
+        .await
+        .expect("put folder");
 
     let saved = store
         .save(NewSavedQuery {
@@ -529,7 +584,11 @@ async fn pulled_names_and_keywords_are_stored_in_the_form_the_indexes_compare() 
     };
     assert_eq!(keyword(keyed[0].id).await.as_deref(), Some("J\u{30C}"));
     assert_eq!(keyword(keyed[1].id).await.as_deref(), Some("\u{1F0}"));
-    assert_eq!(keyword(keyed[2].id).await, None, "a keyword a local save refuses is cleared");
+    assert_eq!(
+        keyword(keyed[2].id).await,
+        None,
+        "a keyword a local save refuses is cleared"
+    );
 }
 
 #[tokio::test]
@@ -538,14 +597,24 @@ async fn a_pulled_name_past_the_cap_is_cut_and_a_chain_past_the_depth_cap_is_lif
     let history = history(&root).await;
     let (store, folders) = (history.saved_queries(), history.saved_query_folders());
     let long = pulled(Uuid::new_v4(), &"q".repeat(300), None, at(1));
-    assert_eq!(store.put(&[long.clone()]).await.expect("put"), [long.id]);
-    assert_eq!(store.get(long.id).await.expect("get").expect("query").name, "q".repeat(200));
+    assert_eq!(store.put(std::slice::from_ref(&long)).await.expect("put"), [long.id]);
+    assert_eq!(
+        store.get(long.id).await.expect("get").expect("query").name,
+        "q".repeat(200)
+    );
 
     let ids: Vec<Uuid> = (0..70).map(|_| Uuid::new_v4()).collect();
     let chain: Vec<SavedQueryFolder> = ids
         .iter()
         .enumerate()
-        .map(|(level, id)| pulled_folder(*id, &format!("Level {level}"), level.checked_sub(1).map(|above| ids[above]), at(1)))
+        .map(|(level, id)| {
+            pulled_folder(
+                *id,
+                &format!("Level {level}"),
+                level.checked_sub(1).map(|above| ids[above]),
+                at(1),
+            )
+        })
         .collect();
     let settled = folders.put(&chain).await.expect("put chain");
 

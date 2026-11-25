@@ -356,7 +356,10 @@ mod tests {
         let task = test.services.tasks.spawn_task(async move {
             let folders = history.saved_query_folders();
             let parent = folders.create(Some(owner), "Reports", None).await.expect("parent");
-            let child = folders.create(Some(owner), "Monthly", Some(parent)).await.expect("child");
+            let child = folders
+                .create(Some(owner), "Monthly", Some(parent))
+                .await
+                .expect("child");
             let saved = history
                 .saved_queries()
                 .save(tablepro_storage::saved_queries::NewSavedQuery {
@@ -414,7 +417,10 @@ mod tests {
     #[test]
     fn a_destination_never_converts_an_invalid_selection_into_the_root() {
         let (first, second) = (Uuid::from_u128(42), Uuid::from_u128(7));
-        let choices = vec![(first, "/No Folder".to_owned()), (second, "/Reports/Monthly".to_owned())];
+        let choices = vec![
+            (first, "/No Folder".to_owned()),
+            (second, "/Reports/Monthly".to_owned()),
+        ];
         assert_eq!(destination(&choices, 0), Some(None));
         assert_eq!(destination(&choices, 1), Some(Some(first)));
         assert_eq!(destination(&choices, 2), Some(Some(second)));

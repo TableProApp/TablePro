@@ -134,14 +134,14 @@ async fn a_beta_5_database_gets_random_record_ids_and_keeps_its_filing_times_pin
     assert_eq!(stored, 11_000, "saved queries keep milliseconds");
 
     let found = history
-        .search_page(&HistoryQuery::from_input("widgets"), HistoryPageRequest::first(MAX_PAGE_SIZE))
+        .search_page(
+            &HistoryQuery::from_input("widgets"),
+            HistoryPageRequest::first(MAX_PAGE_SIZE),
+        )
         .await
         .expect("search")
         .entries;
-    let mut after: Vec<(i64, i64)> = found
-        .iter()
-        .map(|entry| (entry.id, i64::from(entry.pinned)))
-        .collect();
+    let mut after: Vec<(i64, i64)> = found.iter().map(|entry| (entry.id, i64::from(entry.pinned))).collect();
     after.sort();
     assert_eq!(after, before, "rowids or pins moved");
     let next = history

@@ -61,7 +61,10 @@ mod tests {
         let before = UNIX_EPOCH - Duration::from_millis(86_400_250);
 
         assert_eq!(to_unix_millis(after), 1_800_000_000_123);
-        assert_eq!(from_unix_millis(to_unix_millis(after)), UNIX_EPOCH + Duration::from_millis(1_800_000_000_123));
+        assert_eq!(
+            from_unix_millis(to_unix_millis(after)),
+            UNIX_EPOCH + Duration::from_millis(1_800_000_000_123)
+        );
         assert_eq!(from_unix_millis(to_unix_millis(before)), before);
     }
 }

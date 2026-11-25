@@ -154,7 +154,11 @@ async fn favorites_schema_upgrade_preserves_filing_and_metadata_and_normalizes_p
         .expect("root query");
     assert_eq!((root_query.folder_id, root_query.order), (None, 0));
     let reports = folder("Reports").id;
-    for (name, parent, order) in [("Reports", None, 1), ("Archive", None, 0), ("Monthly", Some(reports), 0)] {
+    for (name, parent, order) in [
+        ("Reports", None, 1),
+        ("Archive", None, 0),
+        ("Monthly", Some(reports), 0),
+    ] {
         let folder = folder(name);
         assert_eq!((folder.parent_id, folder.order), (parent, order));
         assert_eq!(folder.created_at, from_unix(21));

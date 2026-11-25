@@ -131,12 +131,18 @@ async fn invalid_moves_leave_names_hierarchy_and_positions_unchanged() {
     let folders = history.saved_query_folders();
     let connection = Uuid::new_v4();
     let parent = folders.create(Some(connection), "Parent", None).await.expect("parent");
-    let child = folders.create(Some(connection), "État", Some(parent)).await.expect("child");
+    let child = folders
+        .create(Some(connection), "État", Some(parent))
+        .await
+        .expect("child");
     folders
         .create(Some(connection), "état", None)
         .await
         .expect("same name at root");
-    let foreign = folders.create(Some(Uuid::new_v4()), "Foreign", None).await.expect("foreign");
+    let foreign = folders
+        .create(Some(Uuid::new_v4()), "Foreign", None)
+        .await
+        .expect("foreign");
     let before = folders.list(connection).await.expect("before");
 
     assert!(matches!(

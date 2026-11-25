@@ -16,10 +16,11 @@ pub(super) async fn reconcile(database: &mut SqliteConnection) -> Result<bool, S
         return Ok(false);
     }
     // A copy with record ids has no foreign keys, so deleting by rowid leaves the rest of it whole.
-    let integer_parents: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM pragma_table_info('saved_query_folders', 'main') WHERE name = 'parent_id'")
-            .fetch_one(&mut *database)
-            .await?;
+    let integer_parents: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('saved_query_folders', 'main') WHERE name = 'parent_id'",
+    )
+    .fetch_one(&mut *database)
+    .await?;
     if integer_parents == 0 {
         return Ok(false);
     }
@@ -292,8 +293,17 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let (history, copy) = upgraded_beta(
             &root,
-            &[(1, "Reports", None), (2, "P", None), (3, "Reports", Some(2)), (4, "Into", None)],
-            &[(10, "root", None, 0), (11, "kept", Some(3), 0), (12, "promoted", Some(4), 0)],
+            &[
+                (1, "Reports", None),
+                (2, "P", None),
+                (3, "Reports", Some(2)),
+                (4, "Into", None),
+            ],
+            &[
+                (10, "root", None, 0),
+                (11, "kept", Some(3), 0),
+                (12, "promoted", Some(4), 0),
+            ],
         )
         .await;
         let folders = history.saved_query_folders();
@@ -590,7 +600,10 @@ mod tests {
         pulled.connection_id = Some(elsewhere);
         store.put(&[pulled]).await.expect("moved by a pull");
 
-        store.delete_for_connection(elsewhere).await.expect("delete the connection");
+        store
+            .delete_for_connection(elsewhere)
+            .await
+            .expect("delete the connection");
 
         for copy in [legacy, current] {
             let mut database = copy_database(&copy).await;
@@ -621,7 +634,9 @@ mod tests {
         .expect("another connection's folders");
         pool.close().await;
         let history = QueryHistory::open(&paths).await.expect("upgrade");
-        let copy = crate::upgrade_copies::copies_blocking(&history.path).expect("copies")[0].path.clone();
+        let copy = crate::upgrade_copies::copies_blocking(&history.path).expect("copies")[0]
+            .path
+            .clone();
         let folders = history.saved_query_folders();
         let going = record_id(&history, "saved_query_folders", 1).await;
         let reports = record_id(&history, "saved_query_folders", 2).await;
@@ -635,7 +650,10 @@ mod tests {
                 .find(|folder| folder.id == id)
                 .expect("the folder");
             pulled.parent_id = Some(going);
-            folders.put(&[pulled]).await.expect("filed under the other connection's folder");
+            folders
+                .put(&[pulled])
+                .await
+                .expect("filed under the other connection's folder");
         }
 
         history
@@ -668,7 +686,10 @@ mod tests {
         pulled.connection_id = Some(Uuid::new_v4());
         store.put(&[pulled]).await.expect("moved by a pull");
 
-        store.delete_for_connection(Uuid::nil()).await.expect("delete the connection");
+        store
+            .delete_for_connection(Uuid::nil())
+            .await
+            .expect("delete the connection");
 
         let mut database = copy_database(&copy).await;
         let kept: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM saved_queries WHERE id = 10")

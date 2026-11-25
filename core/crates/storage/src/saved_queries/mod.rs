@@ -35,8 +35,8 @@ use crate::stored_id::{optional_uuid_column, uuid_column};
 use crate::unix_time::{from_unix_millis, to_unix_millis};
 
 pub use folders::{SavedQueryFolder, SavedQueryFolders};
-pub(crate) use put::free_name;
 pub use new_saved_query::NewSavedQuery;
+pub(crate) use put::free_name;
 pub use saved_query::SavedQuery;
 
 const MAX_KEYWORD_CHARS: usize = 64;
@@ -203,13 +203,17 @@ impl SavedQueries {
     }
 
     pub async fn get(&self, id: Uuid) -> Result<Option<SavedQuery>, StorageError> {
-        sqlx::query(concat!("SELECT ", columns!(), " FROM saved_queries WHERE record_id = ?"))
-            .bind(id.to_string())
-            .fetch_optional(&self.pool)
-            .await?
-            .as_ref()
-            .map(row_to_saved_query)
-            .transpose()
+        sqlx::query(concat!(
+            "SELECT ",
+            columns!(),
+            " FROM saved_queries WHERE record_id = ?"
+        ))
+        .bind(id.to_string())
+        .fetch_optional(&self.pool)
+        .await?
+        .as_ref()
+        .map(row_to_saved_query)
+        .transpose()
     }
 
     pub async fn rename(&self, id: Uuid, name: &str) -> Result<(), StorageError> {
@@ -659,7 +663,10 @@ mod tests {
             .expect("open");
         let (store, folders) = (history.saved_queries(), history.saved_query_folders());
         let connection = Uuid::new_v4();
-        let reports = folders.create(Some(connection), "Reports", None).await.expect("a folder");
+        let reports = folders
+            .create(Some(connection), "Reports", None)
+            .await
+            .expect("a folder");
         let monthly = folders
             .create(Some(connection), "Monthly", Some(reports))
             .await

@@ -1617,7 +1617,10 @@ mod tests {
         let connection = Uuid::new_v4();
         let folders = history.saved_query_folders();
         let favourites = history.favourites();
-        let folder = folders.create(Some(connection), "Reports", None).await.expect("a folder");
+        let folder = folders
+            .create(Some(connection), "Reports", None)
+            .await
+            .expect("a folder");
         folders
             .create(Some(connection), "Monthly", Some(folder))
             .await
