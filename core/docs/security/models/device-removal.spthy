@@ -1,0 +1,131 @@
+theory SyncDeviceRemoval
+begin
+
+// ADR 0053: Logs (device log, the device set, ordering rules between the two account logs) and
+// Flows: Removing a lost device. The server is malicious: it delivers device statements in any order or not at all.
+// V is the holder where the person enters S to remove devices. Its view of the device log decides who gets AK v+1.
+// A rotate may name a holder that left. Flag OLDLEAVE models 0053 before G0 round 1 (e8879f95ee), where a rotate
+// named only holders in the set.
+
+builtins: hashing, signing, asymmetric-encryption
+
+functions: kid/1
+
+macros: wrapinfo(a, ak, recipient) = <'tablepro/v1/wrap', 'tp1', 'personal', a, 'account-key', kid(ak), recipient>
+
+// A holder's lineage is the chain of approvals behind it. A rotate that names a holder takes out every holder
+// whose lineage contains it, which is what "every holder they approved, directly or not" means.
+rule Genesis:
+  let
+    gst = <<'genesis', $a, pk(~ik), kid(~ak)>, sign(<'genesis', $a, pk(~ik), kid(~ak)>, ~ik)>
+    dp  = <'add', $a, 'genesis', pk(~vsig), pk(~vhpke), ~vid>
+    dst = <dp, sign(dp, ~ik)>
+  in
+  [ Fr(~ik), Fr(~ak), Fr(~vsig), Fr(~vhpke), Fr(~vid) ]
+  --[ OnlyOnce(<'genesis', $a>), Genesis($a, ~ak), ViewAdd($a, pk(~vsig), <'root', ~vid>) ]->
+  [ !IdentityKey($a, ~ik)
+  , !HolderKeys($a, ~vsig, ~vhpke)
+  , View($a, ~ak)
+  , !VMem($a, pk(~vsig), pk(~vhpke), <'root', ~vid>)
+  , Out(gst), Out(dst) ]
+
+// An honest holder approves a new honest holder after a comparison (device-approval.spthy).
+rule HonestApprove:
+  let
+    dp = <'add', a, 'approval', pk(~nsig), pk(~nhpke), ~nid, pk(hsig)>
+  in
+  [ !HolderKeys(a, hsig, hpke), Fr(~nsig), Fr(~nhpke), Fr(~nid) ]
+  -->
+  [ !HolderKeys(a, ~nsig, ~nhpke), Out(<dp, sign(dp, hsig)>) ]
+
+// A stolen holder: the thief signs adds and leaves in its name.
+rule Compromise:
+  [ !HolderKeys(a, hsig, hpke) ] --[ Compromise(a, pk(hsig)) ]-> [ Out(<hsig, hpke>) ]
+
+// V accepts an add only when the approving holder is in its set: it has not left, and no rotate took it or a
+// holder it descends from out.
+rule V_Add:
+  let
+    dp = <'add', a, 'approval', pk(nsig), pk(nhpke), nid, pk(bysig)>
+  in
+  [ View(a, ak), !VMem(a, pk(bysig), byhpke, blin), In(<dp, sign(dp, bysig)>) ]
+  --[ UseMem(a, pk(bysig), blin), ViewAdd(a, pk(nsig), <'lin', nid, blin>), ViewAddBy(a, bysig, blin), Unique(nid) ]->
+  [ View(a, ak), !VMem(a, pk(nsig), pk(nhpke), <'lin', nid, blin>) ]
+
+rule V_Leave:
+  let
+    lp = <'leave', a, pk(hsig)>
+  in
+  [ View(a, ak), !VMem(a, pk(hsig), hpke, lin), In(<lp, sign(lp, hsig)>) ]
+  --[ UseMem(a, pk(hsig), lin), Left(a, pk(hsig)), ViewLeave(a, pk(hsig), lin) ]->
+  [ View(a, ak) ]
+
+// Removal: the person enters S on V, which names holders in its set at its current head.
+rule V_RemoveStart:
+  [ View(a, ak), !IdentityKey(a, ik) ]
+  -->
+  [ Removing(a, ak) ]
+
+#ifdef OLDLEAVE
+rule V_RemoveName:
+  [ Removing(a, ak), !VMem(a, hk, hpke, lin) ]
+  --[ UseMem(a, hk, lin), Cut(a, lin) ]->
+  [ Removing(a, ak) ]
+#else
+rule V_RemoveName:
+  [ Removing(a, ak), !VMem(a, hk, hpke, lin) ]
+  --[ Cut(a, lin) ]->
+  [ Removing(a, ak) ]
+#endif
+
+rule V_RemoveFinish:
+  let
+    rst = <<'rotate', a, kid(~ak2)>, sign(<'rotate', a, kid(~ak2)>, ik)>
+  in
+  [ Removing(a, ak), !IdentityKey(a, ik), Fr(~ak2) ]
+  --[ NewAK(a, ~ak2) ]->
+  [ View(a, ~ak2), Out(rst) ]
+
+// V seals the current AK to holders in its set. This also stands for approvals and restore seals it makes later.
+rule V_Seal:
+  [ View(a, ak), !VMem(a, hk, pk(hpke), lin) ]
+  --[ UseMem(a, hk, lin), SealTo(a, ak, lin) ]->
+  [ View(a, ak), Out(aenc(<wrapinfo(a, ak, pk(hpke)), ak>, pk(hpke))) ]
+
+// A holder that left, or that a rotate took out, or that descends from one a rotate took out, is not in the set.
+restriction InSet:
+  "All a hk lin #i. UseMem(a, hk, lin)@i ==>
+     not (Ex #j. Left(a, hk)@j & #j < #i)
+     & not (Ex linX #j. Cut(a, linX)@j & #j < #i & (linX = lin | linX << lin))"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+restriction Unique:
+  "All x #i #j. Unique(x)@i & Unique(x)@j ==> #i = #j"
+
+lemma removal_executable:
+  exists-trace
+  "Ex a hk lin ak slin #c #k #x #i #s. Compromise(a, hk)@c & ViewAdd(a, hk, lin)@k & Cut(a, lin)@x
+     & NewAK(a, ak)@i & SealTo(a, ak, slin)@s & #x < #i"
+
+// Every add the attacker could sign traces back to a stolen holder: approvals are signed by the approving holder.
+lemma attacker_approvals_descend_from_stolen [reuse, use_induction]:
+  "All a bysig blin #i #k. ViewAddBy(a, bysig, blin)@i & K(bysig)@k ==>
+     Ex hk clin #c #v. Compromise(a, hk)@c & ViewAdd(a, hk, clin)@v & (clin = blin | clin << blin)"
+
+// AK v+1 reaches the attacker only through a holder V sealed it to that descends from a stolen holder. V seals to
+// no holder a rotate took out, nor to any holder that descends from one.
+lemma ak_after_removal_secret:
+  "All a ak #i #j. NewAK(a, ak)@i & K(ak)@j ==>
+     Ex hk clin slin #c #v #s. Compromise(a, hk)@c & ViewAdd(a, hk, clin)@v & SealTo(a, ak, slin)@s
+       & (clin = slin | clin << slin)"
+
+// The thief plants a holder, then signs the stolen holder out. The person can still name the stolen holder, and the
+// planted holder goes with it.
+lemma can_remove_stolen_holder_after_it_signed_out:
+  exists-trace
+  "Ex a hk lin #c #k #l #x. Compromise(a, hk)@c & ViewAdd(a, hk, lin)@k & ViewLeave(a, hk, lin)@l
+     & Cut(a, lin)@x & #l < #x"
+
+end

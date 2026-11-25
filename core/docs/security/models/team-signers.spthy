@@ -1,0 +1,150 @@
+theory SyncTeamSigners
+begin
+
+// ADR 0053: Team log (`signer_add`, `signer_remove`, `approve`, `reroot`), gone signers, D15 and the maintainer's
+// k = min(2, n). Root signer A is honest. A adds B while alone. The attacker holds B's key from the start, runs the
+// server and may hold an owner role, so it can write any statement B or an attacker account signs. G verifies the
+// team log. A gone signer counts in neither n nor k.
+
+builtins: hashing, signing
+
+rule Team:
+  [ Fr(~t), Fr(~ka), Fr(~kb) ]
+  --[ OnlyOnce('team'), SignerIn(~t, 'A') ]->
+  [ !Key(~t, 'A', ~ka), !Key(~t, 'B', ~kb), !AKey(~t, ~ka), AddB(~t), Out(<~t, pk(~ka), pk(~kb)>) ]
+
+// A adds B while it is the only signer: k = min(2, 1) = 1.
+rule A_AddB:
+  [ AddB(t) ]
+  --[ OnlySigner(t, 'A'), NotGone(t, 'A'), AEndorsed(t, 'B'), SignerIn(t, 'B'), SignerAdded(t, 'B') ]->
+  [ Out(<'b-added', t>) ]
+
+rule CorruptB:
+  [ !Key(t, 'B', kb) ] --[ Corrupt(t, 'B') ]-> [ Out(kb) ]
+
+// A proposes adding an honest account, which is all A ever proposes or approves.
+rule A_ProposeAdd:
+  let
+    sp = <'signer_add', t, ~h, 'A'>
+  in
+  [ !AKey(t, ka), Fr(~h) ]
+  --[ AEndorsed(t, ~h) ]->
+  [ Out(<sp, sign(sp, ka)>) ]
+
+// A removes itself, or its own logs show it reset or emptied its device set.
+rule A_Gone:
+  let
+    gp = <'gone', t, 'A'>
+  in
+  [ !AKey(t, ka) ]
+  --[ AOwnGone(t) ]->
+  [ Out(<gp, sign(gp, ka)>) ]
+
+rule V_ProposeAdd:
+  let
+    sp = <'signer_add', t, p, s>
+  in
+  [ !Key(t, s, k), In(<sp, sign(sp, k)>) ]
+  --[ NotGone(t, s) ]->
+  [ !Proposal(t, h(sp), 'add', p, s) ]
+
+rule V_ProposeRemove:
+  let
+    rp = <'signer_remove', t, x, s>
+  in
+  [ !Key(t, s, k), In(<rp, sign(rp, k)>) ]
+  --[ NotGone(t, s), Neq(x, s) ]->
+  [ !Proposal(t, h(rp), 'remove', x, s) ]
+
+rule V_Approve:
+  let
+    ap = <'approve', t, pid, s>
+  in
+  [ !Key(t, s, k), In(<ap, sign(ap, k)>) ]
+  --[ NotGone(t, s) ]->
+  [ !Approval(t, pid, s) ]
+
+// Gone comes only from the signer's own signed statements: removing itself, an activated reset, an empty device set.
+rule V_Gone:
+  let
+    gp = <'gone', t, s>
+  in
+  [ !Key(t, s, k), In(<gp, sign(gp, k)>) ]
+  --[ Gone(t, s) ]->
+  [ ]
+
+rule V_AddAlone:
+  [ !Proposal(t, pid, 'add', p, s) ]
+  --[ OnlySigner(t, s), NotGone(t, s), SignerIn(t, p), SignerAdded(t, p), Once(<t, pid>) ]->
+  [ ]
+
+rule V_AddWithApproval:
+  [ !Proposal(t, pid, 'add', p, s1), !Approval(t, pid, s2) ]
+  --[ Neq(s1, s2), NotGone(t, s1), NotGone(t, s2), SignerIn(t, p), SignerAdded(t, p), Once(<t, pid>) ]->
+  [ ]
+
+// Removing another signer: k = min(2, n) distinct signers other than the target. With n = 1 there is no other.
+rule V_RemoveWithApproval:
+  [ !Proposal(t, pid, 'remove', x, s1), !Approval(t, pid, s2) ]
+  --[ Neq(s1, s2), Neq(s2, x), NotGone(t, s1), NotGone(t, s2), SignerOut(t, x), RemovedByOthers(t, x), Once(<t, pid>) ]->
+  [ ]
+
+// An account the server lists as owner writes `reroot`; G takes it only when no signer is left.
+rule V_Reroot:
+  [ In(<'reroot', t, r>) ]
+  --[ NoSignerLeft(t), Reroot(t, r) ]->
+  [ ]
+
+restriction NotGone:
+  "All t s #i. NotGone(t, s)@i ==>
+     (Ex #j. SignerIn(t, s)@j & #j < #i)
+     & not (Ex #o. SignerOut(t, s)@o & #o < #i)
+     & not (Ex #g. Gone(t, s)@g & #g < #i)"
+
+restriction OnlySigner:
+  "All t s #i. OnlySigner(t, s)@i ==>
+     not (Ex s2 #j. SignerIn(t, s2)@j & #j < #i & not (s2 = s)
+          & not (Ex #o. SignerOut(t, s2)@o & #o < #i)
+          & not (Ex #g. Gone(t, s2)@g & #g < #i))"
+
+restriction NoSignerLeft:
+  "All t #i. NoSignerLeft(t)@i ==>
+     All s #j. SignerIn(t, s)@j & #j < #i ==>
+       (Ex #o. SignerOut(t, s)@o & #o < #i) | (Ex #g. Gone(t, s)@g & #g < #i)"
+
+restriction Neq:
+  "All x y #i. Neq(x, y)@i ==> not (x = y)"
+
+restriction Once:
+  "All x #i #j. Once(x)@i & Once(x)@j ==> #i = #j"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+lemma signers_executable:
+  exists-trace
+  "Ex t p #i. SignerAdded(t, p)@i & not (p = 'B') & not (Ex #c. Corrupt(t, 'B')@c)"
+
+lemma reroot_opens_when_every_signer_is_gone:
+  exists-trace
+  "Ex t r #i. Reroot(t, r)@i"
+
+// While A is a signer that is not gone, B adds no signer without A.
+lemma no_signer_added_alone:
+  "All t p #i #a. SignerAdded(t, p)@i & SignerIn(t, 'A')@a & #a < #i
+     & not (Ex #o. SignerOut(t, 'A')@o & #o < #i) & not (Ex #g. Gone(t, 'A')@g & #g < #i) ==>
+     Ex #e. AEndorsed(t, p)@e"
+
+// Nobody removes A: with A and B alone, B is the only signer other than A, and k = 2.
+lemma no_signer_removed_by_one_other:
+  "All t #i. RemovedByOthers(t, 'A')@i ==> F"
+
+// A is gone only by its own statement. A server hint never makes it gone.
+lemma gone_only_by_own_statement:
+  "All t #g. Gone(t, 'A')@g ==> Ex #h. AOwnGone(t)@h & #h < #g"
+
+lemma no_reroot_while_a_signer_is_left:
+  "All t r s #i #j. Reroot(t, r)@i & SignerIn(t, s)@j & #j < #i ==>
+     (Ex #o. SignerOut(t, s)@o & #o < #i) | (Ex #g. Gone(t, s)@g & #g < #i)"
+
+end

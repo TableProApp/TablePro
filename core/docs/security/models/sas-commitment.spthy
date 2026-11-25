@@ -1,0 +1,111 @@
+theory SyncSasCommitment
+begin
+
+// ADR 0053: Comparing keys, the exchange. I commits to its message and r_I, R answers with its random value, I reveals, the person
+// compares the words. Each side's context holds its own view: I's key and session, and the heads the server
+// showed it; R's view of I's key and session, and its own heads.
+// Flags: NOCOMMIT sends r_I in the first message (0044's words), LATEVIEW lets I read its heads after its reveal.
+
+builtins: hashing
+
+// sas and spre as in device-approval.spthy.
+functions: sas/1, spre/2
+
+macros:
+  commit(s, m, r) = h(<'tablepro/v1/sas-commit', s, m, r>),
+  words(ctx, ri, rr) = sas(h(<'tablepro/v1/device-approval', ctx, ri, rr>))
+
+#ifdef NOCOMMIT
+macros: firstmove(s, m, r) = r
+#else
+macros: firstmove(s, m, r) = commit(s, m, r)
+#endif
+
+#ifdef LATEVIEW
+rule I_Start:
+  [ Fr(~s), Fr(~k), Fr(~rI) ]
+  --[ IKey(~s, ~k) ]->
+  [ IWait(~s, ~k, ~rI), Out(<~s, ~k, firstmove(~s, ~k, ~rI)>) ]
+
+rule I_Reveal:
+  [ IWait(s, k, rI), In(<'nonce', s, xR>) ]
+  -->
+  [ IRevealed(s, k, rI, xR), Out(<'reveal', s, rI>) ]
+
+rule I_Words:
+  [ IRevealed(s, k, rI, xR), In(<'heads', v>) ]
+  --[ IView(s, k, v) ]->
+  [ IShow(s, k, v, rI, xR) ]
+#else
+rule I_Start:
+  [ Fr(~s), Fr(~k), Fr(~rI), In(<'heads', v>) ]
+  --[ IKey(~s, ~k), IView(~s, ~k, v) ]->
+  [ IWait(~s, ~k, v, ~rI), Out(<~s, ~k, firstmove(~s, ~k, ~rI)>) ]
+
+rule I_Reveal:
+  [ IWait(s, k, v, rI), In(<'nonce', s, xR>) ]
+  -->
+  [ IShow(s, k, v, rI, xR), Out(<'reveal', s, rI>) ]
+#endif
+
+// R's heads are its own state, and public.
+rule R_Heads:
+  [ Fr(~v) ] --> [ !RHeads(~v), Out(<'heads', ~v>) ]
+
+rule R_Nonce:
+  [ !RHeads(v), In(<s, kx, c>), Fr(~rR) ]
+  --[ RView(s, kx, v) ]->
+  [ RWait(s, kx, v, c, ~rR), Out(<'nonce', s, ~rR>) ]
+
+#ifdef NOCOMMIT
+rule R_Words:
+  [ RWait(s, kx, v, xI, rR) ]
+  -->
+  [ RShow(s, kx, v, xI, rR) ]
+#else
+rule R_Open:
+  [ RWait(s, kx, v, commit(s, kx, xI), rR), In(<'reveal', s, xI>) ]
+  -->
+  [ RShow(s, kx, v, xI, rR) ]
+#endif
+
+rule Compare:
+  [ IShow(s, k, vI, rI, xR), RShow(sx, kx, vR, xI, rR) ]
+  --[ Eq(words(<s, k, vI>, rI, xR), words(<sx, kx, vR>, xI, rR))
+    , Confirmed(s, k, vI, sx, kx, vR) ]->
+  [ ]
+
+rule Compare_SecondPreimage_I:
+  [ IShow(s, k, vI, rI, xR), RShow(sx, kx, vR, xI, rR) ]
+  --[ Eq(xR, spre(<'i', <s, k, vI>, rI>, words(<sx, kx, vR>, xI, rR)))
+    , Confirmed(s, k, vI, sx, kx, vR), Collision('i') ]->
+  [ ]
+
+rule Compare_SecondPreimage_R:
+  [ IShow(s, k, vI, rI, xR), RShow(sx, kx, vR, xI, rR) ]
+  --[ Eq(xI, spre(<'r', <sx, kx, vR>, rR>, words(<s, k, vI>, rI, xR)))
+    , Confirmed(s, k, vI, sx, kx, vR), Collision('r') ]->
+  [ ]
+
+// The heads I was shown are the server's free input on I's side.
+rule Compare_SecondPreimage_View:
+  [ IShow(s, k, vI, rI, xR), RShow(sx, kx, vR, xI, rR) ]
+  --[ Eq(vI, spre(<'v', <s, k>, rI, xR>, words(<sx, kx, vR>, xI, rR)))
+    , Confirmed(s, k, vI, sx, kx, vR), Collision('v') ]->
+  [ ]
+
+restriction Eq:
+  "All x y #i. Eq(x, y)@i ==> x = y"
+
+lemma exchange_executable:
+  exists-trace
+  "Ex s k v #i. Confirmed(s, k, v, s, k, v)@i & not (Ex x #c. Collision(x)@c)"
+
+lemma commitment_leaves_one_guess:
+  "All x #i. Collision(x)@i ==> F"
+
+// What the person's confirmation means: R holds I's key and session, and both saw the same heads.
+lemma comparison_agreement:
+  "All s k vI sx kx vR #i. Confirmed(s, k, vI, sx, kx, vR)@i ==> s = sx & k = kx & vI = vR"
+
+end

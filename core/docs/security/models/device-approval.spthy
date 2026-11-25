@@ -1,0 +1,178 @@
+theory SyncDeviceApproval
+begin
+
+// ADR 0053: Comparing keys (the exchange, device approval) and Flows: Approving a device.
+// N is the new holder and the initiator I, A the approving holder and the responder R.
+// sas-commitment.spthy shows why the commitment and the early heads are needed.
+
+builtins: hashing, signing, asymmetric-encryption
+
+// sas is the five-word truncation. spre(known, target) is a second preimage the attacker computes for
+// its one free input once it knows every other input and the target words (see Compare_* rules).
+functions: kid/1, sas/1, spre/2
+
+macros:
+  commit(s, m, r) = h(<'tablepro/v1/sas-commit', s, m, r>),
+  words(ctx, ri, rr) = sas(h(<'tablepro/v1/device-approval', ctx, ri, rr>)),
+  wrapinfo(a, recipient) = <'tablepro/v1/wrap', 'tp1', 'personal', a, 'account-key', recipient>
+
+rule Account:
+  let
+    gp  = <'genesis', $origin, $acct, pk(~ik), kid(~ak)>
+    gst = <gp, sign(gp, ~ik)>
+    ap  = <'add', $origin, $acct, 'genesis', pk(~sA), pk(~eA), h(gst)>
+    ast = <ap, sign(ap, ~ik)>
+  in
+  [ Fr(~ik), Fr(~ak), Fr(~sA), Fr(~eA) ]
+  --[ OnlyOnce(<'account', $origin, $acct>)
+    , Account($origin, $acct, pk(~ik), ~ak, pk(~sA), h(gst), h(ast)) ]->
+  [ !Approver($origin, $acct, ~sA, ~ak, gst, ast)
+  , !IdentityKey($origin, $acct, ~ik)
+  , Out(gst), Out(ast) ]
+
+// N reads the logs it compares before it commits, so the heads are fixed before r_I goes out.
+rule N_Request:
+  let
+    gst = <<'genesis', $origin, $acct, pk(ik), akkid>, sign(<'genesis', $origin, $acct, pk(ik), akkid>, ik)>
+    ast = <<'add', $origin, $acct, 'genesis', sApub, eApub, h(gst)>, sign(<'add', $origin, $acct, 'genesis', sApub, eApub, h(gst)>, ik)>
+    rq  = <'request', $origin, $acct, ~req, pk(~eN), pk(~sN), commit(~req, <pk(~eN), pk(~sN)>, ~rI)>
+  in
+  [ In(gst), In(ast), Fr(~req), Fr(~eN), Fr(~sN), Fr(~rI) ]
+  --[ NRequest($origin, $acct, ~req, pk(~eN), pk(~sN))
+    , NView($origin, $acct, ~req, h(gst), h(ast)) ]->
+  [ NWaitNonce($origin, $acct, ~req, ~eN, ~sN, ~rI, gst, ast)
+  , Out(<rq, sign(rq, ~sN)>) ]
+
+rule N_Reveal:
+  [ NWaitNonce(o, a, req, eN, sN, rI, gst, ast), In(<'nonce', req, xR>) ]
+  -->
+  [ NShow(o, a, req, eN, sN, rI, xR, gst, ast), Out(<'reveal', req, rI>) ]
+
+// The person picks a request on A. The request list comes from the server.
+rule A_Nonce:
+  let
+    rq = <'request', o, a, req, eNpub, pk(sNx), c>
+  in
+  [ !Approver(o, a, sA, ak, gst, ast), In(<rq, sign(rq, sNx)>), Fr(~rR) ]
+  --[ ANonce(o, a, req, ~rR) ]->
+  [ AWaitReveal(o, a, sA, ak, gst, ast, req, eNpub, pk(sNx), c, ~rR)
+  , Out(<'nonce', req, ~rR>) ]
+
+// A refuses an r_I that does not open the commitment.
+rule A_Reveal:
+  [ AWaitReveal(o, a, sA, ak, gst, ast, req, eNpub, sNpub, commit(req, <eNpub, sNpub>, xI), rR)
+  , In(<'reveal', req, xI>) ]
+  -->
+  [ AShow(o, a, sA, ak, gst, ast, req, eNpub, sNpub, xI, rR) ]
+
+// The person compares the words on N and on A and confirms on both.
+rule Compare:
+  [ NShow(o, a, req, eN, sN, rI, xR, gst, ast)
+  , AShow(o, a, sA, ak, gstA, astA, reqA, eNpub, sNpub, xI, rR) ]
+  --[ Eq(words(<o, a, req, pk(eN), pk(sN), h(gst), h(ast)>, rI, xR),
+         words(<o, a, reqA, eNpub, sNpub, h(gstA), h(astA)>, xI, rR)) ]->
+  [ NConfirmed(o, a, req, eN, sN, gst, ast)
+  , AConfirmed(o, a, sA, ak, gstA, astA, reqA, eNpub, sNpub) ]
+
+// The attacker picked the r_R it gave N as a second preimage of A's words, knowing every other input of N's words.
+rule Compare_SecondPreimage_N:
+  let
+    wA = words(<o, a, reqA, eNpub, sNpub, h(gstA), h(astA)>, xI, rR)
+  in
+  [ NShow(o, a, req, eN, sN, rI, xR, gst, ast)
+  , AShow(o, a, sA, ak, gstA, astA, reqA, eNpub, sNpub, xI, rR) ]
+  --[ Eq(xR, spre(<'n', <o, a, req, pk(eN), pk(sN), h(gst), h(ast)>, rI>, wA)), Collision('n') ]->
+  [ NConfirmed(o, a, req, eN, sN, gst, ast)
+  , AConfirmed(o, a, sA, ak, gstA, astA, reqA, eNpub, sNpub) ]
+
+// The attacker picked the r_I it gave A as a second preimage of N's words.
+rule Compare_SecondPreimage_A:
+  let
+    wN = words(<o, a, req, pk(eN), pk(sN), h(gst), h(ast)>, rI, xR)
+  in
+  [ NShow(o, a, req, eN, sN, rI, xR, gst, ast)
+  , AShow(o, a, sA, ak, gstA, astA, reqA, eNpub, sNpub, xI, rR) ]
+  --[ Eq(xI, spre(<'a', <o, a, reqA, eNpub, sNpub, h(gstA), h(astA)>, rR>, wN)), Collision('a') ]->
+  [ NConfirmed(o, a, req, eN, sN, gst, ast)
+  , AConfirmed(o, a, sA, ak, gstA, astA, reqA, eNpub, sNpub) ]
+
+// The attacker made up the device log it showed N, with the HPKE key field of its add a second preimage of
+// A's words.
+rule Compare_SecondPreimage_View:
+  let
+    ast = <<'add', o, a, 'genesis', sApub, eApub, ih>, sigA0>
+    wA  = words(<o, a, reqA, eNpub, sNpub, h(gstA), h(astA)>, xI, rR)
+  in
+  [ NShow(o, a, req, eN, sN, rI, xR, gst, ast)
+  , AShow(o, a, sA, ak, gstA, astA, reqA, eNpub, sNpub, xI, rR) ]
+  --[ Eq(eApub, spre(<'v', <o, a, req, pk(eN), pk(sN), h(gst), sApub, ih>, rI, xR>, wA)), Collision('v') ]->
+  [ NConfirmed(o, a, req, eN, sN, gst, ast)
+  , AConfirmed(o, a, sA, ak, gstA, astA, reqA, eNpub, sNpub) ]
+
+rule A_Add:
+  let
+    ap = <'add', o, a, 'approval', eNpub, sNpub, req, pk(sA), h(ast), h(gst)>
+  in
+  [ AConfirmed(o, a, sA, ak, gst, ast, req, eNpub, sNpub) ]
+  --[ AddSigned(o, a, pk(sA), eNpub, sNpub, req, h(gst), h(ast)) ]->
+  [ Out(<ap, sign(ap, sA)>)
+  , Out(aenc(<wrapinfo(a, eNpub), ak>, eNpub)) ]
+
+// N accepts the add only under the approver key its pinned device log lists, and the AK whose kid the pinned
+// identity log names.
+rule N_Accept:
+  let
+    gst = <<'genesis', o, a, ikpub, kid(ak)>, sigI>
+    ast = <<'add', o, a, 'genesis', pk(sAx), eApub, h(gst)>, sigA0>
+    ap  = <'add', o, a, 'approval', pk(eN), pk(sN), req, pk(sAx), h(ast), h(gst)>
+  in
+  [ NConfirmed(o, a, req, eN, sN, gst, ast)
+  , In(<ap, sign(ap, sAx)>)
+  , In(aenc(<wrapinfo(a, pk(eN)), ak>, pk(eN))) ]
+  --[ NAccept(o, a, pk(eN), pk(sN), req, pk(sAx), ikpub, h(gst), h(ast), ak) ]->
+  [ ]
+
+rule Reveal_Approver:
+  [ !Approver(o, a, sA, ak, gst, ast) ] --[ RevealApprover(o, a) ]-> [ Out(<sA, ak>) ]
+
+rule Reveal_IdentityKey:
+  [ !IdentityKey(o, a, ik) ] --[ RevealIK(o, a) ]-> [ Out(ik) ]
+
+restriction Eq:
+  "All x y #i. Eq(x, y)@i ==> x = y"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+lemma approval_executable:
+  exists-trace
+  "Ex o a eN sN req sA ik ih dh ak #i. NAccept(o, a, eN, sN, req, sA, ik, ih, dh, ak)@i
+     & not (Ex x #k. Collision(x)@k)
+     & not (Ex #k. RevealApprover(o, a)@k)
+     & not (Ex #k. RevealIK(o, a)@k)"
+
+// The attacker never gets to fix an input of either side's words after it knows the other inputs.
+lemma commitment_leaves_one_guess:
+  "All x #i. Collision(x)@i ==> F"
+
+// A adds only the keys an honest N requested, with the heads N compared, and only once.
+lemma approver_agreement_injective:
+  "All o a sA eN sN req ih dh #i. AddSigned(o, a, sA, eN, sN, req, ih, dh)@i ==>
+     (Ex #j #k. NRequest(o, a, req, eN, sN)@j & NView(o, a, req, ih, dh)@k & #j < #i & #k < #i)
+     & not (Ex sA2 ih2 dh2 #i2. AddSigned(o, a, sA2, eN, sN, req, ih2, dh2)@i2 & not (#i2 = #i))"
+
+// N pins the IK, the heads, the approver and the AK of the real account.
+lemma new_holder_agreement_injective:
+  "All o a eN sN req sA ik ih dh ak #i. NAccept(o, a, eN, sN, req, sA, ik, ih, dh, ak)@i ==>
+     ((Ex #j. AddSigned(o, a, sA, eN, sN, req, ih, dh)@j & #j < #i)
+      & (Ex #k. Account(o, a, ik, ak, sA, ih, dh)@k)
+      & not (Ex sA2 ik2 ih2 dh2 ak2 #i2. NAccept(o, a, eN, sN, req, sA2, ik2, ih2, dh2, ak2)@i2 & not (#i2 = #i)))
+     | (Ex #k. RevealApprover(o, a)@k)
+     | (Ex #k. RevealIK(o, a)@k)"
+
+lemma approved_ak_secret:
+  "All o a eN sN req sA ik ih dh ak #i #j. NAccept(o, a, eN, sN, req, sA, ik, ih, dh, ak)@i & K(ak)@j ==>
+     (Ex #k. RevealApprover(o, a)@k)
+     | (Ex #k. RevealIK(o, a)@k)"
+
+end

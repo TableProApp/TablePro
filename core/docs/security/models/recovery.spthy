@@ -1,0 +1,107 @@
+theory SyncRecovery
+begin
+
+// ADR 0053: The recovery key and the recovery blob; Flows: Genesis, Recovery with the recovery key.
+
+builtins: hashing, signing, asymmetric-encryption, symmetric-encryption
+
+functions: kid/1, krw/3
+
+// HPKE info of a wrap to RK, without the parts that never vary here.
+macros: rkinfo(acct, purpose) = <'tablepro/v1/wrap', 'tp1', 'personal', acct, purpose, 'rk', acct, '1'>
+
+rule Genesis:
+  let
+    aad  = <'tablepro/v1/recovery', 'tp1', $origin, $acct, '1'>
+    blob = senc(<aad, ~ik, ~rk>, krw(~S, $origin, $acct))
+    bh   = h(<'tablepro/v1/recovery-blob', '1', blob>)
+    gp   = <'genesis', $origin, $acct, '0', 'zero', pk(~ik), pk(~rk), '1', bh, pk(~sk), '1', kid(~ak), pk(~hsig)>
+    gst  = <gp, sign(gp, ~ik)>
+    dp   = <'add', $origin, $acct, '0', 'zero', h(gst), 'genesis', pk(~hsig), pk(~hpke)>
+  in
+  [ Fr(~S), Fr(~ik), Fr(~rk), Fr(~sk), Fr(~ak), Fr(~hsig), Fr(~hpke) ]
+  --[ OnlyOnce(<'genesis', $origin, $acct>)
+    , Genesis($origin, $acct, pk(~ik), ~ak, pk(~sk))
+    , GenesisSecrets($origin, $acct, ~ik, ~rk, ~sk)
+    , Holder($origin, $acct, pk(~hsig)) ]->
+  [ !RecoveryKey($origin, $acct, ~S)
+  , !HolderStore($origin, $acct, ~hsig, ~hpke, ~ak, ~sk)
+  , Out(gst), Out(blob), Out(<dp, sign(dp, ~ik)>)
+  , Out(aenc(<rkinfo($acct, 'account-key'), ~ak>, pk(~rk)))
+  , Out(aenc(<rkinfo($acct, 'sharing-key'), ~sk>, pk(~rk))) ]
+
+// Pattern matching on senc and sign stands for AEAD opening and signature verification.
+rule Recover_Open:
+  let
+    aad  = <'tablepro/v1/recovery', 'tp1', $origin, $acct, rkv>
+    blob = senc(<aad, ik, rk>, krw(S, $origin, $acct))
+    gp   = <'genesis', $origin, $acct, '0', 'zero', pk(ik), pk(rk), rkv, h(<'tablepro/v1/recovery-blob', rkv, blob>), skpub, akv, akkid, h0>
+    dp   = <'add', $origin, $acct, 'recovery', pk(~hsig), pk(~hpke), h(<gp, sign(gp, ik)>)>
+  in
+  [ !RecoveryKey($origin, $acct, S), In(<gp, sign(gp, ik)>), In(blob), Fr(~hsig), Fr(~hpke) ]
+  --[ RecoverOpen($origin, $acct, pk(ik)) ]->
+  [ Recovering($origin, $acct, ~hsig, ~hpke, rk, pk(ik), skpub, akkid)
+  , Out(<dp, sign(dp, ik)>) ]
+
+rule Recover_Unwrap:
+  [ Recovering($origin, $acct, hsig, hpke, rk, ikpub, pk(sk), kid(ak))
+  , In(aenc(<rkinfo($acct, 'account-key'), ak>, pk(rk)))
+  , In(aenc(<rkinfo($acct, 'sharing-key'), sk>, pk(rk))) ]
+  --[ RecoverAccept($origin, $acct, ikpub, ak, pk(sk))
+    , Holder($origin, $acct, pk(hsig)) ]->
+  [ Recovered($origin, $acct, hpke, rk) ]
+
+// Recovery from zero devices ends with a `rotate` that removes every other holder and issues fresh SK and AK, so a
+// truncated log the server served gives the recovered holder no key a removed holder had.
+rule Recover_Rotate:
+  [ Recovered($origin, $acct, hpke, rk), Fr(~ak2), Fr(~sk2) ]
+  --[ RecoveryRotate($origin, $acct, ~ak2) ]->
+  [ Out(<'rotate', $origin, $acct, kid(~ak2), pk(~sk2)>)
+  , Out(aenc(<rkinfo($acct, 'account-key'), ~ak2>, pk(rk)))
+  , Out(aenc(<'tablepro/v1/wrap', $acct, 'account-key', ~ak2>, pk(hpke))) ]
+
+rule Reveal_RecoveryKey:
+  [ !RecoveryKey(o, a, S) ] --[ RevealS(o, a) ]-> [ Out(S) ]
+
+// A recovered holder holds the genesis holder's AK and SK (recovery_ik_authentic), so revealing the
+// genesis holder covers a stolen holder.
+rule Reveal_Holder:
+  [ !HolderStore(o, a, hsig, hpke, ak, sk) ]
+  --[ RevealHolder(o, a, pk(hsig)) ]->
+  [ Out(<hsig, hpke, ak, sk>) ]
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+lemma recovery_executable:
+  exists-trace
+  "Ex o a ik ak sk #i. RecoverAccept(o, a, ik, ak, sk)@i
+     & not (Ex #k. RevealS(o, a)@k)
+     & not (Ex h #k. RevealHolder(o, a, h)@k)"
+
+// F1: the IK, AK and SK a recovering device accepts are the ones its genesis made.
+lemma recovery_ik_authentic:
+  "All o a ik ak sk #i. RecoverAccept(o, a, ik, ak, sk)@i ==>
+     (Ex #j. Genesis(o, a, ik, ak, sk)@j & #j < #i)
+     | (Ex #k. RevealS(o, a)@k)"
+
+lemma recovery_open_ik_authentic:
+  "All o a ik #i. RecoverOpen(o, a, ik)@i ==>
+     (Ex ak sk #j. Genesis(o, a, ik, ak, sk)@j & #j < #i)
+     | (Ex #k. RevealS(o, a)@k)"
+
+// A stolen holder gives AK and SK, never IK or RK.
+lemma ik_rk_secret:
+  "All o a ik rk sk #i. GenesisSecrets(o, a, ik, rk, sk)@i ==>
+     (not (Ex #j. K(ik)@j) & not (Ex #j. K(rk)@j))
+     | (Ex #k. RevealS(o, a)@k)"
+
+lemma ak_after_recovery_rotate_secret:
+  "All o a ak #i #j. RecoveryRotate(o, a, ak)@i & K(ak)@j ==> Ex #k. RevealS(o, a)@k"
+
+lemma ak_secret:
+  "All o a ik ak sk #i #j. Genesis(o, a, ik, ak, sk)@i & K(ak)@j ==>
+     (Ex #k. RevealS(o, a)@k)
+     | (Ex h #k. RevealHolder(o, a, h)@k)"
+
+end

@@ -1,0 +1,152 @@
+theory SyncEnvelopes
+begin
+
+// ADR 0053: Envelopes (AAD, the counter `n`, the writer signature, Accepting an envelope) and Floors. One record's
+// envelope in one scope. Version 1 is the scope key before a removal, version 2 after it. Holder H stays; holder X
+// is stolen, keeps version 1 and its signing key, and is removed. The server is malicious. C is an honest reader.
+// Flag OLDCOUNTER models 0053 before G0 round 1 (e8879f95ee): one counter across versions, compared alone, no
+// writer signature on personal envelopes, and versions below the floor refused by pull order.
+
+builtins: hashing, signing, symmetric-encryption, natural-numbers
+
+macros:
+  aad(rec, kv, n) = <'tablepro/v1/envelope', 'tp1', 'scope', rec, kv, n>,
+  subkey(k, rec) = h(<'tablepro/v1/envelope-key', k, rec>),
+  ct(k, rec, kv, n, secret, w) = senc(<aad(rec, kv, n), secret, w>, subkey(k, rec)),
+  env(k, rec, kv, n, secret, w, wsk) = <kv, n, w, ct(k, rec, kv, n, secret, w),
+                                        sign(<'tablepro/v1/writer', w, h(ct(k, rec, kv, n, secret, w))>, wsk)>
+
+rule Scope:
+  [ Fr(~k1), Fr(~rec), Fr(~h), Fr(~x) ]
+  --[ OnlyOnce('scope') ]->
+  [ !ScopeKey(~rec, %1, ~k1), !Writer(~rec, pk(~h), ~h), !Writer(~rec, pk(~x), ~x), !Honest(~rec, pk(~h), ~h)
+  , Version1(~rec, pk(~x)), Out(<~rec, pk(~h), pk(~x)>)
+  , CState(~rec, %1, %1, 'none', %1) ]
+
+// The removal: H makes version 2; X does not get it.
+rule Removal:
+  [ Version1(rec, xpub), Fr(~k2) ]
+  --[ Removal(rec, xpub) ]->
+  [ !ScopeKey(rec, %1 %+ %1, ~k2), RemovalSeen(rec, xpub) ]
+
+rule StealHolder:
+  [ !ScopeKey(rec, %1, k1), !Writer(rec, pk(x), x), Version1(rec, pk(x)) ]
+  --[ Stolen(rec) ]->
+  [ Out(<k1, x>), Version1(rec, pk(x)) ]
+
+#ifdef OLDCOUNTER
+// An honest writer pulls first: it opens the stored envelope, then writes the next counter under its newest version.
+rule HonestWrite:
+  let
+    base = <%kvb, %nb, wb, ct(kb, rec, %kvb, %nb, sb, wb), sigb>
+    new  = env(k, rec, %kv, %nb %+ %1, ~secret, pk(h), h)
+  in
+  [ !ScopeKey(rec, %kvb, kb), !ScopeKey(rec, %kv, k), !Honest(rec, pk(h), h), In(base), Fr(~secret) ]
+  --[ Le(%kvb, %kv), HonestWrite(rec, %kv, %nb %+ %1, h(new)), Supersedes(rec, h(base), h(new)) ]->
+  [ Out(new) ]
+
+// C learns of the removal: versions below 2 are refused from then on.
+rule C_SeeRemoval:
+  [ CState(rec, %skv, %sn, sct, %1), RemovalSeen(rec, xpub) ]
+  --[ CSawRemoval(rec) ]->
+  [ CState(rec, %skv, %sn, sct, %1 %+ %1) ]
+
+// A lower counter is refused whatever the key version.
+rule C_Accept:
+  let
+    e = <%kv, %n, w, ct(k, rec, %kv, %n, secret, w), sig>
+  in
+  [ CState(rec, %skv, %sn, sct, %floor), !ScopeKey(rec, %kv, k), In(e) ]
+  --[ Le(%floor, %kv), Less(%sn, %n), Accepted(rec, %kv, %n, h(e), w) ]->
+  [ CState(rec, %kv, %n, h(e), %floor) ]
+
+rule C_Refuse:
+  let
+    e = <%kv, %n, w, ct(k, rec, %kv, %n, secret, w), sig>
+  in
+  [ CState(rec, %skv, %sn, sct, %floor), !ScopeKey(rec, %kv, k), In(e) ]
+  --[ Le(%floor, %kv), Less(%n, %sn), Refused(rec, %kv, %n, h(e), sct) ]->
+  [ CState(rec, %skv, %sn, sct, %floor) ]
+#else
+// An honest writer pulls first, then writes one step after what it opened: n + 1 under the same version, or 1
+// under a newer one.
+rule HonestWrite:
+  let
+    base = <%kv, %nb, wb, ct(k, rec, %kv, %nb, sb, wb), sigb>
+    new  = env(k, rec, %kv, %nb %+ %1, ~secret, pk(h), h)
+  in
+  [ !ScopeKey(rec, %kv, k), !Honest(rec, pk(h), h), In(base), Fr(~secret) ]
+  --[ HonestWrite(rec, %kv, %nb %+ %1, h(new)), Supersedes(rec, h(base), h(new)) ]->
+  [ Out(new) ]
+
+rule HonestWriteNewVersion:
+  let
+    base = <%kvb, %nb, wb, ct(kb, rec, %kvb, %nb, sb, wb), sigb>
+    new  = env(k, rec, %kv, %1, ~secret, pk(h), h)
+  in
+  [ !ScopeKey(rec, %kvb, kb), !ScopeKey(rec, %kv, k), !Honest(rec, pk(h), h), In(base), Fr(~secret) ]
+  --[ Less(%kvb, %kv), HonestWrite(rec, %kv, %1, h(new)), Supersedes(rec, h(base), h(new)) ]->
+  [ Out(new) ]
+
+// C learns that a rotate removed X.
+rule C_SeeRemoval:
+  [ CState(rec, %skv, %sn, sct, %fl), RemovalSeen(rec, xpub) ]
+  --[ CSawRemoval(rec), CSawRemovedWriter(rec, xpub) ]->
+  [ CState(rec, %skv, %sn, sct, %fl) ]
+
+// C takes an envelope signed by a writer holder of the account, not removed in its view, with (kv, n) above the
+// pair it holds.
+rule C_Accept:
+  let
+    c = ct(k, rec, %kv, %n, secret, pk(wsk))
+    e = <%kv, %n, pk(wsk), c, sign(<'tablepro/v1/writer', pk(wsk), h(c)>, wsk)>
+  in
+  [ CState(rec, %skv, %sn, sct, %fl), !ScopeKey(rec, %kv, k), !Writer(rec, pk(wsk), wsk0), In(e) ]
+  --[ PairLess(<%skv, %sn>, <%kv, %n>), WriterNotRemoved(rec, pk(wsk)), Accepted(rec, %kv, %n, h(e), pk(wsk)) ]->
+  [ CState(rec, %kv, %n, h(e), %fl) ]
+
+rule C_Refuse:
+  let
+    c = ct(k, rec, %kv, %n, secret, pk(wsk))
+    e = <%kv, %n, pk(wsk), c, sign(<'tablepro/v1/writer', pk(wsk), h(c)>, wsk)>
+  in
+  [ CState(rec, %skv, %sn, sct, %fl), !ScopeKey(rec, %kv, k), !Writer(rec, pk(wsk), wsk0), In(e) ]
+  --[ PairLess(<%kv, %n>, <%skv, %sn>), Refused(rec, %kv, %n, h(e), sct) ]->
+  [ CState(rec, %skv, %sn, sct, %fl) ]
+#endif
+
+restriction Less:
+  "All x y #i. Less(x, y)@i ==> x << y"
+
+restriction Le:
+  "All x y #i. Le(x, y)@i ==> x << y | x = y"
+
+restriction PairLess:
+  "All a1 n1 a2 n2 #i. PairLess(<a1, n1>, <a2, n2>)@i ==> a1 << a2 | (a1 = a2 & n1 << n2)"
+
+restriction WriterNotRemoved:
+  "All rec w #i #j. WriterNotRemoved(rec, w)@i & CSawRemovedWriter(rec, w)@j & #j < #i ==> F"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+lemma envelopes_executable:
+  exists-trace
+  "Ex rec n1 n2 c1 c2 w1 w2 #i #j. Accepted(rec, %1, n1, c1, w1)@i & Accepted(rec, %1 %+ %1, n2, c2, w2)@j & #i < #j
+     & not (Ex #s. Stolen(rec)@s)"
+
+// A server cannot hand back an envelope that an honest write already superseded at C.
+lemma no_superseded_envelope:
+  "All rec co cn kvo no wo kvn nn wn #s #i #j. Supersedes(rec, co, cn)@s & Accepted(rec, kvn, nn, cn, wn)@i
+     & Accepted(rec, kvo, no, co, wo)@j & #i < #j ==> F"
+
+// After C sees the removal, it takes nothing the stolen holder writes.
+lemma nothing_from_the_removed_holder_after_removal:
+  "All rec xpub kv n c #r #i. Removal(rec, xpub)@r & CSawRemoval(rec)@r & Accepted(rec, kv, n, c, xpub)@i & #r < #i ==> F"
+
+// 0053's claim: once version 2 exists, C refuses an honest write under it only because of another honest write.
+lemma stolen_holder_cannot_pin_the_counter:
+  "All rec n c sc #i #w. Refused(rec, %1 %+ %1, n, c, sc)@i & HonestWrite(rec, %1 %+ %1, n, c)@w ==>
+     Ex kv sn #h. HonestWrite(rec, kv, sn, sc)@h"
+
+end

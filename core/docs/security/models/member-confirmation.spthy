@@ -1,0 +1,201 @@
+theory SyncMemberConfirmation
+begin
+
+// ADR 0053: Comparing keys (member confirmation, the QR code) and Flows: Confirming a member.
+// G is the signer and the initiator I, M the member and the responder R.
+
+builtins: hashing, signing, asymmetric-encryption
+
+// sas and spre as in device-approval.spthy.
+functions: kid/1, sas/1, spre/2
+
+macros:
+  commit(s, m, r) = h(<'tablepro/v1/sas-commit', s, m, r>),
+  words(ctx, ri, rr) = sas(h(<'tablepro/v1/member', ctx, ri, rr>)),
+  qr(ctx) = h(<'tablepro/v1/member-qr', ctx>),
+  wrapinfo(t, m, skv) = <'tablepro/v1/wrap', 'tp1', 'team', t, 'team-key', '1', 'member', m, skv>
+
+// The member's identity log, as its member bundle copies it.
+rule Member:
+  let
+    mp  = <'genesis', $origin, $m, pk(~ikM), pk(~skM)>
+    mst = <mp, sign(mp, ~ikM)>
+  in
+  [ Fr(~ikM), Fr(~skM) ]
+  --[ OnlyOnce(<'member', $origin, $m>), MemberIdentity($origin, $m, pk(~ikM), h(mst)) ]->
+  [ !MemberKeys($origin, $m, ~ikM, ~skM, mst), Out(mst) ]
+
+// The team log's genesis, signed by the root signer's ASK.
+rule Team:
+  let
+    tp  = <'team-genesis', $origin, $team, $g, pk(~askG)>
+    tst = <tp, sign(tp, ~askG)>
+  in
+  [ Fr(~askG), Fr(~tk) ]
+  --[ OnlyOnce(<'team', $origin, $team>), Team($origin, $team, pk(~askG), h(tst), ~tk) ]->
+  [ !Signer($origin, $team, $g, ~askG, ~tk, tst), Out(tst) ]
+
+// G fixes its view of M's identity log before it commits.
+rule G_Commit:
+  let
+    mst = <<'genesis', o, m, pk(ikx), skpub>, sign(<'genesis', o, m, pk(ikx), skpub>, ikx)>
+  in
+  [ !Signer(o, t, g, askG, tk, tst), In(<'confirm-member', m, mst>), Fr(~sid), Fr(~rG) ]
+  --[ GView(o, t, ~sid, m, pk(ikx), h(mst), h(tst)) ]->
+  [ GWait(o, t, g, askG, tk, tst, ~sid, m, mst, ~rG)
+  , Out(<'commit', ~sid, t, m, commit(~sid, <t, m>, ~rG)>) ]
+
+// M fixes its view of the team log before its random value goes out.
+rule M_Nonce:
+  let
+    tst = <<'team-genesis', o, t, g, pk(askx)>, sign(<'team-genesis', o, t, g, pk(askx)>, askx)>
+  in
+  [ !MemberKeys(o, m, ikM, skM, mst), In(<'commit', sid, t, m, c>), In(tst), Fr(~rM) ]
+  --[ MView(o, t, sid, m, pk(ikM), h(mst), h(tst)) ]->
+  [ MWait(o, t, m, ikM, skM, mst, tst, sid, c, ~rM), Out(<'nonce', sid, ~rM>) ]
+
+rule G_Reveal:
+  [ GWait(o, t, g, askG, tk, tst, sid, m, mst, rG), In(<'nonce', sid, xM>) ]
+  -->
+  [ GShow(o, t, g, askG, tk, tst, sid, m, mst, rG, xM), Out(<'reveal', sid, rG>) ]
+
+rule M_Open:
+  [ MWait(o, t, m, ikM, skM, mst, tst, sid, commit(sid, <t, m>, xG), rM), In(<'reveal', sid, xG>) ]
+  -->
+  [ MShow(o, t, m, ikM, skM, mst, tst, sid, xG, rM) ]
+
+rule Compare:
+  let
+    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+  in
+  [ GShow(o, t, g, askG, tk, tst, sid, m, mstG, rG, xM)
+  , MShow(o, t, m, ikM, skM, mst, tstM, sidM, xG, rM) ]
+  --[ Eq(words(<o, t, m, ikGv, h(mstG), h(tst)>, rG, xM),
+         words(<o, t, m, pk(ikM), h(mst), h(tstM)>, xG, rM))
+    , CompareWords() ]->
+  [ GConfirmed(o, t, g, askG, tk, tst, m, mstG), MConfirmed(o, t, m, ikM, skM, mst, tstM) ]
+
+rule Compare_SecondPreimage_G:
+  let
+    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    wM   = words(<o, t, m, pk(ikM), h(mst), h(tstM)>, xG, rM)
+  in
+  [ GShow(o, t, g, askG, tk, tst, sid, m, mstG, rG, xM)
+  , MShow(o, t, m, ikM, skM, mst, tstM, sidM, xG, rM) ]
+  --[ Eq(xM, spre(<'g', <o, t, m, ikGv, h(mstG), h(tst)>, rG>, wM)), Collision('g') ]->
+  [ GConfirmed(o, t, g, askG, tk, tst, m, mstG), MConfirmed(o, t, m, ikM, skM, mst, tstM) ]
+
+rule Compare_SecondPreimage_M:
+  let
+    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    wG   = words(<o, t, m, ikGv, h(mstG), h(tst)>, rG, xM)
+  in
+  [ GShow(o, t, g, askG, tk, tst, sid, m, mstG, rG, xM)
+  , MShow(o, t, m, ikM, skM, mst, tstM, sidM, xG, rM) ]
+  --[ Eq(xG, spre(<'m', <o, t, m, pk(ikM), h(mst), h(tstM)>, rM>, wG)), Collision('m') ]->
+  [ GConfirmed(o, t, g, askG, tk, tst, m, mstG), MConfirmed(o, t, m, ikM, skM, mst, tstM) ]
+
+// The attacker made up the identity log it showed G, with its SK field a second preimage of M's words.
+rule Compare_SecondPreimage_GView:
+  let
+    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    wM   = words(<o, t, m, pk(ikM), h(mst), h(tstM)>, xG, rM)
+  in
+  [ GShow(o, t, g, askG, tk, tst, sid, m, mstG, rG, xM)
+  , MShow(o, t, m, ikM, skM, mst, tstM, sidM, xG, rM) ]
+  --[ Eq(skGv, spre(<'gv', <o, t, m, ikGv, h(tst)>, rG, xM>, wM)), Collision('gv') ]->
+  [ GConfirmed(o, t, g, askG, tk, tst, m, mstG), MConfirmed(o, t, m, ikM, skM, mst, tstM) ]
+
+// The attacker made up the team log it showed M, with its signer field a second preimage of G's words.
+rule Compare_SecondPreimage_MView:
+  let
+    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    tstM = <<'team-genesis', o, t, gx, askpubx>, sigT>
+    wG   = words(<o, t, m, ikGv, h(mstG), h(tst)>, rG, xM)
+  in
+  [ GShow(o, t, g, askG, tk, tst, sid, m, mstG, rG, xM)
+  , MShow(o, t, m, ikM, skM, mst, tstM, sidM, xG, rM) ]
+  --[ Eq(gx, spre(<'mv', <o, t, m, pk(ikM), h(mst), askpubx>, xG, rM>, wG)), Collision('mv') ]->
+  [ GConfirmed(o, t, g, askG, tk, tst, m, mstG), MConfirmed(o, t, m, ikM, skM, mst, tstM) ]
+
+// In person: G scans M's QR code of the full digest, and M confirms after it sees G's result.
+rule Compare_QR:
+  let
+    mstG = <<'genesis', o, m, ikGv, skGv>, sigG>
+    tst  = <<'team-genesis', o, t, g, pk(askx)>, sign(<'team-genesis', o, t, g, pk(askx)>, askx)>
+  in
+  [ !Signer(o, t, g, askG, tk, tstG), In(<'confirm-member', m, mstG>)
+  , !MemberKeys(o, m, ikM, skM, mst), In(tst) ]
+  --[ Eq(qr(<o, t, m, ikGv, h(mstG), h(tstG)>), qr(<o, t, m, pk(ikM), h(mst), h(tst)>))
+    , GView(o, t, 'qr', m, ikGv, h(mstG), h(tstG))
+    , MView(o, t, 'qr', m, pk(ikM), h(mst), h(tst))
+    , CompareQR() ]->
+  [ GConfirmed(o, t, g, askG, tk, tstG, m, mstG), MConfirmed(o, t, m, ikM, skM, mst, tst) ]
+
+rule G_Confirm:
+  let
+    mstG = <<'genesis', o, m, ikv, skv>, sigG>
+    cp   = <'confirm', o, t, h(tst), m, ikv, h(mstG)>
+    kp   = <'grant', o, t, h(<cp, sign(cp, askG)>), '1', kid(tk), m, skv>
+  in
+  [ GConfirmed(o, t, g, askG, tk, tst, m, mstG) ]
+  --[ Confirm(o, t, pk(askG), m, ikv, h(mstG), h(tst)), SealTK(o, t, m, skv, tk) ]->
+  [ Out(<cp, sign(cp, askG)>), Out(<kp, sign(kp, askG)>)
+  , Out(aenc(<wrapinfo(t, m, skv), tk>, skv)) ]
+
+// M trusts only the signer its pinned team log names, and statements that extend that log.
+rule M_Accept:
+  let
+    tst = <<'team-genesis', o, t, g, pk(askx)>, sigT>
+    cp  = <'confirm', o, t, h(tst), m, pk(ikM), h(mst)>
+    kp  = <'grant', o, t, h(<cp, sign(cp, askx)>), '1', kid(tk), m, pk(skM)>
+  in
+  [ MConfirmed(o, t, m, ikM, skM, mst, tst)
+  , In(<cp, sign(cp, askx)>), In(<kp, sign(kp, askx)>)
+  , In(aenc(<wrapinfo(t, m, pk(skM)), tk>, pk(skM))) ]
+  --[ MAccept(o, t, m, pk(askx), h(tst), tk) ]->
+  [ ]
+
+rule Reveal_Signer:
+  [ !Signer(o, t, g, askG, tk, tst) ] --[ RevealSigner(o, t) ]-> [ Out(<askG, tk>) ]
+
+rule Reveal_Member:
+  [ !MemberKeys(o, m, ikM, skM, mst) ] --[ RevealMember(o, m) ]-> [ Out(<ikM, skM>) ]
+
+restriction Eq:
+  "All x y #i. Eq(x, y)@i ==> x = y"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+lemma words_executable:
+  exists-trace
+  "Ex o t m ask th tk #i #c. MAccept(o, t, m, ask, th, tk)@i & CompareWords()@c
+     & not (Ex x #k. Collision(x)@k)
+     & not (Ex #k. RevealSigner(o, t)@k) & not (Ex #k. RevealMember(o, m)@k)"
+
+lemma qr_executable:
+  exists-trace
+  "Ex o t m ask th tk #i #c. MAccept(o, t, m, ask, th, tk)@i & CompareQR()@c
+     & not (Ex #k. RevealSigner(o, t)@k) & not (Ex #k. RevealMember(o, m)@k)"
+
+lemma commitment_leaves_one_guess:
+  "All x #i. Collision(x)@i ==> F"
+
+// G confirms only the IK and identity head M holds, and M saw G's team head; once per session.
+lemma signer_agreement_injective:
+  "All o t ask m ik mh th #i. Confirm(o, t, ask, m, ik, mh, th)@i ==>
+     (Ex s #j #k. MemberIdentity(o, m, ik, mh)@j & MView(o, t, s, m, ik, mh, th)@k & #k < #i)
+     | (Ex #k. RevealMember(o, m)@k)"
+
+lemma member_agreement:
+  "All o t m ask th tk #i. MAccept(o, t, m, ask, th, tk)@i ==>
+     (Ex ik mh #j #k. Confirm(o, t, ask, m, ik, mh, th)@j & Team(o, t, ask, th, tk)@k & #j < #i)
+     | (Ex #k. RevealSigner(o, t)@k)"
+
+lemma tk_secret:
+  "All o t m ask th tk #i #j. MAccept(o, t, m, ask, th, tk)@i & K(tk)@j ==>
+     (Ex #k. RevealSigner(o, t)@k)
+     | (Ex m2 #k. RevealMember(o, m2)@k)"
+
+end

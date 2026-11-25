@@ -1,0 +1,68 @@
+theory SyncIdentityHeads
+begin
+
+// ADR 0053: Identity log, `dh` and the reset rule. A client follows the device log to head h2. Holder X was added at
+// h1. The person removes the stolen X with a `rotate` whose dh is h2. The server then serves a `reset` endorsed by X
+// that names an older head, where X was still in the set.
+// Flag OLDDH models 0053 before G0 round 1 (e8879f95ee), where nothing kept an identity statement's dh from going
+// back. Two heads are enough: the claim is about their order, not about how many there are.
+
+builtins: hashing, signing
+
+rule Setup:
+  [ Fr(~a), Fr(~x) ]
+  --[ Added(~a, pk(~x), 'h1'), OnlyOnce('setup') ]->
+  [ V(~a, 'none'), !Holder(~a, ~x), Out(~a) ]
+
+rule Rotate:
+  [ V(a, 'none'), !Holder(a, x) ]
+  --[ Cut(a, pk(x), 'h2') ]->
+  [ V(a, 'h2') ]
+
+rule Steal:
+  [ !Holder(a, x) ] --[ Stolen(a, pk(x)) ]-> [ Out(x) ]
+
+// The client checks a reset against the head it names, up to the comparison step. l is the dh of the newest
+// identity statement it holds.
+#ifdef OLDDH
+rule SeeReset:
+  let
+    rp = <'reset', a, e, pk(ik2), pk(x)>
+  in
+  [ V(a, l), In(<rp, sign(rp, ik2), sign(<'endorse', h(<rp, sign(rp, ik2)>)>, x)>) ]
+  --[ Head(e), InSetAt(a, pk(x), e), AcceptReset(a, pk(x)) ]->
+  [ V(a, l) ]
+#else
+rule SeeReset:
+  let
+    rp = <'reset', a, e, pk(ik2), pk(x)>
+  in
+  [ V(a, l), In(<rp, sign(rp, ik2), sign(<'endorse', h(<rp, sign(rp, ik2)>)>, x)>) ]
+  --[ Head(e), NotBefore(e, l), InSetAt(a, pk(x), e), AcceptReset(a, pk(x)) ]->
+  [ V(a, l) ]
+#endif
+
+restriction Heads:
+  "All e #i. Head(e)@i ==> e = 'h1' | e = 'h2'"
+
+restriction NotBefore:
+  "All e l #i. NotBefore(e, l)@i ==> e = l | l = 'none' | (l = 'h1' & e = 'h2')"
+
+// In the set at head e: added at or before e, and no rotate with its dh at or before e named it.
+restriction InSetAt:
+  "All a hk e #i. InSetAt(a, hk, e)@i ==>
+     (Ex #j. Added(a, hk, 'h1')@j)
+     & not (Ex #c. Cut(a, hk, 'h2')@c & #c < #i & e = 'h2')"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+lemma reset_executable:
+  exists-trace
+  "Ex a hk #i. AcceptReset(a, hk)@i"
+
+// A client that has seen the rotate removing X validates no reset X endorsed.
+lemma removed_holder_cannot_endorse_a_reset:
+  "All a hk d #c #i. Cut(a, hk, d)@c & AcceptReset(a, hk)@i & #c < #i ==> F"
+
+end

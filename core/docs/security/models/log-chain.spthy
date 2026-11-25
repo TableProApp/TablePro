@@ -1,0 +1,96 @@
+theory SyncLogChain
+begin
+
+// ADR 0053: Rollback and forks, Restore, Stale or missing state (the re-pin), with 0054's anchored checkpoint.
+// One log, appended by its honest signer. The server is malicious: it can present any prefix, replay statements
+// and lose the log's tail in a restore. C follows the log. A device whose state went stale pins again, and never at
+// a head older than the one its anchor holds.
+
+builtins: hashing, signing, natural-numbers
+
+rule Log:
+  let
+    gp = <'statement', ~l, %1, 'zero', 'genesis'>
+  in
+  [ Fr(~l), Fr(~k) ]
+  --[ OnlyOnce('log'), Appended(~l, %1, h(<gp, sign(gp, ~k)>)) ]->
+  [ !LogKey(~l, ~k), Signer(~l, %1, h(<gp, sign(gp, ~k)>)), Out(<gp, sign(gp, ~k)>) ]
+
+rule Append:
+  let
+    sp = <'statement', l, %n %+ %1, prev, ~x>
+  in
+  [ Signer(l, %n, prev), !LogKey(l, k), Fr(~x) ]
+  --[ Appended(l, %n %+ %1, h(<sp, sign(sp, k)>)) ]->
+  [ Signer(l, %n %+ %1, h(<sp, sign(sp, k)>)), Out(<sp, sign(sp, k)>) ]
+
+rule C_Start:
+  let
+    gp = <'statement', l, %1, 'zero', x>
+  in
+  [ !LogKey(l, k), In(<gp, sign(gp, k)>), Fr(~c) ]
+  --[ CHead(~c, l, %1, h(<gp, sign(gp, k)>)) ]->
+  [ C(~c, l, %1, h(<gp, sign(gp, k)>)) ]
+
+// C takes only the statement at its head's seq plus one that names its head as prev.
+rule C_Extend:
+  let
+    sp = <'statement', l, %n %+ %1, hd, x>
+  in
+  [ C(c, l, %n, hd), !LogKey(l, k), In(<sp, sign(sp, k)>) ]
+  --[ CHead(c, l, %n %+ %1, h(<sp, sign(sp, k)>)) ]->
+  [ C(c, l, %n %+ %1, h(<sp, sign(sp, k)>)), !Held(c, l, %n %+ %1, <sp, sign(sp, k)>) ]
+
+// A server that lost the tail in a restore: C publishes again every statement it holds above the server's head.
+rule C_Republish:
+  [ !Held(c, l, %n, st) ] --> [ Out(st) ]
+
+// A valid statement at a seq C holds, with another hash: a fork alarm.
+rule C_Fork:
+  let
+    sp = <'statement', l, %m, p, x>
+  in
+  [ !Held(c, l, %m, st), !LogKey(l, k), In(<sp, sign(sp, k)>) ]
+  --[ Neq(st, <sp, sign(sp, k)>), ForkAlarm(c, l, %m) ]->
+  [ ]
+
+// The state went stale: C keeps the anchor's head and pins again through a comparison with another holder, which
+// gives it that holder's head.
+rule C_Stale:
+  [ C(c, l, %n, hd) ] --[ Stale(c, l, %n) ]-> [ CStale(c, l, %n) ]
+
+rule C_Repin:
+  [ CStale(c, l, %a), Signer(l, %m, hd) ]
+  --[ NotBelow(%a, %m), Repinned(c, l, %m), CHead(c, l, %m, hd) ]->
+  [ C(c, l, %m, hd), Signer(l, %m, hd) ]
+
+restriction NotBelow:
+  "All a m #i. NotBelow(a, m)@i ==> a = m | a << m"
+
+restriction Neq:
+  "All x y #i. Neq(x, y)@i ==> not (x = y)"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+lemma chain_executable:
+  exists-trace
+  "Ex c l h2 #i. CHead(c, l, %1 %+ %1, h2)@i"
+
+lemma repin_executable:
+  exists-trace
+  "Ex c l m #i. Repinned(c, l, m)@i"
+
+// 0053's claim: rollback is refused through chained heads, re-pins included.
+lemma no_rollback:
+  "All c l n m h1 h2 #i #j. CHead(c, l, n, h1)@i & CHead(c, l, m, h2)@j & #i < #j ==> n << m | (n = m & h1 = h2)"
+
+// Every head C pins is one the signer appended, at that seq.
+lemma heads_are_the_signers:
+  "All c l n hd #i. CHead(c, l, n, hd)@i ==> Ex #a. Appended(l, n, hd)@a & #a < #i"
+
+// The honest signer never forks its own log, so C never raises a false alarm on it.
+lemma no_false_fork_alarm:
+  "All c l m #i. ForkAlarm(c, l, m)@i ==> F"
+
+end
