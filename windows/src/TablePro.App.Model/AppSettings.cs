@@ -87,7 +87,7 @@ public sealed record AppSettings
     // A preset id from the core's keymaps.json; null keeps TablePro's own keys.
     public string? ShortcutPreset { get; set; }
 
-    // Kept on this device only, so another device with an empty library still shows the guide (core 0056).
+    // Kept on this device only, so another device with an empty library still shows the guide (core 0057).
     public bool SetupGuideSeen { get; set; }
 
     // A color scheme's id; null keeps the editor's default colors.

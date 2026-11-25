@@ -3,7 +3,7 @@ using FlaUI.Core.Tools;
 
 namespace TablePro.App.UITests;
 
-// The setup guide of core 0056 on Windows: shown on an empty library the user has not seen it on, one screenshot a step.
+// The setup guide of core 0057 on Windows: shown on an empty library the user has not seen it on, one screenshot a step.
 public sealed partial class ShellTests
 {
     [Theory]

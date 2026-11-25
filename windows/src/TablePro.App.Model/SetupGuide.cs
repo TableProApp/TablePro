@@ -24,8 +24,8 @@ public enum FirstConnectionChoice
     Sample,
 }
 
-// Connections counts the sample; groups do not count (core 0056, The gate).
-// LaunchWork: a file the launch opened waits on the Connections page, and the guide must not cover it (ADR 0056, G8).
+// Connections counts the sample; groups do not count (core 0057, The gate).
+// LaunchWork: a file the launch opened waits on the Connections page, and the guide must not cover it (ADR 0057, G8).
 public sealed record SetupGate(bool FromMenu, bool LibraryRead, int Connections, bool Seen, bool LaunchWork = false);
 
 public enum ImportSource
@@ -69,7 +69,7 @@ public abstract record SetupEnding
     }
 }
 
-// The setup guide's steps, its recorded first connection and the ids its imports wrote (core 0056, Steps).
+// The setup guide's steps, its recorded first connection and the ids its imports wrote (core 0057, Steps).
 public sealed class SetupGuide
 {
     // How long the launch's look for other apps may take before its answer is dropped.
@@ -82,7 +82,7 @@ public sealed class SetupGuide
     private ImportSource _importSource = ImportSource.ThisComputer;
     private bool _originChosen;
 
-    // The guide always opens on its first step (core 0056, Steps).
+    // The guide always opens on its first step (core 0057, Steps).
     public SetupGuide(IForeignImporter importer)
     {
         ArgumentNullException.ThrowIfNull(importer);

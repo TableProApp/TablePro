@@ -1,6 +1,6 @@
 # 0053: End-to-end keys: the identity under the recovery key, signed logs, envelopes, removal and recovery
 
-- **Status**: Accepted; amends 0044 (Secrets, and its Consequences line that teammates confirm a person again after a device removal or recovery)
+- **Status**: Superseded by 0056
 - **Date**: 2026-11-25
 
 ## Context

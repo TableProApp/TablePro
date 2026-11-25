@@ -1,4 +1,4 @@
-# 0056: A setup guide shows on an empty library
+# 0057: A setup guide shows on an empty library
 
 - **Status**: Accepted; amends 0008
 - **Date**: 2026-11-24

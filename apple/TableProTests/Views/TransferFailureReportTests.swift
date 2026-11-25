@@ -14,7 +14,7 @@ extension GlobalStateSuites {
 
         @Test("The failing statement is reported alongside the line and the message")
         func statementIsIncluded() {
-            let report = TransferResultAlert.failureReport(for: [
+            let report = TransferResults.failureReport(for: [
                 failure(line: 12, message: "syntax error", statement: "INSERT INTO users VALUES (")
             ])
             #expect(report.contains("12"))
@@ -25,7 +25,7 @@ extension GlobalStateSuites {
         /// A row import names its entry `row 12`, which the line number already says.
         @Test("A statement that only repeats the line number is left out")
         func rowPlaceholderIsSkipped() {
-            let report = TransferResultAlert.failureReport(for: [
+            let report = TransferResults.failureReport(for: [
                 failure(line: 12, message: "not null violation", statement: "row 12")
             ])
             #expect(report.contains("not null violation"))
@@ -34,7 +34,7 @@ extension GlobalStateSuites {
 
         @Test("An empty statement adds no trailing line")
         func emptyStatementIsSkipped() {
-            let report = TransferResultAlert.failureReport(for: [
+            let report = TransferResults.failureReport(for: [
                 failure(line: 3, message: "duplicate key", statement: "   ")
             ])
             #expect(report.hasSuffix("duplicate key"))
@@ -42,7 +42,7 @@ extension GlobalStateSuites {
 
         @Test("Failures are separated from one another")
         func failuresAreSeparated() {
-            let report = TransferResultAlert.failureReport(for: [
+            let report = TransferResults.failureReport(for: [
                 failure(line: 1, message: "first", statement: "SELECT 1"),
                 failure(line: 2, message: "second", statement: "SELECT 2")
             ])
@@ -55,7 +55,7 @@ extension GlobalStateSuites {
 
         @Test("A failed statement reports its line, its reason and the statement")
         func failedStatementReportsEverything() throws {
-            let report = try #require(TransferResultAlert.failureReport(
+            let report = try #require(TransferResults.failureReport(
                 for: PluginImportError.statementFailed(
                     statement: "INSERT INTO users VALUES (1)",
                     line: 412,
@@ -69,8 +69,8 @@ extension GlobalStateSuites {
 
         @Test("An error with no failing statement carries no report")
         func unstructuredErrorHasNoReport() {
-            #expect(TransferResultAlert.failureReport(for: PluginImportError.importFailed("disk full")) == nil)
-            #expect(TransferResultAlert.failureReport(for: nil) == nil)
+            #expect(TransferResults.failureReport(for: PluginImportError.importFailed("disk full")) == nil)
+            #expect(TransferResults.failureReport(for: nil) == nil)
         }
 
         /// The report is what the user has to send on to whoever can fix the data, so copying it must
@@ -159,13 +159,13 @@ extension GlobalStateSuites {
                 underlyingError: TransferReportStubError(message: errors.joined(separator: "\n"))
             )
 
-            let text = TransferResultAlert.importFailureText(for: failure)
-            let limit = TransferResultAlert.shownErrorLineLimit
+            let text = TransferResults.importFailureText(for: failure)
+            let limit = TransferResults.shownErrorLineLimit
             #expect(text.components(separatedBy: "\n").count == limit + 1)
             #expect(text.contains(errors[limit - 1]))
             #expect(!text.contains(errors[limit]))
 
-            let copied = try #require(TransferResultAlert.failureReport(for: failure))
+            let copied = try #require(TransferResults.failureReport(for: failure))
             #expect(copied.contains(errors[999]))
         }
 
@@ -178,11 +178,11 @@ extension GlobalStateSuites {
                 underlyingError: TransferReportStubError(message: reason)
             )
 
-            let text = TransferResultAlert.importFailureText(for: failure)
-            #expect((text as NSString).length < TransferResultAlert.shownErrorLengthLimit + 200)
+            let text = TransferResults.importFailureText(for: failure)
+            #expect((text as NSString).length < TransferResults.shownErrorLengthLimit + 200)
             #expect(text.contains("Line 4: Incorrect syntax near 'xxx"))
 
-            let copied = try #require(TransferResultAlert.failureReport(for: failure))
+            let copied = try #require(TransferResults.failureReport(for: failure))
             #expect(copied.contains(reason))
         }
 
@@ -193,7 +193,7 @@ extension GlobalStateSuites {
                 line: 3,
                 underlyingError: TransferReportStubError(message: "Line 4: first\nLine 5: second")
             )
-            let text = TransferResultAlert.importFailureText(for: failure)
+            let text = TransferResults.importFailureText(for: failure)
             #expect(text.hasSuffix("Line 4: first\nLine 5: second"))
         }
     }

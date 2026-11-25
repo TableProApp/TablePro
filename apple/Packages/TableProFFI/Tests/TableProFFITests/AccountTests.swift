@@ -106,8 +106,15 @@ private func config(
         machineGuid: nil,
         client: .macos,
         machineId: machineId,
-        managedServerUrl: managedServerUrl,
-        allowOtherServers: allowOtherServers,
+        policy: .read(values: ManagedPolicyValues(
+            accountServerUrl: managedServerUrl,
+            allowOtherAccountServers: allowOtherServers,
+            personalSyncProvider: nil,
+            usageDataAllowed: nil,
+            pluginCatalogAllowed: nil,
+            updateChecksAllowed: nil,
+            icloudSyncAllowed: nil
+        )),
         legacyEntitlementFile: folder.appendingPathComponent("Account/entitlement.jwt").path,
         licenseKeys: []
     )
@@ -159,6 +166,34 @@ private func code(of error: any Error) -> String? {
     #expect(server.apiOrigin == "https://127.0.0.1:1")
     #expect(refused.flatMap(code(of:)) == "account.server_managed")
     #expect(account.license() == nil)
+}
+
+@Test func valuesReadWhileTheAppRunsStopTableProRequestsAndTheServerSignedIn() async throws {
+    let core = try Core(config: HostConfig(clientVersion: "test", storageDir: nil), secrets: KeychainItems())
+    let account = try await core.openAccount(
+        config: config(in: try folder()), browser: NoBrowser(), webAuthenticator: ClosedSession(), listener: Quiet()
+    )
+    let opened = account.allowsTableproRequests()
+
+    account.applyPolicy(policy: .read(values: ManagedPolicyValues(
+        accountServerUrl: "https://127.0.0.1:1",
+        allowOtherAccountServers: false,
+        personalSyncProvider: nil,
+        usageDataAllowed: nil,
+        pluginCatalogAllowed: nil,
+        updateChecksAllowed: nil,
+        icloudSyncAllowed: nil
+    )))
+    var refused: (any Error)?
+    do {
+        _ = try await account.accessToken()
+    } catch {
+        refused = error
+    }
+
+    #expect(opened)
+    #expect(!account.allowsTableproRequests())
+    #expect(refused.flatMap(code(of:)) == "account.server_managed")
 }
 
 @Test func aReleaseBuildRefusesADevelopmentServerAndAMachineIdThatIsNotTheMacs() async throws {

@@ -44,6 +44,10 @@ final class RowImportUpdateUITests: UITestCase {
             (summary.value as? String)?.contains("Skipped: 1") == true,
             "The summary must count the skipped row, it reads \(summary.value ?? "nothing")"
         )
+        XCTAssertEqual(
+            sheet.children(matching: .sheet).count, 0,
+            "The result belongs in the import sheet itself, never in a sheet over it"
+        )
     }
 
     // A pop-up's menu is built when it opens, so a list still loading is opened again.

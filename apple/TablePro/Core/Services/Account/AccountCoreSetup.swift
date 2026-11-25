@@ -25,16 +25,14 @@ internal struct AccountCoreSetup: Equatable, Sendable {
     // What builds before the core kept; read once, when accountFile is missing, so the update stays signed in.
     let legacyEntitlementFile: URL
     let machineID: String
-    let managedServerURL: String?
-    let allowOtherServers: Bool?
+    // The managed values as ManagedPolicyReader read them at launch: only what a configuration profile forces.
+    let policy: ManagedPolicySnapshot
     let developmentStack: DevelopmentStack?
 
-    // The managed values as ManagedPolicyReader read them: only what a configuration profile forces.
     static func make(
         supportDirectory: URL,
         machineID: String,
-        managedServerURL: String?,
-        allowOtherServers: Bool?,
+        policy: ManagedPolicySnapshot,
         environment: [String: String],
         isDebugBuild: Bool
     ) -> AccountCoreSetup {
@@ -43,8 +41,7 @@ internal struct AccountCoreSetup: Equatable, Sendable {
             accountFile: folder.appendingPathComponent("account.json"),
             legacyEntitlementFile: folder.appendingPathComponent("entitlement.jwt"),
             machineID: machineID,
-            managedServerURL: managedServerURL,
-            allowOtherServers: allowOtherServers,
+            policy: policy,
             developmentStack: isDebugBuild ? developmentStack(environment) : nil
         )
     }

@@ -51,10 +51,11 @@ pub mod window_abi;
 pub use account::{
     AccessTokenInfo, AccountConfig, AccountListener, AccountService, AccountStateTag, AccountStatusInfo, AppClientTag,
     CreatedShareInfo, DeviceInfo, EntitlementProblemTag, FeatureAccessTag, HostBrowser, HostBrowserError,
-    HostWebAuthenticator, LicenseInfo, LicenseStateTag, MembershipInfo, ProfileInfo, SecretHitInfo, SecretHitKindTag,
-    ServerInfo, ServerLicenseInfo, ShareExpiryTag, ShareInfo, ShareKindTag, ShareLimitsInfo, SharePageInfo,
-    ShareRequestArg, ShareTeamInfo, SharedLinkInfo, SignOutCauseTag, TeamInfo, scan_columns_for_secrets,
-    scan_sql_for_secrets, share_token_from_link,
+    HostWebAuthenticator, LicenseInfo, LicenseStateTag, ManagedPolicyArg, ManagedPolicyValues, MembershipInfo,
+    PersonalSyncChoices, ProfileInfo, SecretHitInfo, SecretHitKindTag, ServerInfo, ServerLicenseInfo, ShareExpiryTag,
+    ShareInfo, ShareKindTag, ShareLimitsInfo, SharePageInfo, ShareRequestArg, ShareTeamInfo, SharedLinkInfo,
+    SignOutCauseTag, SyncProviderTag, TeamInfo, personal_sync_choices, scan_columns_for_secrets, scan_sql_for_secrets,
+    settled_sync_provider, share_token_from_link,
 };
 pub use ai::{
     AiActionTag, AiAssistant, AiChatArg, AiConversationArg, AiConversationStart, AiFailureInfo, AiMessageArg,

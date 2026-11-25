@@ -51,9 +51,9 @@ struct SyncStatusPresentationTests {
         }
     }
 
-    @Test("Every license reason reads as sync being off, which the license presentation explains")
+    @Test("Every reason sync is off reads as one state, which the row under the switch explains")
     func disabledIsOneState() {
-        let reasons: [DisableReason] = [.licenseRequired, .licenseExpired, .licenseUnverified, .userDisabled]
+        let reasons: [DisableReason] = [.licenseRequired, .licenseExpired, .licenseUnverified, .userDisabled, .managedPolicy]
         let titles = Set(reasons.map { SyncStatusPresentation(status: .disabled($0)).title })
         #expect(titles.count == 1)
     }

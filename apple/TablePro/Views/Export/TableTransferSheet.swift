@@ -8,11 +8,7 @@ import os
 import SwiftUI
 import TableProPluginKit
 
-/// Copies rows from the open connection into another one, with no file in between.
-///
-/// Rows only: the destination table has to exist. Creating it would mean translating one engine's
-/// DDL into another's, which is a different problem, and getting it half right would leave tables
-/// whose column types quietly disagree with the data now in them.
+// Rows only, into tables that exist: creating them means translating one engine's DDL into another's.
 struct TableTransferSheet: View {
     @ObservedObject private var databaseManager = DatabaseManager.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "TableTransferSheet")
@@ -37,12 +33,17 @@ struct TableTransferSheet: View {
     @State private var deleteExistingRows = false
     @State private var wrapInTransaction = true
     @State private var isLoading = true
-    @State private var isRunning = false
+    @State private var phase: Phase = .form
     @State private var errorMessage: String?
     @State private var hostWindow: NSWindow?
 
-    /// Source and destination columns per table, plus the user's overrides, so the sheet can show
-    /// what will map before anything is written.
+    private enum Phase {
+        case form
+        case running
+        case finished(TransferResult)
+    }
+
+    // Read before anything is written, so the sheet can show what will map.
     @State private var sourceColumns: [String: [String]] = [:]
     @State private var destinationColumns: [String: [String]] = [:]
     @State private var overrides: [String: [String: String?]] = [:]
@@ -58,6 +59,11 @@ struct TableTransferSheet: View {
         sourceTables.filter(\.isSelected)
     }
 
+    private var isRunning: Bool {
+        if case .running = phase { return true }
+        return false
+    }
+
     private var canTransfer: Bool {
         !isRunning && !selectedTables.isEmpty && destinationScope != nil && !hasContestedMapping
     }
@@ -68,7 +74,34 @@ struct TableTransferSheet: View {
         selectedTables.contains { !resolvedMatch(for: $0.name).contestedDestinations.isEmpty }
     }
 
+    // A ZStack, not a Group, whose modifiers reach each phase view: a phase switch must not run onDisappear.
     var body: some View {
+        ZStack {
+            switch phase {
+            case .form:
+                formView
+            case .running:
+                TransferProgressSheet(progress: transferProgress, onStop: { service.cancel() })
+            case .finished(let result):
+                TransferResultView(result, onDone: { isPresented = false })
+            }
+        }
+        .background {
+            WindowAccessor { window in hostWindow = window }
+        }
+        .task { await load() }
+        // Stop owns Escape while the transfer runs.
+        .onExitCommand {
+            switch phase {
+            case .form, .finished:
+                isPresented = false
+            case .running:
+                break
+            }
+        }
+    }
+
+    private var formView: some View {
         VStack(spacing: 0) {
             header
 
@@ -87,17 +120,6 @@ struct TableTransferSheet: View {
         }
         .frame(minWidth: 460, minHeight: 420, idealHeight: 460, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
-        .background {
-            WindowAccessor { window in hostWindow = window }
-        }
-        .task { await load() }
-        .onExitCommand {
-            guard !isRunning else { return }
-            isPresented = false
-        }
-        .sheet(isPresented: $isRunning) {
-            TransferProgressSheet(progress: transferProgress) { service.cancel() }
-        }
     }
 
     private var header: some View {
@@ -554,7 +576,7 @@ struct TableTransferSheet: View {
 
         errorMessage = nil
         service.prepareForRun()
-        isRunning = true
+        phase = .running
         let transferService = service
         let job = SheetJob(
             .tableTransfer,
@@ -567,8 +589,11 @@ struct TableTransferSheet: View {
         ) {
             transferService.cancel()
         }
+        // Anything but a success returns to the form, which shows the error inline.
         defer {
-            isRunning = false
+            if isRunning {
+                phase = .form
+            }
             job.end()
         }
 
@@ -645,15 +670,12 @@ struct TableTransferSheet: View {
     // Counted from the run, since the selection is the form's and could differ from what ran.
     @MainActor
     private func presentResult(destination: DatabaseConnection) {
-        TransferResultAlert.presentTransferSuccess(
+        phase = .finished(TransferResults.transferSucceeded(
             tableCount: service.state.totalTables,
             rowCount: service.state.transferredRows,
             destinationName: destination.name,
-            warnings: service.state.warnings,
-            window: hostWindow
-        ) {
-            isPresented = false
-        }
+            warnings: service.state.warnings
+        ))
     }
 
     @MainActor

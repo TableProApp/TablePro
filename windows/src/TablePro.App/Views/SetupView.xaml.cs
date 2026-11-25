@@ -14,7 +14,7 @@ using Windows.UI.ViewManagement;
 
 namespace TablePro.App.Views;
 
-// The setup guide, a page swapped into the window as Settings is (core 0056, windows/docs/decisions/0025 and 0026).
+// The setup guide, a page swapped into the window as Settings is (core 0057, windows/docs/decisions/0025 and 0026).
 public sealed partial class SetupView : UserControl, IDisposable
 {
     private const int StepCount = 4;
@@ -671,7 +671,7 @@ public sealed partial class SetupView : UserControl, IDisposable
     {
         switch (Guide.Step)
         {
-            // File > Import's own flow: a picked file leaves the guide and selects what it wrote (core 0056).
+            // File > Import's own flow: a picked file leaves the guide and selects what it wrote (core 0057).
             case SetupStep.Origin when Guide.Origin == SetupOrigin.File:
                 await _shell.ImportAsync().ConfigureAwait(true);
                 break;

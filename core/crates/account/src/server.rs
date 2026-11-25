@@ -9,6 +9,7 @@ use crate::account_error::AccountError;
 use crate::account_settings::Endpoints;
 use crate::entitlement_keys::EntitlementKeys;
 use crate::license_keys::LicenseKeys;
+use crate::policy::ManagedPolicy;
 
 // The API origin a person or an organization names tablepro.app by (core ADR 0044, App configuration).
 pub(crate) const PRODUCTION_ORIGIN: &str = "https://api.tablepro.app";
@@ -33,11 +34,11 @@ impl ServerSettings {
     }
 }
 
-// The OS-managed values as the host read them; one counts only when the OS marks it as managed.
+// The managed values the host read at launch, which pick the server, and the keys a company server's license is checked
+// against. `Account::apply_policy` passes values read later.
 #[derive(Debug, Clone, Default)]
 pub struct ServerPolicy {
-    pub managed_url: Option<String>,
-    pub allow_other_servers: Option<bool>,
+    pub managed: ManagedPolicy,
     pub license_keys: LicenseKeys,
 }
 
@@ -127,10 +128,10 @@ impl Target {
 
 // The organization's value first while it allows no other; then the person's choice; then the organization's value
 // as the default; then tablepro.app. A value that is not a server address is ignored and logged.
-pub(crate) fn resolve(policy: &ServerPolicy, chosen: Option<&str>, loopback_http: bool) -> Target {
-    let managed = policy
-        .managed_url
-        .as_deref()
+pub(crate) fn resolve(policy: &ManagedPolicy, chosen: Option<&str>, loopback_http: bool) -> Target {
+    let values = policy.values();
+    let managed = values
+        .and_then(|values| values.account_server_url.as_deref())
         .filter(|text| !text.trim().is_empty())
         .and_then(|text| match parse_origin(text, loopback_http) {
             Ok(origin) => Some(origin),
@@ -139,7 +140,7 @@ pub(crate) fn resolve(policy: &ServerPolicy, chosen: Option<&str>, loopback_http
                 None
             }
         });
-    let others_allowed = match (&managed, policy.allow_other_servers) {
+    let others_allowed = match (&managed, values.and_then(|values| values.allow_other_account_servers)) {
         (Some(_), Some(false)) => false,
         (None, Some(false)) => {
             tracing::warn!("AllowOtherAccountServers is false with no AccountServerURL, so it is ignored");
@@ -462,12 +463,12 @@ fn storage_error(path: &Path, error: &dyn std::fmt::Display) -> AccountError {
 mod tests {
     use super::*;
 
-    fn policy(managed: Option<&str>, allow: Option<bool>) -> ServerPolicy {
-        ServerPolicy {
-            managed_url: managed.map(str::to_owned),
-            allow_other_servers: allow,
-            license_keys: LicenseKeys::default(),
-        }
+    fn policy(managed: Option<&str>, allow: Option<bool>) -> ManagedPolicy {
+        ManagedPolicy::Values(crate::policy::PolicyValues {
+            account_server_url: managed.map(str::to_owned),
+            allow_other_account_servers: allow,
+            ..Default::default()
+        })
     }
 
     fn origin(target: &Target) -> String {

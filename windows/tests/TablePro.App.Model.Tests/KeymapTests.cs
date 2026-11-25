@@ -3,7 +3,7 @@ using TablePro.Interop;
 namespace TablePro.App.Model.Tests;
 
 // Each preset's Windows rows from the core's keymaps.json over TablePro's keys: what moves, what is refused, what is
-// left with no key (core 0057, windows/docs/decisions/0025).
+// left with no key (core 0058, windows/docs/decisions/0025).
 public sealed class KeymapTests
 {
     private static readonly Dictionary<string, string> English = new(StringComparer.Ordinal)

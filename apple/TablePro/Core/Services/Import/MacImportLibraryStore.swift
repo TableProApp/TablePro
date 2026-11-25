@@ -214,8 +214,12 @@ internal enum MacImportEnvironment {
         var missingDriverNames: [String: String] = [:]
         for typeId in registeredTypeIds {
             let type = DatabaseType(rawValue: typeId)
-            guard case .notInstalled = pluginManager.driverUnavailability(for: type) else { continue }
-            missingDriverNames[typeId] = PluginManager.registryDisplayName(of: type)
+            switch pluginManager.driverUnavailability(for: type) {
+            case .notInstalled, .installManagedByOrganization:
+                missingDriverNames[typeId] = PluginManager.registryDisplayName(of: type)
+            case .unknownType, .failedToLoad, .outdated:
+                continue
+            }
         }
         return ImportEnvironment(
             rules: ImportRules(

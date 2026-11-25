@@ -354,7 +354,11 @@ extension PluginManager {
         if PluginMetadataRegistry.shared.snapshot(for: type) == nil {
             await registryClient.fetch(policy: .ifStale)
         }
-        let unavailability = driverUnavailability(for: type, registryManifest: registryClient.manifest)
+        let unavailability = driverUnavailability(
+            for: type,
+            registryManifest: registryClient.manifest,
+            catalogAllowed: registryClient.allowsCatalog
+        )
         guard unavailability == .notInstalled else {
             Self.logger.info("Plugin '\(typeId, privacy: .public)' unavailable to connect: \(String(describing: unavailability), privacy: .public)")
             return

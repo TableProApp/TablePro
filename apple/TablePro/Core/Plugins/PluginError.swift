@@ -16,6 +16,7 @@ enum PluginError: LocalizedError {
     case pluginConflict(existingName: String)
     case downloadFailed(String)
     case pluginNotInstalled(String)
+    case pluginInstallManaged(String)
     case pluginUpdateUnavailable(reason: String)
     case invalidDescriptor(pluginId: String, reason: String)
     case unknownDatabaseType(String)
@@ -55,6 +56,11 @@ enum PluginError: LocalizedError {
             return String(format: String(localized: "Plugin download failed: %@"), reason)
         case .pluginNotInstalled(let databaseType):
             return String(format: String(localized: "The %@ plugin is not installed."), databaseType)
+        case .pluginInstallManaged(let databaseType):
+            return String(
+                format: String(localized: "The %@ plugin is not installed, and your organization manages plugins on this Mac."),
+                databaseType
+            )
         case .pluginUpdateUnavailable(let reason):
             return reason
         case .invalidDescriptor(let pluginId, let reason):

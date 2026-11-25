@@ -26,7 +26,7 @@ public enum CommandScope
 // One default key of a command; a command with several keys has a row per key.
 public sealed record KeymapCommand(string Action, KeyChord? Default, CommandOwner Owner, CommandScope Scope);
 
-// TablePro's keys and the shortcut presets laid over them (core 0057, windows/docs/decisions/0025).
+// TablePro's keys and the shortcut presets laid over them (core 0058, windows/docs/decisions/0025).
 public static class Keymap
 {
     public const string TablePro = "tablepro";

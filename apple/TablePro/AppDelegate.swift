@@ -143,12 +143,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ConnectionStorage.shared.keepLocalOnlySecretsOnDeviceIfNeeded()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()
+        ManagedPolicyCenter.shared.startMonitoring()
         // Before the account starts, so a stored key's migration reaches it as a sign-in.
         Telemetry.shared.start(
-            sharesUsageData: AppSettingsManager.shared.generalSlice.publisher.map(\.shareAnalytics).eraseToAnyPublisher(),
+            sharesUsageData: Telemetry.sharesUsageData(
+                setting: AppSettingsManager.shared.generalSlice.publisher.map(\.shareAnalytics).eraseToAnyPublisher(),
+                policy: ManagedPolicyCenter.shared.$snapshot.eraseToAnyPublisher()
+            ),
             account: AccountServices.shared
         )
         AccountServices.shared.start()
+        // Before sync starts, so a profile's provider is the switch's first state.
+        SyncProviderPolicy.shared.start()
         SyncCoordinator.shared.start()
         // Its gate reads the sign-in the core restores after launch.
         Task {

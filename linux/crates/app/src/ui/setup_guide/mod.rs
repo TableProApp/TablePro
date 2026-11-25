@@ -1,4 +1,4 @@
-// The setup guide, a page of the session window that ends with a connection open (core ADR 0056).
+// The setup guide, a page of the session window that ends with a connection open (core ADR 0057).
 
 mod app_icon;
 mod hero;
@@ -463,7 +463,7 @@ impl SetupGuide {
         for old in parts.sources.take() {
             imp.import_apps_group.remove(&old.row);
         }
-        // An unreadable app keeps its card so a missing count is never hidden (core ADR 0056); an absent app is named.
+        // An unreadable app keeps its card so a missing count is never hidden (core ADR 0057); an absent app is named.
         let (missing, found): (Vec<&ForeignSource>, Vec<&ForeignSource>) = sources
             .iter()
             .partition(|source| source.availability == SourceAvailability::NotFound);

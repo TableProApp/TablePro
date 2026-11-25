@@ -128,4 +128,11 @@ internal protocol AccountBackend: AnyObject, Sendable {
     // The bearer the Swift Team Library and share clients send, and where to.
     func accessToken() async throws(AccountError) -> AccountAccessToken
     func accessTokenRejected(_ token: String) async
+
+    // The managed values read again. When they no longer allow the server signed in to, the core calls it no more
+    // until the next launch (core/docs/decisions/0055-managed-policies-for-the-sync-provider-and-tablepro-app-traffic.md).
+    func applyPolicy(_ policy: ManagedPolicySnapshot) async
+    // False while the organization holds the app to its own server: the share-link read and the AI catalog refresh
+    // ask before any request to tablepro.app.
+    func allowsTableProRequests() async -> Bool
 }

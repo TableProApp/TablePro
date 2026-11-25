@@ -46,7 +46,7 @@ impl SessionWindow {
         dialog.present(Some(self));
     }
 
-    // The caller picks the ending, since only an import from an app's own store opens one (core ADR 0056).
+    // The caller picks the ending, since only an import from an app's own store opens one (core ADR 0057).
     pub(super) fn hand_off_import(&self, ending: SetupEnding) {
         match ending {
             SetupEnding::Open(id) => self.open_stored(id),

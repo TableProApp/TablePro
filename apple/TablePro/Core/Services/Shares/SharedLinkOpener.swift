@@ -107,6 +107,8 @@ internal final class SharedLinkOpener {
             return String(localized: "You appear to be offline. Try again once you're connected.")
         case .rateLimited:
             return String(localized: "Too many attempts. Try again in a moment.")
+        case .managedByOrganization:
+            return String(localized: "Your organization doesn't allow links from tablepro.app on this Mac.")
         case .signedOut, .emailUnverified, .proRequired, .sharingDisabled, .teamSharingDisabled, .seatRequired,
              .limitReached, .snapshotTooLarge, .invalid, .passwordRequired, .passwordWrong, .server:
             return String(localized: "The shared link couldn't be opened. Try again.")

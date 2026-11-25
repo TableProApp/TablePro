@@ -57,7 +57,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     // The connection whose cue the title bar shows, painted again when the theme changes.
     private OpenConnection? _cue;
 
-    // The setup guide while it is the page in front; leaving it by any route ends it (core 0056).
+    // The setup guide while it is the page in front; leaving it by any route ends it (core 0057).
     private SetupView? _setup;
     private bool _launchGateAsked;
     private bool _choosingRail;
@@ -425,7 +425,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         await HandOffAsync(SetupGuide.Handoff(ending.ConnectionIds, ending.Source));
     }
 
-    // Help > Setup Guide and the Connections page's card open it whatever the library holds (core 0056, G6).
+    // Help > Setup Guide and the Connections page's card open it whatever the library holds (core 0057, G6).
     public void ShowSetupGuide()
     {
         if (_home is null)

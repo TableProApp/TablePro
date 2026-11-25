@@ -1,4 +1,4 @@
-// The sample database the setup guide offers, compiled in so every package carries it (core ADR 0056).
+// The sample database the setup guide offers, compiled in so every package carries it (core ADR 0057).
 
 use std::path::{Path, PathBuf};
 

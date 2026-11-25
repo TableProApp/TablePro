@@ -76,7 +76,7 @@ pub struct AppServices {
     account: RefCell<AccountService>,
     telemetry: Telemetry,
     app_opened: RefCell<Option<AppOpenedChecks>>,
-    // A second picker window in one launch never opens the setup guide (core ADR 0056, G11).
+    // A second picker window in one launch never opens the setup guide (core ADR 0057, G11).
     first_picker_claimed: Cell<bool>,
 }
 

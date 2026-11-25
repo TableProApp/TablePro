@@ -1,66 +1,45 @@
 //
-//  TransferResultAlert.swift
+//  TransferResults.swift
 //  TablePro
 //
 
 import AppKit
+import os
 import TableProPluginKit
 import UniformTypeIdentifiers
 
+// What a finished export, transfer or import reports in its own sheet.
 @MainActor
-internal enum TransferResultAlert {
+internal enum TransferResults {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "TransferResults")
+
     internal static let exportSuppressionKey = "hideExportSuccessDialog"
 
-    internal enum ExportChoice {
-        case openFolder
-        case close
+    internal static func exportSucceeded(warnings: [String], notes: [String] = []) -> TransferResult {
+        TransferResult(
+            outcome: warnings.isEmpty ? .succeeded : .succeededWithIssues,
+            title: warnings.isEmpty
+                ? String(localized: "Export completed")
+                : String(localized: "Export completed with warnings"),
+            message: (notes + warnings).joined(separator: "\n\n")
+        )
     }
 
-    internal static func presentExportSuccess(
-        warnings: [String],
-        notes: [String] = [],
-        window: NSWindow?,
-        completion: @escaping @MainActor (ExportChoice) -> Void
-    ) {
-        let alert = NSAlert()
-        alert.messageText = warnings.isEmpty
-            ? String(localized: "Export completed")
-            : String(localized: "Export completed with warnings")
-        alert.alertStyle = warnings.isEmpty ? .informational : .warning
-        alert.informativeText = (notes + warnings).joined(separator: "\n\n")
-        alert.addButton(withTitle: String(localized: "Open in Finder"))
-        AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
-        alert.showsSuppressionButton = warnings.isEmpty
-        alert.suppressionButton?.title = String(localized: "Do not show this again")
-
-        let deliver: @MainActor (NSApplication.ModalResponse) -> Void = { response in
-            if alert.suppressionButton?.state == .on {
-                AppStorageEnvironment.shared.defaults.set(true, forKey: exportSuppressionKey)
-            }
-            completion(response == .alertFirstButtonReturn ? .openFolder : .close)
-        }
-
-        AlertHelper.present(alert, in: window, completion: deliver)
-    }
-
-    internal static func presentTransferSuccess(
+    internal static func transferSucceeded(
         tableCount: Int,
         rowCount: Int,
         destinationName: String,
-        warnings: [String],
-        window: NSWindow?,
-        completion: @escaping @MainActor () -> Void
-    ) {
-        let alert = NSAlert()
-        alert.messageText = warnings.isEmpty
-            ? String(localized: "Transfer completed")
-            : String(localized: "Transfer completed with warnings")
-        alert.alertStyle = warnings.isEmpty ? .informational : .warning
-        alert.informativeText = ([transferSummary(
-            tableCount: tableCount, rowCount: rowCount, destinationName: destinationName
-        )] + warnings).joined(separator: "\n\n")
-        AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
-        AlertHelper.present(alert, in: window) { _ in completion() }
+        warnings: [String]
+    ) -> TransferResult {
+        TransferResult(
+            outcome: warnings.isEmpty ? .succeeded : .succeededWithIssues,
+            title: warnings.isEmpty
+                ? String(localized: "Transfer completed")
+                : String(localized: "Transfer completed with warnings"),
+            message: ([transferSummary(
+                tableCount: tableCount, rowCount: rowCount, destinationName: destinationName
+            )] + warnings).joined(separator: "\n\n")
+        )
     }
 
     private static func transferSummary(
@@ -74,20 +53,15 @@ internal enum TransferResultAlert {
         return String(format: template, Int64(rowCount), destinationName, Int64(tableCount))
     }
 
-    internal static func presentImportCancelled(
-        result: ImportStopResult,
-        window: NSWindow?,
-        completion: @escaping @MainActor () -> Void
-    ) {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Import stopped")
-        alert.alertStyle = .warning
-        alert.informativeText = String(localized: "The details below show what happened to the import.")
-        if !result.completionNotes.isEmpty { alert.informativeText += "\n" + shownErrors(result.completionNotes) }
-        alert.accessoryView = TransferReportView(shown: result.text, copied: result.details)
-        AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
-        alert.layout()
-        AlertHelper.present(alert, in: window) { _ in completion() }
+    internal static func importStopped(_ result: ImportStopResult) -> TransferResult {
+        var message = String(localized: "The details below show what happened to the import.")
+        if !result.completionNotes.isEmpty { message += "\n" + shownErrors(result.completionNotes) }
+        return TransferResult(
+            outcome: .stopped,
+            title: String(localized: "Import stopped"),
+            message: message,
+            details: TransferResult.Details(shown: result.text, copied: result.details)
+        )
     }
 
     internal static func importCancelledText(executedStatements: Int, transaction: ImportTransactionOutcome) -> String {
@@ -118,61 +92,43 @@ internal enum TransferResultAlert {
         return String(format: template, Int64(executedStatements))
     }
 
-    internal static func presentImportSuccess(
+    internal static func importSucceeded(
         result: PluginImportResult?,
         rowTally: ImportRowTally? = nil,
-        runResult: ImportStopResult? = nil,
-        window: NSWindow?,
-        sourceFileName: String = "",
-        targetTable: String? = nil,
-        completion: @escaping @MainActor () -> Void
-    ) {
-        let alert = NSAlert()
+        runResult: ImportStopResult? = nil
+    ) -> TransferResult {
         let skipped = result?.skippedStatements ?? 0
-        alert.messageText = skipped > 0
-            ? String(localized: "Import completed with errors")
-            : String(localized: "Import completed")
-        alert.alertStyle = skipped > 0 ? .warning : .informational
-        alert.informativeText = importSummary(result, rowTally: rowTally)
-        AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
+        var message = importSummary(result, rowTally: rowTally)
+        var details: TransferResult.Details?
         if let runResult, !runResult.completionNotes.isEmpty {
-            alert.informativeText += "\n" + shownErrors(runResult.completionNotes)
-            alert.accessoryView = TransferReportView(shown: runResult.text, copied: runResult.details)
-            alert.layout()
+            message += "\n" + shownErrors(runResult.completionNotes)
+            details = TransferResult.Details(shown: runResult.text, copied: runResult.details)
         }
 
         let errors = result?.errors ?? []
+        var errorReport: TransferResult.ErrorReport?
         if !errors.isEmpty {
-            alert.addButton(withTitle: String(localized: "Save Report…"))
-            let details = failureReport(for: errors) + (runResult.map { "\n\n" + $0.details } ?? "")
-            alert.accessoryView = TransferReportView(report: details)
-            alert.layout()
+            let report = failureReport(for: errors) + (runResult.map { "\n\n" + $0.details } ?? "")
+            details = TransferResult.Details(shown: report, copied: report)
+            errorReport = TransferResult.ErrorReport(errors: errors, totalSkipped: skipped)
         }
 
-        AlertHelper.present(alert, in: window) { response in
-            guard !errors.isEmpty, response == .alertSecondButtonReturn else {
-                completion()
-                return
-            }
-            saveErrorReport(
-                errors: errors,
-                totalSkipped: skipped,
-                sourceFileName: sourceFileName,
-                targetTable: targetTable,
-                window: window,
-                completion: completion
-            )
-        }
+        return TransferResult(
+            outcome: skipped > 0 ? .succeededWithIssues : .succeeded,
+            title: skipped > 0
+                ? String(localized: "Import completed with errors")
+                : String(localized: "Import completed"),
+            message: message,
+            details: details,
+            errorReport: errorReport
+        )
     }
 
-    @MainActor
-    private static func saveErrorReport(
-        errors: [PluginImportResult.ImportStatementError],
-        totalSkipped: Int,
+    internal static func saveErrorReport(
+        _ report: TransferResult.ErrorReport,
         sourceFileName: String,
         targetTable: String?,
-        window: NSWindow?,
-        completion: @escaping @MainActor () -> Void
+        window: NSWindow?
     ) {
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
@@ -182,15 +138,23 @@ internal enum TransferResultAlert {
         panel.title = String(localized: "Save Import Errors")
 
         let handler: @MainActor (NSApplication.ModalResponse) -> Void = { response in
-            defer { completion() }
             guard response == .OK, let url = panel.url else { return }
             let csv = ImportErrorReport.makeCSV(
                 sourceFileName: sourceFileName,
                 targetTable: targetTable,
-                errors: errors,
-                totalSkipped: totalSkipped
+                errors: report.errors,
+                totalSkipped: report.totalSkipped
             )
-            try? csv.write(to: url, atomically: true, encoding: .utf8)
+            do {
+                try csv.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                logger.error("Failed to save the import error report: \(error.publicLogShape, privacy: .public)")
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Couldn't Save File"),
+                    message: error.localizedDescription,
+                    window: window
+                )
+            }
         }
 
         guard let window else {
@@ -202,36 +166,34 @@ internal enum TransferResultAlert {
         }
     }
 
-    internal static func presentBatchImportResult(
-        _ report: RowImportBatchReport,
-        window: NSWindow?,
-        completion: @escaping @MainActor () -> Void
-    ) {
-        let alert = NSAlert()
+    internal static func batchImport(_ report: RowImportBatchReport) -> TransferResult {
+        let outcome: TransferResult.Outcome
+        let title: String
         switch report.ending {
         case .completed:
-            alert.messageText = report.hasFailures
+            outcome = report.hasFailures ? .succeededWithIssues : .succeeded
+            title = report.hasFailures
                 ? String(localized: "Import completed with errors")
                 : String(localized: "Import completed")
-            alert.alertStyle = report.hasFailures ? .warning : .informational
         case .failed:
-            alert.messageText = String(localized: "Import failed")
-            alert.alertStyle = .critical
+            outcome = .failed
+            title = String(localized: "Import failed")
         case .stopped:
-            alert.messageText = String(localized: "Import stopped")
-            alert.alertStyle = .warning
+            outcome = .stopped
+            title = String(localized: "Import stopped")
         }
-        alert.informativeText = shownErrors(batchImportSummary(report))
-        AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
         let lines = batchImportLines(report)
         let preparation = report.stopResult?.ledger.preparationNote.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        alert.accessoryView = TransferReportView(
-            shown: ([preparation] + lines).filter { !$0.isEmpty }.joined(separator: "\n"),
-            copied: ([lines.joined(separator: "\n")] + batchImportErrors(report)
-                + [report.stopResult?.details ?? ""]).joined(separator: "\n\n")
+        return TransferResult(
+            outcome: outcome,
+            title: title,
+            message: shownErrors(batchImportSummary(report)),
+            details: TransferResult.Details(
+                shown: ([preparation] + lines).filter { !$0.isEmpty }.joined(separator: "\n"),
+                copied: ([lines.joined(separator: "\n")] + batchImportErrors(report)
+                    + [report.stopResult?.details ?? ""]).joined(separator: "\n\n")
+            )
         )
-        alert.layout()
-        AlertHelper.present(alert, in: window) { _ in completion() }
     }
 
     internal static func batchImportSummary(_ report: RowImportBatchReport) -> String {
@@ -337,33 +299,22 @@ internal enum TransferResultAlert {
         }
     }
 
-    internal static func presentImportFailure(
-        error: (any Error)?,
-        result: ImportStopResult? = nil,
-        window: NSWindow?,
-        completion: @escaping @MainActor () -> Void
-    ) {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Import failed")
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: String(localized: "Done"))
-        alert.informativeText = importFailureDisplay(error: error, result: result)
-
+    internal static func importFailed(error: (any Error)?, result: ImportStopResult? = nil) -> TransferResult {
+        var details: TransferResult.Details?
         if let result {
-            let details = importFailureSummary(error: error, result: result)
+            let shown = importFailureSummary(error: error, result: result)
                 + "\n\n" + (failureReport(for: error) ?? "")
-            alert.accessoryView = TransferReportView(shown: details, copied: details + "\n\n" + result.details)
-            alert.layout()
+            details = TransferResult.Details(shown: shown, copied: shown + "\n\n" + result.details)
         } else if let pluginError = error as? PluginImportError,
            case .statementFailed(let statement, _, _) = pluginError {
-            alert.accessoryView = TransferReportView(
-                shown: statement,
-                copied: (failureReport(for: error) ?? statement) + "\n\n" + (result?.details ?? "")
-            )
-            alert.layout()
+            details = TransferResult.Details(shown: statement, copied: failureReport(for: error) ?? statement)
         }
-
-        AlertHelper.present(alert, in: window) { _ in completion() }
+        return TransferResult(
+            outcome: .failed,
+            title: String(localized: "Import failed"),
+            message: importFailureDisplay(error: error, result: result),
+            details: details
+        )
     }
 
     internal static func importFailureDisplay(error: (any Error)?, result: ImportStopResult?) -> String {
@@ -464,10 +415,15 @@ internal final class TransferReportView: NSView {
     internal static let shownLengthLimit = 10_000
 
     internal static func shownText(_ text: String) -> String {
-        TransferResultAlert.cut(text, toUnits: shownLengthLimit) ?? text
+        TransferResults.cut(text, toUnits: shownLengthLimit) ?? text
     }
 
     private let report: String
+    private let height: CGFloat
+
+    override internal var intrinsicContentSize: NSSize {
+        NSSize(width: Self.width, height: height)
+    }
 
     internal convenience init(report: String) {
         self.init(shown: report, copied: report)
@@ -478,12 +434,8 @@ internal final class TransferReportView: NSView {
         let button = NSButton(title: String(localized: "Copy Details"), target: nil, action: nil)
         button.bezelStyle = .push
         button.sizeToFit()
-        super.init(frame: NSRect(
-            x: 0,
-            y: 0,
-            width: Self.width,
-            height: Self.textHeight + Self.spacing + button.frame.height
-        ))
+        height = Self.textHeight + Self.spacing + button.frame.height
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: height))
 
         let scroll = AlertHelper.scrollingTextAccessory(RevealedText(Self.shownText(shown)).plainText)
         scroll.frame = NSRect(
@@ -504,6 +456,7 @@ internal final class TransferReportView: NSView {
 
     internal required init?(coder: NSCoder) {
         report = ""
+        height = 0
         super.init(coder: coder)
     }
 
