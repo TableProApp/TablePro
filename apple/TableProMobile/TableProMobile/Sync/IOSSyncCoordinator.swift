@@ -518,6 +518,12 @@ final class IOSSyncCoordinator {
         settleLegacySSLModes(pulled: pulled.changedRecords)
         let heldDownload: SyncStepFailure? = applied == .saved ? nil : .pullNotSaved
         guard admission == .full else { return RunResult(admission: admission, failure: heldDownload) }
+        // Turned off during the download, by the person or by the organization's managed configuration (core ADR
+        // 0055), which takes effect with no setEnabled call: nothing more leaves the device.
+        guard isEnabled() else {
+            decide(.disabled(.userDisabled))
+            return nil
+        }
         let pushed = await push(using: transport)
         let download = heldDownload ?? (pushed.adoptedMergedSaves ? nil : .pullNotSaved)
         guard let pushFailure = pushed.failure else {
@@ -939,9 +945,11 @@ final class IOSSyncCoordinator {
                 deletions: batch.deletions,
                 edits: edits
             ) {
-                try await transport.push(records: $0, deletions: $1)
+                guard self.isEnabled() else { throw CancellationError() }
+                return try await transport.push(records: $0, deletions: $1)
             } fetch: {
-                try await transport.fetch(recordIDs: $0)
+                guard self.isEnabled() else { throw CancellationError() }
+                return try await transport.fetch(recordIDs: $0)
             }
         } catch let interrupted as SyncPushInterruption {
             outcome = interrupted.completed

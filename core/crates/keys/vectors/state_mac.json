@@ -1,0 +1,59 @@
+{
+  "area": "state_mac",
+  "suite": "tp1",
+  "format": 1,
+  "about": "The state file's MAC over its binding and digests (ADR 0054, Integrity and freshness)",
+  "cases": [
+    {
+      "name": "counter 0",
+      "op": "state_mac",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "key_hex": "077518a80b98ead3ec931fa98f0a5d43dd92fce3616ac5c550a07511e5abef84",
+        "file_id_hex": "534687c39e8dba661cad256885e4b0a5",
+        "counter": 0,
+        "key_digest_hex": "d8011af56a2d6139744a64ed8b8ce48a817ab53e7d404142248267c0cd5d4606",
+        "sync_digest_hex": "9092ac688600d04d5c8a9ff2f5843a5679c5fe3926ad6e7468a55b9fb0002c4a"
+      },
+      "output": {
+        "input_hex": "000000117461626c6570726f2f76312f7374617465000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000010534687c39e8dba661cad256885e4b0a500000008000000000000000000000020d8011af56a2d6139744a64ed8b8ce48a817ab53e7d404142248267c0cd5d4606000000209092ac688600d04d5c8a9ff2f5843a5679c5fe3926ad6e7468a55b9fb0002c4a",
+        "mac_hex": "173237138afb9bbaeaa6bf5b9d97fd76365aaa4f6e5c3ab43c0b67f9803168e5"
+      }
+    },
+    {
+      "name": "counter 1",
+      "op": "state_mac",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "key_hex": "077518a80b98ead3ec931fa98f0a5d43dd92fce3616ac5c550a07511e5abef84",
+        "file_id_hex": "534687c39e8dba661cad256885e4b0a5",
+        "counter": 1,
+        "key_digest_hex": "d8011af56a2d6139744a64ed8b8ce48a817ab53e7d404142248267c0cd5d4606",
+        "sync_digest_hex": "9092ac688600d04d5c8a9ff2f5843a5679c5fe3926ad6e7468a55b9fb0002c4a"
+      },
+      "output": {
+        "input_hex": "000000117461626c6570726f2f76312f7374617465000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000010534687c39e8dba661cad256885e4b0a500000008000000000000000100000020d8011af56a2d6139744a64ed8b8ce48a817ab53e7d404142248267c0cd5d4606000000209092ac688600d04d5c8a9ff2f5843a5679c5fe3926ad6e7468a55b9fb0002c4a",
+        "mac_hex": "3c5d537ade50d8bb54206fd3487a4837b304c9dd2a1523a5704ca27b4f34d6dc"
+      }
+    },
+    {
+      "name": "counter 72623859790382856",
+      "op": "state_mac",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "key_hex": "077518a80b98ead3ec931fa98f0a5d43dd92fce3616ac5c550a07511e5abef84",
+        "file_id_hex": "534687c39e8dba661cad256885e4b0a5",
+        "counter": 72623859790382856,
+        "key_digest_hex": "d8011af56a2d6139744a64ed8b8ce48a817ab53e7d404142248267c0cd5d4606",
+        "sync_digest_hex": "9092ac688600d04d5c8a9ff2f5843a5679c5fe3926ad6e7468a55b9fb0002c4a"
+      },
+      "output": {
+        "input_hex": "000000117461626c6570726f2f76312f7374617465000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000010534687c39e8dba661cad256885e4b0a500000008010203040506070800000020d8011af56a2d6139744a64ed8b8ce48a817ab53e7d404142248267c0cd5d4606000000209092ac688600d04d5c8a9ff2f5843a5679c5fe3926ad6e7468a55b9fb0002c4a",
+        "mac_hex": "55140ec4d213ab5973126cf846e0d5d740f9e19c010ee8c8cefc551dccdf6d63"
+      }
+    }
+  ]
+}

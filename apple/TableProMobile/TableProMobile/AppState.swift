@@ -46,6 +46,7 @@ final class AppState {
     let catalogChanges = CatalogChangeBoard()
     let sessionModels = ConnectionSessionModels()
     let syncCoordinator: IOSSyncCoordinator
+    let account: AccountModel
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?
     @ObservationIgnored private var pastedSSHKeysAwaitingKeychain: [UUID: String] = [:]
@@ -75,7 +76,8 @@ final class AppState {
         localDatabaseFiles: LocalDatabaseFileLocator = .live,
         bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
         libraryPublisher: ConnectionLibraryPublisher? = nil,
-        driverFactory injectedDriverFactory: (any DriverFactory)? = nil
+        driverFactory injectedDriverFactory: (any DriverFactory)? = nil,
+        account injectedAccount: AccountModel? = nil
     ) {
         self.sampleInstaller = sampleInstaller
         self.libraryPublisher = libraryPublisher ?? .live(defaults: defaults)
@@ -84,6 +86,7 @@ final class AppState {
         onboarding = OnboardingPreferences(defaults: defaults)
         libraryPreferences = ConnectionLibraryPreferences(defaults: defaults)
         syncCoordinator = injectedSyncCoordinator ?? IOSSyncCoordinator()
+        account = injectedAccount ?? .live(configuration: onboarding.managed)
         storage = ConnectionPersistence(directory: libraryDirectory)
         queryHistory = QueryHistoryStorage(directory: libraryDirectory)
         savedQueries = SavedQueryLibrary(directory: libraryDirectory, syncCoordinator: syncCoordinator)
@@ -122,6 +125,9 @@ final class AppState {
         }
 
         guard !TestRuntime.isActive else { return }
+
+        account.openIfNeeded()
+        observeManagedConfiguration()
 
         if loadStatus == .ready {
             removeWhatDeletedConnectionsLeft()
@@ -954,6 +960,8 @@ final class AppState {
             hasConnections: loadedConnectionIds.map { !$0.isEmpty },
             syncChoice: onboarding.syncChoice,
             usageDataChoice: onboarding.usageDataChoice,
+            iCloudSyncAllowed: !onboarding.managed.locksICloudSync,
+            usageDataAllowed: onboarding.managed.allowsUsageData,
             lastSeenVersion: onboarding.lastSeenVersion,
             currentVersion: version,
             hasHighlightsForCurrentVersion: FeatureHighlights.release(version) != nil
@@ -989,6 +997,26 @@ final class AppState {
 
     func setUsageDataEnabled(_ enabled: Bool) {
         onboarding.setUsageDataChoice(enabled)
+    }
+
+    // ADR 0055: iCloud sync stops at once when the organization takes it away, with no last pass, starts when it
+    // forces it, and comes back to the person's own choice when it lets go.
+    func refreshManagedConfiguration() {
+        let wasEnabled = onboarding.isCloudSyncEnabled
+        onboarding.refreshManagedConfiguration()
+        account.apply(onboarding.managed)
+        let enabled = onboarding.isCloudSyncEnabled
+        guard enabled != wasEnabled else { return }
+        syncCoordinator.setEnabled(enabled)
+    }
+
+    // An MDM's new values post a defaults change, as any write to the domain does (Apple's managed app configuration).
+    private func observeManagedConfiguration() {
+        Task { [weak self] in
+            for await _ in NotificationCenter.default.notifications(named: UserDefaults.didChangeNotification) {
+                self?.refreshManagedConfiguration()
+            }
+        }
     }
 
     // MARK: - Sample Database

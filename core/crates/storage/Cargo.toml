@@ -30,8 +30,5 @@ sqlx = { workspace = true, features = ["sqlite-unbundled"] }
 [target.'cfg(not(any(target_os = "linux", target_vendor = "apple")))'.dependencies]
 sqlx = { workspace = true, features = ["sqlite"] }
 
-[dev-dependencies]
-proptest.workspace = true
-
 [lints]
 workspace = true

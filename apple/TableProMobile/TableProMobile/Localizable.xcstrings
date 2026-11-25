@@ -420,6 +420,26 @@
         }
       }
     },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@ · Last seen %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · Last seen %2$@"
+          }
+        }
+      }
+    },
     "%@ → %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5832,6 +5852,9 @@
     "Commit the Transaction?" : {
 
     },
+    "Company Server" : {
+
+    },
     "Compress the file using Gzip" : {
 
     },
@@ -7077,6 +7100,9 @@
         }
       }
     },
+    "Could not confirm the sign-in came from the server TablePro asked. Sign in again." : {
+
+    },
     "Could not connect to the database: %@" : {
       "localizations" : {
         "ko" : {
@@ -7355,6 +7381,9 @@
         }
       }
     },
+    "Could not reach the server. Check your internet connection and try again." : {
+
+    },
     "Could not read %@ from the workbook." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -7386,6 +7415,9 @@
           }
         }
       }
+    },
+    "Could not read the server response. Try again in a moment." : {
+
     },
     "Could not read the settings %@ was created with, so it restores under the dump's SQL mode." : {
 
@@ -8584,6 +8616,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Devices" : {
+
+    },
     "Diamond" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -9615,6 +9650,9 @@
 
     },
     "Enter the server details yourself." : {
+
+    },
+    "Enter the server's https address, such as https://tablepro.example.com." : {
 
     },
     "Enter the start URL and SSO Region in this connection's Authentication section, then sign in." : {
@@ -13215,6 +13253,9 @@
         }
       }
     },
+    "It is signed out of TablePro and frees its slot." : {
+
+    },
     "It never contains a hostname, username, password, query, or any data from your databases. You can change this in Settings." : {
       "localizations" : {
         "ko" : {
@@ -14278,6 +14319,9 @@
     "Mac socket %@" : {
 
     },
+    "macOS %@" : {
+
+    },
     "macOS blocks a library downloaded from the internet. If you trust it, run: xattr -d com.apple.quarantine %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -14375,6 +14419,9 @@
           }
         }
       }
+    },
+    "Managed by your organization" : {
+
     },
     "Manual" : {
       "localizations" : {
@@ -19800,6 +19847,9 @@
         }
       }
     },
+    "Remove “%@”?" : {
+
+    },
     "Remove from Favorites" : {
       "localizations" : {
         "ko" : {
@@ -22308,10 +22358,22 @@
         }
       }
     },
+    "Sign Out" : {
+
+    },
+    "Sign out first, then sign in to the other account or server." : {
+
+    },
+    "Sign out of TablePro on this device?" : {
+
+    },
     "Sign-In Denied" : {
 
     },
     "Sign-In Timed Out" : {
+
+    },
+    "Signed In As" : {
 
     },
     "Signing the service account token failed." : {
@@ -22414,6 +22476,9 @@
 
     },
     "Some of the file does not read as %@. Choose the encoding it was saved in." : {
+
+    },
+    "Something went wrong (error %d). Try again in a moment." : {
 
     },
     "Sort" : {
@@ -24008,6 +24073,9 @@
         }
       }
     },
+    "TablePro Account" : {
+
+    },
     "TablePro and the SSH server could not agree on how to encrypt the connection." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -24991,6 +25059,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The account could not be refreshed." : {
+
+    },
     "The action of foreign key %@ cannot be written as SQL." : {
 
     },
@@ -25822,6 +25893,9 @@
     "The default of column %@ is not one SQL expression, so it cannot be written." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The devices could not be loaded." : {
+
     },
     "The document changed on the server after it was opened, so nothing was saved. Copy your text, then open it again." : {
 
@@ -27155,6 +27229,9 @@
     "The server fills in %@, so it cannot be given a value." : {
 
     },
+    "The server is busy. Try again in a few minutes." : {
+
+    },
     "The server is not responding. Check the host and port." : {
       "localizations" : {
         "ko" : {
@@ -27198,6 +27275,9 @@
     "The server offers only MAC algorithms TablePro no longer supports: %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The server refused the request. Try again in a moment." : {
+
     },
     "The server requires a client certificate for TLS mutual authentication." : {
       "extractionState" : "manual",
@@ -27908,6 +27988,9 @@
     "This action cannot be undone." : {
 
     },
+    "This address does not answer as a TablePro server. Check it with your administrator." : {
+
+    },
     "This also commits the open transaction, keeping its uncommitted changes." : {
 
     },
@@ -28591,7 +28674,16 @@
         }
       }
     },
+    "This Device" : {
+
+    },
     "This device cannot check a SQL Server certificate, so it does not connect in this mode. Choose Required to connect without the check." : {
+
+    },
+    "This device has a valid offline file, so it keeps its license slot until the file expires." : {
+
+    },
+    "This device was already removed." : {
 
     },
     "This document has no _id, so it cannot be edited here." : {
@@ -29063,6 +29155,9 @@
         }
       }
     },
+    "This server has no TablePro license installed. Ask your administrator to install one." : {
+
+    },
     "This server is not running in cluster mode. Set Connection Mode to Standalone, or point Cluster mode at a node started with cluster-enabled yes." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -29132,6 +29227,9 @@
       }
     },
     "This server runs Atlas Search but cannot list its search indexes, so one that uses the field cannot be ruled out. Check the collection's search indexes in Atlas, then change the field from a query tab." : {
+
+    },
+    "This server's TablePro license is not valid for this server. Ask your administrator." : {
 
     },
     "This SSH private key belongs to a security key (FIDO), which TablePro on iPhone and iPad cannot sign with." : {
@@ -30200,6 +30298,9 @@
     "Unlock TablePro to add rows to %@." : {
 
     },
+    "Unlock this device to use your TablePro account." : {
+
+    },
     "Unlocked" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -30600,6 +30701,9 @@
           }
         }
       }
+    },
+    "Use This Server" : {
+
     },
     "Username" : {
       "localizations" : {
@@ -31454,6 +31558,18 @@
         }
       }
     },
+    "You were signed out because the server changed." : {
+
+    },
+    "You were signed out because the server no longer accepts this sign-in. Sign in again." : {
+
+    },
+    "You were signed out because this device was removed from your account." : {
+
+    },
+    "You were signed out. Sign in again." : {
+
+    },
     "Your account is not allowed to read the source of %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -31541,6 +31657,36 @@
       }
     },
     "Your Mac reaches the SSH server through these hosts from its ~/.ssh/config, and this device dials the same route with its own keys. Changing the SSH server or jump hosts above replaces it." : {
+
+    },
+    "Your organization manages iCloud sync for TablePro." : {
+
+    },
+    "Your organization manages which server TablePro signs in to." : {
+
+    },
+    "Your organization turned off iCloud sync for TablePro." : {
+
+    },
+    "Your organization turned off usage data for TablePro." : {
+
+    },
+    "Your organization's server does not take this request." : {
+
+    },
+    "Your organization's server." : {
+
+    },
+    "Your organization's TablePro license expired on %@. Ask your administrator to renew it." : {
+
+    },
+    "Your organization's TablePro server, if it runs one. Ask your administrator for its address." : {
+
+    },
+    "Your plan's devices are all in use. Remove one in Devices to use this device." : {
+
+    },
+    "Your TablePro account could not open on this device." : {
 
     }
   },

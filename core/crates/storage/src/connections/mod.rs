@@ -22,7 +22,6 @@ mod placement;
 mod projects;
 
 pub use additions::ImportedConnection;
-pub(crate) use placement::cyclic;
 pub use projects::ProjectMembership;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
