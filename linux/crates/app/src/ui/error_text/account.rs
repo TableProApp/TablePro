@@ -22,6 +22,9 @@ pub fn account_error_message(error: &AccountError) -> String {
         AccountError::SignInRefused { error, .. } => {
             gettext_f("The account service refused the sign-in ({code}).", &[("code", error)])
         }
+        AccountError::SignInIssuerMismatch => {
+            gettext("TablePro could not confirm that the sign-in came from its account service. Sign in again.")
+        }
         AccountError::SignedOut => gettext("You were signed out. Sign in again."),
         AccountError::DeviceRevoked => {
             gettext("This computer was removed from your account, so TablePro signed out here.")
@@ -218,6 +221,7 @@ mod tests {
                 error: "invalid_scope".to_owned(),
                 description: Some("secret detail".to_owned()),
             },
+            AccountError::SignInIssuerMismatch,
             AccountError::SignedOut,
             AccountError::DeviceRevoked,
             AccountError::DeviceLimitReached { devices: Vec::new() },

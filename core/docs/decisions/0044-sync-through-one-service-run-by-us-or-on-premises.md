@@ -222,7 +222,7 @@ Values a device moves into the service with count as approved on that device.
 - **The apps' flow does not change:** the browser, the static public clients and their redirects (RFC 8252). tablepro-cloud adds `tablepro-ios` with the custom scheme, and the device platform `ios`. A client reports its own platform, so the platform never decides what counts against a limit.
 - **Discovery and mix-up.**
   - The server serves RFC 9728 metadata, which points the app to OIDC discovery. It adds the RFC 9207 `iss` to authorization responses, and the apps compare that `iss` with the server they chose, as RFC 9700 section 4.4 requires once a client can reach more than one server.
-  - RFC 9207 support, with `authorization_response_iss_parameter_supported` in the metadata, is contributed to zitadel/oidc. A pinned release that has it gates the first self-hosted release.
+  - tablepro-cloud sends `iss` and `authorization_response_iss_parameter_supported` in its own handlers, through zitadel/oidc's public seams, with no fork and no zitadel release needed. Self-hosted images 0.1.0 and 0.1.1 send neither, so the apps require `iss` only from a server whose metadata promises it, and from tablepro.app.
 - **One server per install.** Switching is a sign-out and a sign-in. Tokens are keyed by server: the core's `sign_in_key` already does this, and the Mac and iOS use it through the account slice.
 
 ### Licensing

@@ -239,6 +239,8 @@ pub(crate) fn loopback_http_allowed() -> bool {
 pub(crate) struct Discovered {
     pub resource: String,
     pub issuer: String,
+    // RFC 9207: its authorization responses always name the issuer, so one that does not is refused.
+    pub iss_parameter_supported: bool,
     pub authorization_endpoint: String,
     pub token_endpoint: String,
     pub revocation_endpoint: String,
@@ -270,6 +272,9 @@ struct ProviderMetadata {
     authorization_endpoint: String,
     token_endpoint: String,
     revocation_endpoint: Option<String>,
+    // A server from before tablepro-cloud sent `iss` leaves it out.
+    #[serde(default)]
+    authorization_response_iss_parameter_supported: bool,
 }
 
 // RFC 9728 section 3.3: the resource must be the origin asked. OpenID Connect Discovery section 4.3: the issuer must be
@@ -336,6 +341,7 @@ pub(crate) async fn discover(
     Ok(Discovered {
         resource: resource_text,
         issuer,
+        iss_parameter_supported: provider.authorization_response_iss_parameter_supported,
         authorization_endpoint: provider.authorization_endpoint,
         token_endpoint: provider.token_endpoint,
         revocation_endpoint,

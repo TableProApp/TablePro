@@ -6,7 +6,8 @@ use chrono::{TimeDelta, Utc};
 use tokio::sync::watch;
 
 use super::tests::{
-    Answer, Asked, HeldBrowser, Keyring, TOKENS, approve, asked, device_answer, form, machine, serve, signed_in, stored,
+    Answer, Asked, HeldBrowser, Keyring, TOKENS, answer, approve, asked, device_answer, form, machine, serve,
+    signed_in, stored,
 };
 use super::{Account, AccountHosts, SignOutCause};
 use crate::account_error::AccountError;
@@ -378,6 +379,100 @@ async fn discovery_refuses_a_server_that_names_another_resource_issuer_or_key_or
 
         assert_eq!(refused.code(), code, "{path}: {refused}");
     }
+}
+
+// The `iss` a company server's answer carries: the server's own, another, or none.
+#[derive(Debug, Clone, Copy)]
+enum Named {
+    Itself,
+    Other,
+    Nothing,
+}
+
+// Signs in to a company server whose metadata does or does not promise `iss`, answering with a code or an error that
+// names `named`. Also says whether the code reached the token endpoint.
+async fn sign_in_answered(promises: bool, named: Named, error: Option<&str>) -> (Result<(), AccountError>, bool) {
+    let exchanged = Arc::new(AtomicBool::new(false));
+    let base = company(&LICENSED, {
+        let exchanged = exchanged.clone();
+        move |origin, method, path, _| match (method, path) {
+            ("GET", "/.well-known/openid-configuration") if promises => Some((
+                200,
+                format!(
+                    r#"{{"issuer":"{origin}","authorization_endpoint":"{origin}/oauth/authorize","token_endpoint":"{origin}/oauth/token","revocation_endpoint":"{origin}/oauth/revoke","authorization_response_iss_parameter_supported":true}}"#
+                ),
+            )),
+            ("POST", "/oauth/token") => {
+                exchanged.store(true, Ordering::SeqCst);
+                None
+            }
+            _ => None,
+        }
+    });
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let browser = Arc::new(HeldBrowser::default());
+    let account = open(
+        settings(dir.path(), AppClient::LINUX, managed(&base, Some(false))),
+        &Arc::new(Items::default()),
+        browser.clone(),
+    );
+    account.restore().await;
+    let iss = match named {
+        Named::Itself => Some(base.clone()),
+        Named::Other => Some("https://evil.example".to_owned()),
+        Named::Nothing => None,
+    };
+    let mut pairs = vec![match error {
+        Some(error) => ("error", error),
+        None => ("code", "company-code"),
+    }];
+    if let Some(iss) = &iss {
+        pairs.push(("iss", iss.as_str()));
+    }
+
+    let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), answer(&browser, &pairs));
+
+    (signed, exchanged.load(Ordering::SeqCst))
+}
+
+// RFC 9207 section 2.4: a server whose metadata promises `iss` names itself in every answer, and one that does not
+// promise it may leave it out but never name another.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_company_server_s_answer_counts_only_from_the_server_asked() {
+    let cases = [
+        (true, Named::Itself, None),
+        (true, Named::Nothing, Some("account.sign_in_issuer_mismatch")),
+        (true, Named::Other, Some("account.sign_in_issuer_mismatch")),
+        (false, Named::Nothing, None),
+        (false, Named::Other, Some("account.sign_in_issuer_mismatch")),
+    ];
+    for (promises, named, refused) in cases {
+        let (signed, exchanged) = sign_in_answered(promises, named, None).await;
+
+        assert_eq!(
+            signed.as_ref().err().map(AccountError::code),
+            refused,
+            "promised {promises}, named {named:?}: {signed:?}"
+        );
+        assert_eq!(exchanged, refused.is_none(), "promised {promises}, named {named:?}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_company_server_s_error_is_read_only_from_the_server_asked() {
+    let (declined, _) = sign_in_answered(true, Named::Itself, Some("access_denied")).await;
+    let (unnamed, _) = sign_in_answered(true, Named::Nothing, Some("access_denied")).await;
+    let (other, _) = sign_in_answered(false, Named::Other, Some("access_denied")).await;
+
+    assert!(
+        matches!(declined, Err(AccountError::SignInRefused { ref error, .. }) if error == "access_denied"),
+        "{declined:?}"
+    );
+    assert!(
+        matches!(unnamed, Err(AccountError::SignInIssuerMismatch)),
+        "{unnamed:?}"
+    );
+    assert!(matches!(other, Err(AccountError::SignInIssuerMismatch)), "{other:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

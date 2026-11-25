@@ -24,6 +24,8 @@ extension AccountError {
             return String(localized: "The server refused the request. Try again in a moment.")
         case .oauth, .invalidResponse, .offlineFileRejected:
             return String(localized: "Could not read the server response. Try again in a moment.")
+        case .otherIssuer:
+            return String(localized: "Could not confirm the sign-in came from the server TablePro asked. Sign in again.")
         case .companyServer(let problem):
             return problem.description
         case .signOutFirst:

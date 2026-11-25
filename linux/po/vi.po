@@ -3249,6 +3249,14 @@ msgid "The account service refused the sign-in ({code})."
 msgstr "Dịch vụ tài khoản từ chối đăng nhập ({code})."
 
 #: crates/app/src/ui/error_text/account.rs
+msgid ""
+"TablePro could not confirm that the sign-in came from its account service. "
+"Sign in again."
+msgstr ""
+"TablePro không xác nhận được lần đăng nhập này đến từ dịch vụ tài khoản của "
+"mình. Hãy đăng nhập lại."
+
+#: crates/app/src/ui/error_text/account.rs
 msgid "You were signed out. Sign in again."
 msgstr "Bạn đã đăng xuất. Hãy đăng nhập lại."
 
