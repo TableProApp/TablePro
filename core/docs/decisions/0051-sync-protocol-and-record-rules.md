@@ -66,15 +66,15 @@ On 2026-11-25 the maintainer decided:
 | --- | --- | --- | --- |
 | `connection`, `group`, `tag`, `ssh_profile`, `credential_profile`, `saved_query`, `saved_query_folder`, `favourite_table`, `favourite_database`, `table_folder`, `table_folder_item`, `macos_settings`, `ios_settings`, `linux_settings`, `windows_settings`, `connection_project` (#4376's connection projects, on iCloud and TablePro Sync alike) | personal | The account's approved key holders | Patch and delete |
 | The team library kinds `connection`, `folder`, `query` | team | Owner, admin, editor | Patch and delete, also through the facade. Ids keep the case the library stored, lower case from shipped Macs (0052). No two ids of one kind in a team may match once lower-cased. The keys the facade projects are checked. Tombstones keep their fields until `/v1` sunsets |
-| `secret_envelope` | personal, team | Personal: approved key holders. Team: owner, admin, editor, from an approved key holder | Patch and delete, written whole. `kv` is checked against the floor |
+| `secret_envelope` | personal, team | Personal: approved key holders. Team: owner, admin, editor, from an approved key holder | Patch and delete, written whole. `kv` is checked against the floor, and (`kv`, `n`) against the stored pair |
 | `history_entry` | history | Approved key holders | Created once; a delete tombstones it. `kv` is checked against the floor |
 | `key.identity`, `key.device` | personal | The signers 0053 names | Create only. Each append is verified, and the server derives the account's device set from the two logs |
 | `key.recovery` | personal | The account's approved key holders, and the genesis | Create only. Its hash must be the blob an identity statement names |
 | `key.request` | personal | Any key holder of the account, approved or not | Create only, bound to the DPoP key that writes it, purged once it expires |
 | `key.sas` | personal, team | The party of each step | Create only, purged once its session expires |
 | `key.wrap`, `key.ring` | personal, team | Personal: the account's approved key holders. Team: the signer 0053 names | Written whole; only that writer replaces one |
-| `key.team` | team | Owner, admin | Create only. Each append is verified against the signer's verified identity log |
-| `key.member` | team | The member it names, in any role | Create only, writer-bound to that account, and byte for byte the account's `key.identity` record at that `seq` |
+| `key.team` | team | Owner, admin | Create only. Each append is verified under every rule over the team log in 0053, against the signer's identity and device logs: k approvals for adding or removing a signer, and a re-root only as 0053 allows it |
+| `key.member` | team | The member it names, in any role | Create only, writer-bound to that account, and byte for byte the account's `key.identity` or `key.device` record at that log and `seq` |
 | Any other kind | personal, team | Personal: approved key holders. Team: owner, admin, editor | Patch and delete |
 
 - A reserved kind in a scope the table does not give it is rejected with `kind_not_in_scope`. The history scope takes only `history_entry`.
@@ -90,7 +90,7 @@ On 2026-11-25 the maintainer decided:
 
   A `key.request` whose `exp` has passed, or lies more than 600 seconds after its `iat`, is `bad_statement`. A second `key.request` from a holder whose first is still open is `request_pending`.
 - **What the server reads.**
-  - `kv`, the key version on `secret_envelope` and `history_entry`.
+  - `kv` and `n`, the key version and counter in a `secret_envelope`'s clear fields, and `kv` on `history_entry`.
   - Key-object fields, only as 0053's Key objects table lists: it verifies each account and team log append, checks a `key.recovery` blob's hash and a `key.member` copy's bytes, binds a `key.request` to its writer's DPoP key, and checks who writes a wrap or a ring.
   - While the facade lives, the keys it projects from a team library record into typed columns: a folder's and a query's, checked after the patch as `ParseData` checks them today (required names and query text, client ids, an int32 `sort_order`), else `bad_value`. Other keys of a team library record stay unread.
   - No other field of any kind.
@@ -160,8 +160,9 @@ Under `/v2`, OAuth scope `app`, with clients generated from the OpenAPI document
 | `writer_bound` | A key kind whose writer the binding above does not admit |
 | `request_pending` | A second `key.request` from a holder whose first is still open |
 | `id_case_collision` | A create of a team library kind whose id matches another record of that kind in the team once both are lower-cased, tombstones included. Checked under the team lock |
-| `bad_statement` | A `key.identity`, `key.device` or `key.team` append that does not verify, a genesis or reset the account's state does not allow, a `key.member` that does not copy its identity record, or a `key.recovery` whose hash no identity statement names |
+| `bad_statement` | A `key.identity`, `key.device` or `key.team` append that does not verify, a genesis or reset the account's state does not allow, a `key.member` that does not copy its identity or device record, an `activate` before its 7 days or after its reset was cancelled, or a `key.recovery` whose hash no identity statement names |
 | `key_version_stale` | `kv` below the scope's floor |
+| `bad_counter` | A `secret_envelope` whose (`kv`, `n`) is not one step after the stored pair: the same `kv` with `n + 1`, or a higher `kv` with `n` 1. A first envelope has `n` 1 |
 | `quota_exceeded` | A create past the scope's quota; none today |
 
 ### Whole-request refusals
@@ -172,6 +173,8 @@ Under `/v2`, OAuth scope `app`, with clients generated from the OpenAPI document
 | 403 | `feature_required` | A push without `service_sync` (personal, history) or `team_library` (team), except one of only key-object writes in a scope that exists (Gates) |
 | 403 | `seat_required` | A team call without a seat |
 | 403 | `license_expired` | A push past `grace_until` that holds anything but key-object writes (Gates) |
+| 403 | `device_removed` | A call from a key holder on a device row an admin removed. The holder locks: it stops syncing and keeps its keys (0053) |
+| 403 | `step_up_required` | A reset while the device set is empty, on a sign-in whose IdP authentication is more than 300 seconds old |
 | 403 | `device_not_approved` | A missing or invalid DPoP proof where one is required, or one from a key outside the writer's device set, beyond the writes allowed before approval; a pre-approval call on the history scope |
 | 403 | `interactive_sign_in_required` | A personal or history call, or a key-object or envelope write, on a token from a license-key exchange rather than an interactive sign-in |
 | 404 | `not_found` | A scope the account cannot reach |
@@ -220,12 +223,17 @@ A role that writes nothing gets `role` per change rather than a whole refusal, s
 0053 holds the keys, the logs and the checks. On the wire:
 
 - **DPoP.** Every call on a personal or history scope, and every write of a key kind or a `secret_envelope` in any scope, carries a `DPoP` proof (RFC 9449 section 4) beside `Authorization: Bearer`. 0053 gives the proof's fields and time windows. The `jti` store is `sync_dpop_jti`, shared by every task, and the server may ask for its `DPoP-Nonce` (401 `use_dpop_nonce`). This is a profile of RFC 9449: the proof rides beside a bearer token that is not bound to its key, which RFC 9449 section 7 does not cover. The server takes a proof only on these calls, never in place of the bearer, and the Go and Rust sides test it against 0053's vectors.
-- **Approved** means the proof's key is a holder in the writing account's device set, on the device row of the token's sign-in. The set is what the verified logs give, less the holders of device rows an admin removed and every holder those approved. In a team scope it is the writing member's own set. Anything else is 403 `device_not_approved`.
+- **Approved** means the proof's key is a holder in the writing account's device set, on the device row of the token's sign-in. The set is what the verified logs give, less the holders of device rows an admin removed and every holder those approved. In a team scope it is the writing member's own set. A holder on a removed row gets 403 `device_removed`, and any other key outside the set 403 `device_not_approved`.
 - **Before approval** a holder:
   - reads from the personal scope only `key.identity`, `key.device`, `key.recovery`, its own `key.request` and the `key.sas` steps of that request. Its cursor records that, so after approval it gets `cursor_expired` and takes the whole scope;
-  - writes only its `key.request`, that request's `reveal` step, and a personal log chain whose result puts its own DPoP key in the device set: a genesis while the account has no `key.identity` record, an `add` with method `recovery` under the current identity key, a reset 0053 allows, or the republished statements that approved it. The first enrollment is trust on first use. Any other change refuses the push with 403 `device_not_approved`;
+  - writes only its `key.request`, that request's `reveal` step, and a personal log chain whose result puts its own DPoP key in the device set: a genesis while the account has no `key.identity` record, an `add` with method `recovery` under the current identity key, a reset naming itself while the device set is empty, or the republished statements that approved it. The first enrollment is trust on first use. Any other change refuses the push with 403 `device_not_approved`;
   - gets 403 `device_not_approved` on the history scope.
 - **Team scopes** take the bearer and the seat for reads and for writes of the library and other plaintext kinds. Key-object and envelope writes there need the DPoP proof above, and team secrets need the sharing key 0053 gives only to approved holders.
+- **Resets.** A `reset` made without the recovery key stays pending (0053):
+  - the server takes its `activate`, signed by the reset's new identity key, only 7 days after it took the `reset`;
+  - meanwhile it takes only statements the old identity key signs and `cancel`, and a `cancel` from any holder in the set, or any statement under the old identity key, a recovery `add` included, voids the reset;
+  - a reset while the device set is empty also needs a fresh IdP sign-in: the app signs in again with `max_age=0`, as the portal's step-up does (0044), and the server takes the reset only while that authentication is at most 300 seconds old, else 403 `step_up_required`;
+  - every holder, the portal and, on the SaaS, an email show a pending reset.
 - **Log chains.** A push whose changes are all appends to `key.identity` and `key.device`, or all appends to `key.team`, is a log chain, judged as one unit.
   - Each statement must verify and extend its log as the statements before it in the push leave it. Cross-log references, such as a `rotate`'s device head, are compared with the logs at that point of the chain, so a republished statement passes the compare-and-set it passed when it was first written.
   - A statement identical, byte for byte, to the one already at its position counts as applied, so two devices that republish overlapping chains both succeed. A different statement there fails the chain with `create_only`, and the device raises the fork alarm (0053). Any other statement that fails makes the chain fail with `bad_statement`. A chain that fails applies nothing.
@@ -247,14 +255,14 @@ The client merges; the server only versions. This amends 0044's table:
 - **Other personal fields:** three way per field. A field changed on both sides takes the pushing device's value, as `SyncRecordEdit` does. A move that would close a cycle keeps the server's parent ([0010](0010-macos-on-the-core.md)).
 - **`sort_order`:** an integer, as 0010 has it. A renumber is a placement change.
 - **Settings:** as 0044 has them.
-- **`secret_envelope`:** conditional on its change tag like every record, and written whole, since ciphertext does not merge. On a conflict the device pulls the key objects first, then pushes its envelope again on the stored tag under the newest key version, so the later pusher wins. This replaces 0044's unconditional last-pusher-wins.
+- **`secret_envelope`:** conditional on its change tag like every record, written whole, since ciphertext does not merge, and one counter step after the stored one. A secret is cleared by its next envelope, never by a delete (0053). On a conflict the device pulls the key objects first, then pushes its envelope again on the stored tag under the newest key version, so the later pusher wins. This replaces 0044's unconditional last-pusher-wins.
 - **`history_entry`:** created once, never patched. A delete is a tombstone, and a `user` tombstone is final. A policy tombstone is revived by a patch on its tag that carries the whole entry, encrypted at push time under the newest key version like any history push (0053), so the floor applies as to any write.
 - **`key.*`:** create only, except wraps and rings, which their writer replaces whole. Two writers of one log position are serialized by `create_only`, and the loser reads the log and builds on it (0053).
 
 ### Tombstones
 
 - A tombstone keeps its ids, version, revision, change tag and writer, and is kept for good, as migration 00010 decided.
-- Its fields are cleared, except on the team library kinds, which keep theirs until `/v1` sunsets for its parent walk. `/v2/sync` never sends a tombstone's fields.
+- Its fields are cleared, except on the team library kinds, which keep theirs until `/v1` sunsets for its parent walk, and on `secret_envelope`, which keeps `kv` and `n` so the counter rule holds across a policy turned off and on. `/v2/sync` never sends a tombstone's fields.
 - **`deleted_reason`**, on every tombstone on the wire:
   - `user`: a client deleted the record. A device deletes its copy, under the conflict rules.
   - `policy`: a policy job tombstoned it, with no writer. A device that pulls it keeps its local copy, whenever it pulls it and whatever policy state it last read, and does not push that kind while the switch stays off. It is no deletion for 0053's rule on returning history ids: a device refuses a history id that comes back only after a `user` tombstone.
@@ -369,12 +377,12 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 - **Account deletion** deletes its personal and history scopes with every record in them, envelopes and key objects included. It clears `updated_by` and `updated_device` on its team records, tombstones included.
 - **A self-hosted member removal** sets `purges_at` 30 days out on that person's personal and history scopes. Restoring the member within that time clears it, and a job then deletes the scopes' records, except the `key.identity` and `key.device` logs: they hold no secret, member bundles copy them, and a later genesis must not take their positions again.
 - **A team its owner deletes** hides its scope at once. Restore and purge follow the team's (migration 00013).
-- **Key objects.** The server purges `key.request` and `key.sas` records once they expire. A reset of an account with no key holder left deletes what 0053 says, never the key logs.
+- **Key objects.** The server purges `key.request` and `key.sas` records once they expire, and deletes a superseded recovery blob and its wraps once a `replace` or an activated `reset` applies. At the `activate` of a reset made with no key holder left, and not before, it deletes every record of the account's personal and history scopes except the key logs.
 - **Removals.** Removing a member from a team raises that team's floor. On a self-hosted install, an install admin can remove a device in the portal: that revokes its refresh token family, marks its key holders revoked and raises the person's floors (0053).
 - **Audit:**
   - team writes, as counts per push, `library.changed` as today, for both paths;
   - policy changes and policy tombstone runs, purges and their cancels, epochs, `sync.restore_detected` and `sync.restore_suspected`;
-  - key events: genesis, identity reset, device added, left and removed, member confirmed and removed, re-root;
+  - key events: genesis, replace, a reset pending, cancelled and activated, device added, left and removed, member confirmed and removed, signer added and removed, and a re-root, which the portal also shows;
   - personal and history writes are not audited;
   - the portal gains an install audit page for the owner and admins, for events that belong to no team.
 
@@ -393,7 +401,7 @@ The switches are 0044's `passwordSync` and `historySync` and 0055's `personalSyn
 - **Past grace:** a `leave`, a `rotate` with its wraps and a team key rotation are taken; a push with any data change, an envelope or a history entry is refused whole with `license_expired`, and with `feature_required` after a SaaS lapse.
 - **History back on:** entries kept through `historySync` off revive over their policy tombstones under the newest key version, and a `user` tombstone stays final.
 - **Gates and policies:** the gate matrix across free, Pro monthly, annual and Lifetime, Team, self-hosted with and without `service_sync`, and past grace; roles per kind; each switch off and on again; the policy tombstone job.
-- **Approval:** DPoP with each field wrong, a replay, a key outside the set and an expired `iat`; a team envelope or key-object write without an approved holder; a team statement, a member bundle and a recovery blob that do not match; each row of the writer binding; a purge that keeps the key logs; what an unapproved holder sees and writes; the cursor after approval; an idempotent replay after the caller's role changed; a license-key token that tries a genesis or reads a personal scope.
+- **Approval:** DPoP with each field wrong, a replay, a key outside the set and an expired `iat`; a team envelope or key-object write without an approved holder; a team statement, a member bundle and a recovery blob that do not match; each row of the writer binding; a purge that keeps the key logs; an envelope counter out of step; an `activate` before 7 days and after a `cancel`; a no-holder reset without a fresh sign-in; a removed row's holder getting `device_removed`; what an unapproved holder sees and writes; the cursor after approval; an idempotent replay after the caller's role changed; a license-key token that tries a genesis or reads a personal scope.
 - **Merge:** shared fixtures for content against placement edits on a deletion, run by the CloudKit and the service paths.
 
 ## Consequences
