@@ -41,7 +41,7 @@ pub(super) async fn delete_folder(pool: &SqlitePool, path: &Path, id: Uuid) -> R
     .bind(rowid)
     .fetch_all(&mut *transaction)
     .await?;
-    trim_upgrade_copies(path, &folder_deletes(&doomed)).await?;
+    trim_upgrade_copies(path, &rowid_deletes("saved_query_folders", &doomed)).await?;
     let filed: Vec<(i64, Option<String>)> = sqlx::query_as(AssertSqlSafe(format!(
         "{SUBTREE} SELECT query.id, query.connection_id FROM saved_queries query \
          JOIN saved_query_folders folder ON folder.record_id = query.folder_record_id \
@@ -67,7 +67,7 @@ pub(super) async fn delete_connection(
     let mut database = pool.acquire().await?;
     let mut transaction = database.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
     let owner = connection.to_string();
-    let copies = [
+    let mut copies: Vec<CopyDelete> = [
         "saved_queries",
         "saved_query_folders",
         "favourite_tables",
@@ -79,7 +79,17 @@ pub(super) async fn delete_connection(
         table,
         sql: format!("DELETE FROM main.{table} WHERE connection_id = ?"),
         binds: vec![Bind::Text(owner.clone())],
-    });
+    })
+    .into();
+    // A pull can move a query or a folder to this connection after a copy was made, so the copy names it
+    // under the one it had then; its rowid is the same in both.
+    for table in ["saved_queries", "saved_query_folders"] {
+        let rows: Vec<i64> = sqlx::query_scalar(AssertSqlSafe(format!("SELECT id FROM {table} WHERE connection_id = ?")))
+            .bind(&owner)
+            .fetch_all(&mut *transaction)
+            .await?;
+        copies.extend(rowid_deletes(table, &rows));
+    }
     trim_upgrade_copies(path, &copies).await?;
     let queries = sqlx::query("DELETE FROM saved_queries WHERE connection_id = ?")
         .bind(&owner)
@@ -199,12 +209,12 @@ async fn unfile_queries(database: &mut SqliteConnection, queries: &[(i64, Option
     Ok(())
 }
 
-fn folder_deletes(ids: &[i64]) -> Vec<CopyDelete> {
+fn rowid_deletes(table: &'static str, ids: &[i64]) -> Vec<CopyDelete> {
     ids.chunks(IDS_PER_STATEMENT)
         .map(|chunk| CopyDelete {
-            table: "saved_query_folders",
+            table,
             sql: format!(
-                "DELETE FROM main.saved_query_folders WHERE id IN ({})",
+                "DELETE FROM main.{table} WHERE id IN ({})",
                 vec!["?"; chunk.len()].join(",")
             ),
             binds: chunk.iter().map(|id| Bind::Integer(*id)).collect(),

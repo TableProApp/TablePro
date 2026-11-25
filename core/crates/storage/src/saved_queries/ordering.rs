@@ -19,19 +19,30 @@ pub(super) async fn query_place(
     .await?)
 }
 
+// SQLite turns an integer that overflows into a REAL, so the next position is counted here. A pulled order at
+// the end of the range renumbers the place from 0 first.
 pub(super) async fn next_query_order(
     database: &mut SqliteConnection,
     owner: Option<&str>,
     folder: Option<&str>,
 ) -> Result<i64, StorageError> {
-    Ok(sqlx::query_scalar(
-        "SELECT COALESCE(MAX(sort_order) + 1, 0) FROM saved_queries \
+    let highest: Option<i64> = sqlx::query_scalar(
+        "SELECT MAX(sort_order) FROM saved_queries \
          WHERE (connection_id IS ?1 OR connection_id IS NULL) AND folder_record_id IS ?2",
     )
     .bind(owner)
     .bind(folder)
     .fetch_one(&mut *database)
-    .await?)
+    .await?;
+    match highest.map(|highest| highest.checked_add(1)) {
+        None => Ok(0),
+        Some(Some(next)) => Ok(next),
+        Some(None) => {
+            let place = query_place(database, owner, folder).await?;
+            set_query_order(database, &place).await?;
+            Ok(i64::try_from(place.len()).unwrap_or(i64::MAX))
+        }
+    }
 }
 
 pub(super) async fn set_query_order(database: &mut SqliteConnection, ids: &[i64]) -> Result<(), StorageError> {
@@ -75,14 +86,23 @@ pub(super) async fn next_folder_order(
     owner: Option<&str>,
     parent: Option<&str>,
 ) -> Result<i64, StorageError> {
-    Ok(sqlx::query_scalar(
-        "SELECT COALESCE(MAX(sort_order) + 1, 0) FROM saved_query_folders \
+    let highest: Option<i64> = sqlx::query_scalar(
+        "SELECT MAX(sort_order) FROM saved_query_folders \
          WHERE (connection_id IS ?1 OR connection_id IS NULL) AND parent_record_id IS ?2",
     )
     .bind(owner)
     .bind(parent)
     .fetch_one(&mut *database)
-    .await?)
+    .await?;
+    match highest.map(|highest| highest.checked_add(1)) {
+        None => Ok(0),
+        Some(Some(next)) => Ok(next),
+        Some(None) => {
+            compact_folders(database, owner, parent).await?;
+            let place = folder_place(database, owner, parent).await?;
+            Ok(i64::try_from(place.len()).unwrap_or(i64::MAX))
+        }
+    }
 }
 
 pub(super) async fn compact_folders(

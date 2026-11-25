@@ -452,3 +452,38 @@ async fn a_shared_folder_lifted_out_of_a_deleted_connection_takes_a_free_name() 
     names.sort();
     assert_eq!(names, ["Reports", "Reports (2)", "reports (3)"], "in the order their parents were made");
 }
+
+// SQLite would turn the next position past i64::MAX into a REAL, which no later read decodes.
+#[tokio::test]
+async fn a_pulled_order_at_the_end_of_the_range_leaves_room_for_the_next_save() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let history = history(&root).await;
+    let (store, folders) = (history.saved_queries(), history.saved_query_folders());
+    let connection = Uuid::new_v4();
+    let mut last = pulled(Uuid::new_v4(), "Last", None, at(1));
+    last.order = i64::MAX;
+    store.put(&[last.clone()]).await.expect("put");
+    let mut last_folder = pulled_folder(Uuid::new_v4(), "Last", None, at(1));
+    last_folder.order = i64::MAX;
+    folders.put(&[last_folder.clone()]).await.expect("put folder");
+
+    let saved = store
+        .save(NewSavedQuery {
+            name: "Next".to_owned(),
+            query: "SELECT 1".to_owned(),
+            connection_id: Some(connection),
+            connection_name: String::new(),
+        })
+        .await
+        .expect("a save after it");
+    let folder = folders
+        .create(Some(connection), "Next", None)
+        .await
+        .expect("a folder after it");
+
+    let shown = store.snapshot(connection).await.expect("snapshot");
+    let orders: Vec<(Uuid, i64)> = shown.queries.iter().map(|query| (query.id, query.order)).collect();
+    assert_eq!(orders, [(last.id, 0), (saved.id, 1)]);
+    let orders: Vec<(Uuid, i64)> = shown.folders.iter().map(|folder| (folder.id, folder.order)).collect();
+    assert_eq!(orders, [(last_folder.id, 0), (folder, 1)]);
+}

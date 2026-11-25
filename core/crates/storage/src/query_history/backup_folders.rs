@@ -529,6 +529,34 @@ mod tests {
         database.close().await.expect("close copy");
     }
 
+    // A pull can move a query to another connection after the copy named it under the first.
+    #[tokio::test]
+    async fn a_query_pulled_into_a_deleted_connection_leaves_copies_of_either_format() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let (history, legacy) = upgraded_beta(&root, &[], &[(10, "moved", None, 0)]).await;
+        let store = history.saved_queries();
+        let moved = record_id(&history, "saved_queries", 10).await;
+        let current = crate::upgrade_copies::keep_database(&history.pool, &history.path, 6)
+            .await
+            .expect("a copy with record ids");
+        let elsewhere = Uuid::new_v4();
+        let mut pulled = store.get(moved).await.expect("get").expect("the query");
+        pulled.connection_id = Some(elsewhere);
+        store.put(&[pulled]).await.expect("moved by a pull");
+
+        store.delete_for_connection(elsewhere).await.expect("delete the connection");
+
+        for copy in [legacy, current] {
+            let mut database = copy_database(&copy).await;
+            let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM saved_queries WHERE id = 10")
+                .fetch_one(&mut database)
+                .await
+                .expect("count");
+            assert_eq!(left, 0, "{}", copy.display());
+            database.close().await.expect("close copy");
+        }
+    }
+
     #[tokio::test]
     async fn a_copy_from_before_folders_still_trims_saved_queries() {
         let root = tempfile::tempdir().expect("tempdir");
