@@ -67,7 +67,8 @@ fn by_id(base: &[Value], local: &[Value], server: &[Value]) -> Value {
         let (held, mine) = (find(base, &id), find(local, &id));
         match (held, mine) {
             (Some(_), None) => {}
-            (Some(held), Some(mine)) if mine != held => result.push(mine),
+            // Changed here, or added here as well as there.
+            (held, Some(mine)) if held.as_ref() != Some(&mine) => result.push(mine),
             _ => result.push(item.clone()),
         }
     }
@@ -185,6 +186,18 @@ mod tests {
                 {"id": "e", "name": "five"},
                 {"id": "d", "name": "four"}
             ])
+        );
+    }
+
+    #[test]
+    fn an_item_both_sides_added_takes_this_devices_copy() {
+        let base = json!({"columnWidths": []});
+        let local = json!({"columnWidths": [{"id": "email", "value": 240}]});
+        let server = json!({"columnWidths": [{"id": "email", "value": 180}, {"id": "id", "value": 60}]});
+
+        assert_eq!(
+            merge_document(Some(&base), Some(&local), Some(&server)),
+            json!({"columnWidths": [{"id": "email", "value": 240}, {"id": "id", "value": 60}]})
         );
     }
 

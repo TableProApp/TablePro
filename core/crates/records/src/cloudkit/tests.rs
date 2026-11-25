@@ -461,10 +461,29 @@ fn a_record_that_does_not_read_is_refused_by_its_code() {
 
 #[test]
 fn a_wire_value_of_the_wrong_shape_is_refused_rather_than_cleared() {
-    let wire = json!({"name": "n", "port": "5432"});
+    for wire in [
+        json!({"name": "n", "port": "5432"}),
+        json!({"name": "n", "tag_ids": [123]}),
+        json!({"name": "n", "additional_fields": [{"id": "mongoAuthSource"}]}),
+        json!({"name": "n", "ssh_config": {"jump_hosts": [{"port": "22"}]}}),
+    ] {
+        assert_eq!(
+            from_wire(Kind::Connection, "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44", &wire, 0).map_err(|error| error.code()),
+            Err("records.bad_field"),
+            "{wire}"
+        );
+    }
+}
+
+#[test]
+fn a_cloudkit_field_of_the_wrong_shape_makes_the_record_unreadable() {
+    let fields = BTreeMap::from([(
+        "sshConfigJson".to_owned(),
+        CloudValue::Bytes(mac_json_bytes(&json!({"port": "22"}))),
+    )]);
 
     assert_eq!(
-        from_wire(Kind::Connection, "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44", &wire, 0).map_err(|error| error.code()),
+        to_wire("Connection", "Connection_6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44", &fields).map_err(|error| error.code()),
         Err("records.bad_field")
     );
 }

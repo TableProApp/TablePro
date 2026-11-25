@@ -160,7 +160,13 @@ pub fn from_wire(
     Ok(Some(saved))
 }
 
+// A value whose shape the wire schema does not give the field reads as `None`, as the Mac's decoder refuses it.
 fn read(field: &CloudField, ty: &Type, value: &CloudValue) -> Option<Value> {
+    let read = read_value(field, ty, value)?;
+    schema::conforms(ty, &read).then_some(read)
+}
+
+fn read_value(field: &CloudField, ty: &Type, value: &CloudValue) -> Option<Value> {
     match (field.ty, value) {
         (CloudType::String, CloudValue::Text(text)) => Some(Value::from(text.as_str())),
         (CloudType::Int64, CloudValue::Int64(number)) if *ty == Type::Boolean => Some(Value::Bool(*number != 0)),
@@ -177,7 +183,11 @@ fn read(field: &CloudField, ty: &Type, value: &CloudValue) -> Option<Value> {
     }
 }
 
+// A value of the wrong shape writes nothing, so a save never replaces a field with what is left of it.
 fn write(field: &CloudField, ty: &Type, value: &Value) -> Option<CloudValue> {
+    if !schema::conforms(ty, value) {
+        return None;
+    }
     match field.ty {
         CloudType::String => value.as_str().map(|text| CloudValue::Text(text.to_owned())),
         CloudType::Int64 => match value {
