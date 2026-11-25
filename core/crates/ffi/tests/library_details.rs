@@ -333,3 +333,53 @@ async fn a_save_never_takes_the_id_of_a_connection_this_build_cannot_read() {
     let file = std::fs::read_to_string(dir.path().join("connections.json")).unwrap();
     assert!(file.contains("paranoid"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_profile_save_never_takes_the_id_of_a_profile_this_build_cannot_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let ssh = "3fd0b191-5cf8-4760-84a9-92779983f3cf";
+    let credential = "c00996e7-3992-4501-99a1-03cf155ab59a";
+    std::fs::write(
+        dir.path().join("connections.json"),
+        format!(
+            r#"{{"version": 1, "connections": [],
+                "ssh_profiles": [{{"id":"{ssh}","name":"p","host":"h","auth":{{"kind":"quantum"}}}}],
+                "credential_profiles": [{{"id":"{credential}","name":"c","password":{{"mode":"hardware_key"}}}}]}}"#
+        ),
+    )
+    .unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+
+    let saved_ssh = library
+        .save_ssh_profile(SshProfileRecord {
+            id: ssh.to_owned(),
+            name: "stale".to_owned(),
+            ssh: SshSettings {
+                host: "attacker.example".to_owned(),
+                port: None,
+                username: None,
+                jump_hosts: Vec::new(),
+                auth: SshAuthTag::Agent,
+            },
+        })
+        .await
+        .unwrap();
+    let saved_credential = library
+        .save_credential_profile(CredentialProfileRecord {
+            id: credential.to_owned(),
+            name: "stale".to_owned(),
+            username: "u".to_owned(),
+            password: CredentialPasswordRecord::Stored,
+            secure_field_ids: Vec::new(),
+            order: 0,
+        })
+        .await
+        .unwrap();
+
+    assert_ne!(saved_ssh.id, ssh);
+    assert_ne!(saved_credential.id, credential);
+    let file = std::fs::read_to_string(dir.path().join("connections.json")).unwrap();
+    assert!(file.contains("quantum"));
+    assert!(file.contains("hardware_key"));
+}

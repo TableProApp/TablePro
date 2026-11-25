@@ -309,6 +309,12 @@ impl ConnectionsDocument {
             ssh_profiles: Arc::from(self.ssh_profiles.as_slice()),
             credential_profiles: Arc::from(self.credential_profiles.as_slice()),
             unreadable: Arc::from(self.connections.held_ids()),
+            unreadable_profiles: self
+                .ssh_profiles
+                .held_ids()
+                .into_iter()
+                .chain(self.credential_profiles.held_ids())
+                .collect(),
             store: self.store,
         }
     }
@@ -392,6 +398,8 @@ pub struct ConnectionList {
     pub credential_profiles: Arc<[CredentialProfile]>,
     /// Ids of connections this build cannot read. The file keeps them as they were.
     pub unreadable: Arc<[Uuid]>,
+    /// Ids of SSH and credential profiles this build cannot read.
+    pub unreadable_profiles: Arc<[Uuid]>,
     /// `None` until the file's first write by a build that stamps one.
     pub store: Option<StoreIdentity>,
 }
@@ -406,6 +414,7 @@ impl ConnectionList {
             ssh_profiles: Arc::from([]),
             credential_profiles: Arc::from([]),
             unreadable: Arc::from([]),
+            unreadable_profiles: Arc::from([]),
             store: None,
         }
     }

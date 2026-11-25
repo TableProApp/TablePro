@@ -264,8 +264,9 @@ impl ConnectionLibrary {
         let ssh = saved_ssh(&profile.ssh);
         let _held = self.hold_writes().await;
         self.blocking(move |store| {
-            let unknown = store
-                .list_blocking()?
+            let list = store.list_blocking()?;
+            let id = unclaimed(&list, id);
+            let unknown = list
                 .ssh_profiles
                 .iter()
                 .find(|held| held.id == id)
@@ -311,8 +312,9 @@ impl ConnectionLibrary {
         let order = profile.order;
         let _held = self.hold_writes().await;
         self.blocking(move |store| {
-            let unknown = store
-                .list_blocking()?
+            let list = store.list_blocking()?;
+            let id = unclaimed(&list, id);
+            let unknown = list
                 .credential_profiles
                 .iter()
                 .find(|held| held.id == id)
@@ -350,6 +352,15 @@ fn stored(store: &tablepro_storage::ConnectionStore, id: Uuid) -> Result<tablepr
         .find(|saved| saved.id == id)
         .cloned()
         .ok_or_else(|| StorageError::ConnectionNotFound { id }.into())
+}
+
+// A profile this build cannot read keeps its id, and the links and secrets filed under it.
+fn unclaimed(list: &tablepro_storage::ConnectionList, id: Uuid) -> Uuid {
+    if list.unreadable_profiles.contains(&id) {
+        Uuid::new_v4()
+    } else {
+        id
+    }
 }
 
 fn new_or_parsed(id: &str) -> Result<Uuid, CoreError> {
