@@ -225,29 +225,11 @@ enum FileMenuBuilder {
     }
 
     private static func importSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
-        let container = MenuItemFactory.submenu(String(localized: "Import"), items: [
-            MenuItemFactory.item(
-                String(localized: "Import Connections…"),
-                action: #selector(AppDelegate.importConnections(_:))
-            ),
-            MenuItemFactory.item(
-                String(localized: "Import from URL…"),
-                action: #selector(AppDelegate.importFromURL(_:))
-            ),
-            MenuItemFactory.item(
-                String(localized: "Import from Other App…"),
-                action: #selector(AppDelegate.importFromOtherApp(_:))
-            ),
-            MenuItemFactory.item(
-                String(localized: "Import from AWS…"),
-                action: #selector(AppDelegate.importFromAWS(_:))
-            ),
-            MenuItemFactory.separator,
-            MenuItemFactory.item(
-                String(localized: "Open Project Folder…"),
-                action: #selector(AppDelegate.openProjectFolder(_:))
-            )
-        ])
+        let commands: [NSMenuItem] = ImportCommand.allCases.flatMap { command -> [NSMenuItem] in
+            let item = MenuItemFactory.item(command.title, action: command.menuAction)
+            return command.startsGroup ? [MenuItemFactory.separator, item] : [item]
+        }
+        let container = MenuItemFactory.submenu(String(localized: "Import"), items: commands)
         container.submenu?.insertItem(.separator(), at: 0)
         container.submenu?.insertItem(importFormatsSubmenu(), at: 0)
         container.submenu?.insertItem(

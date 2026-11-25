@@ -40,8 +40,8 @@ struct CommandPreviewThemeTests {
 
     @Test("A shared connection's Startup SQL sits in an editor-themed well")
     func startupSQLWearsTheEditorTheme() throws {
-        let withSQL = DeeplinkImportSheet(bundle: try bundle(startupCommands: "SET search_path TO app;"), onFinished: { _ in })
-        let withoutSQL = DeeplinkImportSheet(bundle: try bundle(startupCommands: nil), onFinished: { _ in })
+        let withSQL = DeeplinkImportSheet(bundle: try bundle(startupCommands: "SET search_path TO app;"), onCancel: {}, onFinished: { _ in })
+        let withoutSQL = DeeplinkImportSheet(bundle: try bundle(startupCommands: nil), onCancel: {}, onFinished: { _ in })
         try ThemeTestFixture.adopting(ThemeTestFixture.pair([.editorBackground: "#FF00FF"]), appearance: .light) {
             let themed = try magentaCount(withSQL, size: Self.sheetSize)
             let withoutWell = try magentaCount(withoutSQL, size: Self.sheetSize)

@@ -28,10 +28,16 @@ internal static partial class Mapping
 
     public static Native.ForeignAppDirsArg Dirs(ForeignAppDirs dirs) => new(dirs.Home, dirs.Config, dirs.Data);
 
+    public static Native.ScanDepthTag Depth(ForeignScanDepth depth) => depth switch
+    {
+        ForeignScanDepth.Presence => Native.ScanDepthTag.Presence,
+        _ => Native.ScanDepthTag.Inventory,
+    };
+
     public static ForeignSource Source(Native.ForeignSourceInfo source) => new(
         ForeignApp(source.App),
         source.Name,
-        source.Available,
+        Availability(source.Availability),
         Count(source.Connections),
         Count(source.SavedQueries),
         [.. source.FileExtensions],
@@ -44,7 +50,26 @@ internal static partial class Mapping
             Native.SavedQuerySupportTag.Scripts => ForeignSavedQuerySupport.Scripts,
             Native.SavedQuerySupportTag.Consoles => ForeignSavedQuerySupport.Consoles,
             _ => ForeignSavedQuerySupport.NotInExport,
-        });
+        },
+        source.PasswordOffer switch
+        {
+            Native.PasswordOfferTag.DecryptedWhileReading => ForeignPasswordOffer.DecryptedWhileReading,
+            Native.PasswordOfferTag.PasswordFile => ForeignPasswordOffer.PasswordFile,
+            Native.PasswordOfferTag.KeyInCredentialManager => ForeignPasswordOffer.KeyInCredentialManager,
+            _ => ForeignPasswordOffer.SystemStore,
+        },
+        source.OffersSavedQueries,
+        source.StartsTicked,
+        source.Preselected);
+
+    private static ForeignSourceAvailability Availability(Native.SourceAvailabilityTag availability) =>
+        availability switch
+        {
+            Native.SourceAvailabilityTag.Available => ForeignSourceAvailability.Available.Instance,
+            Native.SourceAvailabilityTag.Unreadable unreadable =>
+                new ForeignSourceAvailability.Unreadable(unreadable.Code, unreadable.Detail),
+            _ => ForeignSourceAvailability.NotFound.Instance,
+        };
 
     public static ForeignPasswordOutcome Outcome(Native.PasswordOutcomeTag outcome) => outcome switch
     {

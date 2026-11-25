@@ -11,6 +11,7 @@ mod files;
 mod host;
 mod record;
 pub mod review;
+mod sources;
 mod sql_file_tree;
 
 pub use app::{ForeignApp, ForeignImporter, ImportRequest, Inventory, PasswordSource, SavedQuerySupport};
@@ -24,4 +25,7 @@ pub use host::{
 pub use record::{
     ForeignColor, ForeignConnection, ForeignConnectionRecord, ForeignCredentials, ForeignJumpHost, ForeignSavedQuery,
     ForeignSsh, ForeignSshAuth, ForeignSsl, ForeignSslMode, SavedQueryContent, TLS_SETTINGS_UNREAD,
+};
+pub use sources::{
+    ForeignSource, PasswordOffer, ScanDepth, SourceAvailability, UnreadableReason, preselect, sources_blocking,
 };

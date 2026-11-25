@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "presets": [
+    {
+      "id": "tableplus",
+      "name": "TablePlus",
+      "platforms": ["macos", "linux", "windows"],
+      "bindings": [
+        { "action": "executeQuery", "key": "ctrl+enter", "mac": "cmd+enter", "derived": true },
+        { "action": "executeAllStatements", "key": "ctrl+shift+enter", "mac": "shift+cmd+enter", "derived": true },
+        { "action": "formatQuery", "key": "ctrl+i", "mac": "cmd+i", "derived": true },
+        { "action": "newTab", "key": "ctrl+e", "mac": "cmd+e", "derived": true },
+        { "action": "closeTab", "key": "ctrl+w", "mac": "cmd+w", "derived": true },
+        { "action": "showNextTab", "key": "ctrl+]", "mac": "cmd+]", "derived": true },
+        { "action": "showPreviousTab", "key": "ctrl+[", "mac": "cmd+[", "derived": true },
+        { "action": "refresh", "key": "ctrl+r", "mac": "cmd+r", "derived": true },
+        { "action": "newConnection", "key": "ctrl+shift+k", "mac": "shift+cmd+k", "derived": true },
+        { "action": "quickSwitcher", "key": "ctrl+p", "mac": "cmd+p", "derived": true },
+        { "action": "toggleTableBrowser", "key": "ctrl+0", "mac": "cmd+0", "derived": true },
+        { "action": "saveChanges", "key": "ctrl+s", "mac": "cmd+s", "derived": true },
+        { "action": "discardChanges", "key": "ctrl+shift+backspace", "mac": "shift+cmd+backspace", "derived": true },
+        { "action": "duplicateRow", "key": "ctrl+d", "mac": "cmd+d", "derived": true },
+        { "action": "find", "key": "ctrl+f", "mac": "cmd+f", "derived": true },
+        { "action": "findAndReplace", "key": "ctrl+alt+f", "mac": "alt+cmd+f", "derived": true },
+        { "action": "showSettings", "key": "ctrl+,", "mac": "cmd+,", "derived": true },
+        { "action": "cancelQuery", "key": "ctrl+.", "mac": "cmd+.", "derived": true }
+      ]
+    },
+    {
+      "id": "sequelace",
+      "name": "Sequel Ace",
+      "platforms": ["macos"],
+      "bindings": [
+        { "action": "executeQuery", "mac": "cmd+r" },
+        { "action": "executeAllStatements", "mac": "alt+cmd+r" },
+        { "action": "explainQuery", "mac": "alt+cmd+e" },
+        { "action": "closeTab", "mac": "cmd+w" },
+        { "action": "showNextTab", "mac": "ctrl+tab" },
+        { "action": "showPreviousTab", "mac": "ctrl+shift+tab" },
+        { "action": "newConnection", "mac": "cmd+n" },
+        { "action": "addRow", "mac": "alt+cmd+a" },
+        { "action": "duplicateRow", "mac": "cmd+d" },
+        { "action": "toggleFilters", "mac": "alt+cmd+f" },
+        { "action": "find", "mac": "cmd+f" },
+        { "action": "toggleHistory", "mac": "alt+cmd+y" }
+      ]
+    },
+    {
+      "id": "dbeaver",
+      "name": "DBeaver",
+      "platforms": ["macos", "linux", "windows"],
+      "bindings": [
+        { "action": "executeQuery", "key": "ctrl+enter", "mac": "cmd+enter" },
+        { "action": "executeAllStatements", "linux": "ctrl+shift+enter", "windows": "ctrl+shift+enter" },
+        { "action": "explainQuery", "key": "ctrl+shift+e" },
+        { "action": "formatQuery", "key": "ctrl+shift+f" },
+        { "action": "newTab", "key": "ctrl+]" },
+        { "action": "closeTab", "key": "ctrl+w", "mac": "cmd+w" },
+        { "action": "showNextTab", "key": "ctrl+pagedown" },
+        { "action": "showPreviousTab", "key": "ctrl+pageup" },
+        { "action": "refresh", "key": "f5" },
+        { "action": "newConnection", "key": "ctrl+shift+n" },
+        { "action": "quickSwitcher", "key": "ctrl+shift+d" },
+        { "action": "saveChanges", "key": "ctrl+s" },
+        { "action": "discardChanges", "key": "ctrl+r" },
+        { "action": "addRow", "key": "alt+insert" },
+        { "action": "delete", "key": "alt+delete" },
+        { "action": "duplicateRow", "key": "ctrl+alt+insert" },
+        { "action": "toggleFilters", "key": "ctrl+shift+alt+t" },
+        { "action": "find", "key": "ctrl+f", "mac": "cmd+f" }
+      ]
+    },
+    {
+      "id": "datagrip",
+      "name": "DataGrip",
+      "platforms": ["macos", "linux", "windows"],
+      "bindings": [
+        { "action": "executeQuery", "key": "ctrl+enter", "mac": "cmd+enter" },
+        { "action": "executeAllStatements", "linux": "ctrl+shift+enter", "windows": "ctrl+shift+enter" },
+        { "action": "formatQuery", "key": "ctrl+alt+l", "mac": "alt+cmd+l" },
+        { "action": "newTab", "key": "ctrl+shift+q", "mac": "shift+cmd+l" },
+        { "action": "closeTab", "key": "ctrl+f4", "mac": "cmd+w" },
+        { "action": "showNextTab", "key": "alt+right", "mac": "shift+cmd+]" },
+        { "action": "showPreviousTab", "key": "alt+left", "mac": "shift+cmd+[" },
+        { "action": "refresh", "key": "ctrl+f5", "mac": "cmd+r" },
+        { "action": "quickSwitcher", "key": "ctrl+n", "mac": "cmd+o" },
+        { "action": "toggleTableBrowser", "key": "alt+1", "mac": "cmd+1" },
+        { "action": "discardChanges", "key": "ctrl+alt+z", "mac": "alt+cmd+z" },
+        { "action": "addRow", "linux": "alt+insert", "windows": "alt+insert" },
+        { "action": "delete", "key": "ctrl+y", "mac": "cmd+backspace" },
+        { "action": "duplicateRow", "key": "ctrl+d", "mac": "cmd+d" },
+        { "action": "toggleFilters", "key": "ctrl+shift+alt+f", "mac": "shift+alt+cmd+f" },
+        { "action": "find", "key": "ctrl+f", "mac": "cmd+f" },
+        { "action": "findAndReplace", "linux": "ctrl+r", "windows": "ctrl+r" },
+        { "action": "toggleHistory", "key": "ctrl+alt+e", "mac": "alt+cmd+e" },
+        { "action": "showSettings", "key": "ctrl+alt+s", "mac": "cmd+," },
+        { "action": "cancelQuery", "key": "ctrl+f2", "mac": "cmd+f2" },
+        { "action": "commitTransaction", "key": "ctrl+shift+alt+enter", "mac": "shift+alt+cmd+enter" }
+      ]
+    },
+    {
+      "id": "beekeeperstudio",
+      "name": "Beekeeper Studio",
+      "platforms": ["macos", "linux", "windows"],
+      "bindings": [
+        { "action": "executeQuery", "key": "ctrl+shift+enter", "mac": "shift+cmd+enter" },
+        { "action": "executeAllStatements", "key": "ctrl+enter", "mac": "cmd+enter" },
+        { "action": "formatQuery", "key": "ctrl+shift+f", "mac": "shift+cmd+f" },
+        { "action": "newTab", "key": "ctrl+t", "mac": "cmd+t" },
+        { "action": "closeTab", "key": "ctrl+w", "mac": "cmd+w" },
+        { "action": "showNextTab", "key": "ctrl+tab" },
+        { "action": "showPreviousTab", "key": "ctrl+shift+tab" },
+        { "action": "refresh", "key": "f5" },
+        { "action": "quickSwitcher", "key": "ctrl+p", "mac": "cmd+p" },
+        { "action": "toggleTableBrowser", "key": "alt+s", "mac": "cmd+b" },
+        { "action": "saveChanges", "key": "ctrl+s", "mac": "cmd+s" },
+        { "action": "addRow", "key": "ctrl+n", "mac": "cmd+n" },
+        { "action": "delete", "key": "ctrl+alt+-", "mac": "alt+cmd+-" },
+        { "action": "duplicateRow", "key": "ctrl+d", "mac": "cmd+d" },
+        { "action": "find", "key": "ctrl+f", "mac": "cmd+f" },
+        { "action": "commitTransaction", "key": "ctrl+shift+c", "mac": "shift+cmd+c" }
+      ]
+    },
+    {
+      "id": "navicat",
+      "name": "Navicat",
+      "platforms": ["macos", "linux", "windows"],
+      "bindings": [
+        { "action": "executeQuery", "key": "ctrl+shift+r", "mac": "shift+cmd+r" },
+        { "action": "executeAllStatements", "key": "ctrl+r", "mac": "cmd+r" },
+        { "action": "newTab", "key": "ctrl+q", "mac": "cmd+y" },
+        { "action": "closeTab", "mac": "cmd+w" },
+        { "action": "showNextTab", "key": "ctrl+tab", "mac": "shift+cmd+]" },
+        { "action": "showPreviousTab", "key": "ctrl+shift+tab", "mac": "shift+cmd+[" },
+        { "action": "toggleTableBrowser", "mac": "cmd+1" },
+        { "action": "saveChanges", "key": "ctrl+s", "mac": "cmd+enter" },
+        { "action": "addRow", "key": "ctrl+n", "mac": "shift+cmd+=" },
+        { "action": "delete", "mac": "cmd+-", "windows": "ctrl+delete" },
+        { "action": "toggleFilters", "mac": "ctrl+alt+cmd+f" },
+        { "action": "find", "key": "ctrl+f", "mac": "cmd+f" },
+        { "action": "findAndReplace", "mac": "alt+cmd+f", "linux": "ctrl+h" },
+        { "action": "toggleHistory", "key": "ctrl+l", "mac": "shift+cmd+h" },
+        { "action": "showSettings", "key": "ctrl+,", "mac": "cmd+," },
+        { "action": "cancelQuery", "key": "ctrl+t", "mac": "cmd+." }
+      ]
+    },
+    {
+      "id": "dbx",
+      "name": "DBX",
+      "platforms": ["macos", "linux", "windows"],
+      "bindings": [
+        { "action": "executeQuery", "key": "ctrl+enter", "mac": "cmd+enter" },
+        { "action": "executeAllStatements", "linux": "ctrl+shift+enter", "windows": "ctrl+shift+enter" },
+        { "action": "explainQuery", "key": "ctrl+e", "mac": "cmd+e" },
+        { "action": "formatQuery", "key": "ctrl+shift+f", "mac": "shift+cmd+f" },
+        { "action": "newTab", "key": "ctrl+t", "mac": "cmd+t" },
+        { "action": "closeTab", "key": "ctrl+w", "mac": "cmd+w" },
+        { "action": "showNextTab", "key": "ctrl+shift+]", "mac": "shift+cmd+]" },
+        { "action": "showPreviousTab", "key": "ctrl+shift+[", "mac": "shift+cmd+[" },
+        { "action": "refresh", "key": "f5" },
+        { "action": "newConnection", "key": "ctrl+alt+c", "mac": "alt+cmd+c" },
+        { "action": "quickSwitcher", "key": "ctrl+p", "mac": "cmd+p" },
+        { "action": "toggleTableBrowser", "key": "ctrl+b", "mac": "cmd+b" },
+        { "action": "saveChanges", "key": "ctrl+s", "mac": "cmd+s" },
+        { "action": "addRow", "key": "ctrl+n", "mac": "cmd+n" },
+        { "action": "duplicateRow", "key": "ctrl+d", "mac": "cmd+d" },
+        { "action": "find", "key": "ctrl+f", "mac": "cmd+f" },
+        { "action": "findAndReplace", "key": "ctrl+r", "mac": "cmd+r" },
+        { "action": "showSettings", "key": "ctrl+,", "mac": "cmd+," }
+      ]
+    }
+  ]
+}

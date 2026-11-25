@@ -41,6 +41,9 @@ public sealed class LibraryNode
     public string Key => $"{Section}/{Kind}/{Id}";
 }
 
+// First is the key of the first row Reveal opened, for the page to scroll to.
+public sealed record LibraryReveal(string Query, IReadOnlySet<string> Collapsed, string? First);
+
 public static class LibraryTree
 {
     public const string FavoritesSection = "favorites";
@@ -114,6 +117,65 @@ public static class LibraryTree
         return roots;
     }
 
+    // A search hiding one of these connections is cleared; the Connections section and each group holding one open.
+    public static LibraryReveal Reveal(
+        LibrarySnapshot snapshot,
+        string? query,
+        IEnumerable<string> collapsed,
+        IReadOnlyCollection<Guid> ids,
+        Func<string, string> engineName)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(collapsed);
+        ArgumentNullException.ThrowIfNull(ids);
+        ArgumentNullException.ThrowIfNull(engineName);
+        var wanted = ids.ToHashSet();
+        bool Wanted(LibraryNode node) =>
+            node is { Kind: LibraryNodeKind.Connection, Id: { } id } && wanted.Contains(id);
+
+        var search = query ?? string.Empty;
+        var shown = Flatten(Build(snapshot, search, engineName)).Where(Wanted).Select(node => node.Id!.Value);
+        if (!wanted.IsSubsetOf(shown))
+        {
+            search = string.Empty;
+        }
+
+        var open = new HashSet<string>(StringComparer.Ordinal);
+        string? first = null;
+        bool Open(LibraryNode node)
+        {
+            var holds = false;
+            foreach (var child in node.Children)
+            {
+                if (Wanted(child))
+                {
+                    first ??= child.Key;
+                    holds = true;
+                }
+
+                holds |= Open(child);
+            }
+
+            if (holds)
+            {
+                open.Add(node.Key);
+            }
+
+            return holds;
+        }
+
+        var roots = Build(snapshot, search, engineName);
+        foreach (var section in roots.Where(root => root.Kind == LibraryNodeKind.AllConnections))
+        {
+            Open(section);
+        }
+
+        return new LibraryReveal(
+            search,
+            collapsed.Where(key => !open.Contains(key)).ToHashSet(StringComparer.Ordinal),
+            first);
+    }
+
     public static string? GroupPath(Guid? groupId, IReadOnlyDictionary<Guid, ConnectionGroup> groups)
     {
         ArgumentNullException.ThrowIfNull(groups);
@@ -150,6 +212,9 @@ public static class LibraryTree
             roots.Add(node);
         }
     }
+
+    private static IEnumerable<LibraryNode> Flatten(IEnumerable<LibraryNode> nodes) =>
+        nodes.SelectMany(node => Flatten(node.Children).Prepend(node));
 }
 
 public static class ConnectionSearch

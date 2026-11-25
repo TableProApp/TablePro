@@ -5,7 +5,8 @@ namespace TablePro.App.Model;
 // The core calls an import from another app makes.
 public interface IForeignImporter
 {
-    Task<IReadOnlyList<ForeignSource>> GetSourcesAsync();
+    // Presence reads no count, for the launch's quick look; Inventory counts what each app holds.
+    Task<IReadOnlyList<ForeignSource>> GetSourcesAsync(ForeignScanDepth depth);
 
     // File is the export the user picked, for an app imported from one. Throws foreign_import.* codes.
     Task<IForeignReview> ReadAsync(
@@ -39,7 +40,8 @@ public interface IForeignReview : IDisposable
 
 public sealed class CoreForeignImporter(TableProCore core, ForeignAppDirs dirs) : IForeignImporter
 {
-    public Task<IReadOnlyList<ForeignSource>> GetSourcesAsync() => core.GetForeignSourcesAsync(dirs);
+    public Task<IReadOnlyList<ForeignSource>> GetSourcesAsync(ForeignScanDepth depth) =>
+        core.GetForeignSourcesAsync(dirs, depth);
 
     public async Task<IForeignReview> ReadAsync(
         ForeignApp app,
@@ -89,6 +91,9 @@ public enum ForeignSourceNote
     Found,
     NotFound,
     PicksFile,
+
+    // Its files are there and could not be read; the availability carries why.
+    Unreadable,
 }
 
 public enum ForeignPasswordNote
@@ -185,11 +190,14 @@ public sealed record ForeignImportSentence(ForeignImportPart Part, int Count = 0
 public sealed record ForeignImportEnding(
     IReadOnlyList<ForeignImportSentence> Sentences,
     ForeignImportOutcome? Outcome,
-    CoreError? Error)
+    CoreError? Error,
+    ImportSource Source)
 {
     public const string OutdatedCode = "storage.import_outdated";
 
     public bool Wrote => Outcome is not null;
+
+    public IReadOnlyList<Guid> ConnectionIds => Outcome?.ConnectionIds ?? [];
 
     public bool Outdated => Error?.Code == OutdatedCode;
 
@@ -198,7 +206,7 @@ public sealed record ForeignImportEnding(
 
     public bool Nothing => Outcome is { Connections: 0, QueriesAdded: 0 };
 
-    public static ForeignImportEnding From(ForeignImportOutcome outcome)
+    public static ForeignImportEnding From(ForeignImportOutcome outcome, ImportSource source)
     {
         ArgumentNullException.ThrowIfNull(outcome);
         List<ForeignImportSentence> sentences = [];
@@ -227,14 +235,14 @@ public sealed record ForeignImportEnding(
             sentences.Add(new ForeignImportSentence(ForeignImportPart.Nothing));
         }
 
-        return new ForeignImportEnding(sentences, outcome, null);
+        return new ForeignImportEnding(sentences, outcome, null, source);
     }
 
-    public static ForeignImportEnding Refused(CoreError error)
+    public static ForeignImportEnding Refused(CoreError error, ImportSource source)
     {
         ArgumentNullException.ThrowIfNull(error);
         var part = error.Code == OutdatedCode ? ForeignImportPart.Outdated : ForeignImportPart.Failed;
-        return new ForeignImportEnding([new ForeignImportSentence(part)], null, error);
+        return new ForeignImportEnding([new ForeignImportSentence(part)], null, error, source);
     }
 }
 
@@ -245,9 +253,9 @@ public sealed class ForeignImportForm : IDisposable
     private IForeignReview? _review;
     private bool _importable;
 
-    // The boxes' own answers, kept while an app that cannot honour one is chosen.
+    // The boxes' own answers, kept while an app that cannot honour one is chosen; saved queries start on when counted.
     private bool _wantsPasswords = true;
-    private bool _wantsQueries = true;
+    private bool? _wantsQueries;
 
     // A read the user left for another is dropped when it lands.
     private int _read;
@@ -256,6 +264,16 @@ public sealed class ForeignImportForm : IDisposable
     {
         ArgumentNullException.ThrowIfNull(importer);
         _importer = importer;
+    }
+
+    // One app of the setup guide's queue, over the sources the guide already read.
+    public ForeignImportForm(IForeignImporter importer, IReadOnlyList<ForeignSource> sources, ForeignApp app)
+        : this(importer)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        Sources = sources;
+        Step = ForeignImportStep.Choosing;
+        Chosen = sources.FirstOrDefault(source => source.App == app && source.IsAvailable);
     }
 
     public ForeignImportStep Step { get; private set; }
@@ -294,10 +312,11 @@ public sealed class ForeignImportForm : IDisposable
         ArgumentNullException.ThrowIfNull(source);
         return source.PicksFile ? ForeignSourceNote.PicksFile
             : source.IsAvailable ? ForeignSourceNote.Found
+            : source.Availability is ForeignSourceAvailability.Unreadable ? ForeignSourceNote.Unreadable
             : ForeignSourceNote.NotFound;
     }
 
-    // The first app found is chosen.
+    // The core's pick: the app with the most connections, the earlier on a tie.
     public async Task LoadAsync()
     {
         if (Step != ForeignImportStep.Loading)
@@ -307,7 +326,7 @@ public sealed class ForeignImportForm : IDisposable
 
         try
         {
-            Sources = await _importer.GetSourcesAsync().ConfigureAwait(true);
+            Sources = await _importer.GetSourcesAsync(ForeignScanDepth.Inventory).ConfigureAwait(true);
             SourcesError = null;
         }
         catch (TableProException exception)
@@ -321,7 +340,7 @@ public sealed class ForeignImportForm : IDisposable
             return;
         }
 
-        Chosen = Sources.FirstOrDefault(source => source.IsAvailable);
+        Chosen = Sources.FirstOrDefault(source => source.Preselected && source.IsAvailable);
         Step = ForeignImportStep.Choosing;
     }
 
@@ -457,14 +476,16 @@ public sealed class ForeignImportForm : IDisposable
             return null;
         }
 
+        // An export the user picked could have come from anyone, as a connections file could.
+        var source = Chosen is { PicksFile: false } ? ImportSource.ThisComputer : ImportSource.FileOrLink;
         Step = ForeignImportStep.Importing;
         try
         {
-            return ForeignImportEnding.From(await review.ApplyAsync().ConfigureAwait(true));
+            return ForeignImportEnding.From(await review.ApplyAsync().ConfigureAwait(true), source);
         }
         catch (TableProException exception)
         {
-            return ForeignImportEnding.Refused(exception.Error);
+            return ForeignImportEnding.Refused(exception.Error, source);
         }
         finally
         {
@@ -517,21 +538,21 @@ public sealed class ForeignImportForm : IDisposable
 
     private static ForeignPasswordOption PasswordOption(ForeignSource? source, bool wanted)
     {
-        var note = source switch
+        var note = source?.PasswordOffer switch
         {
-            null or { Passwords: ForeignPasswordSource.AppFiles } => ForeignPasswordNote.DecryptedWhileReading,
-            { App: ForeignApp.DataGrip } => ForeignPasswordNote.PasswordFile,
-            { App: ForeignApp.Dbx } => ForeignPasswordNote.KeyInCredentialManager,
+            null or ForeignPasswordOffer.DecryptedWhileReading => ForeignPasswordNote.DecryptedWhileReading,
+            ForeignPasswordOffer.PasswordFile => ForeignPasswordNote.PasswordFile,
+            ForeignPasswordOffer.KeyInCredentialManager => ForeignPasswordNote.KeyInCredentialManager,
             _ => ForeignPasswordNote.SystemStore,
         };
         var offered = source is not null && note != ForeignPasswordNote.SystemStore;
         return new ForeignPasswordOption(offered, offered && wanted, note);
     }
 
-    private static ForeignQueryOption QueryOption(ForeignSource? source, bool wanted)
+    private static ForeignQueryOption QueryOption(ForeignSource? source, bool? wanted)
     {
         var support = source?.SavedQuerySupport ?? ForeignSavedQuerySupport.NotInExport;
-        var offered = support is ForeignSavedQuerySupport.Scripts or ForeignSavedQuerySupport.Consoles;
-        return new ForeignQueryOption(offered, offered && wanted, support);
+        var offered = source?.OffersSavedQueries ?? false;
+        return new ForeignQueryOption(offered, offered && (wanted ?? source!.SavedQueries > 0), support);
     }
 }

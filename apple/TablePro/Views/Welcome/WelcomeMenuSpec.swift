@@ -122,17 +122,21 @@ internal enum WelcomeMenuSpec {
                 .command(Titles.newGroup, .newGroup),
             ]),
             WelcomeMenuSection([
-                .submenu(title: Titles.importTitle, sections: [
-                    WelcomeMenuSection([
-                        .command(Titles.importConnections, .importConnections),
-                        .command(Titles.importFromURL, .importFromURL),
-                        .command(Titles.importFromApp, .importFromApp),
-                        .command(Titles.importFromAWS, .importFromAWS),
-                    ]),
-                    WelcomeMenuSection([.command(Titles.openProjectFolder, .openProjectFolder)]),
-                ]),
+                .submenu(title: Titles.importTitle, sections: ImportCommand.groups.map { group in
+                    WelcomeMenuSection(group.map { WelcomeMenuItem.command($0.title, menuCommand(for: $0)) })
+                }),
             ]),
         ]
+    }
+
+    internal static func menuCommand(for command: ImportCommand) -> WelcomeMenuCommand {
+        switch command {
+        case .connectionsFile: .importConnections
+        case .url: .importFromURL
+        case .otherApp: .importFromApp
+        case .aws: .importFromAWS
+        case .projectFolder: .openProjectFolder
+        }
     }
 
     // MARK: - Connections
@@ -380,11 +384,6 @@ internal extension WelcomeMenuSpec {
         static var newConnection: String { String(localized: "New Connection…") }
         static var newGroup: String { String(localized: "New Group…") }
         static var importTitle: String { String(localized: "Import") }
-        static var importConnections: String { String(localized: "Import Connections…") }
-        static var importFromURL: String { String(localized: "Import from URL…") }
-        static var importFromApp: String { String(localized: "Import from Other App…") }
-        static var importFromAWS: String { String(localized: "Import from AWS…") }
-        static var openProjectFolder: String { String(localized: "Open Project Folder…") }
         static var disconnect: String { String(localized: "Disconnect") }
         static var reconnect: String { String(localized: "Reconnect") }
         static var edit: String { String(localized: "Edit…") }

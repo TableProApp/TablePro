@@ -16,6 +16,8 @@ internal enum WindowIdentifier {
     internal static let support = "support"
     internal static let compareSync = "compare-sync"
     internal static let signIn = "sign-in"
+    // Never under the `welcome` prefix: every connection open closes the windows that match it.
+    internal static let setupGuide = "setup-guide"
 
     // The connection editor's frame saves under `ConnectionEditorWindowFrame.autosaveName`.
     internal static let connectionForm = "connection-form"

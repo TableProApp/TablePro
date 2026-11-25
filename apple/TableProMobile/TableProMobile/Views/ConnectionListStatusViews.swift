@@ -2,10 +2,9 @@ import SwiftUI
 import TableProSyncTransport
 
 struct ConnectionListEmptyActions {
-    let addConnection: () -> Void
-    let openSample: () -> Void
-    let turnOnICloud: (() -> Void)?
-    let importConnections: () -> Void
+    let start: (LibraryStartAction) -> Void
+    // Shown in Import's place, so the empty list keeps three buttons.
+    let offersICloud: Bool
     let performSyncAction: (SyncStatusAction) -> Void
     let retryLoad: () -> Void
 }
@@ -76,10 +75,10 @@ struct ConnectionListStatusView: View {
                 )
             }
             if presentation.mobileActions.isEmpty {
-                Button("Add Connection", action: actions.addConnection)
+                startButton(.addConnection)
                     .buttonStyle(.borderedProminent)
             } else {
-                Button("Add Connection", action: actions.addConnection)
+                startButton(.addConnection)
                     .buttonStyle(.bordered)
             }
         }
@@ -95,21 +94,29 @@ struct ConnectionListStatusView: View {
                 Text("Add a connection to your database, or explore TablePro with the sample database.")
             }
         } actions: {
-            Button("Add Connection", action: actions.addConnection)
+            startButton(.addConnection)
                 .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier("empty-add-connection")
-            Button("Open Sample Database", action: actions.openSample)
+            startButton(.openSample)
                 .buttonStyle(.bordered)
                 .accessibilityIdentifier("empty-open-sample")
-            if let turnOnICloud = actions.turnOnICloud {
-                Button("Turn On iCloud Sync", action: turnOnICloud)
+            if actions.offersICloud {
+                startButton(.turnOnICloud)
                     .buttonStyle(.bordered)
                     .accessibilityIdentifier("empty-turn-on-icloud")
             } else {
-                Button("Import Connections", action: actions.importConnections)
+                startButton(.importConnections)
                     .buttonStyle(.bordered)
                     .accessibilityIdentifier("empty-import-connections")
             }
+        }
+    }
+
+    private func startButton(_ action: LibraryStartAction) -> some View {
+        Button {
+            actions.start(action)
+        } label: {
+            Text(action.title)
         }
     }
 }

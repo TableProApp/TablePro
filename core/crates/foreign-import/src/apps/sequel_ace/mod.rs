@@ -64,15 +64,15 @@ impl AppReader for SequelAce {
         self.favorites.exists()
     }
 
-    fn inventory(&self) -> Inventory {
-        let connections = read_dictionary(&self.favorites)
-            .as_ref()
-            .and_then(favorites_children)
-            .map_or(0, |children| count_connections(&children));
-        Inventory {
-            connections,
-            saved_queries: query_favorites::count(&self.query_favorites),
+    fn inventory(&self) -> Result<Inventory, ForeignImportError> {
+        if !self.favorites.exists() {
+            return Ok(Inventory::default());
         }
+        let root = self.read_favorites()?;
+        Ok(Inventory {
+            connections: count_connections(&children_of(&root)?),
+            saved_queries: query_favorites::count(&self.query_favorites),
+        })
     }
 
     fn collect(
@@ -85,10 +85,8 @@ impl AppReader for SequelAce {
                 app: ForeignApp::SequelAce,
             });
         }
-        let root = read_dictionary(&self.favorites)
-            .ok_or_else(|| ForeignImportError::parse("Could not read Favorites.plist"))?;
-        let children = favorites_children(&root)
-            .ok_or_else(|| ForeignImportError::unsupported("Missing Favorites Root or Children key"))?;
+        let root = self.read_favorites()?;
+        let children = children_of(&root)?;
 
         let mut passwords = match (request.include_passwords, self.keychain.as_deref()) {
             (true, Some(keychain)) => Some(KeychainPasswords {
@@ -119,6 +117,23 @@ impl AppReader for SequelAce {
 fn read_dictionary(path: &Path) -> Option<Dictionary> {
     let data = crate::files::read_capped(path).ok()?;
     Value::from_reader(Cursor::new(data)).ok()?.into_dictionary()
+}
+
+impl SequelAce {
+    fn read_favorites(&self) -> Result<Dictionary, ForeignImportError> {
+        let data = crate::files::read_capped(&self.favorites).map_err(|source| ForeignImportError::Unreadable {
+            path: self.favorites.clone(),
+            source,
+        })?;
+        Value::from_reader(Cursor::new(data))
+            .ok()
+            .and_then(Value::into_dictionary)
+            .ok_or_else(|| ForeignImportError::parse("Could not read Favorites.plist"))
+    }
+}
+
+fn children_of(root: &Dictionary) -> Result<Vec<&Dictionary>, ForeignImportError> {
+    favorites_children(root).ok_or_else(|| ForeignImportError::unsupported("Missing Favorites Root or Children key"))
 }
 
 fn favorites_children(root: &Dictionary) -> Option<Vec<&Dictionary>> {
