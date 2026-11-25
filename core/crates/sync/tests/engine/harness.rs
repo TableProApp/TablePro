@@ -26,7 +26,7 @@ use tablepro_sync::api::transport::{
     Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PullRequest, PulledPage, PushAnswer, PushBatch, ServiceTransport,
     Transport, TransportError,
 };
-use tablepro_sync::engine::{AdapterSet, Clock, EngineHooks, StopSignal, Wake};
+use tablepro_sync::engine::{AdapterSet, Clock, EngineHooks, Journal, StopSignal, Wake};
 use tablepro_sync::service::{PassReport, ProofSource, ServiceParts, ServiceSync};
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
@@ -266,6 +266,7 @@ pub struct Wire {
     lose_next_answer: AtomicBool,
     expire_next_cursor: AtomicBool,
     new_epoch_before_push: AtomicBool,
+    new_epoch_before_pull: AtomicBool,
     keys: Mutex<Vec<IdempotencyKey>>,
     pushed: Mutex<Vec<Vec<String>>>,
     pub pulls: AtomicUsize,
@@ -279,6 +280,7 @@ impl Wire {
             lose_next_answer: AtomicBool::new(false),
             expire_next_cursor: AtomicBool::new(false),
             new_epoch_before_push: AtomicBool::new(false),
+            new_epoch_before_pull: AtomicBool::new(false),
             keys: Mutex::default(),
             pushed: Mutex::default(),
             pulls: AtomicUsize::new(0),
@@ -301,6 +303,10 @@ impl Wire {
         self.new_epoch_before_push.store(true, Ordering::SeqCst);
     }
 
+    pub fn new_epoch_before_pull(&self) {
+        self.new_epoch_before_pull.store(true, Ordering::SeqCst);
+    }
+
     pub fn keys(&self) -> Vec<IdempotencyKey> {
         lock(&self.keys).clone()
     }
@@ -320,6 +326,9 @@ fn network() -> TransportError {
 impl Transport for Wire {
     async fn pull(&self, request: PullRequest) -> Result<PulledPage, TransportError> {
         self.pulls.fetch_add(1, Ordering::SeqCst);
+        if self.new_epoch_before_pull.swap(false, Ordering::SeqCst) {
+            self.client.server().new_epoch();
+        }
         if request.cursor.is_some() && self.expire_next_cursor.swap(false, Ordering::SeqCst) {
             return Err(TransportError::CursorExpired);
         }
@@ -726,7 +735,8 @@ impl DeviceBuilder {
             adapters.push((*scope, Arc::clone(adapter) as Arc<dyn RecordAdapter>));
         }
         let keys = self.keys.unwrap_or_default();
-        let hooks = Arc::new(EngineHooks::new(Wake::new(), None));
+        let wake = Wake::new();
+        let hooks = Arc::new(EngineHooks::new(wake.clone(), None));
         let stop = StopSignal::new();
         let clock = Arc::new(TestClock::default());
         let sync = ServiceSync::new(ServiceParts {
@@ -738,6 +748,7 @@ impl DeviceBuilder {
             proofs: Arc::new(FixedProof(Some(DpopKey(Arc::clone(&seed))))),
             clock: Arc::clone(&clock) as Arc<dyn Clock>,
             stop: stop.clone(),
+            journal: Journal::new(wake),
             events: None,
         });
         Device {

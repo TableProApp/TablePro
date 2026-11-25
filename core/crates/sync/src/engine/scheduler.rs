@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -24,12 +25,62 @@ pub trait Pass: Send + Sync {
 }
 
 // What a store's write path tells once a write landed (0060): the kind, the ids the commit wrote and those it deleted.
-// The engine only takes it as a reason for a pass; the diff decides what goes up.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JournalEntry {
     pub kind: Kind,
     pub written: Vec<String>,
     pub deleted: Vec<String>,
+}
+
+pub type JournalIds = HashMap<Kind, HashSet<String>>;
+
+// The records the journal named since the last pass took them. A pass a journal signal started diffs only those, so
+// no signal diffs a whole store; any other pass diffs every store, so a missed signal only delays a push (0060).
+#[derive(Debug, Clone, Default)]
+pub struct Journal {
+    ids: Arc<Mutex<JournalIds>>,
+    wake: Wake,
+}
+
+impl Journal {
+    pub fn new(wake: Wake) -> Self {
+        Self {
+            ids: Arc::default(),
+            wake,
+        }
+    }
+
+    fn ids(&self) -> MutexGuard<'_, JournalIds> {
+        self.ids.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    // From the store's write path, after the write landed: returns at once.
+    pub fn changed(&self, entries: &[JournalEntry]) {
+        let mut named = false;
+        let mut ids = self.ids();
+        for entry in entries {
+            let held = ids.entry(entry.kind).or_default();
+            for id in entry.written.iter().chain(&entry.deleted) {
+                named |= held.insert(id.clone());
+            }
+        }
+        drop(ids);
+        if named {
+            self.wake.pass_soon(PassReason::Journal);
+        }
+    }
+
+    pub fn take(&self) -> JournalIds {
+        std::mem::take(&mut *self.ids())
+    }
+
+    // A pass that failed gives back what it took, for the next one.
+    pub fn give_back(&self, taken: JournalIds) {
+        let mut ids = self.ids();
+        for (kind, named) in taken {
+            ids.entry(kind).or_default().extend(named);
+        }
+    }
 }
 
 // Asks for a pass soon. A wake while a pass runs is kept, so that pass is followed by one more.
@@ -56,15 +107,6 @@ impl Wake {
         self.0.notify.notify_one();
     }
 
-    pub fn journal(&self, entries: &[JournalEntry]) {
-        if entries
-            .iter()
-            .any(|entry| !entry.written.is_empty() || !entry.deleted.is_empty())
-        {
-            self.pass_soon(PassReason::Journal);
-        }
-    }
-
     async fn next(&self) -> PassReason {
         loop {
             if let Some(why) = self.take() {
@@ -74,12 +116,17 @@ impl Wake {
         }
     }
 
-    // The first reason asked for since the last take; the others it covers.
+    // One pass covers every reason asked for since the last take. It is a journal pass only when nothing else asked,
+    // since a journal pass diffs only the records the journal named.
     fn take(&self) -> Option<PassReason> {
         let mut reasons = self.reasons();
-        let first = reasons.first().copied();
+        let why = reasons
+            .iter()
+            .copied()
+            .find(|why| *why != PassReason::Journal)
+            .or_else(|| reasons.first().copied());
         reasons.clear();
-        first
+        why
     }
 }
 

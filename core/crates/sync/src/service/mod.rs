@@ -18,12 +18,12 @@ use async_trait::async_trait;
 use crate::api::adapter::StoreStamp;
 use crate::api::control::{HeldRecord, HeldRecordReason, PassReason, SyncControl, SyncPhase, SyncStatus};
 use crate::api::error::SyncError;
-use crate::api::ids::{RecordKey, ScopeName};
-use crate::api::key_flows::{KeyFlows, LockCause};
-use crate::api::scopes::{ScopeInfo, ScopesBody};
-use crate::api::state::{Provider, Row, RowKey, RowRange, StateStore, StateTxn, Table};
+use crate::api::ids::{EpochId, RecordKey, ScopeName};
+use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
+use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
+use crate::api::state::{KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoreRow, Table};
 use crate::api::transport::{DpopKey, ServiceTransport, TransportError};
-use crate::engine::{AdapterSet, Clock, EngineEvents, EngineHooks, Pass, StopSignal};
+use crate::engine::{AdapterSet, Clock, EngineEvents, EngineHooks, Journal, JournalIds, Pass, StopSignal};
 
 // This device's signing key, which every personal and history call and every key-object or envelope write carries
 // (0051, DPoP). None until the device holds keys.
@@ -41,6 +41,7 @@ pub struct ServiceParts {
     pub proofs: Arc<dyn ProofSource>,
     pub clock: Arc<dyn Clock>,
     pub stop: StopSignal,
+    pub journal: Journal,
     pub events: Option<Arc<dyn EngineEvents>>,
 }
 
@@ -53,6 +54,7 @@ pub struct ServiceSync {
     proofs: Arc<dyn ProofSource>,
     clock: Arc<dyn Clock>,
     stop: StopSignal,
+    journal: Journal,
     events: Option<Arc<dyn EngineEvents>>,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
@@ -94,14 +96,33 @@ struct PassCtx {
     key: Option<DpopKey>,
     stores: HashMap<String, StoreSeen>,
     snapshots_done: HashSet<ScopeName>,
+    // A refill against a new epoch was pulled, and the key objects still have to go back before anything else.
     new_epoch: bool,
-    pushed_back: bool,
+    pushed_back: Option<EpochId>,
+    // The scopes whose refill snapshot is done: each adopts the epoch and its lineage once the push-back answered.
+    adopt: Vec<(ScopeName, Vec<LineageEpoch>)>,
+    // Nothing personal syncs while the device is locked, and no secret goes up under a stopped or ended key.
+    locked: bool,
+    approved: bool,
+    held_secrets: HashSet<ScopeName>,
+    // A journal pass diffs only these records.
+    named: Option<JournalIds>,
     report: PassReport,
 }
 
 impl PassCtx {
     fn refills(&self, store: &str) -> bool {
         self.stores.get(store).is_some_and(|seen| seen.refill)
+    }
+}
+
+// A whole-request refusal that ends one scope's sync this pass and leaves the others to go on.
+fn scope_refusal(error: &SyncError) -> Option<&'static str> {
+    match error {
+        SyncError::Transport(
+            error @ (TransportError::SeatRequired | TransportError::NotFound | TransportError::DeviceNotApproved),
+        ) => Some(error.code()),
+        _ => None,
     }
 }
 
@@ -122,6 +143,7 @@ impl ServiceSync {
             proofs: parts.proofs,
             clock: parts.clock,
             stop: parts.stop,
+            journal: parts.journal,
             events: parts.events,
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
@@ -141,6 +163,11 @@ impl ServiceSync {
         &self.stop
     }
 
+    // Where each store's write path tells what it wrote (0060).
+    pub fn journal(&self) -> &Journal {
+        &self.journal
+    }
+
     fn status_lock(&self) -> MutexGuard<'_, SyncStatus> {
         self.status.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -156,7 +183,12 @@ impl ServiceSync {
         let mut session = self.session.lock().await;
         tracing::debug!(?why, "sync pass");
         self.set_phase(SyncPhase::Syncing);
-        let outcome = self.run(&mut session).await;
+        let taken = self.journal.take();
+        let named = (why == PassReason::Journal).then(|| taken.clone());
+        let outcome = self.run(&mut session, named).await;
+        if outcome.is_err() {
+            self.journal.give_back(taken);
+        }
         if let Err(SyncError::Transport(TransportError::DeviceRemoved)) = &outcome {
             crate::api::key_flows::KeyHooks::lock(self.hooks.as_ref(), LockCause::DeviceRemoved);
         }
@@ -164,24 +196,34 @@ impl ServiceSync {
         outcome
     }
 
-    async fn run(&self, session: &mut Session) -> Result<PassReport, SyncError> {
+    async fn run(&self, session: &mut Session, named: Option<JournalIds>) -> Result<PassReport, SyncError> {
         self.stop.check()?;
         self.refill_stale_file(session).await?;
         let body = self.poll_scopes(session).await?;
         let key = self.proofs.dpop_key().await?;
+        let approved = body
+            .scopes
+            .iter()
+            .any(|info| info.scope == ScopeName::Personal && info.approved == Some(true));
         let mut ctx = PassCtx {
             body,
             key,
             stores: HashMap::new(),
             snapshots_done: HashSet::new(),
             new_epoch: false,
-            pushed_back: false,
+            pushed_back: None,
+            adopt: Vec::new(),
+            locked: false,
+            approved,
+            held_secrets: HashSet::new(),
+            named,
             report: PassReport::default(),
         };
+        self.read_key_state(&mut ctx).await?;
         let scopes = self.reachable(&ctx);
         self.read_stores(&mut ctx, &scopes).await?;
         for info in &scopes {
-            self.pull_or_skip(&mut ctx, info).await?;
+            self.pull_or_skip(&mut ctx, session, info).await?;
         }
         self.push_back(&mut ctx).await?;
         self.resume_flows().await;
@@ -193,16 +235,42 @@ impl ServiceSync {
         Ok(ctx.report)
     }
 
-    async fn pull_or_skip(&self, ctx: &mut PassCtx, info: &ScopeInfo) -> Result<(), SyncError> {
-        match self.pull_scope(ctx, info).await {
-            Err(SyncError::Transport(
-                error @ (TransportError::SeatRequired | TransportError::NotFound | TransportError::DeviceNotApproved),
-            )) => {
-                ctx.report.skipped.push((info.scope, error.code()));
-                Ok(())
-            }
-            other => other,
+    // An expired cursor reads the scopes body again first, so a new epoch behind it refills (0051, `cursor_expired`).
+    async fn pull_or_skip(&self, ctx: &mut PassCtx, session: &mut Session, info: &ScopeInfo) -> Result<(), SyncError> {
+        let mut pulled = self.pull_scope(ctx, info).await;
+        if let Err(SyncError::Transport(TransportError::CursorExpired)) = pulled {
+            ctx.body = self.poll_scopes(session).await?;
+            let Some(fresh) = ctx.body.scopes.iter().find(|held| held.scope == info.scope).cloned() else {
+                return Ok(());
+            };
+            pulled = self.pull_scope(ctx, &fresh).await;
         }
+        match pulled {
+            Err(error) => match scope_refusal(&error) {
+                Some(code) => {
+                    ctx.report.skipped.push((info.scope, code));
+                    Ok(())
+                }
+                None => Err(error),
+            },
+            Ok(()) => Ok(()),
+        }
+    }
+
+    // What outlives the process: a lock the key flows hold, and the scopes whose key version stopped or ended
+    // (0054, `key_versions`).
+    async fn read_key_state(&self, ctx: &mut PassCtx) -> Result<(), SyncError> {
+        let locked = matches!(self.keys.key_state().await, Ok(KeyState::Locked { .. }));
+        ctx.locked = locked || self.hooks.locked().is_some();
+        let mut txn = begin(&self.state).await?;
+        for row in txn.scan(&RowRange::Table(Table::KeyVersions)).await? {
+            if let Row::KeyVersion(row) = row
+                && row.state != KeyVersionState::Ok
+            {
+                ctx.held_secrets.insert(row.scope);
+            }
+        }
+        Ok(())
     }
 
     async fn push_rounds(&self, ctx: &mut PassCtx, session: &mut Session, info: &ScopeInfo) -> Result<(), SyncError> {
@@ -211,7 +279,17 @@ impl ServiceSync {
         }
         let mut info = info.clone();
         for _ in 0..ROUNDS {
-            match self.push_scope(ctx, session, &info).await? {
+            let after = match self.push_scope(ctx, session, &info).await {
+                Err(error) => match scope_refusal(&error) {
+                    Some(code) => {
+                        ctx.report.skipped.push((info.scope, code));
+                        return Ok(());
+                    }
+                    None => return Err(error),
+                },
+                Ok(after) => after,
+            };
+            match after {
                 AfterPush::Done => return Ok(()),
                 AfterPush::Pull => {}
                 AfterPush::NewEpoch => {
@@ -222,7 +300,7 @@ impl ServiceSync {
                     info = fresh.clone();
                 }
             }
-            self.pull_or_skip(ctx, &info).await?;
+            self.pull_or_skip(ctx, session, &info).await?;
             self.push_back(ctx).await?;
         }
         Ok(())
@@ -231,7 +309,7 @@ impl ServiceSync {
     // Personal and history calls need this device's key, and nothing personal syncs on a locked device. The history
     // scope takes no call before approval (0051, Whole-request refusals).
     fn reachable(&self, ctx: &PassCtx) -> Vec<ScopeInfo> {
-        let locked = self.hooks.locked().is_some();
+        let locked = ctx.locked;
         ctx.body
             .scopes
             .iter()
@@ -262,10 +340,19 @@ impl ServiceSync {
                     }),
                     _ => None,
                 };
+                let refill = stored.is_none_or(|stored| start.needs_refill(stored));
+                // Kept as a missing row until the refill is done, so a pass cut short refills again and the writes
+                // of a half-done refill never read as the store going on.
+                if refill && stored.is_some() {
+                    self.stop.check()?;
+                    let mut txn = begin(&self.state).await?;
+                    txn.delete(&RowKey::Store(store.clone())).await?;
+                    txn.commit().await?;
+                }
                 let seen = StoreSeen {
                     start,
-                    stored,
-                    refill: stored.is_none_or(|stored| start.needs_refill(stored)),
+                    stored: stored.filter(|_| !refill),
+                    refill,
                     scopes: HashSet::from([info.scope]),
                 };
                 ctx.stores.insert(store, seen);
@@ -274,28 +361,15 @@ impl ServiceSync {
         Ok(())
     }
 
-    // A store's identity goes into the state once its kinds are settled: a refilled store only when every scope that
-    // holds it finished its snapshot, and never when the store was replaced during the pass.
+    // A store that went on has its newer sequence kept. A refilling store's row goes in with its last snapshot.
     async fn write_stores(&self, ctx: &PassCtx) -> Result<(), SyncError> {
         let mut rows = Vec::new();
         for (store, seen) in &ctx.stores {
-            if seen.refill && !seen.scopes.iter().all(|scope| ctx.snapshots_done.contains(scope)) {
+            if seen.refill {
                 continue;
             }
-            let adapter = seen
-                .scopes
-                .iter()
-                .flat_map(|scope| self.adapters.adapters(*scope))
-                .find(|adapter| adapter.store() == store);
-            let Some(adapter) = adapter else { continue };
-            let now = adapter.identity().await?;
-            let unchanged = seen.stored == Some(now);
-            if !unchanged && now.generation == seen.start.generation && now.sequence >= seen.start.sequence {
-                rows.push(Row::Store(crate::api::state::StoreRow {
-                    store: store.clone(),
-                    generation: now.generation,
-                    sequence: now.sequence,
-                }));
+            if let Some(row) = self.store_row(store, seen).await? {
+                rows.push(row);
             }
         }
         if rows.is_empty() {
@@ -308,6 +382,53 @@ impl ServiceSync {
         }
         txn.commit().await?;
         Ok(())
+    }
+
+    // The store's identity now, unless it is the one the state holds or the store was replaced during the pass.
+    async fn store_row(&self, store: &str, seen: &StoreSeen) -> Result<Option<Row>, SyncError> {
+        let adapter = seen
+            .scopes
+            .iter()
+            .flat_map(|scope| self.adapters.adapters(*scope))
+            .find(|adapter| adapter.store() == store);
+        let Some(adapter) = adapter else {
+            return Ok(None);
+        };
+        let now = adapter.identity().await?;
+        let went_on = now.generation == seen.start.generation && now.sequence >= seen.start.sequence;
+        Ok((went_on && seen.stored != Some(now)).then(|| {
+            Row::Store(StoreRow {
+                store: store.to_owned(),
+                generation: now.generation,
+                sequence: now.sequence,
+            })
+        }))
+    }
+
+    // The refilling stores whose every scope has its snapshot once `scope`'s is done, which settle in that commit.
+    async fn settled_stores(&self, ctx: &mut PassCtx, scope: ScopeName) -> Result<Vec<Row>, SyncError> {
+        let mut rows = Vec::new();
+        let done = |held: &ScopeName| *held == scope || ctx.snapshots_done.contains(held);
+        let settling: Vec<String> = ctx
+            .stores
+            .iter()
+            .filter(|(_, seen)| seen.refill && seen.scopes.contains(&scope) && seen.scopes.iter().all(done))
+            .map(|(store, _)| store.clone())
+            .collect();
+        for store in settling {
+            let Some(seen) = ctx.stores.get_mut(&store) else {
+                continue;
+            };
+            if let Some(Row::Store(row)) = self.store_row(&store, seen).await? {
+                seen.refill = false;
+                seen.stored = Some(StoreStamp {
+                    generation: row.generation,
+                    sequence: row.sequence,
+                });
+                rows.push(Row::Store(row));
+            }
+        }
+        Ok(rows)
     }
 
     // A restored, replaced or uncertain state file trusts none of its sync tables: every store refills, so the pull

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use tablepro_keys::encoding::{TeamId, Version};
 use tablepro_records::Kind;
+use tablepro_sync::api::control::SyncControl;
 use tablepro_sync::api::ids::{KindName, ScopeName};
 use tablepro_sync::api::key_flows::{ArrivalOrder, KeyChangeSet, PushBackVerdict};
 use tablepro_sync::api::scopes::Role;
@@ -264,4 +265,138 @@ async fn a_new_epoch_pushes_key_objects_back_first_and_a_final_refusal_holds_the
     );
     assert!(matches!(keys.answered().as_slice(), [outcomes] if matches!(outcomes[0], ChangeOutcome::Applied { .. })));
     assert!(mac.hooks.holds_secrets(ScopeName::Personal));
+}
+
+#[tokio::test]
+async fn a_push_back_cut_short_runs_again_before_anything_else_goes_up() {
+    let server = FakeServer::new();
+    let keys = Arc::new(KeyLog::default());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .keys(Arc::clone(&keys))
+        .build()
+        .await;
+    with_cursor(&mac).await;
+    keys.queue_push_back(
+        KeyChangeSet {
+            scope: ScopeName::Personal,
+            changes: vec![write("key.version", &version_id(1), None, json!({"suite": "tp1"}))],
+            proof: DpopKey(Arc::clone(&mac.seed)),
+        },
+        PushBackVerdict::Continue,
+    );
+    let epoch = server.new_epoch();
+    mac.connections.put(&id(5), connection("After the restore"));
+
+    mac.wire.drop_next_push();
+    let cut_short = mac.pass().await;
+    let refilling = match mac.row(RowKey::Scope(ScopeName::Personal)).await {
+        Some(Row::Scope(row)) => row.refill,
+        _ => false,
+    };
+    let report = mac.sync().await;
+
+    assert!(cut_short.is_err());
+    assert!(refilling, "the refill was let go before the push-back answered");
+    assert_eq!(keys.pushed_back_at(), vec![epoch, epoch]);
+    assert_eq!(report.pushed, 1);
+    let Some(Row::Scope(row)) = mac.row(RowKey::Scope(ScopeName::Personal)).await else {
+        panic!("no scope row");
+    };
+    assert!(!row.refill);
+    assert_eq!(row.epoch, Some(epoch));
+}
+
+#[tokio::test]
+async fn an_expired_cursor_behind_a_new_epoch_refills() {
+    let server = FakeServer::new();
+    let keys = Arc::new(KeyLog::default());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .keys(Arc::clone(&keys))
+        .build()
+        .await;
+    with_cursor(&mac).await;
+
+    mac.wire.new_epoch_before_pull();
+    mac.sync().await;
+
+    let epoch = server.epoch();
+    assert_eq!(keys.pushed_back_at(), vec![epoch]);
+    let Some(Row::Scope(row)) = mac.row(RowKey::Scope(ScopeName::Personal)).await else {
+        panic!("no scope row");
+    };
+    assert_eq!(row.epoch, Some(epoch));
+    assert_eq!(row.lineage.last().map(|held| held.id), Some(epoch));
+}
+
+#[tokio::test]
+async fn a_team_envelope_waits_while_the_team_is_due_a_rotation() {
+    let server = FakeServer::new();
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account(), Role::Owner)]);
+    let secrets = envelopes();
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Team(team), Arc::clone(&secrets))
+        .build()
+        .await;
+    mac.sync().await;
+    server.set_rotation_due(team, true);
+    let id = format!("library_connection/{}/password", super::harness::id(1).to_lowercase());
+    secrets.put(&id, sealed(1));
+
+    let report = mac.sync().await;
+
+    assert!(report.refused.is_empty());
+    assert!(
+        !mac.wire
+            .pushed()
+            .iter()
+            .any(|kinds| kinds.contains(&"secret_envelope".to_owned()))
+    );
+}
+
+#[tokio::test]
+async fn a_team_envelope_pulled_before_approval_is_taken_once_the_device_is_approved() {
+    let server = FakeServer::new();
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account(), Role::Owner)]);
+    let mac = Device::new(&server, "dev_mac").await;
+    let version = format!("{}/team/1", tablepro_keys::encoding::uuid_to_wire(team.0));
+    let envelope = format!("library_connection/{}/password", id(1).to_lowercase());
+    mac.push_raw(
+        ScopeName::Team(team),
+        vec![write("key.version", &version, None, json!({"suite": "tp1"}))],
+    )
+    .await;
+    let outcomes = mac
+        .push_raw(
+            ScopeName::Team(team),
+            vec![write("secret_envelope", &envelope, None, sealed(1))],
+        )
+        .await;
+    assert!(matches!(outcomes[0], ChangeOutcome::Applied { .. }), "{outcomes:?}");
+    let secrets = envelopes();
+    let keys = Arc::new(KeyLog::default());
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .unapproved()
+        .keys(Arc::clone(&keys))
+        .adapter(ScopeName::Team(team), Arc::clone(&secrets))
+        .build()
+        .await;
+
+    mini.sync().await;
+    let before = secrets.get(&envelope);
+    server.approve(
+        &tablepro_sync::api::ids::DeviceRowId("dev_mini".to_owned()),
+        mini.seed.public().unwrap().0,
+    );
+    mini.sync().await;
+
+    assert_eq!(before, None);
+    assert_eq!(secrets.get(&envelope), Some(sealed(1)));
+    assert!(keys.events().contains(&KeyEvent::Opened {
+        id: envelope.clone(),
+        in_force: None,
+        taken: true,
+    }));
+    assert!(mini.sync.held_records().await.unwrap().is_empty());
 }

@@ -126,19 +126,31 @@ impl ServiceSync {
         let mut pruned = Vec::new();
         for adapter in self.adapters.adapters(scope) {
             let kind = adapter.kind();
-            if kind_off(row.policies, scope, kind) || (kind == Kind::SecretEnvelope && self.hooks.holds_secrets(scope))
-            {
+            if kind_off(row.policies, scope, kind) || (kind == Kind::SecretEnvelope && !self.seals(ctx, row)) {
                 continue;
             }
+            // A journal pass diffs only what the journal named, and a kind it named nothing of not at all (0060).
+            let named = match &ctx.named {
+                Some(named) => match named.get(&kind) {
+                    Some(ids) => Some(ids),
+                    None => continue,
+                },
+                None => None,
+            };
             let local = adapter.records().await?;
             let bases = self.bases_in(scope, kind).await?;
-            let diffed = diff(
+            let mut diffed = diff(
                 scope,
                 kind,
                 &local,
                 &bases,
                 skip.get(&KindName::of(kind)).unwrap_or(&none),
             );
+            if let Some(ids) = named {
+                diffed.pending.retain(|pending| ids.contains(&pending.key.record_id));
+                diffed.pruned.retain(|key| ids.contains(&key.record_id));
+                diffed.refused.retain(|(key, _)| ids.contains(&key.record_id));
+            }
             pruned.extend(diffed.pruned);
             for (key, code) in diffed.refused {
                 ctx.report.refused.push((key.clone(), code.to_owned()));
@@ -148,6 +160,12 @@ impl ServiceSync {
                 let print = fingerprint(&pending.change());
                 session.refused.get(&pending.key).is_none_or(|(held, _)| *held != print)
             }));
+            if !diffed.acknowledged.is_empty() {
+                self.stop.check()?;
+                adapter
+                    .tombstones_pushed(diffed.acknowledged.into_iter().map(|key| key.record_id).collect())
+                    .await?;
+            }
         }
         if !pruned.is_empty() {
             self.stop.check()?;
@@ -158,6 +176,18 @@ impl ServiceSync {
             txn.commit().await?;
         }
         Ok(out)
+    }
+
+    // Whether the scope's envelopes go up now: never from a locked or unapproved device, nor under a key version that
+    // stopped or ended, nor in a team due a rotation (0051, Teams; 0056).
+    fn seals(&self, ctx: &PassCtx, row: &ScopeRow) -> bool {
+        let scope = row.scope;
+        let rotation_due = matches!(scope, ScopeName::Team(_)) && row.rotation_due;
+        !ctx.locked
+            && ctx.approved
+            && !rotation_due
+            && !ctx.held_secrets.contains(&scope)
+            && !self.hooks.holds_secrets(scope)
     }
 
     async fn skipped(&self, scope: ScopeName) -> Result<HashMap<KindName, HashSet<String>>, SyncError> {

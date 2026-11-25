@@ -46,13 +46,15 @@ pub struct Diffed {
     pub refused: Vec<(RecordKey, &'static str)>,
     // Create-once bases whose entry a local prune dropped: the base goes and nothing is pushed.
     pub pruned: Vec<RecordKey>,
+    // Create-once tombstones of entries the provider already holds as tombstones: the store drops them unsent.
+    pub acknowledged: Vec<RecordKey>,
 }
 
 // One kind of one scope: its store's records against its bases. `skip` holds the ids that sync by other rules for now:
 // held, contested or waiting for the person.
 pub fn diff(scope: ScopeName, kind: Kind, local: &LocalRecords, bases: &[BaseRow], skip: &HashSet<String>) -> Diffed {
     let key = |record_id: &str| RecordKey::new(scope, KindName::of(kind), record_id);
-    let bases: HashMap<&str, &BaseRow> = bases.iter().map(|base| (base.key.record_id.as_str(), base)).collect();
+    let by_id: HashMap<&str, &BaseRow> = bases.iter().map(|base| (base.key.record_id.as_str(), base)).collect();
     let unreadable: HashSet<&str> = local.unreadable.iter().map(String::as_str).collect();
     let tombstones: HashSet<&str> = local.tombstones.iter().map(String::as_str).collect();
     let mut diffed = Diffed::default();
@@ -66,7 +68,7 @@ pub fn diff(scope: ScopeName, kind: Kind, local: &LocalRecords, bases: &[BaseRow
             diffed.refused.push((key(&record.record_id), refusal.code()));
             continue;
         }
-        let base = bases.get(record.record_id.as_str()).copied();
+        let base = by_id.get(record.record_id.as_str()).copied();
         if let Some(op) = written(kind, base, record) {
             diffed.pending.push(Pending {
                 key: key(&record.record_id),
@@ -75,8 +77,10 @@ pub fn diff(scope: ScopeName, kind: Kind, local: &LocalRecords, bases: &[BaseRow
             });
         }
     }
-    for (record_id, base) in &bases {
-        if present.contains(record_id) || unreadable.contains(record_id) || skip.contains(*record_id) {
+    // In the bases' key order, so a batch rebuilt from the same diff is the same request.
+    for base in bases {
+        let record_id = base.key.record_id.as_str();
+        if present.contains(record_id) || unreadable.contains(record_id) || skip.contains(record_id) {
             continue;
         }
         if base.deleted.is_some() {
@@ -88,18 +92,23 @@ pub fn diff(scope: ScopeName, kind: Kind, local: &LocalRecords, bases: &[BaseRow
         }
         diffed.pending.push(Pending {
             key: key(record_id),
-            base: Some((*base).clone()),
+            base: Some(base.clone()),
             op: PendingOp::Delete,
         });
     }
-    // A tombstone of an entry that never went up: its delete answers applied with nothing stored.
     for record_id in &local.tombstones {
-        if !bases.contains_key(record_id.as_str()) && !skip.contains(record_id) {
-            diffed.pending.push(Pending {
+        if skip.contains(record_id) {
+            continue;
+        }
+        match by_id.get(record_id.as_str()) {
+            // A tombstone of an entry that never went up: its delete answers applied with nothing stored.
+            None => diffed.pending.push(Pending {
                 key: key(record_id),
                 base: None,
                 op: PendingOp::Delete,
-            });
+            }),
+            Some(base) if base.deleted.is_some() => diffed.acknowledged.push(key(record_id)),
+            Some(_) => {}
         }
     }
     diffed

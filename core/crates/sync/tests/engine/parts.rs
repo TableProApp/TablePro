@@ -14,8 +14,8 @@ use tablepro_sync::api::scopes::ServerLimits;
 use tablepro_sync::api::state::{BaseRow, Standing};
 use tablepro_sync::api::transport::{Change, ChangeOp, DeletedReason, PulledRecord, TransportError};
 use tablepro_sync::engine::{
-    Backoff, JournalEntry, Judgement, Pass, PendingOp, StopSignal, Wake, change_bytes, diff, retry_after_ms, retryable,
-    settle, spawn, split,
+    Backoff, Journal, JournalEntry, Judgement, Pass, PendingOp, StopSignal, Wake, change_bytes, diff, retry_after_ms,
+    retryable, settle, spawn, split,
 };
 use tokio::sync::Notify;
 
@@ -323,25 +323,30 @@ async fn wakes_during_a_pass_run_one_more_and_a_stop_holds_the_next() {
 }
 
 #[tokio::test]
-async fn a_journal_entry_that_names_records_asks_for_a_pass() {
+async fn a_journal_entry_that_names_records_asks_for_a_pass_and_keeps_the_ids() {
     let pass = Flaky::new(0, None);
     let wake = Wake::new();
+    let journal = Journal::new(wake.clone());
     let _scheduler = spawn(pass.clone(), wake.clone(), StopSignal::new(), Backoff::STANDARD);
 
-    wake.journal(&[JournalEntry {
+    journal.changed(&[JournalEntry {
         kind: Kind::Connection,
         written: Vec::new(),
         deleted: Vec::new(),
     }]);
     tokio::time::sleep(Duration::from_millis(50)).await;
     let after_empty = pass.calls.load(Ordering::SeqCst);
-    wake.journal(&[JournalEntry {
+    journal.changed(&[JournalEntry {
         kind: Kind::Connection,
         written: vec![id(1)],
         deleted: vec![id(2)],
     }]);
     pass.done.notified().await;
+    let taken = journal.take();
+    journal.give_back(taken.clone());
 
     assert_eq!(after_empty, 0);
     assert_eq!(pass.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(taken.get(&Kind::Connection), Some(&HashSet::from([id(1), id(2)])));
+    assert_eq!(journal.take(), taken);
 }

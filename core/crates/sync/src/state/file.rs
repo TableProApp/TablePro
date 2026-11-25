@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use async_trait::async_trait;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous};
@@ -27,11 +28,13 @@ fn io(error: impl std::fmt::Display) -> StateError {
     }
 }
 
+// SQLITE_BUSY and SQLITE_LOCKED, with their extended codes in the bits above the first byte.
 fn sql(error: sqlx::Error) -> StateError {
     let busy = error
         .as_database_error()
         .and_then(|database| database.code())
-        .is_some_and(|code| code == "5" || code == "6");
+        .and_then(|code| code.parse::<i64>().ok())
+        .is_some_and(|code| matches!(code & 0xff, 5 | 6));
     if busy { StateError::Busy } else { io(error) }
 }
 
@@ -39,6 +42,9 @@ fn sql(error: sqlx::Error) -> StateError {
 #[derive(Debug, Clone)]
 pub struct SqliteStateFiles {
     root: PathBuf,
+    // Each file's pool outlives the store that used it, so a delete or a reopen closes its connection first: Windows
+    // keeps an open file from being deleted, and a dropped pool closes in the background.
+    pools: Arc<Mutex<HashMap<PathBuf, SqlitePool>>>,
 }
 
 impl SqliteStateFiles {
@@ -47,11 +53,26 @@ impl SqliteStateFiles {
     }
 
     pub fn at(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            root,
+            pools: Arc::default(),
+        }
     }
 
     pub fn path(&self, identity: &StateIdentity) -> PathBuf {
         state_path(&self.root, identity)
+    }
+
+    fn pools(&self) -> MutexGuard<'_, HashMap<PathBuf, SqlitePool>> {
+        self.pools.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    // Called with the file's lock held, so no store still uses the pool.
+    async fn close(&self, path: &Path) {
+        let held = self.pools().remove(path);
+        if let Some(pool) = held {
+            pool.close().await;
+        }
     }
 }
 
@@ -159,8 +180,10 @@ impl StateFiles for SqliteStateFiles {
     async fn open(&self, identity: StateIdentity) -> Result<Arc<dyn StateStore>, StateError> {
         let path = self.path(&identity);
         let lock = take_lock(&path)?;
+        self.close(&path).await;
         let pool = connect(&path).await?;
         bind(&pool, &identity).await?;
+        self.pools().insert(path, pool.clone());
         Ok(Arc::new(SqliteState {
             identity,
             opened: Opened::FRESH,
@@ -172,6 +195,7 @@ impl StateFiles for SqliteStateFiles {
     async fn delete(&self, identity: StateIdentity) -> Result<(), StateError> {
         let path = self.path(&identity);
         let lock = take_lock(&path)?;
+        self.close(&path).await;
         for suffix in ["", "-wal", "-shm"] {
             let mut name = path.clone().into_os_string();
             name.push(suffix);

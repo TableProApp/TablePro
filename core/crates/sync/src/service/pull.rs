@@ -14,7 +14,7 @@ use super::scopes::refresh;
 use super::{PassCtx, ServiceSync, begin};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
 use crate::api::error::SyncError;
-use crate::api::ids::{Cursor, RecordKey, ScopeName};
+use crate::api::ids::{Cursor, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::ArrivalOrder;
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{BaseRow, ConflictRow, HeldReason, HeldRow, Row, RowKey, RowRange, ScopeRow, Table};
@@ -34,18 +34,11 @@ struct Pull {
     held_keys: Vec<PulledRecord>,
     held_envelopes: Vec<PulledRecord>,
     seen: HashSet<(String, String)>,
+    // A locked or unapproved device holds no key to check an envelope with: it keeps each one until it can.
+    can_open: bool,
 }
 
 impl Pull {
-    fn restart_as_snapshot(&mut self) {
-        self.snapshot = true;
-        self.cursor = None;
-        self.in_force = None;
-        self.held_keys.clear();
-        self.held_envelopes.clear();
-        self.seen.clear();
-    }
-
     fn judge(&self, kind: Kind, base: Option<&BaseRow>, record: &PulledRecord) -> Judgement {
         if self.pull_wins.contains(&kind) {
             return Judgement::PullWins;
@@ -67,6 +60,8 @@ pub(super) struct PageWrites {
     held: Vec<HeldRow>,
     unheld: Vec<RecordKey>,
     conflicts: Vec<ConflictRow>,
+    // Rows of other tables that settle in the same commit, as a refilled store's identity.
+    rows: Vec<Row>,
 }
 
 impl PageWrites {
@@ -77,6 +72,7 @@ impl PageWrites {
             && self.held.is_empty()
             && self.unheld.is_empty()
             && self.conflicts.is_empty()
+            && self.rows.is_empty()
     }
 }
 
@@ -123,6 +119,7 @@ impl ServiceSync {
             held_keys: Vec::new(),
             held_envelopes: Vec::new(),
             seen: HashSet::new(),
+            can_open: ctx.approved && !ctx.locked,
         };
         refresh(&mut row, info);
         if row.epoch.is_none() {
@@ -137,6 +134,7 @@ impl ServiceSync {
         if pull.snapshot {
             self.finish_snapshot(ctx, &mut pull, &adapters, &mut row, info).await?;
         }
+        self.retake_waiting(&pull, &adapters).await?;
         self.read_roster(info).await;
         Ok(())
     }
@@ -157,10 +155,11 @@ impl ServiceSync {
                 proof: Self::scope_proof(ctx, pull.scope),
             };
             let page = match self.transport.pull(request).await {
-                // A snapshot, and a refill when the scopes body showed a new epoch (0051, `cursor_expired`).
-                Err(TransportError::CursorExpired) if !pull.snapshot => {
-                    pull.restart_as_snapshot();
-                    continue;
+                // The next pull takes a snapshot; the caller reads the scopes body first (0051, `cursor_expired`).
+                Err(TransportError::CursorExpired) => {
+                    row.cursor = None;
+                    self.commit_page(PageWrites::default(), Some(row)).await?;
+                    return Err(TransportError::CursorExpired.into());
                 }
                 other => other?,
             };
@@ -223,8 +222,12 @@ impl ServiceSync {
                     pull.held_envelopes.push(record);
                     continue;
                 }
-                if !self.envelope_opens(pull.scope, &record, pull.in_force).await {
-                    let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
+                let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
+                if !pull.can_open {
+                    writes.held.push(held(HeldReason::AwaitingApproval, key, record));
+                    continue;
+                }
+                if !self.envelope_opens(pull.scope, &record, pull.in_force).await? {
                     writes.held.push(held(HeldReason::Unreadable, key, record));
                     continue;
                 }
@@ -339,6 +342,9 @@ impl ServiceSync {
         for conflict in writes.conflicts {
             txn.put(Row::Conflict(conflict)).await?;
         }
+        for row in writes.rows {
+            txn.put(row).await?;
+        }
         if let Some(row) = row {
             txn.put(Row::Scope(row.clone())).await?;
         }
@@ -348,7 +354,8 @@ impl ServiceSync {
     }
 
     // Caught up: the key objects as one set, then the envelopes, then the bases the server no longer holds go, so what
-    // they stood for goes up as a create. The cursor, the version in force and the epoch commit together.
+    // they stood for goes up as a create. The cursor and the version in force commit together, and so do the stores
+    // this snapshot was the last refill of. A refill against a new epoch adopts it only once the key objects went back.
     async fn finish_snapshot(
         &self,
         ctx: &mut PassCtx,
@@ -364,7 +371,79 @@ impl ServiceSync {
         }
         let mut opened = Vec::new();
         for record in std::mem::take(&mut pull.held_envelopes) {
-            if self.envelope_opens(pull.scope, &record, None).await {
+            let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
+            if !pull.can_open {
+                writes.held.push(held(HeldReason::AwaitingApproval, key, record));
+            } else if self.envelope_opens(pull.scope, &record, None).await? {
+                opened.push(record);
+            } else {
+                writes.held.push(held(HeldReason::Unreadable, key, record));
+            }
+        }
+        self.settle_all(pull, adapters, opened, &mut writes).await?;
+        let before = row.clone();
+        row.cursor.clone_from(&pull.cursor);
+        row.key_version = pull.in_force;
+        row.caught_up = true;
+        if pull.older_cursor.is_some() {
+            row.older_cursor.clone_from(&pull.older_cursor);
+        }
+        // Before approval a personal pull serves key objects only: it settles no base, store or epoch.
+        let whole = pull.scope != ScopeName::Personal || info.approved == Some(true);
+        if whole {
+            if pull.scope != ScopeName::History {
+                writes.dropped = self.unseen_bases(pull).await?;
+            }
+            writes.rows = self.settled_stores(ctx, pull.scope).await?;
+            if row.refill {
+                ctx.adopt.push((pull.scope, info.epochs.clone()));
+            } else {
+                row.epoch = Some(ctx.body.epoch);
+                row.lineage.clone_from(&info.epochs);
+            }
+        }
+        if !writes.is_empty() || *row != before {
+            self.commit_page(writes, Some(row)).await?;
+        }
+        if whole {
+            ctx.snapshots_done.insert(pull.scope);
+        }
+        Ok(())
+    }
+
+    // Envelopes kept while the device could not check them are taken once it can, as a snapshot takes envelopes: with
+    // no order, never below the copy held. One the pull just brought again is already settled by it.
+    async fn retake_waiting(&self, pull: &Pull, adapters: &[Arc<dyn RecordAdapter>]) -> Result<(), SyncError> {
+        if !pull.can_open {
+            return Ok(());
+        }
+        let rows = begin(&self.state)
+            .await?
+            .scan(&RowRange::ScopeKind(
+                Table::Held,
+                pull.scope,
+                KindName::of(Kind::SecretEnvelope),
+            ))
+            .await?;
+        let waiting: Vec<PulledRecord> = rows
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Held(row) if row.reason == HeldReason::AwaitingApproval => Some(row.record),
+                _ => None,
+            })
+            .filter(|record| {
+                !pull
+                    .seen
+                    .contains(&(record.kind.as_str().to_owned(), record.record_id.clone()))
+            })
+            .collect();
+        if waiting.is_empty() {
+            return Ok(());
+        }
+        let mut writes = PageWrites::default();
+        let mut opened = Vec::new();
+        for record in waiting {
+            if self.envelope_opens(pull.scope, &record, None).await? {
                 opened.push(record);
             } else {
                 let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
@@ -372,27 +451,7 @@ impl ServiceSync {
             }
         }
         self.settle_all(pull, adapters, opened, &mut writes).await?;
-        if pull.scope != ScopeName::History {
-            writes.dropped = self.unseen_bases(pull).await?;
-        }
-        let before = row.clone();
-        row.cursor.clone_from(&pull.cursor);
-        row.key_version = pull.in_force;
-        row.epoch = Some(ctx.body.epoch);
-        row.lineage.clone_from(&info.epochs);
-        row.refill = false;
-        row.caught_up = true;
-        if pull.older_cursor.is_some() {
-            row.older_cursor.clone_from(&pull.older_cursor);
-        }
-        if !writes.is_empty() || *row != before {
-            self.commit_page(writes, Some(row)).await?;
-        }
-        // Before approval a personal pull serves key objects only, so the stores it holds are not settled yet.
-        if pull.scope != ScopeName::Personal || info.approved == Some(true) {
-            ctx.snapshots_done.insert(pull.scope);
-        }
-        Ok(())
+        self.commit_page(writes, None).await
     }
 
     async fn unseen_bases(&self, pull: &Pull) -> Result<Vec<RecordKey>, SyncError> {

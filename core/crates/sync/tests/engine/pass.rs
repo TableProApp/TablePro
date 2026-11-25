@@ -495,3 +495,89 @@ async fn an_idle_pass_commits_nothing() {
 
     assert_eq!(counter().await, before);
 }
+
+#[tokio::test]
+async fn a_journal_pass_sends_only_what_the_journal_named() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    mac.sync().await;
+    mac.sync().await;
+    mac.connections.put(&id(1), connection("Named"));
+    mac.connections.put(&id(2), connection("Not named"));
+
+    mac.sync.journal().changed(&[tablepro_sync::engine::JournalEntry {
+        kind: Kind::Connection,
+        written: vec![id(1)],
+        deleted: Vec::new(),
+    }]);
+    let journal = mac
+        .sync
+        .run_pass(tablepro_sync::api::control::PassReason::Journal)
+        .await
+        .unwrap();
+    let named = (stored(&server, &id(1)), stored(&server, &id(2)));
+    let poll = mac.sync().await;
+
+    assert_eq!(journal.pushed, 1);
+    assert_eq!(named, (Some(connection("Named")), None));
+    assert_eq!(poll.pushed, 1);
+    assert_eq!(stored(&server, &id(2)), Some(connection("Not named")));
+}
+
+#[tokio::test]
+async fn a_history_entry_deleted_on_two_devices_lets_its_tombstone_go() {
+    let server = FakeServer::new();
+    let mac_entries = MemoryAdapter::new(Kind::HistoryEntry, "history.db", StoreFile::new());
+    let mini_entries = MemoryAdapter::new(Kind::HistoryEntry, "history.db", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::History, Arc::clone(&mac_entries))
+        .build()
+        .await;
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .adapter(ScopeName::History, Arc::clone(&mini_entries))
+        .build()
+        .await;
+    mac_entries.put(&id(1), json!({"suite": "tp1", "ct": "one"}));
+    mac.sync().await;
+    mini.sync().await;
+    mini.sync().await;
+
+    mac_entries.delete_entry(&id(1));
+    mac.sync().await;
+    mini_entries.delete_entry(&id(1));
+    mini.sync().await;
+
+    assert!(mini_entries.tombstones().is_empty());
+    assert_eq!(
+        server
+            .stored(ScopeOwner::History(account()), "history_entry", &id(1))
+            .unwrap()
+            .deleted,
+        Some(DeletedReason::User)
+    );
+}
+
+#[tokio::test]
+async fn a_refill_cut_short_after_its_snapshot_keeps_the_edits_made_since() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let file = StoreFile::new();
+    let connections = MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file));
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .build()
+        .await;
+    mac.connections.put(&id(1), connection("Prod"));
+    mac.sync().await;
+    mini.sync().await;
+
+    file.restored();
+    connections.put(&id(2), connection("Only in the backup"));
+    mini.wire.drop_next_push();
+    assert!(mini.pass().await.is_err());
+    connections.put(&id(1), connection("Edited after the refill"));
+    mini.sync().await;
+
+    assert_eq!(stored(&server, &id(1)), Some(connection("Edited after the refill")));
+    assert_eq!(stored(&server, &id(2)), Some(connection("Only in the backup")));
+}

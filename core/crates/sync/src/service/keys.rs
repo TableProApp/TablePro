@@ -14,7 +14,7 @@ use crate::api::key_flows::{
     ArrivalOrder, KeyApplied, KeyArrival, KeyHooks, LockCause, PushBackVerdict, Roster, StopAction, StopCause,
 };
 use crate::api::scopes::ScopeInfo;
-use crate::api::state::{PendingFlow, Row, RowRange, Table};
+use crate::api::state::{PendingFlow, Row, RowKey, RowRange, Table};
 use crate::api::transport::{Proof, PulledRecord, PushBatch};
 
 // Which flow reads a key kind: the account's own objects, an approval session's, a reset's, or a team's.
@@ -84,19 +84,21 @@ impl ServiceSync {
     }
 
     // An envelope is taken only under the version in force at its place in the order, and never below the copy held
-    // (0056, Rollback). One the key flows refuse is held by id; a deletion needs no key.
+    // (0056, Rollback). One the keys refuse is held by id, and nothing takes it later under a looser order; any other
+    // failure, as a locked device store, ends the pass before its page commits, so the page is read again.
     pub(super) async fn envelope_opens(
         &self,
         scope: ScopeName,
         record: &PulledRecord,
         in_force: Option<Version>,
-    ) -> bool {
+    ) -> Result<bool, SyncError> {
         let Some(fields) = record.fields.clone().filter(|_| record.deleted.is_none()) else {
-            return true;
+            return Ok(true);
         };
         let Ok(envelope) = EnvelopeId::parse(&record.record_id) else {
-            return false;
+            return Ok(false);
         };
+        self.stop.check()?;
         let opened = match scope {
             ScopeName::Team(team) => self.keys.open_team_envelope(team, envelope, fields, in_force).await,
             ScopeName::Personal | ScopeName::History => {
@@ -104,21 +106,22 @@ impl ServiceSync {
             }
         };
         match opened {
-            Ok(_) => true,
-            Err(error) => {
+            Ok(_) => Ok(true),
+            Err(SyncError::Keys(error)) => {
                 tracing::debug!(code = error.code(), "an envelope was not taken");
-                false
+                Ok(false)
             }
+            Err(error) => Err(error),
         }
     }
 
     // On a new epoch, before any other record: the key objects this account signed that the server lacks, one change
     // set per push, each refusal final (0051, After a restore).
     pub(super) async fn push_back(&self, ctx: &mut PassCtx) -> Result<(), SyncError> {
-        if ctx.pushed_back || !ctx.new_epoch {
-            return Ok(());
-        }
         let epoch = ctx.body.epoch;
+        if !ctx.new_epoch || ctx.pushed_back == Some(epoch) {
+            return self.adopt_epoch(ctx).await;
+        }
         for set in self.keys.push_back(epoch).await? {
             self.stop.check()?;
             let batch = PushBatch {
@@ -140,7 +143,28 @@ impl ServiceSync {
                 }
             }
         }
-        ctx.pushed_back = true;
+        ctx.pushed_back = Some(epoch);
+        self.adopt_epoch(ctx).await
+    }
+
+    // The refilled scopes take the epoch and its lineage only now, so a pass cut short before the push-back answered
+    // refills and pushes back again.
+    async fn adopt_epoch(&self, ctx: &mut PassCtx) -> Result<(), SyncError> {
+        let adopt = std::mem::take(&mut ctx.adopt);
+        if adopt.is_empty() {
+            return Ok(());
+        }
+        self.stop.check()?;
+        let mut txn = begin(&self.state).await?;
+        for (scope, lineage) in adopt {
+            if let Some(Row::Scope(mut row)) = txn.get(&RowKey::Scope(scope)).await? {
+                row.refill = false;
+                row.epoch = Some(ctx.body.epoch);
+                row.lineage = lineage;
+                txn.put(Row::Scope(row)).await?;
+            }
+        }
+        txn.commit().await?;
         Ok(())
     }
 
@@ -151,6 +175,9 @@ impl ServiceSync {
             Err(_) => Vec::new(),
         };
         for row in pending {
+            if self.stop.is_stopped() {
+                return;
+            }
             let Row::KeyPending(row) = row else { continue };
             let resumed = match row.flow {
                 PendingFlow::AccountRotation { av } => self.keys.resume_rotation(av).await,
@@ -194,6 +221,9 @@ impl ServiceSync {
         let ScopeName::Team(team) = info.scope else {
             return;
         };
+        if self.stop.is_stopped() {
+            return;
+        }
         let roster = Roster {
             members: info.members.clone(),
             role: info.role,
