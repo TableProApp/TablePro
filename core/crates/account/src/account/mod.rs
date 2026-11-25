@@ -6,15 +6,15 @@ use std::time::Duration;
 
 use chrono::{DateTime, TimeDelta, Utc};
 use secrecy::{ExposeSecret as _, SecretString};
+use tablepro_cloud_api::{Bearer, answer_error, http_client, v2};
 use tokio::sync::{Mutex, broadcast, watch};
 use tokio::time::Instant;
 
-use crate::account_error::{AccountError, http_text};
+use crate::account_error::AccountError;
 use crate::account_file::{self, AccountFile};
 use crate::account_settings::{AccountSettings, Redirect};
 use crate::account_status::{AccountStatus, EntitlementProblem, SignedIn};
 use crate::browser::{BrowserLauncher, WebAuthenticationError, WebAuthenticator};
-use crate::cloud_api::{Bearer, answer_error, v2};
 use crate::entitlement::{Entitlement, EntitlementError};
 use crate::license::{License, LicenseError};
 use crate::loopback::{ExpectedIssuer, Loopback, callback};
@@ -44,8 +44,6 @@ pub const REFRESH_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 pub const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 60);
 // How soon after a wake a refresh that came due during the sleep runs.
 const WALL_CLOCK_CHECK: Duration = Duration::from_secs(5 * 60);
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const FIELD_CHARACTERS: usize = 100;
 const DEVICE_PAGE: NonZeroU64 = NonZeroU64::MIN.saturating_add(199);
 // A server that keeps answering with a cursor cannot hold the session forever.
@@ -78,11 +76,18 @@ pub enum SignOutCause {
     ServerChanged,
 }
 
-// A bearer for an API call the app makes with its own client, the /v2 base it goes to, and the sign-in it is of.
+// A bearer for a /v2 call made outside the account, with the server and sign-in it is of. One hold of the session
+// reads it all, so a switch never pairs one sign-in's token with another's account or device.
 #[derive(Debug, Clone)]
 pub struct AccessToken {
     pub token: SecretString,
     pub api: String,
+    // The API origin, as `ServerInfo::api_origin` gives it.
+    pub origin: String,
+    // None until an entitlement or /v2/me names the account, as over the device limit.
+    pub account_id: Option<String>,
+    // None until the device is registered.
+    pub device_id: Option<String>,
     pub session_id: Option<String>,
 }
 
@@ -207,17 +212,7 @@ impl Account {
         hosts: AccountHosts,
         status: watch::Sender<AccountStatus>,
     ) -> Result<Self, AccountError> {
-        // Redirects stay off so a token never follows one to another host.
-        let http = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .user_agent(format!(
-                "TablePro/{} ({})",
-                settings.device.app_version, settings.client.system
-            ))
-            .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .map_err(|error| AccountError::Protocol(http_text(error)))?;
+        let http = http_client(&settings.device.app_version, settings.client.system)?;
         let server = Server::initial(&settings, &http, hosts.vaults.as_ref())?;
         let policy = match &settings.server {
             ServerSettings::Resolved(policy) => policy.managed.clone(),
@@ -730,7 +725,7 @@ impl Account {
         };
         let answer = match self.api(bearer).issue_entitlement(&device_id, &request).await {
             Ok(answer) => Ok(answer.into_inner()),
-            Err(error) => Err(answer_error(error).await),
+            Err(error) => Err(answer_error(error).await.into()),
         };
         let answer = session.answered(Call::Entitlement, answer)?;
         self.reachable()?;
@@ -758,7 +753,7 @@ impl Account {
         let bearer = self.bearer(session, false).await?;
         let answer = match self.api(bearer).get_me().await {
             Ok(answer) => Ok(answer.into_inner().into()),
-            Err(error) => Err(answer_error(error).await),
+            Err(error) => Err(answer_error(error).await.into()),
         };
         session.answered(Call::Profile, answer)
     }
@@ -772,7 +767,7 @@ impl Account {
             self.reachable()?;
             let page = match api.list_devices(cursor.as_deref(), Some(DEVICE_PAGE)).await {
                 Ok(answer) => answer.into_inner(),
-                Err(error) => return session.answered(Call::Devices, Err(answer_error(error).await)),
+                Err(error) => return session.answered(Call::Devices, Err(answer_error(error).await.into())),
             };
             devices.extend(page.data.into_iter().map(Device::from));
             cursor = page.next_cursor;
@@ -788,7 +783,7 @@ impl Account {
         let bearer = self.bearer(session, false).await?;
         let answer = match self.api(bearer).delete_device(device_id).await {
             Ok(_) => Ok(()),
-            Err(error) => Err(answer_error(error).await),
+            Err(error) => Err(answer_error(error).await.into()),
         };
         session.answered(Call::RemoveDevice, answer)
     }
@@ -816,7 +811,7 @@ impl Account {
         };
         let device = match self.api(bearer).register_device(&registration).await {
             Ok(answer) => Ok(answer.into_inner()),
-            Err(error) => Err(answer_error(error).await),
+            Err(error) => Err(answer_error(error).await.into()),
         };
         let device = session.answered(Call::Register, device)?;
         session.device_id = Some(device.id.clone());
@@ -1074,6 +1069,7 @@ mod tests {
 
     use async_trait::async_trait;
     use chrono::TimeDelta;
+    use tablepro_cloud_api::{CONNECT_TIMEOUT, REQUEST_TIMEOUT};
     use tablepro_core::credentials::SecretError;
     use url::Url;
 
@@ -1085,7 +1081,7 @@ mod tests {
 
     pub(super) const FEATURE: &str = "env_var_references";
     pub(super) const ACCOUNT: &str = "acct_01k8d6wk00f8xsr79e7x052rkk";
-    const OTHER_ACCOUNT: &str = "acct_01k8d6x3q0f8xsr79e7x052zzz";
+    pub(super) const OTHER_ACCOUNT: &str = "acct_01k8d6x3q0f8xsr79e7x052zzz";
 
     // Counts every time the account opens it.
     pub(super) struct Keyring {

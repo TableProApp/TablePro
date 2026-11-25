@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
+use tablepro_cloud_api::v2::types;
 
-use crate::cloud_api::v2::types;
 use crate::entitlement::{LicenseClaim, TeamClaim};
 
 // Codes stay strings: a plan, cycle, status or role the app does not know still shows.
