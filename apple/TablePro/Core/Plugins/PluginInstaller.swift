@@ -94,7 +94,6 @@ actor PluginInstaller: RegistryPluginInstalling {
         into userPluginsDir: URL,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> ExtractedBundle {
-        guard await catalogAllowed() else { throw PluginError.pluginInstallManaged(registryPlugin.name) }
         // The manifest is network input: the signature check is the real gate, but nothing travels over cleartext.
         guard let downloadURL = URL(string: release.url),
               downloadURL.scheme?.lowercased() == "https" else {
@@ -108,6 +107,8 @@ actor PluginInstaller: RegistryPluginInstalling {
 
         do {
             let urlSession = await self.session()
+            // Asked last, right before the request, since every await before it can outlast a policy change.
+            guard await catalogAllowed() else { throw PluginError.pluginInstallManaged(registryPlugin.name) }
             let (tempDownloadURL, response) = try await Self.download(downloadURL, with: urlSession, progress: progress)
             let zipURL = workingDir.appendingPathComponent("\(registryPlugin.id).zip")
             try FileManager.default.moveItem(at: tempDownloadURL, to: zipURL)

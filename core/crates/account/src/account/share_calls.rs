@@ -661,13 +661,11 @@ mod tests {
         let (endpoints, log) = cloud(|_| (200, "", TOKENS.to_owned()));
         let account = signed_in(dir.path(), endpoints).await;
 
-        account
-            .apply_policy(crate::policy::ManagedPolicy::Values(crate::policy::PolicyValues {
-                account_server_url: Some("https://tablepro.corp.example".to_owned()),
-                allow_other_account_servers: Some(false),
-                ..Default::default()
-            }))
-            .await;
+        account.apply_policy(crate::policy::ManagedPolicy::Values(crate::policy::PolicyValues {
+            account_server_url: Some("https://tablepro.corp.example".to_owned()),
+            allow_other_account_servers: Some(false),
+            ..Default::default()
+        }));
         let read = account.fetch_shared(TOKEN, None).await;
         let created = account.create_share(query("Orders")).await;
         let limits = account.share_limits().await;

@@ -48,6 +48,7 @@ impl Account {
         session.waited(Call::Discovery)?;
         let found = server::discover(&self.inner.http, &server.target.origin, loopback_http_allowed()).await;
         let discovered = session.answered(Call::Discovery, found)?;
+        self.reachable()?;
         let connected = Arc::new(server.discovered(self.inner.settings.client, &self.inner.http, discovered)?);
         self.inner.server.send_replace(connected.clone());
         Ok(connected)

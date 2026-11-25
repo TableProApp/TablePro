@@ -86,7 +86,7 @@ final class SyncTestEnvironment {
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { nil },
         licenseGate: @escaping @MainActor () -> DisableReason? = { nil },
         policyGate: @escaping @MainActor () -> DisableReason? = { nil },
-        policyChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher(),
+        policyChanges: AnyPublisher<DisableReason?, Never> = Empty().eraseToAnyPublisher(),
         activationClock: any Clock<Duration> = ContinuousClock(),
         pushRegistrar: SyncPushRegistrar = .inert
     ) -> SyncCoordinator {

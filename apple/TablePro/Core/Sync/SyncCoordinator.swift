@@ -35,7 +35,7 @@ final class SyncCoordinator: ObservableObject {
     private let licenseGate: @MainActor () -> DisableReason?
     // Why a configuration profile keeps iCloud off, or nil while it allows iCloud.
     private let policyGate: @MainActor () -> DisableReason?
-    private let policyChanges: AnyPublisher<Void, Never>
+    private let policyChanges: AnyPublisher<DisableReason?, Never>
     let recordCreationDate: (CKRecord) -> Date?
     private var triggers: SyncTriggers?
     private var licenseCancellable: AnyCancellable?
@@ -44,6 +44,8 @@ final class SyncCoordinator: ObservableObject {
     // allowed again.
     private var policyStops = 0
     private var runPolicyStops = 0
+    // Cancelled by a stop, so the transport sends no further batch or retry of it.
+    private var pushInFlight: Task<PushOutcome, any Error>?
     private var debounceTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var hasStarted = false
@@ -94,11 +96,10 @@ final class SyncCoordinator: ObservableObject {
         policyGate: @escaping @MainActor () -> DisableReason? = {
             SyncProviderPolicy.disableReason(ManagedPolicyCenter.shared.snapshot)
         },
-        policyChanges: AnyPublisher<Void, Never> = ManagedPolicyCenter.shared.$snapshot
+        // Each reading's own answer, so a stop counts even when iCloud is allowed again before the gate is read.
+        policyChanges: AnyPublisher<DisableReason?, Never> = ManagedPolicyCenter.shared.$snapshot
             .dropFirst()
-            .map { _ in () }
-            // The gate reads the center, which holds the new values only after it publishes them.
-            .receive(on: DispatchQueue.main)
+            .map(SyncProviderPolicy.disableReason)
             .eraseToAnyPublisher(),
         recordCreationDate: @escaping (CKRecord) -> Date? = { $0.creationDate },
         activationClock: any Clock<Duration> = ContinuousClock(),
@@ -556,7 +557,10 @@ final class SyncCoordinator: ObservableObject {
     /// nothing left to move it.
     private func decide(_ status: SyncStatus) {
         statusGeneration += 1
-        policyStops += status == .disabled(.managedPolicy) ? 1 : 0
+        if status == .disabled(.managedPolicy) {
+            policyStops += 1
+            pushInFlight?.cancel()
+        }
         syncStatus = status
         guard !status.isEnabled else {
             arm()
@@ -620,17 +624,22 @@ final class SyncCoordinator: ObservableObject {
         var interruption: Error?
         do {
             let transport = transport
-            outcome = try await SyncConflictRebase.push(
-                records: batch.records,
-                deletions: deletions,
-                edits: batch.editsByRecordID
-            ) { records, deletions in
-                // Each batch, the conflict retries included, is a push not yet sent.
-                guard !isStoppedByPolicy else { throw CancellationError() }
-                return try await transport.push(records: records, deletions: deletions)
-            } fetch: {
-                try await transport.fetch(recordIDs: $0)
+            let pushing = Task {
+                try await SyncConflictRebase.push(
+                    records: batch.records,
+                    deletions: deletions,
+                    edits: batch.editsByRecordID
+                ) { records, deletions in
+                    // Each round, the conflict retries included, is a push not yet sent.
+                    guard !isStoppedByPolicy else { throw CancellationError() }
+                    return try await transport.push(records: records, deletions: deletions)
+                } fetch: {
+                    try await transport.fetch(recordIDs: $0)
+                }
             }
+            pushInFlight = pushing
+            defer { pushInFlight = nil }
+            outcome = try await pushing.value
         } catch let interrupted as SyncPushInterruption {
             outcome = interrupted.completed
             interruption = interrupted.cause
@@ -814,6 +823,7 @@ final class SyncCoordinator: ObservableObject {
             settings: settings,
             echoGuard: echoGuard
         )
+        guard !isStoppedByPolicy else { return false }
         let favoritesOutcome = await services.sqlFavoriteManager.applyRemote(
             remoteSQLFavoriteBatch(from: admitted, deletedRecordIDs: deletedRecordIDs, settings: settings),
             echoGuard: echoGuard
@@ -1150,70 +1160,6 @@ final class SyncCoordinator: ObservableObject {
         return services.tagStorage.applyRemoteTag(remoteTag)
     }
 
-    /// False when the profile could not be persisted, which withholds the pull token so the record
-    /// arrives again rather than being acknowledged and lost.
-    private func applyRemoteCredentialProfile(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        let remoteProfile: CredentialProfile
-        do {
-            remoteProfile = try SyncRecordMapper.toCredentialProfile(record)
-        } catch {
-            Self.logger.error(
-                "Skipping remote credential profile \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)"
-            )
-            return true
-        }
-        if tombstoneIds.contains(remoteProfile.id.uuidString) { return true }
-
-        var profiles = services.credentialProfileStorage.loadProfiles()
-        if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
-            /// The password mode's payload never crosses the wire, so a `.source` this Mac already
-            /// holds is kept rather than replaced by the `prompt` the remote had to send instead.
-            var merged = remoteProfile
-            if case .source = profiles[index].passwordMode, remoteProfile.passwordMode == .prompt {
-                merged.passwordMode = profiles[index].passwordMode
-            }
-            profiles[index] = merged
-        } else {
-            /// Two Macs can hold same-named profiles with different ids, which is what happens when
-            /// someone recreated one by hand before they synced. The editor forbids duplicate names
-            /// and every picker offers a profile by name alone, so the arriving one is renamed
-            /// rather than landing as an indistinguishable second row.
-            var arriving = remoteProfile
-            if profiles.contains(where: { $0.name.compare(arriving.name, options: .caseInsensitive) == .orderedSame }) {
-                arriving.name = Self.availableProfileName(basedOn: arriving.name, taken: profiles)
-            }
-            profiles.append(arriving)
-        }
-        guard services.credentialProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
-        /// The connections linked to it carry a copy of the username, which every raw reader uses.
-        services.credentialProfileStorage.writeUsernameThrough(remoteProfile, byUser: false)
-        return true
-    }
-
-    // False keeps the change token, so a profile this Mac failed to save arrives again.
-    private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
-        let remoteProfile: SSHProfile
-        do {
-            remoteProfile = try SyncRecordMapper.toSSHProfile(record)
-        } catch {
-            Self.logger.error("Skipping remote SSH profile \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
-            return true
-        }
-        if tombstoneIds.contains(remoteProfile.id.uuidString) { return true }
-
-        var profiles = services.sshProfileStorage.loadProfiles()
-        if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
-            profiles[index] = remoteProfile
-        } else {
-            profiles.append(remoteProfile)
-        }
-        guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
-        /// A linked connection stores the profile's configuration, so an edit that arrives from
-        /// another Mac has to reach those connections too or they keep tunnelling to the old host.
-        services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile, byUser: false)
-        return true
-    }
-
     private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
         guard let category = SyncRecordMapper.settingsCategory(from: record),
               !tombstoneIds.contains(category),
@@ -1329,13 +1275,20 @@ final class SyncCoordinator: ObservableObject {
             }
     }
 
-    // A provider no longer allowed stops at once, with no last run; one allowed again waits for the switch.
+    // A provider no longer allowed stops at once, with no last run. One allowed again is decided a turn later, once
+    // the center holds the values the gate reads, and then waits for the switch.
     private func observePolicyChanges() {
         policyCancellable = policyChanges
-            .sink { [weak self] in
+            .sink { [weak self] reason in
                 guard let self else { return }
-                evaluateStatus()
-                requestSync(.launch)
+                if let reason {
+                    decide(.disabled(reason))
+                    return
+                }
+                Task { @MainActor [weak self] in
+                    self?.evaluateStatus()
+                    self?.requestSync(.launch)
+                }
             }
     }
 

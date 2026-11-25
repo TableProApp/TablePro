@@ -1584,7 +1584,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_accountservice_apply_policy(ulong @ptr,RustBuffer @policy
+     void uniffi_tablepro_ffi_fn_method_accountservice_apply_policy(ulong @ptr,RustBuffer @policy,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -8219,8 +8219,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_accountservice_apply_policy();
-            if (checksum != 53696) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_accountservice_apply_policy` checksum `53696`, library returned `{checksum}`");
+            if (checksum != 21334) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_accountservice_apply_policy` checksum `21334`, library returned `{checksum}`");
             }
         }
         {
@@ -9836,7 +9836,7 @@ internal interface IAccountService {
     Task<AccessTokenInfo> AccessToken();
     Task AccessTokenRejected(SecretString @token);
     bool AllowsTableproRequests();
-    Task ApplyPolicy(ManagedPolicyArg @policy);
+    void ApplyPolicy(ManagedPolicyArg @policy);
     /// <exception cref="CoreException"></exception>
     Task ChooseServer(string? @url);
     /// <exception cref="CoreException"></exception>
@@ -10011,23 +10011,14 @@ internal class AccountService : IAccountService, IDisposable {
     }
     
     
-    public async Task ApplyPolicy(ManagedPolicyArg @policy) {await _UniFFIAsync.UniffiRustCallAsync(
-        // Get rust future
-        CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_accountservice_apply_policy(thisPtr, FfiConverterTypeManagedPolicyArg.INSTANCE.Lower(@policy));
-        }),
-        // Poll
-        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
-        // Complete
-        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
-        },
-        // Free
-        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
-        // Error
-        NullCallStatusErrorHandler.INSTANCE
-        
-    );
+    public void ApplyPolicy(ManagedPolicyArg @policy) {
+        CallWithPointer(thisPtr =>
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_accountservice_apply_policy(thisPtr, FfiConverterTypeManagedPolicyArg.INSTANCE.Lower(@policy), ref _status)
+));
     }
+    
+    
     
     /// <exception cref="CoreException"></exception>
     public async Task ChooseServer(string? @url) {await _UniFFIAsync.UniffiRustCallAsync(

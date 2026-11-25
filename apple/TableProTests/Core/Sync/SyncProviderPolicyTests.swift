@@ -2,6 +2,7 @@ import Combine
 import Foundation
 @testable import TablePro
 import TableProSyncTransport
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -117,11 +118,33 @@ struct SyncCoordinatorPolicyTests {
         #expect(coordinator.lastSyncDate == nil)
     }
 
+    @Test("A stop followed at once by an allow still stops sync before it waits for the switch again")
+    func stopThenAllowStillStops() async throws {
+        let changes = PassthroughSubject<DisableReason?, Never>()
+        var settings = SyncSettings.default
+        settings.enabled = false
+        AppSettingsStorage(userDefaults: environment.defaults).saveSync(settings)
+        let coordinator = environment.makeCoordinator(
+            transport: ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID),
+            policyChanges: changes.eraseToAnyPublisher()
+        )
+        coordinator.start()
+        let seen = StatusLog()
+        let watching = coordinator.$syncStatus.sink { seen.statuses.append($0) }
+
+        changes.send(.managedPolicy)
+        changes.send(nil)
+        try await waitUntil { seen.statuses.count >= 3 && seen.statuses.last == .disabled(.userDisabled) }
+        watching.cancel()
+
+        #expect(seen.statuses.contains(.disabled(.managedPolicy)))
+    }
+
     @Test("Allowed again, sync waits for the switch")
     func allowedAgainFollowsTheSwitch() async throws {
         let gate = PolicyGate()
         gate.reason = .managedPolicy
-        let changes = PassthroughSubject<Void, Never>()
+        let changes = PassthroughSubject<DisableReason?, Never>()
         var settings = SyncSettings.default
         settings.enabled = false
         AppSettingsStorage(userDefaults: environment.defaults).saveSync(settings)
@@ -132,10 +155,11 @@ struct SyncCoordinatorPolicyTests {
         )
         coordinator.start()
 
+        #expect(coordinator.syncStatus == .disabled(.managedPolicy))
         gate.reason = nil
-        changes.send(())
+        changes.send(nil)
 
-        #expect(coordinator.syncStatus == .disabled(.userDisabled))
+        try await waitUntil { coordinator.syncStatus == .disabled(.userDisabled) }
     }
 }
 
@@ -143,4 +167,9 @@ struct SyncCoordinatorPolicyTests {
 private final class PolicyGate {
     var reason: DisableReason?
     var fired = false
+}
+
+@MainActor
+private final class StatusLog {
+    var statuses: [SyncStatus] = []
 }

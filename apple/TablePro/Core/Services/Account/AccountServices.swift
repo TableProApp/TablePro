@@ -121,8 +121,8 @@ internal final class AccountServices: AccountBackendListener {
         loadStoredState()
         Task { await checkNow() }
         let changes = policyChanges ?? ManagedPolicyCenter.shared.$snapshot.eraseToAnyPublisher()
-        // Only the newest reading waits: an older one would only be replaced.
-        let (readings, reader) = AsyncStream.makeStream(of: ManagedPolicySnapshot.self, bufferingPolicy: .bufferingNewest(1))
+        // Every reading reaches the core, so one that stops the server is never skipped for a later one.
+        let (readings, reader) = AsyncStream.makeStream(of: ManagedPolicySnapshot.self)
         policyCancellable = changes.sink { reader.yield($0) }
         policyTask = Task { [backend] in
             for await policy in readings {

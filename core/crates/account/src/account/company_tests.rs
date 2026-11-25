@@ -1185,14 +1185,13 @@ async fn values_that_stop_allowing_the_server_stop_every_call_until_the_next_lau
     account.access_token().await.expect("a token before the change");
     let before = calls.lock().expect("the calls").len();
 
-    account
-        .apply_policy(held_to("https://tablepro.other.example", Some(false)))
-        .await;
+    assert!(account.apply_policy(held_to("https://tablepro.other.example", Some(false))));
+    account.report_stop().await;
     let token = account.access_token().await;
     let refreshed = account.refresh_entitlement().await;
     let devices = account.devices().await;
     let chosen = account.choose_server(None).await;
-    account.apply_policy(ManagedPolicy::default()).await;
+    assert!(!account.apply_policy(ManagedPolicy::default()));
     let after_lifted = account.access_token().await;
 
     for refused in [
@@ -1238,12 +1237,12 @@ async fn a_launch_follows_the_values_and_a_later_value_for_another_server_stops_
         browser.clone(),
     );
     account.restore().await;
-    account.apply_policy(held_to(&format!("{base}/"), Some(false))).await;
-    account.apply_policy(ManagedPolicy::default()).await;
+    assert!(!account.apply_policy(held_to(&format!("{base}/"), Some(false))));
+    assert!(!account.apply_policy(ManagedPolicy::default()));
 
     let (signed, ()) = tokio::join!(account.sign_in(std::future::pending()), approve(&browser));
     signed.expect("the same server, written another way, still signs in");
-    account.apply_policy(ManagedPolicy::Refused).await;
+    assert!(account.apply_policy(ManagedPolicy::Refused));
     let refused = account
         .sign_in(tokio::time::sleep(std::time::Duration::from_secs(5)))
         .await;
@@ -1291,18 +1290,10 @@ async fn values_that_arrive_during_a_token_refresh_keep_its_token_from_any_reque
     while !token_waiting.load(Ordering::SeqCst) {
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    let elsewhere = held_to("https://tablepro.other.example", Some(false));
-    // It publishes the stop under the session the refresh holds, so it finishes after the refresh.
-    let applying = tokio::spawn({
-        let (account, elsewhere) = (account.clone(), elsewhere.clone());
-        async move { account.apply_policy(elsewhere).await }
-    });
-    while account.policy() != elsewhere {
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    }
+    // The values apply without waiting for the session the refresh holds.
+    assert!(account.apply_policy(held_to("https://tablepro.other.example", Some(false))));
     hold_tokens.store(false, Ordering::SeqCst);
     let refreshed = refreshing.await.expect("the refresh");
-    applying.await.expect("the values applied");
 
     assert_eq!(refreshed.expect_err("held").code(), "account.server_managed");
 }

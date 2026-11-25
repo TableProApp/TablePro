@@ -176,6 +176,8 @@ internal final class RegistryClient: ObservableObject {
     }
 
     private func load(policy: RegistryFetchPolicy, from session: URLSession) async -> RegistryManifest? {
+        // A caller that waited on another fetch may find the registry turned off since.
+        guard allowsCatalog else { return nil }
         var outcome = await loadVerified(policy: policy, from: session, bypassingCDNCache: nil)
         if case .refused = outcome, allowsCatalog {
             // The manifest and its signature are cached apart, so a deploy between them leaves a pair that disagrees.

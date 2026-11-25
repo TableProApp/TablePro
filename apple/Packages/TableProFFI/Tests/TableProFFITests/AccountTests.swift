@@ -175,7 +175,7 @@ private func code(of error: any Error) -> String? {
     )
     let opened = account.allowsTableproRequests()
 
-    await account.applyPolicy(policy: .read(values: ManagedPolicyValues(
+    account.applyPolicy(policy: .read(values: ManagedPolicyValues(
         accountServerUrl: "https://127.0.0.1:1",
         allowOtherAccountServers: false,
         personalSyncProvider: nil,

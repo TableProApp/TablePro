@@ -285,23 +285,25 @@ impl Account {
     }
 
     // Values the host read again. They apply at once, but the server changes only at a launch: when they no longer
-    // allow it, the account stops calling it until then, and a call already sent has its answer dropped.
-    pub async fn apply_policy(&self, policy: ManagedPolicy) {
-        let stopped = {
-            let _switching = self.switching();
-            let changed = self.inner.policy.send_if_modified(|held| {
-                let changed = *held != policy;
-                *held = policy.clone();
-                changed
-            });
-            changed && !self.is_held() && !policy.allows_server(&self.current().target.origin)
-        };
-        if !stopped {
-            return;
+    // allow it, the account stops calling it until then, and a call already sent has its answer dropped. True when
+    // they stopped it now; `report_stop` then says so in the status, which waits for a call in flight.
+    pub fn apply_policy(&self, policy: ManagedPolicy) -> bool {
+        let _switching = self.switching();
+        let changed = self.inner.policy.send_if_modified(|held| {
+            let changed = *held != policy;
+            *held = policy.clone();
+            changed
+        });
+        let stopped = changed && !self.is_held() && !policy.allows_server(&self.current().target.origin);
+        if stopped {
+            self.hold();
         }
-        self.hold();
+        stopped
+    }
+
+    pub async fn report_stop(&self) {
         let session = self.inner.session.lock().await;
-        if session.refresh.is_some() {
+        if self.is_held() && session.refresh.is_some() {
             let kept = self.inner.status.borrow().entitlement().cloned();
             let problem = EntitlementProblem::RefreshFailed(ServerError::Managed.into());
             self.publish(&session, kept, Some(problem));
@@ -567,6 +569,8 @@ impl Account {
             return Err(error);
         }
         let mut session = self.inner.session.lock().await;
+        // The values may have stopped the server while another call held the session.
+        self.reachable()?;
         if self.inner.attempts.load(Ordering::SeqCst) != attempt {
             if let Err(error) = oauth.revoke(&refresh).await {
                 tracing::warn!(%error, "a superseded sign-in was not revoked");

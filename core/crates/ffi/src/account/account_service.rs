@@ -114,7 +114,7 @@ impl Core {
                 .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??;
             // A development stack's server takes no values at launch, so they come here.
             ai_catalog.allow_refresh(policy.allows_tablepro_requests());
-            account.apply_policy(policy).await;
+            account.apply_policy(policy);
             Ok(Arc::new(AccountService::start(account, listener, tasks, ai_catalog)))
         })
         .await
@@ -184,19 +184,16 @@ impl AccountService {
         self.account.allows_tablepro_requests()
     }
 
-    // The managed values read again, at a change the OS reported. They apply at once; when they no longer allow the
-    // server signed in to, the account calls it no more until the next launch.
-    pub async fn apply_policy(&self, policy: ManagedPolicyArg) {
-        let account = self.account.clone();
-        let ai_catalog = self.ai_catalog.clone();
+    // The managed values read again, at a change the OS reported. They apply before this returns; when they no
+    // longer allow the server signed in to, the account calls it no more until the next launch, and its status says so
+    // once no call holds it.
+    pub fn apply_policy(&self, policy: ManagedPolicyArg) {
         let policy: ManagedPolicy = policy.into();
-        // Before the account, which can wait on a call in flight.
-        ai_catalog.allow_refresh(policy.allows_tablepro_requests());
-        let _ = on_runtime(&self.tasks, async move {
-            account.apply_policy(policy).await;
-            Ok::<_, CoreError>(())
-        })
-        .await;
+        self.ai_catalog.allow_refresh(policy.allows_tablepro_requests());
+        if self.account.apply_policy(policy) {
+            let account = self.account.clone();
+            drop(self.tasks.spawn_task(async move { account.report_stop().await }));
+        }
     }
 
     // A company server's license, once this app verified it.
