@@ -572,3 +572,22 @@ fn a_scope_the_trust_leaves_out_stays_as_it_was() {
         &team_row(6, 0x60, KeyVersionState::Ok)
     );
 }
+
+#[test]
+fn an_endorsement_chain_that_does_not_reach_the_approver_s_ik_still_opens_an_alert() {
+    let held = HeldTables {
+        pins: vec![pin(P, ik(0xb1), 2), pin(A, ik(0xa1), 1)],
+        versions: Vec::new(),
+    };
+    let mut trust = trust_at_av2();
+    let mut offered = trust_pin(A, ik(0xa2), 2);
+    offered.replaced = vec![ik(0xa1)];
+    trust.pins.push(offered);
+    let facts = facts_av2().endorse(A, ik(0xa1), ik(0xa3), 2);
+
+    let merged = merged(&held, &trust, 2, &facts);
+
+    let a = pin_of(&merged, A);
+    assert_eq!((a.ik, a.alert), (ik(0xa3), true));
+    assert_eq!(merged.alerts_opened, vec![A]);
+}

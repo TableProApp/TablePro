@@ -230,12 +230,13 @@ fn merge_other_pin(pin: &KeyPinRow, offered: &TrustPin, facts: &dyn MergeFacts, 
                 row.how = tablepro_keys::trust::PinHow::Replaced;
                 row.av = if Some(ik) == target { av.max(offered.av) } else { av };
                 merged.replaced.push(pin.account);
-                if Some(ik) != target && target.is_some() {
-                    row.alert = true;
-                }
             }
             None => row.alert = true,
         }
+    }
+    // The approver pinned an IK that neither is current here nor was replaced on the way to it.
+    if row.ik != offered.ik && !row.replaced.contains(&offered.ik) {
+        row.alert = true;
     }
     if row.alert && !pin.alert {
         merged.alerts_opened.push(pin.account);

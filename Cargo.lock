@@ -8240,6 +8240,7 @@ dependencies = [
  "serde_json",
  "tablepro-keys",
  "tablepro-records",
+ "tablepro-sync-testing",
  "thiserror 2.0.20",
  "tokio",
  "uuid",

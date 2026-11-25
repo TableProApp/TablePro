@@ -91,6 +91,10 @@ impl MergeFacts for HeldFacts<'_> {
         let Some((held, applied)) = self.versions.get(&(purpose, version)) else {
             return Ok(None);
         };
+        // A personal or history version is signed by its own account.
+        if held.signer != self.service.account() {
+            return Err(KeysError::Signature);
+        }
         let origin = self.service.origin();
         if held.digest(origin)? != *record {
             // An applied record at that id is in force, so another one there is an alarm; a candidate gives way.
