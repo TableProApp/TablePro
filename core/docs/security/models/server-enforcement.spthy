@@ -120,6 +120,18 @@ rule Srv_Reset:
     , Accepted(a, pk(hsig), <'reset', rp>) ]->
   [ PendingReset(a, pk(ik2), h(rp), pk(hsig), hlin) ]
 
+// A `fresh` reset from a holder outside the set, which the server takes only when the set is empty. The model lets
+// any session push one at any time, which gives the attacker more than the rule does.
+rule Srv_ResetFresh:
+  let
+    rp = <'reset', a, pk(ik2), pk(hsig), n, 'fresh'>
+    dp = dpop(jti, 'append', a)
+  in
+  [ !IKTaken(a, ik), ToServer(<'reset', <rp, sign(rp, ik2)>, sign(<'endorse', rp>, hsig), <dp, sign(dp, hsig)>>), Fr(~nid) ]
+  --[ InForce(a, ik), JtiUsed(jti), Unique(h(rp)), ResetPending(a, pk(ik2), h(rp)), ResetBy(a, pk(hsig))
+    , FreshReset(a, pk(hsig)) ]->
+  [ PendingReset(a, pk(ik2), h(rp), pk(hsig), <'root', ~nid>) ]
+
 // Any holder the logs list cancels a reset the person did not make, whatever the server says of its row, as does S
 // through any statement the IK in force signs.
 rule H_Cancel:
@@ -228,7 +240,8 @@ lemma enforcement_executable:
      & not (Ex h #c. Compromise(a, h)@c) & not (Ex #r. RevealIK(a)@r)"
 
 // D8: with no stolen holder, no leaked S and no attacker genesis, every write the server takes came from an
-// honest holder, so a phished session writes no key object and no envelope.
+// honest holder, so a phished session writes no key object and no envelope. A `fresh` reset is the one write it may
+// start, and it stays pending under the veto (reset_needs_s_or_full_delay).
 lemma write_needs_approved_holder:
   "All a hk m #i. Accepted(a, hk, m)@i ==>
      (Ex #j. HolderSent(a, hk, m)@j & #j < #i)

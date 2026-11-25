@@ -170,13 +170,17 @@ restriction OnlyOnce:
 
 lemma words_executable:
   exists-trace
-  "Ex o t m ask th tk #i #c. MAccept(o, t, m, ask, th, tk)@i & CompareWords()@c
+  "Ex o t m ask th tk sid ik mh #g #v #c #f #i.
+     GView(o, t, sid, m, ik, mh, th)@g & MView(o, t, sid, m, ik, mh, th)@v & CompareWords()@c
+     & Confirm(o, t, ask, m, ik, mh, th)@f & MAccept(o, t, m, ask, th, tk)@i
      & not (Ex x #k. Collision(x)@k)
      & not (Ex #k. RevealSigner(o, t)@k) & not (Ex #k. RevealMember(o, m)@k)"
 
 lemma qr_executable:
   exists-trace
-  "Ex o t m ask th tk #i #c. MAccept(o, t, m, ask, th, tk)@i & CompareQR()@c
+  "Ex o t m ask th tk ik mh #g #c #f #i.
+     GView(o, t, 'qr', m, ik, mh, th)@g & CompareQR()@c
+     & Confirm(o, t, ask, m, ik, mh, th)@f & MAccept(o, t, m, ask, th, tk)@i
      & not (Ex #k. RevealSigner(o, t)@k) & not (Ex #k. RevealMember(o, m)@k)"
 
 lemma commitment_leaves_one_guess:

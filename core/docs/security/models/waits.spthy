@@ -1,0 +1,111 @@
+theory SyncWaits
+begin
+
+// ADR 0053: Waits run on the server's clock, as the log records it; Time receipts; Rotating the receipt key; Restore.
+// Two waits matter: a reset's `activate` and a time-locked removal's `signer_remove_complete`, each 7 days after its
+// start. The server is honest here, and a restore loses its records but keeps its receipt key. Days are numbers.
+// C is a client that pins the server's receipt key and adds a new one only through a chain from it.
+
+builtins: hashing, signing, natural-numbers
+
+macros:
+  plus7(t) = t %+ %1 %+ %1 %+ %1 %+ %1 %+ %1 %+ %1 %+ %1,
+  receipt(o, st, t) = <'tablepro/v1/receipt', o, h(st), t>
+
+rule Server:
+  [ Fr(~o), Fr(~rk) ]
+  --[ OnlyOnce('server'), ServerKey(~o, pk(~rk)) ]->
+  [ !ReceiptKey(~o, ~rk), Out(<~o, pk(~rk)>) ]
+
+// The server takes a start (a reset or a time-locked removal) at day t and signs its receipt.
+rule Srv_TakeStart:
+  [ !ReceiptKey(o, rk), Fr(~st), In(%t) ]
+  --[ Day(%t), StartTaken(o, ~st, %t), Original(o, ~st, %t) ]->
+  [ !Record(o, ~st, %t), Out(<~st, %t, sign(receipt(o, ~st, %t), rk)>) ]
+
+// A restore loses the records. A client republishes the start with its receipt, and the server checks its own
+// signature and keeps the original day.
+rule Srv_RestoreWithReceipt:
+  [ !ReceiptKey(o, rk), In(<st, %t0, sign(receipt(o, st, %t0), rk)>), In(%t) ]
+  --[ Day(%t), Restored(o, st), StartTaken(o, st, %t0) ]->
+  [ !Record(o, st, %t0) ]
+
+// Without its receipt, the start is taken again at the current day, so its wait starts again.
+rule Srv_RestoreWithoutReceipt:
+  [ !ReceiptKey(o, rk), In(<'republish', st>), In(%t) ]
+  --[ Day(%t), Restored(o, st), StartTaken(o, st, %t) ]->
+  [ !Record(o, st, %t), Out(<st, %t, sign(receipt(o, st, %t), rk)>) ]
+
+// The statement that ends the wait names `after`, the start's day. The server takes it 7 days on or later.
+rule Srv_EndWait:
+  [ !Record(o, st, %t0), In(%t) ]
+  --[ Day(%t), AtLeast(plus7(%t0), %t), WaitEnded(o, st, %t) ]->
+  [ ]
+
+// The server's clock never goes back. The scheduler picks each day, so time passes as it likes.
+restriction ClockForward:
+  "All t u #i #j. Day(t)@i & Day(u)@j & #i < #j ==> t = u | t << u"
+
+restriction AtLeast:
+  "All a b #i. AtLeast(a, b)@i ==> a = b | a << b"
+
+// Rotating the receipt key: the old key signs the new one.
+rule Srv_RotateReceiptKey:
+  [ !ReceiptKey(o, rk), Fr(~rk2) ]
+  --[ ServerKey(o, pk(~rk2)) ]->
+  [ !ReceiptKey(o, ~rk2), Out(<pk(~rk2), sign(<'tablepro/v1/receipt-key', o, pk(~rk2)>, rk)>) ]
+
+rule C_Pin:
+  [ !ReceiptKey(o, rk), Fr(~c) ]
+  --[ OnlyOnce(<'client', o>), Trusts(~c, o, pk(rk)) ]->
+  [ !CTrusts(~c, o, pk(rk)) ]
+
+rule C_AddKey:
+  let
+    cert = sign(<'tablepro/v1/receipt-key', o, k2>, kold)
+  in
+  [ !CTrusts(c, o, pk(kold)), In(<k2, cert>) ]
+  --[ Trusts(c, o, k2) ]->
+  [ !CTrusts(c, o, k2) ]
+
+// Two receipts under trusted keys for one statement with different days prove the server lied.
+rule C_TwoReceipts:
+  [ !CTrusts(c, o, pk(k1)), !CTrusts(c, o, pk(k2))
+  , In(<st, t1, sign(receipt(o, st, t1), k1)>), In(<st, t2, sign(receipt(o, st, t2), k2)>) ]
+  --[ Neq(t1, t2), ForkAlarm(c, o, st) ]->
+  [ ]
+
+rule LeakReceiptKey:
+  [ !ReceiptKey(o, rk) ] --[ ReceiptKeyLeaked(o) ]-> [ Out(rk) ]
+
+restriction Neq:
+  "All x y #i. Neq(x, y)@i ==> not (x = y)"
+
+restriction OnlyOnce:
+  "All x #i #j. OnlyOnce(x)@i & OnlyOnce(x)@j ==> #i = #j"
+
+lemma wait_executable:
+  exists-trace
+  "Ex o st t0 t #s #e. Original(o, st, t0)@s & WaitEnded(o, st, t)@e"
+
+lemma restore_executable:
+  exists-trace
+  "Ex o st t #r #e. Restored(o, st)@r & WaitEnded(o, st, t)@e & #r < #e"
+
+// 0053's claim: no wait ends within 7 days of its start by the log's recorded times, and a restore lengthens a wait
+// but never shortens it. It rests on the receipt key: with it, anyone can backdate a republished start.
+lemma waits_never_shortened:
+  "All o st t0 t #s #e. Original(o, st, t0)@s & WaitEnded(o, st, t)@e ==>
+     plus7(t0) = t | plus7(t0) << t | (Ex #l. ReceiptKeyLeaked(o)@l)"
+
+// 0053: a client adds a receipt key only through a chain from the key it pinned, so every key it trusts is one the
+// server made, unless a receipt key leaked. A key nothing links needs the person's acceptance, outside this lemma.
+lemma receipt_keys_chain_to_the_pin [use_induction]:
+  "All c o k #i. Trusts(c, o, k)@i ==> (Ex #s. ServerKey(o, k)@s) | (Ex #l. ReceiptKeyLeaked(o)@l)"
+
+// Two receipts for one statement with different days reach a client as evidence of a lying server.
+lemma two_receipts_raise_an_alarm:
+  exists-trace
+  "Ex c o st #a. ForkAlarm(c, o, st)@a"
+
+end

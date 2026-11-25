@@ -2,7 +2,7 @@
 
 Tamarin theories for the flows and claims of [ADR 0053](../../decisions/0053-end-to-end-keys-under-the-recovery-key.md), Formal model and review, under the attacker of [the sync threat model](../sync-threat-model.md).
 
-- Each theory models 0053 at its G0 round 2 fixes (`22151a2fe3`).
+- Every theory models 0053 at `10cd539da7` (#4485), the text frozen for G0 round 4.
 - A flag named `OLD...` or `ASKSIGNED` models the text before G0 round 1 (`e8879f95ee`), where the model found the attack that the fix closes. `NOCOMMIT` and `LATEVIEW` show why the comparison needs its commitment and its timing.
 
 ## Running
@@ -26,9 +26,11 @@ A timeout is a timeout, never a pass.
 | `device-removal.spthy` | Device log, the device set, descendants; Flows: Removing a lost device; ending an account fork | `OLDLEAVE`: a rotate names only holders in the set |
 | `identity-heads.spthy` | Identity log: `dh` never goes back; the reset's holder | `OLDDH`: `dh` may go back |
 | `log-chain.spthy` | Rollback and forks; Restore; Stale or missing state (the anchored re-pin) | |
-| `server-enforcement.spthy` | Server enforcement (D8), Key objects as records; Flows: Reset, its delay, and its cancel by any holder the logs list whatever its row | `OLDRESET`: a reset applies at once |
+| `server-enforcement.spthy` | Server enforcement (D8), Key objects as records, Rows and the veto (a row removal only locks); Flows: Reset and the `fresh` reset, the delay, and the cancel by any holder the logs list | `OLDRESET`: a reset applies at once |
 | `team-keys.spthy` | Team log: holder-signed statements, voided grants, revocations that stay, `key`; member bundles, the member's own check; Flows: Removing a member, Rotation pending | `ASKSIGNED`: team statements signed with the account-wide ASK |
-| `team-signers.spthy` | Team log: `signer_add`, `signer_remove`, `approve`, k = min(2, n), the time-locked removal and its cancel, a reset's suspension, `reroot` | |
+| `team-signers.spthy` | Team log: `signer_add`, `signer_remove`, `approve`, k = min(2, n), the time-locked removal and its cancel from any listed holder, voided cancels, a reset's suspension, `reroot` | |
+| `team-fork.spthy` | Ending a team fork: k at the fork point, signers neither branch removes, no dropped cancel or revocation | |
+| `waits.spthy` | Waits on the server's clock, `after`, time receipts, rotating the receipt key, Restore | |
 | `envelopes.spthy` | Envelopes: the counter, the writer signature, Accepting an envelope; Floors | `OLDCOUNTER`: one counter across versions, compared alone |
 
 ## Attacker
@@ -57,7 +59,7 @@ A timeout is a timeout, never a pass.
   - `device-removal` uses the order in which the removing holder takes statements; the hash chain and the `ih` rule make that order the log's.
   - `server-enforcement` names each new head with a fresh value.
   - `identity-heads` uses two ordered device heads, and `log-chain` numbers a log's statements.
-- **Time.** There is no clock. The 7-day delay of a reset or of a time-locked signer removal means a pending one that its veto did not cancel before it completed.
+- **Time.** `waits.spthy` counts days on the server's clock and checks the 7-day waits against the recorded times, receipts and restores. The other theories have no clock: there a reset or a time-locked removal completes at any time after its start unless its veto came first.
 - **Scope.**
   - One holder removes devices, one envelope of one record carries counters, and key versions are 1 and 2.
   - `team-signers` has two signers, A honest and B held by the attacker, and the accounts A adds. A reset of A, real or made up, suspends A and changes nothing else.

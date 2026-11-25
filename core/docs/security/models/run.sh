@@ -11,7 +11,8 @@
 #
 # RUN_BEFORE_PROOF, when set, is a command run before each proof, such as one that waits for free memory.
 #
-# runs.txt lists every run: theory, flag ("-" for none), lemma and the expected result. Each run prints one line with
+# runs.txt lists every run: theory, flag ("-" for none), lemma, the expected result, and any extra prover options,
+# such as a search strategy for a long exists-trace lemma. Each run prints one line with
 # the result, the prover's step count, the seconds it took and whether it matches the expected result. A result is
 # verified, falsified, timeout, out-of-memory, stopped (a signal ended the prover) or error.
 # Exit: 0 when every run matches, 1 otherwise.
@@ -54,8 +55,9 @@ fi
 
 prove_one() {
     local theory=$1 flag=$2 lemma=$3 expected=$4
+    shift 4
     local tag="${theory%.spthy}-${lemma}"
-    local args=(--prove="$lemma" --derivcheck-timeout=0)
+    local args=(--prove="$lemma" --derivcheck-timeout=0 "$@")
     if [ "$flag" != "-" ]; then
         args+=("-D=$flag")
         tag="$tag-$flag"

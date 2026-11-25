@@ -32,6 +32,15 @@ rule Removal:
 rule StealHolder:
   [ !Stealable(rec, k1, x) ] --[ Stolen(rec) ]-> [ Out(<k1, x>) ]
 
+// The first envelope of the record, under version 1 with n = 1.
+rule HonestFirstWrite:
+  let
+    new = env(k, rec, %1, %1, ~secret, pk(h), h)
+  in
+  [ !ScopeKey(rec, %1, k), !Honest(rec, pk(h), h), Fr(~secret) ]
+  --[ OnlyOnce(<'first', rec>), HonestWrite(rec, %1, %1, h(new)) ]->
+  [ Out(new) ]
+
 #ifdef OLDCOUNTER
 // An honest writer pulls first: it opens the stored envelope, then writes the next counter under its newest version.
 rule HonestWrite:

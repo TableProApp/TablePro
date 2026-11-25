@@ -142,6 +142,16 @@ rule G_AcceptRemoveMember:
   [ ]
 #endif
 
+// A signer that a statement added removes a member. The revocation is checked once, when G first verifies it, and
+// stays even when a later voiding takes away the grant that made its signer a signer.
+rule G_AcceptRemoveMemberByAddedSigner:
+  let
+    rp = <'remove_member', t, m, pk(ph)>
+  in
+  [ !AddedSigner(t, pk(ph), lin), !TConf(t, m, ik, mlin), In(<rp, sign(rp, ph)>) ]
+  --[ UseAuthority(t, lin), RemoveMember(t, m), RemovedBy(t, m, pk(ph)) ]->
+  [ ]
+
 // The person removes the stolen signer holder with S. G sees the signer's `rotate`.
 rule SignerRemovesHolder:
   [ !Stealable(t, g2, ask), Fr(~ask2) ]
@@ -149,21 +159,22 @@ rule SignerRemovesHolder:
   [ Out(<'rotate', t, pk(g2), pk(~ask2)>) ]
 
 // G reads a confirmed member's identity statements from the member bundle, as the server relays them.
+// An SK is a P-256 public key, so G takes only that form.
 rule G_AcceptMemberGenesis:
   let
-    mp = <'genesis', m, pk(ik), skpub>
+    mp = <'genesis', m, pk(ik), pk(skx)>
   in
   [ !TConf(t, m, pk(ik), lin), In(<mp, sign(mp, ik)>) ]
   -->
-  [ !GSK(t, m, skpub) ]
+  [ !GSK(t, m, pk(skx)) ]
 
 rule G_AcceptMemberRotate:
   let
-    rp = <'rotate', m, pk(ik), skold, sknew>
+    rp = <'rotate', m, pk(ik), skold, pk(skx)>
   in
   [ !TConf(t, m, pk(ik), lin), !GSK(t, m, skold), In(<rp, sign(rp, ik)>) ]
   --[ GSawRevoked(t, m, skold) ]->
-  [ !GSK(t, m, sknew) ]
+  [ !GSK(t, m, pk(skx)) ]
 
 // A server hint that a member's device was removed: G signs `revoke_sk` for the SK it holds for that member.
 rule G_RevokeOnHint:
@@ -181,9 +192,9 @@ rule G_NewTK:
 
 // G seals a version to a confirmed member's SK, never to one it has seen revoked.
 rule G_Seal:
-  [ !TK(t, tk), !TConf(t, m, ik, lin), !GSK(t, m, skpub) ]
-  --[ SealTK(t, tk, m, skpub), UseConf(t, m), UseAuthority(t, lin), UseSK(t, m, skpub) ]->
-  [ Out(<'grant', t, kid(tk), m, skpub>), Out(aenc(<wrapinfo(t, m, skpub), tk>, skpub)) ]
+  [ !TK(t, tk), !TConf(t, m, ik, lin), !GSK(t, m, pk(skx)) ]
+  --[ SealTK(t, tk, m, pk(skx)), UseConf(t, m), UseAuthority(t, lin), UseSK(t, m, pk(skx)) ]->
+  [ Out(<'grant', t, kid(tk), m, pk(skx)>), Out(aenc(<wrapinfo(t, m, pk(skx)), tk>, pk(skx))) ]
 
 restriction ConfirmedAndNotRemoved:
   "All t m #i #j. UseConf(t, m)@i & RemoveMember(t, m)@j & #j < #i ==> F"
