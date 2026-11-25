@@ -8,7 +8,7 @@ use tablepro_sync::api::error::SyncError;
 use tablepro_sync::api::ids::{EpochId, ScopeName};
 use tablepro_sync::api::key_flows::{
     KeyApplied, KeyArrival, KeyChangeSet, KeyNoticeKind, KeyState, LockCause, MemberKeyStatus, MemberKeys,
-    OpenedEnvelope, PushBackVerdict, RestoreFlows, Roster, StopAction, StopFlows, TeamFlows, TeamKeys,
+    OpenedEnvelope, PushBackVerdict, RestoreFlows, Roster, StopAction, StopFlows, StoppedDevice, TeamFlows, TeamKeys,
 };
 use tablepro_sync::api::scopes::Role;
 use tablepro_sync::api::state::KeyVersionState;
@@ -53,6 +53,7 @@ impl TeamFlows for FakeKeyFlows {
             } else {
                 KeyVersionState::Ok
             },
+            stopped_cause: None,
             rotation_due: held.rotation_due,
             holder: held.holder,
             members: held
@@ -64,7 +65,17 @@ impl TeamFlows for FakeKeyFlows {
                     status: *status,
                 })
                 .collect(),
-            stopped: Vec::new(),
+            // This fake holds one version at a time, so a holder held the version any report names.
+            stopped: held
+                .stopped
+                .iter()
+                .map(|report| StoppedDevice {
+                    account: report.account,
+                    device: report.device.clone(),
+                    version: report.version,
+                    can_reconfirm: held.holder && held.role.manages_keys(),
+                })
+                .collect(),
         })
     }
 
@@ -191,6 +202,7 @@ impl TeamFlows for FakeKeyFlows {
             held.role = own;
         }
         held.rotation_due = roster.rotation_due || removed_holder;
+        held.stopped = roster.stopped;
         Ok(())
     }
 

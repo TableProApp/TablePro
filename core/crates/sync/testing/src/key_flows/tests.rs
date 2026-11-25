@@ -461,6 +461,7 @@ async fn a_team_envelope_waits_while_the_team_is_due_a_rotation() {
                 members: Vec::new(),
                 role: Some(Role::Owner),
                 rotation_due: true,
+                stopped: Vec::new(),
                 caught_up: true,
             },
         )
@@ -636,4 +637,16 @@ async fn a_new_approval_after_sign_out_takes_a_new_key_device() {
     flows.sign_out().await.unwrap();
 
     assert_ne!(flows.key_device(), before);
+}
+
+#[tokio::test]
+async fn an_offline_sign_out_leaves_the_server_s_pending_reset_alone() {
+    let flows = with_keys().await;
+    let draft = flows.begin_reset(ResetKind::KeepScopeKeys).await.unwrap();
+    flows.finish_reset_proposal(draft.draft, typed(&draft)).await.unwrap();
+    flows.set_offline(true);
+
+    flows.sign_out().await.unwrap();
+
+    assert_eq!(flows.pending_reset().await.unwrap().unwrap().state, ResetState::Pending);
 }

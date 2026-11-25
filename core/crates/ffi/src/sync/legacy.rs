@@ -27,6 +27,9 @@ pub struct LegacyMetadataArg {
     pub dirty: Vec<LegacyRecordArg>,
     pub tombstones: Vec<LegacyTombstoneArg>,
     pub deferred_deletions: Vec<String>,
+    pub changes_held_for_unreadable: Vec<String>,
+    pub removals_pending_for_unreadable: Vec<String>,
+    pub deletions_held_for_unreadable: Vec<String>,
     // Upper-case UUID text.
     pub owners_kept_off_sync: Vec<String>,
     pub standing: Vec<LegacyStandingArg>,
@@ -45,6 +48,8 @@ pub struct LegacyRecordArg {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
 pub struct LegacyTombstoneArg {
     pub record: LegacyRecordArg,
+    // Milliseconds since the Unix epoch.
+    pub deleted_at_ms: i64,
     pub owner: Option<String>,
 }
 
@@ -93,6 +98,7 @@ impl From<sync::LegacyTombstone> for LegacyTombstoneArg {
     fn from(tombstone: sync::LegacyTombstone) -> Self {
         Self {
             record: tombstone.record.into(),
+            deleted_at_ms: tombstone.deleted_at_ms,
             owner: tombstone.owner.map(wire_uuid),
         }
     }
@@ -125,11 +131,15 @@ impl LegacyMetadataArg {
                 .map(|tombstone| {
                     Ok(sync::LegacyTombstone {
                         record: tombstone.record.into(),
+                        deleted_at_ms: tombstone.deleted_at_ms,
                         owner: tombstone.owner.as_deref().map(uuid).transpose()?,
                     })
                 })
                 .collect::<Result<_, AdapterError>>()?,
             deferred_deletions: self.deferred_deletions,
+            changes_held_for_unreadable: self.changes_held_for_unreadable,
+            removals_pending_for_unreadable: self.removals_pending_for_unreadable,
+            deletions_held_for_unreadable: self.deletions_held_for_unreadable,
             owners_kept_off_sync: self
                 .owners_kept_off_sync
                 .iter()
@@ -158,6 +168,9 @@ impl LegacyMetadataArg {
             dirty: metadata.dirty.into_iter().map(Into::into).collect(),
             tombstones: metadata.tombstones.into_iter().map(Into::into).collect(),
             deferred_deletions: metadata.deferred_deletions,
+            changes_held_for_unreadable: metadata.changes_held_for_unreadable,
+            removals_pending_for_unreadable: metadata.removals_pending_for_unreadable,
+            deletions_held_for_unreadable: metadata.deletions_held_for_unreadable,
             owners_kept_off_sync: metadata.owners_kept_off_sync.into_iter().map(wire_uuid).collect(),
             standing: metadata
                 .standing
@@ -242,8 +255,11 @@ mod tests {
                     record_type: "Group".to_owned(),
                     id: "B".to_owned(),
                 },
+                deleted_at_ms: 1_767_225_600_000,
                 owner: Some(Uuid::from_u128(7)),
             }],
+            changes_held_for_unreadable: vec!["Connection_C".to_owned()],
+            deletions_held_for_unreadable: vec!["Group_D".to_owned()],
             standing: vec![sync::LegacyStanding {
                 connection: Uuid::from_u128(9),
                 standing: Standing::LocalOnly,

@@ -1005,3 +1005,167 @@ async fn a_pulled_record_names_the_account_that_wrote_it() {
     assert_eq!(meta.updated_by.as_deref(), Some(ACCOUNT));
     assert_eq!(page.records[0].fields_json.as_deref(), Some(r#"{"name":"a"}"#));
 }
+
+#[tokio::test]
+async fn before_approval_a_genesis_carries_no_plaintext_and_a_nonce_step_is_refused() {
+    let server = FakeServer::new();
+    let new = device(&server, "dev_new", false);
+    let request = "5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357";
+
+    let mixed = new
+        .push(
+            ScopeName::Personal,
+            vec![
+                write("key.account", &member(1), None, json!({"suite": "tp1"})),
+                write("tag", CONNECTION, None, json!({})),
+            ],
+        )
+        .await;
+    let nonce = new
+        .push(
+            ScopeName::Personal,
+            vec![write(
+                "key.sas",
+                &format!("{request}/nonce"),
+                None,
+                json!({"suite": "tp1"}),
+            )],
+        )
+        .await;
+    let reveal = new
+        .push(
+            ScopeName::Personal,
+            vec![write(
+                "key.sas",
+                &format!("{request}/reveal"),
+                None,
+                json!({"suite": "tp1"}),
+            )],
+        )
+        .await;
+
+    assert_eq!(mixed.unwrap_err(), TransportError::DeviceNotApproved);
+    assert_eq!(nonce.unwrap_err(), TransportError::DeviceNotApproved);
+    tag_of(&reveal.unwrap()[0]);
+}
+
+#[tokio::test]
+async fn an_envelope_patch_that_keeps_an_old_version_is_refused() {
+    let server = FakeServer::new();
+    let mac = device(&server, "dev_mac", true);
+    key_versions(&mac, 1).await;
+    let id = format!("connection/{CONNECTION}/password");
+    let created = mac
+        .push(
+            ScopeName::Personal,
+            vec![write(
+                "secret_envelope",
+                &id,
+                None,
+                json!({"suite": "tp1", "kv": 1, "ct": "a"}),
+            )],
+        )
+        .await
+        .unwrap();
+    key_versions_from(&mac, 2).await;
+
+    let kept = mac
+        .push(
+            ScopeName::Personal,
+            vec![write(
+                "secret_envelope",
+                &id,
+                Some(tag_of(&created[0])),
+                json!({"ct": "b"}),
+            )],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(rejected(&kept[0]), RejectedCode::KeyVersionStale);
+}
+
+async fn key_versions_from(device: &Device, version: u32) {
+    for purpose in ["personal", "history"] {
+        let id = format!("{ACCOUNT}/{purpose}/{version}");
+        let outcomes = device
+            .push(
+                ScopeName::Personal,
+                vec![write("key.version", &id, None, json!({"suite": "tp1"}))],
+            )
+            .await
+            .unwrap();
+        tag_of(&outcomes[0]);
+    }
+}
+
+#[tokio::test]
+async fn an_admin_s_roster_carries_the_stop_reports_into_its_team_keys() {
+    use tablepro_sync::api::key_flows::{Roster, TeamFlows};
+
+    use crate::key_flows::FakeKeyFlows;
+
+    let server = FakeServer::new();
+    let team = TeamId(Uuid::new_v4());
+    let editor = AccountId(Uuid::from_u128(5));
+    server.add_team(team, &[(account(), Role::Admin), (editor, Role::Editor)]);
+    let admin = device(&server, "dev_admin", true);
+    let stopped_seed = Ed25519Seed::generate().unwrap();
+    let stopped_row = DeviceRowId("dev_stopped".to_owned());
+    server.approve(&stopped_row, stopped_seed.public().unwrap().0);
+    let stopped = server.client(editor, stopped_row.clone());
+    let version = Version::new(6).unwrap();
+    stopped
+        .report_stopped(team, version, DpopKey(Arc::new(stopped_seed)))
+        .await
+        .unwrap();
+
+    let ScopesAnswer::Body { body, .. } = admin.client.scopes(None, admin.proof()).await.unwrap() else {
+        panic!("no body");
+    };
+    let info = body
+        .scopes
+        .iter()
+        .find(|scope| scope.scope == ScopeName::Team(team))
+        .unwrap();
+    let roster = Roster::of(info, true);
+    let flows = FakeKeyFlows::new(
+        tablepro_keys::encoding::Origin::parse("https://api.tablepro.app").unwrap(),
+        account(),
+    );
+    flows.add_team(team, Role::Admin, &[]);
+    flows.roster_read(team, roster.clone()).await.unwrap();
+    let keys = flows.team_keys(team).await.unwrap();
+
+    assert_eq!(roster.stopped.len(), 1);
+    assert_eq!(keys.stopped[0].device, stopped_row);
+    assert_eq!(keys.stopped[0].version, version);
+    assert_eq!(keys.stopped[0].account, editor);
+}
+
+#[tokio::test]
+async fn an_editor_s_roster_carries_no_stop_reports() {
+    use tablepro_sync::api::key_flows::Roster;
+
+    let server = FakeServer::new();
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account(), Role::Editor)]);
+    let editor = device(&server, "dev_editor", true);
+    editor
+        .client
+        .report_stopped(team, Version::new(2).unwrap(), editor.key.clone())
+        .await
+        .unwrap();
+
+    let ScopesAnswer::Body { body, .. } = editor.client.scopes(None, editor.proof()).await.unwrap() else {
+        panic!("no body");
+    };
+    let info = body
+        .scopes
+        .iter()
+        .find(|scope| scope.scope == ScopeName::Team(team))
+        .unwrap();
+
+    assert!(Roster::of(info, true).stopped.is_empty());
+    assert_eq!(server.stop_reports(team).len(), 1);
+}

@@ -29,6 +29,12 @@ pub struct LegacyMetadata {
     pub dirty: Vec<LegacyRecordRef>,
     pub tombstones: Vec<LegacyTombstone>,
     pub deferred_deletions: Vec<String>,
+    // Record names a pull changed while this device's copy could not be read, fetched by id once it reads.
+    pub changes_held_for_unreadable: Vec<String>,
+    // Unread copies a pull deleted, removed by the next save of their file.
+    pub removals_pending_for_unreadable: Vec<String>,
+    // Deletions pulled while this device could not tell whether its unreadable copy syncs.
+    pub deletions_held_for_unreadable: Vec<String>,
     pub owners_kept_off_sync: Vec<Uuid>,
     pub standing: Vec<LegacyStanding>,
     pub readable_record_types: Vec<String>,
@@ -48,6 +54,8 @@ pub struct LegacyRecordRef {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LegacyTombstone {
     pub record: LegacyRecordRef,
+    // Milliseconds since the Unix epoch, which the Swift engine prunes tombstones by.
+    pub deleted_at_ms: i64,
     pub owner: Option<Uuid>,
 }
 

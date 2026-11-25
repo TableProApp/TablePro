@@ -26,7 +26,7 @@ use tablepro_sync::api::ids::ScopeName;
 use tablepro_sync::api::key_flows::MemberKeyStatus;
 use tablepro_sync::api::key_flows::{
     AccountDevice, ApprovalRequest, DraftId, KeyChangeSet, KeyHooks, KeyNotice, KeyState, LockCause, PendingReset,
-    ReviewedMember, SessionPhase, SessionRole, StopAction, StopCause, TypedBack,
+    ReviewedMember, SessionPhase, SessionRole, StopAction, TypedBack,
 };
 use tablepro_sync::api::scopes::Role;
 use uuid::Uuid;
@@ -63,6 +63,7 @@ pub(crate) struct FakeTeam {
     pub(crate) rotation_due: bool,
     pub(crate) members: BTreeMap<AccountId, (Role, MemberKeyStatus)>,
     pub(crate) ended: bool,
+    pub(crate) stopped: Vec<tablepro_sync::api::scopes::StopReport>,
 }
 
 #[derive(Debug)]
@@ -222,6 +223,7 @@ impl FakeKeyFlows {
                 holder: false,
                 rotation_due: false,
                 ended: false,
+                stopped: Vec::new(),
                 members: members
                     .iter()
                     .map(|(account, role, status)| (*account, (*role, *status)))
@@ -395,7 +397,7 @@ pub struct RecordingHooks {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HookCall {
     Lock(LockCause),
-    Stop(ScopeName, StopCause),
+    Stop(ScopeName, tablepro_sync::api::state::StoppedCause),
     Resume(ScopeName),
     End(ScopeName, Option<tablepro_sync::api::ids::EpochId>),
     Notice(KeyNotice),
@@ -417,7 +419,7 @@ impl KeyHooks for RecordingHooks {
         self.record(HookCall::Lock(cause));
     }
 
-    fn stop_scope(&self, scope: ScopeName, cause: StopCause) {
+    fn stop_scope(&self, scope: ScopeName, cause: tablepro_sync::api::state::StoppedCause) {
         self.record(HookCall::Stop(scope, cause));
     }
 
