@@ -216,7 +216,13 @@ impl KeyService {
             (Role::NewDevice, SessionState::Chosen | SessionState::Revealed) if !record.sent.reveal => {
                 self.send_reveal(record).await
             }
-            (Role::NewDevice, SessionState::Confirmed) => self.try_merge(record).await.map(|_| ()),
+            (Role::NewDevice, SessionState::Confirmed) => {
+                if !self.try_merge(record).await? && record.sent.purged {
+                    record.purged_unapproved();
+                    self.save_session(record).await?;
+                }
+                Ok(())
+            }
             (Role::Approver, SessionState::Confirmed) if !record.sent.approval => self.send_approval(record).await,
             _ => Ok(()),
         }

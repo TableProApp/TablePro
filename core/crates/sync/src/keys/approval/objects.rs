@@ -195,10 +195,14 @@ impl KeyService {
         ))
         .await?;
         let is_request = KeyKind::parse(pulled.kind.as_str()) == Ok(KeyKind::Request);
-        if is_request && let Some(record) = self.session_record(txn, request).await? {
+        if is_request && let Some(mut record) = self.session_record(txn, request).await? {
             let pending_merge =
                 record.role == Role::NewDevice && record.live() && record.state == SessionState::Confirmed;
-            if !pending_merge {
+            if pending_merge {
+                record.sent.purged = true;
+                self.put_session(txn, &record).await?;
+                self.hooks().pass_soon();
+            } else {
                 txn.delete(&RowKey::KeyComparison(request)).await?;
                 txn.delete(&RowKey::KeyPending(PendingFlow::Approval { request }))
                     .await?;

@@ -308,6 +308,7 @@ impl KeyService {
     }
 
     async fn rotation_refused(&self, built: &Built, recovering: Option<HeldDeviceKeys>) -> Result<(), SyncError> {
+        self.erase_account_keys(built.av).await?;
         let mut txn = self.begin().await?;
         self.drop_candidates(txn.as_mut(), ScopeName::Personal, &built.objects)
             .await?;

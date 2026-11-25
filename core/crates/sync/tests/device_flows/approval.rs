@@ -416,3 +416,87 @@ async fn a_replace_during_a_session_ends_it_with_keys_session() {
 
     assert_eq!(error.code(), "keys.session");
 }
+
+// The approval applied before `expires_at`; N, offline until after it, still takes it once it pulls.
+#[tokio::test]
+async fn n_takes_an_approval_that_applied_in_time_however_late_it_pulls() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    n.service.confirm_session(request).await.unwrap();
+    a.service.confirm_session(request).await.unwrap();
+    n.advance(700 * 1_000_000);
+
+    n.pull().await;
+    let session = n.service.approval_session(request).await.unwrap();
+
+    assert_eq!(session.phase, SessionPhase::Approved);
+}
+
+// A device a rotation left out asks again: a new key device id, its old keys kept until the approval applies, and
+// the approver as its only own-device pin.
+#[tokio::test]
+async fn a_device_left_out_of_a_rotation_is_approved_again_under_a_new_key_device() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let before = b.service.device_keys().await.unwrap().current.unwrap().key_device;
+    crate::rotation::rotate_keeping_only_self(&a, &r).await;
+    a.server_approves().await;
+    b.pull().await;
+
+    approve(&b, &a).await;
+
+    let after = b.service.device_keys().await.unwrap().current.unwrap().key_device;
+    let a_device = a.service.device_keys().await.unwrap().current.unwrap().key_device;
+    assert_ne!(after, before);
+    assert_eq!(b.av().await, 2);
+    assert_eq!(
+        b.device_pins()
+            .await
+            .iter()
+            .map(|pin| pin.key_device)
+            .collect::<Vec<_>>(),
+        vec![a_device]
+    );
+}
+
+// A reset elsewhere leaves this device's own account under an IK it never saw endorsed, so it locks. Approved by the
+// resetting device, it takes that device's pin and the lock clears.
+#[tokio::test]
+async fn a_device_locked_by_its_own_account_s_reset_is_approved_by_the_resetting_device() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let reset = crate::harness::propose_reset(&a, tablepro_sync::api::key_flows::ResetKind::KeepScopeKeys).await;
+    server.advance_clock(7 * 24 * 3600 * 1_000_000);
+    tablepro_sync::api::key_flows::ResetFlows::activate_reset(&a.service, reset.reset)
+        .await
+        .unwrap();
+    a.server_approves().await;
+    a.pull().await;
+    b.pull().await;
+    let locked = b.key_state().await;
+
+    approve(&b, &a).await;
+
+    assert!(matches!(locked, KeyState::Locked { .. }), "{locked:?}");
+    assert_eq!(b.av().await, 2);
+    assert_eq!(b.pin(account).await.unwrap().ik, a.pin(account).await.unwrap().ik);
+}

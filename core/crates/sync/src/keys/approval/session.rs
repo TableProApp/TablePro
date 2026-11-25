@@ -36,6 +36,8 @@ pub(crate) struct Sent {
     // A's approval change set applied; N merged it.
     pub approval: bool,
     pub cancel: bool,
+    // The server purged the request: N, still waiting for its approval, takes one already held or ends.
+    pub purged: bool,
 }
 
 #[derive(Clone)]
@@ -286,14 +288,24 @@ impl SessionRecord {
         }
     }
 
+    pub fn purged_unapproved(&mut self) {
+        if self.live() {
+            self.state = SessionState::Expired;
+            self.end = Some(Ended::Expired);
+        }
+    }
+
     pub fn approved(&mut self) {
         self.end = Some(Ended::Approved);
         self.sent.approval = true;
     }
 
-    // The server's `expires_at`, 600 seconds after it took the request. Once approved a session never expires.
+    // The server's `expires_at`, 600 seconds after it took the request. Once approved a session never expires, and
+    // N, once its person confirmed, still takes an approval that applied in time however late it arrives: it ends
+    // only when the server purges the request with no approval held.
     pub fn expire_if_due(&mut self, now_us: i64) -> bool {
-        if self.live() && now_us >= self.expires_at_us {
+        let merging = self.role == Role::NewDevice && self.state == SessionState::Confirmed;
+        if self.live() && !merging && now_us >= self.expires_at_us {
             self.state = SessionState::Expired;
             self.end = Some(Ended::Expired);
             true
@@ -496,11 +508,15 @@ const fn end_from_code(code: u8) -> Option<Option<Ended>> {
 }
 
 const fn sent_bits(sent: Sent) -> u8 {
-    (sent.opened as u8) | (sent.reveal as u8) << 1 | (sent.approval as u8) << 2 | (sent.cancel as u8) << 3
+    (sent.opened as u8)
+        | (sent.reveal as u8) << 1
+        | (sent.approval as u8) << 2
+        | (sent.cancel as u8) << 3
+        | (sent.purged as u8) << 4
 }
 
 const fn sent_from_bits(bits: u8) -> Option<Sent> {
-    if bits & 0xf0 != 0 {
+    if bits & 0xe0 != 0 {
         return None;
     }
     Some(Sent {
@@ -508,6 +524,7 @@ const fn sent_from_bits(bits: u8) -> Option<Sent> {
         reveal: bits & 2 != 0,
         approval: bits & 4 != 0,
         cancel: bits & 8 != 0,
+        purged: bits & 16 != 0,
     })
 }
 
@@ -763,11 +780,25 @@ mod tests {
     }
 
     #[test]
+    fn n_waiting_for_its_approval_ends_only_when_the_request_is_purged() {
+        let mut pair = pair();
+        through_reveal(&mut pair);
+        pair.n.words(&origin(), account()).unwrap();
+        pair.n.confirm(&origin(), account()).unwrap();
+
+        assert!(!pair.n.expire_if_due(i64::MAX));
+        pair.n.purged_unapproved();
+
+        assert_eq!(pair.n.phase(&origin(), account()).unwrap(), SessionPhase::Expired);
+    }
+
+    #[test]
     fn a_row_round_trips_and_a_tampered_one_is_refused() {
         let mut pair = pair();
         through_reveal(&mut pair);
         pair.a.words(&origin(), account()).unwrap();
         pair.a.sent.opened = true;
+        pair.a.sent.purged = true;
         pair.a.device = Some(DeviceRowId("dev_1".to_owned()));
 
         let row = pair.a.to_row();

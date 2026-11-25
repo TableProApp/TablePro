@@ -9,7 +9,7 @@ mod steps;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::ExposeSecret;
 use tablepro_keys::body::{KeyBody, KeyObject};
 use tablepro_keys::cert::sign_cancel;
 use tablepro_keys::encoding::{ResetId, random_uuid};
@@ -18,6 +18,7 @@ use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::recovery::RecoveryKey;
 
 use self::record::{HOLD_US, ResetRecord};
+use super::account_genesis::ShownKey;
 use super::approval::{Pushed, pushed};
 use super::{HeldDeviceKeys, KeyService, ResetKeys, create_change};
 use crate::api::error::SyncError;
@@ -32,41 +33,11 @@ use crate::api::transport::{DpopKey, RejectedCode};
 // R' as shown, with the two of its 14 groups the person types back before anything is pushed.
 struct ResetDraft {
     kind: ResetKind,
-    recovery: RecoveryKey,
-    check: [u8; 2],
+    shown: ShownKey,
 }
 
 fn rejected(code: RejectedCode) -> SyncError {
     SyncError::Rejected { code }
-}
-
-// A group as reading the recovery key reads it (0056, The recovery key, Text).
-fn normalized(group: &str) -> String {
-    group
-        .chars()
-        .filter(|character| !matches!(character, '-' | ' '))
-        .map(|character| match character.to_ascii_uppercase() {
-            'O' => '0',
-            'I' | 'L' => '1',
-            other => other,
-        })
-        .collect()
-}
-
-fn typed_back_matches(text: &SecretString, check: [u8; 2], typed: &TypedBack) -> bool {
-    let groups: Vec<&str> = text.expose_secret().split('-').collect();
-    check.iter().zip(&typed.groups).all(|(index, typed)| {
-        groups
-            .get(usize::from(*index))
-            .is_some_and(|group| normalized(typed.expose_secret()) == *group)
-    })
-}
-
-fn two_groups() -> Result<[u8; 2], SyncError> {
-    let random = random_uuid()?.into_bytes();
-    let first = random[0] % 14;
-    let second = (first + 1 + random[1] % 13) % 14;
-    Ok([first, second])
 }
 
 #[async_trait]
@@ -83,23 +54,20 @@ impl ResetFlows for KeyService {
     async fn begin_reset(&self, kind: ResetKind) -> Result<RecoveryKeyDraft, SyncError> {
         let _serial = self.serialized().await;
         self.reset_may_start(kind).await?;
-        let recovery = RecoveryKey::generate()?;
-        let text = recovery.to_text()?;
-        let check = two_groups()?;
-        let draft = self.drafts().put(ResetDraft { kind, recovery, check })?;
-        Ok(RecoveryKeyDraft { draft, text, check })
+        let draft = self.drafts().put(ResetDraft {
+            kind,
+            shown: ShownKey::new()?,
+        })?;
+        self.drafts()
+            .with(draft, |held: &mut ResetDraft| held.shown.draft(draft))?
     }
 
     async fn finish_reset_proposal(&self, draft: DraftId, typed: TypedBack) -> Result<PendingReset, SyncError> {
         let _serial = self.serialized().await;
-        let (kind, recovery, matches) = self.drafts().with(draft, |held: &mut ResetDraft| {
-            let text = held.recovery.to_text();
-            let matches = text.map(|text| typed_back_matches(&text, held.check, &typed));
-            (held.kind, held.recovery.clone(), matches)
+        let (kind, recovery, typed_back) = self.drafts().with(draft, |held: &mut ResetDraft| {
+            (held.kind, held.shown.key.clone(), held.shown.check_typed_back(&typed))
         })?;
-        if !matches? {
-            return Err(SyncError::TypedBackWrong);
-        }
+        typed_back?;
         let av = self.reset_may_start(kind).await?.next()?;
         let reset = ResetId(random_uuid()?);
         let keys = ResetKeys {
