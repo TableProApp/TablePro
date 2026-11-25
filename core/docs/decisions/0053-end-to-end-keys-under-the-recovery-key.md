@@ -326,7 +326,7 @@ Key objects are records of reserved kinds under 0051's record rules. Ids are wri
 
 | Kind | Scope | Id parts | Writer-bound | What the server verifies |
 |---|---|---|---|---|
-| `key.identity` | personal | account, `seq` | account | The JWS framing, the chain, the signatures, the endorsements and every rule above. `genesis` only while the account has no `key.identity` record (0051). `reset` only from the holder it names. `activate` only 7 days after the `reset`. Answers `bad_statement` |
+| `key.identity` | personal | account, `seq` | account | The JWS framing, the chain, the signatures, the endorsements and every rule above. `genesis` only while the account has no `key.identity` record (0051). `reset` only from the holder it names. `activate` only 7 days after the `reset`, and only while it is not cancelled. Answers `bad_statement` |
 | `key.device` | personal | account, `seq` | account | As for `key.identity`, and the holder's row is one of the account's device rows |
 | `key.recovery` | personal | account, `rk_v` | account | Its hash is the `blob` an identity statement names for that `rk_v`. A superseded blob is deleted once a `replace` or an activated `reset` applies |
 | `key.request` | personal | request id | the request's holder | Signed by the request's own signing key, which is the DPoP key. `exp` is in the future and at most 600 s after `iat`. One open request per holder |
@@ -466,9 +466,9 @@ The exchange is Vaudenay's SAS-based message cross-authentication (CRYPTO 2005; 
 
 **No holder left.** An account whose device set is empty (every holder left, or every one is on a row an admin removed) and whose person has no recovery key can only start again.
 
-- The server takes a `reset` from a signed-in holder outside the set only on a session that has just authenticated again at the IdP (`max_age=0`, step-up S5).
+- The server takes a `reset` from a signed-in holder outside the set only on a session that authenticated again at the IdP within the last 300 s, through `max_age=0` (step-up, S5). Otherwise it answers `step_up_required` (0051).
 - The reset is pending for 7 days. The portal shows it, and the SaaS sends an email. An `add` (method `recovery`) under the IK in force cancels it, so a person who still holds S keeps the account.
-- At `activate`, and not before, the server deletes every record in the account's personal and history scopes except the identity and device logs. The reset still extends the logs, so teammates see it as a reset.
+- The server takes the `activate` only 7 days after the `reset`, and only while it is not cancelled. At `activate`, and not before, it deletes every record in the account's personal and history scopes except the key logs, which stay intact (0051). The reset still extends the logs, so teammates see it as a reset.
 - A device that signs in to an account that has an identity and an empty set asks for the recovery key first.
 - Devices that kept local data push it again after they join.
 
@@ -524,7 +524,7 @@ This is an honest-server control against account takeover. A malicious server is
 - write its `key.request` and the `reveal` step of that request;
 - write an `add` (method `recovery`) that verifies under the IK in force and names its own DPoP key;
 - while the account has no identity log, write the genesis records naming itself;
-- while the device set is empty, write a `reset` naming itself, after a step-up (Flows, No holder left).
+- while the device set is empty, write a `reset` naming itself, after a step-up within the last 300 s, else `step_up_required` (Flows, No holder left).
 
 **Floors.** Each personal and team scope has a floor: the lowest key version a new envelope or history entry may use. Flows says when it rises. An honest server refuses a `kv` below it with `key_version_stale`. After a removal raises it from v to v+1, a write under v is refused, one under v+1 is taken, and the writes queued meanwhile go out once the rotation lands.
 
@@ -636,7 +636,7 @@ The K3 wire schema spells each destination field. A new secret kind needs a row 
 
   A reader refuses an unknown `v`.
 - **Fields:** `suite`, `kv`, `n`, `nonce`, `ct`, `writer` and `sig`.
-- **The counter `n`.** It is 1 for the first envelope under each key version and grows by one per write under that version. `n` is in the AAD and in the clear fields. The honest server takes a write only with (`kv`, `n`) one step after what it stores: the same `kv` with `n + 1`, or a higher `kv` with `n` = 1. An envelope sealed again when a policy comes back follows the same rule (0051).
+- **The counter `n`.** It is 1 for the first envelope under each key version and grows by one per write under that version. `n` is in the AAD and in the clear fields. The honest server takes a write only with (`kv`, `n`) exactly one step after what it stores: the same `kv` with `n + 1`, or a higher `kv` with `n` = 1. Any other pair answers `bad_counter` (0051). An envelope sealed again when a policy comes back follows the same rule (0051).
 - **Writer signature.** `sig = Sign(writer's holder key, LP("tablepro/v1/writer") || writer || LP(SHA-256(LP(AAD) || nonce || ct)))`. Personal and team envelopes alike.
 
 **Accepting an envelope.** A client accepts an envelope only when:
