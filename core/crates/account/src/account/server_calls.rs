@@ -71,6 +71,10 @@ impl Account {
             return Err(ServerError::Managed.into());
         }
         let target = server::resolve(&policy, chosen.as_deref(), loopback);
+        // Checked again under the session, before the candidate hears anything: a refused source names no server.
+        if self.is_held() || !policy.allows_server(&target.origin) {
+            return Err(ServerError::Managed.into());
+        }
         let discovered = match target.kind {
             // A candidate's 429 is the person's to see; it holds back nothing the current server does.
             ServerKind::Company => Some(server::discover(&self.inner.http, &target.origin, loopback).await?),
