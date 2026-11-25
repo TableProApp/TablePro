@@ -68,7 +68,7 @@ The account takes the Mac's seams through the FFI, resolves and discovers the se
 - `SecretItemTag` gains a variant with a field, so C# reads it as a class hierarchy. The Windows `ISecretStore` takes a `SecretItem` record with the sign-in key, and its tests ask for the keyed item on a development stack.
 - `AccountSettings` takes a `ServerSettings` in place of endpoints and keys; the Linux app passes tablepro.app or its development stack.
 - A release build trusts the two license keys whose private halves are the KMS keys of 0044, Key custody: `Yo4CIBJnxzUMSLPnsLId8ngVVe5xuZgHkOU9Z-Hgo04`, current, and `J5yCP_8iTKHyXvyYQ9y4-D2-Z_U4hbtGDvwkfzv57R0`, next. Test keys reach only a development build.
-- RFC 9207's `iss` is compared whenever an authorization response carries it, and a code from another issuer is never exchanged. tablepro-cloud does not send it yet, so the preview does not require it; 0044 keeps requiring it as a release gate.
+- RFC 9207's `iss` is compared exactly with the issuer the sign-in went to, on a code and on an error, and a code from another issuer is never exchanged. It is required from tablepro.app, whose compiled endpoints come with the knowledge that it sends one, and from a company server whose discovery says `authorization_response_iss_parameter_supported`; a server that says nothing may leave it out but never name another. A refusal is `account.sign_in_issuer_mismatch`.
 - The iOS app takes the same seams once it has an account.
 
 ## Alternatives considered

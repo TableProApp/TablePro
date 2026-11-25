@@ -3416,6 +3416,9 @@ New fingerprint: {2}</value>
   <data name="Error_account_sign_in_refused" xml:space="preserve">
     <value>The account service refused the sign-in.</value>
   </data>
+  <data name="Error_account_sign_in_issuer_mismatch" xml:space="preserve">
+    <value>TablePro could not confirm that the sign-in came from its account service. Sign in again.</value>
+  </data>
   <data name="Error_account_signed_out" xml:space="preserve">
     <value>Sign in to your TablePro account first.</value>
   </data>

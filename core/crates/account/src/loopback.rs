@@ -14,6 +14,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
+use crate::account_error::AccountError;
 use crate::account_settings::CallbackPage;
 
 const CALLBACK_PATH: &str = "/oauth/callback";
@@ -35,11 +36,44 @@ pub(crate) struct Loopback {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Callback {
+pub(crate) struct Callback {
+    pub outcome: Outcome,
+    // Each RFC 9207 `iss` the answer carried, on an error as on a code. RFC 6749 section 3.1 allows one.
+    pub issuers: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Outcome {
     Code(String),
-    // RFC 9207: the code and the issuer the authorization server named, which must be the one asked.
-    CodeFrom { code: String, issuer: String },
     Refused { error: String, description: Option<String> },
+}
+
+// The issuer a sign-in was sent to, and whether its answer must name it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExpectedIssuer {
+    pub issuer: String,
+    pub required: bool,
+}
+
+impl Callback {
+    // RFC 9207 section 2.4: an answer that names another issuer, or none where the issuer always names itself, may come
+    // from another server, so neither its code nor its error counts. The comparison is exact: no trailing slash or case
+    // is forgiven.
+    pub(crate) fn code_for(self, expected: &ExpectedIssuer) -> Result<String, AccountError> {
+        let from_expected = match self.issuers.as_slice() {
+            [] => !expected.required,
+            [named] => *named == expected.issuer,
+            _ => false,
+        };
+        if !from_expected {
+            tracing::warn!(expected = %expected.issuer, named = ?self.issuers, "a sign-in answer from another issuer was refused");
+            return Err(AccountError::SignInIssuerMismatch);
+        }
+        match self.outcome {
+            Outcome::Code(code) => Ok(code),
+            Outcome::Refused { error, description } => Err(AccountError::SignInRefused { error, description }),
+        }
+    }
 }
 
 impl Loopback {
@@ -129,10 +163,10 @@ fn reply<B>(request: &Request<B>, state: &str, page: &CallbackPage) -> Reply {
 }
 
 pub(crate) fn callback(query: &str, state: &str) -> Option<Callback> {
-    let (mut code, mut error, mut description, mut returned, mut issuer) = (None, None, None, None, None);
+    let (mut code, mut error, mut description, mut returned, mut issuers) = (None, None, None, None, Vec::new());
     for (name, value) in url::form_urlencoded::parse(query.as_bytes()) {
         match &*name {
-            "iss" => issuer = Some(value.into_owned()),
+            "iss" => issuers.push(value.into_owned()),
             "code" => code = Some(value.into_owned()),
             "error" => error = Some(value.into_owned()),
             "error_description" => description = Some(value.into_owned()),
@@ -143,17 +177,15 @@ pub(crate) fn callback(query: &str, state: &str) -> Option<Callback> {
     if returned.as_deref() != Some(state) {
         return None;
     }
-    Some(match (code, error) {
-        (_, Some(error)) => Callback::Refused { error, description },
-        (Some(code), None) => match issuer {
-            Some(issuer) => Callback::CodeFrom { code, issuer },
-            None => Callback::Code(code),
-        },
-        (None, None) => Callback::Refused {
+    let outcome = match (code, error) {
+        (_, Some(error)) => Outcome::Refused { error, description },
+        (Some(code), None) => Outcome::Code(code),
+        (None, None) => Outcome::Refused {
             error: "invalid_request".to_owned(),
             description,
         },
-    })
+    };
+    Some(Callback { outcome, issuers })
 }
 
 fn html(status: StatusCode, text: &str) -> Response<Full<Bytes>> {
@@ -198,12 +230,108 @@ mod tests {
         }
     }
 
+    fn code(code: &str) -> Callback {
+        Callback {
+            outcome: Outcome::Code(code.to_owned()),
+            issuers: Vec::new(),
+        }
+    }
+
+    // The code an answer to the sign-in with state s1 gives, or the error's code.
+    fn answered(query: &str, issuer: &str, required: bool) -> Result<String, &'static str> {
+        let expected = ExpectedIssuer {
+            issuer: issuer.to_owned(),
+            required,
+        };
+        callback(query, "s1")
+            .expect("an answer to this sign-in")
+            .code_for(&expected)
+            .map_err(|error| error.code())
+    }
+
+    const ISSUER: &str = "https://account.example.com";
+    const MISMATCH: Result<String, &str> = Err("account.sign_in_issuer_mismatch");
+
+    #[test]
+    fn a_code_is_taken_only_from_the_issuer_asked_and_without_iss_only_where_none_is_promised() {
+        let named = "code=c&state=s1&iss=https%3A%2F%2Faccount.example.com";
+        let unnamed = "code=c&state=s1";
+        let other = "code=c&state=s1&iss=https%3A%2F%2Fevil.example";
+
+        assert_eq!(answered(named, ISSUER, true), Ok("c".to_owned()));
+        assert_eq!(answered(unnamed, ISSUER, true), MISMATCH);
+        assert_eq!(answered(other, ISSUER, true), MISMATCH);
+        assert_eq!(answered(named, ISSUER, false), Ok("c".to_owned()));
+        assert_eq!(answered(unnamed, ISSUER, false), Ok("c".to_owned()));
+        assert_eq!(answered(other, ISSUER, false), MISMATCH);
+    }
+
+    #[test]
+    fn an_error_counts_only_from_the_issuer_asked() {
+        let refused = Err("account.sign_in_refused");
+        let named = "error=access_denied&state=s1&iss=https%3A%2F%2Faccount.example.com";
+        let unnamed = "error=access_denied&state=s1";
+        let other = "error=access_denied&state=s1&iss=https%3A%2F%2Fevil.example";
+
+        assert_eq!(answered(named, ISSUER, true), refused);
+        assert_eq!(answered(unnamed, ISSUER, true), MISMATCH);
+        assert_eq!(answered(other, ISSUER, true), MISMATCH);
+        assert_eq!(answered(unnamed, ISSUER, false), refused);
+        assert_eq!(answered(other, ISSUER, false), MISMATCH);
+    }
+
+    // RFC 9207 section 2.4: decoded once, then compared as strings, with no URL normalization.
+    #[test]
+    fn the_issuer_is_compared_exactly_once_decoded() {
+        let with_path = "https://idp.example.com/tenant/";
+        let answer = |iss: &str| format!("code=c&state=s1&iss={iss}");
+
+        assert_eq!(
+            answered(&answer("https%3A%2F%2Fidp.example.com%2Ftenant%2F"), with_path, true),
+            Ok("c".to_owned())
+        );
+        assert_eq!(
+            answered(&answer("https://idp.example.com/tenant/"), with_path, true),
+            Ok("c".to_owned())
+        );
+        assert_eq!(
+            answered(&answer("https%3A%2F%2Fidp.example.com%2Ftenant"), with_path, true),
+            MISMATCH
+        );
+        assert_eq!(
+            answered(&answer("https%3A%2F%2Faccount.example.com%2F"), ISSUER, true),
+            MISMATCH
+        );
+        assert_eq!(
+            answered(&answer("https%3A%2F%2FAccount.example.com"), ISSUER, true),
+            MISMATCH
+        );
+        assert_eq!(
+            answered(&answer("https%3A%2F%2Faccount.example.com%3A443"), ISSUER, true),
+            MISMATCH
+        );
+        let escaped = "https://idp.example.com/a%20b";
+        assert_eq!(
+            answered(&answer("https%3A%2F%2Fidp.example.com%2Fa%2520b"), escaped, true),
+            Ok("c".to_owned())
+        );
+        assert_eq!(
+            answered(&answer("https%3A%2F%2Fidp.example.com%2Fa%20b"), escaped, true),
+            MISMATCH
+        );
+    }
+
+    #[test]
+    fn an_answer_naming_two_issuers_is_refused_even_when_one_is_the_issuer_asked() {
+        let twice = "code=c&state=s1&iss=https%3A%2F%2Faccount.example.com&iss=https%3A%2F%2Fevil.example";
+
+        assert_eq!(answered(twice, ISSUER, true), MISMATCH);
+        assert_eq!(answered(twice, ISSUER, false), MISMATCH);
+    }
+
     #[test]
     fn only_the_matching_state_answers() {
-        assert_eq!(
-            callback("code=abc&state=s1", "s1"),
-            Some(Callback::Code("abc".to_owned()))
-        );
+        assert_eq!(callback("code=abc&state=s1", "s1"), Some(code("abc")));
         assert_eq!(callback("code=abc&state=s2", "s1"), None);
         assert_eq!(callback("code=abc", "s1"), None);
         assert_eq!(callback("", "s1"), None);
@@ -215,9 +343,12 @@ mod tests {
 
         assert_eq!(
             refused,
-            Some(Callback::Refused {
-                error: "access_denied".to_owned(),
-                description: Some("No thanks".to_owned()),
+            Some(Callback {
+                outcome: Outcome::Refused {
+                    error: "access_denied".to_owned(),
+                    description: Some("No thanks".to_owned()),
+                },
+                issuers: Vec::new(),
             })
         );
     }
@@ -253,7 +384,7 @@ mod tests {
         assert_eq!(favicon.status(), StatusCode::NOT_FOUND);
         assert_eq!(forged.status(), StatusCode::BAD_REQUEST);
         assert!(real_page.contains("Back to &lt;TablePro&gt;"), "{real_page}");
-        assert_eq!(callback, Callback::Code("abc".to_owned()));
+        assert_eq!(callback, code("abc"));
     }
 
     #[tokio::test]
@@ -300,7 +431,7 @@ mod tests {
         let callback = waiting.await.expect("the wait ends");
 
         assert_eq!(real.status(), StatusCode::OK);
-        assert_eq!(callback, Callback::Code("abc".to_owned()));
+        assert_eq!(callback, code("abc"));
         assert!(answered_in < 2 * HEADER_TIMEOUT, "the callback waited {answered_in:?}");
     }
 
@@ -325,7 +456,7 @@ mod tests {
         let (callback, real) = tokio::join!(loopback.serve("s1", &page, &mut connections), requests);
 
         assert_eq!(real.status(), StatusCode::OK);
-        assert_eq!(callback, Callback::Code("abc".to_owned()));
+        assert_eq!(callback, code("abc"));
         assert!(connections.len() <= 2, "{} connection tasks kept", connections.len());
     }
 }

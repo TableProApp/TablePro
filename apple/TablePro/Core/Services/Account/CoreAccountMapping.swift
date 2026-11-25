@@ -135,6 +135,8 @@ internal enum CoreAccountMapping {
         case "account.sign_in_refused":
             let fallback = operation == .licenseKey ? "invalid_grant" : "access_denied"
             return .oauth(oauthError(info.message) ?? fallback, description: nil)
+        case "account.sign_in_issuer_mismatch":
+            return .otherIssuer
         case "account.server_invalid", "account.server_insecure":
             return .companyServer(.invalidAddress)
         case "account.server_not_tablepro", "account.server_mismatch":
