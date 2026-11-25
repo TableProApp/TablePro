@@ -78,8 +78,8 @@ The core's server resolution decides one case, and the account reports it to the
 | Sign-in, entitlement, devices, Team Library and share management on tablepro.app | all | `AccountServerURL` with `AllowOtherAccountServers=false` (0047) |
 | Share-link reads and the AI catalog (`updates.tablepro.app/ai/models-v1.json`) | all | The same pair, as above |
 | Plugin registry (`updates.tablepro.app/plugins/v3.json`) and the downloads it lists | macOS | `PluginCatalogAllowed=false` |
-| Update feed (`updates.tablepro.app/appcast.xml`) | macOS | Sparkle's `SUEnableAutomaticChecks` and `SUAutomaticallyUpdate` in the same profile |
-| App Installer feed (`updates.tablepro.app/windows/`) | Windows | `UpdateChecksAllowed=false` |
+| Update feed (`updates.tablepro.app/appcast.xml`) | macOS | Sparkle's `SUEnableAutomaticChecks` and `SUAutomaticallyUpdate` in the same profile stop automatic checks and downloads. Check for Updates still reads the feed when the person picks it |
+| App Installer feed (`updates.tablepro.app/windows/`) | Windows | `UpdateChecksAllowed=false` stops the app's own checks. Windows also checks a package installed from the `.appinstaller` file, at launch and in the background; a package an organization deploys from the `.msix` has no such checks |
 | Usage data, sent to PostHog and not to a TablePro host | each app that sends it | `UsageDataAllowed=false` |
 
 ## The Mac's new keys
