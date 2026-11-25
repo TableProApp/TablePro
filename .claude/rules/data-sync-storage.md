@@ -25,6 +25,8 @@ paths:
   - "apple/TableProMobile/TableProMobile/Helpers/*Persistence.swift"
   - "apple/TableProMobile/TableProMobile/Helpers/LibraryFile.swift"
   - "apple/TableProMobile/TableProMobile/Platform/PastedSSHKeyMigration.swift"
+  - "apple/TableProMobile/TableProMobile/Platform/ManagedAppConfiguration.swift"
+  - "apple/TableProMobile/TableProMobile/Account/**/*"
   - "apple/Packages/TableProCore/Sources/TableProConnectionLibrary/LibraryFileRecords.swift"
   - "apple/Packages/TableProCore/Sources/TableProSync/**/*"
   - "apple/TablePro/Models/Connection/DatabaseConnection.swift"
@@ -175,6 +177,9 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | TablePro account: the device, the entitlement, the chosen server, a company server's license and entitlement keys | `Account/account.json` in Application Support, device-local, never synced | the core's `tablepro-account` through `AccountServices` |
 | The account's refresh token: tablepro.app's in the item earlier builds read, each company server's in its own | Keychain `com.TablePro.account.refreshToken`, and one item per company server, device-only | the core through `KeychainHostSecrets` |
 | The entitlement builds before the core kept, read once when `account.json` is missing so the update stays signed in | `Account/entitlement.jwt` in Application Support | the core (`legacy_entitlement_file`) |
+| iOS: TablePro account, as on the Mac | `TableProMobile/Account/account.json` in Application Support, device-local, kept out of backups, never synced | the core's `tablepro-account` through `AccountModel` |
+| iOS: the account's refresh tokens, named as on the Mac, and the device ID it registers, 32 random bytes made once | Keychain `com.TablePro.account.refreshToken` and one item per company server, `com.TablePro.account.deviceID`; this device only, after first unlock, in the app's own access group, not the widget's | the core through `KeychainHostSecrets`, `AccountDeviceID` |
+| iOS: what an MDM sets for the app (core ADR 0055) | UserDefaults `com.apple.configuration.managed`, written only by the MDM | `ManagedAppConfiguration`, read by `OnboardingPreferences` and the account |
 | A license key an older build stored, until the key exchange trades it for an account; the digest of one the server refused | Keychain `com.TablePro.license.key`, UserDefaults `com.TablePro.license.setAside` | `StoredLicenseKey` |
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |

@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import AuthenticationServices
 import Foundation
 
@@ -18,14 +17,15 @@ extension WebAuthenticating {
     func cancel() {}
 }
 
-// Opens the account pages in an ASWebAuthenticationSession sheet and returns the app.tablepro: redirect.
+// Opens the account pages in an ASWebAuthenticationSession sheet over the anchor's window and returns the
+// app.tablepro: redirect.
 @MainActor
 internal final class WebAuthenticationSessionAuthenticator: NSObject, WebAuthenticating,
     ASWebAuthenticationPresentationContextProviding {
-    private let anchor: () -> NSWindow?
+    private let anchor: () -> ASPresentationAnchor?
     private var session: ASWebAuthenticationSession?
 
-    init(anchor: @escaping () -> NSWindow? = { NSApp.keyWindow ?? NSApp.mainWindow }) {
+    init(anchor: @escaping () -> ASPresentationAnchor?) {
         self.anchor = anchor
     }
 
@@ -41,7 +41,7 @@ internal final class WebAuthenticationSessionAuthenticator: NSObject, WebAuthent
                 }
             }
             let session: ASWebAuthenticationSession
-            if #available(macOS 14.4, *) {
+            if #available(macOS 14.4, iOS 17.4, *) {
                 session = ASWebAuthenticationSession(
                     url: url,
                     callback: .customScheme(callbackScheme),

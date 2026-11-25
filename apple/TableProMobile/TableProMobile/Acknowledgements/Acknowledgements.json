@@ -287,5 +287,16 @@
     ],
     "homepageURL": "https://github.com/apple/swift-nio-ssl",
     "textFile": "texts/swift-nio-ssl.txt"
+  },
+  {
+    "id": "tablepro-core-crates",
+    "name": "TablePro core's Rust crates",
+    "version": "Cargo.lock",
+    "spdx": "MIT AND Apache-2.0 AND ISC AND BSD-3-Clause AND MPL-2.0 AND OpenSSL AND Unicode-3.0 AND Zlib",
+    "copyrights": [
+      "Each crate's own, in the license text that lists it"
+    ],
+    "homepageURL": "https://crates.io",
+    "textFile": "texts/tablepro-core-crates.txt"
   }
 ]

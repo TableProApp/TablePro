@@ -30,6 +30,10 @@ packages:
     path: ../Packages/TableProCore
   TableProOracle:
     path: ../Packages/TableProOracle
+  # The shared Rust core, for the TablePro account (core ADR 0047). ../scripts/build-core.sh ios-simulator, or ios for a
+  # device, builds its binary target first: SwiftPM resolves nothing here without it.
+  TableProFFI:
+    path: ../Packages/TableProFFI
   # Usage data (clients.md, iOS). The same pin as ../project.yml; a build sends it only with POSTHOG_PROJECT_KEY set.
   PostHog:
     url: https://github.com/PostHog/posthog-ios
@@ -85,6 +89,8 @@ targets:
       - ../TablePro/Theme/MotionAccessibility.swift
       # The PostHog client and what it may collect, the same in both apps.
       - ../TablePro/Core/Services/Telemetry/PostHogTelemetryClient.swift
+      # The account's adapter over the core, its Keychain host secrets and its sign-in sheet, the same in both apps.
+      - ../TablePro/Core/Services/Account/Shared
       # The ClickHouse plugin driver runs whole behind PluginBackedDriver, so every file of the plugin is compiled in.
       - path: ../Plugins/ClickHouseDriverPlugin
         excludes:
@@ -289,6 +295,7 @@ targets:
           - TableProWireIO
       - package: TableProOracle
         product: TableProOracleCore
+      - package: TableProFFI
       - package: PostHog
       - framework: ../Libs/ios/DuckDB.xcframework
         embed: false
