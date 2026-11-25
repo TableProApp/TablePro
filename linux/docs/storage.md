@@ -243,7 +243,13 @@ the id it syncs under ([core ADR 0052](../../core/docs/decisions/0052-synced-rec
   another store brings under their own ids. Where two meet in one place under
   one name or keyword, the one created first keeps it, then the lowest id; each
   other takes the first free `<name> (2)` or loses its keyword, as an edit of
-  this device's own. A put that leaves a folder cycle is refused.
+  this device's own.
+- A put stores a folder name in the form the list shows and a keyword as
+  `set_keyword` keeps it, since the unique indexes compare the stored text; a
+  keyword a local save refuses is cleared. Names keep their first 200
+  characters. A folder cycle the batch closes sends its folder created last to
+  the top, and a folder 64 levels deep or more goes to the top too. Each such
+  change is an edit of this device's own.
 
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
