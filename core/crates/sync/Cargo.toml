@@ -9,6 +9,8 @@ publish.workspace = true
 tablepro-keys.workspace = true
 tablepro-records.workspace = true
 async-trait.workspace = true
+# The system RNG for the SAS nonces (0056, Libraries).
+aws-lc-rs.workspace = true
 secrecy.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -8235,6 +8235,7 @@ name = "tablepro-sync"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "aws-lc-rs",
  "secrecy",
  "serde_json",
  "tablepro-keys",

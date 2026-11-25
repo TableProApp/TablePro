@@ -5,8 +5,11 @@
 
 mod account;
 mod account_flows;
+mod approval;
 pub mod personal;
 pub mod pins;
+mod reset;
+mod rotation;
 
 use std::any::Any;
 use std::collections::HashMap;
