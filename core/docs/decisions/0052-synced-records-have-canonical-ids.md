@@ -11,7 +11,7 @@
 - **Ids nobody stores.** A favourite table, a favourite database and a table folder item have no id of their own. The Mac hashes what each one names (`FavoriteTablesStorage.syncId`, `FavoriteDatabasesStorage.syncId`, `TableFolderItemKey.syncId`). Since 0.77 a favourite table whose names hold `|` or `\` has an escaped id and a legacy alias, and the Mac writes both. Settings records are named by their category, `theme.<id>` or `columnLayout.<table key>`.
 - **The core's saved queries.** [0017](0017-favourites.md) gave saved queries and folders `INTEGER` ids and a required connection, and a folder's subfolders go with it through `ON DELETE CASCADE`. The Mac's `SQLFavorite` and `SQLFavoriteFolder` have UUIDs and an optional connection: one without a connection is in every connection. An integer is unique on one device only, and a pulled query names a folder this device may not have yet.
 - **History** is keyed by an `INTEGER` rowid that its full-text index joins on (`content_rowid='id'`). The Mac's history entries have random UUIDs.
-- Envelopes and key objects (0053) are records too, and need ids that two writers of one secret or one key version cannot both create.
+- Envelopes and key objects (0056) are records too, and need ids that two writers of one secret or one key version cannot both create.
 
 ## Decision
 
@@ -48,7 +48,7 @@ Every synced kind has one id form, fixed below, that every device computes the s
 | `ios_settings`, `linux_settings`, `windows_settings` | personal | none | A category that platform's settings registry in the core names | `editor` |
 | `history_entry` | history | none | A random UUIDv4 | `07D0575D-F499-463A-AB54-2852D631B0B4` |
 | `secret_envelope` | personal, team | none | Secret envelopes, below | `connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/password` |
-| `key.*` | personal, team | none | Key objects, below | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1/7` |
+| `key.*` | personal, team | none | Key objects, below | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/3` |
 | `library_connection`, `library_folder`, `library_query` | team | none | Team scope, below | `6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44` |
 
 The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its table `shop.public.orders`. A `columnLayout` category for an SQLite file deep in the file system passes the limit and takes the long form, `sha256-` and 64 hex digits.
@@ -69,28 +69,29 @@ The examples share the connection `6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44` and its
 ### Secret envelopes
 
 - An envelope's id is its parent record's kind, the parent's record id and the secret kind, joined with `/`, such as `connection/6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44/ssh_key_passphrase`, `library_connection/6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44/password` or `macos_settings/ai/ai_key.<provider id>`.
-- 0053's table lists the secret kinds and their parents. A kind holds no `/` (0051, Kinds), and a secret kind holds none either: a plugin field whose id has one does not sync. So the parent's id is what lies between the first and the last `/`.
-- One secret of one record has one envelope, so two devices that seal it at once meet on one id. The write is conditional on its change tag and one counter step after the stored one, so the second push conflicts, and that device pulls the key objects and seals again on the stored tag ([0051](0051-sync-protocol-and-record-rules.md), Conflict rules).
+- 0056's envelope table (Envelopes and history) lists the secret kinds and their parents. A kind holds no `/` (0051, Kinds), and a secret kind holds none either: a plugin field whose id has one does not sync. So the parent's id is what lies between the first and the last `/`.
+- One secret of one record has one envelope, so two devices that seal it at once meet on one id. The write is conditional on its change tag, so the second push conflicts, and that device pulls the key objects and seals again on the stored tag ([0051](0051-sync-protocol-and-record-rules.md), Conflict rules).
 
 ### Key objects
 
-- A key object's id is its parts joined by `/`, in the order below. A part is a UUID in the form above, a decimal counter with no leading zero, or a name of lower-case ASCII letters, digits and `-` that starts with a letter.
-- 0053 says what each part means, which kinds are create-only and which writer each kind is bound to. Here is how the parts are written.
+- A key object's id is its parts joined by `/`, in the order below. A part is a UUID in the form above, a decimal version with no leading zero, or a name of lower-case ASCII letters, digits and `-` that starts with a letter.
+- 0056 (What the server stores and checks) says what each part means and who writes each kind, and 0051 which kinds are create-only and which writer each is bound to. Here is how the parts are written.
 
 | Kind | Id | Example |
 |---|---|---|
-| `key.identity` | `<account>/<generation>/<seq>`, the generation 1 for the logs an account starts with | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1/0`; `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/2/0` for the reset that starts generation 2 |
-| `key.device` | `<account>/<generation>/<seq>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1/4` |
-| `key.recovery` | `<account>/<rk_v>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1` |
+| `key.account` | `<account>/<av>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/1` for the genesis; `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/4` |
+| `key.device` | `<account>/<device>/<av>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/4` |
+| `key.recovery` | `<account>/<av>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/4` |
+| `key.cancel` | `<account>/<av>`, the `av` of the reset it cancels | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/5` |
 | `key.request` | `<request id>` | `5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357` |
-| `key.sas` | `<session id>/<step>`, the step `commit`, `nonce` or `reveal`; a device approval's session id is its request's id | `5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357/nonce` |
-| `key.wrap` | `<owner>/<purpose>/<version>/<recipient type>/<recipient id>/<recipient version>`, the owner an account or a team, the purpose `account-key`, `sharing-key` or `team-key`, the recipient `holder` (its id, version 0), `recovery` (the account, `rk_v`) or `member` (the account, `sk_v`) | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/account-key/3/holder/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/0`; `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team-key/2/member/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/1` |
-| `key.ring` | `<owner>/<version>` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/3` |
-| `key.team` | `<team>/<seq>` | `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/12` |
-| `key.member` | `<account>/<log>/<generation>/<seq>`, the log `identity` or `device` | `019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/identity/1/0` |
+| `key.sas` | `<request id>/<step>`, the step `nonce` or `reveal` | `5E2C8B14-7A3D-4F61-9B08-C4D2E6F1A357/nonce` |
+| `key.version` | `<owner>/<purpose>/<version>`, the owner the account for the purposes `personal` and `history` and the team for `team` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/history/2`; `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/5` |
+| `key.wrap` | `<owner>/<purpose>/<version>/<recipient type>/<recipient id>/<recipient version>`. The purpose `account` or `trust`, with the version the `av` and the recipient a `device` at that `av`; or `personal`, `history` or `team`, with the recipient an `account` at its `av` | `019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/account/4/device/DB09A1EA-A519-42FF-94F3-CEEE6232F1C2/4`; `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/5/account/019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2` |
+| `key.ring` | `<owner>/<purpose>/<version>` | `019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/5` |
+| `key.member` | `<account>/<av>` | `019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90/2` |
 
-- One id per log position in a generation, version or step, so two writers of one meet on one id: the create-only rule ([0051](0051-sync-protocol-and-record-rules.md)) keeps the first, and only the writer 0053 names replaces a wrap or a ring.
-- Where the bound writer is an account the id names, the server compares that part as bytes with the caller's account id in upper case: the account of `key.identity`, `key.device`, `key.recovery` and `key.member`, and the owner of a personal `key.wrap` or `key.ring`. A mismatch is refused with `writer_bound`.
+- One id per version, recipient or step, so two writers of one meet on one id: the create-only rule ([0051](0051-sync-protocol-and-record-rules.md)) keeps the first, only its writer replaces a wrap or a ring, and each cancel replaces the one before it.
+- Where the bound writer is an account the id names, the server compares that part as bytes with the caller's account id in upper case: the account of `key.account`, `key.device`, `key.recovery`, `key.cancel` and `key.member`, and the owner of a personal `key.version`, `key.wrap` or `key.ring`. A mismatch is refused with `writer_bound`.
 - A key kind added later writes its parts the same way.
 
 ### Team scope
