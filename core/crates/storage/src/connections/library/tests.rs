@@ -115,6 +115,9 @@ fn connection(name: &str) -> SavedConnection {
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     }
 }
 
@@ -749,7 +752,7 @@ fn a_crafted_tree_reads_without_cycles_strays_or_doubles() {
     let mut b = connection("b");
     b.order = 9;
     let document = ConnectionsDocument {
-        connections: vec![a.clone(), b.clone()],
+        connections: vec![a.clone(), b.clone()].into(),
         groups: vec![first.clone(), second.clone(), stray.clone(), selfish.clone(), twin],
         favorites: vec![b.id, Uuid::new_v4(), b.id],
         ..ConnectionsDocument::default()
@@ -865,7 +868,7 @@ fn an_imported_group_matched_by_id_keeps_its_place_and_a_name_a_sibling_holds() 
                 ..home.clone()
             },
         ],
-        connections: vec![connection("c")],
+        connections: vec![connection("c")].into(),
         ..ConnectionsDocument::default()
     };
     let bytes = crate::document::encode_document(&theirs).expect("encode");
@@ -896,7 +899,7 @@ fn an_import_that_moves_a_saved_connection_puts_it_last_in_the_new_group() {
         ..list.connections.iter().find(|saved| saved.id == a).cloned().expect("a")
     };
     let document = ConnectionsDocument {
-        connections: vec![moved],
+        connections: vec![moved].into(),
         groups: list.groups.to_vec(),
         favorites: vec![a],
         ..ConnectionsDocument::default()
@@ -927,7 +930,8 @@ fn an_import_matches_a_group_by_name_in_any_case_under_the_same_parent() {
         connections: vec![SavedConnection {
             group_id: Some(theirs.id),
             ..connection("x")
-        }],
+        }]
+        .into(),
         ..ConnectionsDocument::default()
     });
 
@@ -954,7 +958,8 @@ fn an_import_prefers_the_group_of_the_exact_name_over_one_that_differs_in_case()
         connections: vec![SavedConnection {
             group_id: Some(theirs.id),
             ..connection("x")
-        }],
+        }]
+        .into(),
         ..ConnectionsDocument::default()
     });
 
@@ -1024,7 +1029,8 @@ fn an_import_renames_the_groups_it_knows_before_it_matches_the_rest_by_name() {
         connections: vec![SavedConnection {
             group_id: Some(fresh.id),
             ..connection("theirs")
-        }],
+        }]
+        .into(),
         ..ConnectionsDocument::default()
     });
 
@@ -1060,7 +1066,8 @@ fn an_import_under_a_third_level_group_files_its_connections_in_that_group() {
                 group_id: Some(e.id),
                 ..connection("y")
             },
-        ],
+        ]
+        .into(),
         ..ConnectionsDocument::default()
     });
 
@@ -1087,7 +1094,8 @@ fn an_import_of_a_tree_five_levels_deep_keeps_three() {
         connections: vec![SavedConnection {
             group_id: deepest,
             ..connection("z")
-        }],
+        }]
+        .into(),
         ..ConnectionsDocument::default()
     });
 

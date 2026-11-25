@@ -132,8 +132,8 @@ pub fn layout(list: &ConnectionList, records: &CloudRecords, favorites_order: &[
     ConnectionList {
         connections: Arc::from(connections),
         groups: Arc::from(groups),
-        tags: list.tags.clone(),
         favorites: Arc::from(favorites),
+        ..list.clone()
     }
 }
 
