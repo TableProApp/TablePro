@@ -1,5 +1,7 @@
 # Formal model of the sync keys
 
+**Superseded 2026-11-25: the design moved to the 1Password/Bitwarden model (ADR 0056). These theories model the earlier 0053 and are kept for the record.**
+
 Tamarin theories for the flows and claims of [ADR 0053](../../decisions/0053-end-to-end-keys-under-the-recovery-key.md), Formal model and review, under the attacker of [the sync threat model](../sync-threat-model.md).
 
 - Every theory models 0053 on main at `9bdaa24f8a`, the text G0 round 6 reviews (its 0053 is #4502's `81ae48462f`): forks are equivocation only and freeze a generation, a new generation leaves one, nothing is voided, `revoke_add` undoes what removed holders alone added, versions step by one.
@@ -76,7 +78,118 @@ A timeout, an out-of-memory stop or a stop by signal is never a pass. Every theo
 
 ## Results
 
-RESULTS
+The runs stopped when the design moved to ADR 0056, so the table is partial. Times are seconds on a shared Mac, one proof at a time under a 3 GB heap. "stopped" is a proof ended by signal, by the memory watchdog or by hand to rerun it under a flag; "not run" was queued when the work stopped. Neither is a pass.
+
+| Claim | Theory, flag | Lemma | Result | Time |
+|---|---|---|---|---|
+| 1. Secrecy of AK and TK versions after a removal, against a removed holder working with the server, except to accounts it confirmed or added that the person has not revoked yet | `device-removal`, `NOINSET` | `attacker_approvals_descend_from_stolen` | not run | - |
+|  | `device-removal`, `NOINSET` | `ak_after_removal_secret` | not run | - |
+|  | `team-keys` | `tk_reaches_only_sealed_sks` | stopped | 206s |
+|  | `team-keys` | `removed_member_gets_no_new_tk` | verified | 0s |
+|  | `team-keys`, `EXEC` | `removal_keeps_past_statements` | not run | - |
+| 2. Authenticity of IK on recovery | `recovery` | `recovery_ik_authentic` | verified | 8s |
+|  | `recovery` | `recovery_open_ik_authentic` | verified | 7s |
+|  | `recovery` | `ik_rk_secret` | verified | 7s |
+|  | `recovery` | `ak_secret` | verified | 7s |
+|  | `recovery` | `ak_after_recovery_rotate_secret` | verified | 10s |
+| 3. No TK version sealed to an SK the sealing signer has verified as revoked (the stronger form fails) | `team-keys` | `no_tk_to_sk_the_signer_saw_revoked` | verified | 1s |
+|  | `team-keys` | `member_never_uses_tk_sealed_to_its_replaced_sk` | verified | 0s |
+|  | `team-keys`, `EXEC` | `member_alarms_on_tk_sealed_to_its_replaced_sk` | not run | - |
+|  | `team-keys`, `EXEC` | `no_tk_to_revoked_sk` | not run | - |
+| 4. Injective agreement on device approval and member confirmation, each view fixed before its random value | `sas-commitment` | `commitment_leaves_one_guess` | verified | 0s |
+|  | `sas-commitment` | `comparison_agreement` | verified | 1s |
+|  | `sas-commitment`, `NOCOMMIT` | `comparison_agreement` | falsified | 1s |
+|  | `sas-commitment`, `LATEVIEW` | `comparison_agreement` | falsified | 2s |
+|  | `device-approval` | `commitment_leaves_one_guess` | verified | 4s |
+|  | `device-approval` | `approver_agreement_injective` | verified | 5s |
+|  | `device-approval` | `new_holder_agreement_injective` | verified | 5s |
+|  | `device-approval` | `approved_ak_secret` | verified | 6s |
+|  | `member-confirmation` | `commitment_leaves_one_guess` | verified | 16s |
+|  | `member-confirmation` | `signer_agreement_injective` | verified | 17s |
+|  | `member-confirmation` | `member_agreement` | verified | 8s |
+|  | `member-confirmation` | `tk_secret` | verified | 25s |
+| 5. Refusal of rollback through chained heads, re-pin included | `log-chain` | `appended_seq_grows` | verified | 0s |
+|  | `log-chain` | `appended_once_per_seq` | verified | 0s |
+|  | `log-chain` | `heads_are_the_signers` | verified | 1s |
+|  | `log-chain` | `no_rollback` | verified | 2s |
+| 6. No holder a removed holder approved, directly or not, receives a later key version | `device-removal`, `NOINSET` | `ak_after_removal_secret` | not run | - |
+|  | `device-removal` | `can_remove_stolen_holder_after_it_signed_out` | verified | 2s |
+|  | `device-removal`, `OLDLEAVE` | `can_remove_stolen_holder_after_it_signed_out` | falsified | 0s |
+| 7. A fork freezes its generation; only two signed statements served as applied make one; a server without a key cannot fork a log one holder writes | `log-chain` | `fork_freezes_the_log` | verified | 1s |
+|  | `log-chain` | `no_false_fork_alarm` | verified | 0s |
+|  | `generations` | `fork_freezes_the_generation` | not run | - |
+|  | `generations` | `fork_needs_two_signers_or_a_key` | not run | - |
+| 8. A person with S leaves a fork through a new generation; no IK a client saw replaced starts one | `generations` | `new_generation_with_s_executable` | stopped | 206s |
+|  | `generations` | `only_s_starts_a_generation` | not run | - |
+|  | `replace-recovery` | `replaced_ik_starts_no_generation` | not run | - |
+|  | `replace-recovery`, `OLDREPLACE` | `replaced_ik_starts_no_generation` | not run | - |
+| 9. A revoke_add takes effect only for an addition the account's own removed holders alone brought to k | `revoke-add` | `revoke_add_only_for_removed_holders_alone` | not run | - |
+|  | `revoke-add` | `no_revoke_add_of_what_another_signer_approved` | not run | - |
+|  | `revoke-add` | `revoke_add_needs_s` | not run | - |
+| Team-log references move forward by position | `team-positions` | `old_head_refused_after_a_newer_one` | not run | - |
+|  | `team-positions` | `old_head_taken_before_a_newer_one` | not run | - |
+| 10. Removal never changes past statements, so one head replays one state | `team-keys`, `EXEC` | `removal_keeps_past_statements` | not run | - |
+|  | `team-keys` | `removal_stays_when_its_signer_is_removed` | verified | 10s |
+| 11. Every version is exactly one above the last; no kv above the current version | `versions` | `versions_step_by_one` | verified | 1s |
+|  | `versions` | `no_version_skipped` | verified | 0s |
+|  | `versions` | `no_kv_above_the_current_version` | verified | 1s |
+| 12. No reset takes effect without S, or without the full delay with no cancel; removing rows keeps the cancel | `server-enforcement` | `reset_needs_s_or_full_delay` | not run | - |
+|  | `server-enforcement`, `CANCELS` | `row_removal_keeps_the_cancel` | not run | - |
+|  | `server-enforcement`, `CANCELS` | `stolen_holder_reset_cancelled` | not run | - |
+|  | `server-enforcement`, `OLDRESET` | `reset_needs_s_or_full_delay` | not run | - |
+|  | `identity-heads` | `removed_holder_cannot_endorse_a_reset` | verified | 0s |
+|  | `identity-heads`, `OLDDH` | `removed_holder_cannot_endorse_a_reset` | falsified | 1s |
+| 13. No time-locked removal completes after a pinned holder's cancel, or within 7 days by the recorded times | `team-signers` | `cancel_ends_a_removal_for_good` | verified | 0s |
+|  | `team-signers`, `UNCHECKED` | `cancel_ends_a_removal_for_good` | not run | - |
+|  | `waits` | `waits_never_shortened` | verified | 17s |
+|  | `waits` | `receipt_keys_chain_to_the_pin` | verified | 0s |
+|  | `waits` | `no_false_receipt_alarm` | stopped | 506s |
+| 14. k = min(2, n) to add a signer or remove another, unless an uncancelled time lock ran; no re-root while a signer is left | `team-signers` | `no_signer_added_alone` | verified | 0s |
+|  | `team-signers` | `no_signer_removed_by_one_other` | verified | 1s |
+|  | `team-signers` | `no_reroot_while_a_signer_is_left` | verified | 0s |
+|  | `team-signers`, `UNCHECKED` | `no_reroot_while_a_signer_is_left` | not run | - |
+| 15. No removed member receives a TK version after the device that removed it is removed | `team-keys` | `removal_stays_when_its_signer_is_removed` | verified | 10s |
+| 16. An old S after a replace extends no log a client that verified the replace follows | `replace-recovery` | `old_recovery_key_extends_no_log_after_the_replace` | verified | 3s |
+|  | `replace-recovery` | `old_recovery_key_gives_no_identity` | verified | 2s |
+|  | `replace-recovery` | `old_recovery_key_gives_no_account_key` | verified | 2s |
+|  | `replace-recovery` | `old_recovery_key_extends_no_log` | falsified | 3s |
+|  | `replace-recovery`, `OLDREPLACE` | `old_recovery_key_extends_no_log_after_the_replace` | falsified | 2s |
+| 17. The old signer's veto holds against a removal its own reset account starts | `team-signers` | `old_signers_veto_holds_against_its_reset_account` | verified | 1s |
+|  | `team-signers` | `reset_holder_cannot_cancel` | verified | 0s |
+|  | `team-signers`, `UNCHECKED` | `reset_holder_cannot_cancel` | not run | - |
+|  | `team-signers` | `cancel_ends_a_removal_for_good` | verified | 0s |
+| 18. No reset a server made up lowers k or opens a reroot | `team-signers` | `reset_removes_no_signer` | verified | 0s |
+|  | `team-signers` | `no_reroot_while_a_signer_is_left` | verified | 0s |
+| 19. A removed holder cannot pin an envelope counter past the next version | `envelopes` | `stolen_holder_cannot_pin_the_counter` | verified | 2s |
+|  | `envelopes` | `no_superseded_envelope` | verified | 1s |
+|  | `envelopes` | `nothing_from_the_removed_holder_after_removal` | verified | 1s |
+|  | `envelopes`, `OLDCOUNTER` | `stolen_holder_cannot_pin_the_counter` | falsified | 2s |
+| D8. A phished session writes no key object and no envelope | `server-enforcement` | `members_are_honest_or_a_break_in` | not run | - |
+|  | `server-enforcement` | `write_needs_approved_holder` | not run | - |
+| Executability: an honest run exists in each theory | `recovery` | `recovery_executable` | verified | 16s |
+|  | `replace-recovery` | `replace_executable` | verified | 3s |
+|  | `sas-commitment` | `exchange_executable` | verified | 1s |
+|  | `device-approval` | `approval_executable` | verified | 11s |
+|  | `member-confirmation`, `NOCOLLISION` | `words_executable` | not run | - |
+|  | `member-confirmation`, `NOCOLLISION` | `qr_executable` | not run | - |
+|  | `device-removal` | `removal_executable` | verified | 10s |
+|  | `identity-heads` | `reset_executable` | verified | 1s |
+|  | `log-chain` | `chain_executable` | verified | 6s |
+|  | `log-chain` | `repin_executable` | verified | 2s |
+|  | `log-chain` | `fork_executable` | verified | 24s |
+|  | `versions` | `versions_executable` | verified | 0s |
+|  | `server-enforcement`, `EXEC` | `enforcement_executable` | not run | - |
+|  | `team-keys`, `EXEC` | `team_executable` | not run | - |
+|  | `generations` | `fork_by_two_holders_executable` | verified | 9s |
+|  | `revoke-add` | `revoke_add_executable` | not run | - |
+|  | `team-positions` | `positions_executable` | not run | - |
+|  | `team-signers` | `reroot_executable` | not run | - |
+|  | `team-signers` | `signers_executable` | verified | 2s |
+|  | `team-signers` | `timelock_cancelled` | verified | 0s |
+|  | `waits` | `wait_executable` | verified | 2s |
+|  | `waits` | `restore_executable` | verified | 2s |
+|  | `waits` | `receipt_alarm_executable` | verified | 26s |
+|  | `envelopes` | `envelopes_executable` | verified | 13s |
 
 ## Falsified claims and the spec changes they imply
 
