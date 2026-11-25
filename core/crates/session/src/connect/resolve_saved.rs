@@ -3,10 +3,11 @@ use std::path::PathBuf;
 use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
-    AuthMode, Credentials, DriverError, DriverRegistry, FileEndpoint, NetworkEndpoint, QueryTimeout, WorkspaceSettings,
+    AuthMode, ConfigError, Credentials, DriverError, DriverRegistry, FileEndpoint, NetworkEndpoint, QueryTimeout,
+    WorkspaceSettings,
 };
 use tablepro_ssh::{SshAuth, SshConfig, SshDestination};
-use tablepro_storage::{CredentialDemand, SavedConnection, SavedSshAuth, SavedSshConfig};
+use tablepro_storage::{CredentialDemand, SavedConnection, SavedSshAuth, SavedSshConfig, SshJumpAuth, SshJumpHost};
 
 use super::{ConnectError, ConnectRequest, ConnectionMetadata, CredentialSource, RefreshedRequest, RequestTarget};
 
@@ -36,9 +37,11 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
         RequestTarget::File(endpoint)
     } else {
         let endpoint = NetworkEndpoint::new(&saved.host, saved.port).map_err(DriverError::from)?;
-        let ssh = saved
-            .ssh
-            .as_ref()
+        let tunnel = saved.ssh.as_ref().filter(|ssh| ssh.enabled);
+        if tunnel.is_some_and(|ssh| ssh.remote_file.path.as_deref().is_some_and(|path| !path.is_empty())) {
+            return Err(DriverError::from(ConfigError::RemoteFileOverSsh).into());
+        }
+        let ssh = tunnel
             .map(ssh_config)
             .transpose()
             .map_err(|problem| DriverError::from(tablepro_core::TransportError::Ssh(problem.into())))?;
@@ -76,12 +79,10 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
 /// secrets yet.
 pub fn ssh_config(saved: &SavedSshConfig) -> Result<SshConfig, tablepro_core::SshDestinationProblem> {
     let destination = SshDestination::new(&saved.host, saved.port, saved.username.clone())?;
-    let mut jump_hosts = Vec::new();
-    for entry in &saved.jump_hosts {
-        jump_hosts.extend(SshDestination::parse_jump_list(entry)?);
-    }
+    let jump_hosts = saved.jump_hosts.iter().map(jump_destination).collect::<Result<_, _>>()?;
     let auth = match &saved.auth {
-        SavedSshAuth::Agent => SshAuth::Agent,
+        // Both transports try the none method first, so a server that asks for nothing lets the tunnel in.
+        SavedSshAuth::Agent | SavedSshAuth::None => SshAuth::Agent,
         SavedSshAuth::PrivateKey { path, .. } => SshAuth::PrivateKey {
             path: path.clone(),
             passphrase: None,
@@ -96,6 +97,14 @@ pub fn ssh_config(saved: &SavedSshConfig) -> Result<SshConfig, tablepro_core::Ss
         jump_hosts,
         auth,
     })
+}
+
+// A hop with a key of its own is refused rather than signed in to with another key: -J takes only where a hop goes.
+fn jump_destination(hop: &SshJumpHost) -> Result<SshDestination, tablepro_core::SshDestinationProblem> {
+    if hop.auth == Some(SshJumpAuth::PrivateKey) {
+        return Err(tablepro_core::SshDestinationProblem::JumpHostKey { host: hop.host.clone() });
+    }
+    SshDestination::new(&hop.host, hop.port, hop.username.clone())
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use uuid::Uuid;
 use super::super::{ConnectionStore, ConnectionsDocument, RemoveOutcome, SavedConnection};
 use crate::error::StorageError;
 use crate::{
-    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, GroupIcon, StoragePaths, SymbolName,
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, LibraryIcon, StoragePaths, SymbolName,
 };
 
 struct Library {
@@ -176,7 +176,7 @@ fn a_group_is_renamed_recoloured_and_given_an_icon() {
     let library = Library::new();
     let work = library.group("Work", None);
     library.group("Home", None);
-    let symbol = GroupIcon::Symbol(SymbolName::new("briefcase.fill").expect("a symbol"));
+    let symbol = LibraryIcon::Symbol(SymbolName::new("briefcase.fill").expect("a symbol"));
 
     library
         .store
@@ -207,12 +207,12 @@ fn a_group_is_renamed_recoloured_and_given_an_icon() {
         .expect("no colour");
     library
         .store
-        .set_group_icon_blocking(work.id, Some(GroupIcon::Named(ConnectionIcon::Folder)))
+        .set_group_icon_blocking(work.id, Some(LibraryIcon::Named(ConnectionIcon::Folder)))
         .expect("a named icon");
     let list = library.store.list_blocking().expect("the list");
     let stored = list.group_tree().get(work.id).cloned().expect("the group");
     assert_eq!(stored.color, None);
-    assert_eq!(stored.icon, Some(GroupIcon::Named(ConnectionIcon::Folder)));
+    assert_eq!(stored.icon, Some(LibraryIcon::Named(ConnectionIcon::Folder)));
 }
 
 #[test]
@@ -790,7 +790,7 @@ fn groups_and_favourites_survive_an_export_and_an_import_twice() {
         .store
         .set_group_icon_blocking(
             staging.id,
-            Some(GroupIcon::Symbol(SymbolName::new("server.rack").expect("a symbol"))),
+            Some(LibraryIcon::Symbol(SymbolName::new("server.rack").expect("a symbol"))),
         )
         .expect("the icon");
     source

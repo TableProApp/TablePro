@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::*;
 use tablepro_storage::{
-    ConnectionColor, ConnectionGroupName, ConnectionIcon, ConnectionStore, GroupIcon, StoragePaths, SymbolName,
+    ConnectionColor, ConnectionGroupName, ConnectionIcon, ConnectionStore, LibraryIcon, StoragePaths, SymbolName,
 };
 
 fn upper(id: Uuid) -> String {
@@ -132,11 +132,11 @@ fn macos_records_read_as_a_tree_and_write_back_unchanged() {
     let tree = list.group_tree();
     let [work_group, home_group, eu_group] = [work, home, eu].map(|id| tree.get(id).expect("the group"));
     assert_eq!(work_group.color, Some(ConnectionColor::Slate));
-    assert_eq!(work_group.icon, Some(GroupIcon::Named(ConnectionIcon::Server)));
+    assert_eq!(work_group.icon, Some(LibraryIcon::Named(ConnectionIcon::Server)));
     assert_eq!(home_group.color, None);
     assert_eq!(
         home_group.icon,
-        Some(GroupIcon::Symbol(
+        Some(LibraryIcon::Symbol(
             SymbolName::new("cylinder.split.1x2").expect("a symbol")
         ))
     );
@@ -185,7 +185,7 @@ fn a_new_library_writes_records_as_macos_does_and_reads_them_back() {
             id: work,
             order: 0,
             color: Some(ConnectionColor::Slate),
-            icon: Some(GroupIcon::Named(ConnectionIcon::Lab)),
+            icon: Some(LibraryIcon::Named(ConnectionIcon::Lab)),
             ..ConnectionGroup::new(ConnectionGroupName::new("Work").expect("a name"), None)
         },
         ConnectionGroup {
@@ -324,7 +324,7 @@ fn fields_two_devices_changed_apart_both_survive_and_this_devices_unpushed_edit_
     };
     let mut groups = layout(&library_of(&base), &base, &[]).groups.to_vec();
     groups[0].name = ConnectionGroupName::new("Office").expect("a name");
-    groups[0].icon = Some(GroupIcon::Named(ConnectionIcon::Star));
+    groups[0].icon = Some(LibraryIcon::Named(ConnectionIcon::Star));
     let local = ConnectionList::new(Vec::new(), Vec::new()).with_groups(groups);
     let server = CloudGroup {
         color: Some("Red".to_owned()),
@@ -738,7 +738,7 @@ fn play(device: &mut Device, dice: &mut Dice) {
         }
         3 => {
             if let Some(id) = dice.pick(&groups) {
-                let icon = dice.pick(&ConnectionIcon::ALL).map(GroupIcon::Named);
+                let icon = dice.pick(&ConnectionIcon::ALL).map(LibraryIcon::Named);
                 let _ = store.set_group_icon_blocking(id, icon);
             }
         }

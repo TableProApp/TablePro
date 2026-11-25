@@ -12,11 +12,11 @@ pub mod drafts;
 mod error;
 pub mod favourites;
 pub mod fs;
-mod group_icon;
 mod group_name_error;
 mod group_tree;
 pub mod journal;
 mod lenient;
+mod library_icon;
 mod name_rules;
 mod paths;
 pub mod query_history;
@@ -39,8 +39,9 @@ pub use connections::{
     CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionList,
     ConnectionListSnapshot, ConnectionListState, ConnectionOrigin, ConnectionStore, CredentialPassword,
     CredentialProfile, CredentialReference, DeviceOnly, ImportChange, ImportEntry, ImportPreview, ImportReport,
-    ImportedConnection, KnownOrigin, LocalPasswordSource, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig,
-    SocksProxy, SshProfile, SshRoute, SshRouteHop, SshRouteTarget, TunnelCommand, TunnelCommandMethod, VaultAuth,
+    ImportedConnection, KnownOrigin, LibraryWrite, LocalPasswordSource, RemoteFileAccess, RemoveOutcome, SavedConnection,
+    SavedSshAuth, SavedSshConfig, SocksProxy, SshJumpAuth, SshJumpHost, SshProfile, SshRemoteFile, SshRoute, SshRouteHop,
+    SshRouteTarget, SshTotp, SshTotpAlgorithm, SshTotpMode, TunnelCommand, TunnelCommandMethod, VaultAuth,
     VaultDatabaseRole,
 };
 pub use credentials::{
@@ -51,10 +52,11 @@ pub use document_problem::{DocumentProblem, DocumentProblemKind};
 pub use drafts::{DraftId, DraftScope, DraftStore};
 pub use error::StorageError;
 pub use favourites::{DatabaseEnvironment, FavouriteDatabase, FavouriteTable, Favourites};
-pub use group_icon::{GroupIcon, SymbolName};
+pub use library_icon::{LibraryIcon, SymbolName};
 pub use group_name_error::GroupNameError;
 pub use group_tree::GroupTree;
 pub use journal::{ChangeJournal, RecordKind};
+pub use name_rules::shown as shown_name;
 pub use paths::StoragePaths;
 pub use query_history::QueryHistory;
 pub use saved_queries::{SavedQueries, SavedQueriesSnapshot, SavedQueryFolder, SavedQueryFolders};

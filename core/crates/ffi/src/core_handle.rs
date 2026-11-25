@@ -29,8 +29,8 @@ use crate::error::CoreError;
 use crate::history::QueryHistoryStore;
 use crate::host::{HostConfig, HostRefreshTokens, HostSecretStore, HostSecrets};
 use crate::library::{
-    ConnectionLibrary, ConnectionRecord, ConnectionSecrets, LibraryWrites, apply, blank, keep_proved_secrets, parse_id,
-    tls_config,
+    ConnectionLibrary, ConnectionRecord, ConnectionSecrets, LibraryWrites, apply, blank, keep_proved_secrets,
+    library_icon, parse_id, tls_config,
 };
 use crate::mcp::open_sessions::OpenSessions;
 use crate::mcp::{HistoryAccess, StoredTokens};
@@ -299,6 +299,7 @@ impl Core {
             id => Some(parse_id(id)?),
         };
         let tls = tls_config(&record.tls)?;
+        let icon = record.icon.as_ref().map(library_icon).transpose()?;
         let name = record.name.trim().to_owned();
         let store = self.store.clone();
         let registry = self.registry.clone();
@@ -320,7 +321,7 @@ impl Core {
                 _ => None,
             };
             let mut saved = stored.unwrap_or_else(|| blank(id.unwrap_or_else(Uuid::new_v4)));
-            apply(&record, &tls, name, saved.group_id, &mut saved);
+            apply(&record, &tls, icon, name, saved.group_id, &mut saved);
             let credentials = Prefilled::new(&saved, vault, secrets);
             let refreshed = resolve_saved(
                 &saved,

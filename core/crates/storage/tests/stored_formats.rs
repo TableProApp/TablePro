@@ -13,7 +13,7 @@ use chrono::{DateTime, Utc};
 use tablepro_core::{AiPolicy, AuthMode, ClientIdentity, ExternalAccess, SafeModeLevel, TlsConfig, TlsMode};
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionList, ConnectionStore,
-    ConnectionTag, ConnectionTagName, GroupIcon, SavedConnection, SavedSshAuth, SavedSshConfig, StoragePaths,
+    ConnectionTag, ConnectionTagName, LibraryIcon, SavedConnection, SavedSshAuth, SavedSshConfig, StoragePaths,
     SymbolName,
 };
 use uuid::Uuid;
@@ -40,7 +40,7 @@ fn production() -> Result<ConnectionGroup, Box<dyn Error>> {
     Ok(ConnectionGroup {
         id: Uuid::parse_str("2a378134-5812-82b4-84aa-ed5c6c3cf409")?,
         color: Some(ConnectionColor::Red),
-        icon: Some(GroupIcon::Named(ConnectionIcon::Shield)),
+        icon: Some(LibraryIcon::Named(ConnectionIcon::Shield)),
         ..ConnectionGroup::new(ConnectionGroupName::new("Production")?, None)
     })
 }
@@ -278,7 +278,7 @@ fn connections_v1_model() -> Result<ConnectionList, Box<dyn Error>> {
         ConnectionGroup {
             id: analytics,
             order: 1,
-            icon: SymbolName::new("chart.bar.xaxis").map(GroupIcon::Symbol),
+            icon: SymbolName::new("chart.bar.xaxis").map(LibraryIcon::Symbol),
             ..ConnectionGroup::new(ConnectionGroupName::new("Analytics")?, None)
         },
         ConnectionGroup {

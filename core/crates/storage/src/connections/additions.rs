@@ -83,7 +83,7 @@ impl SavedConnection {
     // Marks and settings only this app sets, which the other app never had.
     fn keep_marks_from(&mut self, existing: &SavedConnection) {
         self.tags.clone_from(&existing.tags);
-        self.icon = existing.icon;
+        self.icon.clone_from(&existing.icon);
         self.last_opened_at = existing.last_opened_at;
         self.details.clone_from(&existing.details);
         self.device.clone_from(&existing.device);

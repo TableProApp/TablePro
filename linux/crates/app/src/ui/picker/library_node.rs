@@ -5,7 +5,7 @@ use gtk4::gio;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use tablepro_storage::{ConnectionColor, ConnectionGroup, ConnectionIcon, ConnectionTag, GroupIcon, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionGroup, ConnectionIcon, ConnectionTag, LibraryIcon, SavedConnection};
 use uuid::Uuid;
 
 use crate::services::connection_search::ConnectionSearch;
@@ -218,9 +218,9 @@ pub(crate) fn connection_look(saved: &SavedConnection, section: LibrarySection, 
 pub(crate) fn group_look(group: &ConnectionGroup, count: u32) -> NodeLook {
     let shown = count.to_string();
     let icon = match &group.icon {
-        Some(GroupIcon::Named(icon)) => icons::connection_icon(*icon),
+        Some(LibraryIcon::Named(icon)) => icons::connection_icon(*icon),
         // A macOS symbol has no Linux icon.
-        Some(GroupIcon::Symbol(_)) | None => icons::FOLDER,
+        Some(LibraryIcon::Symbol(_)) | None => icons::FOLDER,
     };
     NodeLook {
         title: group.name.as_str().to_owned(),
@@ -338,7 +338,7 @@ mod tests {
         assert_eq!(group_look(&group, 3).description, "Group, 3 connections");
         assert_eq!(group_look(&group, 0).icon_name, icons::FOLDER);
         let named = ConnectionGroup {
-            icon: Some(GroupIcon::Named(ConnectionIcon::Star)),
+            icon: Some(LibraryIcon::Named(ConnectionIcon::Star)),
             ..group
         };
         assert_eq!(

@@ -3,14 +3,50 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use super::placement::{placed, unique};
-use super::{ConnectionList, ConnectionStore, ConnectionsDocument, RemoveOutcome};
+use super::{ConnectionList, ConnectionStore, ConnectionsDocument, RemoveOutcome, SavedConnection};
 use crate::error::StorageError;
-use crate::{ConnectionColor, ConnectionGroup, ConnectionGroupName, GroupIcon, GroupTree};
+use crate::{ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionTag, GroupTree, LibraryIcon};
+
+/// The whole library as another app's store holds it, written over the one on disk by
+/// [`ConnectionStore::replace_library_blocking`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LibraryWrite {
+    pub connections: Vec<SavedConnection>,
+    pub groups: Vec<ConnectionGroup>,
+    pub tags: Vec<ConnectionTag>,
+    pub favorites: Vec<Uuid>,
+}
 
 impl ConnectionStore {
     pub fn list_blocking(&self) -> Result<ConnectionList, StorageError> {
         let mut state = self.lock();
         Ok(self.ensure_loaded(&mut state)?.list())
+    }
+
+    // One commit and one journal call. Every id and value is kept as given, so a library moving in from another app's
+    // store reads back the same; nothing is checked or cleaned, which an edit does. An entry this build cannot read
+    // stays unless the write names its id. The profiles are left as they are.
+    pub fn replace_library_blocking(&self, write: LibraryWrite) -> Result<(), StorageError> {
+        let LibraryWrite {
+            connections,
+            groups,
+            tags,
+            favorites,
+        } = write;
+        first_repeat(connections.iter().map(|connection| connection.id))
+            .or_else(|| first_repeat(groups.iter().map(|group| group.id)))
+            .or_else(|| first_repeat(tags.iter().map(|tag| tag.id)))
+            .map_or(Ok(()), |id| Err(StorageError::RepeatedId { id }))?;
+        self.edit(|document| {
+            for connection in &connections {
+                document.connections.release(connection.id);
+            }
+            *document.connections = connections;
+            document.groups = groups;
+            document.tags = tags;
+            document.favorites = favorites;
+            Ok(())
+        })
     }
 
     pub fn create_group_blocking(&self, group: ConnectionGroup) -> Result<ConnectionGroup, StorageError> {
@@ -54,7 +90,7 @@ impl ConnectionStore {
         })
     }
 
-    pub fn set_group_icon_blocking(&self, id: Uuid, icon: Option<GroupIcon>) -> Result<(), StorageError> {
+    pub fn set_group_icon_blocking(&self, id: Uuid, icon: Option<LibraryIcon>) -> Result<(), StorageError> {
         self.edit(|document| {
             let index = document.group_index(id)?;
             document.groups[index].icon = icon;
@@ -258,10 +294,11 @@ impl ConnectionsDocument {
     }
 
     fn connection_ids_in(&self, group: Option<Uuid>) -> Vec<Uuid> {
+        let known: HashSet<Uuid> = self.groups.iter().map(|group| group.id).collect();
         let mut members: Vec<(u32, Uuid)> = self
             .connections
             .iter()
-            .filter(|connection| connection.group_id == group)
+            .filter(|connection| connection.group_id.filter(|id| known.contains(id)) == group)
             .map(|connection| (connection.order, connection.id))
             .collect();
         members.sort_by_key(|(order, _)| *order);
@@ -277,6 +314,11 @@ impl ConnectionsDocument {
             }
         }
     }
+}
+
+fn first_repeat(ids: impl Iterator<Item = Uuid>) -> Option<Uuid> {
+    let mut seen = HashSet::new();
+    ids.into_iter().find(|id| !seen.insert(*id))
 }
 
 fn rank_of(rank: usize) -> u32 {
