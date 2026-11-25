@@ -46,10 +46,10 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | A compromised IdP or a phished session | Personal data, plaintext included: nothing personal flows without an approved key holder or the recovery key (D8). Team secrets: they need a confirmed SK. Key objects, envelopes and app-side device-row removals: it makes none, since they need a proof from an approved holder. An admin's portal session can lock a row, but changes no key and takes away neither cancel, a reset's or a signer's | Team plaintext records that the account's seat and role allow; genesis on an account with no identity yet; a reset on an account with no holder left, after a step-up and 7 days that S can cancel |
 | A lost or stolen device | After removal with the recovery key, even after the thief signed it out: every new secret and history write, the new key versions, and what it approved, confirmed or added | What the device already holds, and anything readable before the removal |
 | A stolen device working with the server | Taking over the identity: IK is not on the device, a reset waits 7 days that any other device or S can cancel, and following it needs a comparison | Reading new data until the person removes the device; an older view shown to a holder that pins again with S; a new team key sealed by a signer from whom the server withheld the member's `rotate` |
-| A holder of an old recovery key working with the server | Clients that have verified the `replace`: the old IK decides nothing for them, fork resolutions included | Can fork the identity log for clients that have not seen the `replace`, until they see both branches or compare. Every device approval and member comparison covers the identity head |
+| A holder of an old recovery key working with the server | Clients that have verified the `replace`: the old IK decides nothing for them | Can fork the identity log for clients that have not seen the `replace`, until they see both statements or compare. A fork freezes the log, and the person recovers with a reset. Every device approval and member comparison covers the identity head |
 | A removed member | Team key versions after the rotation. The floor stops writers on old keys | Secrets they could already read, which is why "Credentials to rotate" exists |
 | A malicious current member, with the server's help | Other people's personal scopes | Writing a team secret under a valid writer signature |
-| A malicious signer | Other people's personal scopes. Removing a signer without k approvals or a 7-day time lock the signer can cancel | Every team secret. Confirming puppet accounts and sealing keys to them. All of it shows in every member's app |
+| A malicious signer | Other people's personal scopes. Removing a signer without k approvals or a 7-day time lock, which the signer can cancel if the server shows it the start | Every team secret. Confirming puppet accounts and sealing keys to them. All of it shows in every member's app |
 | Self-hosted customer IT as operator, IdP admin, install admin and endpoint manager | Secrets against dumps, backups and database staff | Anything on endpoints it controls. It can install software, read device memory or sign in as anyone through its IdP. End-to-end encryption does not protect against the organization itself |
 
 ## A malicious server operator
@@ -84,14 +84,15 @@ This is the case the end-to-end design exists for.
 | Replay an old statement, key version or device list | Hash chains, stored heads and highest versions; `dh` and `ih` only move forward, with compare-and-set on the server; floors | Logs; Ordering rules |
 | Re-encode a signature so one statement gets two hashes and raises a fork | A statement's hash covers its signing input, and base64url must be canonical | Suite, encoding and labels |
 | Add a holder after a removal, or keep one a stolen device planted, even one that then signed out | Approvals are signed by the approving holder. A `rotate` takes effect at its `dh` and takes out every holder the removed ones approved | Logs, Ordering rules |
-| Keep a puppet that a stolen signer's device confirmed or added as a signer | Team statements are signed by one holder. The grants of a holder the account later removes are voided, and the team rotates its key | Logs, Voided grants |
-| Undo a member removal by removing the device that signed it | Only grants are voided. Removals, revocations, the team's genesis and a re-root stay in force whoever signed them | Logs, Voided grants |
-| Undo Replace Recovery Key through a fork, with an old S | A client never follows an IK that a `replace` it verified replaced, and a fork where either branch holds an identity change ends only by comparison. A device the server kept from seeing the `replace` is a split view until it compares | Logs, Rollback and forks |
+| Keep a puppet that a stolen signer's device confirmed or added as a signer | Team statements are signed by one holder. Removing the device lists everything it signed, and the person revokes the puppet with a new statement. Until then the puppet stays, as every client agrees, and the team rotates its key | Flows, Removing a lost device, Voided grants |
+| Undo Replace Recovery Key through a fork, with an old S | A client never follows an IK that a `replace` it verified replaced, and a fork freezes the log for good. The person recovers with a reset. A device the server kept from seeing the `replace` is a split view until it compares | Logs, Rollback and forks |
+| Use up a key's versions with one statement, so the person can never rotate | Every version is exactly one above the last on its chain, and a version at or above 2^31 is refused at parse | Keys, Versions |
+| Fork a log so a rule picks the wrong branch | No rule picks a branch. A fork freezes the log for good: an account recovers through a reset, a team through a new team. The client keeps the fork in its anchor, so a restore cannot erase it | Logs, Rollback and forks |
 | Seal a new team key to a revoked SK by hiding a member's `rotate` from the signers | Not prevented against a malicious server: the signer seals to the SK it last verified. The honest server refuses a `key` naming a stale SK. `key` names the member log head each recipient was checked at. The member's own app refuses the version, raises an alarm and publishes its `rotate` again | Flows, Rotation pending |
 | Mint an envelope | Envelopes are AEAD under keys the server never has, and every envelope carries its writer holder's signature | Envelopes |
 | Slip in an envelope a removed holder wrote under an old key version | A client refuses envelopes from a removed holder unless it held them before it saw the removal. The removing client seals the removed holder's envelopes again under the new version | Envelopes |
 | Hand back a superseded envelope | Each envelope carries (`kv`, `n`). Clients keep the highest they accepted and refuse anything not above it | Envelopes |
-| Pin an envelope counter so honest writes are refused | The honest server takes only the next counter and answers `bad_counter` otherwise. `n` starts again under each key version, so a removal clears a counter a stolen holder pushed up | Envelopes |
+| Pin an envelope counter so honest writes are refused | The honest server takes only the next counter and answers `bad_counter` otherwise, and no `kv` above the scope's current version. `n` starts again under each key version, so a removal clears an `n` a stolen holder pushed up | Envelopes |
 | Move an envelope to another record, kind, scope or version | The AAD binds them, and the subkey is per record | Envelopes |
 | Rewrite a connection's host so a password goes elsewhere | A destination change waits for approval on each device. A sealed destination that differs from the record's asks too | Envelopes, At use |
 | Downgrade the suite | Clients accept `tp1` only. The suite is inside every `info` and AAD | Suite, encoding and labels |
@@ -114,6 +115,7 @@ This is the case the end-to-end design exists for.
 - It can show a holder that pins again with S, with no device to compare with, a consistent older view.
 - It can keep two groups of devices on two consistent histories (split view) until they compare.
 - It can deny service at any time.
+- After a restore, it holds for 7 days every completion of a time-locked operation that lacks a receipt from before the epoch, so a cancel the restore lost, once republished, still lands first.
 - It holds the time-receipt key, so it can sign any time it likes for the waits. Two receipts for one statement with different times prove it lied, but only to a client that holds both.
 - It can write `user` tombstones for any plaintext record, which carries no signature. A device that then moves back to iCloud deletes the iCloud copies of those records (0054, Moves).
 
@@ -157,12 +159,12 @@ It holds no IK and no recovery key.
 - while a reset is pending, block approvals and sign-outs for those 7 days, since only the old IK and cancels may sign in between;
 - if the person is the only signer, remove that signer at once and open a visible re-root (D15's self-removal);
 - if it can still sign in, even on an honest server and from a removed row, cancel every reset of a person who has no S, who can then never remove it (D7). The removal sheet tells the person to end every IdP session. A person with S removes the holder instead, which takes the cancel away;
-- with two signers, sign the person's own `signer_remove`, which takes effect at once, and leave the other signer, who may be malicious, in sole control. With three, sign the person's `approve` of another signer's proposal to remove the third. Both stay after the device is removed, since removals are never voided, and the removal sheet lists them.
+- with two signers, sign the person's own `signer_remove`, which takes effect at once, and leave the other signer, who may be malicious, in sole control. With three, sign the person's `approve` of another signer's proposal to remove the third. Both stay after the device is removed, since nothing a removed device signed changes on its own, and the removal sheet lists them.
 
 **After removal with the recovery key** (0053, Removing a lost device). This holds even if the thief signed the device out first:
 
 - new SK and AK versions reach only the remaining holders, and every holder the stolen one approved is removed with it;
-- team statements the stolen holder signed are voided, and each team rotates its key;
+- the removal lists every team statement the stolen holder signed, and the person revokes what they do not recognize with new statements. Each team rotates its key;
 - envelopes it wrote are sealed again under the new version, and clients refuse any new one from it;
 - the honest server refuses the device's DPoP key, since its row went first.
 
@@ -204,7 +206,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 **What holds.**
 
 - A device refuses any log that does not extend its stored head.
-- A device refuses a second statement at a position it already holds with a different signing input, and raises a fork alarm. An account fork with no identity change ends through a `rotate` the IK in force on both branches signs; one with a `replace`, `reset` or `activate` on either branch ends only by comparison. A team fork ends with k signers both branches share. No key a client has seen replaced ever decides.
+- A device refuses a second statement at a position it already holds with a different signing input. That fork freezes the log for good, and the anchor keeps it across a restore. An account recovers through a reset, a team through a new team. No key a client has seen replaced ever decides.
 - Key versions, envelope counters and floors only move forward.
 - A stale state file, edited or older than its anchor, is not trusted, and neither is an anchor with no file. With the anchor intact, the key tables are rebuilt from the server's logs with no comparison, taking only what extends the anchored checkpoint, or the pending one a crash left. No secret is written until every followed log contains its anchored head. No comparison pins a head older than one the holder has anchored.
 - Every comparison covers the log heads, so two devices that compare also check that they see one history. A device approval also compares the team logs and member bundles, and the new device starts from the approving device's checkpoints.
@@ -227,6 +229,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 - The time of every push and pull, and the client IP address. Self-hosted installs keep it in their own logs.
 - Device approval requests with the requesting platform, comparison sessions and their timing, and pending resets.
 - Pending signer proposals, time-locked removals and their cancels, and, through `device_removed`, which locked holders were told of a pending reset or removal.
+- A targeted signer's holders reading the team log and member bundles without a seat.
 - DPoP key thumbprints, which tie each request to a key holder.
 - The writer, account and holder, in clear on every envelope and history entry, and `updated_device` on every record (0051). So the server learns which device last set each secret and wrote each history entry.
 - Device and roster changes: added and removed holders, members confirmed and removed, signers added and removed, re-roots.
@@ -264,14 +267,15 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 7. **History paged back on a new device** can show an entry a removed holder backdated with the server's help, marked as written on a removed device.
 8. **A malicious signer** can grant the team key to accounts of its choice.
 9. **A re-root after the last signer leaves** trusts the owner the server lists, as at a team's genesis, until members confirm it. A thief with the only signer's device can open one at once through self-removal.
-10. **A server that withholds a time-locked removal from its target** keeps the target from cancelling, as it can withhold a pending reset. Both are split views.
-11. **A pending reset** holds the person's device approvals and sign-outs for 7 days. A thief that can still sign in can cancel every reset of a person who has no recovery key, on an honest server too.
-12. **A thief with one of two signers' devices** can remove that signer at once through self-removal, which never comes back, and so give the other signer sole control.
-13. **A signer away longer than 7 days** can lose its place through a time-locked removal, as a person away longer than 7 days can lose a reset race.
-14. **A person who confirms a comparison without reading it** approves whatever is on the other screen.
-15. **Plaintext records and metadata** are readable by the operator.
-16. **The organization running a self-hosted install** controls its endpoints and its IdP, which end-to-end encryption does not cover.
-17. **P-256 and Ed25519 are not post-quantum.** Someone who archives `tp1` wraps today could open them on a future quantum computer, and with them every envelope and history entry written under those key versions, however strong AES-256 is. Moving to `tp2` issues new keys that reach anyone only through hybrid wraps, so it protects what is written after the move, not what was written before (0053, Suite).
+10. **A server that withholds a time-locked removal from its target** keeps the target from cancelling, as it can withhold a pending reset. Both are split views. One malicious signer with such a server can remove every other signer in 7 days whatever n is, so the time lock gives 1-of-n against a withholding server. The target's own app raises an alarm when it first sees a recent completed removal it never saw pending, and other clients hold the completion 7 days from first sight.
+11. **A server that makes up a no-holder reset of the last signer and withholds the starts** can drive that signer's removal and a re-root for a root it holds. The old signer's veto still applies and the members' comparisons with the new root still gate team secrets, so it needs the withholding too.
+12. **A pending reset** holds the person's device approvals and sign-outs for 7 days. A thief that can still sign in can cancel every reset of a person who has no recovery key, on an honest server too.
+13. **A thief with one of two signers' devices** can remove that signer at once through self-removal, which never comes back, and so give the other signer sole control.
+14. **A signer away longer than 7 days** can lose its place through a time-locked removal, as a person away longer than 7 days can lose a reset race.
+15. **A person who confirms a comparison without reading it** approves whatever is on the other screen.
+16. **Plaintext records and metadata** are readable by the operator.
+17. **The organization running a self-hosted install** controls its endpoints and its IdP, which end-to-end encryption does not cover.
+18. **P-256 and Ed25519 are not post-quantum.** Someone who archives `tp1` wraps today could open them on a future quantum computer, and with them every envelope and history entry written under those key versions, however strong AES-256 is. Moving to `tp2` issues new keys that reach anyone only through hybrid wraps, so it protects what is written after the move, not what was written before (0053, Suite).
 
 ## Out of scope
 
