@@ -29,6 +29,10 @@ extension PostgreSQLPluginDriver {
         try await exportCatalog.fetchAllIndexDDL(schema: schema)
     }
 
+    func fetchAllTableDDL(schema: String?) async throws -> [String: String] {
+        try await exportCatalog.fetchAllTableDDL(schema: schema)
+    }
+
     func fetchAllCommentDDL(schema: String?) async throws -> [String: [String]] {
         try await exportCatalog.fetchAllCommentDDL(schema: schema)
     }

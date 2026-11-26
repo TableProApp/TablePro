@@ -13,9 +13,9 @@ use crate::runtime::on_runtime;
 // named by its record id, UUID text.
 #[derive(uniffi::Object)]
 pub struct SavedQueryStore {
-    queries: SavedQueries,
-    folders: SavedQueryFolders,
-    tasks: Tasks,
+    pub(crate) queries: SavedQueries,
+    pub(crate) folders: SavedQueryFolders,
+    pub(crate) tasks: Tasks,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
