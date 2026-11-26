@@ -72,6 +72,7 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         settings: None,
         device_store: Some(device_store as Arc<dyn tablepro_sync::api::HostDeviceStore>),
         legacy_mirror: None,
+        history: None,
         link: Err(tablepro_sync::api::TransportError::SignedOut.into()),
         listener: Arc::new(Listener::default()),
     });

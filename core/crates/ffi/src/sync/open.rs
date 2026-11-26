@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use tablepro_records::Kind;
 use tablepro_session::runtime::Tasks;
+use tablepro_storage::{ChangeJournal, QueryHistory};
 use tablepro_sync::SyncError;
+use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::{self as sync, StateFiles, TransportError};
 use tablepro_sync::http::HttpTransport;
 use tablepro_sync::state::SqliteStateFiles;
@@ -31,6 +33,8 @@ pub(crate) struct OpenParts {
     pub(crate) settings: Option<Arc<dyn sync::HostSettings>>,
     pub(crate) device_store: Option<Arc<dyn sync::HostDeviceStore>>,
     pub(crate) legacy_mirror: Option<Arc<dyn sync::LegacyMirror>>,
+    // This Core's history database; None on a Core opened without storage or when it could not open.
+    pub(crate) history: Option<QueryHistory>,
     // The sign-in's `/v2/sync` link, or why there is none.
     pub(crate) link: Result<ServiceLink, SyncError>,
     pub(crate) listener: Arc<dyn SyncListener>,
@@ -92,6 +96,7 @@ impl Core {
                     tasks: tasks.clone(),
                 }) as Arc<dyn sync::LegacyMirror>
             }),
+            history: self.synced_history().await,
             link: Err(TransportError::SignedOut.into()),
             listener: Arc::from(listener),
         };
@@ -103,6 +108,23 @@ impl Core {
             Ok(SyncService::open(tasks, parts).await)
         })
         .await
+    }
+}
+
+impl Core {
+    // The store every caller of `history` shares, so its writes reach the engines' journals.
+    async fn synced_history(&self) -> Option<QueryHistory> {
+        self.paths.as_ref()?;
+        match self.history().await {
+            Ok(store) => Some(store.history.clone()),
+            Err(error) => {
+                tracing::warn!(
+                    code = error.code(),
+                    "saved queries and history do not sync: the history did not open"
+                );
+                None
+            }
+        }
     }
 }
 
@@ -141,12 +163,21 @@ impl SyncService {
         let signals = Arc::new(Signals::default());
         let forwarding = forward(Arc::clone(&signals), parts.listener, &tasks);
         let hosts = match (parts.files, parts.device_store) {
-            (Some(files), Some(device_store)) => Ok(Hosts {
-                files,
-                device_store,
-                settings: parts.settings,
-                events: signals,
-            }),
+            (Some(files), Some(device_store)) => {
+                let store_journal = StoreJournal::new();
+                if let Some(history) = &parts.history {
+                    history.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+                }
+                Ok(Hosts {
+                    files,
+                    device_store,
+                    settings: parts.settings,
+                    events: signals,
+                    history: parts.history,
+                    standing: None,
+                    store_journal,
+                })
+            }
             (None, _) => Err(SyncError::NotAllowed {
                 what: "sync on a Core opened without storage",
             }),

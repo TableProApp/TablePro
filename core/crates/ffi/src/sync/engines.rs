@@ -5,9 +5,13 @@ use std::sync::Arc;
 
 use tablepro_keys::encoding::{AccountId, Origin};
 use tablepro_records::Kind;
+use tablepro_storage::QueryHistory;
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
-use tablepro_sync::adapters::settings::SettingsAdapter;
+use tablepro_sync::adapters::history::HistoryAdapter;
+use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
+use tablepro_sync::adapters::settings::{ConnectionStanding, SettingsAdapter};
+use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::control::SyncCategories;
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
@@ -38,14 +42,30 @@ pub(crate) struct Hosts {
     pub(crate) device_store: Arc<dyn HostDeviceStore>,
     pub(crate) settings: Option<Arc<dyn HostSettings>>,
     pub(crate) events: Arc<dyn EngineEvents>,
+    // This Core's history database: its saved queries, their folders and the query history.
+    pub(crate) history: Option<QueryHistory>,
+    // Which connections stay on this device. Until it is known, no history syncs (0051, What syncs).
+    pub(crate) standing: Option<Arc<dyn ConnectionStanding>>,
+    // What the history database's writes tell each engine that syncs it.
+    pub(crate) store_journal: Arc<StoreJournal>,
 }
 
 impl Hosts {
-    fn adapters(&self) -> Vec<Arc<dyn RecordAdapter>> {
-        self.settings
+    // The adapters over this Core's stores and the app's settings; the stores' writes now also tell `journal`.
+    fn adapters(&self, journal: &Journal) -> Vec<Arc<dyn RecordAdapter>> {
+        let mut adapters: Vec<Arc<dyn RecordAdapter>> = self
+            .settings
             .iter()
             .map(|host| Arc::new(SettingsAdapter::new(Arc::clone(host), None)) as Arc<dyn RecordAdapter>)
-            .collect()
+            .collect();
+        if let Some(history) = &self.history {
+            self.store_journal.add(journal.clone());
+            adapters.extend(SavedQueryAdapter::all(history));
+            if let Some(standing) = &self.standing {
+                adapters.push(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(standing))));
+            }
+        }
+        adapters
     }
 }
 
@@ -76,7 +96,7 @@ impl IcloudEngine {
         let sync = Arc::new(CloudKitSync::new(CloudKitParts {
             transport,
             files: Arc::clone(&hosts.files),
-            adapters: hosts.adapters(),
+            adapters: hosts.adapters(&journal),
             categories: icloud_categories(categories),
             clock: Arc::new(SystemClock),
             stop: stop.clone(),
@@ -141,7 +161,7 @@ impl ServiceEngine {
         let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: link.transport,
             state,
-            adapters: Adapters::new(hosts.adapters()),
+            adapters: Adapters::new(hosts.adapters(&journal)),
             keys: Arc::clone(&keys) as Arc<dyn KeyFlows>,
             hooks,
             clock: Arc::new(SystemClock),
@@ -179,3 +199,7 @@ pub(crate) fn journal(journals: &[&Journal], kind: Kind, written: Vec<String>, d
         journal.changed(std::slice::from_ref(&entry));
     }
 }
+
+#[cfg(test)]
+#[path = "engines_tests.rs"]
+mod tests;
