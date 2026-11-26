@@ -14,7 +14,7 @@ use super::scopes::refresh;
 use super::{PassCtx, ServiceSync, begin};
 use crate::adapters::approval::{self, Split};
 use crate::adapters::categories::DeviceCategories;
-use crate::adapters::{conflict, local_view};
+use crate::adapters::{apply_keeping, conflict, local_view};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey, ScopeName};
@@ -97,7 +97,8 @@ impl Pull {
 
 #[derive(Debug, Default)]
 pub(super) struct PageWrites {
-    store: Vec<(usize, LocalChange)>,
+    // Each store change with the pulled record it settles, which is held if the store refuses it.
+    store: Vec<(usize, PulledRecord, LocalChange)>,
     bases: Vec<BaseRow>,
     dropped: Vec<RecordKey>,
     held: Vec<HeldRow>,
@@ -110,6 +111,8 @@ pub(super) struct PageWrites {
     undeferred: Vec<RecordKey>,
     // Rows of other tables that settle in the same commit, as a refilled store's identity.
     rows: Vec<Row>,
+    // Records the store refused to keep, held by id with the server's copy.
+    pub(super) refused: Vec<RecordKey>,
 }
 
 impl PageWrites {
@@ -125,6 +128,32 @@ impl PageWrites {
             && self.deferred.is_empty()
             && self.undeferred.is_empty()
             && self.rows.is_empty()
+    }
+
+    // The store refused the record's value: it is held by id with the server's copy, as a record this build cannot
+    // read is, and nothing the pull settled for it lands, so its base stays the copy the store holds (0054, Rules for
+    // both providers).
+    fn refuse(&mut self, key: RecordKey, record: PulledRecord) {
+        self.bases.retain(|base| base.key != key);
+        self.dropped.retain(|dropped| *dropped != key);
+        self.unheld.retain(|unheld| *unheld != key);
+        self.resolved.retain(|resolved| *resolved != key);
+        self.approvals.retain(|(approved, _)| *approved != key);
+        self.undeferred.retain(|undeferred| *undeferred != key);
+        self.held.retain(|held| held.key != key);
+        // A history entry reached the store opened: the row keeps only its id, so no plaintext rests in the state file,
+        // and the server serves the sealed copy again.
+        let record = if key.kind.known() == Some(Kind::HistoryEntry) {
+            PulledRecord {
+                fields: None,
+                fields_json: None,
+                ..record
+            }
+        } else {
+            record
+        };
+        self.held.push(held(HeldReason::Unreadable, key.clone(), record));
+        self.refused.push(key);
     }
 }
 
@@ -292,6 +321,7 @@ impl ServiceSync {
             }
             ctx.report.pulled += page.records.len();
             let writes = self.take_page(pull, adapters, page.records).await?;
+            ctx.report.store_refused.extend(writes.refused.iter().cloned());
             pull.cursor = next;
             if pull.snapshot {
                 if !writes.is_empty() {
@@ -618,6 +648,7 @@ impl ServiceSync {
                 } else if stored_fields != Some(&split.fields) {
                     writes.store.push((
                         index,
+                        record.clone(),
                         LocalChange::Put {
                             record_id: key.record_id.clone(),
                             fields: split.fields.clone(),
@@ -628,7 +659,7 @@ impl ServiceSync {
             }
             (None, Some(change @ LocalChange::Delete { .. })) => {
                 writes.approvals.push((key.clone(), cleared(rows)));
-                writes.store.push((index, change.clone()));
+                writes.store.push((index, record.clone(), change.clone()));
             }
             // A tombstone of a record the store does not hold leaves nothing to decide; one the store keeps, as against
             // a policy or a contested deletion, keeps what waits.
@@ -718,17 +749,20 @@ impl ServiceSync {
         adapters: &[Arc<dyn RecordAdapter>],
         writes: &mut PageWrites,
     ) -> Result<(), SyncError> {
-        let mut grouped: Vec<(usize, Vec<LocalChange>)> = Vec::new();
-        for (index, change) in writes.store.drain(..) {
+        let mut grouped: Vec<(usize, Vec<(PulledRecord, LocalChange)>)> = Vec::new();
+        for (index, record, change) in writes.store.drain(..) {
             match grouped.iter_mut().find(|(held, _)| *held == index) {
-                Some((_, changes)) => changes.push(change),
-                None => grouped.push((index, vec![change])),
+                Some((_, changes)) => changes.push((record, change)),
+                None => grouped.push((index, vec![(record, change)])),
             }
         }
         for (index, changes) in grouped {
-            self.stop.check()?;
             if let Some(adapter) = adapters.get(index) {
-                adapter.apply(scope, changes).await?;
+                let applied = apply_keeping(adapter.as_ref(), scope, changes, || self.stop.check()).await?;
+                for record in applied.refused {
+                    let key = RecordKey::new(scope, record.kind.clone(), record.record_id.clone());
+                    writes.refuse(key, record);
+                }
             }
         }
         Ok(())
@@ -807,6 +841,7 @@ impl ServiceSync {
             }
         }
         self.settle_all(pull, adapters, opened, &mut writes).await?;
+        ctx.report.store_refused.extend(writes.refused.iter().cloned());
         let before = row.clone();
         row.cursor.clone_from(&pull.cursor);
         row.key_version = pull.in_force;

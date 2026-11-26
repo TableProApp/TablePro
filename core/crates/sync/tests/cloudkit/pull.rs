@@ -97,6 +97,39 @@ async fn a_store_that_refuses_the_write_commits_no_base_and_no_token() {
     assert!(rig.store(Kind::Connection).fields(A).is_some());
 }
 
+// The store cannot keep one pulled value: that record is held by id with the zone's copy and keeps no base, the rest
+// of the batch lands with the token, and the held one goes in once the store takes it.
+#[tokio::test]
+async fn a_value_the_store_refuses_is_held_and_the_fetch_goes_on() {
+    use tablepro_sync::api::state::HeldReason;
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    rig.save_elsewhere(Kind::Connection, B, &json!({"name": "stage"}));
+    rig.store(Kind::Connection).refuse_value(A, true);
+
+    let report = rig.fetch().await.unwrap();
+    let held = rig.held(Kind::Connection, A).await.unwrap();
+    let base = rig.base(Kind::Connection, A).await;
+    rig.save_elsewhere(Kind::Connection, B, &json!({"name": "stage 2"}));
+    rig.fetch().await.unwrap();
+    let later = rig.store(Kind::Connection).fields(B);
+    rig.store(Kind::Connection).refuse_value(A, false);
+    rig.fetch().await.unwrap();
+
+    assert_eq!(report.counts.refused, 1);
+    assert_eq!(report.counts.written, 1);
+    assert_eq!(held.reason, HeldReason::Unreadable);
+    assert!(held.record.fields.is_some());
+    assert!(base.is_none());
+    assert!(rig.token().await.is_some());
+    assert_eq!(later, Some(projected(Kind::Connection, B, &json!({"name": "stage 2"}))));
+    assert_eq!(
+        rig.store(Kind::Connection).fields(A),
+        Some(projected(Kind::Connection, A, &json!({"name": "prod"})))
+    );
+    assert!(rig.held(Kind::Connection, A).await.is_none());
+}
+
 // The crash window between the store write and the state commit after it, the second of the batch's commits: the
 // replay finds the store already holding the merge and writes nothing new, then commits the base and the token.
 #[tokio::test]

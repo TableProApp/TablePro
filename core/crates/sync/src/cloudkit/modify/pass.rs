@@ -359,7 +359,8 @@ impl CloudKitSync {
         status.last_pass_ms = Some(self.clock.now_ms());
         match outcome {
             Ok(report) => {
-                status.problem = None;
+                // A record the store refused is held, never dropped silently: the pass that held it says so.
+                status.problem = (report.fetch.counts.refused > 0).then_some(crate::api::error::UNREADABLE);
                 if !journal_only {
                     status.queued_changes = u32::try_from(report.push.queued).unwrap_or(u32::MAX);
                 }

@@ -71,6 +71,8 @@ struct Held {
     records: BTreeMap<String, LocalRecord>,
     unreadable: BTreeSet<String>,
     refuse_next: bool,
+    // Ids whose pulled value the store cannot keep: a write that puts one fails whole.
+    refused_values: BTreeSet<String>,
     writes: usize,
     // A write the person makes right after the next read, while the pull merges.
     edit_after_read: Option<(String, Value)>,
@@ -98,6 +100,7 @@ impl MemoryStore {
                 records: BTreeMap::new(),
                 unreadable: BTreeSet::new(),
                 refuse_next: false,
+                refused_values: BTreeSet::new(),
                 writes: 0,
                 edit_after_read: None,
             }),
@@ -172,6 +175,16 @@ impl MemoryStore {
 
     pub fn refuse_next_write(&self) {
         lock(&self.held).refuse_next = true;
+    }
+
+    // The store cannot keep a value for this id, as a build that does not know it would; None takes it again.
+    pub fn refuse_value(&self, id: &str, refused: bool) {
+        let mut held = lock(&self.held);
+        if refused {
+            held.refused_values.insert(id.to_owned());
+        } else {
+            held.refused_values.remove(id);
+        }
     }
 
     // Time Machine put the file back: the same generation at an earlier write, holding these records.
@@ -255,6 +268,13 @@ impl RecordAdapter for MemoryStore {
             return Err(AdapterError::Store {
                 store: self.store.clone(),
                 detail: "refused".to_owned(),
+            });
+        }
+        if changes.iter().any(
+            |change| matches!(change, LocalChange::Put { record_id, .. } if held.refused_values.contains(record_id)),
+        ) {
+            return Err(AdapterError::Unreadable {
+                detail: "a value this store cannot keep".to_owned(),
             });
         }
         for change in changes {

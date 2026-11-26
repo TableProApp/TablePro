@@ -20,7 +20,8 @@ use std::collections::BTreeSet;
 use serde_json::Value;
 use tablepro_records::Kind;
 
-use crate::api::error::AdapterError;
+use crate::api::adapter::{LocalChange, RecordAdapter, StoreStamp};
+use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::ScopeName;
 
 // The stores' calls block on files and SQLite, so they run off the runtime's workers.
@@ -44,4 +45,53 @@ pub fn local_view(
 ) -> Value {
     let carried = carry::carried(kind, stored, base);
     fields::with_members_of(kind, scope, &carried, base, held)
+}
+
+// What a pull's store write took: the identity after the last write that landed, and the changes the store refused.
+pub(crate) struct Applied<T> {
+    pub(crate) stamp: Option<StoreStamp>,
+    pub(crate) refused: Vec<T>,
+}
+
+// A pull's changes to one store in one write. A store that cannot keep a value refuses the whole write, so each change
+// then goes alone: the ones it keeps land, and the ones it refuses come back for the caller to hold by id, as a record
+// this build cannot read is held (0054, Rules for both providers), so one record never stops every later change. Any
+// other failure stops the write as before. `check` runs before each write.
+pub(crate) async fn apply_keeping<T>(
+    adapter: &dyn RecordAdapter,
+    scope: ScopeName,
+    changes: Vec<(T, LocalChange)>,
+    check: impl Fn() -> Result<(), SyncError>,
+) -> Result<Applied<T>, SyncError> {
+    let (tags, batch): (Vec<T>, Vec<LocalChange>) = changes.into_iter().unzip();
+    check()?;
+    match adapter.apply(scope, batch.clone()).await {
+        Ok(stamp) => {
+            return Ok(Applied {
+                stamp: Some(stamp),
+                refused: Vec::new(),
+            });
+        }
+        Err(AdapterError::Unreadable { .. }) if tags.len() == 1 => {
+            return Ok(Applied {
+                stamp: None,
+                refused: tags,
+            });
+        }
+        Err(AdapterError::Unreadable { .. }) => {}
+        Err(other) => return Err(other.into()),
+    }
+    let mut applied = Applied {
+        stamp: None,
+        refused: Vec::new(),
+    };
+    for (tag, change) in tags.into_iter().zip(batch) {
+        check()?;
+        match adapter.apply(scope, vec![change]).await {
+            Ok(stamp) => applied.stamp = Some(stamp),
+            Err(AdapterError::Unreadable { .. }) => applied.refused.push(tag),
+            Err(other) => return Err(other.into()),
+        }
+    }
+    Ok(applied)
 }

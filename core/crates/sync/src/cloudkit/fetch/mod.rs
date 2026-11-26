@@ -77,6 +77,8 @@ pub struct Counts {
     pub skipped: u32,
     // Held changes fetched by name once their copy read.
     pub recovered: u32,
+    // Pulled changes the store refused to keep, held by id.
+    pub refused: u32,
 }
 
 impl Counts {
@@ -88,6 +90,7 @@ impl Counts {
         self.inferred = self.inferred.saturating_add(other.inferred);
         self.skipped = self.skipped.saturating_add(other.skipped);
         self.recovered = self.recovered.saturating_add(other.recovered);
+        self.refused = self.refused.saturating_add(other.refused);
     }
 }
 
