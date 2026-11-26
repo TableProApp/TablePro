@@ -48,6 +48,7 @@ impl Library {
             Some(&self.history),
             library::DriverNames::Mac,
             library::Provider::TableproSync,
+            None,
         )
     }
 

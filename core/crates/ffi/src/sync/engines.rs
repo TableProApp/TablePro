@@ -79,6 +79,8 @@ pub(crate) struct Hosts {
     // This Core's connection library: connections, groups, tags and profiles, named by `names`.
     pub(crate) library: Option<ConnectionStore>,
     pub(crate) names: DriverNames,
+    // This device's id as the host keeps it, which names the SSH routes it publishes.
+    pub(crate) publisher: Option<uuid::Uuid>,
     // This Core's history database: its saved queries, their folders and the query history.
     pub(crate) history: Option<QueryHistory>,
     // Which connections stay on this device. Until it is known, no history syncs and nothing of a connection does
@@ -101,7 +103,13 @@ impl Hosts {
         // The table folders and favourites the history database holds come with the library, which says which of
         // their connections sync.
         if let Some(store) = &self.library {
-            adapters.extend(library::adapters(store, self.history.as_ref(), self.names, provider));
+            adapters.extend(library::adapters(
+                store,
+                self.history.as_ref(),
+                self.names,
+                provider,
+                self.publisher,
+            ));
         }
         if let Some(history) = &self.history {
             adapters.extend(SavedQueryAdapter::all(history, self.standing.clone()));

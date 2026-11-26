@@ -195,6 +195,11 @@ impl OpenParts {
             events,
             library: self.library.take(),
             names: driver_names(self.config.platform),
+            publisher: self
+                .config
+                .route_publisher
+                .as_deref()
+                .and_then(|text| uuid::Uuid::parse_str(text).ok()),
             history: self.history.take(),
             standing,
             store_journal,

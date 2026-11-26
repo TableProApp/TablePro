@@ -63,11 +63,13 @@ pub struct LibraryAdapter {
     store: ConnectionStore,
     kind: Kind,
     names: DriverNames,
+    // This device's id as the host keeps it, which names the routes it publishes.
+    publisher: Option<Uuid>,
     seen: Mutex<Option<HashMap<String, Seen>>>,
 }
 
 impl LibraryAdapter {
-    pub fn all(store: &ConnectionStore, names: DriverNames) -> Vec<Arc<dyn RecordAdapter>> {
+    pub fn all(store: &ConnectionStore, names: DriverNames, publisher: Option<Uuid>) -> Vec<Arc<dyn RecordAdapter>> {
         KINDS
             .into_iter()
             .map(|kind| {
@@ -75,6 +77,7 @@ impl LibraryAdapter {
                     store: store.clone(),
                     kind,
                     names,
+                    publisher,
                     seen: Mutex::new(None),
                 }) as Arc<dyn RecordAdapter>
             })
@@ -88,8 +91,9 @@ pub fn adapters(
     history: Option<&QueryHistory>,
     names: DriverNames,
     provider: Provider,
+    publisher: Option<Uuid>,
 ) -> Vec<Arc<dyn RecordAdapter>> {
-    let mut all = LibraryAdapter::all(store, names);
+    let mut all = LibraryAdapter::all(store, names, publisher);
     if let Some(history) = history {
         all.extend(TableFolderAdapter::all(history, store));
         all.extend(FavouriteAdapter::all(history, store, provider));
@@ -200,6 +204,7 @@ pub(super) fn stale(store: &str) -> AdapterError {
 fn local_records(
     kind: Kind,
     names: DriverNames,
+    publisher: Option<Uuid>,
     list: &ConnectionList,
     unreadable_ssh: &[Uuid],
     unreadable_credentials: &[Uuid],
@@ -210,7 +215,14 @@ fn local_records(
                 .iter()
                 .map(|saved| {
                     let favorite = list.is_favorite(saved.id);
-                    let fields = connection::to_wire(saved, favorite, followed(list, saved), names);
+                    let mut fields = connection::to_wire(saved, favorite, followed(list, saved), names);
+                    if let Some(publisher) = publisher {
+                        super::fields::set(
+                            &mut fields,
+                            &format!("/{}", super::unsettled::ROUTE_PUBLISHER),
+                            Some(Value::String(uuid_id(publisher))),
+                        );
+                    }
                     record(saved.id, fields, connection_standing(saved))
                 })
                 .collect(),
@@ -424,6 +436,7 @@ impl RecordAdapter for LibraryAdapter {
         let records = local_records(
             self.kind,
             self.names,
+            self.publisher,
             &library.list,
             &library.unreadable_ssh_profiles,
             &library.unreadable_credential_profiles,
@@ -437,13 +450,13 @@ impl RecordAdapter for LibraryAdapter {
             return self.identity().await;
         }
         let expected = lock(&self.seen).take();
-        let (store, kind, names) = (self.store.clone(), self.kind, self.names);
+        let (store, kind, names, publisher) = (self.store.clone(), self.kind, self.names, self.publisher);
         let (written, changed) = blocking(move || {
             let mut changed = false;
             let written = store.apply_synced_blocking(|list| {
                 if let Some(expected) = &expected {
                     let held = &list.unreadable_profiles;
-                    let now = seen(&local_records(kind, names, list, held, held));
+                    let now = seen(&local_records(kind, names, publisher, list, held, held));
                     if changed_since(expected, &now, &changes) {
                         changed = true;
                         return Vec::new();

@@ -8,7 +8,7 @@ fn store(dir: &std::path::Path) -> ConnectionStore {
 }
 
 fn adapter(store: &ConnectionStore, kind: Kind) -> Arc<dyn RecordAdapter> {
-    LibraryAdapter::all(store, DriverNames::Mac)
+    LibraryAdapter::all(store, DriverNames::Mac, None)
         .into_iter()
         .find(|adapter| adapter.kind() == kind)
         .expect("an adapter for the kind")
@@ -122,7 +122,7 @@ async fn groups_and_tags_round_trip_through_the_store_in_one_write_each() {
 async fn a_new_store_starts_its_generation_and_every_kind_names_the_one_file() {
     let dir = tempfile::tempdir().unwrap();
     let store = store(dir.path());
-    let adapters = LibraryAdapter::all(&store, DriverNames::Mac);
+    let adapters = LibraryAdapter::all(&store, DriverNames::Mac, None);
 
     let first = adapters[0].identity().await.unwrap();
     let again = adapters[1].identity().await.unwrap();
@@ -377,6 +377,31 @@ fn a_route_another_device_published_is_neither_cleared_nor_replaced_by_one_to_th
     assert!(route_at_base(&cleared));
     assert!(route_at_base(&same_hosts));
     assert!(!route_at_base(&elsewhere));
+}
+
+// The device that published a route clears it as its own edit, as the Mac does by its publisher id.
+#[test]
+fn the_device_that_published_a_route_clears_it() {
+    let route = json!({
+        "basis": "b1", "hops": [], "publisher": PROFILE, "version": 1,
+        "target": {"alias": "db", "host": "db.internal", "port": 5432, "username": "app"},
+    });
+    let mut base = mac_connection();
+    base["ssh_route"] = route;
+    let (mut saved, favorite) = stored(&base);
+    saved.details.ssh_route = None;
+    let mut ours = wire(&saved, favorite);
+    ours["route_publisher"] = json!(PROFILE);
+    let mut another = ours.clone();
+    another["route_publisher"] = json!(GROUP);
+
+    let route_at_base = |local: &Value| {
+        at_base(Kind::Connection, local, Some(&base))
+            .iter()
+            .any(|pointer| pointer.starts_with("/ssh_route"))
+    };
+    assert!(!route_at_base(&ours));
+    assert!(route_at_base(&another));
 }
 
 #[test]

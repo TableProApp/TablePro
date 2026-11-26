@@ -43,6 +43,7 @@ impl Shelf {
             Some(&self.history),
             library::DriverNames::Mac,
             library::Provider::ICloud,
+            None,
         )
     }
 
