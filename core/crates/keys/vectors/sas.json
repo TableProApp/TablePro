@@ -1,0 +1,824 @@
+{
+  "area": "sas",
+  "suite": "tp1",
+  "format": 1,
+  "about": "Device approval's commitment, its five words both ways, and the session's order (ADR 0056, Approving a device)",
+  "origin": "https://sync.example.com",
+  "known": [
+    {
+      "name": "the commitment and the words; N computes them from its view and A from its own, which match",
+      "op": "sas",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "request": "E1289739-0129-4A80-889D-E042F745DB57",
+        "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+        "n": {
+          "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+          "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+          "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+        },
+        "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+        "a": {
+          "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+          "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+          "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+        },
+        "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+      },
+      "output": {
+        "commit_input_hex": "000000167461626c6570726f2f76312f7361732d636f6d6d6974000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000010e128973901294a80889de042f745db570000001048b87e89a72441e89dd142a0f295b1ba00000020197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e0700000020bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66000000207ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d7500000020b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+        "commit_hex": "f7877f1d53d8f9d39b372bec48552af5d0a0a0f86efd156b7558f907ccb3662e",
+        "digest_input_hex": "0000000f7461626c6570726f2f76312f736173000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000010e128973901294a80889de042f745db570000001048b87e89a72441e89dd142a0f295b1ba00000020197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e0700000020bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66000000207ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d7500000020b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c600000010f0f38b8d9aaa4d83bb89846df725c0c30000002021553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e350000002085fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e0000002069cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab",
+        "digest_hex": "82826533249b52a64dd08b983ada67fe0db394181c28ddfaa7c74256a0ac98c4",
+        "word_indexes": [3396,1524,4734,6962,3286],
+        "words": ["impotent","daily","porcupine","udder","hundredth"]
+      }
+    }
+  ],
+  "commitment": [
+    {
+      "name": "an r_N that does not open c",
+      "op": "check_commitment",
+      "row": "An `r_N` that does not open `c`; a commitment over other keys",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "request": "E1289739-0129-4A80-889D-E042F745DB57",
+        "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+        "n": {
+          "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+          "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+          "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+        },
+        "a": {
+          "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+          "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+          "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+        },
+        "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab",
+        "commit_hex": "f7877f1d53d8f9d39b372bec48552af5d0a0a0f86efd156b7558f907ccb3662e",
+        "r_n_hex": "01e1c4406c9f048da80dd759f482ddb9bfbb0fee128cde6a0d2271aaef4a0be6"
+      },
+      "error": "keys.commitment",
+      "server": null
+    },
+    {
+      "name": "a commitment over other keys",
+      "op": "check_commitment",
+      "row": "An `r_N` that does not open `c`; a commitment over other keys",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "request": "E1289739-0129-4A80-889D-E042F745DB57",
+        "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+        "n": {
+          "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+          "dek_hex": "fd3e4683e7359bf15a1155896fac470473873673f6b5f06938f8043a17b95748",
+          "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+        },
+        "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+        "a": {
+          "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+          "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+          "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+        },
+        "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab",
+        "commit_hex": "f7877f1d53d8f9d39b372bec48552af5d0a0a0f86efd156b7558f907ccb3662e"
+      },
+      "error": "keys.commitment",
+      "server": null
+    }
+  ],
+  "words_differ": [
+    {
+      "name": "N's key device id changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "973B00E3-6ADF-409E-9A4B-602F674A5F24",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["upcountry","liquid","stretch","flaccid","broker"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "N's DEK changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "fd3e4683e7359bf15a1155896fac470473873673f6b5f06938f8043a17b95748",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["silenced","asparagus","overdraft","partner","eastcoast"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "N's DSK changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "a0c23d952f6c8783c903790230c2fc00034a8385b8c44c954625ed942144d541"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["pueblo","petroleum","chihuahua","omen","grant"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "r_N changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "01e1c4406c9f048da80dd759f482ddb9bfbb0fee128cde6a0d2271aaef4a0be6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["fountain","emotion","upgrade","ample","strategy"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "the IK changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "b26d8c6d35997f6af98b1530a4d5057a1d839f4a34340742fc0630c3a60b4a7a",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["bakeshop","jugular","security","chatty","jukebox"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "A's key device id changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "1B7E0C0C-CE3D-4318-B6B1-111BE5AD86D5",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["glitter","sycamore","venture","levitate","scale"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "A's DEK changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "fd3e4683e7359bf15a1155896fac470473873673f6b5f06938f8043a17b95748",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["recall","gains","saloon","discuss","stitch"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "A's DSK changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "a0c23d952f6c8783c903790230c2fc00034a8385b8c44c954625ed942144d541"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["error","worrisome","refill","unfixed","raisin"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "r_A changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "a9cacb31f303584a955a263fe6d6942466a983125b829a50b39911b0c7e1e4e8"
+        },
+        "other_words": ["lethargy","catchy","dividers","cavalry","mom"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "the request changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "D526D51F-40F9-4D8B-AF9D-F9815E433828",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["irate","repeated","bony","underuse","bakery"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "the account changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["unfrozen","navy","superjet","online","sitter"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    },
+    {
+      "name": "the origin changed on one side",
+      "op": "sas_words_differ",
+      "row": "Words that differ, with one field changed on one side, N's key device id included",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_view": {
+          "origin": "https://other.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "other_words": ["haziness","recreate","ascend","buddy","busboy"]
+      },
+      "error": "keys.sas_mismatch",
+      "server": null
+    }
+  ],
+  "session": [
+    {
+      "name": "N reveals before the nonce",
+      "op": "sas_session",
+      "row": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "role": "new_device",
+        "steps": ["reveal"]
+      },
+      "error": "keys.session",
+      "server": "request_closed"
+    },
+    {
+      "name": "A reads a reveal after a cancel",
+      "op": "sas_session",
+      "row": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "role": "approver",
+        "steps": ["receive_cancel","receive_reveal"]
+      },
+      "error": "keys.session",
+      "server": "request_closed"
+    },
+    {
+      "name": "N reads a nonce after its request expired",
+      "op": "sas_session",
+      "row": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "role": "new_device",
+        "steps": ["expire","receive_nonce"]
+      },
+      "error": "keys.session",
+      "server": "request_closed"
+    },
+    {
+      "name": "A compares a second time",
+      "op": "sas_session",
+      "row": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "role": "approver",
+        "steps": ["receive_reveal","words","words"]
+      },
+      "error": "keys.session",
+      "server": "request_closed"
+    },
+    {
+      "name": "A reads a reveal after its approval",
+      "op": "sas_session",
+      "row": "A `reveal` before the `nonce`, any step after a `cancel`, an approval or `expires_at`, or an approval change set after `expires_at`",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "role": "approver",
+        "steps": ["receive_reveal","words","confirm","receive_reveal"]
+      },
+      "error": "keys.session",
+      "server": "request_closed"
+    },
+    {
+      "name": "the whole session in order, on N's side",
+      "op": "sas_session",
+      "input": {
+        "view": {
+          "origin": "https://sync.example.com",
+          "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+          "request": "E1289739-0129-4A80-889D-E042F745DB57",
+          "ik_hex": "197d73f305dff0fe32f0708d734b680847653bc615dc77a032a4b014627e6e07",
+          "n": {
+            "key_device": "48B87E89-A724-41E8-9DD1-42A0F295B1BA",
+            "dek_hex": "bf5c2d0a18713aba88bcb750a4498b4a026a2b3da6300d56c66f7e8535953d66",
+            "dsk_hex": "7ecb2ef881113ac9aaf6de67b5c589db0373410859ee53e86210c79230435d75"
+          },
+          "r_n_hex": "b8992600082883d4c27d8696739ebffe342fb668024f1652cba949f6c229f5c6",
+          "a": {
+            "key_device": "F0F38B8D-9AAA-4D83-BB89-846DF725C0C3",
+            "dek_hex": "21553c01dd958b747f259aae4015e4d6f58d22bb294132ba00201a09ef275e35",
+            "dsk_hex": "85fbd40260b25467549eaec84ad645f9ece2420fab5a59a277177da08b26cc0e"
+          },
+          "r_a_hex": "69cae4edec8f81cf5afe2c1a613d9136c65418f674d0d7de267ae098b7dcd7ab"
+        },
+        "role": "new_device",
+        "steps": ["receive_nonce","reveal","words","confirm"]
+      },
+      "output": {
+        "ok": true,
+        "words": ["impotent","daily","porcupine","udder","hundredth"]
+      }
+    }
+  ]
+}

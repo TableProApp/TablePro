@@ -152,6 +152,9 @@ pub(super) fn map(
             auth_database,
             ..NetworkOptions::default()
         },
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     };
     let secrets = secrets(&connection, caps, settings, credentials);
     Mapped {

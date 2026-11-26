@@ -1,0 +1,76 @@
+[package]
+name = "tablepro-keys-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+tablepro-keys = { path = ".." }
+
+# A workspace of its own: libFuzzer needs nightly and sanitizer flags the main workspace never builds with.
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "base64url"
+path = "fuzz_targets/base64url.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "base32"
+path = "fuzz_targets/base32.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "recovery_key"
+path = "fuzz_targets/recovery_key.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "padding"
+path = "fuzz_targets/padding.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "json"
+path = "fuzz_targets/json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "plaintexts"
+path = "fuzz_targets/plaintexts.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "key_object"
+path = "fuzz_targets/key_object.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "record_ids"
+path = "fuzz_targets/record_ids.rs"
+test = false
+doc = false
+bench = false

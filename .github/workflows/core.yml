@@ -80,7 +80,7 @@ jobs:
         run: |
           cargo check --locked --target "$TARGET" --features "$FEATURES" --features "$IN_PROCESS_SSH" \
             -p tablepro-core -p tablepro-net -p tablepro-storage -p tablepro-ssh -p tablepro-session \
-            -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-cloud-api -p tablepro-account \
+            -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-cloud-api -p tablepro-account -p tablepro-keys \
             -p tablepro-cli \
             -p tablepro-test-support -p tablepro-test-fixtures \
             -p tablepro-driver-cassandra -p tablepro-driver-clickhouse -p tablepro-driver-duckdb \
@@ -100,6 +100,9 @@ jobs:
       # The sign-in's loopback listener and the token's file on each platform.
       - name: Account unit tests
         run: cargo test --locked --target "$TARGET" -p tablepro-cloud-api -p tablepro-account --lib
+      # The key vectors, RFC 9180's and Wycheproof's through aws-lc as each platform builds it.
+      - name: Key unit tests
+        run: cargo test --locked --target "$TARGET" -p tablepro-keys --lib
       # DuckDB recurses on threads whose stack each platform sizes (core/docs/decisions/0031-duckdb-expression-depth.md).
       - name: DuckDB's deepest expressions
         run: cargo test --locked --target "$TARGET" -p tablepro-driver-duckdb --test deep_expressions
