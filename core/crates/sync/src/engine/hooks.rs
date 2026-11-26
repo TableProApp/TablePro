@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use super::scheduler::Wake;
 use crate::api::control::PassReason;
 use crate::api::ids::{EpochId, ScopeName};
-use crate::api::key_flows::{KeyHooks, KeyNotice, LockCause, StopCause};
+use crate::api::key_flows::{KeyHooks, KeyNotice, LockCause};
+use crate::api::state::StoppedCause;
 
 // What the app is told: it only schedules a read (core ADR 0002).
 pub trait EngineEvents: Send + Sync {
@@ -24,7 +25,7 @@ pub struct EngineHooks {
 #[derive(Debug, Default)]
 struct HookState {
     lock: Option<LockCause>,
-    stopped: HashMap<ScopeName, StopCause>,
+    stopped: HashMap<ScopeName, StoppedCause>,
     ended: HashMap<ScopeName, Option<EpochId>>,
     notices: Vec<KeyNotice>,
 }
@@ -83,7 +84,7 @@ impl KeyHooks for EngineHooks {
         self.keys_changed();
     }
 
-    fn stop_scope(&self, scope: ScopeName, cause: StopCause) {
+    fn stop_scope(&self, scope: ScopeName, cause: StoppedCause) {
         self.state().stopped.insert(scope, cause);
         self.keys_changed();
     }

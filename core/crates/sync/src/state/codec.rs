@@ -19,7 +19,7 @@ use crate::api::state::{
     ApprovalDecision, ApprovalRow, BaseRow, BindingRow, ConflictRow, DeferredRow, DeletedHistoryRow, HeldReason,
     HeldRow, Holder, KeyComparisonRow, KeyDevicePinRow, KeyEnvelopeRow, KeyObjectRow, KeyPendingRow, KeyPinRow,
     KeyVersionRow, KeyVersionState, LegacyMirrorRow, OutboxRow, PendingFlow, Provider, Row, ScopeRow, Standing,
-    StandingRow, StoreRow, Table,
+    StandingRow, StoppedCause, StoreRow, Table,
 };
 use crate::api::transport::{DeletedReason, PulledRecord, ServiceMeta};
 
@@ -544,6 +544,7 @@ fn key_columns(out: &mut Writer, row: &Row) {
                 .bytes(&row.record)
                 .bytes(&holders_bytes(&row.holders))
                 .text(row.state.as_str())
+                .maybe(row.stopped_cause, |out, cause| out.text(cause.as_str()))
                 .maybe(row.epoch, |out, epoch| out.bytes(epoch.0.as_bytes()));
         }
         Row::KeyEnvelope(row) => {
@@ -748,6 +749,7 @@ fn version_row(keys: &mut Reader<'_>, read: &mut Reader<'_>) -> Result<KeyVersio
         record: read.fixed("version record digest")?,
         holders: holders(read.present("holders")?)?,
         state: named(&VERSION_STATES, &read.text("version state")?, "version state")?,
+        stopped_cause: read.maybe(|bytes| StoppedCause::parse(&text(bytes)?).ok_or_else(|| malformed("stopped cause")))?,
         epoch: read.maybe(|bytes| uuid(bytes).map(EpochId))?,
     })
 }

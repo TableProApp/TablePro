@@ -13,7 +13,7 @@ use tablepro_sync::api::state::{
     ApprovalDecision, ApprovalRow, BaseRow, ConflictRow, DeferredRow, DeletedHistoryRow, HeldReason, HeldRow, Holder,
     KeyComparisonRow, KeyDevicePinRow, KeyEnvelopeRow, KeyObjectRow, KeyPendingRow, KeyPinRow, KeyVersionRow,
     KeyVersionState, LegacyMirrorRow, OutboxRow, PendingFlow, Row, RowKey, RowRange, ScopeRow, Standing, StandingRow,
-    StateFiles, StoreRow, Table,
+    StateFiles, StoppedCause, StoreRow, Table,
 };
 use tablepro_sync::api::transport::{DeletedReason, PulledRecord, ServiceMeta};
 use tablepro_sync::state::SqliteStateFiles;
@@ -160,7 +160,18 @@ fn key_rows() -> Vec<Row> {
             record: [6; 32],
             holders: vec![Holder { account: account(), ik }],
             state: KeyVersionState::Ended,
+            stopped_cause: None,
             epoch: Some(EpochId(Uuid::new_v4())),
+        }),
+        Row::KeyVersion(KeyVersionRow {
+            scope: ScopeName::Personal,
+            purpose: KeyPurpose::Personal,
+            version: Version::new(2).unwrap(),
+            record: [7; 32],
+            holders: Vec::new(),
+            state: KeyVersionState::Stopped,
+            stopped_cause: Some(StoppedCause::CatchUp),
+            epoch: None,
         }),
         Row::KeyEnvelope(KeyEnvelopeRow {
             scope: ScopeName::Personal,

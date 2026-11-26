@@ -13,14 +13,25 @@ use tablepro_sync_testing::service::{Policies, ScopeOwner};
 use tablepro_sync_testing::{FakeServer, MemoryStateFiles};
 
 use super::harness::{
-    Crashing, Device, DeviceBuilder, MemoryAdapter, StoreFile, account, connection, id, identity, open_on_disk,
-    personal,
+    ACCOUNT, Crashing, Device, DeviceBuilder, MemoryAdapter, StoreFile, account, connection, id, identity,
+    open_on_disk, personal, write,
 };
 
 fn stored(server: &FakeServer, record: &str) -> Option<Value> {
     server
         .stored(personal(), "connection", record)
         .and_then(|record| record.fields)
+}
+
+// The service takes a history entry only under the newest HK version it holds.
+async fn history_key(device: &Device) {
+    let version = format!("{ACCOUNT}/history/1");
+    device
+        .push_raw(
+            ScopeName::Personal,
+            vec![write("key.version", &version, None, json!({"suite": "tp1"}))],
+        )
+        .await;
 }
 
 fn named(name: &str, host: &str) -> Value {
@@ -406,9 +417,10 @@ async fn a_history_prune_pushes_nothing_and_a_deletion_goes_up_from_its_tombston
         .adapter(ScopeName::History, Arc::clone(&entries))
         .build()
         .await;
+    history_key(&mac).await;
     let entry = id;
-    entries.put(&entry(1), json!({"suite": "tp1", "ct": "one"}));
-    entries.put(&entry(2), json!({"suite": "tp1", "ct": "two"}));
+    entries.put(&entry(1), json!({"suite": "tp1", "kv": 1, "ct": "one"}));
+    entries.put(&entry(2), json!({"suite": "tp1", "kv": 1, "ct": "two"}));
     mac.sync().await;
 
     entries.remove(&entry(1));
@@ -537,7 +549,8 @@ async fn a_history_entry_deleted_on_two_devices_lets_its_tombstone_go() {
         .adapter(ScopeName::History, Arc::clone(&mini_entries))
         .build()
         .await;
-    mac_entries.put(&id(1), json!({"suite": "tp1", "ct": "one"}));
+    history_key(&mac).await;
+    mac_entries.put(&id(1), json!({"suite": "tp1", "kv": 1, "ct": "one"}));
     mac.sync().await;
     mini.sync().await;
     mini.sync().await;

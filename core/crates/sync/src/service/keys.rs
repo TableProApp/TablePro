@@ -11,10 +11,10 @@ use super::{PassCtx, ServiceSync, begin};
 use crate::api::error::SyncError;
 use crate::api::ids::{IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{
-    ArrivalOrder, KeyApplied, KeyArrival, KeyHooks, LockCause, PushBackVerdict, Roster, StopAction, StopCause,
+    ArrivalOrder, KeyApplied, KeyArrival, KeyHooks, LockCause, PushBackVerdict, Roster, StopAction,
 };
 use crate::api::scopes::ScopeInfo;
-use crate::api::state::{PendingFlow, Row, RowKey, RowRange, Table};
+use crate::api::state::{PendingFlow, Row, RowKey, RowRange, StoppedCause, Table};
 use crate::api::transport::{Proof, PulledRecord, PushBatch};
 
 // Which flow reads a key kind: the account's own objects, an approval session's, a reset's, or a team's.
@@ -135,7 +135,7 @@ impl ServiceSync {
             let scope = set.scope;
             match self.keys.push_back_answered(set, answer.outcomes).await? {
                 PushBackVerdict::Continue => {}
-                PushBackVerdict::Wait { scope } => self.hooks.stop_scope(scope, StopCause::AwaitingPushBack),
+                PushBackVerdict::Wait { scope } => self.hooks.stop_scope(scope, StoppedCause::RestoreWait),
                 PushBackVerdict::Ended { scope } => self.hooks.end_scope(scope, Some(epoch)),
                 PushBackVerdict::AccountEnded => {
                     tracing::debug!(%scope, "the account's own key objects were refused");
@@ -231,13 +231,7 @@ impl ServiceSync {
         if self.stop.is_stopped() {
             return;
         }
-        let roster = Roster {
-            members: info.members.clone(),
-            role: info.role,
-            rotation_due: info.rotation_due,
-            caught_up: true,
-        };
-        if let Err(error) = self.keys.roster_read(team, roster).await {
+        if let Err(error) = self.keys.roster_read(team, Roster::of(info, true)).await {
             tracing::debug!(code = error.code(), "the roster waits for the next pass");
         }
     }
