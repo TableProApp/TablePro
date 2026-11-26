@@ -120,9 +120,6 @@ final class ImportService: ObservableObject {
         formatId: String,
         encoding: String.Encoding,
         scope: DatabaseScope,
-        decompressedURL: URL? = nil,
-        ownsDecompressedFile: Bool = false,
-        knownStatementCount: Int? = nil,
         targetTable: String? = nil,
         columnMapping: [String: String] = [:],
         sourceFields: Set<String> = [],
@@ -132,8 +129,7 @@ final class ImportService: ObservableObject {
         do {
             let result = try await performImportFile(
                 from: url, sourceName: sourceName, formatId: formatId, encoding: encoding, scope: scope,
-                decompressedURL: decompressedURL, ownsDecompressedFile: ownsDecompressedFile,
-                knownStatementCount: knownStatementCount, targetTable: targetTable, columnMapping: columnMapping,
+                targetTable: targetTable, columnMapping: columnMapping,
                 sourceFields: sourceFields, rowWriting: rowWriting, authorization: authorization
             )
             await run.complete()
@@ -153,9 +149,6 @@ final class ImportService: ObservableObject {
         formatId: String,
         encoding: String.Encoding,
         scope: DatabaseScope,
-        decompressedURL: URL? = nil,
-        ownsDecompressedFile: Bool = false,
-        knownStatementCount: Int? = nil,
         targetTable: String? = nil,
         columnMapping: [String: String] = [:],
         sourceFields: Set<String> = [],
@@ -172,7 +165,9 @@ final class ImportService: ObservableObject {
         state = ImportState(isImporting: true)
         state.fileName = historyName
         state.countsRows = targetTable != nil
-        state.totalIsEstimate = knownStatementCount == nil
+        // No statement count is taken up front: it lexed the whole file once more before the import. Progress
+        // follows the bytes read, and the statements run are a running count.
+        state.totalIsEstimate = true
         let workId = beginRunningWork(named: historyName)
         defer {
             state.isImporting = false
@@ -183,28 +178,21 @@ final class ImportService: ObservableObject {
         let sqlSource = type(of: plugin).requiresTargetTable ? nil : SqlFileImportSource(
             url: url,
             encoding: encoding,
-            family: TransactionEngineFamily.of(connection.type),
-            decompressedURL: decompressedURL,
-            ownsDecompressedFile: ownsDecompressedFile
+            family: TransactionEngineFamily.of(connection.type)
         )
         sqlSource?.reportsReading(to: fileReadingReporter())
         let source: any PluginImportSource
         if let sqlSource {
             source = sqlSource
         } else {
-            source = PlainFileImportSource(url: decompressedURL ?? url)
+            source = PlainFileImportSource(url: url)
         }
         defer { source.cleanup() }
         guard !isStopRequested else { throw PluginImportCancellationError() }
 
-        // After the source exists, so a refusal still removes the decompressed copy it was handed.
         try await authorizeRun(named: historyName, given: authorization)
-        let initialTotal = Int64(knownStatementCount ?? 0)
-        let nsProgress = Progress(totalUnitCount: initialTotal)
+        let nsProgress = Progress(totalUnitCount: 0)
         let progress = PluginImportProgress(progress: nsProgress)
-        if knownStatementCount != nil {
-            state.estimatedTotalStatements = Int(initialTotal)
-        }
         currentProgress = progress
         let observations = track(nsProgress)
         defer { observations.forEach { $0.invalidate() } }

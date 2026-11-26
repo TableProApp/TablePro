@@ -54,6 +54,39 @@ struct ExportImportRoundTripTests {
         try RoundTrip.expectSame(target, RoundTripFixture.bulkTable, RoundTripFixture.bulkRows)
     }
 
+    @Test("A gzipped SQL dump split into parts writes each part as its own gzip file, and they restore in order")
+    func gzippedSplitSQLRestoresInPartOrder() async throws {
+        // Hex text packs to about half its size, so 4 MB of it passes a 1 MB cap after compression.
+        var generator = SystemRandomNumberGenerator()
+        let noiseRows: [[StoredValue]] = (0 ..< 4_000).map { index in
+            let hex = (0 ..< 500).map { _ in String(format: "%02x", UInt8.random(in: 0 ... 255, using: &generator)) }
+            return [.integer(Int64(index + 1)), .text(hex.joined())]
+        }
+        let source = try RoundTripDatabase()
+        try source.execute(#"CREATE TABLE "noise" ("id" INTEGER PRIMARY KEY, "body" TEXT)"#)
+        for row in noiseRows {
+            try source.insert(row, into: "noise")
+        }
+        var options = SQLExportOptions()
+        options.compressWithGzip = true
+        options.splitSizeMegabytes = 1
+
+        let dump = try await RoundTrip.sqlDump(of: ["noise"], from: source, options: options, fileExtension: "sql.gz")
+        defer { RoundTrip.remove(dump.files) }
+        #expect(dump.files.count >= 2)
+        #expect(dump.result.warnings.allSatisfy { !$0.contains("split size was not applied") })
+        for file in dump.files {
+            let bytes = try Data(contentsOf: file)
+            #expect(bytes.prefix(2) == Data([0x1F, 0x8B]))
+            #expect(bytes.count <= 1 << 20)
+            #expect(try !RoundTripImportFile.text(of: file).isEmpty)
+        }
+
+        let target = try RoundTripDatabase()
+        try await RoundTrip.restore(dump.files, into: target)
+        try RoundTrip.expectSame(target, "noise", noiseRows)
+    }
+
     @Test("A SQL dump split into parts restores every row when the parts run in order")
     func splitSQLRestoresInPartOrder() async throws {
         let source = try RoundTripFixture.databaseWithBulk()
