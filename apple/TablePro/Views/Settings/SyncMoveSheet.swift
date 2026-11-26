@@ -19,6 +19,7 @@ struct SyncMoveSheet: View {
 
     @State private var step: Step = .loading
     @State private var plan: MovePlanInfo?
+    @State private var keysSheet: SyncMoveKeysStep?
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncMoveSheet")
 
@@ -52,6 +53,38 @@ struct SyncMoveSheet: View {
         .accessibilityIdentifier("settings-sync-move-sheet")
         .task {
             await loadPlan()
+        }
+        .sheet(item: $keysSheet) { keysStep in
+            keysSheetContent(keysStep)
+        }
+    }
+
+    // The recovery key and the approval are their own sheets (core ADR 0056); a finished one runs the move again.
+    @ViewBuilder
+    private func keysSheetContent(_ keysStep: SyncMoveKeysStep) -> some View {
+        switch keysStep {
+        case .setUpRecoveryKey:
+            AccountRecoveryKeySetupSheet { result in
+                keysFinished(SyncMoveKeysNext.after(result))
+            }
+        case .approveThisMac(let request):
+            AccountDeviceApprovalSheet(openRequest: request) { result in
+                keysFinished(SyncMoveKeysNext.after(result))
+            }
+        case .openEncryptionSettings, .checkAgain:
+            EmptyView()
+        }
+    }
+
+    private func keysFinished(_ next: SyncMoveKeysNext) {
+        switch next {
+        case .move:
+            keysSheet = nil
+            Task { await move() }
+        case .present(let following):
+            keysSheet = following
+        case .stay:
+            keysSheet = nil
         }
     }
 
@@ -116,11 +149,8 @@ struct SyncMoveSheet: View {
     @ViewBuilder
     private var primaryButton: some View {
         switch step {
-        case .keys:
-            Button(String(localized: "Check Again")) {
-                Task { await move() }
-            }
-            .keyboardShortcut(.defaultAction)
+        case .keys(let state):
+            keysButton(SyncMoveKeysStep.step(for: state) ?? .checkAgain)
         case .failed:
             Button(String(localized: "Try Again")) {
                 Task {
@@ -139,6 +169,35 @@ struct SyncMoveSheet: View {
             .keyboardShortcut(.defaultAction)
             .disabled(plan == nil || step == .moving)
             .accessibilityIdentifier("settings-sync-move-confirm")
+        }
+    }
+
+    @ViewBuilder
+    private func keysButton(_ keysStep: SyncMoveKeysStep) -> some View {
+        switch keysStep {
+        case .setUpRecoveryKey:
+            Button(String(localized: "Set Up Recovery Key…")) {
+                keysSheet = .setUpRecoveryKey
+            }
+            .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("settings-sync-move-set-up-recovery-key")
+        case .approveThisMac:
+            Button(String(localized: "Approve This Mac…")) {
+                keysSheet = keysStep
+            }
+            .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("settings-sync-move-approve")
+        case .openEncryptionSettings:
+            Button(String(localized: "Open End-to-End Encryption Settings")) {
+                dismiss()
+                WindowOpener.shared.openSettings(SettingsLocation(page: .accountEncryption))
+            }
+            .keyboardShortcut(.defaultAction)
+        case .checkAgain:
+            Button(String(localized: "Check Again")) {
+                Task { await move() }
+            }
+            .keyboardShortcut(.defaultAction)
         }
     }
 

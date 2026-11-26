@@ -26,13 +26,13 @@ struct SyncProviderPolicyTests {
         #expect(SyncProviderPolicy.iCloud(forced) == .init(isAllowed: true, isLocked: true))
     }
 
-    @Test("A profile that names only TablePro Sync chooses it, and iCloud stops")
+    @Test("A profile that names only TablePro Sync stops iCloud and keeps a Mac that has not moved off until it does")
     func forcedTableProSync() {
         let forced = ManagedPolicySnapshot(personalSyncProvider: ["tablepro-sync"])
 
-        for provider in SyncProviderSetting.allCases {
-            #expect(SyncProviderPolicy.settledProvider(provider, under: forced) == .tableproSync, "\(provider)")
-        }
+        #expect(SyncProviderPolicy.settledProvider(.iCloud, under: forced) == .off)
+        #expect(SyncProviderPolicy.settledProvider(.off, under: forced) == .off)
+        #expect(SyncProviderPolicy.settledProvider(.tableproSync, under: forced) == .tableproSync)
         #expect(SyncProviderPolicy.iCloud(forced) == .init(isAllowed: false, isLocked: true))
         #expect(SyncProviderPolicy.disableReason(forced) == .managedPolicy)
     }

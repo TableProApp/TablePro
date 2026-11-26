@@ -184,20 +184,22 @@ struct SyncPaneLayoutTests {
         #expect(!layout.showsLastSynced)
     }
 
-    @Test("A forced TablePro Sync waits for the person's upload review before anything goes up")
+    @Test("A forced TablePro Sync leaves the Mac off until the person reviews its first upload")
     func forcedServiceAwaitsUpload() {
-        let layout = Self.layout(
-            provider: .tableproSync, choices: Self.choices([.tableproSync]), engine: Self.engine(.off)
-        )
-        #expect(layout.serviceNotice == .awaitsUpload(forced: true))
+        let layout = Self.layout(provider: .off, choices: Self.choices([.tableproSync]), engine: Self.engine(.off))
+        #expect(layout.serviceNotice == .awaitsUpload)
         #expect(layout.serviceStatus == nil)
+        #expect(layout.licenseGate == nil)
         #expect(layout.managedNote == .forced(.tableproSync))
+        #expect(layout.options == [.off, .tableproSync])
+        #expect(layout.isPickerLocked)
     }
 
-    @Test("A move that did not finish asks again, and the engine not yet open reads the same")
-    func unfinishedMoveAsksAgain() {
-        #expect(Self.layout(provider: .tableproSync, engine: Self.engine(.icloud)).serviceNotice == .awaitsUpload(forced: false))
-        #expect(Self.layout(provider: .tableproSync, engine: nil).serviceNotice == .awaitsUpload(forced: false))
+    @Test("A forced TablePro Sync on a Mac that is not signed in says why it stays off")
+    func forcedServiceSignedOut() {
+        let layout = Self.layout(provider: .off, choices: Self.choices([.tableproSync]), service: .signedOut)
+        #expect(layout.serviceNotice == nil)
+        #expect(layout.licenseGate == .serviceSync)
     }
 
     @Test("On TablePro Sync and idle: status, last synced with Sync Now, and no notice")
@@ -266,5 +268,82 @@ struct SyncPaneLayoutTests {
         #expect(!SyncPaneLayout(inputs).offersICloudDataDeletion)
         inputs.offersICloudDataDeletion = true
         #expect(SyncPaneLayout(inputs).offersICloudDataDeletion)
+    }
+
+    // MARK: - The server's switches
+
+    private static func scope(
+        _ name: String,
+        writable: Bool = true,
+        personal: Bool? = true,
+        passwords: Bool? = nil,
+        history: Bool? = nil
+    ) -> ScopeStatusInfo {
+        ScopeStatusInfo(scope: name, writable: writable, personalSync: personal, passwordSync: passwords, historySync: history)
+    }
+
+    private static func layout(provider: SyncProviderSetting, scopes: [ScopeStatusInfo]) -> SyncPaneLayout {
+        SyncPaneLayout(SyncPaneInputs(
+            provider: provider,
+            choices: everyProvider,
+            iCloudAccess: .available,
+            serviceAccess: .available,
+            iCloudStatus: .disabled(.userDisabled),
+            engine: engine(.tableproSync),
+            serverLicense: nil,
+            scopes: scopes
+        ))
+    }
+
+    @Test("A server that keeps no personal data says so, stops the status, and leaves the provider where it is")
+    func personalSyncOff() {
+        let layout = Self.layout(provider: .tableproSync, scopes: [Self.scope("personal", personal: false)])
+        #expect(layout.serverPolicies == [.personalSyncOff])
+        #expect(layout.serviceStatus == nil)
+        #expect(layout.serviceNotice == nil)
+        #expect(layout.passwordsOffOnServer)
+        #expect(layout.options.contains(.tableproSync))
+    }
+
+    @Test("A server that keeps no personal data is no new choice for a Mac on another provider")
+    func personalSyncOffTakesTheChoiceAway() {
+        let layout = Self.layout(provider: .iCloud, scopes: [Self.scope("personal", personal: false)])
+        #expect(!layout.options.contains(.tableproSync))
+        #expect(layout.serverPolicies.isEmpty)
+    }
+
+    @Test("Passwords and history off on the server are each said, and the status goes on")
+    func passwordsAndHistoryOff() {
+        let layout = Self.layout(provider: .tableproSync, scopes: [
+            Self.scope("personal", passwords: false),
+            Self.scope("history", history: false),
+            Self.scope("team_A1", personal: nil, passwords: false),
+        ])
+        #expect(layout.serverPolicies == [.passwordsOff, .historyOff])
+        #expect(layout.passwordsOffOnServer)
+        #expect(layout.serviceStatus == .upToDate)
+    }
+
+    @Test("Every switch on, or no scopes read yet, says nothing")
+    func switchesOnSayNothing() {
+        for scopes in [[], [Self.scope("personal", passwords: true), Self.scope("history", history: true)]] {
+            let layout = Self.layout(provider: .tableproSync, scopes: scopes)
+            #expect(layout.serverPolicies.isEmpty)
+            #expect(!layout.passwordsOffOnServer)
+        }
+    }
+
+    @Test("A personal scope the server keeps read-only is pull-only, as past grace")
+    func readOnlyScopeIsPullOnly() {
+        let layout = Self.layout(provider: .tableproSync, scopes: [Self.scope("personal", writable: false)])
+        #expect(layout.serviceNotice == .pullOnly(selfHosted: false))
+    }
+
+    @Test("The server's switches say nothing for a Mac on iCloud or off")
+    func switchesOnlyForTableProSync() {
+        for provider in [SyncProviderSetting.iCloud, .off] {
+            let layout = Self.layout(provider: provider, scopes: [Self.scope("personal", passwords: false)])
+            #expect(layout.serverPolicies.isEmpty)
+        }
     }
 }

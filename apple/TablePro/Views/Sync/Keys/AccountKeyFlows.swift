@@ -81,9 +81,9 @@ internal struct AccountKeysEnvironment {
     var clock: any Clock<Duration>
     var now: @MainActor () -> Date
 
-    // The app's one sync service, opened on first use.
+    // The sync service open for the provider in use, or one opened Off: the key flows run on any of them.
     static func liveFlows() async throws -> any AccountKeyFlows {
-        guard let flows = try await SyncEngineHost.shared.engine() as? any AccountKeyFlows else {
+        guard let flows = try await SyncEngineHost.shared.engine(for: .off) as? any AccountKeyFlows else {
             throw AccountError.invalidResponse
         }
         return flows

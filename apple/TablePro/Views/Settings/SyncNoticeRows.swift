@@ -49,13 +49,11 @@ struct SyncServiceNoticeRow: View {
 
     var body: some View {
         switch notice {
-        case .awaitsUpload(let forced):
+        case .awaitsUpload:
             SyncNoticeRow(
                 symbolName: "arrow.up.circle",
-                title: forced ? String(localized: "Your Organization Uses TablePro Sync") : String(localized: "Not Uploaded Yet"),
-                message: forced
-                    ? String(localized: "This Mac starts syncing with TablePro Sync once you review what it uploads.")
-                    : String(localized: "The move to TablePro Sync did not finish. This Mac keeps its data until it does."),
+                title: String(localized: "Your Organization Uses TablePro Sync"),
+                message: String(localized: "This Mac starts syncing with TablePro Sync once you review what it uploads."),
                 tint: .accentColor
             ) {
                 Button(String(localized: "Review Upload…"), action: reviewUpload)

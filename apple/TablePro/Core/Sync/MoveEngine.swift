@@ -10,6 +10,7 @@ import TableProFFI
 // moves are tested over a fake engine.
 nonisolated protocol SyncMoveEngine: AnyObject, Sendable {
     func status() -> SyncStatusInfo
+    func scopeStatuses() -> [ScopeStatusInfo]
     func syncNow(why: PassReasonTag) async throws
     func chooseProvider(provider: SyncProviderTag) async throws
     func keyState() async throws -> KeyStateInfo

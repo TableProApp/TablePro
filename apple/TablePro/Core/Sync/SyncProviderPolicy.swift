@@ -52,20 +52,21 @@ internal final class SyncProviderPolicy {
         iCloud(snapshot).isAllowed ? nil : .managedPolicy
     }
 
-    // The provider the profile leaves this Mac on. A forced provider is taken as the person would pick it, so a forced
-    // TablePro Sync still waits for the person's upload confirmation before anything goes up, and one taken away goes
-    // off. Whether a server takes this Mac's data never changes what is stored: a server's answer moves no provider
-    // (core ADR 0051, Policies).
+    // The provider the profile leaves this Mac on. A forced iCloud is taken as the person would pick it, and one taken
+    // away goes off. A forced TablePro Sync leaves a Mac that is not on it off: TablePro Sync becomes the provider only
+    // once the move or first upload the person confirms has run (core ADR 0055). Whether a server takes this Mac's data
+    // never changes what is stored: a server's answer moves no provider (core ADR 0051, Policies).
     nonisolated static func settledProvider(
         _ provider: SyncProviderSetting,
         under snapshot: ManagedPolicySnapshot
     ) -> SyncProviderSetting {
-        SyncProviderSetting(settledSyncProvider(
+        let settled = SyncProviderSetting(settledSyncProvider(
             policy: snapshot.coreArgument,
             offered: offered,
             current: SyncProviderTag(provider),
             tableproSyncAvailable: true
         ))
+        return settled == .tableproSync && provider != .tableproSync ? .off : settled
     }
 }
 

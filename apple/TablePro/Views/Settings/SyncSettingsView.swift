@@ -36,7 +36,8 @@ struct SyncSettingsView: View {
             serverLicense: featureAccess.state.serverLicense,
             // A Mac that never synced with iCloud has nothing of its own to delete there.
             offersICloudDataDeletion: coordinator.lastSyncDate != nil
-                && ProviderMoves.offersICloudDataDeletion(settings.provider, under: policy.snapshot)
+                && ProviderMoves.offersICloudDataDeletion(settings.provider, under: policy.snapshot),
+            scopes: moves.scopes
         ))
     }
 
@@ -78,6 +79,11 @@ struct SyncSettingsView: View {
 
                 if let status = layout.serviceStatus {
                     serviceStatusRow(status)
+                }
+
+                ForEach(layout.serverPolicies, id: \.self) { serverPolicy in
+                    NoticeLabel(serverPolicy.message, severity: serverPolicy == .personalSyncOff ? .warning : .info)
+                        .accessibilityIdentifier("settings-sync-server-policy")
                 }
 
                 if layout.showsLastSynced {
@@ -143,10 +149,9 @@ struct SyncSettingsView: View {
         .accessibilityIdentifier("settings-sync-provider")
     }
 
-    // Read when the sheet opens, since the move itself changes the stored provider. A profile that forced TablePro Sync
-    // on a Mac that was on iCloud still leaves the devices on iCloud behind.
+    // Read when the sheet opens, since the move itself changes the stored provider.
     private var movesFromICloud: Bool {
-        settings.provider == .iCloud || moves.engineStatus?.provider == .icloud
+        settings.provider == .iCloud
     }
 
     // The picker shows the stored provider; a move changes it only once the sheet confirms.
@@ -324,7 +329,7 @@ struct SyncSettingsView: View {
                 Text("Passwords")
                 Text(passwordsDetail)
             }
-            .disabled(!settings.syncConnections)
+            .disabled(!settings.syncConnections || passwordsOffOnServer)
             .accessibilityIdentifier("settings-sync-category-passwords")
 
             Toggle("Groups & Tags", isOn: $settings.syncGroupsAndTags)
@@ -359,7 +364,14 @@ struct SyncSettingsView: View {
         }
     }
 
+    private var passwordsOffOnServer: Bool {
+        layout.passwordsOffOnServer
+    }
+
     private var passwordsDetail: String {
+        if passwordsOffOnServer {
+            return String(localized: "Your server does not sync passwords. Each one stays on this Mac.")
+        }
         if settings.provider == .tableproSync {
             return String(
                 localized: "End-to-end encrypted with your account's keys. This Mac also keeps its own copy of each password."
@@ -443,6 +455,19 @@ extension SyncProviderSetting {
             String(localized: "Keep your connections and the items you choose the same on devices signed in to your Apple Account.")
         case .tableproSync:
             String(localized: "Sync through your TablePro account with every device signed in to it, end-to-end encrypted.")
+        }
+    }
+}
+
+extension SyncServerPolicy {
+    var message: String {
+        switch self {
+        case .personalSyncOff:
+            String(localized: "Your server does not keep personal data, so this Mac keeps its own. Team Library goes on syncing.")
+        case .passwordsOff:
+            String(localized: "Your server does not sync passwords. Each one stays on this Mac.")
+        case .historyOff:
+            String(localized: "Your server does not sync query history. It stays on this Mac.")
         }
     }
 }

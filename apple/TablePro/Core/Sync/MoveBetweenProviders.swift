@@ -16,8 +16,8 @@ internal enum ProviderMoveError: Error, Equatable {
     case engineUnavailable
     // The person or a profile chose a provider again while the move waited.
     case superseded
-    // The engine never reported iCloud stopping, so the move did not start.
-    case iCloudDidNotStop
+    // The server this Mac is signed in to keeps no personal data (core ADR 0051, Policies).
+    case serverRefusesPersonalSync
 }
 
 internal enum MoveToServiceOutcome: Equatable {
@@ -26,14 +26,13 @@ internal enum MoveToServiceOutcome: Equatable {
     case needsKeys(KeyStateInfo)
 }
 
-// The app pieces a move touches: the core's sync service, the iCloud coordinator and its CloudKit transport.
+// The app pieces a move touches: the core's sync service, opened for one provider at a time, the iCloud coordinator and
+// its CloudKit transport.
 internal struct ProviderMoveHost {
-    var engine: @MainActor () async throws -> any SyncMoveEngine
-    var openedEngine: @MainActor () -> (any SyncMoveEngine)?
+    var engine: @MainActor (SyncProviderTag) async throws -> any SyncMoveEngine
+    var openedEngine: @MainActor (SyncProviderTag) -> (any SyncMoveEngine)?
     var engineChanges: AnyPublisher<Void, Never>
     var iCloudRuns: @MainActor () -> Bool
-    // A pass through the iCloud coordinator, which keeps CloudKit to its rules.
-    var iCloudPass: @MainActor () async -> Void
     var passesFinished: @MainActor () async -> Void
     var cloudKit: CloudKitReach
     var policy: @MainActor () -> ManagedPolicySnapshot
@@ -46,13 +45,18 @@ internal struct CloudKitReach {
 }
 
 // Moves this Mac's personal data between iCloud and TablePro Sync (core ADR 0054, Moving between providers), and keeps
-// the engine off TablePro Sync whenever the stored provider says Off, after a reset or an import too.
+// the engine off TablePro Sync whenever the stored provider says Off, after a reset or an import too. Each call goes to
+// the service opened for the provider in use, as the core runs a move: the move to TablePro Sync runs on iCloud's and
+// stops iCloud itself after its last pass, the move back runs on TablePro Sync's. The stored provider changes once a
+// move returns, and the next open follows it.
 @MainActor
 internal final class ProviderMoves: ObservableObject {
     static let shared = ProviderMoves()
     nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "ProviderMoves")
 
     @Published private(set) var engineStatus: SyncStatusInfo?
+    // The scopes the service read last, with the server's switches (core ADR 0051, Policies). Empty until it has read them.
+    @Published private(set) var scopes: [ScopeStatusInfo] = []
 
     private let makeHost: () -> ProviderMoveHost
     private lazy var host = makeHost()
@@ -64,19 +68,13 @@ internal final class ProviderMoves: ObservableObject {
     // Each provider choice the moves did not write themselves, so a move that waited on one gives way to it.
     private var choice = 0
     private var writesProvider = false
-    private let iCloudStopLimit: Duration
-    private let clock: any Clock<Duration>
 
     init(
         host: @escaping @autoclosure () -> ProviderMoveHost = .live,
-        settings: SettingsSlice<SyncSettings> = AppSettingsManager.shared.syncSlice,
-        iCloudStopLimit: Duration = .seconds(30),
-        clock: any Clock<Duration> = ContinuousClock()
+        settings: SettingsSlice<SyncSettings> = AppSettingsManager.shared.syncSlice
     ) {
         makeHost = host
         self.settings = settings
-        self.iCloudStopLimit = iCloudStopLimit
-        self.clock = clock
         // Settings are written on the main thread, and the count has to move before the write returns.
         providerWatch = settings.publisher
             .map(\.provider)
@@ -105,7 +103,7 @@ internal final class ProviderMoves: ObservableObject {
 
     func openEngine() async {
         do {
-            _ = try await host.engine()
+            _ = try await host.engine(current)
         } catch {
             Self.logger.error("The sync engine did not open: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
@@ -116,79 +114,79 @@ internal final class ProviderMoves: ObservableObject {
         SyncProviderPolicy.choices(host.policy())
     }
 
-    // The Mac chose TablePro Sync and the engine has not moved yet: a profile forced it, or a move did not finish.
+    // The profile requires TablePro Sync and this Mac has not moved to it yet.
     var awaitsMove: Bool {
-        settings.value.provider == .tableproSync && engineStatus?.provider != .tableproSync
+        choices.forced == .tableproSync && settings.value.provider != .tableproSync
+    }
+
+    private var current: SyncProviderTag {
+        SyncProviderTag(settings.value.provider)
     }
 
     // MARK: - To TablePro Sync
 
-    func planMoveToService() async throws -> MovePlanInfo {
-        try await host.engine().planMoveToService()
+    func keyState() async throws -> KeyStateInfo {
+        try await host.engine(current).keyState()
     }
 
-    // The last iCloud push and pull run through the coordinator, then iCloud stops on this Mac before the engine moves,
-    // so nothing more reaches CloudKit and no iCloud pass runs beside the move. Stopping iCloud has the coordinator
-    // tell the engine Off from a task of its own, so the move waits for the engine to report it: that Off then never
-    // lands after the move. A move that fails leaves the Mac on TablePro Sync waiting for it, so Try Again picks up
-    // where it stopped.
+    func planMoveToService() async throws -> MovePlanInfo {
+        try await host.engine(current).planMoveToService()
+    }
+
+    // On iCloud the core runs the last iCloud pass and stops iCloud on this Mac itself, so the coordinator keeps CloudKit
+    // open until the move returns; only then does the stored provider change, which stops the coordinator. A move that
+    // fails leaves iCloud stopped in the core and the stored provider where it was, so Try Again goes on from there.
     func moveToService() async throws -> MoveToServiceOutcome {
         guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
+        guard !Self.refusesPersonalSync(scopes) else { throw ProviderMoveError.serverRefusesPersonalSync }
         let asked = choice
         return try await exclusively {
-            let engine = try await host.engine()
+            let from = current
+            let engine = try await host.engine(from)
             let keys = try await engine.keyState()
             try ensureCurrent(asked)
             guard case .approved = keys else { return .needsKeys(keys) }
-            if settings.value.provider != .tableproSync {
-                let stopsICloud = host.iCloudRuns()
-                if stopsICloud {
-                    await host.iCloudPass()
-                    try ensureCurrent(asked)
-                }
-                guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
-                setProvider(.tableproSync)
-                if stopsICloud {
-                    try await waitUntilOffICloud(engine)
-                    try ensureCurrent(asked)
-                }
-            }
-            await host.passesFinished()
-            try ensureCurrent(asked)
             try await engine.moveToService()
-            engineChanged()
-            // A choice made while the engine moved, by the person, a reset or a profile, wins over the first pass.
-            guard choice == asked, settings.value.provider == .tableproSync else { return .moved }
-            do {
-                try await engine.syncNow(why: .person)
-            } catch {
-                Self.logger.error("The first TablePro Sync pass failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            try ensureCurrent(asked)
+            setProvider(.tableproSync)
+            if from == .icloud {
+                // Stopping iCloud has the coordinator tell the service it holds Off. That service is still the open one
+                // until TablePro Sync's has opened, which takes a call into the core, so the Off goes to iCloud's.
+                await host.passesFinished()
             }
+            await firstPass(asked)
             return .moved
         }
+    }
+
+    // The first pass on the service the stored provider opens now. A choice made meanwhile wins over it.
+    private func firstPass(_ asked: Int) async {
+        guard choice == asked, settings.value.provider == .tableproSync else { return }
+        do {
+            try await host.engine(.tableproSync).syncNow(why: .person)
+        } catch {
+            Self.logger.error("The first TablePro Sync pass failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+        }
+        engineChanged()
     }
 
     // MARK: - Back to iCloud
 
     func planMoveToICloud() async throws -> MoveBackPlanInfo {
-        try await host.engine().planMoveToIcloud()
+        try await host.engine(.tableproSync).planMoveToIcloud()
     }
 
     // The move back fetches and deletes on CloudKit while iCloud is still off here, so the transport opens for it.
-    // iCloud then turns on as it does today, once the engine is on it.
+    // iCloud then turns on as it does today, once the core is done.
     func moveToICloud(confirmedDeletions: UInt64) async throws {
         guard choices.providers.contains(.icloud) else { throw ProviderMoveError.notAllowed }
         let asked = choice
         try await exclusively {
-            let engine = try await host.engine()
+            let engine = try await host.engine(.tableproSync)
             // iCloud turns on before CloudKit would close again, so the coordinator takes the transport over open.
             try await withCloudKit(asked) {
                 try await engine.moveToIcloud(confirmedDeletions: confirmedDeletions)
                 guard choice == asked else {
-                    // Off chosen during the move back: the engine leaves iCloud as well.
-                    if settings.value.provider == .off {
-                        try await engine.chooseProvider(provider: .off)
-                    }
                     throw ProviderMoveError.superseded
                 }
                 setProvider(.iCloud)
@@ -208,20 +206,16 @@ internal final class ProviderMoves: ObservableObject {
     // MARK: - Another account or server
 
     func chooseForNewIdentity(_ choice: NewIdentityChoiceTag) async throws {
-        let engine = try await host.engine()
+        let engine = try await host.engine(current)
         try await engine.chooseForNewIdentity(choice: choice)
         engineChanged()
-        if host.iCloudRuns() {
-            await host.iCloudPass()
-        } else {
-            try await engine.syncNow(why: .person)
-        }
+        try await engine.syncNow(why: .person)
     }
 
     // MARK: - Passes
 
     func syncNow() async throws {
-        try await host.engine().syncNow(why: .person)
+        try await host.engine(current).syncNow(why: .person)
         engineChanged()
     }
 
@@ -244,18 +238,29 @@ internal final class ProviderMoves: ObservableObject {
         guard offersICloudDataDeletion else { throw ProviderMoveError.notAllowed }
         let asked = choice
         try await exclusively {
-            let engine = try await host.engine()
+            let engine = try await host.engine(current)
             try await withCloudKit(asked) {
+                guard settings.value.provider != .iCloud else { throw ProviderMoveError.notAllowed }
                 try await engine.deleteIcloudZone()
             }
             engineChanged()
         }
     }
 
+    // MARK: - Server policies
+
+    // A server whose `personalSync` switch is off takes no personal data while this Mac is signed in to it. The stored
+    // provider stays, so the device picks up again when the switch comes back on (core ADR 0051, Policies; 0055).
+    nonisolated static func refusesPersonalSync(_ scopes: [ScopeStatusInfo]) -> Bool {
+        scopes.first { $0.scope == "personal" }?.personalSync == false
+    }
+
     // MARK: - Engine
 
     private func engineChanged() {
-        engineStatus = host.openedEngine()?.status()
+        let engine = host.openedEngine(.off)
+        engineStatus = engine?.status()
+        scopes = engine?.scopeStatuses() ?? []
         reconcile()
     }
 
@@ -263,7 +268,7 @@ internal final class ProviderMoves: ObservableObject {
     // moved to waits for the person's confirmation, and iCloud is the coordinator's.
     private func reconcile() {
         guard reconciling == nil, !isMoving, settings.value.provider == .off else { return }
-        guard let engine = host.openedEngine(), engine.status().provider == .tableproSync else { return }
+        guard let engine = host.openedEngine(.tableproSync), engine.status().provider == .tableproSync else { return }
         reconciling = Task { [weak self] in
             do {
                 try await engine.chooseProvider(provider: .off)
@@ -272,7 +277,7 @@ internal final class ProviderMoves: ObservableObject {
             }
             guard let self else { return }
             reconciling = nil
-            engineStatus = host.openedEngine()?.status()
+            engineStatus = host.openedEngine(.off)?.status()
         }
     }
 
@@ -292,24 +297,6 @@ internal final class ProviderMoves: ObservableObject {
         writesProvider = true
         defer { writesProvider = false }
         settings.update { $0.provider = provider }
-    }
-
-    private func waitUntilOffICloud(_ engine: any SyncMoveEngine) async throws {
-        let reports = host.engineChanges
-        let waiter = Task { @MainActor in
-            // The first value checks at once, after the subscription, so a report already in is not missed.
-            for await _ in reports.prepend(()).values where engine.status().provider != .icloud {
-                return true
-            }
-            return false
-        }
-        let limit = iCloudStopLimit
-        let timer = Task { [clock] in
-            try await clock.sleep(for: limit)
-            waiter.cancel()
-        }
-        defer { timer.cancel() }
-        guard await waiter.value else { throw ProviderMoveError.iCloudDidNotStop }
     }
 
     private func ensureCurrent(_ asked: Int) throws {
@@ -345,8 +332,8 @@ extension ProviderMoves {
                 return String(localized: "Your organization does not allow this on this Mac.")
             case .inProgress:
                 return String(localized: "Another change to how this Mac syncs is still running.")
-            case .iCloudDidNotStop:
-                return String(localized: "iCloud did not stop on this Mac in time, so nothing moved. Try again.")
+            case .serverRefusesPersonalSync:
+                return String(localized: "Your server does not keep personal data, so this Mac cannot sync it there.")
             case .superseded:
                 return String(localized: "How this Mac syncs changed while this ran, so it stopped.")
             case .engineUnavailable:
@@ -381,17 +368,16 @@ extension ProviderMoveHost {
         let engines = SyncEngineHost.shared
         let coordinator = SyncProviderCoordinator.shared
         return ProviderMoveHost(
-            engine: {
-                // The service the coordinator opened is the one `SyncService` the app holds.
-                guard let engine = try await engines.engine() as? any SyncMoveEngine else {
+            engine: { provider in
+                // The one `SyncService` the app holds for that provider.
+                guard let engine = try await engines.engine(for: provider) as? any SyncMoveEngine else {
                     throw ProviderMoveError.engineUnavailable
                 }
                 return engine
             },
-            openedEngine: { engines.openedEngine as? any SyncMoveEngine },
+            openedEngine: { provider in engines.openedEngine(for: provider) as? any SyncMoveEngine },
             engineChanges: engines.statusChanges.eraseToAnyPublisher(),
             iCloudRuns: { coordinator.syncStatus.isEnabled },
-            iCloudPass: { await coordinator.syncNow() },
             passesFinished: { await coordinator.passesFinished() },
             cloudKit: CloudKitReach(
                 isClosed: { engines.transport.isClosed },
