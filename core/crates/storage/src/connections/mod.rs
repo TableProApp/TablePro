@@ -28,6 +28,7 @@ mod profiles;
 mod ssh;
 #[cfg(test)]
 mod store_tests;
+mod synced;
 mod write_guard;
 
 pub use additions::ImportedConnection;
@@ -37,6 +38,7 @@ pub use details::{
     SshRouteTarget, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
 };
 pub use library::{LibraryRead, LibraryWrite};
+pub use synced::LibraryChange;
 pub use profiles::{CredentialPassword, CredentialProfile, SshProfile};
 pub use ssh::{
     RemoteFileAccess, SavedSshAuth, SavedSshConfig, SshJumpAuth, SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm,
