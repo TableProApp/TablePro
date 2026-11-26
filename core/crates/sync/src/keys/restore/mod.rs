@@ -259,14 +259,17 @@ impl KeyService {
                 continue;
             }
             bases.load(txn, info.scope).await?;
-            // This body is read now, so it counts as read after the team's pull caught up when that pull has.
-            let caught_up =
-                matches!(txn.get(&RowKey::Scope(info.scope)).await?, Some(Row::Scope(scope)) if scope.caught_up);
+            // The roster a pull that followed its scopes body caught up on, never a stored flag (0051, `members`).
+            let roster = self
+                .rosters()
+                .get(team)
+                .filter(crate::api::key_flows::Roster::caught_up)
+                .map(|roster| roster.members);
             teams.push(GatheredTeam {
                 team,
                 objects,
                 row,
-                roster: caught_up.then(|| info.members.clone()),
+                roster,
             });
         }
         Ok(Gathered { personal, teams, bases })

@@ -61,6 +61,7 @@ pub fn key_base(scope: ScopeName, epoch: EpochId, change: &Change, outcome: &Cha
         epoch: Some(epoch),
         deleted: None,
         fields: None,
+        created_ms: None,
     })
 }
 
@@ -79,6 +80,7 @@ pub fn base_of(key: &RecordKey, create_once: bool, pulled: &PulledRecord) -> Bas
         } else {
             pulled.fields.clone()
         },
+        created_ms: None,
     }
 }
 

@@ -337,10 +337,11 @@ const STANDINGS: [(Standing, &str); 3] = [
     (Standing::Unknown, "unknown"),
 ];
 
-const HELD_REASONS: [(HeldReason, &str); 3] = [
+const HELD_REASONS: [(HeldReason, &str); 4] = [
     (HeldReason::Unreadable, "unreadable"),
     (HeldReason::UnknownKind, "unknown_kind"),
     (HeldReason::AwaitingApproval, "awaiting_approval"),
+    (HeldReason::AwaitingDeviceApproval, "awaiting_device_approval"),
 ];
 
 const VERSION_STATES: [(KeyVersionState, &str); 3] = [
@@ -448,7 +449,7 @@ pub(crate) fn columns(row: &Row) -> Vec<u8> {
         Row::Store(row) => {
             out.bytes(row.generation.as_bytes()).int(row.sequence);
         }
-        Row::Base(row) => base_columns(&mut out, row),
+        Row::Base(row) | Row::PendingBase(row) => base_columns(&mut out, row),
         Row::Standing(row) => {
             out.text(name_of(&STANDINGS, row.standing));
         }
@@ -500,6 +501,7 @@ fn scope_columns(out: &mut Writer, row: &ScopeRow) {
         .maybe(row.older_cursor.as_ref(), |out, cursor| {
             out.bytes(&cursor_bytes(cursor))
         })
+        .bytes(&kinds_bytes(&row.read_kinds))
         .flag(row.refill)
         .flag(row.rotation_due)
         .flag(row.caught_up);
@@ -511,7 +513,26 @@ fn base_columns(out: &mut Writer, row: &BaseRow) {
         .maybe(row.revision, Writer::int)
         .maybe(row.epoch, |out, epoch| out.bytes(epoch.0.as_bytes()))
         .maybe(row.deleted, |out, reason| out.text(reason.as_str()))
-        .maybe(row.fields.as_ref(), Writer::json);
+        .maybe(row.fields.as_ref(), Writer::json)
+        .maybe(row.created_ms, Writer::signed);
+}
+
+// Each kind name as its length and its text, in the row's order.
+fn kinds_bytes(kinds: &[KindName]) -> Vec<u8> {
+    let mut out = Writer::default();
+    for kind in kinds {
+        out.text(kind.as_str());
+    }
+    out.finish()
+}
+
+fn kinds(bytes: &[u8]) -> Result<Vec<KindName>, StateError> {
+    let mut read = Reader::new(bytes);
+    let mut out = Vec::new();
+    while !read.rest.is_empty() {
+        out.push(kind(read.present("read kind")?)?);
+    }
+    Ok(out)
 }
 
 fn approval_columns(out: &mut Writer, row: &ApprovalRow) {
@@ -577,6 +598,7 @@ pub(crate) fn decode(table: Table, key: &[u8], columns: &[u8]) -> Result<Row, St
             sequence: read.int("sequence")?,
         }),
         Table::Bases => Row::Base(base_row(record_key(&mut keys)?, &mut read)?),
+        Table::PendingBases => Row::PendingBase(base_row(record_key(&mut keys)?, &mut read)?),
         Table::Standing => Row::Standing(StandingRow {
             key: record_key(&mut keys)?,
             standing: named(&STANDINGS, &read.text("standing")?, "standing")?,
@@ -646,6 +668,7 @@ fn scope_row(scope: ScopeName, read: &mut Reader<'_>) -> Result<ScopeRow, StateE
         policies: policies(read.present("policies")?)?,
         lineage: lineage(read.present("lineage")?)?,
         older_cursor: read.maybe(cursor)?,
+        read_kinds: kinds(read.present("read kinds")?)?,
         refill: read.flag("refill")?,
         rotation_due: read.flag("rotation due")?,
         caught_up: read.flag("caught up")?,
@@ -661,6 +684,7 @@ fn base_row(key: RecordKey, read: &mut Reader<'_>) -> Result<BaseRow, StateError
         epoch: read.maybe(|bytes| uuid(bytes).map(EpochId))?,
         deleted: read.maybe(|bytes| deleted(&text(bytes)?))?,
         fields: read.maybe(json)?,
+        created_ms: read.maybe(signed)?,
     })
 }
 

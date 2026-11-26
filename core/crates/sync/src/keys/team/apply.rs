@@ -366,7 +366,7 @@ impl KeyService {
 
     pub(super) async fn decide_on_roster(&self, team: TeamId, roster: Roster) -> Result<(), SyncError> {
         // A roster read before the team's pull caught up is no evidence of anything (0051, `members`).
-        if !roster.caught_up {
+        if !roster.caught_up() {
             return Ok(());
         }
         self.rosters().put(team, roster.clone());

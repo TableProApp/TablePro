@@ -224,7 +224,7 @@ impl RecordAdapter for MemoryStore {
         })
     }
 
-    async fn records(&self) -> Result<LocalRecords, AdapterError> {
+    async fn records(&self, _scope: ScopeName) -> Result<LocalRecords, AdapterError> {
         let edit = {
             let mut held = lock(&self.held);
             held.edit_after_read.take()
@@ -243,7 +243,7 @@ impl RecordAdapter for MemoryStore {
         Ok(records)
     }
 
-    async fn apply(&self, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError> {
+    async fn apply(&self, _scope: ScopeName, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError> {
         let mut held = lock(&self.held);
         if std::mem::take(&mut held.refuse_next) {
             return Err(AdapterError::Store {
@@ -278,7 +278,7 @@ impl RecordAdapter for MemoryStore {
         Ok(self.wrote())
     }
 
-    async fn tombstones_pushed(&self, _record_ids: Vec<String>) -> Result<(), AdapterError> {
+    async fn tombstones_pushed(&self, _scope: ScopeName, _record_ids: Vec<String>) -> Result<(), AdapterError> {
         Ok(())
     }
 }

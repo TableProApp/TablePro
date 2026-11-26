@@ -125,7 +125,7 @@ impl ServiceSync {
         let none = HashSet::new();
         let mut out = Vec::new();
         let mut pruned = Vec::new();
-        for adapter in self.adapters.adapters(scope) {
+        for adapter in self.adapters.in_scope(scope) {
             let kind = adapter.kind();
             if kind_off(row.policies, scope, kind) || (kind == Kind::SecretEnvelope && !self.seals(ctx, row)) {
                 continue;
@@ -138,7 +138,7 @@ impl ServiceSync {
                 },
                 None => None,
             };
-            let local = adapter.records().await?;
+            let local = adapter.records(scope).await?;
             let bases = self.bases_in(scope, kind).await?;
             let mut diffed = diff(
                 scope,
@@ -164,7 +164,10 @@ impl ServiceSync {
             if !diffed.acknowledged.is_empty() {
                 self.stop.check()?;
                 adapter
-                    .tombstones_pushed(diffed.acknowledged.into_iter().map(|key| key.record_id).collect())
+                    .tombstones_pushed(
+                        scope,
+                        diffed.acknowledged.into_iter().map(|key| key.record_id).collect(),
+                    )
                     .await?;
             }
         }
@@ -353,6 +356,7 @@ impl ServiceSync {
                             epoch: Some(epoch),
                             deleted: None,
                             fields: (!create_once).then(|| fields.clone()),
+                            created_ms: None,
                         }),
                         (PendingOp::Write { .. }, None) => {}
                         (PendingOp::Delete, Some(tag)) => puts.push(BaseRow {
@@ -363,6 +367,7 @@ impl ServiceSync {
                             epoch: Some(epoch),
                             deleted: Some(DeletedReason::User),
                             fields: None,
+                            created_ms: None,
                         }),
                         (PendingOp::Delete, None) => drops.push(pending.key.clone()),
                     }
@@ -421,12 +426,12 @@ impl ServiceSync {
         for (kind, ids) in tombstones {
             let adapter = self
                 .adapters
-                .adapters(scope)
+                .in_scope(scope)
                 .into_iter()
                 .find(|adapter| adapter.kind() == kind);
             if let Some(adapter) = adapter {
                 self.stop.check()?;
-                adapter.tombstones_pushed(ids).await?;
+                adapter.tombstones_pushed(scope, ids).await?;
             }
         }
         Ok(())

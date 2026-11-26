@@ -9,7 +9,9 @@ use tablepro_keys::encoding::{AccountId, TeamId, Version, random_uuid};
 use tablepro_keys::envelope::{EnvelopeId, ParentKind, SecretKind};
 use tablepro_sync::SyncError;
 use tablepro_sync::api::ids::ScopeName;
-use tablepro_sync::api::key_flows::{ArrivalOrder, KeyApplied, KeyArrival, MemberKeyStatus, Roster, TeamFlows};
+use tablepro_sync::api::key_flows::{
+    ArrivalOrder, CaughtUp, KeyApplied, KeyArrival, MemberKeyStatus, Roster, TeamFlows,
+};
 use tablepro_sync::api::scopes::{Role, ScopesAnswer};
 use tablepro_sync::api::state::{Row, RowKey, ScopeRow};
 use tablepro_sync::api::transport::{Proof, PullRequest, RejectedCode, ServiceTransport, Transport};
@@ -39,8 +41,11 @@ pub(super) async fn team_pass(device: &Device, team: TeamId) -> KeyApplied {
         Some(Row::Scope(row)) => row,
         _ => ScopeRow::new(scope),
     };
+    let ScopesAnswer::Body { body, .. } = device.transport.scopes(None, proof.clone()).await.unwrap() else {
+        return KeyApplied::default();
+    };
     let mut last = KeyApplied::default();
-    loop {
+    let caught_up = loop {
         let page = device
             .transport
             .pull(PullRequest {
@@ -51,6 +56,7 @@ pub(super) async fn team_pass(device: &Device, team: TeamId) -> KeyApplied {
             })
             .await
             .unwrap();
+        let mark = CaughtUp::from_page(scope, &page);
         let order = if row.cursor.is_none() {
             ArrivalOrder::Snapshot
         } else {
@@ -74,18 +80,19 @@ pub(super) async fn team_pass(device: &Device, team: TeamId) -> KeyApplied {
         last.refused.extend(applied.refused);
         last.held = applied.held;
         last.in_force = applied.in_force;
-        if page.caught_up {
-            break;
+        if mark.is_some() {
+            break mark;
         }
-    }
-    let ScopesAnswer::Body { body, .. } = device.transport.scopes(None, proof).await.unwrap() else {
-        return last;
     };
     let info = body.scopes.iter().find(|info| info.scope == scope).unwrap();
     row.role = info.role;
     row.rotation_due = info.rotation_due;
     device.put(vec![Row::Scope(row)]).await;
-    device.service.roster_read(team, Roster::of(info, true)).await.unwrap();
+    device
+        .service
+        .roster_read(team, Roster::of(info, caught_up))
+        .await
+        .unwrap();
     last
 }
 

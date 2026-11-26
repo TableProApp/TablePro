@@ -23,17 +23,21 @@ pub use stop::StopSignal;
 use crate::api::adapter::RecordAdapter;
 use crate::api::ids::ScopeName;
 
-// The adapters whose records sync in a scope. Team scopes come and go with the scopes body, so the host answers for
-// any scope it is asked about.
-pub trait AdapterSet: Send + Sync {
-    fn adapters(&self, scope: ScopeName) -> Vec<Arc<dyn RecordAdapter>>;
-}
+// The store adapters, one per kind. Each holds its kind's records of every scope the kind syncs in and is asked for one
+// scope at a time (0054, Adapters).
+#[derive(Clone, Default)]
+pub struct Adapters(Vec<Arc<dyn RecordAdapter>>);
 
-impl AdapterSet for Vec<(ScopeName, Arc<dyn RecordAdapter>)> {
-    fn adapters(&self, scope: ScopeName) -> Vec<Arc<dyn RecordAdapter>> {
-        self.iter()
-            .filter(|(held, _)| *held == scope)
-            .map(|(_, adapter)| Arc::clone(adapter))
+impl Adapters {
+    pub fn new(adapters: Vec<Arc<dyn RecordAdapter>>) -> Self {
+        Self(adapters)
+    }
+
+    pub fn in_scope(&self, scope: ScopeName) -> Vec<Arc<dyn RecordAdapter>> {
+        self.0
+            .iter()
+            .filter(|adapter| adapter.kind().scopes().contains(&scope.records_scope()))
+            .map(Arc::clone)
             .collect()
     }
 }

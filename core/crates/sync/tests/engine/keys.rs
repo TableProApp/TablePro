@@ -211,7 +211,7 @@ async fn a_team_roster_is_read_once_its_pull_is_caught_up() {
     assert_eq!(rosters.len(), 1);
     let (read, roster) = &rosters[0];
     assert_eq!(*read, team);
-    assert!(roster.caught_up);
+    assert!(roster.caught_up());
     assert_eq!(roster.role, Some(Role::Owner));
     assert_eq!(roster.members.len(), 2);
     let Some(Row::Scope(row)) = mac.row(RowKey::Scope(ScopeName::Team(team))).await else {
@@ -364,7 +364,12 @@ async fn a_team_envelope_pulled_before_approval_is_taken_once_the_device_is_appr
     let envelope = format!("library_connection/{}/password", id(1).to_lowercase());
     mac.push_raw(
         ScopeName::Team(team),
-        vec![write("key.version", &version, None, json!({"suite": "tp1"}))],
+        vec![write(
+            "key.version",
+            &version,
+            None,
+            json!({"suite": "tp1", "signer": account().to_wire()}),
+        )],
     )
     .await;
     let outcomes = mac
@@ -416,7 +421,12 @@ async fn a_refill_that_kept_envelopes_unchecked_refills_them_once_the_device_can
     let envelope = format!("library_connection/{}/password", id(1).to_lowercase());
     mac.push_raw(
         ScopeName::Team(team),
-        vec![write("key.version", &version, None, json!({"suite": "tp1"}))],
+        vec![write(
+            "key.version",
+            &version,
+            None,
+            json!({"suite": "tp1", "signer": account().to_wire()}),
+        )],
     )
     .await;
     mac.push_raw(

@@ -457,3 +457,38 @@ impl Drafts {
         self.lock().clear();
     }
 }
+
+// A roster as a pull that caught up after its scopes body leaves it, or as one read before that when `caught_up` is
+// false.
+#[cfg(test)]
+pub(crate) fn test_roster(
+    team: TeamId,
+    members: Vec<crate::api::scopes::TeamMember>,
+    role: Option<crate::api::scopes::Role>,
+    rotation_due: bool,
+    caught_up: bool,
+) -> Roster {
+    let scope = ScopeName::Team(team);
+    let info = crate::api::scopes::ScopeInfo {
+        scope,
+        role,
+        horizon: 0,
+        epochs: Vec::new(),
+        writable: true,
+        policies: crate::api::scopes::ScopePolicies::default(),
+        quota: None,
+        rotation_due,
+        members,
+        stopped: Vec::new(),
+        approved: None,
+    };
+    let page = crate::api::transport::PulledPage {
+        records: Vec::new(),
+        cursor: None,
+        changes_cursor: None,
+        caught_up: true,
+        unread: Vec::new(),
+    };
+    let pull = crate::api::key_flows::CaughtUp::from_page(scope, &page).filter(|_| caught_up);
+    Roster::of(&info, pull)
+}

@@ -104,6 +104,7 @@ async fn refused_save(rig: &Rig, id: &str, fields: &Value) -> CloudKitOutcome {
         record_type: "Connection".to_owned(),
         name: name(Kind::Connection, id),
         system_fields: Some(system_fields),
+        created_ms: None,
         fields: cloud_fields(Kind::Connection, id, fields),
     };
     rig.cloud

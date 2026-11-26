@@ -205,6 +205,7 @@ impl<'s, 'f> Settle<'s, 'f> {
                 epoch: None,
                 deleted: None,
                 fields: Some(copy.fields),
+                created_ms: copy.created_ms,
             }))
             .await?;
         self.release(&key).await

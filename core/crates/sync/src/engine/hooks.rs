@@ -117,7 +117,7 @@ impl KeyHooks for EngineHooks {
     fn resume_scope(&self, scope: ScopeName) {
         self.state().stopped.remove(&scope);
         self.keys_changed();
-        self.wake.pass_soon(PassReason::Person);
+        self.wake.pass_soon(PassReason::KeyFlow);
     }
 
     fn end_scope(&self, scope: ScopeName, epoch: Option<EpochId>) {
@@ -134,6 +134,6 @@ impl KeyHooks for EngineHooks {
     }
 
     fn pass_soon(&self) {
-        self.wake.pass_soon(PassReason::Person);
+        self.wake.pass_soon(PassReason::KeyFlow);
     }
 }

@@ -40,6 +40,8 @@ pub(super) struct Copy {
     pub kind: Kind,
     pub tag: Vec<u8>,
     pub fields: Value,
+    // `CKRecord.creationDate`, which the base keeps to tell a record made again after a zone removal.
+    pub created_ms: Option<i64>,
 }
 
 fn key_in(record_type: &RecordType, name: &str) -> Option<RecordKey> {
@@ -89,6 +91,7 @@ pub(super) fn changed(record: &CloudKitRecord) -> Option<Incoming> {
             kind: record_type.kind,
             tag,
             fields: wire.fields,
+            created_ms: record.created_ms,
         }),
         Err(_) => Incoming::Unread { key, tag: Some(tag) },
     })

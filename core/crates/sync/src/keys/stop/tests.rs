@@ -412,19 +412,14 @@ async fn a_resumed_withdrawal_that_is_no_longer_pending_sends_nothing() {
 }
 
 fn roster(world: &World, members: &[(&str, Role)], caught_up: bool) -> Roster {
-    Roster {
-        members: members
-            .iter()
-            .map(|(name, role)| TeamMember {
-                account: world.account(name),
-                role: *role,
-            })
-            .collect(),
-        role: Some(Role::Member),
-        rotation_due: false,
-        stopped: Vec::new(),
-        caught_up,
-    }
+    let members = members
+        .iter()
+        .map(|(name, role)| TeamMember {
+            account: world.account(name),
+            role: *role,
+        })
+        .collect();
+    crate::keys::test_roster(world.team, members, Some(Role::Member), false, caught_up)
 }
 
 #[tokio::test]

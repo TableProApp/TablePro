@@ -23,10 +23,10 @@ pub(crate) use self::holders::{Chain, same_holder};
 use super::KeyService;
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, ScopeName};
-use crate::api::key_flows::{StopAction, StopFlows};
+use crate::api::key_flows::{Roster, StopAction, StopFlows};
 use crate::api::state::{
     Holder, KeyPendingRow, KeyPinRow, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn,
-    StoppedCause, Table,
+    StopClear, StoppedCause, Table,
 };
 
 pub(crate) fn kind(row: &KeyVersionRow) -> Option<StoppedCause> {
@@ -35,21 +35,15 @@ pub(crate) fn kind(row: &KeyVersionRow) -> Option<StoppedCause> {
         .flatten()
 }
 
-// A restore wait the server filled (0062); a catch-up stop never clears this way.
+// A restore wait the server filled (0062); any other stop does not clear this way and stays as it was.
 pub(crate) fn resumed(mut row: KeyVersionRow) -> KeyVersionRow {
-    if kind(&row) == Some(StoppedCause::RestoreWait) {
-        row.clear_stop();
-    }
+    let _ = row.clear_stop(StopClear::AwaitedVersionsBack);
     row
 }
 
-pub(crate) fn ended(row: KeyVersionRow, epoch: Option<EpochId>) -> KeyVersionRow {
-    KeyVersionRow {
-        state: KeyVersionState::Ended,
-        stopped_cause: None,
-        epoch,
-        ..row
-    }
+pub(crate) fn ended(mut row: KeyVersionRow, epoch: Option<EpochId>) -> KeyVersionRow {
+    row.end(epoch);
+    row
 }
 
 pub(crate) async fn withdraw_pending(txn: &mut dyn StateTxn, team: TeamId) -> Result<(), SyncError> {
@@ -135,7 +129,7 @@ impl StopFlows for KeyService {
                 .collect()
         };
         for team in stopped {
-            if let Some(roster) = self.rosters().get(team).filter(|roster| roster.caught_up) {
+            if let Some(roster) = self.rosters().get(team).filter(Roster::caught_up) {
                 self.end_unconfirmable_stop(team, &roster).await?;
             }
         }
@@ -329,11 +323,17 @@ impl KeyService {
                 what: "clear a catch-up stop before its re-confirmation is taken",
             });
         }
+        let mut moved = stopped.clone();
+        moved
+            .clear_stop(StopClear::Reconfirmed)
+            .map_err(|_| SyncError::NotAllowed {
+                what: "clear a stop that is not a catch-up",
+            })?;
         txn.put(Row::KeyVersion(KeyVersionRow {
-            state: KeyVersionState::Ok,
-            stopped_cause: None,
-            epoch: None,
-            ..row
+            version: row.version,
+            record: row.record,
+            holders: row.holders,
+            ..moved
         }))
         .await?;
         withdraw_pending(txn, team).await

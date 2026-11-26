@@ -15,7 +15,7 @@ use super::{PassCtx, ServiceSync, begin};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
 use crate::api::error::SyncError;
 use crate::api::ids::{Cursor, KindName, RecordKey, ScopeName};
-use crate::api::key_flows::ArrivalOrder;
+use crate::api::key_flows::{ArrivalOrder, CaughtUp};
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{BaseRow, ConflictRow, HeldReason, HeldRow, Row, RowKey, RowRange, ScopeRow, Table};
 use crate::api::transport::{Proof, PullRequest, PulledPage, PulledRecord, TransportError};
@@ -38,6 +38,8 @@ struct Pull {
     can_open: bool,
     // The bytes of key objects and envelopes a snapshot keeps until it is caught up.
     buffered: usize,
+    // The kinds this build reads in the scope, which the row keeps once a snapshot read them all.
+    reading: Vec<KindName>,
 }
 
 // A server that never lets a pull catch up, or a snapshot too large to keep, ends the pass instead of the device.
@@ -121,7 +123,7 @@ impl ServiceSync {
 
     pub(super) async fn pull_scope(&self, ctx: &mut PassCtx, info: &ScopeInfo) -> Result<(), SyncError> {
         let scope = info.scope;
-        let adapters = self.adapters.adapters(scope);
+        let adapters = self.adapters.in_scope(scope);
         let stored = self.scope_row(scope).await?;
         let mut row = stored.clone().unwrap_or_else(|| ScopeRow::new(scope));
         if row.epoch.is_some_and(|held| held != ctx.body.epoch) {
@@ -137,7 +139,11 @@ impl ServiceSync {
         // Envelopes kept while the device could not check them are read again in a snapshot once it can, which
         // serves each one's current copy after the key objects (0051, Pull).
         let waiting = can_open && !self.waiting_envelopes(scope).await?.is_empty();
-        let snapshot = row.cursor.is_none() || row.refill || !pull_wins.is_empty() || waiting;
+        // A build that reads a kind the last pull did not fetches again what it held for it (0054, Rules).
+        let mut reading: Vec<KindName> = adapters.iter().map(|adapter| KindName::of(adapter.kind())).collect();
+        reading.sort();
+        let reads_more = reading.iter().any(|kind| !row.read_kinds.contains(kind));
+        let snapshot = row.cursor.is_none() || row.refill || !pull_wins.is_empty() || waiting || reads_more;
         let mut pull = Pull {
             scope,
             snapshot,
@@ -151,6 +157,7 @@ impl ServiceSync {
             seen: HashSet::new(),
             can_open,
             buffered: 0,
+            reading,
         };
         refresh(&mut row, info);
         if row.epoch.is_none() {
@@ -161,11 +168,11 @@ impl ServiceSync {
         if stored.as_ref() != Some(&row) {
             self.commit_page(PageWrites::default(), Some(&row)).await?;
         }
-        self.pull_pages(ctx, &mut pull, &adapters, &mut row).await?;
+        let caught_up = self.pull_pages(ctx, &mut pull, &adapters, &mut row).await?;
         if pull.snapshot {
             self.finish_snapshot(ctx, &mut pull, &adapters, &mut row, info).await?;
         }
-        self.read_roster(info).await;
+        self.read_roster(info, caught_up).await;
         Ok(())
     }
 
@@ -175,7 +182,7 @@ impl ServiceSync {
         pull: &mut Pull,
         adapters: &[Arc<dyn RecordAdapter>],
         row: &mut ScopeRow,
-    ) -> Result<(), SyncError> {
+    ) -> Result<Option<CaughtUp>, SyncError> {
         for _ in 0..MAX_PAGES {
             self.stop.check()?;
             let request = PullRequest {
@@ -194,6 +201,8 @@ impl ServiceSync {
                 other => other?,
             };
             let caught_up = page.caught_up || page.records.is_empty();
+            // Only an empty page that says so lets the roster read before this pull be decided on (0051, `members`).
+            let roster_ready = CaughtUp::from_page(pull.scope, &page);
             let next = next_cursor(pull, &page);
             if !caught_up && (next.is_none() || next == pull.cursor) {
                 return Err(SyncError::Malformed {
@@ -218,7 +227,7 @@ impl ServiceSync {
                 }
             }
             if caught_up {
-                return Ok(());
+                return Ok(roster_ready);
             }
         }
         Err(SyncError::Malformed {
@@ -269,7 +278,7 @@ impl ServiceSync {
                     continue;
                 }
                 if !pull.can_open {
-                    writes.held.push(held(HeldReason::AwaitingApproval, key, record));
+                    writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
                     continue;
                 }
                 // In revision order an envelope is only ever checked under a version, never under a snapshot's rule.
@@ -316,7 +325,7 @@ impl ServiceSync {
             .map(|record| RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone()))
             .collect();
         let bases = self.bases_of(&keys).await?;
-        let locals = local_indexes(adapters, &records).await?;
+        let locals = local_indexes(pull.scope, adapters, &records).await?;
         for (key, record) in keys.into_iter().zip(records) {
             let adapter = record
                 .kind
@@ -342,7 +351,7 @@ impl ServiceSync {
             writes.conflicts.extend(settled.conflict);
             writes.unheld.push(key);
         }
-        self.write_store(adapters, writes).await
+        self.write_store(pull.scope, adapters, writes).await
     }
 
     async fn bases_of(&self, keys: &[RecordKey]) -> Result<HashMap<RecordKey, BaseRow>, SyncError> {
@@ -357,7 +366,12 @@ impl ServiceSync {
     }
 
     // One store write per adapter, each after a stop check (P1-M4).
-    async fn write_store(&self, adapters: &[Arc<dyn RecordAdapter>], writes: &mut PageWrites) -> Result<(), SyncError> {
+    async fn write_store(
+        &self,
+        scope: ScopeName,
+        adapters: &[Arc<dyn RecordAdapter>],
+        writes: &mut PageWrites,
+    ) -> Result<(), SyncError> {
         let mut grouped: Vec<(usize, Vec<LocalChange>)> = Vec::new();
         for (index, change) in writes.store.drain(..) {
             match grouped.iter_mut().find(|(held, _)| *held == index) {
@@ -368,7 +382,7 @@ impl ServiceSync {
         for (index, changes) in grouped {
             self.stop.check()?;
             if let Some(adapter) = adapters.get(index) {
-                adapter.apply(changes).await?;
+                adapter.apply(scope, changes).await?;
             }
         }
         Ok(())
@@ -425,7 +439,7 @@ impl ServiceSync {
         for record in std::mem::take(&mut pull.held_envelopes) {
             let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
             if !pull.can_open {
-                writes.held.push(held(HeldReason::AwaitingApproval, key, record));
+                writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
             } else if self.envelope_opens(pull.scope, &record, None).await? {
                 opened.push(record);
             } else {
@@ -437,6 +451,7 @@ impl ServiceSync {
         row.cursor.clone_from(&pull.cursor);
         row.key_version = pull.in_force;
         row.caught_up = true;
+        row.read_kinds.clone_from(&pull.reading);
         if pull.older_cursor.is_some() {
             row.older_cursor.clone_from(&pull.older_cursor);
         }
@@ -445,7 +460,11 @@ impl ServiceSync {
         // A refill that kept envelopes it could not check is not done for them: their store and the epoch wait for a
         // pass that can, so that pass refills them by the same rule.
         let refilling = pull.cut.is_some() || pull.pull_wins.contains(&Kind::SecretEnvelope);
-        let unchecked = refilling && writes.held.iter().any(|row| row.reason == HeldReason::AwaitingApproval);
+        let unchecked = refilling
+            && writes
+                .held
+                .iter()
+                .any(|row| row.reason == HeldReason::AwaitingDeviceApproval);
         if whole {
             if pull.scope != ScopeName::History {
                 writes.dropped = self.unseen_bases(pull).await?;
@@ -495,7 +514,7 @@ impl ServiceSync {
         Ok(rows
             .into_iter()
             .filter_map(|row| match row {
-                Row::Held(row) if row.reason == HeldReason::AwaitingApproval => Some(row.key),
+                Row::Held(row) if row.reason == HeldReason::AwaitingDeviceApproval => Some(row.key),
                 _ => None,
             })
             .collect())
@@ -534,6 +553,7 @@ fn next_cursor(pull: &mut Pull, page: &PulledPage) -> Option<Cursor> {
 }
 
 async fn local_indexes(
+    scope: ScopeName,
     adapters: &[Arc<dyn RecordAdapter>],
     records: &[PulledRecord],
 ) -> Result<HashMap<usize, LocalIndex>, SyncError> {
@@ -543,7 +563,7 @@ async fn local_indexes(
         if !kinds.contains(&adapter.kind()) {
             continue;
         }
-        let local = adapter.records().await?;
+        let local = adapter.records(scope).await?;
         indexes.insert(
             index,
             LocalIndex {

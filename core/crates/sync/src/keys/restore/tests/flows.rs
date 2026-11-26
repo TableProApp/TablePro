@@ -329,6 +329,7 @@ fn base_row(scope: ScopeName, held: &HeldObject) -> Row {
         epoch: Some(epoch(2)),
         deleted: None,
         fields: None,
+        created_ms: None,
     })
 }
 
@@ -490,15 +491,26 @@ async fn the_roster_counts_only_once_the_team_s_pull_is_caught_up() {
     let body = super::fakes::scopes(epoch(2), vec![listed]);
 
     let mut txn = rig.service.begin().await.unwrap();
-    let behind = rig.service.gather(&mut *txn, &body).await.unwrap();
     txn.put(Row::Scope(ScopeRow {
         caught_up: true,
         ..ScopeRow::new(team)
     }))
     .await
     .unwrap();
+    let flag_only = rig.service.gather(&mut *txn, &body).await.unwrap();
+    let members = body.scopes[0].members.clone();
+    rig.service.rosters().put(
+        world.team,
+        crate::keys::test_roster(world.team, members.clone(), None, false, false),
+    );
+    let read_behind = rig.service.gather(&mut *txn, &body).await.unwrap();
+    rig.service.rosters().put(
+        world.team,
+        crate::keys::test_roster(world.team, members, None, false, true),
+    );
     let caught_up = rig.service.gather(&mut *txn, &body).await.unwrap();
 
-    assert_eq!(behind.teams[0].roster, None);
+    assert_eq!(flag_only.teams[0].roster, None);
+    assert_eq!(read_behind.teams[0].roster, None);
     assert_eq!(caught_up.teams[0].roster.as_ref().map(Vec::len), Some(1));
 }

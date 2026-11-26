@@ -137,19 +137,14 @@ fn holders(names: &[(&Account, u32)]) -> Vec<Holder> {
 }
 
 fn roster(members: &[(&Account, Role)]) -> Roster {
-    Roster {
-        members: members
-            .iter()
-            .map(|(account, role)| TeamMember {
-                account: account.id,
-                role: *role,
-            })
-            .collect(),
-        role: None,
-        rotation_due: false,
-        stopped: Vec::new(),
-        caught_up: true,
-    }
+    let members = members
+        .iter()
+        .map(|(account, role)| TeamMember {
+            account: account.id,
+            role: *role,
+        })
+        .collect();
+    crate::keys::test_roster(super::team(), members, None, false, true)
 }
 
 #[test]

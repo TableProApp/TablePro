@@ -102,6 +102,7 @@ fn base(record: &str, fields: Option<serde_json::Value>) -> BaseRow {
         epoch: None,
         deleted: None,
         fields,
+        created_ms: None,
     }
 }
 

@@ -38,19 +38,14 @@ fn key() -> ScopeKey {
 }
 
 fn members(entries: &[(&Account, Role)]) -> Roster {
-    Roster {
-        members: entries
-            .iter()
-            .map(|(account, role)| TeamMember {
-                account: account.id,
-                role: *role,
-            })
-            .collect(),
-        role: None,
-        rotation_due: false,
-        stopped: Vec::new(),
-        caught_up: true,
-    }
+    let members = entries
+        .iter()
+        .map(|(account, role)| TeamMember {
+            account: account.id,
+            role: *role,
+        })
+        .collect();
+    crate::keys::test_roster(super::team(), members, None, false, true)
 }
 
 struct Team {
@@ -596,8 +591,8 @@ fn a_confirmation_past_five_thousand_members_holding_the_key_is_team_full() {
             ik: tablepro_keys::keys::Ed25519Public([0; 32]),
         })
         .collect();
-    let on_roster = |count: u128| Roster {
-        members: (0..count)
+    let on_roster = |count: u128| {
+        let members = (0..count)
             .map(|index| TeamMember {
                 account: account(index),
                 role: Role::Member,
@@ -606,11 +601,8 @@ fn a_confirmation_past_five_thousand_members_holding_the_key_is_team_full() {
                 account: account(9_999),
                 role: Role::Member,
             }))
-            .collect(),
-        role: Some(Role::Admin),
-        rotation_due: false,
-        stopped: Vec::new(),
-        caught_up: true,
+            .collect();
+        crate::keys::test_roster(super::team(), members, Some(Role::Admin), false, true)
     };
     let newcomer = account(9_999);
     let team_full = crate::api::error::SyncError::Rejected {
@@ -652,22 +644,12 @@ fn an_envelope_counts_only_under_the_version_in_force_and_never_below_the_copy_h
 
 #[test]
 fn a_team_due_a_rotation_holds_new_envelopes_and_a_plain_member_writes_none() {
-    let due = Roster {
-        members: Vec::new(),
-        role: Some(Role::Editor),
-        rotation_due: true,
-        stopped: Vec::new(),
-        caught_up: true,
-    };
-    let member = Roster {
-        rotation_due: false,
-        role: Some(Role::Member),
-        ..due.clone()
-    };
-    let editor = Roster {
-        rotation_due: false,
-        ..due.clone()
-    };
+    let due = crate::keys::test_roster(super::team(), Vec::new(), Some(Role::Editor), true, true);
+    let mut member = due.clone();
+    member.rotation_due = false;
+    member.role = Some(Role::Member);
+    let mut editor = due.clone();
+    editor.rotation_due = false;
     let code = |result: Result<(), crate::api::error::SyncError>| match result {
         Err(crate::api::error::SyncError::Rejected { code }) => code.as_str().to_owned(),
         other => format!("{other:?}"),

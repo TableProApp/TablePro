@@ -27,7 +27,7 @@ use crate::api::state::{
     KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow, Table,
 };
 use crate::api::transport::{DpopKey, ServiceTransport, TransportError};
-use crate::engine::{AdapterSet, Clock, EngineEvents, EngineHooks, Journal, JournalIds, Pass, StopSignal};
+use crate::engine::{Adapters, Clock, EngineEvents, EngineHooks, Journal, JournalIds, Pass, StopSignal};
 use crate::keys::KeyService;
 
 // This device's signing key, which every personal and history call and every key-object or envelope write carries
@@ -54,7 +54,7 @@ impl ProofSource for KeyService {
 pub struct ServiceParts {
     pub transport: Arc<dyn ServiceTransport>,
     pub state: Arc<dyn StateStore>,
-    pub adapters: Arc<dyn AdapterSet>,
+    pub adapters: Adapters,
     pub keys: Arc<dyn KeyFlows>,
     pub hooks: Arc<EngineHooks>,
     pub proofs: Arc<dyn ProofSource>,
@@ -67,7 +67,7 @@ pub struct ServiceParts {
 pub struct ServiceSync {
     transport: Arc<dyn ServiceTransport>,
     state: Arc<dyn StateStore>,
-    adapters: Arc<dyn AdapterSet>,
+    adapters: Adapters,
     keys: Arc<dyn KeyFlows>,
     hooks: Arc<EngineHooks>,
     proofs: Arc<dyn ProofSource>,
@@ -376,7 +376,7 @@ impl ServiceSync {
     // the first pass or after a stale file, refills too.
     async fn read_stores(&self, ctx: &mut PassCtx, scopes: &[ScopeInfo]) -> Result<(), SyncError> {
         for info in scopes {
-            for adapter in self.adapters.adapters(info.scope) {
+            for adapter in self.adapters.in_scope(info.scope) {
                 let store = adapter.store().to_owned();
                 if let Some(seen) = ctx.stores.get_mut(&store) {
                     seen.scopes.insert(info.scope);
@@ -439,7 +439,7 @@ impl ServiceSync {
         let adapter = seen
             .scopes
             .iter()
-            .flat_map(|scope| self.adapters.adapters(*scope))
+            .flat_map(|scope| self.adapters.in_scope(*scope))
             .find(|adapter| adapter.store() == store);
         let Some(adapter) = adapter else {
             return Ok(None);

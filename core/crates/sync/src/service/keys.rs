@@ -13,7 +13,7 @@ use super::{PassCtx, ServiceSync, begin};
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{
-    ArrivalOrder, KeyApplied, KeyArrival, KeyHooks, LockCause, PushBackVerdict, Roster, StopAction,
+    ArrivalOrder, CaughtUp, KeyApplied, KeyArrival, KeyHooks, LockCause, PushBackVerdict, Roster, StopAction,
 };
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{PendingFlow, Row, RowKey, RowRange, StoppedCause, Table};
@@ -284,14 +284,14 @@ impl ServiceSync {
     }
 
     // The roster and role are decided on only after the team's pull is caught up (0051, `members`).
-    pub(super) async fn read_roster(&self, info: &ScopeInfo) {
+    pub(super) async fn read_roster(&self, info: &ScopeInfo, caught_up: Option<CaughtUp>) {
         let ScopeName::Team(team) = info.scope else {
             return;
         };
-        if self.stop.is_stopped() {
+        if self.stop.is_stopped() || caught_up.is_none() {
             return;
         }
-        if let Err(error) = self.keys.roster_read(team, Roster::of(info, true)).await {
+        if let Err(error) = self.keys.roster_read(team, Roster::of(info, caught_up)).await {
             tracing::debug!(code = error.code(), "the roster waits for the next pass");
         }
     }

@@ -26,7 +26,7 @@ use tablepro_sync::api::transport::{
     Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PullRequest, PulledPage, PushAnswer, PushBatch, ServiceTransport,
     Transport, TransportError,
 };
-use tablepro_sync::engine::{AdapterSet, Clock, EngineHooks, Journal, StopSignal, Wake};
+use tablepro_sync::engine::{Adapters, Clock, EngineHooks, Journal, StopSignal, Wake};
 use tablepro_sync::service::{PassReport, ProofSource, ServiceParts, ServiceSync};
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
@@ -104,12 +104,51 @@ struct Held {
     applies: Vec<Vec<LocalChange>>,
 }
 
-// A kind's store in memory: local edits through `put` and `remove`, what a pull settles through `apply`.
+impl Held {
+    fn local(&self) -> LocalRecords {
+        LocalRecords {
+            records: self
+                .records
+                .iter()
+                .map(|(id, (fields, standing))| LocalRecord {
+                    record_id: id.clone(),
+                    fields: fields.clone(),
+                    standing: *standing,
+                })
+                .collect(),
+            unreadable: self.unreadable.clone(),
+            tombstones: self.tombstones.clone(),
+        }
+    }
+
+    fn apply(&mut self, changes: Vec<LocalChange>) {
+        for change in &changes {
+            match change {
+                LocalChange::Put { record_id, fields } => {
+                    let standing = self
+                        .records
+                        .get(record_id)
+                        .map_or(Standing::Syncs, |(_, standing)| *standing);
+                    self.records.insert(record_id.clone(), (fields.clone(), standing));
+                }
+                LocalChange::Delete { record_id } => {
+                    self.records.remove(record_id);
+                }
+            }
+        }
+        self.applies.push(changes);
+    }
+}
+
+// A kind's store in memory: local edits through `put` and `remove` in the scope the device registered it for, what a
+// pull settles through `apply`. The kind's records of any other scope it syncs in are kept apart.
 pub struct MemoryAdapter {
     kind: Kind,
     name: String,
     file: Arc<StoreFile>,
+    home: Mutex<ScopeName>,
     held: Mutex<Held>,
+    elsewhere: Mutex<std::collections::HashMap<ScopeName, Held>>,
     on_apply: Mutex<Option<Box<dyn Fn() + Send>>>,
 }
 
@@ -119,9 +158,19 @@ impl MemoryAdapter {
             kind,
             name: name.to_owned(),
             file,
+            home: Mutex::new(ScopeName::Personal),
             held: Mutex::default(),
+            elsewhere: Mutex::default(),
             on_apply: Mutex::new(None),
         })
+    }
+
+    fn home(&self) -> ScopeName {
+        *lock(&self.home)
+    }
+
+    pub fn register(&self, scope: ScopeName) {
+        *lock(&self.home) = scope;
     }
 
     pub fn put(&self, id: &str, fields: Value) {
@@ -184,50 +233,32 @@ impl RecordAdapter for MemoryAdapter {
         Ok(self.file.stamp())
     }
 
-    async fn records(&self) -> Result<LocalRecords, AdapterError> {
-        let held = lock(&self.held);
-        Ok(LocalRecords {
-            records: held
-                .records
-                .iter()
-                .map(|(id, (fields, standing))| LocalRecord {
-                    record_id: id.clone(),
-                    fields: fields.clone(),
-                    standing: *standing,
-                })
-                .collect(),
-            unreadable: held.unreadable.clone(),
-            tombstones: held.tombstones.clone(),
-        })
+    async fn records(&self, scope: ScopeName) -> Result<LocalRecords, AdapterError> {
+        if scope == self.home() {
+            return Ok(lock(&self.held).local());
+        }
+        Ok(lock(&self.elsewhere).get(&scope).map(Held::local).unwrap_or_default())
     }
 
-    async fn apply(&self, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError> {
+    async fn apply(&self, scope: ScopeName, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError> {
         if let Some(run) = lock(&self.on_apply).as_ref() {
             run();
         }
-        let mut held = lock(&self.held);
-        for change in &changes {
-            match change {
-                LocalChange::Put { record_id, fields } => {
-                    let standing = held
-                        .records
-                        .get(record_id)
-                        .map_or(Standing::Syncs, |(_, standing)| *standing);
-                    held.records.insert(record_id.clone(), (fields.clone(), standing));
-                }
-                LocalChange::Delete { record_id } => {
-                    held.records.remove(record_id);
-                }
-            }
+        if scope == self.home() {
+            lock(&self.held).apply(changes);
+        } else {
+            lock(&self.elsewhere).entry(scope).or_default().apply(changes);
         }
-        held.applies.push(changes);
-        drop(held);
         self.file.advance();
         Ok(self.file.stamp())
     }
 
-    async fn tombstones_pushed(&self, record_ids: Vec<String>) -> Result<(), AdapterError> {
-        lock(&self.held).tombstones.retain(|id| !record_ids.contains(id));
+    async fn tombstones_pushed(&self, scope: ScopeName, record_ids: Vec<String>) -> Result<(), AdapterError> {
+        if scope == self.home() {
+            lock(&self.held).tombstones.retain(|id| !record_ids.contains(id));
+        } else if let Some(held) = lock(&self.elsewhere).get_mut(&scope) {
+            held.tombstones.retain(|id| !record_ids.contains(id));
+        }
         self.file.advance();
         Ok(())
     }
@@ -752,10 +783,10 @@ impl DeviceBuilder {
                 file,
             )
         });
-        let mut adapters: Vec<(ScopeName, Arc<dyn RecordAdapter>)> =
-            vec![(ScopeName::Personal, Arc::clone(&connections) as Arc<dyn RecordAdapter>)];
+        let mut adapters: Vec<Arc<dyn RecordAdapter>> = vec![Arc::clone(&connections) as Arc<dyn RecordAdapter>];
         for (scope, adapter) in &self.extra {
-            adapters.push((*scope, Arc::clone(adapter) as Arc<dyn RecordAdapter>));
+            adapter.register(*scope);
+            adapters.push(Arc::clone(adapter) as Arc<dyn RecordAdapter>);
         }
         let keys = self.keys.unwrap_or_default();
         let wake = Wake::new();
@@ -765,7 +796,7 @@ impl DeviceBuilder {
         let sync = ServiceSync::new(ServiceParts {
             transport: Arc::clone(&wire) as Arc<dyn ServiceTransport>,
             state: Arc::clone(&state),
-            adapters: Arc::new(adapters) as Arc<dyn AdapterSet>,
+            adapters: Adapters::new(adapters),
             keys: Arc::clone(&keys) as Arc<dyn tablepro_sync::api::key_flows::KeyFlows>,
             hooks: Arc::clone(&hooks),
             proofs: Arc::new(FixedProof(Some(DpopKey(Arc::clone(&seed))))),

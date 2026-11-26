@@ -142,7 +142,7 @@ impl Settle<'_, '_> {
                 self.loaded.insert(adapter.store().to_owned(), stamp);
             }
         }
-        let held = adapter.records().await?;
+        let held = adapter.records(SCOPE).await?;
         let mut records: BTreeMap<String, LocalRecord> = BTreeMap::new();
         for record in held.records {
             let wire = shortened(kind, record.record_id.clone());
@@ -272,7 +272,7 @@ impl Settle<'_, '_> {
                     LocalChange::Delete { .. } => self.counts.removed += 1,
                 }
             }
-            let stamp = adapter.apply(changes).await?;
+            let stamp = adapter.apply(SCOPE, changes).await?;
             self.note_store(adapter.store(), stamp).await?;
         }
         Ok(Some(()))

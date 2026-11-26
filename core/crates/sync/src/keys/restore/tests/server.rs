@@ -16,6 +16,7 @@ fn base(written: Option<u128>, revision: Option<u64>) -> BaseRow {
         epoch: written.map(epoch),
         deleted: None,
         fields: None,
+        created_ms: None,
     }
 }
 

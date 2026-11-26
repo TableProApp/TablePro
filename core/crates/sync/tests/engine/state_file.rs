@@ -67,6 +67,10 @@ fn sync_rows() -> Vec<Row> {
                 kept_revision: 40,
             }],
             older_cursor: None,
+            read_kinds: vec![
+                KindName::of(Kind::LibraryConnection),
+                KindName::of(Kind::SecretEnvelope),
+            ],
             refill: true,
             rotation_due: false,
             caught_up: true,
@@ -85,6 +89,17 @@ fn sync_rows() -> Vec<Row> {
             epoch: None,
             deleted: Some(DeletedReason::Policy),
             fields: None,
+            created_ms: None,
+        }),
+        Row::PendingBase(BaseRow {
+            key: key(Kind::Connection, &id(4)),
+            tag: ChangeTag::CloudKit(vec![7]),
+            version: None,
+            revision: None,
+            epoch: None,
+            deleted: None,
+            fields: Some(serde_json::json!({"name": "Prod"})),
+            created_ms: Some(1_767_225_600_000),
         }),
         Row::Standing(StandingRow {
             key: key(Kind::Connection, &id(2)),
@@ -239,6 +254,7 @@ async fn a_scan_reads_its_range_in_key_order() {
             epoch: None,
             deleted: None,
             fields: Some(json!({})),
+            created_ms: None,
         })
     };
     let mut txn = state.begin().await.unwrap();
