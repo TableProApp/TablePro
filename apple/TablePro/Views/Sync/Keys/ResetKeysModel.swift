@@ -236,6 +236,8 @@ internal final class ResetProposalModel: ObservableObject {
     @Published private(set) var failure: String?
     @Published private(set) var proposed: PendingResetInfo?
     private(set) var draft: RecoveryKeyDraftInfo?
+    // Set when the sheet closes, so a draft that arrives after that is discarded as it lands.
+    private var isClosed = false
     private let service: any ResetKeysService
     private let stepUp: StepUpRetry
 
@@ -266,7 +268,12 @@ internal final class ResetProposalModel: ObservableObject {
         do {
             let kind = kind
             let service = service
-            draft = try await stepUp.run { try await service.beginReset(kind: kind) }
+            let made = try await stepUp.run { try await service.beginReset(kind: kind) }
+            guard !isClosed else {
+                await discard(made)
+                return
+            }
+            draft = made
             phase = .showKey
         } catch {
             failure = TeamKeysFailureText.message(error)
@@ -287,10 +294,15 @@ internal final class ResetProposalModel: ObservableObject {
     }
 
     // The sheet closed before the proposal went up, so the core drops the draft and the recovery key it holds.
-    func discard() async {
+    func close() async {
+        isClosed = true
         guard let draft, phase != .submitting else { return }
         self.draft = nil
         typed = ["", ""]
+        await discard(draft)
+    }
+
+    private func discard(_ draft: RecoveryKeyDraftInfo) async {
         do {
             try await service.discardKeyDraft(draft: draft.draft)
         } catch {

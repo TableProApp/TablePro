@@ -53,7 +53,7 @@ internal struct ResetProposalSheet: View {
         .frame(width: 520)
         .interactiveDismissDisabled(proposal.phase == .preparing || proposal.phase == .submitting)
         .onDisappear {
-            Task { await proposal.discard() }
+            Task { await proposal.close() }
         }
     }
 

@@ -11,11 +11,13 @@ internal struct TeamKeysEngineMissing: Error {}
 // A flow this build's core does not serve yet.
 internal struct TeamKeysCallMissing: Error {}
 
-// The key screens reach the one sync service `SyncEngineHost` opened over the account (core ADR 0054).
+// The key screens reach the one sync service `SyncEngineHost` opened over the account (core ADR 0054). Key objects live
+// on TablePro Sync whatever the personal provider is (0056, What the server stores), so any opened service serves
+// them, which is what asking for Off returns.
 @MainActor
 internal enum TeamKeysEngine {
     static func service() async throws -> SyncService {
-        let engine = try await SyncEngineHost.shared.engine()
+        let engine = try await SyncEngineHost.shared.engine(for: .off)
         guard let service = engine as? SyncService else { throw TeamKeysEngineMissing() }
         return service
     }

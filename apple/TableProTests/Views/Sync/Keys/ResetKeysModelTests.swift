@@ -7,6 +7,7 @@ import Combine
 import Foundation
 @testable import TablePro
 import TableProFFI
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -17,6 +18,7 @@ struct ResetKeysModelTests {
     private final class StepUps {
         var challenges: [StepUpChallenge] = []
         var answer: (any Error)?
+        var gate: AsyncGate?
     }
 
     private let service = FakeResetKeysService()
@@ -26,6 +28,7 @@ struct ResetKeysModelTests {
     private var stepUp: StepUpRetry {
         StepUpRetry { [stepUps] challenge in
             stepUps.challenges.append(challenge)
+            await stepUps.gate?.wait()
             if let answer = stepUps.answer { throw answer }
         }
     }
@@ -199,20 +202,38 @@ struct ResetKeysModelTests {
     func closingDiscardsTheDraft() async {
         let closed = proposal(.keepScopeKeys)
         await closed.begin()
-        await closed.discard()
-        await closed.discard()
+        await closed.close()
+        await closed.close()
 
         let finished = proposal(.keepScopeKeys)
         await finished.begin()
         finished.continueToTypeBack()
         finished.typed = ["89AB", "MNPQ"]
         await finished.submit()
-        await finished.discard()
+        await finished.close()
 
         let discards = service.calls.filter { if case .discard = $0 { true } else { false } }
         #expect(discards == [.discard(draft: "draft-1")])
         #expect(closed.draft == nil)
         #expect(closed.groups.isEmpty)
+    }
+
+    @Test("A draft that arrives after the sheet closed is discarded as it lands")
+    func lateDraftIsDiscarded() async {
+        let stepUpOpen = AsyncGate()
+        stepUps.gate = stepUpOpen
+        service.update { $0.failures["beginReset"] = [Self.stepUpRequired] }
+        let proposal = proposal(.startEmpty)
+
+        let preparing = Task { await proposal.begin() }
+        try? await waitUntil { stepUps.challenges.count == 1 }
+        await proposal.close()
+        await stepUpOpen.open()
+        await preparing.value
+
+        #expect(proposal.draft == nil)
+        #expect(proposal.phase == .preparing)
+        #expect(service.calls.last == .discard(draft: "draft-1"))
     }
 
     @Test("Closing the passkey page leaves the proposal on its step with no error")
