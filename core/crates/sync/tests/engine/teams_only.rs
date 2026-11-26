@@ -271,7 +271,11 @@ async fn a_personal_approval_rests_unlisted_and_undecided_while_teams_only() {
 
     mini.sync.set_mode(ServiceMode::TeamsOnly).await;
     let resting = mini.sync.approvals().await.unwrap();
-    let decided = mini.sync.decide_approval(key.clone(), "/host".to_owned(), true).await;
+    let seen = waiting.first().map_or([0; 32], |approval| approval.digest);
+    let decided = mini
+        .sync
+        .decide_approval(key.clone(), "/host".to_owned(), seen, true)
+        .await;
     let held = mini.sync.held_records().await.unwrap();
     mini.sync().await;
     let status = mini.sync.status();
