@@ -192,7 +192,7 @@ impl AccountService {
 
         #[async_trait::async_trait]
         impl tablepro_account::BrowserLauncher for NoBrowser {
-            async fn open(&self, _: &url::Url) -> Result<(), String> {
+            async fn open(&self, _: &tablepro_account::Url) -> Result<(), String> {
                 Ok(())
             }
         }

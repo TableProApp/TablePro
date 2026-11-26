@@ -540,3 +540,54 @@ fn a_favourite_goes_up_as_the_mac_writes_it_under_the_id_of_what_it_names() {
         tablepro_records::record_id::favourite_database(id(), "shop")
     );
 }
+
+// Two profiles of one name, as two devices made by hand before they synced: the lowest id keeps it on every device,
+// and the other takes the first free `<name> (2)`, which then goes up as this device's edit (0052, Collisions).
+#[tokio::test]
+async fn a_pulled_credential_profile_of_a_name_this_device_holds_settles_the_name_by_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let profiles = adapter(&store, Kind::CredentialProfile);
+    let low = "11111111-1111-4111-8111-111111111111";
+    let high = "EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE";
+    let other = "77777777-7777-4777-8777-777777777777";
+    let wire = |name: &str| json!({"name": name, "username": "ops", "password_mode": "prompt", "sort_order": 0});
+
+    profiles
+        .apply(
+            ScopeName::Personal,
+            vec![
+                LocalChange::Put {
+                    record_id: high.to_owned(),
+                    fields: wire("Ops"),
+                },
+                LocalChange::Put {
+                    record_id: other.to_owned(),
+                    fields: wire("ops (2)"),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+    profiles.records(ScopeName::Personal).await.unwrap();
+    profiles
+        .apply(
+            ScopeName::Personal,
+            vec![LocalChange::Put {
+                record_id: low.to_owned(),
+                fields: wire("OPS"),
+            }],
+        )
+        .await
+        .unwrap();
+    let held = profiles.records(ScopeName::Personal).await.unwrap().records;
+    let name = |id: &str| {
+        held.iter()
+            .find(|record| record.record_id == id)
+            .and_then(|record| record.fields["name"].as_str().map(str::to_owned))
+    };
+
+    assert_eq!(name(low).as_deref(), Some("OPS"));
+    assert_eq!(name(high).as_deref(), Some("Ops (3)"));
+    assert_eq!(name(other).as_deref(), Some("ops (2)"));
+}

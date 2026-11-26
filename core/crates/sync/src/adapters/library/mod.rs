@@ -256,7 +256,7 @@ fn local_records(
 // What the pulled records write, read against the list as it is under the store's write lock: a member a record
 // carries as the store's copy reads keeps the store's value (`connection::model`).
 fn settled(kind: Kind, names: DriverNames, list: &ConnectionList, changes: Vec<LocalChange>) -> Vec<LibraryChange> {
-    changes
+    let settled = changes
         .into_iter()
         .filter_map(|change| {
             let (record_id, fields) = match change {
@@ -272,7 +272,76 @@ fn settled(kind: Kind, names: DriverNames, list: &ConnectionList, changes: Vec<L
                 Some(fields) => put(kind, names, list, id, &fields),
             })
         })
-        .collect()
+        .collect();
+    if kind == Kind::CredentialProfile {
+        unique_profile_names(list, settled)
+    } else {
+        settled
+    }
+}
+
+// Every picker offers a credential profile by its name alone and the editor refuses two of one name, so a pull that
+// brings a second profile of a name settles it as 0052's Collisions do: the lowest id compared as bytes keeps the
+// name, since a profile keeps no creation date, and each other takes the first free `<name> (2)`, `<name> (3)` and on,
+// compared without case. A renamed profile this device held goes up as its own edit, as the Mac renamed the arriving
+// one; one rule on every device converges.
+fn unique_profile_names(list: &ConnectionList, mut changes: Vec<LibraryChange>) -> Vec<LibraryChange> {
+    let mut held: std::collections::BTreeMap<Uuid, tablepro_storage::CredentialProfile> = list
+        .credential_profiles
+        .iter()
+        .map(|profile| (profile.id, profile.clone()))
+        .collect();
+    let mut arriving: Vec<Uuid> = Vec::new();
+    for change in &changes {
+        match change {
+            LibraryChange::CredentialProfile(profile) => {
+                held.insert(profile.id, profile.clone());
+                arriving.push(profile.id);
+            }
+            LibraryChange::CredentialProfileGone(id) => {
+                held.remove(id);
+            }
+            _ => {}
+        }
+    }
+    let fold = |name: &str| name.to_lowercase();
+    let mut by_name: std::collections::BTreeMap<String, Vec<Uuid>> = std::collections::BTreeMap::new();
+    for profile in held.values() {
+        by_name.entry(fold(&profile.name)).or_default().push(profile.id);
+    }
+    let mut taken: std::collections::HashSet<String> = by_name.keys().cloned().collect();
+    for (_, mut ids) in by_name {
+        if ids.len() < 2 || !ids.iter().any(|id| arriving.contains(id)) {
+            continue;
+        }
+        ids.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
+        for id in ids.into_iter().skip(1) {
+            let Some(profile) = held.get_mut(&id) else { continue };
+            let name = free_name(&profile.name, |candidate| taken.contains(&fold(candidate)));
+            taken.insert(fold(&name));
+            profile.name = name;
+            let renamed = LibraryChange::CredentialProfile(profile.clone());
+            match changes
+                .iter_mut()
+                .find(|change| matches!(change, LibraryChange::CredentialProfile(put) if put.id == id))
+            {
+                Some(change) => *change = renamed,
+                None => changes.push(renamed),
+            }
+        }
+    }
+    changes
+}
+
+fn free_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
+    let mut number: u64 = 2;
+    loop {
+        let candidate = format!("{name} ({number})");
+        if !taken(&candidate) {
+            return candidate;
+        }
+        number += 1;
+    }
 }
 
 fn gone(kind: Kind, id: Uuid) -> LibraryChange {
