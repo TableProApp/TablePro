@@ -29,7 +29,7 @@ use tablepro_sync::api::transport::{
     Transport, TransportError,
 };
 use tablepro_sync::engine::{Adapters, Clock, EngineHooks, Journal, StopSignal, Wake};
-use tablepro_sync::service::{PassReport, ServiceParts, ServiceSync};
+use tablepro_sync::service::{PassReport, ServiceMode, ServiceParts, ServiceSync};
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
 use tablepro_sync_testing::{FakeClient, FakeDeviceStore, FakeServer, MemoryStateFiles};
@@ -293,6 +293,14 @@ pub struct Wire {
     keys: Mutex<Vec<IdempotencyKey>>,
     pushed: Mutex<Vec<Vec<String>>>,
     pub pulls: AtomicUsize,
+    held_pull: Mutex<Option<HeldPull>>,
+}
+
+// The next pull of a scope waits here once the server answered it: told when it is reached, then let go.
+struct HeldPull {
+    scope: ScopeName,
+    reached: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
 }
 
 impl Wire {
@@ -307,7 +315,20 @@ impl Wire {
             keys: Mutex::default(),
             pushed: Mutex::default(),
             pulls: AtomicUsize::new(0),
+            held_pull: Mutex::default(),
         })
+    }
+
+    // The next pull of `scope` holds its answer until the second notify; the first says it was reached.
+    pub fn hold_next_pull(&self, scope: ScopeName) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+        let reached = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        *lock(&self.held_pull) = Some(HeldPull {
+            scope,
+            reached: Arc::clone(&reached),
+            release: Arc::clone(&release),
+        });
+        (reached, release)
     }
 
     pub fn drop_next_push(&self) {
@@ -355,7 +376,20 @@ impl Transport for Wire {
         if request.cursor.is_some() && self.expire_next_cursor.swap(false, Ordering::SeqCst) {
             return Err(TransportError::CursorExpired);
         }
-        self.client.pull(request).await
+        let scope = request.scope;
+        let answer = self.client.pull(request).await;
+        let held = {
+            let mut held = lock(&self.held_pull);
+            match held.as_ref() {
+                Some(waits) if waits.scope == scope => held.take(),
+                _ => None,
+            }
+        };
+        if let Some(held) = held {
+            held.reached.notify_one();
+            held.release.notified().await;
+        }
+        answer
     }
 
     async fn push(&self, batch: PushBatch) -> Result<PushAnswer, TransportError> {
@@ -760,6 +794,7 @@ pub struct DeviceBuilder {
     server: Arc<FakeServer>,
     row: String,
     approved: bool,
+    mode: ServiceMode,
     state: Option<Arc<dyn StateStore>>,
     connections: Option<(Arc<MemoryAdapter>, Arc<StoreFile>)>,
     extra: Vec<(ScopeName, Arc<MemoryAdapter>)>,
@@ -774,6 +809,7 @@ impl DeviceBuilder {
             server: Arc::clone(server),
             row: row.to_owned(),
             approved: true,
+            mode: ServiceMode::Personal,
             state: None,
             connections: None,
             extra: Vec::new(),
@@ -786,6 +822,12 @@ impl DeviceBuilder {
     // An adapter of the test's own, over a store that behaves as a core store does.
     pub fn extra_adapter(mut self, adapter: Arc<dyn RecordAdapter>) -> Self {
         self.others.push(adapter);
+        self
+    }
+
+    // A device whose personal provider is iCloud or Off: Team Library and the key objects only.
+    pub fn teams_only(mut self) -> Self {
+        self.mode = ServiceMode::TeamsOnly;
         self
     }
 
@@ -863,6 +905,7 @@ impl DeviceBuilder {
                 off: Vec::new(),
                 passwords: true,
             },
+            mode: self.mode,
         });
         Device {
             server: self.server,

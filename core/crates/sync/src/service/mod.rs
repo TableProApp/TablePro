@@ -10,6 +10,7 @@ mod scopes;
 use push::AfterPush;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -29,10 +30,24 @@ use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
-    KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow, Table,
+    ApprovalDecision, KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow,
+    Table,
 };
 use crate::api::transport::{ServiceTransport, TransportError};
-use crate::engine::{Adapters, Clock, EngineEvents, EngineHooks, Journal, JournalEntry, JournalIds, Pass, StopSignal};
+use crate::engine::{
+    Adapters, Clock, EngineEvents, EngineHooks, Fence, Journal, JournalEntry, JournalIds, Pass, StopSignal,
+};
+
+// What the service carries for this device (0054, Providers). Team scopes always use it, and so do the key objects in
+// the personal scope, since team secrets need the account keys; personal data only while it is the personal provider.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum ServiceMode {
+    #[default]
+    Personal,
+    // The personal provider is iCloud or Off: personal data rests here as if every category were off, so turning
+    // personal sync on later reads it again against the copies last agreed, and the history scope is not reached.
+    TeamsOnly,
+}
 
 pub struct ServiceParts {
     pub transport: Arc<dyn ServiceTransport>,
@@ -46,18 +61,29 @@ pub struct ServiceParts {
     pub events: Option<Arc<dyn EngineEvents>>,
     // The categories the app opened sync with (`SyncConfig.categories`), so no pass runs before they are known.
     pub categories: SyncCategories,
+    // Known before the first pass, so no pass of a device on iCloud or Off ever carries personal data.
+    pub mode: ServiceMode,
 }
 
 pub struct ServiceSync {
     transport: Arc<dyn ServiceTransport>,
     state: Arc<dyn StateStore>,
     adapters: Adapters,
+    team_adapters: Adapters,
     keys: Arc<dyn KeyFlows>,
     hooks: Arc<EngineHooks>,
     clock: Arc<dyn Clock>,
     stop: StopSignal,
+    // Switches to teams-only still waiting for the session: while one waits, the pass in flight ends at its next store
+    // write, commit or send, and so does any pass queued before it, so nothing personal goes on once personal sync
+    // stops (0055, Leaving a provider). A count, so no other switch can lift it.
+    leaving: AtomicUsize,
     journal: Journal,
     events: Option<Arc<dyn EngineEvents>>,
+    // Changed only under the session lock, so one pass and one decision each see one mode.
+    mode: Mutex<ServiceMode>,
+    // What the last full pass found to send, per scope, so the count shown leaves out the scopes that rest.
+    queued: Mutex<HashMap<ScopeName, usize>>,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
@@ -89,6 +115,7 @@ pub struct PassReport {
     pub skipped: Vec<(ScopeName, &'static str)>,
     pub pull_only: bool,
     pub queued: usize,
+    pub queued_in: HashMap<ScopeName, usize>,
 }
 
 // One store as the pass found it: its identity at the start, and whether its kinds refill.
@@ -102,6 +129,7 @@ struct StoreSeen {
 
 struct PassCtx {
     body: ScopesBody,
+    mode: ServiceMode,
     // The device held a key when the pass began, which decides the scopes it reaches; each call reads the key itself.
     keyed: bool,
     stores: HashMap<String, StoreSeen>,
@@ -131,6 +159,20 @@ impl PassCtx {
     fn refills(&self, store: &str) -> bool {
         self.stores.get(store).is_some_and(|seen| seen.refill)
     }
+
+    // What a scope takes and sends this pass: in teams-only mode the personal scope keeps to its key objects.
+    fn categories_in(&self, scope: ScopeName) -> DeviceCategories {
+        if carries_personal(self.mode, scope) {
+            self.categories.clone()
+        } else {
+            DeviceCategories::keys_only()
+        }
+    }
+}
+
+// Whether the mode carries the records of `scope`, the key objects aside.
+const fn carries_personal(mode: ServiceMode, scope: ScopeName) -> bool {
+    matches!(mode, ServiceMode::Personal) || matches!(scope, ScopeName::Team(_))
 }
 
 // A whole-request refusal that ends one scope's sync this pass and leaves the others to go on.
@@ -154,13 +196,17 @@ impl ServiceSync {
         Self {
             transport: parts.transport,
             state: parts.state,
+            team_adapters: parts.adapters.teams_only(),
             adapters: parts.adapters,
             keys: parts.keys,
             hooks: parts.hooks,
             clock: parts.clock,
             stop: parts.stop,
+            leaving: AtomicUsize::new(0),
             journal: parts.journal,
             events: parts.events,
+            mode: Mutex::new(parts.mode),
+            queued: Mutex::default(),
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
                 provider: Some(Provider::Service),
@@ -211,17 +257,89 @@ impl ServiceSync {
         *self.history_window.lock().unwrap_or_else(PoisonError::into_inner) = entries;
     }
 
+    pub fn mode(&self) -> ServiceMode {
+        *self.mode.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    // Between passes: a move between providers, or the person turning personal sync on or off. Turning it on reads the
+    // personal scope again on the next pass, since its kinds were off meanwhile.
+    pub async fn set_mode(&self, mode: ServiceMode) {
+        let leaving = mode == ServiceMode::TeamsOnly;
+        if leaving {
+            self.leaving.fetch_add(1, Ordering::SeqCst);
+        }
+        let session = self.session.lock().await;
+        let changed = {
+            let mut held = self.mode.lock().unwrap_or_else(PoisonError::into_inner);
+            std::mem::replace(&mut *held, mode) != mode
+        };
+        if leaving {
+            self.leaving.fetch_sub(1, Ordering::SeqCst);
+        }
+        drop(session);
+        if changed {
+            self.refresh_counts().await;
+            let queued = self.queued_shown();
+            self.status_lock().queued_changes = queued;
+            if let Some(events) = &self.events {
+                events.status_changed();
+            }
+            self.journal.pass_soon(PassReason::Person);
+        }
+    }
+
+    fn check_stop(&self) -> Result<(), SyncError> {
+        self.stop.check()?;
+        if self.switching() {
+            return Err(SyncError::Cancelled);
+        }
+        Ok(())
+    }
+
+    fn switching(&self) -> bool {
+        self.leaving.load(Ordering::SeqCst) > 0
+    }
+
+    fn stopping(&self) -> bool {
+        self.stop.is_stopped() || self.switching()
+    }
+
+    fn queued_shown(&self) -> u32 {
+        let queued = self.queued.lock().unwrap_or_else(PoisonError::into_inner);
+        let shown: usize = queued
+            .iter()
+            .filter(|(scope, _)| carries_personal(self.mode(), **scope))
+            .map(|(_, count)| *count)
+            .sum();
+        u32::try_from(shown).unwrap_or(u32::MAX)
+    }
+
+    // The stores as the person's decisions reach them: a value the service pulled for personal data while it rests
+    // stays out of them.
+    fn decided_adapters(&self) -> &Adapters {
+        match self.mode() {
+            ServiceMode::Personal => &self.adapters,
+            ServiceMode::TeamsOnly => &self.team_adapters,
+        }
+    }
+
+    fn shows(&self, key: &RecordKey) -> bool {
+        carries_personal(self.mode(), key.scope)
+    }
+
     fn queue(&self) -> Queue<'_> {
         Queue {
             state: &self.state,
-            adapters: &self.adapters,
+            adapters: self.decided_adapters(),
+            fence: self,
         }
     }
 
     fn conflict_table(&self) -> Conflicts<'_> {
         Conflicts {
             state: &self.state,
-            adapters: &self.adapters,
+            adapters: self.decided_adapters(),
+            fence: self,
         }
     }
 
@@ -278,7 +396,7 @@ impl ServiceSync {
     }
 
     async fn run(&self, session: &mut Session, named: Option<JournalIds>) -> Result<PassReport, SyncError> {
-        self.stop.check()?;
+        self.check_stop()?;
         self.refill_stale_file(session).await?;
         self.queue().finish_decided().await?;
         let body = self.poll_scopes(session).await?;
@@ -289,6 +407,7 @@ impl ServiceSync {
             .any(|info| info.scope == ScopeName::Personal && info.approved == Some(true));
         let mut ctx = PassCtx {
             body,
+            mode: self.mode(),
             keyed,
             stores: HashMap::new(),
             snapshots_done: HashSet::new(),
@@ -427,7 +546,9 @@ impl ServiceSync {
             .filter(|info| match info.scope {
                 ScopeName::Team(_) => true,
                 ScopeName::Personal => ctx.keyed && !locked,
-                ScopeName::History => ctx.keyed && !locked && info.approved == Some(true),
+                ScopeName::History => {
+                    ctx.mode == ServiceMode::Personal && ctx.keyed && !locked && info.approved == Some(true)
+                }
             })
             .cloned()
             .collect()
@@ -455,9 +576,10 @@ impl ServiceSync {
                 // Kept as a missing row until the refill is done, so a pass cut short refills again and the writes
                 // of a half-done refill never read as the store going on.
                 if refill && stored.is_some() {
-                    self.stop.check()?;
+                    self.check_stop()?;
                     let mut txn = begin(&self.state).await?;
                     txn.delete(&RowKey::Store(store.clone())).await?;
+                    self.check_stop()?;
                     txn.commit().await?;
                 }
                 let seen = StoreSeen {
@@ -486,11 +608,12 @@ impl ServiceSync {
         if rows.is_empty() {
             return Ok(());
         }
-        self.stop.check()?;
+        self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         for row in rows {
             txn.put(row).await?;
         }
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
@@ -556,11 +679,12 @@ impl ServiceSync {
             return Ok(());
         }
         if self.state.opened().sync_tables == crate::api::state::SyncTrust::Refill {
-            self.stop.check()?;
+            self.check_stop()?;
             let mut txn = begin(&self.state).await?;
             for row in txn.scan(&RowRange::Table(Table::Stores)).await? {
                 txn.delete(&row.key()).await?;
             }
+            self.check_stop()?;
             txn.commit().await?;
         }
         session.stale_handled = true;
@@ -570,19 +694,30 @@ impl ServiceSync {
     // A journal pass diffs only what it was told of, so the count it saw is not what waits.
     async fn finish(&self, outcome: &Result<PassReport, SyncError>, journal_only: bool) {
         let counts = self.counts().await;
+        if let (Ok(report), false) = (outcome, journal_only) {
+            self.queued
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone_from(&report.queued_in);
+        }
+        let queued = self.queued_shown();
         let mut status = self.status_lock();
         status.last_pass_ms = Some(self.clock.now_ms());
         match outcome {
             Ok(report) => {
                 status.problem = None;
                 if !journal_only {
-                    status.queued_changes = u32::try_from(report.queued).unwrap_or(u32::MAX);
+                    status.queued_changes = queued;
                 }
                 status.phase = if report.pull_only {
                     SyncPhase::PullOnly
                 } else {
                     SyncPhase::Idle
                 };
+            }
+            // A switch to teams-only ended the pass; the next one runs at once.
+            Err(SyncError::Cancelled) if self.switching() && !self.stop.is_stopped() => {
+                status.phase = SyncPhase::Idle;
             }
             Err(error) => {
                 status.problem = Some(error.code());
@@ -606,15 +741,21 @@ impl ServiceSync {
 
     async fn counts(&self) -> Result<(u32, u32, u32), SyncError> {
         let mut txn = begin(&self.state).await?;
-        let held = txn.scan(&RowRange::Table(Table::Held)).await?.len();
-        let conflicts = txn.scan(&RowRange::Table(Table::Conflicts)).await?.len();
-        drop(txn);
-        let approvals = self.queue().count().await?;
-        Ok((
-            u32::try_from(held).unwrap_or(u32::MAX),
-            u32::try_from(conflicts).unwrap_or(u32::MAX),
-            approvals,
-        ))
+        let count = |rows: Vec<Row>| {
+            rows.iter()
+                .filter(|row| match row {
+                    Row::Held(row) => self.shows(&row.key),
+                    Row::Conflict(row) => self.shows(&row.key),
+                    Row::Approval(row) => row.decision == ApprovalDecision::Waiting && self.shows(&row.key),
+                    _ => false,
+                })
+                .count()
+        };
+        let held = count(txn.scan(&RowRange::Table(Table::Held)).await?);
+        let conflicts = count(txn.scan(&RowRange::Table(Table::Conflicts)).await?);
+        let approvals = count(txn.scan(&RowRange::Table(Table::Approvals)).await?);
+        let counted = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+        Ok((counted(held), counted(conflicts), counted(approvals)))
     }
 
     async fn refresh_counts(&self) {
@@ -624,6 +765,12 @@ impl ServiceSync {
             status.conflicts = conflicts;
             status.waiting_approvals = approvals;
         }
+    }
+}
+
+impl Fence for ServiceSync {
+    fn check(&self) -> Result<(), SyncError> {
+        self.check_stop()
     }
 }
 
@@ -685,7 +832,9 @@ impl SyncControl for ServiceSync {
 
     async fn approvals(&self) -> Result<Vec<PendingApproval>, SyncError> {
         let _session = self.session.lock().await;
-        self.queue().waiting().await
+        let mut waiting = self.queue().waiting().await?;
+        waiting.retain(|approval| self.shows(&approval.key));
+        Ok(waiting)
     }
 
     async fn decide_approval(
@@ -696,6 +845,11 @@ impl SyncControl for ServiceSync {
         approve: bool,
     ) -> Result<(), SyncError> {
         let session = self.session.lock().await;
+        if !self.shows(&key) {
+            return Err(SyncError::NotAllowed {
+                what: "decide on personal data while TablePro Sync is not the personal provider",
+            });
+        }
         self.queue().decide(&key, &field, seen, approve).await?;
         drop(session);
         self.refresh_counts().await;
@@ -705,11 +859,18 @@ impl SyncControl for ServiceSync {
 
     async fn conflicts(&self) -> Result<Vec<TeamConflict>, SyncError> {
         let _session = self.session.lock().await;
-        self.conflict_table().open().await
+        let mut open = self.conflict_table().open().await?;
+        open.retain(|conflict| self.shows(&conflict.key));
+        Ok(open)
     }
 
     async fn resolve_conflict(&self, key: RecordKey, seen: [u8; 32], keep: ConflictChoice) -> Result<(), SyncError> {
         let session = self.session.lock().await;
+        if !self.shows(&key) {
+            return Err(SyncError::NotAllowed {
+                what: "decide on personal data while TablePro Sync is not the personal provider",
+            });
+        }
         self.conflict_table().resolve(&key, seen, keep).await?;
         drop(session);
         self.refresh_counts().await;
@@ -719,6 +880,9 @@ impl SyncControl for ServiceSync {
 
     async fn load_older_history(&self) -> Result<bool, SyncError> {
         let _session = self.session.lock().await;
+        if self.mode() == ServiceMode::TeamsOnly {
+            return Ok(false);
+        }
         self.load_older().await
     }
 
@@ -742,6 +906,7 @@ impl SyncControl for ServiceSync {
             key: key.clone(),
             reason: HeldRecordReason::Refused { code: code.clone() },
         }));
+        held.retain(|record| self.shows(&record.key));
         Ok(held)
     }
 }

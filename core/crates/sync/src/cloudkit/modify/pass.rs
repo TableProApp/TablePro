@@ -338,7 +338,11 @@ impl CloudKitSync {
 
     // The approval queue over this session's state file and the stores (0054, Rules for both providers).
     fn queue<'q>(&'q self, state: &'q Arc<dyn StateStore>, adapters: &'q Adapters) -> Queue<'q> {
-        Queue { state, adapters }
+        Queue {
+            state,
+            adapters,
+            fence: &self.stop,
+        }
     }
 
     // The records held by id and the values waiting for the person.

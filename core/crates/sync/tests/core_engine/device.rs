@@ -73,6 +73,7 @@ impl Device {
                 off: Vec::new(),
                 passwords: true,
             },
+            mode: tablepro_sync::service::ServiceMode::Personal,
         });
         Self {
             keys,
