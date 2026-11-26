@@ -15,7 +15,7 @@ use super::pending::Staged;
 use super::stores::{Local, Planned, carried, overlay};
 use super::{Counts, Fetcher, PROFILES, SCOPE};
 use crate::adapters::approval::{self, Gated};
-use crate::adapters::{keywords, unsettled};
+use crate::adapters::unsettled;
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
@@ -142,7 +142,6 @@ impl Fetcher<'_> {
         if let Some(finish) = &batch.finish {
             settle.finish(finish).await?;
         }
-        settle.release_keywords();
         if let Some(store) = settle.moved {
             return Ok(Err(store));
         }
@@ -297,35 +296,6 @@ impl<'s, 'f> Settle<'s, 'f> {
             ),
             ..record.clone()
         }))
-    }
-
-    // A pull can leave two holders of one keyword, so before the stores are written each loser is planned without
-    // its keyword. Only a batch that writes saved queries can.
-    fn release_keywords(&mut self) {
-        let kind = Kind::SavedQuery;
-        let writes = self
-            .changes
-            .get(&kind)
-            .is_some_and(|changes| changes.values().any(|change| matches!(change, LocalChange::Put { .. })));
-        let Some(Some(local)) = self.locals.get(&kind).filter(|_| writes) else {
-            return;
-        };
-        let released: Vec<(String, Value)> = keywords::losers(
-            local
-                .records
-                .iter()
-                .map(|(wire, record)| (wire.as_str(), &record.fields)),
-        )
-        .into_iter()
-        .filter_map(|wire| {
-            let mut fields = local.records.get(wire)?.fields.clone();
-            fields.as_object_mut()?.remove("keyword");
-            Some((wire.to_owned(), fields))
-        })
-        .collect();
-        for (wire, fields) in released {
-            self.plan(kind, &RecordKey::new(SCOPE, kind, wire), Planned::Put(fields));
-        }
     }
 
     fn settle_local(&mut self, kind: Kind, key: &RecordKey, record: Option<&LocalRecord>, merged: Merged) {

@@ -1,12 +1,11 @@
-// Rules the Swift iOS engine kept for copies an earlier iOS build wrote, and the keyword rule both Swift engines kept,
-// on the core's CloudKit path (0054, Rules for both providers): an unsettled Required sends nothing over the Mac's
-// Preferred, a link that build never read is no removal, a link this device removed goes up, and a pull that brings a
-// second holder of a keyword leaves it with the query created first.
+// Rules the Swift iOS engine kept for copies an earlier iOS build wrote, on the core's CloudKit path (0054, Rules for
+// both providers): an unsettled Required sends nothing over the Mac's Preferred, a link that build never read is no
+// removal, and a link this device removed goes up.
 
 use serde_json::{Value, json};
 use tablepro_records::Kind;
 
-use crate::support::{A, B, C, Rig};
+use crate::support::{A, Rig};
 
 const PROFILE: &str = "0F6C2A1E-6B3D-4D8E-9A51-3D7E2B1F0C44";
 
@@ -143,48 +142,4 @@ async fn a_tunnel_switched_off_drops_the_link() {
             .get("ssh_profile_id")
             .is_none()
     );
-}
-
-fn saved_query(keyword: &str, created_at: i64) -> Value {
-    json!({
-        "name": "revenue",
-        "query": "SELECT 1",
-        "keyword": keyword,
-        "connection_id": C,
-        "created_at": created_at,
-    })
-}
-
-#[tokio::test]
-async fn a_pulled_older_holder_takes_the_keyword_and_the_local_query_s_release_goes_up() {
-    let rig = Rig::new().await;
-    rig.save_elsewhere(Kind::SavedQuery, A, &saved_query("rev", 2_000));
-    rig.fetch().await.unwrap();
-    rig.save_elsewhere(Kind::SavedQuery, B, &saved_query("rev", 1_000));
-
-    rig.fetch().await.unwrap();
-    rig.push().await.unwrap();
-
-    let store = rig.store(Kind::SavedQuery);
-    assert!(store.fields(A).unwrap().get("keyword").is_none());
-    assert_eq!(store.fields(B).unwrap()["keyword"], json!("rev"));
-    assert!(rig.zone_fields(Kind::SavedQuery, A).unwrap().get("keyword").is_none());
-    assert_eq!(rig.zone_fields(Kind::SavedQuery, B).unwrap()["keyword"], json!("rev"));
-}
-
-#[tokio::test]
-async fn a_pulled_newer_holder_lands_without_the_keyword_and_its_release_goes_up() {
-    let rig = Rig::new().await;
-    rig.save_elsewhere(Kind::SavedQuery, A, &saved_query("rev", 1_000));
-    rig.fetch().await.unwrap();
-    rig.save_elsewhere(Kind::SavedQuery, B, &saved_query("rev", 2_000));
-
-    rig.fetch().await.unwrap();
-    rig.push().await.unwrap();
-
-    let store = rig.store(Kind::SavedQuery);
-    assert_eq!(store.fields(A).unwrap()["keyword"], json!("rev"));
-    assert!(store.fields(B).unwrap().get("keyword").is_none());
-    assert!(rig.zone_fields(Kind::SavedQuery, B).unwrap().get("keyword").is_none());
-    assert_eq!(rig.zone_fields(Kind::SavedQuery, A).unwrap()["keyword"], json!("rev"));
 }
