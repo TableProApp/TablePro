@@ -80,14 +80,14 @@ pub enum DriverNames {
 }
 
 impl DriverNames {
-    fn to_wire(self, driver: &str) -> &str {
+    fn wire_name(self, driver: &str) -> &str {
         match self {
             Self::Mac => driver,
             Self::Core => wire_type(driver),
         }
     }
 
-    fn from_wire(self, name: &str) -> &str {
+    fn store_name(self, name: &str) -> &str {
         match self {
             Self::Mac => name,
             Self::Core => core_driver(name),
@@ -389,7 +389,7 @@ pub(super) fn to_wire(
     let tunnel_on = saved.ssh.as_ref().is_some_and(|ssh| ssh.enabled);
     let mut out = Object::default();
     out.put("name", saved.name.as_str())
-        .put("type", names.to_wire(&saved.driver_id))
+        .put("type", names.wire_name(&saved.driver_id))
         .put("host", saved.host.as_str())
         .put("port", saved.port)
         .put("database", saved.database.as_str())
@@ -505,7 +505,7 @@ fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>, names: Drive
     let mut saved = SavedConnection {
         id,
         name: text(fields, "name").unwrap_or_default().to_owned(),
-        driver_id: names.from_wire(text(fields, "type").unwrap_or_default()).to_owned(),
+        driver_id: names.store_name(text(fields, "type").unwrap_or_default()).to_owned(),
         host: text(fields, "host").unwrap_or("localhost").to_owned(),
         port: integer(fields, "port").map_or(0, clamped),
         database: text(fields, "database").unwrap_or_default().to_owned(),
