@@ -101,6 +101,8 @@ const SAVED_CONNECTION: &[(&str, Target)] = &[
     ("device.cloud_sql_proxy", DeviceOnly),
     ("device.socks_proxy", DeviceOnly),
     ("device.tunnel_command", DeviceOnly),
+    ("device.tls_mode_unsettled", DeviceOnly),
+    ("device.ssh_profile_unlinked", DeviceOnly),
     ("unknown", Kept),
 ];
 

@@ -21,8 +21,8 @@ pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync};
 
 use super::codes;
 use super::fetch::{Categories, Fetcher, PROFILES, SCOPE, ServerChanged, carried};
-use crate::adapters::approval;
 use crate::adapters::fields::{get, set};
+use crate::adapters::{approval, unsettled};
 use crate::api::adapter::{LocalRecord, LocalRecords};
 use crate::api::cloudkit::{CloudKitFailure, CloudKitField, CloudKitRecord, CloudKitValue};
 use crate::api::error::SyncError;
@@ -194,6 +194,36 @@ fn at_base(
             .chain(kept.get_mut(id));
         for copy in copies {
             for pointer in members {
+                set(&mut copy.fields, pointer, get(base.fields.as_ref(), pointer).cloned());
+            }
+        }
+    }
+}
+
+// Both copies also take the base's value where the store's copy leaves it unsaid: a copy an earlier build wrote then
+// sends nothing over the value another device holds.
+fn unsettled_at_base(
+    kind: Kind,
+    bases: &[BaseRow],
+    local: &mut LocalRecords,
+    kept: &mut BTreeMap<String, LocalRecord>,
+) {
+    for base in bases {
+        let id = &base.key.record_id;
+        let Some(stored) = kept.get(id) else {
+            continue;
+        };
+        let pointers = unsettled::at_base(kind, &stored.fields, base.fields.as_ref());
+        if pointers.is_empty() {
+            continue;
+        }
+        let copies = local
+            .records
+            .iter_mut()
+            .filter(|record| record.record_id == *id)
+            .chain(kept.get_mut(id));
+        for copy in copies {
+            for pointer in &pointers {
                 set(&mut copy.fields, pointer, get(base.fields.as_ref(), pointer).cloned());
             }
         }
@@ -380,6 +410,7 @@ impl<'p> Pusher<'p> {
             let (mut local, mut kept, unwritten) = Self::carried_copies(kind, stored);
             let bases = self.bases(kind).await?;
             at_base(&name, &waiting, &bases, &mut local, &mut kept);
+            unsettled_at_base(kind, &bases, &mut local, &mut kept);
             let skip: HashSet<String> = held
                 .iter()
                 .chain(leave.failed)

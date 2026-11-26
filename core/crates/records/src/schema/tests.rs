@@ -178,6 +178,8 @@ fn exhaustive_connection(connection: SavedConnection) {
         cloud_sql_proxy: _,
         socks_proxy: _,
         tunnel_command: _,
+        tls_mode_unsettled: _,
+        ssh_profile_unlinked: _,
     } = device;
     let TlsConfig {
         mode: _,

@@ -15,6 +15,7 @@ use super::pending::Staged;
 use super::stores::{Local, Planned, carried, overlay};
 use super::{Counts, Fetcher, PROFILES, SCOPE};
 use crate::adapters::approval::{self, Gated};
+use crate::adapters::{keywords, unsettled};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
@@ -102,6 +103,17 @@ fn held_deletion(key: &RecordKey) -> PulledRecord {
     }
 }
 
+// What the pulled copy settles of the device's marks on a copy an earlier build wrote.
+fn settled(kind: Kind, merged: Merged, server: &Value) -> Merged {
+    match merged {
+        Merged::Record(mut fields) => {
+            unsettled::settle(kind, &mut fields, server);
+            Merged::Record(fields)
+        }
+        merged => merged,
+    }
+}
+
 impl Fetcher<'_> {
     pub(super) async fn settle(&self, batch: Batch) -> Result<Counts, SyncError> {
         let mut moved = String::new();
@@ -130,6 +142,7 @@ impl Fetcher<'_> {
         if let Some(finish) = &batch.finish {
             settle.finish(finish).await?;
         }
+        settle.release_keywords();
         if let Some(store) = settle.moved {
             return Ok(Err(store));
         }
@@ -198,12 +211,16 @@ impl<'s, 'f> Settle<'s, 'f> {
             View::Missing => None,
         };
         let pull_wins = self.pull_wins.contains(&copy.kind);
+        let read = self.read(copy.kind, &key, record.as_ref()).await?;
         let merged = self
-            .merged(copy.kind, &key, record.as_ref(), Some(&copy.fields), pull_wins)
+            .merged(copy.kind, &key, read.as_ref(), Some(&copy.fields), pull_wins)
             .await?;
-        let stored = record.as_ref().map(|record| &record.fields);
+        let stored = read.as_ref().map(|record| &record.fields);
         match approval::gate(&mut self.txn, &key, copy.kind, stored, merged).await? {
-            Gated::Apply(merged) => self.settle_local(copy.kind, &key, record.as_ref(), merged),
+            Gated::Apply(merged) => {
+                let merged = settled(copy.kind, merged, &copy.fields);
+                self.settle_local(copy.kind, &key, record.as_ref(), merged);
+            }
             // Its base, the copy and its creation date, lands only with this held row (`Staged::split`), so nothing
             // reads the record's absence from the store as a deletion made here.
             Gated::Hold => {
@@ -260,6 +277,57 @@ impl<'s, 'f> Settle<'s, 'f> {
         })
     }
 
+    // The store's copy as the device reads it against the base: what a copy an earlier build wrote leaves unsaid reads
+    // as the base's, so it is neither an edit nor a value the person has to approve again.
+    async fn read(
+        &mut self,
+        kind: Kind,
+        key: &RecordKey,
+        record: Option<&LocalRecord>,
+    ) -> Result<Option<LocalRecord>, SyncError> {
+        let Some(record) = record else {
+            return Ok(None);
+        };
+        let base = self.base(key).await?;
+        Ok(Some(LocalRecord {
+            fields: unsettled::read(
+                kind,
+                &record.fields,
+                base.as_ref().and_then(|base| base.fields.as_ref()),
+            ),
+            ..record.clone()
+        }))
+    }
+
+    // A pull can leave two holders of one keyword, so before the stores are written each loser is planned without
+    // its keyword. Only a batch that writes saved queries can.
+    fn release_keywords(&mut self) {
+        let kind = Kind::SavedQuery;
+        let writes = self
+            .changes
+            .get(&kind)
+            .is_some_and(|changes| changes.values().any(|change| matches!(change, LocalChange::Put { .. })));
+        let Some(Some(local)) = self.locals.get(&kind).filter(|_| writes) else {
+            return;
+        };
+        let released: Vec<(String, Value)> = keywords::losers(
+            local
+                .records
+                .iter()
+                .map(|(wire, record)| (wire.as_str(), &record.fields)),
+        )
+        .into_iter()
+        .filter_map(|wire| {
+            let mut fields = local.records.get(wire)?.fields.clone();
+            fields.as_object_mut()?.remove("keyword");
+            Some((wire.to_owned(), fields))
+        })
+        .collect();
+        for (wire, fields) in released {
+            self.plan(kind, &RecordKey::new(SCOPE, kind, wire), Planned::Put(fields));
+        }
+    }
+
     fn settle_local(&mut self, kind: Kind, key: &RecordKey, record: Option<&LocalRecord>, merged: Merged) {
         let kept = match merged {
             Merged::Record(fields)
@@ -302,6 +370,7 @@ impl<'s, 'f> Settle<'s, 'f> {
         // Otherwise a content edit here revives the record: it stays, and with no base it goes up as a create. A
         // store in refill went back in time, so what differs from the base there is no edit.
         let pull_wins = self.pull_wins.contains(&kind);
+        let record = self.read(kind, key, record.as_ref()).await?;
         let merged = self.merged(kind, key, record.as_ref(), None, pull_wins).await?;
         let stored = record.as_ref().map(|record| &record.fields);
         let goes = matches!(
