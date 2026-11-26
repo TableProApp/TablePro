@@ -16,8 +16,8 @@ use super::{PassCtx, ServiceSync, begin};
 use crate::adapters::approval::{self, Split};
 use crate::adapters::categories::DeviceCategories;
 use crate::adapters::{conflict, local_view, unsettled};
-use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter, StoreStamp};
-use crate::api::error::{AdapterError, SyncError};
+use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
+use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{ArrivalOrder, CaughtUp};
 use crate::api::scopes::ScopeInfo;
@@ -152,8 +152,6 @@ fn cleared(rows: &[ApprovalRow]) -> Split {
 struct LocalIndex {
     records: HashMap<String, LocalRecord>,
     unreadable: HashSet<String>,
-    // The store's identity when the records were read, so a write after it shows before the pull writes over it.
-    stamp: StoreStamp,
 }
 
 fn held(reason: HeldReason, key: RecordKey, record: PulledRecord) -> HeldRow {
@@ -527,8 +525,7 @@ impl ServiceSync {
             }
             txn.commit().await?;
         }
-        let seen = locals.iter().map(|(index, local)| (*index, local.stamp)).collect();
-        self.write_store(pull.scope, adapters, &seen, writes).await
+        self.write_store(pull.scope, adapters, writes).await
     }
 
     // What a kind turned off takes from a refill without touching its store: a base the restore lost, which the
@@ -624,8 +621,14 @@ impl ServiceSync {
                 mine_side
             };
         }
-        let stored_view =
-            stored.map(|stored| unsettled::approval_view(kind, &stored.fields, base_fields, settled.kept.as_ref()));
+        let undecided: BTreeSet<String> = rows
+            .iter()
+            .filter(|row| row.decision != ApprovalDecision::Approved)
+            .map(|row| row.field.clone())
+            .collect();
+        let stored_view = stored.map(|stored| {
+            unsettled::approval_view(kind, &stored.fields, base_fields, settled.kept.as_ref(), &undecided)
+        });
         let stored_fields = stored_view.as_ref();
         match (&settled.kept, &settled.store) {
             (Some(fields), _) => {
@@ -733,14 +736,11 @@ impl ServiceSync {
         Ok(inputs)
     }
 
-    // One store write per adapter, each after a stop check (P1-M4). A store written since the merge read it would take
-    // the merge over that write, so the page ends there and the next pass merges against what the store holds now, as
-    // the CloudKit fetch does; a write of this page moves what the next adapter of the same store expects.
+    // One store write per adapter, each after a stop check (P1-M4).
     async fn write_store(
         &self,
         scope: ScopeName,
         adapters: &[Arc<dyn RecordAdapter>],
-        seen: &HashMap<usize, StoreStamp>,
         writes: &mut PageWrites,
     ) -> Result<(), SyncError> {
         let mut grouped: Vec<(usize, Vec<LocalChange>)> = Vec::new();
@@ -750,29 +750,11 @@ impl ServiceSync {
                 None => grouped.push((index, vec![change])),
             }
         }
-        let mut expected: HashMap<String, StoreStamp> = HashMap::new();
-        for (index, stamp) in seen {
-            if let Some(adapter) = adapters.get(*index) {
-                expected.entry(adapter.store().to_owned()).or_insert(*stamp);
-            }
-        }
         for (index, changes) in grouped {
             self.stop.check()?;
-            let Some(adapter) = adapters.get(index) else {
-                continue;
-            };
-            let store = adapter.store().to_owned();
-            if let Some(stamp) = expected.get(&store)
-                && adapter.identity().await? != *stamp
-            {
-                return Err(AdapterError::Store {
-                    store,
-                    detail: "written while the pull merged".to_owned(),
-                }
-                .into());
+            if let Some(adapter) = adapters.get(index) {
+                adapter.apply(scope, changes).await?;
             }
-            let written = adapter.apply(scope, changes).await?;
-            expected.insert(store, written);
         }
         Ok(())
     }
@@ -1060,7 +1042,6 @@ async fn local_indexes(
         if !kinds.contains(&adapter.kind()) {
             continue;
         }
-        let stamp = adapter.identity().await?;
         let local = adapter.records(scope).await?;
         indexes.insert(
             index,
@@ -1071,7 +1052,6 @@ async fn local_indexes(
                     .map(|record| (record.record_id.clone(), record))
                     .collect(),
                 unreadable: local.unreadable.into_iter().collect(),
-                stamp,
             },
         );
     }

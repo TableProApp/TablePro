@@ -308,8 +308,8 @@ async fn a_copy_kept_local_only_takes_neither_a_pulled_edit_nor_a_pulled_deletio
 struct RenamedMidPull {
     inner: Arc<dyn RecordAdapter>,
     store: ConnectionStore,
-    read: AtomicBool,
     armed: AtomicBool,
+    local_only: bool,
 }
 
 #[async_trait]
@@ -323,27 +323,48 @@ impl RecordAdapter for RenamedMidPull {
     }
 
     async fn identity(&self) -> Result<StoreStamp, AdapterError> {
-        if self.read.swap(false, Ordering::SeqCst) && self.armed.swap(false, Ordering::SeqCst) {
-            self.store
-                .update_blocking(Uuid::from_u128(CONNECTION), |saved| saved.name = "Mine".to_owned())
-                .unwrap();
-        }
         self.inner.identity().await
     }
 
     async fn records(&self, scope: ScopeName) -> Result<LocalRecords, AdapterError> {
-        let records = self.inner.records(scope).await;
-        self.read.store(true, Ordering::SeqCst);
-        records
+        self.inner.records(scope).await
     }
 
     async fn apply(&self, scope: ScopeName, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError> {
+        if self.armed.swap(false, Ordering::SeqCst) {
+            let local_only = self.local_only;
+            self.store
+                .update_blocking(Uuid::from_u128(CONNECTION), |saved| {
+                    if local_only {
+                        saved.device.local_only = true;
+                    } else {
+                        saved.name = "Mine".to_owned();
+                    }
+                })
+                .unwrap();
+        }
         self.inner.apply(scope, changes).await
     }
 
     async fn tombstones_pushed(&self, scope: ScopeName, record_ids: Vec<String>) -> Result<(), AdapterError> {
         self.inner.tombstones_pushed(scope, record_ids).await
     }
+}
+
+async fn racing_device(server: &Arc<FakeServer>, library: &Library, local_only: bool) -> (Device, Arc<RenamedMidPull>) {
+    let racing = Arc::new(RenamedMidPull {
+        inner: library.adapters().remove(0),
+        store: library.store.clone(),
+        armed: AtomicBool::new(false),
+        local_only,
+    });
+    let mut adapters: Vec<Arc<dyn RecordAdapter>> = vec![Arc::clone(&racing) as Arc<dyn RecordAdapter>];
+    adapters.extend(library.adapters().into_iter().skip(1));
+    let device = DeviceBuilder::new(server, "dev_mini")
+        .core_stores(adapters)
+        .build()
+        .await;
+    (device, racing)
 }
 
 #[tokio::test]
@@ -356,18 +377,7 @@ async fn a_pull_never_writes_over_an_edit_made_while_it_merged() {
         .upsert_blocking(connection(CONNECTION, "Shop"))
         .unwrap();
     mac.sync().await;
-    let racing = Arc::new(RenamedMidPull {
-        inner: mini_library.adapters().remove(0),
-        store: mini_library.store.clone(),
-        read: AtomicBool::new(false),
-        armed: AtomicBool::new(false),
-    });
-    let mut adapters: Vec<Arc<dyn RecordAdapter>> = vec![Arc::clone(&racing) as Arc<dyn RecordAdapter>];
-    adapters.extend(mini_library.adapters().into_iter().skip(1));
-    let mini = DeviceBuilder::new(&server, "dev_mini")
-        .core_stores(adapters)
-        .build()
-        .await;
+    let (mini, racing) = racing_device(&server, &mini_library, false).await;
     take_everything(&mini).await;
 
     mac_library
@@ -377,7 +387,6 @@ async fn a_pull_never_writes_over_an_edit_made_while_it_merged() {
         })
         .unwrap();
     mac.sync().await;
-    racing.read.store(false, Ordering::SeqCst);
     racing.armed.store(true, Ordering::SeqCst);
     let raced = mini.pass().await;
     take_everything(&mini).await;
@@ -391,6 +400,29 @@ async fn a_pull_never_writes_over_an_edit_made_while_it_merged() {
         (theirs.name.as_str(), theirs.color),
         ("Mine", Some(ConnectionColor::Red))
     );
+}
+
+#[tokio::test]
+async fn a_pulled_deletion_spares_a_connection_kept_local_only_while_it_merged() {
+    let server = FakeServer::new();
+    let (mac_library, mini_library) = (Library::new().await, Library::new().await);
+    let mac = mac_library.device(&server, "dev_mac").await;
+    mac_library
+        .store
+        .upsert_blocking(connection(CONNECTION, "Shop"))
+        .unwrap();
+    mac.sync().await;
+    let (mini, racing) = racing_device(&server, &mini_library, true).await;
+    take_everything(&mini).await;
+
+    mac_library.store.remove_blocking(Uuid::from_u128(CONNECTION)).unwrap();
+    mac.sync().await;
+    racing.armed.store(true, Ordering::SeqCst);
+    let raced = mini.pass().await;
+    take_everything(&mini).await;
+
+    assert!(raced.is_err());
+    assert_eq!(mini_library.store.list_blocking().unwrap().connections.len(), 1);
 }
 
 #[tokio::test]

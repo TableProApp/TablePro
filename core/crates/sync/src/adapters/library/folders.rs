@@ -3,7 +3,7 @@
 // that does not sync stays on the device.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -15,8 +15,8 @@ use tablepro_storage::{
 };
 use uuid::Uuid;
 
-use super::HISTORY_STORE;
 use super::values::{Object, integer, text, uuid_at, uuid_value};
+use super::{HISTORY_STORE, Seen, changed_since, lock, seen, stale};
 use crate::adapters::blocking;
 use crate::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
 use crate::api::error::AdapterError;
@@ -28,6 +28,7 @@ pub struct TableFolderAdapter {
     folders: TableFolders,
     connections: ConnectionStore,
     kind: Kind,
+    seen: Mutex<Option<HashMap<String, Seen>>>,
 }
 
 impl TableFolderAdapter {
@@ -41,6 +42,7 @@ impl TableFolderAdapter {
                     folders: history.table_folders(),
                     connections: connections.clone(),
                     kind,
+                    seen: Mutex::new(None),
                 }) as Arc<dyn RecordAdapter>
             })
             .collect()
@@ -119,7 +121,46 @@ pub(super) fn item_from_wire(fields: &Value) -> Option<TableFolderItem> {
     })
 }
 
+// What the store holds once `write` lands on `contents`.
+fn written(contents: &TableFolderContents, write: TableFolderWrite) -> (Vec<TableFolder>, Vec<TableFolderItem>) {
+    let mut folders: Vec<TableFolder> = contents
+        .folders
+        .iter()
+        .filter(|folder| {
+            !write.removed_folders.contains(&folder.id) && !write.folders.iter().any(|put| put.id == folder.id)
+        })
+        .cloned()
+        .collect();
+    folders.extend(write.folders);
+    let mut items: Vec<TableFolderItem> = contents
+        .items
+        .iter()
+        .filter(|item| {
+            !write.removed_items.contains(&item.table) && !write.items.iter().any(|put| put.table == item.table)
+        })
+        .cloned()
+        .collect();
+    items.extend(write.items);
+    (folders, items)
+}
+
 impl TableFolderAdapter {
+    // Which connections sync, so a folder of one kept off sync stays here.
+    async fn standing(&self) -> Result<HashMap<Uuid, Standing>, AdapterError> {
+        let connections = self.connections.clone();
+        let list = blocking(move || connections.list_blocking())
+            .await?
+            .map_err(|error| AdapterError::Store {
+                store: super::STORE.to_owned(),
+                detail: error.to_string(),
+            })?;
+        Ok(list
+            .connections
+            .iter()
+            .map(|saved| (saved.id, super::connection_standing(saved)))
+            .collect())
+    }
+
     fn read(&self, contents: &TableFolderContents, standing: &HashMap<Uuid, Standing>) -> LocalRecords {
         let standing = |connection: Uuid| standing.get(&connection).copied().unwrap_or(Standing::Unknown);
         let records = match self.kind {
@@ -149,8 +190,8 @@ impl TableFolderAdapter {
         }
     }
 
-    // A copy the store cannot hold is left out with a note; the base keeps it, and the diff, finding no store copy,
-    // would delete it, so such a copy never reaches here from a pull this build can read.
+    // A copy the store cannot hold is held by id before it reaches here (`tablepro_records::schema::readable`), so
+    // one left out here is noted and the store keeps what it holds.
     fn write(&self, contents: &TableFolderContents, changes: Vec<LocalChange>) -> TableFolderWrite {
         let mut write = TableFolderWrite::default();
         for change in changes {
@@ -204,28 +245,36 @@ impl RecordAdapter for TableFolderAdapter {
             return Ok(LocalRecords::default());
         }
         let contents = self.folders.contents().await.map_err(store_error)?;
-        let connections = self.connections.clone();
-        let list = blocking(move || connections.list_blocking())
-            .await?
-            .map_err(|error| AdapterError::Store {
-                store: super::STORE.to_owned(),
-                detail: error.to_string(),
-            })?;
-        let standing = list
-            .connections
-            .iter()
-            .map(|saved| (saved.id, super::connection_standing(saved)))
-            .collect();
-        Ok(self.read(&contents, &standing))
+        let records = self.read(&contents, &self.standing().await?);
+        *lock(&self.seen) = Some(seen(&records));
+        Ok(records)
     }
 
+    // Folders and items in one write that the store refuses when it changed since it was read, so nothing a person
+    // filed while the pull merged is written over.
     async fn apply(&self, scope: ScopeName, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError> {
-        if scope == ScopeName::Personal && !changes.is_empty() {
-            let contents = self.folders.contents().await.map_err(store_error)?;
-            let write = self.write(&contents, changes);
-            self.folders.write(&write).await.map_err(store_error)?;
+        if scope != ScopeName::Personal || changes.is_empty() {
+            return self.identity().await;
         }
-        self.identity().await
+        let expected = lock(&self.seen).take();
+        let contents = self.folders.contents().await.map_err(store_error)?;
+        if let Some(expected) = expected {
+            let now = seen(&self.read(&contents, &self.standing().await?));
+            if changed_since(&expected, &now, &changes) {
+                return Err(stale(HISTORY_STORE));
+            }
+        }
+        let write = self.write(&contents, changes);
+        let (folders, items) = written(&contents, write);
+        match self
+            .folders
+            .replace(Some(contents.digest.as_str()), &folders, &items)
+            .await
+        {
+            Ok(_) => self.identity().await,
+            Err(StorageError::ImportOutdated) => Err(stale(HISTORY_STORE)),
+            Err(error) => Err(store_error(error)),
+        }
     }
 
     async fn tombstones_pushed(&self, _scope: ScopeName, _record_ids: Vec<String>) -> Result<(), AdapterError> {

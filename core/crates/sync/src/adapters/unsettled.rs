@@ -5,6 +5,8 @@
 // value, and the pull that brings the record writes the base's value into the store with no approval to ask. The
 // device marks such copies in two members it keeps to itself.
 
+use std::collections::BTreeSet;
+
 use serde_json::{Value, json};
 use tablepro_records::Kind;
 
@@ -106,10 +108,23 @@ pub fn read(kind: Kind, local: &Value, base: Option<&Value>) -> Value {
 // value only where the merge kept the base's value, so nothing waits for a change nobody made. Where the server
 // changed it, the store's own value stands, so a value this build reads its own way, such as a level a newer build
 // added, never makes a looser pulled value look stricter than what the device enforces.
-pub fn approval_view(kind: Kind, stored: &Value, base: Option<&Value>, merged: Option<&Value>) -> Value {
+// A member that waits for the person or that the person refused stays at the store's value too, so a base that took
+// a pulled value the person has not approved never stands in for the store's.
+pub fn approval_view(
+    kind: Kind,
+    stored: &Value,
+    base: Option<&Value>,
+    merged: Option<&Value>,
+    undecided: &BTreeSet<String>,
+) -> Value {
     let mut view = stored.clone();
+    let asked = |pointer: &str| {
+        undecided.iter().any(|field| {
+            field == pointer || pointer.starts_with(&format!("{field}/")) || field.starts_with(&format!("{pointer}/"))
+        })
+    };
     for pointer in reading(kind, stored, base) {
-        if get(merged, &pointer) == get(base, &pointer) {
+        if !asked(&pointer) && get(merged, &pointer) == get(base, &pointer) {
             set(&mut view, &pointer, get(base, &pointer).cloned());
         }
     }

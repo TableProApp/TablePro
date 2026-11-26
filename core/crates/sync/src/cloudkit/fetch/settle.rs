@@ -19,7 +19,9 @@ use crate::adapters::unsettled;
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
-use crate::api::state::{BaseRow, DeferredRow, HeldReason, HeldRow, Row, RowKey, ScopeRow, Standing, StateTxn};
+use crate::api::state::{
+    ApprovalDecision, BaseRow, DeferredRow, HeldReason, HeldRow, Row, RowKey, ScopeRow, Standing, StateTxn,
+};
 use crate::api::transport::{DeletedReason, PulledRecord};
 
 // A store written this many times in a row while its batch merged is left to the next pass.
@@ -228,13 +230,15 @@ impl<'s, 'f> Settle<'s, 'f> {
             .merged(copy.kind, &key, read.as_ref(), Some(&copy.fields), pull_wins)
             .await?;
         let base = self.base(&key).await?;
+        let undecided: BTreeSet<String> = approval::rows_of(&mut self.txn, &key)
+            .await?
+            .into_iter()
+            .filter(|row| row.decision != ApprovalDecision::Approved)
+            .map(|row| row.field)
+            .collect();
         let held = record.as_ref().map(|record| {
-            unsettled::approval_view(
-                copy.kind,
-                &record.fields,
-                base_fields(base.as_ref()),
-                merged_fields(&merged),
-            )
+            let (base, merged) = (base_fields(base.as_ref()), merged_fields(&merged));
+            unsettled::approval_view(copy.kind, &record.fields, base, merged, &undecided)
         });
         match approval::gate(&mut self.txn, &key, copy.kind, held.as_ref(), merged).await? {
             Gated::Apply(merged) => {

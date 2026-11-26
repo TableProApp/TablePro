@@ -13,7 +13,8 @@ mod reads;
 mod tunnel;
 mod values;
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -21,7 +22,6 @@ use tablepro_records::Kind;
 use tablepro_records::record_id::{parse_uuid, uuid_id};
 use tablepro_storage::{
     ConnectionList, ConnectionListState, ConnectionStore, LibraryChange, QueryHistory, SshProfile, StorageError,
-    SyncedLibrary,
 };
 use uuid::Uuid;
 
@@ -54,6 +54,7 @@ pub struct LibraryAdapter {
     store: ConnectionStore,
     kind: Kind,
     names: DriverNames,
+    seen: Mutex<Option<HashMap<String, Seen>>>,
 }
 
 impl LibraryAdapter {
@@ -65,6 +66,7 @@ impl LibraryAdapter {
                     store: store.clone(),
                     kind,
                     names,
+                    seen: Mutex::new(None),
                 }) as Arc<dyn RecordAdapter>
             })
             .collect()
@@ -82,6 +84,10 @@ pub fn adapters(
         all.extend(TableFolderAdapter::all(history, store));
     }
     all
+}
+
+pub(super) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 fn store_error(error: StorageError) -> AdapterError {
@@ -131,56 +137,108 @@ fn ids(ids: &[Uuid]) -> Vec<String> {
     ids.iter().copied().map(uuid_id).collect()
 }
 
-impl LibraryAdapter {
-    fn read(&self, library: &SyncedLibrary) -> LocalRecords {
-        let list = &library.list;
-        let (records, unreadable) = match self.kind {
-            Kind::Connection => (
-                list.connections
-                    .iter()
-                    .map(|saved| {
-                        let favorite = list.is_favorite(saved.id);
-                        let fields = connection::to_wire(saved, favorite, followed(list, saved), self.names);
-                        record(saved.id, fields, connection_standing(saved))
-                    })
-                    .collect(),
-                ids(&list.unreadable),
-            ),
-            Kind::Group => (
-                list.groups
-                    .iter()
-                    .map(|group| record(group.id, groups::group_to_wire(group), Standing::Syncs))
-                    .collect(),
-                Vec::new(),
-            ),
-            Kind::Tag => (
-                list.tags
-                    .iter()
-                    .map(|tag| record(tag.id, groups::tag_to_wire(tag), Standing::Syncs))
-                    .collect(),
-                Vec::new(),
-            ),
-            Kind::SshProfile => (
-                list.ssh_profiles
-                    .iter()
-                    .map(|profile| record(profile.id, profiles::ssh_to_wire(profile), Standing::Syncs))
-                    .collect(),
-                ids(&library.unreadable_ssh_profiles),
-            ),
-            Kind::CredentialProfile => (
-                list.credential_profiles
-                    .iter()
-                    .map(|profile| record(profile.id, profiles::credential_to_wire(profile), Standing::Syncs))
-                    .collect(),
-                ids(&library.unreadable_credential_profiles),
-            ),
-            _ => (Vec::new(), Vec::new()),
-        };
-        LocalRecords {
-            records,
-            unreadable,
-            tombstones: Vec::new(),
-        }
+// What the adapter's last read found of a record. A pull merged against that read never writes over a record changed
+// since, or one that stopped syncing: the write is refused and the next pass merges against what the store holds.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum Seen {
+    Record(Value, Standing),
+    Unreadable,
+}
+
+pub(super) fn seen(records: &LocalRecords) -> HashMap<String, Seen> {
+    records
+        .records
+        .iter()
+        .map(|record| {
+            (
+                record.record_id.clone(),
+                Seen::Record(record.fields.clone(), record.standing),
+            )
+        })
+        .chain(records.unreadable.iter().map(|id| (id.clone(), Seen::Unreadable)))
+        .collect()
+}
+
+pub(super) fn record_of(change: &LocalChange) -> &str {
+    match change {
+        LocalChange::Put { record_id, .. } | LocalChange::Delete { record_id } => record_id,
+    }
+}
+
+// Whether a record the changes write is not as the adapter's last read found it.
+pub(super) fn changed_since(
+    expected: &HashMap<String, Seen>,
+    now: &HashMap<String, Seen>,
+    changes: &[LocalChange],
+) -> bool {
+    changes.iter().any(|change| {
+        let id = record_of(change);
+        expected.get(id) != now.get(id)
+    })
+}
+
+pub(super) fn stale(store: &str) -> AdapterError {
+    AdapterError::Store {
+        store: store.to_owned(),
+        detail: "a record changed since the pull read it".to_owned(),
+    }
+}
+
+// The kind's records as the list holds them; `unreadable_ssh` and `unreadable_credentials` name the profiles of each
+// kind this build cannot read.
+fn local_records(
+    kind: Kind,
+    names: DriverNames,
+    list: &ConnectionList,
+    unreadable_ssh: &[Uuid],
+    unreadable_credentials: &[Uuid],
+) -> LocalRecords {
+    let (records, unreadable) = match kind {
+        Kind::Connection => (
+            list.connections
+                .iter()
+                .map(|saved| {
+                    let favorite = list.is_favorite(saved.id);
+                    let fields = connection::to_wire(saved, favorite, followed(list, saved), names);
+                    record(saved.id, fields, connection_standing(saved))
+                })
+                .collect(),
+            ids(&list.unreadable),
+        ),
+        Kind::Group => (
+            list.groups
+                .iter()
+                .map(|group| record(group.id, groups::group_to_wire(group), Standing::Syncs))
+                .collect(),
+            Vec::new(),
+        ),
+        Kind::Tag => (
+            list.tags
+                .iter()
+                .map(|tag| record(tag.id, groups::tag_to_wire(tag), Standing::Syncs))
+                .collect(),
+            Vec::new(),
+        ),
+        Kind::SshProfile => (
+            list.ssh_profiles
+                .iter()
+                .map(|profile| record(profile.id, profiles::ssh_to_wire(profile), Standing::Syncs))
+                .collect(),
+            ids(unreadable_ssh),
+        ),
+        Kind::CredentialProfile => (
+            list.credential_profiles
+                .iter()
+                .map(|profile| record(profile.id, profiles::credential_to_wire(profile), Standing::Syncs))
+                .collect(),
+            ids(unreadable_credentials),
+        ),
+        _ => (Vec::new(), Vec::new()),
+    };
+    LocalRecords {
+        records,
+        unreadable,
+        tombstones: Vec::new(),
     }
 }
 
@@ -283,17 +341,43 @@ impl RecordAdapter for LibraryAdapter {
         let library = blocking(move || store.synced_library_blocking())
             .await?
             .map_err(store_error)?;
-        Ok(self.read(&library))
+        let records = local_records(
+            self.kind,
+            self.names,
+            &library.list,
+            &library.unreadable_ssh_profiles,
+            &library.unreadable_credential_profiles,
+        );
+        *lock(&self.seen) = Some(seen(&records));
+        Ok(records)
     }
 
     async fn apply(&self, scope: ScopeName, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError> {
         if scope != ScopeName::Personal || changes.is_empty() {
             return self.identity().await;
         }
+        let expected = lock(&self.seen).take();
         let (store, kind, names) = (self.store.clone(), self.kind, self.names);
-        let identity = blocking(move || store.apply_synced_blocking(move |list| settled(kind, names, list, changes)))
-            .await?
-            .map_err(store_error)?;
+        let (written, changed) = blocking(move || {
+            let mut changed = false;
+            let written = store.apply_synced_blocking(|list| {
+                if let Some(expected) = &expected {
+                    let held = &list.unreadable_profiles;
+                    let now = seen(&local_records(kind, names, list, held, held));
+                    if changed_since(expected, &now, &changes) {
+                        changed = true;
+                        return Vec::new();
+                    }
+                }
+                settled(kind, names, list, changes)
+            });
+            (written, changed)
+        })
+        .await?;
+        let identity = written.map_err(store_error)?;
+        if changed {
+            return Err(stale(STORE));
+        }
         Ok(stamp(identity))
     }
 
