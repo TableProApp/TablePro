@@ -14,7 +14,7 @@ use tablepro_keys::json::{self, JsonValue};
 use super::KeyService;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
-use crate::api::key_flows::{LockCause, OpenedEnvelope};
+use crate::api::key_flows::{KeyState, LockCause, OpenedEnvelope};
 use crate::api::state::{KeyEnvelopeRow, KeyVersionState, Row, RowKey, StateTxn};
 
 impl KeyService {
@@ -38,6 +38,15 @@ impl KeyService {
     // one this device cannot open yet (0056, Writing).
     async fn writing_version(&self, txn: &mut dyn StateTxn, purpose: KeyPurpose) -> Result<Version, SyncError> {
         self.check_trusted()?;
+        match self.state_of_keys(txn).await? {
+            KeyState::Approved { .. } => {}
+            KeyState::Locked { cause } => return Err(SyncError::Locked { cause }),
+            _ => {
+                return Err(SyncError::NotAllowed {
+                    what: "write a personal secret on a device that is not approved",
+                });
+            }
+        }
         if let Some(pin) = self.pin(txn, self.account).await?
             && let Some(newer) = self.own_certificate(txn, pin.av.next()?).await?
             && self.verify_certificate(txn, ScopeName::Personal, &newer).await.is_ok()

@@ -250,7 +250,12 @@ async fn a_device_left_out_waits_for_the_whole_change_set_then_locks_and_erases_
         .seal_personal_envelope(envelope(), SecretString::from("x"), json!({}))
         .await
         .unwrap_err();
-    assert_eq!(refused.code(), "sync.not_allowed");
+    assert_eq!(
+        refused,
+        tablepro_sync::SyncError::Locked {
+            cause: LockCause::LeftOutOfRotation
+        }
+    );
 }
 
 #[tokio::test]
@@ -334,6 +339,11 @@ async fn a_replace_that_loses_to_another_rotation_discards_its_keys() {
         account,
         av: av(2),
     }));
+    assert!(
+        b.get(RowKey::KeyPending(PendingFlow::AccountRotation { av: av(2) }))
+            .await
+            .is_none()
+    );
     b.pull().await;
     assert_eq!(
         b.key_state().await,

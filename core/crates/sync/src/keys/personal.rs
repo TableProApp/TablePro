@@ -195,21 +195,25 @@ impl KeyService {
             .into());
         }
         let mut above = version;
-        let mut opened = None;
-        while opened.is_none() {
-            opened = self.open_personal_wrap(txn, purpose, above).await?;
-            if opened.is_none() {
-                if above == newest {
-                    return Err(SyncError::NotAllowed {
-                        what: "read a personal key this device holds no wrap of",
-                    });
-                }
-                above = above.next()?;
+        let mut failed = None;
+        // A wrap a server planted fails to open and must not hide a version above whose ring reaches this one.
+        let mut key = loop {
+            match self.open_personal_wrap(txn, purpose, above).await {
+                Ok(Some(key)) => break key,
+                Ok(None) => {}
+                Err(SyncError::Keys(error)) => failed = Some(error),
+                Err(other) => return Err(other),
             }
-        }
-        let mut key = opened.ok_or(SyncError::NotAllowed {
-            what: "read a personal key this device holds no wrap of",
-        })?;
+            if above == newest {
+                return Err(failed.map_or(
+                    SyncError::NotAllowed {
+                        what: "read a personal key this device holds no wrap of",
+                    },
+                    SyncError::Keys,
+                ));
+            }
+            above = above.next()?;
+        };
         while above > version {
             let below = above.previous().ok_or(KeysError::Ring)?;
             let ring_key = KeyRef {

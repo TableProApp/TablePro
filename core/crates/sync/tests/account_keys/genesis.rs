@@ -290,3 +290,73 @@ async fn a_genesis_the_server_refuses_whole_keeps_no_candidate_and_can_be_built_
         .unwrap();
     assert_eq!(outcome, GenesisOutcome::Created);
 }
+
+#[tokio::test]
+async fn a_genesis_that_applied_while_its_answer_was_lost_is_adopted_after_a_restart() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.pull().await;
+    let draft = device.service.begin_genesis().await.unwrap();
+    server.fail_next(TransportError::Network {
+        detail: "timeout".to_owned(),
+    });
+    device
+        .service
+        .finish_genesis(draft.draft, typed_back(&draft))
+        .await
+        .unwrap_err();
+    let mut txn = device.txn().await;
+    let changes: Vec<_> = txn
+        .scan(&RowRange::Table(Table::KeyObjects))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter_map(|row| match row {
+            Row::KeyObject(row) => Some(row),
+            _ => None,
+        })
+        .map(|row| {
+            let object = KeyObject::parse(row.kind.as_str(), &row.record_id, row.fields.as_bytes()).unwrap();
+            tablepro_sync::keys::create_change(&object).unwrap()
+        })
+        .collect();
+    drop(txn);
+    device
+        .service
+        .push_change_set(ScopeName::Personal, changes, device.proof().await)
+        .await
+        .unwrap();
+
+    let restarted = device.restarted();
+    restarted.pull().await;
+    // The flow that lost its answer, still open on the first process, finds its own genesis in place.
+    assert_eq!(
+        device
+            .service
+            .finish_genesis(draft.draft, typed_back(&draft))
+            .await
+            .unwrap(),
+        GenesisOutcome::Created
+    );
+
+    let key_device = restarted
+        .service
+        .device_keys()
+        .await
+        .unwrap()
+        .current
+        .unwrap()
+        .key_device;
+    assert_eq!(
+        restarted.key_state().await,
+        KeyState::Approved {
+            av: Version::FIRST,
+            key_device
+        }
+    );
+    assert_eq!(restarted.pin(account).await.unwrap().how, PinHow::Compared);
+    let other = Device::new(&server, account, "dev_c").await;
+    other.pull().await;
+    assert_eq!(other.key_state().await, KeyState::NeedsApproval { request: None });
+}

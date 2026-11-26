@@ -115,11 +115,18 @@ impl KeyService {
         };
         drop(txn);
         self.store_account_keys(av, &built.keys).await?;
+        let pending = RowKey::KeyPending(PendingFlow::AccountRotation { av });
         let mut txn = self.begin().await?;
         for object in &built.objects {
             self.hold_object(txn.as_mut(), ScopeName::Personal, object, false)
                 .await?;
         }
+        // Written with the candidates, so the team steps still run when the device stops after the push applies.
+        txn.put(Row::KeyPending(KeyPendingRow {
+            flow: PendingFlow::AccountRotation { av },
+            state: Vec::new(),
+        }))
+        .await?;
         txn.commit().await?;
         let changes = built.objects.iter().map(create_change).collect::<Result<Vec<_>, _>>()?;
         let outcomes = self
@@ -129,11 +136,6 @@ impl KeyService {
             None => {
                 let mut txn = self.begin().await?;
                 self.adopt_account_change_set(txn.as_mut(), &built.objects).await?;
-                txn.put(Row::KeyPending(KeyPendingRow {
-                    flow: PendingFlow::AccountRotation { av },
-                    state: Vec::new(),
-                }))
-                .await?;
                 txn.commit().await?;
                 self.drafts().remove(draft);
                 self.hooks().pass_soon();
@@ -143,6 +145,7 @@ impl KeyService {
                 let mut txn = self.begin().await?;
                 self.drop_candidates(txn.as_mut(), ScopeName::Personal, &built.objects)
                     .await?;
+                txn.delete(&pending).await?;
                 txn.commit().await?;
                 self.erase_account_keys(av).await?;
                 if code == RejectedCode::CreateOnly {

@@ -88,6 +88,23 @@ async fn an_identity_nothing_endorsed_on_the_own_account_locks_the_device_and_er
     let pin = device.pin(device.account).await.unwrap();
     assert!(pin.alert && pin.av == Version::FIRST);
     assert_eq!(device.store.len(), before);
+    let id = EnvelopeId::new(
+        ParentKind::Connection,
+        &uuid_to_wire(random_uuid().unwrap()),
+        SecretKind::Password,
+    )
+    .unwrap();
+    let sealed = device
+        .service
+        .seal_personal_envelope(id, SecretString::from("x"), json!({}))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        sealed,
+        tablepro_sync::SyncError::Locked {
+            cause: LockCause::OwnAccountReset
+        }
+    );
     // Its own account's new identity is never accepted by a click: another device approves it again.
     let accept = device
         .service
@@ -415,4 +432,139 @@ async fn a_rotation_wrap_signed_by_the_account_key_instead_of_a_compared_device_
         }
     );
     assert!(c.service.account_keys(av(2)).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn a_planted_wrap_does_not_hide_the_ring_a_device_reads_an_older_version_through() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let b = Device::new(&server, account, "dev_b").await;
+    let text = b.genesis().await;
+    let id = EnvelopeId::new(
+        ParentKind::Connection,
+        &uuid_to_wire(random_uuid().unwrap()),
+        SecretKind::Password,
+    )
+    .unwrap();
+    let sealed = b
+        .service
+        .seal_personal_envelope(id.clone(), SecretString::from("older"), json!({}))
+        .await
+        .unwrap();
+    b.pull().await;
+    let draft = b.service.begin_replace(text).await.unwrap();
+    b.service
+        .finish_replace(draft.recovery.draft, typed_back(&draft.recovery), Vec::new())
+        .await
+        .unwrap();
+    let c = Device::new(&server, account, "dev_c").await;
+    c.approved_by(&b).await;
+    assert!(c.service.account_keys(Version::FIRST).await.unwrap().is_none());
+    let aek = c
+        .service
+        .account_keys(av(2))
+        .await
+        .unwrap()
+        .unwrap()
+        .aek
+        .public()
+        .unwrap();
+    let target = scope_key_target(
+        KeyRef {
+            owner: account.0,
+            purpose: KeyPurpose::Personal,
+            version: Version::FIRST,
+        },
+        account,
+        av(2),
+    );
+    let forged = Wrap::seal_scope_key(
+        &origin(),
+        target,
+        &aek,
+        &ScopeKey::generate().unwrap(),
+        Wrapper {
+            account,
+            av: av(2),
+            key_device: c.service.device_keys().await.unwrap().current.unwrap().key_device,
+        },
+        &Ed25519Seed::generate().unwrap(),
+    )
+    .unwrap();
+    let planted = c
+        .feed(
+            vec![record_of(&KeyObject {
+                id: KeyRecordId::Wrap(target),
+                body: KeyBody::Wrap(WrapBody::of(&forged)),
+            })],
+            ArrivalOrder::InOrder,
+        )
+        .await;
+    assert_eq!(refused_codes(&planted), ["keys.signature"]);
+
+    let opened = c.service.open_personal_envelope(id, sealed, None).await.unwrap();
+
+    assert_eq!(opened.secret.expose_secret(), "older");
+}
+
+#[tokio::test]
+async fn a_rotation_wrap_whose_keys_are_not_the_certificate_s_is_a_mismatch_and_keeps_the_device_out() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let b = Device::new(&server, account, "dev_b").await;
+    let c = Device::new(&server, account, "dev_c").await;
+    let text = b.genesis().await;
+    c.approved_by(&b).await;
+    let c_device = c.service.device_keys().await.unwrap().current.unwrap();
+    b.pull().await;
+    let draft = b.service.begin_replace(text).await.unwrap();
+    b.service
+        .finish_replace(
+            draft.recovery.draft,
+            typed_back(&draft.recovery),
+            vec![c_device.key_device],
+        )
+        .await
+        .unwrap();
+    let b_device = b.service.device_keys().await.unwrap().current.unwrap();
+    let target = device_target(account, WrapPurpose::Account, av(2), c_device.key_device);
+    let other = Wrap::seal_account(
+        &origin(),
+        target,
+        &c_device.dek.public().unwrap(),
+        &AccountKeys::generate().unwrap(),
+        Wrapper {
+            account,
+            av: av(2),
+            key_device: b_device.key_device,
+        },
+        &b_device.dsk,
+    )
+    .unwrap();
+    let other = record_of(&KeyObject {
+        id: KeyRecordId::Wrap(target),
+        body: KeyBody::Wrap(WrapBody::of(&other)),
+    });
+    let served: Vec<_> = c
+        .served()
+        .await
+        .into_iter()
+        .map(|served| {
+            if served.record_id == other.record_id {
+                other.clone()
+            } else {
+                served
+            }
+        })
+        .collect();
+
+    let applied = c.feed(served, ArrivalOrder::Snapshot).await;
+
+    assert!(refused_codes(&applied).contains(&"keys.mismatch"), "{applied:?}");
+    assert_eq!(
+        c.key_state().await,
+        KeyState::Locked {
+            cause: LockCause::LeftOutOfRotation
+        }
+    );
 }

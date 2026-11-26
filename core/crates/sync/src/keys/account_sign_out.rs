@@ -69,6 +69,20 @@ impl KeyService {
             }
         }
 
+        // The secrets go first: a crash before the tables clear leaves a device with no keys to use, never keys
+        // with no record of them.
+        self.erase_device_keys().await?;
+        // One past the newest: a rotation stores its new keys before its push, and may have stopped there.
+        let newest = pinned.max(certified).map_or(0, Version::get).saturating_add(1);
+        for av in 1..=newest {
+            let Ok(av) = Version::new(av) else {
+                break;
+            };
+            self.erase_account_keys(av).await?;
+        }
+        for reset in resets {
+            self.erase_reset_keys(reset).await?;
+        }
         let mut txn = self.begin().await?;
         txn.clear_key_tables().await?;
         // The device joins again as a new one does, so its next pull of the key kinds starts from a snapshot.
@@ -84,14 +98,6 @@ impl KeyService {
             }
         }
         txn.commit().await?;
-        self.erase_device_keys().await?;
-        let newest = pinned.max(certified).map_or(0, Version::get);
-        for av in 1..=newest {
-            self.erase_account_keys(Version::new(av)?).await?;
-        }
-        for reset in resets {
-            self.erase_reset_keys(reset).await?;
-        }
         self.drafts().clear();
         self.clear_notices();
         Ok(outcome)
