@@ -183,21 +183,15 @@ impl ServiceSync {
             row.refill = true;
         }
         ctx.new_epoch |= row.refill;
-        // The kinds whose category is on take the refill they owe. One that is off is read beside them, or by the pass
-        // that found its store restored, only for the copies its store holds, which it merges against once it is on.
-        // It keeps its mark, and reads nothing more while it stays off (0066, Per-kind refills; `deferred`).
-        let owed: Vec<&Arc<dyn RecordAdapter>> = adapters
+        // The kinds whose category is on take the refill they owe. One that is off is read only by the pass that marked
+        // its store, for the copies the store holds then, which it merges against once it is on; a later refill of
+        // others never takes them again. It keeps its mark (0066, Per-kind refills; `deferred`).
+        let pull_wins: HashSet<Kind> = adapters
             .iter()
             .filter(|adapter| ctx.owes(adapter.store(), adapter.kind()))
+            .filter(|adapter| ctx.categories.syncs(adapter.kind()) || ctx.marked(adapter.store()))
+            .map(|adapter| adapter.kind())
             .collect();
-        let refills_now = owed
-            .iter()
-            .any(|adapter| ctx.categories.syncs(adapter.kind()) || ctx.marked(adapter.store()));
-        let pull_wins: HashSet<Kind> = if refills_now {
-            owed.iter().map(|adapter| adapter.kind()).collect()
-        } else {
-            HashSet::new()
-        };
         let can_open = ctx.keys_ready;
         let rebuilding = self.keys.rebuilding();
         // Envelopes kept while the device could not check them are read again in a snapshot once it can, which

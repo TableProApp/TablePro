@@ -47,13 +47,15 @@ pub(crate) fn seen_replaced(replaced: &[Replaced], ik: &Ed25519Public) -> bool {
     replace_point(replaced, ik).is_some()
 }
 
-// Whether `certificate` may not stand as the newest past `current`: another IK seen replaced never comes back, and the
-// current one, when a merge left it retired under an alert, signs nothing at or past its point (0066, Replace points).
+// Whether `certificate` may not stand as the newest past `current`: another IK seen replaced never comes back, the
+// current one, when a merge left it retired under an alert, signs nothing at or past its point, and it endorses no
+// replace past that point, only the one at it that retired it (0066, Replace points; Codex security round 2).
 fn retires(replaced: &[Replaced], current: &Ed25519Public, certificate: &AccountCertificate) -> bool {
+    let past_current = replace_point(replaced, current).is_some_and(|point| certificate.av > point);
     match replace_point(replaced, &certificate.ik) {
         Some(_) if certificate.ik != *current => true,
         Some(point) => certificate.av >= point,
-        None => false,
+        None => certificate.ik != *current && past_current,
     }
 }
 

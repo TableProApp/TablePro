@@ -210,6 +210,21 @@ fn found(binding: &BindingRow, root: &RootItem) -> Found {
     }
 }
 
+// Whether each stored row decodes, and its key and columns are what encoding that row writes again.
+async fn canonical_rows(tx: &mut Transaction<'static, Sqlite>) -> Result<bool, StateError> {
+    for table in Table::SYNC.into_iter().chain(Table::KEY) {
+        for (key, columns) in digest::read_table(tx, table).await? {
+            let Ok(row) = codec::decode(table, &key, &columns) else {
+                return Ok(false);
+            };
+            if row.key().encoded() != key || codec::columns(&row) != columns {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
 async fn holds_key_rows(tx: &mut Transaction<'static, Sqlite>) -> Result<bool, StateError> {
     for table in Table::KEY {
         let statement = format!("SELECT EXISTS (SELECT 1 FROM {})", table.name());
@@ -488,6 +503,12 @@ impl Checked<'_> {
                         return Err(StateError::Integrity);
                     }
                     return Ok(Found::Foreign);
+                }
+                // The digests frame values, not where a row's key ends and its columns begin, so a writer could move
+                // bytes across that boundary under the same MAC and hide a row from its lookups. Every row has to read
+                // back as itself (Codex security round 2).
+                if !canonical_rows(tx).await? {
+                    return Err(StateError::Integrity);
                 }
                 found(binding, root)
             }

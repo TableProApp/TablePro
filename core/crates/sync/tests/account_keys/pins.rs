@@ -596,3 +596,42 @@ async fn a_pinned_ik_a_merge_retired_verifies_nothing_at_or_past_its_point() {
     assert_eq!(before.unwrap(), IkStanding::Replaced);
     assert_eq!(offered, Err("keys.retired_ik".to_owned()));
 }
+
+// A retired pinned IK endorses only the replace at its point: a replace a server made past it under an old recovery
+// key is never followed (Codex security round 2).
+#[tokio::test]
+async fn a_replace_past_a_retired_pinned_ik_s_point_is_not_followed() {
+    let device = device().await;
+    let scope = team();
+    let member = Member::new();
+    let forged = Member {
+        account: member.account,
+        ik: Ed25519Seed::generate().unwrap(),
+    };
+    device
+        .put(vec![
+            Row::KeyPin(KeyPinRow {
+                account: member.account,
+                ik: member.ik.public().unwrap(),
+                av: av(2),
+                how: PinHow::Compared,
+                alert: true,
+                replaced: vec![Replaced {
+                    ik: member.ik.public().unwrap(),
+                    av: av(2),
+                }],
+            }),
+            member_row(scope, &member.replace(3, &forged.ik)),
+        ])
+        .await;
+
+    let offered = offer(&device, scope, &forged.certificate(4)).await;
+    let mut txn = device.txn().await;
+    let verified = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &forged.certificate(4))
+        .await;
+
+    assert_eq!(offered, Err("keys.retired_ik".to_owned()));
+    assert_eq!(verified.unwrap_err().code(), "keys.retired_ik");
+}

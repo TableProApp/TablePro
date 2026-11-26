@@ -142,8 +142,9 @@ impl Waited {
 struct Start {
     token: Option<Vec<u8>>,
     refill: BTreeSet<Kind>,
-    // Kinds that owe a refill while their category is off.
-    owed_off: BTreeSet<Kind>,
+    // Kinds that are off while this start marked their store: each keeps the copy its store holds now, the one the
+    // restore left, and a later refill of others never takes it again (0066, `deferred`).
+    keep_copies: BTreeSet<Kind>,
     stores: BTreeMap<String, StoreStamp>,
 }
 
@@ -161,7 +162,7 @@ struct Pass {
 
 impl Pass {
     fn new(start: Start) -> Self {
-        let full = start.token.is_none() || !start.refill.is_empty();
+        let full = start.token.is_none() || !start.refill.is_empty() || !start.keep_copies.is_empty();
         let stamps = start.stores.clone();
         Self {
             next: start.token.clone().filter(|_| !full),
@@ -215,11 +216,7 @@ impl Pass {
             stamps: std::mem::take(&mut self.stamps),
             started: self.start.stores.clone(),
             release: Vec::new(),
-            keep_copies: if self.start.refill.is_empty() {
-                BTreeSet::new()
-            } else {
-                self.start.owed_off.clone()
-            },
+            keep_copies: self.start.keep_copies.clone(),
         }
     }
 }
@@ -327,7 +324,7 @@ impl<'a> Fetcher<'a> {
         let mut start = Start {
             token,
             refill: BTreeSet::new(),
-            owed_off: BTreeSet::new(),
+            keep_copies: BTreeSet::new(),
             stores: BTreeMap::new(),
         };
         for adapter in self.adapters.values() {
@@ -341,6 +338,7 @@ impl<'a> Fetcher<'a> {
         // store's kinds a refill, which a kind takes once its category is on (0066, Per-kind refills). The marks land
         // before the fetch, so one cut short refills again.
         let mut wrote = false;
+        let mut marked: BTreeSet<String> = BTreeSet::new();
         for (store, stamp) in &start.stores {
             let seen = match txn.get(&RowKey::Store(store.clone())).await? {
                 Some(Row::Store(seen)) => Some(StoreStamp {
@@ -351,6 +349,7 @@ impl<'a> Fetcher<'a> {
             };
             let restored = seen.is_some_and(|seen| stamp.needs_refill(seen));
             if restored || scope_refill {
+                marked.insert(store.clone());
                 for kind in self.kinds_of(store) {
                     txn.put(Row::StoresKind(StoresKindRow {
                         store: store.clone(),
@@ -379,9 +378,10 @@ impl<'a> Fetcher<'a> {
                 (true, true) => {
                     start.refill.insert(*kind);
                 }
-                (true, false) => {
-                    start.owed_off.insert(*kind);
+                (true, false) if marked.contains(adapter.store()) => {
+                    start.keep_copies.insert(*kind);
                 }
+                (true, false) => {}
                 (false, _) => {}
             }
         }

@@ -15,24 +15,42 @@ use crate::api::state::{Row, RowKey, RowRange, Table};
 impl Settle<'_, '_> {
     pub(super) async fn finish(&mut self, finish: &Finish) -> Result<(), SyncError> {
         self.deferred_due(&finish.listed).await?;
-        self.unlisted(finish).await
+        self.unlisted(finish).await?;
+        self.copies_done().await
     }
 
     // A deferred deletion of a record the zone lists again settles unapplied: the record was saved after it. A
     // profile's never applies late, since deleting one removes Keychain secrets no pull can bring back. A copy a refill
-    // kept while the kind was off is no deletion: the fetch's own listing judges the record, by `unlisted`'s rules.
+    // kept while the kind was off is no deletion: the fetch's own listing judges the record, by `unlisted`'s rules,
+    // which merge against the copy.
     async fn deferred_due(&mut self, listed: &BTreeSet<RecordKey>) -> Result<(), SyncError> {
         for row in self.txn.scan(&RowRange::Scope(Table::Deferred, SCOPE)).await? {
             let Row::Deferred(deferred) = row else {
                 continue;
             };
-            let deletion = deferred.record.deleted.is_some();
+            if deferred.record.deleted.is_none() {
+                continue;
+            }
             match kind_of(&deferred.key) {
                 Some(kind) if !self.fetcher.categories.syncs(kind) => {}
-                Some(kind) if deletion && !listed.contains(&deferred.key) && !PROFILES.contains(&kind) => {
+                Some(kind) if !listed.contains(&deferred.key) && !PROFILES.contains(&kind) => {
                     self.deleted(&deferred.key).await?;
                 }
                 _ => self.txn.delete(&RowKey::Deferred(deferred.key)).await?,
+            }
+        }
+        Ok(())
+    }
+
+    // The copies kept for kinds now on have served their merge, the listed ones and the inferred deletions alike.
+    async fn copies_done(&mut self) -> Result<(), SyncError> {
+        for row in self.txn.scan(&RowRange::Scope(Table::Deferred, SCOPE)).await? {
+            let Row::Deferred(deferred) = row else {
+                continue;
+            };
+            let on = kind_of(&deferred.key).is_none_or(|kind| self.fetcher.categories.syncs(kind));
+            if deferred.record.deleted.is_none() && on {
+                self.txn.delete(&RowKey::Deferred(deferred.key)).await?;
             }
         }
         Ok(())
