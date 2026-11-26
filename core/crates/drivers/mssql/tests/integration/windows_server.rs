@@ -37,6 +37,7 @@ fn checked(mode: TlsMode) -> TlsConfig {
         ca_file: Some(PathBuf::from(ca)),
         client_identity: None,
         server_name: None,
+        unknown: Default::default(),
     }
 }
 

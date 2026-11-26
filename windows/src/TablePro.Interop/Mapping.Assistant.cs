@@ -31,7 +31,8 @@ internal static partial class Mapping
     // A policy the core added after this build reads as Never, so nothing is sent before the app knows it.
     public static AiPolicy Policy(Native.AiPolicyTag policy) => policy switch
     {
-        Native.AiPolicyTag.Ask => AiPolicy.Ask,
+        // This app has no AI default of its own, so a connection that follows one asks; a save of Ask keeps it.
+        Native.AiPolicyTag.Ask or Native.AiPolicyTag.AppDefault => AiPolicy.Ask,
         Native.AiPolicyTag.Allow => AiPolicy.Allow,
         _ => AiPolicy.Never,
     };

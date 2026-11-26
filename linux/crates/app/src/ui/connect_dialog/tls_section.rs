@@ -183,12 +183,14 @@ impl TlsSection {
         let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
         imp.encryption_modes.splice(0, imp.encryption_modes.n_items(), &labels);
         imp.modes.replace(caps.modes.to_vec());
-        let mode = if caps.modes.contains(&state.mode) {
-            state.mode
-        } else {
-            caps.default_mode
+        // A mode the engine does not offer rounds up, never to a weaker default.
+        let mode = match caps.modes.contains(&state.mode) {
+            true => state.mode,
+            false if caps.default_mode.strictness() >= state.mode.strictness() => caps.default_mode,
+            false => state.mode.at_least_in(caps.modes),
         };
-        imp.mode_chosen.set(state.mode_chosen && mode == state.mode);
+        // A chosen mode rounded up is still the person's choice, so a later port change cannot drop it to a weaker one.
+        imp.mode_chosen.set(state.mode_chosen);
         let index = caps.modes.iter().position(|candidate| *candidate == mode).unwrap_or(0);
         imp.encryption_row.set_selected(index as u32);
         imp.ca_file.replace(state.ca_file.clone());
@@ -387,6 +389,7 @@ pub fn mode_label(mode: TlsMode) -> String {
         TlsMode::Disable => crate::i18n::gettext("Disable"),
         TlsMode::Prefer => crate::i18n::gettext("Prefer"),
         TlsMode::Require => crate::i18n::gettext("Require"),
+        TlsMode::VerifyCa => crate::i18n::gettext("Verify CA"),
         TlsMode::VerifyFull => crate::i18n::gettext("Verify full"),
         TlsMode::Strict => crate::i18n::gettext("Strict"),
     }
@@ -402,6 +405,9 @@ pub fn mode_description(mode: TlsMode) -> String {
             "Encrypted if the server offers TLS, otherwise not. The server certificate is not checked.",
         ),
         TlsMode::Require => crate::i18n::gettext("Encrypted. The server certificate is not checked."),
+        TlsMode::VerifyCa => crate::i18n::gettext(
+            "Encrypted. The certificate must come from a trusted authority; its name is not checked.",
+        ),
         TlsMode::VerifyFull => crate::i18n::gettext("Encrypted. The certificate must be valid for the server name."),
         TlsMode::Strict => crate::i18n::gettext(
             "Encrypted from the first byte (TDS 8.0). The certificate must be valid for the server name.",

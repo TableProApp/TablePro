@@ -9,7 +9,7 @@ use tablepro_session::runtime::Tasks;
 use tablepro_storage::saved_queries::SavedQueries;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionStore, ConnectionTag,
-    ConnectionTagName, SavedConnection, StorageError,
+    ConnectionTagName, LibraryIcon, SavedConnection, StorageError,
 };
 use uuid::Uuid;
 
@@ -415,7 +415,7 @@ impl SavedConnectionEditor {
     }
 
     pub async fn set_icon(&self, id: Uuid, icon: Option<ConnectionIcon>) -> Result<(), SavedConnectionError> {
-        self.write(id, move |entry| entry.icon = icon)
+        self.write(id, move |entry| entry.icon = icon.map(LibraryIcon::Named))
             .await?
             .map(drop)
             .ok_or(SavedConnectionError::NotFound(id))
@@ -565,7 +565,7 @@ mod tests {
             database: "shop".to_owned(),
             username: "app".to_owned(),
             tls: TlsConfig::verify_full(),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
             query_timeout_secs: None,
@@ -869,7 +869,7 @@ mod tests {
             .expect("the tag");
         let edited = SavedConnection {
             tags: vec![tag.id],
-            icon: Some(ConnectionIcon::Shield),
+            icon: Some(LibraryIcon::Named(ConnectionIcon::Shield)),
             ..fixture.saved.clone()
         };
 
@@ -880,7 +880,7 @@ mod tests {
             .expect("the edit");
 
         assert_eq!(saved.tags, [tag.id]);
-        assert_eq!(saved.icon, Some(ConnectionIcon::Shield));
+        assert_eq!(saved.icon, Some(LibraryIcon::Named(ConnectionIcon::Shield)));
         assert_eq!(stored(&fixture.store)[0], saved);
     }
 
@@ -905,7 +905,7 @@ mod tests {
 
         let renamed = ConnectionTag {
             name: name("prod"),
-            color: ConnectionColor::Orange,
+            color: Some(ConnectionColor::Orange),
             ..production.clone()
         };
         fixture.editor.update_tag(renamed.clone()).await.expect("the rename");
@@ -942,7 +942,10 @@ mod tests {
             .set_icon(fixture.saved.id, Some(ConnectionIcon::Cloud))
             .await
             .expect("the icon");
-        assert_eq!(stored(&fixture.store)[0].icon, Some(ConnectionIcon::Cloud));
+        assert_eq!(
+            stored(&fixture.store)[0].icon,
+            Some(LibraryIcon::Named(ConnectionIcon::Cloud))
+        );
         fixture.editor.set_icon(fixture.saved.id, None).await.expect("no icon");
         assert_eq!(stored(&fixture.store)[0].icon, None);
         assert!(matches!(
