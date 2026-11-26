@@ -13,6 +13,7 @@ import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
@@ -247,6 +248,63 @@ struct StatementRunControllerTests {
 
         #expect(controller.highlightedStatementRange == freshBand(in: controller, caret: start - moves))
         #expect(subject.caretIndexUnitsScanned - warmed <= moves * (SQLStatementCursorIndex.defaultCheckpointSpacing + 20))
+    }
+
+    // A document past the synchronous limit: a full pass of it on the keystroke's turn is what stalled typing.
+    private var largeScript: String {
+        String(repeating: "SELECT id, name FROM users WHERE id = 1;\n", count: 2_000)
+    }
+
+    private func freshControls(in controller: TextViewController) -> [NSRange] {
+        SQLStatementScanner.navigableStatements(in: controller.textView.string, grammar: TestGrammar.standard)
+            .map(\.contentRange)
+    }
+
+    @Test("A large document's controls are scanned off the main thread and then equal a fresh scan")
+    func largeDocumentControlsArriveFromABackgroundScan() async throws {
+        let controller = makeController(text: largeScript)
+        try #require(controller.textView.textStorage.length > StatementRunController.synchronousRefreshLimit)
+        let subject = makeSubject()
+
+        subject.install(on: controller)
+        #expect(controller.runnableStatements.isEmpty)
+
+        try await waitUntil { !controller.runnableStatements.isEmpty }
+        #expect(controller.runnableStatements.map(\.range) == freshControls(in: controller))
+    }
+
+    @Test("A large document's refresh asked for before an edit reads the edited text")
+    func largeRefreshReadsTheTextAfterTheEdit() async throws {
+        let controller = makeController(text: largeScript)
+        let subject = makeSubject()
+        subject.install(on: controller)
+        try await waitUntil { !controller.runnableStatements.isEmpty }
+
+        subject.refreshControls(in: controller)
+        controller.textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "SELECT 0;\n")
+
+        try await waitUntil { controller.runnableStatements.count == 2_001 }
+        #expect(controller.runnableStatements.map(\.range) == freshControls(in: controller))
+    }
+
+    @Test("The statement start keyword case reads from is the statement's own, and costs one statement's scan")
+    func statementStartForKeywordCaseIsBounded() {
+        let script = String(repeating: "SELECT 1;\n", count: 40_000)
+        let controller = makeController(text: script)
+        let subject = makeSubject()
+        subject.install(on: controller)
+        let textView = controller.textView!
+        let end = textView.textStorage.length
+        _ = subject.statementStart(containing: end, in: textView, grammar: TestGrammar.standard)
+        let warmed = subject.caretIndexUnitsScanned
+
+        textView.replaceCharacters(in: NSRange(location: end, length: 0), with: "select")
+        let start = subject.statementStart(containing: end + 6, in: textView, grammar: TestGrammar.standard)
+
+        let fresh = SQLStatementScanner.locatedStatementAtCursor(in: textView.string, cursorPosition: end + 6)
+        #expect(start == fresh.offset)
+        #expect(subject.caretIndexUnitsScanned - warmed <= SQLStatementCursorIndex.defaultCheckpointSpacing + 20)
+        #expect(subject.statementStart(containing: end, in: textView, grammar: TestGrammar.mysql) == 0)
     }
 
     // MARK: - Callback
