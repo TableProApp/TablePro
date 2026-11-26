@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tablepro_keys::encoding::Version;
 use tablepro_records::Kind;
 
-use super::keys::{Family, KeyMark, Opens, family};
+use super::keys::{Family, KeyMark, Opens, family, key_mark};
 use super::refill::Cut;
 use super::scopes::refresh;
 use super::{PassCtx, ServiceSync, begin};
@@ -150,7 +150,7 @@ impl ServiceSync {
         let waiting = can_open
             && self.holds_scope_key(scope).await?
             && !self.waiting_envelopes(scope).await?.is_empty()
-            && waited.get(&scope) != Some(&self.key_mark(scope, can_open).await?);
+            && waited.get(&scope) != Some(&key_mark(&self.state, scope, can_open).await?);
         // A build that reads a kind the last pull did not fetches again what it held for it (0054, Rules).
         let mut reading: Vec<KindName> = adapters.iter().map(|adapter| KindName::of(adapter.kind())).collect();
         reading.sort();
@@ -187,7 +187,7 @@ impl ServiceSync {
             if self.waiting_envelopes(scope).await?.is_empty() {
                 waited.remove(&scope);
             } else {
-                waited.insert(scope, self.key_mark(scope, can_open).await?);
+                waited.insert(scope, key_mark(&self.state, scope, can_open).await?);
             }
         } else if pull.new_waits {
             waited.remove(&scope);

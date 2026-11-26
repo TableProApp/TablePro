@@ -3,7 +3,9 @@
 // in `key_pending`, the stop reports and each team's roster once its pull is caught up.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
+use sha2::{Digest, Sha256};
 use tablepro_keys::encoding::{KeyPurpose, Version};
 use tablepro_keys::envelope::EnvelopeId;
 use tablepro_records::Kind;
@@ -16,7 +18,7 @@ use crate::api::key_flows::{
     ArrivalOrder, CaughtUp, KeyApplied, KeyArrival, KeyHooks, LockCause, PushBackVerdict, Roster, StopAction,
 };
 use crate::api::scopes::ScopeInfo;
-use crate::api::state::{KeyVersionState, PendingFlow, Row, RowKey, RowRange, StoppedCause, Table};
+use crate::api::state::{KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateStore, StoppedCause, Table};
 use crate::api::transport::{Change, ChangeOutcome, Proof, PulledRecord, PushBatch};
 use crate::engine::key_base;
 
@@ -28,15 +30,52 @@ pub(super) enum Opens {
     Waits,
 }
 
-// What a scope's waiting envelopes were judged against: its key rows and the personal scope's, how many key objects
-// both hold, the pins, and whether the device could check envelopes at all. Key objects only ever join the tables, so
-// only a change here can let a waiting envelope open.
+// What a scope's waiting envelopes were judged against: its key rows and the personal scope's, a digest of the key
+// objects both hold, the pins, and whether the device could check envelopes at all. Only a change here can let a
+// waiting envelope open.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct KeyMark {
     rows: Vec<Row>,
-    objects: usize,
+    objects: [u8; 32],
     pins: Vec<Row>,
     can_open: bool,
+}
+
+pub(super) async fn key_mark(
+    state: &Arc<dyn StateStore>,
+    scope: ScopeName,
+    can_open: bool,
+) -> Result<KeyMark, SyncError> {
+    let mut txn = begin(state).await?;
+    let mut scopes = vec![scope];
+    if scope != ScopeName::Personal {
+        scopes.push(ScopeName::Personal);
+    }
+    let mut rows = Vec::new();
+    let mut objects = Sha256::new();
+    for scope in scopes {
+        rows.extend(txn.scan(&RowRange::Scope(Table::KeyVersions, scope)).await?);
+        for row in txn.scan(&RowRange::Scope(Table::KeyObjects, scope)).await? {
+            if let Row::KeyObject(object) = row {
+                for part in [
+                    object.scope.wire().as_bytes(),
+                    object.kind.as_str().as_bytes(),
+                    object.record_id.as_bytes(),
+                    object.fields.as_bytes(),
+                ] {
+                    objects.update(u64::try_from(part.len()).unwrap_or(u64::MAX).to_be_bytes());
+                    objects.update(part);
+                }
+                objects.update([u8::from(object.applied)]);
+            }
+        }
+    }
+    Ok(KeyMark {
+        rows,
+        objects: objects.finalize().into(),
+        pins: txn.scan(&RowRange::Table(Table::KeyPins)).await?,
+        can_open,
+    })
 }
 
 // Which flow reads a key kind: the account's own objects, an approval session's, a reset's, or a team's.
@@ -147,26 +186,6 @@ impl ServiceSync {
             }
             Err(error) => Err(error),
         }
-    }
-
-    pub(super) async fn key_mark(&self, scope: ScopeName, can_open: bool) -> Result<KeyMark, SyncError> {
-        let mut txn = begin(&self.state).await?;
-        let mut scopes = vec![scope];
-        if scope != ScopeName::Personal {
-            scopes.push(ScopeName::Personal);
-        }
-        let mut rows = Vec::new();
-        let mut objects = 0;
-        for scope in scopes {
-            rows.extend(txn.scan(&RowRange::Scope(Table::KeyVersions, scope)).await?);
-            objects += txn.scan(&RowRange::Scope(Table::KeyObjects, scope)).await?.len();
-        }
-        Ok(KeyMark {
-            rows,
-            objects,
-            pins: txn.scan(&RowRange::Table(Table::KeyPins)).await?,
-            can_open,
-        })
     }
 
     // Whether this device holds the scope's key in force, so envelopes kept waiting can be read again.
@@ -377,5 +396,50 @@ impl ServiceSync {
         if let Err(error) = self.keys.roster_read(team, Roster::of(info, caught_up)).await {
             tracing::debug!(code = error.code(), "the roster waits for the next pass");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::key_mark;
+    use crate::api::ids::{KindName, ScopeName};
+    use crate::api::state::{KeyObjectRow, Row, RowKey};
+    use crate::keys::test_fakes::Rig;
+    use crate::keys::test_world::World;
+
+    fn object(scope: ScopeName, record_id: &str) -> Row {
+        Row::KeyObject(KeyObjectRow {
+            scope,
+            kind: KindName::parse("key.sas").unwrap(),
+            record_id: record_id.to_owned(),
+            fields: "{}".to_owned(),
+            applied: true,
+        })
+    }
+
+    // A session step purged while a ring arrives leaves as many key objects as before: the mark still moves, so the
+    // envelopes that wait on the ring are read again.
+    #[tokio::test]
+    async fn the_key_mark_moves_when_one_key_object_gives_way_to_another() {
+        let world = World::load();
+        let rig = Rig::new(&world.origin, world.account("P"));
+        let state = rig.service.state().clone();
+        let team = ScopeName::Team(world.team);
+        rig.put([object(ScopeName::Personal, "request/nonce")]).await;
+        let before = key_mark(&state, team, true).await.unwrap();
+
+        let mut txn = rig.service.begin().await.unwrap();
+        txn.delete(&RowKey::KeyObject(
+            ScopeName::Personal,
+            KindName::parse("key.sas").unwrap(),
+            "request/nonce".to_owned(),
+        ))
+        .await
+        .unwrap();
+        txn.put(object(team, "ring")).await.unwrap();
+        txn.commit().await.unwrap();
+        let after = key_mark(&state, team, true).await.unwrap();
+
+        assert_ne!(before, after);
     }
 }

@@ -41,8 +41,11 @@ use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DpopKey, Proof, Pus
 use crate::engine::key_base;
 
 pub use account::{AccountObjectsPlan, HeldDeviceKeys, KeptDevice, OwnAccount, ResetKeys};
+// The restore tests' state in memory and the vectors' world, for the unit tests of other modules.
 pub use personal::{CurrentPersonal, ScopeKeyPlan};
 pub use pins::{IkStanding, PinChange};
+#[cfg(test)]
+pub(crate) use restore::tests::{fakes as test_fakes, world as test_world};
 
 // Microseconds since the Unix epoch in UTC, as the service's times are (0051, Pull).
 pub trait Clock: Send + Sync {
