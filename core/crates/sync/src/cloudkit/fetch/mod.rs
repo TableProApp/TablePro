@@ -17,7 +17,9 @@ use crate::api::adapter::{RecordAdapter, StoreStamp};
 use crate::api::cloudkit::{CloudKitChanges, CloudKitFailure, CloudKitFetched, CloudKitTransport};
 use crate::api::error::{StateError, SyncError};
 use crate::api::ids::{Cursor, KindName, RecordKey, ScopeName};
-use crate::api::state::{HeldReason, Row, RowKey, RowRange, StateIdentity, StateStore, StoreRow, StoresKindRow, Table};
+use crate::api::state::{
+    HeldReason, Row, RowKey, RowRange, StateIdentity, StateStore, StateTxn, StoreRow, StoresKindRow, Table,
+};
 use crate::cloudkit::codes;
 use crate::engine::{Backoff, StopSignal};
 
@@ -332,15 +334,7 @@ impl<'a> Fetcher<'a> {
             Some(Cursor::CloudKit(token)) => Some(token),
             _ => None,
         });
-        let refill_held = txn
-            .scan(&RowRange::Scope(Table::Held, SCOPE))
-            .await?
-            .into_iter()
-            .filter_map(|row| match row {
-                Row::Held(held) if held.reason == HeldReason::RefusedInRefill => Some(held.key),
-                _ => None,
-            })
-            .collect();
+        let refill_held = held_in_refill(txn.as_mut()).await?;
         let mut start = Start {
             token,
             refill: BTreeSet::new(),
@@ -419,15 +413,10 @@ impl<'a> Fetcher<'a> {
                 .get(&RowKey::StoresKind(adapter.store().to_owned(), KindName::of(*kind)))
                 .await?
                 .is_some();
-            match (owed, self.categories.syncs(*kind)) {
-                (true, true) => {
-                    start.refill.insert(*kind);
-                }
-                (true, false) if marked.contains(adapter.store()) => {
-                    start.keep_copies.insert(*kind);
-                }
-                (true, false) => {}
-                (false, _) => {}
+            if owed && self.categories.syncs(*kind) {
+                start.refill.insert(*kind);
+            } else if owed && marked.contains(adapter.store()) {
+                start.keep_copies.insert(*kind);
             }
         }
         if wrote {
@@ -483,6 +472,19 @@ impl<'a> Fetcher<'a> {
 // Clears the zone's token, so the next fetch reads the whole zone. Called when a category turns on or the build
 // stores a kind it did not: a delta never sends again what earlier pulls passed over, and the deletions that waited
 // for that category apply once a full fetch read it.
+// Records a refill's store refused, which take the pull on whatever page brings them.
+async fn held_in_refill(txn: &mut dyn StateTxn) -> Result<BTreeSet<RecordKey>, SyncError> {
+    Ok(txn
+        .scan(&RowRange::Scope(Table::Held, SCOPE))
+        .await?
+        .into_iter()
+        .filter_map(|row| match row {
+            Row::Held(held) if held.reason == HeldReason::RefusedInRefill => Some(held.key),
+            _ => None,
+        })
+        .collect())
+}
+
 pub async fn read_everything_again(state: &dyn StateStore) -> Result<(), SyncError> {
     let mut txn = state.begin().await?;
     if let Some(Row::Scope(mut scope)) = txn.get(&RowKey::Scope(SCOPE)).await? {
