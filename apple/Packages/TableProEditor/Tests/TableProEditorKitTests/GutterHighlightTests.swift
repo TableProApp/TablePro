@@ -60,4 +60,18 @@ struct GutterHighlightTests {
         #expect(highlighted.contains(firstID))
         #expect(!highlighted.contains(lastID))
     }
+
+    @Test("A ranged selection marks only the lines being drawn")
+    func rangedSelectionIsBoundedToTheDrawnLines() throws {
+        let controller = Mock.loadedTextViewController()
+        setText((0..<2_000).map { "SELECT \($0);" }.joined(separator: "\n"), on: controller)
+        controller.textView.selectionManager.setSelectedRange(controller.textView.documentRange)
+        let tenthLine = try #require(controller.textView.layoutManager.textLineForIndex(9))
+
+        let drawn = NSRange(location: 0, length: tenthLine.range.max)
+        let highlighted = controller.gutterView.highlightedLineIDs(in: drawn)
+
+        #expect(highlighted.count == 10)
+        #expect(controller.gutterView.highlightedLineIDs().count == 2_000)
+    }
 }

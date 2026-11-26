@@ -226,6 +226,37 @@ at compile time with `sqlx::migrate!` and run by `QueryHistory::open`.
 paging, and the `saved_queries` table. Favorites metadata, ordering, coherent reads
 and mutation notifications follow [core ADR 0017](../../core/docs/decisions/0017-favourites.md).
 
+`20261126000000_record_ids.sql` gives each saved query, folder and history entry
+the id it syncs under ([core ADR 0052](../../core/docs/decisions/0052-synced-records-have-canonical-ids.md)):
+
+- `record_id` is a random UUIDv4 kept as lower-case text. The store's API names a
+  query or a folder by it; a history entry keeps its integer `id` for what never
+  leaves the device, which the full-text index joins on and pages, pins and the
+  upgrade copies use.
+- A folder's parent and a query's folder are record ids with no foreign key, and
+  no synced table has a referential action: deleting a folder deletes the folders
+  under it and moves their queries to the top in the store's own code. A
+  reference nothing answers to reads as the top level.
+- A query or a folder with no connection shows in every connection. A
+  connection's list and snapshot hold those too, and deleting a connection's data
+  keeps them.
+- Names stay unique among one connection's queries, or among those with none;
+  folder names among one connection's folders under one parent, or none. A
+  keyword is unique among every query that shows where its query shows.
+- Saved queries and folders keep `created_at` and `updated_at` in whole
+  milliseconds.
+- `SavedQueries::put` and `SavedQueryFolders::put` write records a pull or
+  another store brings under their own ids. Where two meet in one place under
+  one name or keyword, the one created first keeps it, then the lowest id; each
+  other takes the first free `<name> (2)` or loses its keyword, as an edit of
+  this device's own.
+- A put stores a folder name in the form the list shows and a keyword as
+  `set_keyword` keeps it, since the unique indexes compare the stored text; a
+  keyword a local save refuses is cleared. Names keep their first 200
+  characters. A folder cycle the batch closes sends its folder created last to
+  the top, and a folder 64 levels deep or more goes to the top too. Each such
+  change is an edit of this device's own.
+
 **An applied migration is never edited.** Each change is a new timestamped
 file with its own fixture test. Editing one in place changes its checksum,
 which makes sqlx refuse every database that already applied it.
@@ -309,7 +340,7 @@ during a refresh and clear when the front connection changes. Confirmed saves,
 renames, moves and deletions hold the process until the write finishes.
 
 The editor first inserts without replacement and asks for confirmation if the
-name is taken. Confirmed replacement updates the same row id. The existence check
+name is taken. Confirmed replacement keeps the query's record id. The existence check
 and write share a transaction, so simultaneous saves report which one
 replaced the query. Renames update only the stored name and modification
 time, leaving newer SQL and the connection identity intact.
@@ -482,8 +513,10 @@ that replaces it with a newer format ([core ADR 0012](../../core/docs/decisions/
 - `tablepro_storage::upgrade_copies` makes them. A JSON document's copy is its
   bytes as read, written 0600 by `write_private_blocking`; a copy whose bytes
   match the newest one is not made again. The history's is `VACUUM INTO` through
-  the open connection, so it holds what the WAL holds too, into a 0600
-  `.partial` file. Its full-text indexes are then optimized with `secure_delete`
+  the open connection, so it holds what the WAL holds too, into a `.partial`
+  name that is free: macOS 27's SQLite refuses any file already there, even an
+  empty one. SQLite creates it from the umask in the 0700 folder, and it is set
+  to 0600 right after. Its full-text indexes are then optimized with `secure_delete`
   on, since `VACUUM INTO` copies the words of entries deleted before, and only
   then is it synced and renamed into place.
 - Each file keeps its newest 3 copies (`KEPT_PER_FILE`); a new one deletes the

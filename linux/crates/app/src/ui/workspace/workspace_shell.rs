@@ -940,14 +940,14 @@ impl WorkspaceShell {
         dialog.present(self.imp().window.upgrade().as_ref());
     }
 
-    pub(crate) fn rename_favorite(&self, id: i64, name: String) {
+    pub(crate) fn rename_favorite(&self, id: Uuid, name: String) {
         self.change_favorites(
             async move |history| history.saved_queries().rename(id, &name).await,
             gettext("Could not rename that saved query."),
         );
     }
 
-    pub(crate) fn delete_favorite(&self, id: i64) {
+    pub(crate) fn delete_favorite(&self, id: Uuid) {
         self.change_favorites(
             async move |history| history.saved_queries().delete(id).await,
             gettext("Could not delete that saved query."),
@@ -1431,10 +1431,10 @@ mod tests {
         shell.reload_favorites();
         let current = shell.imp().favorites_generation.get();
         let saved = SavedQuery {
-            id: 1,
+            id: Uuid::from_u128(1),
             name: "Current".to_owned(),
             query: "SELECT 1".to_owned(),
-            connection_id: connection,
+            connection_id: Some(connection),
             connection_name: "Database".to_owned(),
             keyword: None,
             folder_id: None,

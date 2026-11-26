@@ -218,9 +218,10 @@ const SAVED_QUERY_FOLDER: &[(&str, Target)] = &[
     ("updated_at", Wire("updated_at")),
 ];
 
-// Pins stay on the device (0052, History).
+// The rowid and pins stay on the device (0052, History).
 const HISTORY_ENTRY: &[(&str, Target)] = &[
-    ("id", Id),
+    ("id", DeviceOnly),
+    ("record_id", Id),
     ("query", Wire("query")),
     ("driver_id", Wire("database_type")),
     ("connection_id", Wire("connection_id")),

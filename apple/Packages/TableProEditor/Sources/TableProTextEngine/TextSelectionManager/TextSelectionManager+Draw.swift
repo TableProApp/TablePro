@@ -28,6 +28,7 @@ extension TextSelectionManager {
             }
         }
         context.restoreGState()
+        noteSelectionsDrawn(in: rect)
     }
 
     /// Draws a highlighted line in the given rect.

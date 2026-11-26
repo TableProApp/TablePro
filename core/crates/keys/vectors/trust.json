@@ -2,7 +2,7 @@
   "area": "trust",
   "suite": "tp1",
   "format": 1,
-  "about": "The trust plaintext, its reading and what is left out for size (ADR 0056, Pins)",
+  "about": "The trust plaintext, its reading and what is left out for size (ADR 0056, Pins). A `generated` input is `count` pins alike but for their accounts, with `versions` after them: pin i's account, from 0, is `first_account` plus i times `account_step`, read as a 128-bit big-endian integer.",
   "encode": [
     {
       "name": "an open alert, a replaced IK and a version per purpose",
@@ -28,7 +28,9 @@
       "output": {
         "pins": 2,
         "versions": 3
-      }
+      },
+      "server": null,
+      "clause": "A plaintext with a member the reader does not know"
     },
     {
       "name": "a duplicate member",
@@ -38,7 +40,8 @@
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"alert\":false,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "a missing member",
@@ -48,7 +51,8 @@
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "a wrongly typed member",
@@ -58,7 +62,8 @@
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":\"3\",\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "an unknown v",
@@ -68,7 +73,8 @@
         "text": "{\"v\":2,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "an av of 0",
@@ -78,7 +84,8 @@
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":0,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "a lower-case UUID",
@@ -88,7 +95,8 @@
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019a6b2e-8f3c-7d41-b2a5-6c0e9f14d7b8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019a6b2e-8f3c-7d41-b2a5-6c0e9f14d7b8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019a6b2e-8f3c-7d41-b2a5-6c0e9f14d7b8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "an unknown pin how",
@@ -98,7 +106,8 @@
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJIk\",\"av\":3,\"how\":\"trusted\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "an IK of 31 bytes",
@@ -108,7 +117,8 @@
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"ik\":\"HaTg_MJMS7pb8U5ZkfWj9QtmPLowzKviRmVKan3LJA\",\"av\":3,\"how\":\"compared\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B31-4C8D-7F02-9A16-3E7D5B2C8F90\",\"ik\":\"4YWKjY5FXHQBeo7Jibc0trb_RQC1nQPEAzGncK2-2Qk\",\"av\":2,\"how\":\"replaced\",\"alert\":true,\"replaced\":[\"tM2y1RpgLaNY8uCtLFavuUpPj-3nG_5gsJtF0SQEeoQ\"]}],\"versions\":[{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"personal\",\"version\":3,\"record\":\"UO_JY4KJ3u8ubmEnB7VV6hrg1gZfKV6W3wcV_DFx5nI\"},{\"owner\":\"019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8\",\"purpose\":\"history\",\"version\":3,\"record\":\"jaejADOjyVYQJw8Astj-N1dWpga2piIFv4TJE677g00\"},{\"owner\":\"019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63\",\"purpose\":\"team\",\"version\":7,\"record\":\"2SC_IJPuEM6NSWnoy7Jp_y5syjyoHmZVSHTMSpNMtlY\"}]}"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     }
   ],
   "fit": [
@@ -129,6 +139,7 @@
     {
       "name": "first-use pins with no alert and no replaced IK are left out first, from the end",
       "op": "trust_fit",
+      "row": "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit; a first-use pin with a replaced IK, kept",
       "input": {
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}",
         "record_limit": 1677,
@@ -138,7 +149,9 @@
         "record_len": 1677,
         "fits": true,
         "text": "{\"v\":1,\"pins\":[{\"account\":\"019A6B40-0000-7000-8000-000000000001\",\"ik\":\"-WwsWNRKndCF10y1ym0kpn2F7PpOrFXC5xYUzHj2pl8\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000002\",\"ik\":\"4L41VF0wrnFdpCfAEVlbwQgQ4Qv-KklXYetPk4FTi8U\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[\"ssTgOMErUpgQiKNzMY3p5nTkNXyyruwO-BHf0twN5MY\"]},{\"account\":\"019A6B40-0000-7000-8000-000000000003\",\"ik\":\"sjereq3RwoEcrcXyGZv1ezPeG6RM0u4iAS71vp9xFyo\",\"av\":1,\"how\":\"first_use\",\"alert\":false,\"replaced\":[]},{\"account\":\"019A6B40-0000-7000-8000-000000000004\",\"ik\":\"cMI_oMmAkof47o2_Rnzqfs5WA2MiCm8egq2vjIPiXzY\",\"av\":1,\"how\":\"first_use\",\"alert\":true,\"replaced\":[]}],\"versions\":[]}"
-      }
+      },
+      "server": null,
+      "clause": "a first-use pin with a replaced IK, kept"
     },
     {
       "name": "only the alert and the replaced IK are left",
@@ -166,7 +179,9 @@
       "output": {
         "record_len": 1677,
         "fits": false
-      }
+      },
+      "server": "too_large",
+      "clause": "A trust record whose alerts, comparisons and replaced IKs alone pass the record limit"
     },
     {
       "name": "the most compared pins that fit 1 MiB",
@@ -176,9 +191,13 @@
         "generated": {
           "count": 5079,
           "first_account": "019A0000-0000-7000-8000-000000000000",
+          "account_step": 1,
           "ik": "KHrUN4yrfgXFBmRiq6XC-oNKUV4ZFj5d67bG88eNK00",
           "av": 1,
-          "how": "compared"
+          "how": "compared",
+          "alert": false,
+          "replaced": [],
+          "versions": []
         },
         "record_limit": 1048576,
         "wrapper_av": 2
@@ -187,7 +206,9 @@
         "record_len": 1043426,
         "fits": true,
         "pins": 5079
-      }
+      },
+      "server": "applied",
+      "clause": "A rotation or a trust record at the record limit"
     },
     {
       "name": "one compared pin more",
@@ -197,9 +218,13 @@
         "generated": {
           "count": 5080,
           "first_account": "019A0000-0000-7000-8000-000000000000",
+          "account_step": 1,
           "ik": "KHrUN4yrfgXFBmRiq6XC-oNKUV4ZFj5d67bG88eNK00",
           "av": 1,
-          "how": "compared"
+          "how": "compared",
+          "alert": false,
+          "replaced": [],
+          "versions": []
         },
         "record_limit": 1048576,
         "wrapper_av": 2
@@ -207,7 +232,9 @@
       "output": {
         "record_len": 1048888,
         "fits": false
-      }
+      },
+      "server": "too_large",
+      "clause": "A rotation or a trust record at the record limit"
     }
   ],
   "team": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63"

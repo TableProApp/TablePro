@@ -16,6 +16,7 @@ async fn open(root: &tempfile::TempDir) -> QueryHistory {
 
 fn run(query: &str, connection: Uuid) -> NewEntry {
     NewEntry {
+        record_id: Uuid::new_v4(),
         query: query.to_owned(),
         driver_id: "postgres".to_owned(),
         connection_id: connection,
@@ -31,7 +32,7 @@ fn saved(name: &str, connection: Uuid) -> NewSavedQuery {
     NewSavedQuery {
         name: name.to_owned(),
         query: "SELECT 1".to_owned(),
-        connection_id: connection,
+        connection_id: Some(connection),
         connection_name: "prod".to_owned(),
     }
 }
@@ -101,7 +102,7 @@ async fn each_store_write_raises_the_sequence() {
     raised(history.identity().await.expect("identity"), "rename");
     history
         .saved_query_folders()
-        .create(connection, "Reports", None)
+        .create(Some(connection), "Reports", None)
         .await
         .expect("folder");
     raised(history.identity().await.expect("identity"), "folder");
@@ -189,7 +190,7 @@ async fn every_saved_query_and_folder_write_tells_the_journal_its_kinds() {
     queries.rename(query.id, "c").await.expect("rename");
     queries.set_query(query.id, "SELECT 2").await.expect("set query");
     queries.set_keyword(query.id, Some("rev")).await.expect("keyword");
-    let folder = folders.create(connection, "Reports", None).await.expect("folder");
+    let folder = folders.create(Some(connection), "Reports", None).await.expect("folder");
     folders.rename(folder, "Monthly").await.expect("rename folder");
     queries
         .move_to_folder(query.id, Some(folder), None)
@@ -301,19 +302,21 @@ async fn every_favourite_and_table_folder_write_tells_the_journal_its_kind() {
 }
 
 #[tokio::test]
-async fn each_history_db_write_names_the_rows_it_wrote_and_deleted() {
+async fn each_history_db_write_names_the_records_it_wrote_and_deleted() {
     let root = tempfile::tempdir().expect("tempdir");
     let (history, journal) = journaled(&root).await;
     let connection = Uuid::new_v4();
     let queries = history.saved_queries();
     let folders = history.saved_query_folders();
-    let rows = |ids: &[i64]| ids.iter().copied().map(RecordRef::Row).collect::<Vec<_>>();
+    let rows = |ids: &[Uuid]| ids.iter().copied().map(RecordRef::Id).collect::<Vec<_>>();
 
-    let entry = history.record(run("SELECT 1", connection)).await.expect("record");
+    let ran = run("SELECT 1", connection);
+    let ran_id = ran.record_id;
+    let entry = history.record(ran).await.expect("record");
     let query = queries.save(saved("a", connection)).await.expect("save");
-    let folder = folders.create(connection, "Reports", None).await.expect("folder");
+    let folder = folders.create(Some(connection), "Reports", None).await.expect("folder");
     let inner = folders
-        .create(connection, "Monthly", Some(folder))
+        .create(Some(connection), "Monthly", Some(folder))
         .await
         .expect("subfolder");
     queries.move_to_folder(query.id, Some(inner), None).await.expect("file");
@@ -332,6 +335,6 @@ async fn each_history_db_write_names_the_rows_it_wrote_and_deleted() {
     );
     assert_eq!(
         calls[1],
-        vec![JournalEntry::new(RecordKind::HistoryEntry).deleted(rows(&[entry]))]
+        vec![JournalEntry::new(RecordKind::HistoryEntry).deleted(rows(&[ran_id]))]
     );
 }

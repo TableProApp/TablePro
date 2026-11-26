@@ -1,9 +1,25 @@
+macro_rules! columns {
+    () => {
+        "record_id, name, query, connection_id, connection_name, keyword, folder_record_id, sort_order, created_at, \
+         updated_at"
+    };
+}
+
+macro_rules! folder_columns {
+    () => {
+        "record_id, connection_id, name, parent_record_id, sort_order, created_at, updated_at"
+    };
+}
+
 mod deletion;
 mod folders;
 mod new_saved_query;
 mod ordering;
 #[cfg(test)]
 mod ordering_tests;
+mod put;
+#[cfg(test)]
+mod put_tests;
 mod saved_query;
 
 use std::time::SystemTime;
@@ -15,17 +31,13 @@ use uuid::Uuid;
 
 use crate::error::StorageError;
 use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
-use crate::unix_time::{from_unix, to_unix};
+use crate::stored_id::{optional_uuid_column, uuid_column};
+use crate::unix_time::{from_unix_millis, to_unix_millis};
 
 pub use folders::{SavedQueryFolder, SavedQueryFolders};
 pub use new_saved_query::NewSavedQuery;
+pub(crate) use put::free_name;
 pub use saved_query::SavedQuery;
-
-macro_rules! columns {
-    () => {
-        "id, name, query, connection_id, connection_name, keyword, folder_id, sort_order, created_at, updated_at"
-    };
-}
 
 const MAX_KEYWORD_CHARS: usize = 64;
 const MAX_QUERY_BYTES: usize = 1024 * 1024;
@@ -33,7 +45,7 @@ const MAX_NAME_CHARS: usize = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SaveOutcome {
-    pub id: i64,
+    pub id: Uuid,
     pub replaced: bool,
 }
 
@@ -50,6 +62,13 @@ pub struct SavedQueries {
     signals: Signals,
 }
 
+// The row a record id names, with what its writes need.
+struct Held {
+    rowid: i64,
+    owner: Option<String>,
+    folder: Option<String>,
+}
+
 impl SavedQueries {
     pub(crate) fn new(pool: SqlitePool, path: std::path::PathBuf, signals: Signals) -> Self {
         Self { pool, path, signals }
@@ -59,65 +78,85 @@ impl SavedQueries {
         self.signals.subscribe()
     }
 
-    fn wrote(&self, written: impl IntoIterator<Item = i64>, deleted: impl IntoIterator<Item = i64>) {
+    fn wrote(&self, written: impl IntoIterator<Item = Uuid>, deleted: impl IntoIterator<Item = Uuid>) {
         self.signals.changed(&[queries(written, deleted)]);
     }
 
     pub async fn save(&self, query: NewSavedQuery) -> Result<SaveOutcome, StorageError> {
         let name = checked_query(&query)?;
+        let owner = query.connection_id.map(|id| id.to_string());
         // Hold the write lock across both statements, so concurrent saves agree on which inserted.
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        let replaced: bool =
-            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM saved_queries WHERE connection_id = ? AND name = ?")
-                .bind(query.connection_id.to_string())
-                .bind(name)
-                .fetch_one(&mut *transaction)
-                .await?
-                > 0;
-        let now = to_unix(SystemTime::now());
-        let id = sqlx::query_scalar(
-            "INSERT INTO saved_queries (name, query, connection_id, connection_name, sort_order, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, \
-                 (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM saved_queries WHERE connection_id = ?3 AND folder_id IS NULL), ?5, ?5) \
-             ON CONFLICT (connection_id, name) DO UPDATE SET query = excluded.query, \
-                 connection_name = excluded.connection_name, updated_at = excluded.updated_at RETURNING id",
-        )
-        .bind(name).bind(&query.query).bind(query.connection_id.to_string())
-        .bind(&query.connection_name).bind(now)
-        .fetch_one(&mut *transaction).await?;
+        let now = to_unix_millis(SystemTime::now());
+        let held = sqlx::query("SELECT id, record_id FROM saved_queries WHERE connection_id IS ? AND name = ?")
+            .bind(&owner)
+            .bind(name)
+            .fetch_optional(&mut *transaction)
+            .await?;
+        let mut written = Vec::new();
+        let outcome = match held {
+            Some(row) => {
+                sqlx::query("UPDATE saved_queries SET query = ?, connection_name = ?, updated_at = ? WHERE id = ?")
+                    .bind(&query.query)
+                    .bind(&query.connection_name)
+                    .bind(now)
+                    .bind(row.try_get::<i64, _>("id")?)
+                    .execute(&mut *transaction)
+                    .await?;
+                SaveOutcome {
+                    id: uuid_column(&row, "record_id")?,
+                    replaced: true,
+                }
+            }
+            None => {
+                let (id, moved) = insert(&mut transaction, &query, name, owner.as_deref(), now).await?;
+                written = moved;
+                SaveOutcome { id, replaced: false }
+            }
+        };
+        written.push(outcome.id);
         transaction.commit().await?;
-        self.wrote([id], []);
-        Ok(SaveOutcome { id, replaced })
+        self.wrote(written, []);
+        Ok(outcome)
     }
 
-    pub async fn save_if_new(&self, query: NewSavedQuery) -> Result<Option<i64>, StorageError> {
+    pub async fn save_if_new(&self, query: NewSavedQuery) -> Result<Option<Uuid>, StorageError> {
         let name = checked_query(&query)?;
+        let owner = query.connection_id.map(|id| id.to_string());
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        let id = sqlx::query_scalar(
-            "INSERT INTO saved_queries (name, query, connection_id, connection_name, sort_order, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, \
-                 (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM saved_queries WHERE connection_id = ?3 AND folder_id IS NULL), ?5, ?5) \
-             ON CONFLICT (connection_id, name) DO NOTHING RETURNING id",
-        )
-        .bind(name).bind(&query.query).bind(query.connection_id.to_string())
-        .bind(&query.connection_name).bind(to_unix(SystemTime::now()))
-        .fetch_optional(&mut *transaction).await?;
-        transaction.commit().await?;
-        if let Some(id) = id {
-            self.wrote([id], []);
+        let taken: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM saved_queries WHERE connection_id IS ? AND name = ?")
+            .bind(&owner)
+            .bind(name)
+            .fetch_one(&mut *transaction)
+            .await?;
+        if taken > 0 {
+            return Ok(None);
         }
-        Ok(id)
+        let (id, mut written) = insert(
+            &mut transaction,
+            &query,
+            name,
+            owner.as_deref(),
+            to_unix_millis(SystemTime::now()),
+        )
+        .await?;
+        written.push(id);
+        transaction.commit().await?;
+        self.wrote(written, []);
+        Ok(Some(id))
     }
 
+    // A connection's list holds the queries with no connection too; None lists every query.
     pub async fn list(&self, connection: Option<Uuid>) -> Result<Vec<SavedQuery>, StorageError> {
         let rows = match connection {
             Some(id) => {
                 sqlx::query(concat!(
                     "SELECT ",
                     columns!(),
-                    " FROM saved_queries WHERE connection_id = ? ORDER BY name COLLATE NOCASE, id"
+                    " FROM saved_queries WHERE connection_id = ? OR connection_id IS NULL \
+                     ORDER BY name COLLATE NOCASE, id"
                 ))
                 .bind(id.to_string())
                 .fetch_all(&self.pool)
@@ -133,61 +172,70 @@ impl SavedQueries {
                 .await?
             }
         };
-        rows.into_iter().map(row_to_saved_query).collect()
+        rows.iter().map(row_to_saved_query).collect()
     }
 
+    // What one connection shows: its own queries and folders and those with no connection.
     pub async fn snapshot(&self, connection: Uuid) -> Result<SavedQueriesSnapshot, StorageError> {
         let mut transaction = self.pool.begin().await?;
         let queries = sqlx::query(concat!(
             "SELECT ",
             columns!(),
-            " FROM saved_queries WHERE connection_id = ? ORDER BY sort_order, name COLLATE NOCASE, id"
+            " FROM saved_queries WHERE connection_id = ? OR connection_id IS NULL \
+             ORDER BY sort_order, name COLLATE NOCASE, id"
         ))
         .bind(connection.to_string())
         .fetch_all(&mut *transaction)
         .await?
-        .into_iter()
+        .iter()
         .map(row_to_saved_query)
         .collect::<Result<Vec<_>, _>>()?;
-        let folders = sqlx::query(
-            "SELECT id, connection_id, name, parent_id, sort_order, created_at, updated_at \
-             FROM saved_query_folders WHERE connection_id = ? ORDER BY sort_order, name COLLATE NOCASE, id",
-        )
+        let folders = sqlx::query(concat!(
+            "SELECT ",
+            folder_columns!(),
+            " FROM saved_query_folders WHERE connection_id = ? OR connection_id IS NULL \
+             ORDER BY sort_order, name COLLATE NOCASE, id"
+        ))
         .bind(connection.to_string())
         .fetch_all(&mut *transaction)
         .await?
-        .into_iter()
+        .iter()
         .map(folders::row_to_folder)
         .collect::<Result<Vec<_>, _>>()?;
         transaction.commit().await?;
         Ok(SavedQueriesSnapshot { queries, folders })
     }
 
-    pub async fn get(&self, id: i64) -> Result<Option<SavedQuery>, StorageError> {
-        sqlx::query(concat!("SELECT ", columns!(), " FROM saved_queries WHERE id = ?"))
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?
-            .map(row_to_saved_query)
-            .transpose()
+    pub async fn get(&self, id: Uuid) -> Result<Option<SavedQuery>, StorageError> {
+        sqlx::query(concat!(
+            "SELECT ",
+            columns!(),
+            " FROM saved_queries WHERE record_id = ?"
+        ))
+        .bind(id.to_string())
+        .fetch_optional(&self.pool)
+        .await?
+        .as_ref()
+        .map(row_to_saved_query)
+        .transpose()
     }
 
-    pub async fn rename(&self, id: i64, name: &str) -> Result<(), StorageError> {
+    pub async fn rename(&self, id: Uuid, name: &str) -> Result<(), StorageError> {
         let name = checked_name(name)?;
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        let previous: Option<String> = sqlx::query_scalar("SELECT name FROM saved_queries WHERE id = ?")
-            .bind(id)
+        let row = sqlx::query("SELECT id, name FROM saved_queries WHERE record_id = ?")
+            .bind(id.to_string())
             .fetch_optional(&mut *transaction)
-            .await?;
-        let previous = previous.ok_or(StorageError::NotFound)?;
-        if previous == name {
+            .await?
+            .ok_or(StorageError::NotFound)?;
+        if row.try_get::<String, _>("name")? == name {
             return Ok(());
         }
         sqlx::query("UPDATE saved_queries SET name = ?, updated_at = ? WHERE id = ?")
             .bind(name)
-            .bind(to_unix(SystemTime::now()))
-            .bind(id)
+            .bind(to_unix_millis(SystemTime::now()))
+            .bind(row.try_get::<i64, _>("id")?)
             .execute(&mut *transaction)
             .await
             .map_err(|error| match &error {
@@ -200,7 +248,7 @@ impl SavedQueries {
     }
 
     // By id, so an edit made from a list read before a rename still reaches the query it showed.
-    pub async fn set_query(&self, id: i64, query: &str) -> Result<(), StorageError> {
+    pub async fn set_query(&self, id: Uuid, query: &str) -> Result<(), StorageError> {
         if query.len() > MAX_QUERY_BYTES {
             return Err(StorageError::TooLarge {
                 got: query.len(),
@@ -209,17 +257,18 @@ impl SavedQueries {
         }
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        let previous: Option<String> = sqlx::query_scalar("SELECT query FROM saved_queries WHERE id = ?")
-            .bind(id)
+        let row = sqlx::query("SELECT id, query FROM saved_queries WHERE record_id = ?")
+            .bind(id.to_string())
             .fetch_optional(&mut *transaction)
-            .await?;
-        if previous.ok_or(StorageError::NotFound)? == query {
+            .await?
+            .ok_or(StorageError::NotFound)?;
+        if row.try_get::<String, _>("query")? == query {
             return Ok(());
         }
         sqlx::query("UPDATE saved_queries SET query = ?, updated_at = ? WHERE id = ?")
             .bind(query)
-            .bind(to_unix(SystemTime::now()))
-            .bind(id)
+            .bind(to_unix_millis(SystemTime::now()))
+            .bind(row.try_get::<i64, _>("id")?)
             .execute(&mut *transaction)
             .await?;
         transaction.commit().await?;
@@ -227,50 +276,42 @@ impl SavedQueries {
         Ok(())
     }
 
-    pub async fn set_keyword(&self, id: i64, keyword: Option<&str>) -> Result<(), StorageError> {
-        let keyword: Option<String> = keyword
-            .map(str::trim)
-            .filter(|word| !word.is_empty())
-            .map(|word| word.nfc().collect());
-        if let Some(word) = &keyword
-            && (word.chars().count() > MAX_KEYWORD_CHARS
-                || word.chars().any(|c| {
-                    c.is_whitespace() || c.is_control() || tablepro_core::unicode_blank::is_default_ignorable(c)
-                }))
-        {
-            return Err(StorageError::KeywordInvalid { max: MAX_KEYWORD_CHARS });
-        }
+    pub async fn set_keyword(&self, id: Uuid, keyword: Option<&str>) -> Result<(), StorageError> {
+        let keyword = match keyword {
+            Some(word) => keyword_form(word)?,
+            None => None,
+        };
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        let row = sqlx::query("SELECT connection_id, keyword FROM saved_queries WHERE id = ?")
-            .bind(id)
+        let row = sqlx::query("SELECT id, connection_id, keyword FROM saved_queries WHERE record_id = ?")
+            .bind(id.to_string())
             .fetch_optional(&mut *transaction)
             .await?
             .ok_or(StorageError::NotFound)?;
-        let owner: String = row.try_get("connection_id")?;
+        let rowid: i64 = row.try_get("id")?;
+        let owner: Option<String> = row.try_get("connection_id")?;
         if row.try_get::<Option<String>, _>("keyword")? == keyword {
             return Ok(());
         }
         if let Some(word) = &keyword {
+            // A keyword expands in every connection its query shows in, so none of those may hold it.
             let held: Vec<String> = sqlx::query_scalar(
-                "SELECT keyword FROM saved_queries WHERE connection_id = ? AND id <> ? AND keyword IS NOT NULL",
+                "SELECT keyword FROM saved_queries WHERE id <> ?1 AND keyword IS NOT NULL \
+                 AND (?2 IS NULL OR connection_id = ?2 OR connection_id IS NULL)",
             )
-            .bind(owner)
-            .bind(id)
+            .bind(rowid)
+            .bind(&owner)
             .fetch_all(&mut *transaction)
             .await?;
-            let key = word.to_lowercase();
-            if held
-                .iter()
-                .any(|held| held.nfc().collect::<String>().to_lowercase() == key)
-            {
+            let key = keyword_key(word);
+            if held.iter().any(|held| keyword_key(held) == key) {
                 return Err(StorageError::KeywordTaken);
             }
         }
         sqlx::query("UPDATE saved_queries SET keyword = ?, updated_at = ? WHERE id = ?")
             .bind(keyword)
-            .bind(to_unix(SystemTime::now()))
-            .bind(id)
+            .bind(to_unix_millis(SystemTime::now()))
+            .bind(rowid)
             .execute(&mut *transaction)
             .await
             .map_err(|error| match &error {
@@ -282,61 +323,71 @@ impl SavedQueries {
         Ok(())
     }
 
-    pub async fn set_folder(&self, id: i64, folder: Option<i64>) -> Result<(), StorageError> {
+    pub async fn set_folder(&self, id: Uuid, folder: Option<Uuid>) -> Result<(), StorageError> {
         self.move_query(id, folder, None, true).await
     }
 
-    pub async fn move_to_folder(&self, id: i64, folder: Option<i64>, before: Option<i64>) -> Result<(), StorageError> {
+    pub async fn move_to_folder(
+        &self,
+        id: Uuid,
+        folder: Option<Uuid>,
+        before: Option<Uuid>,
+    ) -> Result<(), StorageError> {
         self.move_query(id, folder, before, false).await
     }
 
     async fn move_query(
         &self,
-        id: i64,
-        folder: Option<i64>,
-        before: Option<i64>,
+        id: Uuid,
+        folder: Option<Uuid>,
+        before: Option<Uuid>,
         keep_position: bool,
     ) -> Result<(), StorageError> {
+        let folder = folder.map(|folder| folder.to_string());
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        let row = sqlx::query("SELECT connection_id, folder_id FROM saved_queries WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&mut *transaction)
-            .await?
-            .ok_or(StorageError::NotFound)?;
-        let owner: String = row.try_get("connection_id")?;
-        let old_folder: Option<i64> = row.try_get("folder_id")?;
-        if let Some(folder) = folder {
-            let target: Option<String> =
-                sqlx::query_scalar("SELECT connection_id FROM saved_query_folders WHERE id = ?")
+        let Held {
+            rowid,
+            owner,
+            folder: old_folder,
+        } = held(&mut transaction, id).await?;
+        if let Some(folder) = &folder {
+            let target: Option<Option<String>> =
+                sqlx::query_scalar("SELECT connection_id FROM saved_query_folders WHERE record_id = ?")
                     .bind(folder)
                     .fetch_optional(&mut *transaction)
                     .await?;
-            if target.as_deref() != Some(owner.as_str()) {
-                return Err(StorageError::NotFound);
+            // The folder has to show wherever the query does.
+            match target {
+                Some(None) => {}
+                Some(Some(target)) if owner.as_deref() == Some(target.as_str()) => {}
+                _ => return Err(StorageError::NotFound),
             }
         }
         if keep_position && old_folder == folder {
             transaction.commit().await?;
             return Ok(());
         }
-        if before == Some(id) {
-            return if old_folder == folder {
-                Ok(())
-            } else {
-                Err(StorageError::NotFound)
-            };
-        }
-        let mut place: Vec<i64> = sqlx::query_scalar(
-            "SELECT id FROM saved_queries WHERE connection_id = ? AND folder_id IS ? \
-             ORDER BY sort_order, name COLLATE NOCASE, id",
-        )
-        .bind(&owner)
-        .bind(folder)
-        .fetch_all(&mut *transaction)
-        .await?;
+        let before = match before {
+            Some(before) if before == id => {
+                return if old_folder == folder {
+                    Ok(())
+                } else {
+                    Err(StorageError::NotFound)
+                };
+            }
+            Some(before) => Some(
+                sqlx::query_scalar::<_, i64>("SELECT id FROM saved_queries WHERE record_id = ?")
+                    .bind(before.to_string())
+                    .fetch_optional(&mut *transaction)
+                    .await?
+                    .ok_or(StorageError::NotFound)?,
+            ),
+            None => None,
+        };
+        let mut place = ordering::query_place(&mut transaction, owner.as_deref(), folder.as_deref()).await?;
         let original = place.clone();
-        place.retain(|held| *held != id);
+        place.retain(|held| *held != rowid);
         let at = match before {
             Some(before) => place
                 .iter()
@@ -344,71 +395,143 @@ impl SavedQueries {
                 .ok_or(StorageError::NotFound)?,
             None => place.len(),
         };
-        place.insert(at, id);
+        place.insert(at, rowid);
         if old_folder == folder && place == original {
             return Ok(());
         }
-        sqlx::query("UPDATE saved_queries SET folder_id = ?, updated_at = ? WHERE id = ?")
-            .bind(folder)
-            .bind(to_unix(SystemTime::now()))
-            .bind(id)
+        sqlx::query("UPDATE saved_queries SET folder_record_id = ?, updated_at = ? WHERE id = ?")
+            .bind(&folder)
+            .bind(to_unix_millis(SystemTime::now()))
+            .bind(rowid)
             .execute(&mut *transaction)
             .await?;
         let mut moved = vec![id];
         moved.extend(ordering::set_query_order(&mut transaction, &place).await?);
         if old_folder != folder {
-            moved.extend(ordering::compact_queries(&mut transaction, &owner, old_folder).await?);
+            moved.extend(ordering::compact_queries(&mut transaction, owner.as_deref(), old_folder.as_deref()).await?);
         }
         transaction.commit().await?;
         self.wrote(moved, []);
         Ok(())
     }
 
-    pub async fn delete(&self, id: i64) -> Result<(), StorageError> {
+    pub async fn delete(&self, id: Uuid) -> Result<(), StorageError> {
         let mut connection = self.pool.acquire().await?;
         let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
-        let row = sqlx::query("SELECT connection_id, folder_id FROM saved_queries WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&mut *transaction)
-            .await?
-            .ok_or(StorageError::NotFound)?;
+        let Held { rowid, owner, folder } = held(&mut transaction, id).await?;
         crate::query_history::trim_upgrade_copies(
             &self.path,
             &[crate::query_history::CopyDelete {
                 table: "saved_queries",
                 sql: "DELETE FROM main.saved_queries WHERE id = ?".to_owned(),
-                binds: vec![crate::query_history::Bind::Integer(id)],
+                binds: vec![crate::query_history::Bind::Integer(rowid)],
             }],
         )
         .await?;
         sqlx::query("DELETE FROM saved_queries WHERE id = ?")
-            .bind(id)
+            .bind(rowid)
             .execute(&mut *transaction)
             .await?;
-        let moved = ordering::compact_queries(
-            &mut transaction,
-            &row.try_get::<String, _>("connection_id")?,
-            row.try_get("folder_id")?,
-        )
-        .await?;
+        let moved = ordering::compact_queries(&mut transaction, owner.as_deref(), folder.as_deref()).await?;
         transaction.commit().await?;
         self.wrote(moved, [id]);
         Ok(())
     }
 
+    // The connection's own queries, folders and favourites; those with no connection stay for the others.
     pub async fn delete_for_connection(&self, connection: Uuid) -> Result<usize, StorageError> {
-        let (queries, changed) = deletion::delete_connection(&self.pool, &self.path, connection).await?;
+        let (count, changed) = deletion::delete_connection(&self.pool, &self.path, connection).await?;
         if !changed.is_empty() {
             self.signals.changed(&changed);
         }
-        Ok(queries)
+        Ok(count)
+    }
+
+    // Queries a pull or another store brings, each under its own id, written over any this store holds
+    // under that id. Returns the ids whose name or keyword the store changed to settle a collision,
+    // the edits that go up as this device's own (core ADR 0052, Collisions).
+    pub async fn put(&self, queries: &[SavedQuery]) -> Result<Vec<Uuid>, StorageError> {
+        if queries.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut connection = self.pool.acquire().await?;
+        let mut transaction = connection.begin_with(AssertSqlSafe("BEGIN IMMEDIATE")).await?;
+        let settled = put::put_queries(&mut transaction, queries, SystemTime::now()).await?;
+        transaction.commit().await?;
+        self.wrote(queries.iter().map(|query| query.id).chain(settled.iter().copied()), []);
+        Ok(settled)
     }
 }
 
-pub(super) fn queries(written: impl IntoIterator<Item = i64>, deleted: impl IntoIterator<Item = i64>) -> JournalEntry {
+async fn held(database: &mut sqlx::SqliteConnection, id: Uuid) -> Result<Held, StorageError> {
+    let row = sqlx::query("SELECT id, connection_id, folder_record_id FROM saved_queries WHERE record_id = ?")
+        .bind(id.to_string())
+        .fetch_optional(&mut *database)
+        .await?
+        .ok_or(StorageError::NotFound)?;
+    Ok(Held {
+        rowid: row.try_get("id")?,
+        owner: row.try_get("connection_id")?,
+        folder: row.try_get("folder_record_id")?,
+    })
+}
+
+// A new query goes at the end of the top level of the list it shows in.
+async fn insert(
+    database: &mut sqlx::SqliteConnection,
+    query: &NewSavedQuery,
+    name: &str,
+    owner: Option<&str>,
+    now: i64,
+) -> Result<(Uuid, Vec<Uuid>), StorageError> {
+    let id = Uuid::new_v4();
+    let (order, moved) = ordering::next_query_order(database, owner, None).await?;
+    sqlx::query(
+        "INSERT INTO saved_queries \
+         (record_id, name, query, connection_id, connection_name, sort_order, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(id.to_string())
+    .bind(name)
+    .bind(&query.query)
+    .bind(owner)
+    .bind(&query.connection_name)
+    .bind(order)
+    .bind(now)
+    .bind(now)
+    .execute(&mut *database)
+    .await?;
+    Ok((id, moved))
+}
+
+pub(super) fn queries(
+    written: impl IntoIterator<Item = Uuid>,
+    deleted: impl IntoIterator<Item = Uuid>,
+) -> JournalEntry {
     JournalEntry::new(RecordKind::SavedQuery)
-        .wrote(written.into_iter().map(RecordRef::Row))
-        .deleted(deleted.into_iter().map(RecordRef::Row))
+        .wrote(written.into_iter().map(RecordRef::Id))
+        .deleted(deleted.into_iter().map(RecordRef::Id))
+}
+
+// Two keywords are one when they read the same in any case.
+pub(crate) fn keyword_key(word: &str) -> String {
+    word.nfc().collect::<String>().to_lowercase()
+}
+
+// Trimmed and composed, one word of at most 64 characters; None for a blank one.
+fn keyword_form(word: &str) -> Result<Option<String>, StorageError> {
+    let word: String = word.trim().nfc().collect();
+    if word.is_empty() {
+        return Ok(None);
+    }
+    if word.chars().count() > MAX_KEYWORD_CHARS
+        || word
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || tablepro_core::unicode_blank::is_default_ignorable(c))
+    {
+        return Err(StorageError::KeywordInvalid { max: MAX_KEYWORD_CHARS });
+    }
+    Ok(Some(word))
 }
 
 fn checked_name(name: &str) -> Result<&str, StorageError> {
@@ -436,19 +559,18 @@ fn checked_query(query: &NewSavedQuery) -> Result<&str, StorageError> {
     Ok(name)
 }
 
-fn row_to_saved_query(row: sqlx::sqlite::SqliteRow) -> Result<SavedQuery, StorageError> {
-    let connection_id: String = row.try_get("connection_id")?;
+fn row_to_saved_query(row: &sqlx::sqlite::SqliteRow) -> Result<SavedQuery, StorageError> {
     Ok(SavedQuery {
-        id: row.try_get("id")?,
+        id: uuid_column(row, "record_id")?,
         name: row.try_get("name")?,
         query: row.try_get("query")?,
-        connection_id: Uuid::parse_str(&connection_id).map_err(|error| StorageError::Schema(error.to_string()))?,
+        connection_id: optional_uuid_column(row, "connection_id")?,
         connection_name: row.try_get("connection_name")?,
         keyword: row.try_get("keyword")?,
-        folder_id: row.try_get("folder_id")?,
+        folder_id: optional_uuid_column(row, "folder_record_id")?,
         order: row.try_get("sort_order")?,
-        created_at: from_unix(row.try_get::<i64, _>("created_at")?),
-        updated_at: from_unix(row.try_get::<i64, _>("updated_at")?),
+        created_at: from_unix_millis(row.try_get::<i64, _>("created_at")?),
+        updated_at: from_unix_millis(row.try_get::<i64, _>("updated_at")?),
     })
 }
 
@@ -467,7 +589,7 @@ mod tests {
         NewSavedQuery {
             name: name.to_owned(),
             query: sql.to_owned(),
-            connection_id: connection,
+            connection_id: Some(connection),
             connection_name: "local".to_owned(),
         }
     }
@@ -487,7 +609,7 @@ mod tests {
         let saved = store.get(saved.id).await.expect("get").expect("the saved query");
         assert_eq!(saved.name, "daily report");
         assert_eq!(saved.query, "SELECT 1");
-        assert_eq!(saved.connection_id, connection);
+        assert_eq!(saved.connection_id, Some(connection));
         assert_eq!(saved.connection_name, "local");
     }
 
@@ -555,9 +677,12 @@ mod tests {
             .expect("open");
         let (store, folders) = (history.saved_queries(), history.saved_query_folders());
         let connection = Uuid::new_v4();
-        let reports = folders.create(connection, "Reports", None).await.expect("a folder");
+        let reports = folders
+            .create(Some(connection), "Reports", None)
+            .await
+            .expect("a folder");
         let monthly = folders
-            .create(connection, "Monthly", Some(reports))
+            .create(Some(connection), "Monthly", Some(reports))
             .await
             .expect("a subfolder");
         let a = store
@@ -576,7 +701,7 @@ mod tests {
             .move_to_folder(b, Some(monthly), Some(a))
             .await
             .expect("file b before a");
-        async fn placed(store: &SavedQueries, id: i64) -> (Option<i64>, i64) {
+        async fn placed(store: &SavedQueries, id: Uuid) -> (Option<Uuid>, i64) {
             let query = store.get(id).await.expect("get").expect("the query");
             (query.folder_id, query.order)
         }
@@ -584,7 +709,7 @@ mod tests {
         assert_eq!(placed(&store, a).await, (Some(monthly), 1));
 
         assert!(matches!(
-            folders.create(connection, "REPORTS", None).await,
+            folders.create(Some(connection), "REPORTS", None).await,
             Err(StorageError::FolderNameTaken)
         ));
         assert!(matches!(
@@ -592,7 +717,7 @@ mod tests {
             Err(StorageError::FolderCycle { .. })
         ));
         let other = folders
-            .create(Uuid::new_v4(), "Elsewhere", None)
+            .create(Some(Uuid::new_v4()), "Elsewhere", None)
             .await
             .expect("another connection's");
         assert!(matches!(
@@ -877,7 +1002,7 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let store = store(&root).await;
 
-        let error = store.rename(404, "new").await.expect_err("no such query");
+        let error = store.rename(Uuid::new_v4(), "new").await.expect_err("no such query");
 
         assert!(matches!(error, StorageError::NotFound), "{error:?}");
     }
@@ -969,8 +1094,8 @@ mod tests {
             .save_if_new(new_query("daily", "SELECT 2", connection))
             .await
             .expect("save if new");
-        store.rename(404, "gone").await.expect_err("no such query");
-        store.delete(404).await.expect_err("no such query");
+        store.rename(Uuid::new_v4(), "gone").await.expect_err("no such query");
+        store.delete(Uuid::new_v4()).await.expect_err("no such query");
         store
             .delete_for_connection(Uuid::new_v4())
             .await
@@ -993,7 +1118,7 @@ mod tests {
             .save(NewSavedQuery {
                 name: "daily".to_owned(),
                 query: "SELECT 2".to_owned(),
-                connection_id: connection,
+                connection_id: Some(connection),
                 connection_name: "renamed".to_owned(),
             })
             .await
@@ -1019,7 +1144,7 @@ mod tests {
 
         queries.set_query(id, "SELECT 7").await.expect("set the query");
         let missing = queries
-            .set_query(id + 100, "SELECT 2")
+            .set_query(Uuid::new_v4(), "SELECT 2")
             .await
             .expect_err("an unknown id");
         let large = queries

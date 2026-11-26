@@ -83,7 +83,8 @@
         "text": "TPF2:A4FD8Y7FJMF1FACQBX5HSJ0Z4MR4YXTT8EJRQ2XEQPVKMX5GS3Y0"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "Errors table: keys.encoding, QR text that does not parse"
     },
     {
       "name": "non-zero final bits",
@@ -93,7 +94,8 @@
         "text": "TPF1:ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZH"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "Errors table: keys.encoding, QR text that does not parse"
     },
     {
       "name": "lower case",
@@ -103,7 +105,8 @@
         "text": "TPF1:a4fd8y7fjmf1facqbx5hsj0z4mr4yxtt8ejrq2xeqpvkmx5gs3y0"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "Errors table: keys.encoding, QR text that does not parse"
     },
     {
       "name": "grouped",
@@ -113,7 +116,8 @@
         "text": "TPF1:A4FD8Y7FJMF1FACQBX5HSJ0Z4-MR4YXTT8EJRQ2XEQPVKMX5GS3Y0"
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "Errors table: keys.encoding, QR text that does not parse"
     }
   ]
 }
