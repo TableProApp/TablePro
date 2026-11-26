@@ -476,8 +476,10 @@ that replaces it with a newer format ([core ADR 0012](../../core/docs/decisions/
 - `tablepro_storage::upgrade_copies` makes them. A JSON document's copy is its
   bytes as read, written 0600 by `write_private_blocking`; a copy whose bytes
   match the newest one is not made again. The history's is `VACUUM INTO` through
-  the open connection, so it holds what the WAL holds too, into a 0600
-  `.partial` file. Its full-text indexes are then optimized with `secure_delete`
+  the open connection, so it holds what the WAL holds too, into a `.partial`
+  name that is free: macOS 27's SQLite refuses any file already there, even an
+  empty one. SQLite creates it from the umask in the 0700 folder, and it is set
+  to 0600 right after. Its full-text indexes are then optimized with `secure_delete`
   on, since `VACUUM INTO` copies the words of entries deleted before, and only
   then is it synced and renamed into place.
 - Each file keeps its newest 3 copies (`KEPT_PER_FILE`); a new one deletes the
