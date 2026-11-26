@@ -138,6 +138,13 @@ impl IcloudEngine {
     }
 }
 
+impl IcloudEngine {
+    // The person turned sync off: no pass runs until the app opens sync again.
+    pub(crate) fn stop(&self) {
+        self.stop.stop();
+    }
+}
+
 impl Drop for IcloudEngine {
     // The pass in flight drops its CloudKit call, which cancels the Swift task.
     fn drop(&mut self) {

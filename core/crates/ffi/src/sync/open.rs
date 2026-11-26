@@ -125,6 +125,7 @@ fn own_device_store(_: &Tasks) -> Option<Arc<dyn sync::HostDeviceStore>> {
 impl SyncService {
     // On the runtime. An engine that cannot start keeps why, which its calls answer; the others run.
     pub(crate) async fn open(tasks: Tasks, parts: OpenParts) -> Arc<Self> {
+        let (cloudkit, files) = (parts.cloudkit.clone(), parts.files.clone());
         let signals = Arc::new(Signals::default());
         let forwarding = forward(Arc::clone(&signals), parts.listener, &tasks);
         let hosts = match (parts.files, parts.device_store) {
@@ -186,6 +187,8 @@ impl SyncService {
             icloud,
             service: Arc::new(ServiceSlot::new(first, restart, kept)),
             connections: parts.connections,
+            cloudkit,
+            files,
             _forward: forwarding,
         })
     }

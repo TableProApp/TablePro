@@ -578,3 +578,33 @@ async fn the_quit_call_waits_for_the_downgrade_marks_and_says_when_one_failed() 
     assert!(marked >= 1, "no mark reached the Swift metadata");
     assert!(refused.is_err(), "{refused:?}");
 }
+
+// Off to TablePro Sync is the first upload; the move back needs the count the person confirmed; a zone this device never
+// used is not one to delete.
+#[tokio::test]
+async fn a_provider_change_runs_its_own_move_and_refuses_the_ones_that_need_the_person() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let off = open(&tasks, |parts| OpenParts {
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        ..parts
+    })
+    .await;
+    let on = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::TableproSync),
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        cloudkit: Some(Arc::new(FakeCloudKit::signed_in("_a")) as Arc<dyn tablepro_sync::api::CloudKitTransport>),
+        ..parts
+    })
+    .await;
+
+    let first = off.service.choose_provider(SyncProviderTag::TableproSync).await;
+    let back = on.service.choose_provider(SyncProviderTag::Icloud).await.unwrap_err();
+    let zone = on.service.delete_icloud_zone().await.unwrap_err();
+    let same = on.service.choose_provider(SyncProviderTag::TableproSync).await;
+
+    assert!(first.is_ok(), "{first:?}");
+    assert_eq!(code(&back), "sync.not_allowed");
+    assert_eq!(code(&zone), "sync.not_allowed");
+    assert!(same.is_ok(), "{same:?}");
+}

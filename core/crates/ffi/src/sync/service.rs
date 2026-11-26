@@ -113,6 +113,9 @@ pub struct SyncService {
     pub(crate) service: Arc<ServiceSlot>,
     // This Core's connections, which name what a removed party could read.
     pub(crate) connections: Option<tablepro_storage::ConnectionStore>,
+    // CloudKit and this Core's state files, which the moves between providers need whatever the provider is.
+    pub(crate) cloudkit: Option<Arc<dyn tablepro_sync::api::CloudKitTransport>>,
+    pub(crate) files: Option<Arc<dyn tablepro_sync::api::StateFiles>>,
     pub(crate) _forward: AbortOnDropHandle<()>,
 }
 
@@ -437,33 +440,6 @@ impl SyncService {
         Ok(())
     }
 
-    // Among what the managed policy allows (core ADR 0055).
-    pub async fn choose_provider(&self, provider: SyncProviderTag) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.choose_provider(provider.into()).await })
-            .await
-    }
-
-    pub async fn plan_move_to_service(&self) -> Result<MovePlanInfo, CoreError> {
-        self.on_control(move |control| async move { control.plan_move_to_service().await.map(MovePlanInfo::from) })
-            .await
-    }
-
-    pub async fn move_to_service(&self) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.move_to_service().await })
-            .await
-    }
-
-    pub async fn plan_move_to_icloud(&self) -> Result<MoveBackPlanInfo, CoreError> {
-        self.on_control(move |control| async move { control.plan_move_to_icloud().await.map(MoveBackPlanInfo::from) })
-            .await
-    }
-
-    // Refused unless the count is the plan's, which the person confirmed.
-    pub async fn move_to_icloud(&self, confirmed_deletions: u64) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.move_to_icloud(confirmed_deletions).await })
-            .await
-    }
-
     pub async fn choose_for_new_identity(&self, choice: NewIdentityChoiceTag) -> Result<(), CoreError> {
         self.on_control(move |control| async move { control.choose_for_new_identity(choice.into()).await })
             .await
@@ -471,11 +447,6 @@ impl SyncService {
 
     pub async fn upload_again(&self) -> Result<(), CoreError> {
         self.on_control(move |control| async move { control.upload_again().await })
-            .await
-    }
-
-    pub async fn delete_icloud_zone(&self) -> Result<(), CoreError> {
-        self.on_control(move |control| async move { control.delete_icloud_zone().await })
             .await
     }
 
