@@ -75,13 +75,11 @@ internal final class ProviderMoves: ObservableObject {
             .removeDuplicates()
             .dropFirst()
             .sink { [weak self] _ in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    if !writesProvider {
-                        choice += 1
-                    }
-                    Task { @MainActor [weak self] in self?.reconcile() }
+                guard let self else { return }
+                if !writesProvider {
+                    choice += 1
                 }
+                Task { @MainActor [weak self] in self?.reconcile() }
             }
     }
 

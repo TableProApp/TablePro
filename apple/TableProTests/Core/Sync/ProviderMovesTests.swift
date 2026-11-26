@@ -247,14 +247,14 @@ struct ProviderMovesTests {
         let gate = AsyncGate()
         fixture.engine.update { $0.moveGate = gate }
 
-        let first = Task { try await fixture.moves.moveToService() }
+        let first = Task { try await fixture.moves.moveToService() == .moved }
         await gate.arrived(1)
         await #expect(throws: ProviderMoveError.inProgress) {
             try await fixture.moves.moveToService()
         }
         await gate.open()
 
-        #expect(try await first.value == .moved)
+        #expect(try await first.value)
     }
 
     @Test("Off chosen while the engine moves wins: the engine goes off after the move, with no first pass")
@@ -264,12 +264,12 @@ struct ProviderMovesTests {
         fixture.engine.update { $0.moveGate = gate }
         fixture.moves.start()
 
-        let move = Task { try await fixture.moves.moveToService() }
+        let move = Task { try await fixture.moves.moveToService() == .moved }
         await gate.arrived(1)
         fixture.slice.update { $0.provider = .off }
         await gate.open()
 
-        #expect(try await move.value == .moved)
+        #expect(try await move.value)
         try await waitUntil { fixture.engine.status().provider == .off }
         #expect(!fixture.log.all.contains("syncNow"))
         #expect(fixture.provider == .off)
@@ -281,7 +281,7 @@ struct ProviderMovesTests {
         let gate = AsyncGate()
         fixture.iCloudPassGate = gate
 
-        let move = Task { try await fixture.moves.moveToService() }
+        let move = Task { try await fixture.moves.moveToService() == .moved }
         await gate.arrived(1)
         fixture.slice.update { $0.provider = .off }
         await gate.open()

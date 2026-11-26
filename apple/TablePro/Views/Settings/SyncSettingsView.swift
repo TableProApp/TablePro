@@ -41,7 +41,7 @@ struct SyncSettingsView: View {
     }
 
     var body: some View {
-        let layout = layout
+        let layout = self.layout
         let presentation = SyncStatusPresentation(status: coordinator.syncStatus)
 
         Form {
@@ -60,7 +60,7 @@ struct SyncSettingsView: View {
             if let notice = layout.serviceNotice {
                 Section {
                     SyncServiceNoticeRow(notice: notice) {
-                        sheet = .moveToService
+                        sheet = .moveToService(fromICloud: movesFromICloud)
                     }
                 }
             }
@@ -104,8 +104,8 @@ struct SyncSettingsView: View {
         }
         .sheet(item: $sheet) { sheet in
             switch sheet {
-            case .moveToService:
-                SyncMoveSheet(moves: moves, fromICloud: settings.provider == .iCloud)
+            case .moveToService(let fromICloud):
+                SyncMoveSheet(moves: moves, fromICloud: fromICloud)
             case .moveToICloud:
                 SyncMoveBackSheet(moves: moves)
             }
@@ -143,6 +143,12 @@ struct SyncSettingsView: View {
         .accessibilityIdentifier("settings-sync-provider")
     }
 
+    // Read when the sheet opens, since the move itself changes the stored provider. A profile that forced TablePro Sync
+    // on a Mac that was on iCloud still leaves the devices on iCloud behind.
+    private var movesFromICloud: Bool {
+        settings.provider == .iCloud || moves.engineStatus?.provider == .icloud
+    }
+
     // The picker shows the stored provider; a move changes it only once the sheet confirms.
     private var providerSelection: Binding<SyncProviderSetting> {
         Binding(
@@ -172,7 +178,7 @@ struct SyncSettingsView: View {
                 LicenseGateAlert.present(for: .serviceSync, in: NSApp.keyWindow)
                 return
             }
-            sheet = .moveToService
+            sheet = .moveToService(fromICloud: movesFromICloud)
         }
     }
 
@@ -413,11 +419,11 @@ struct SyncSettingsView: View {
     }
 }
 
-enum SyncProviderSheet: String, Identifiable {
-    case moveToService
+enum SyncProviderSheet: Hashable, Identifiable {
+    case moveToService(fromICloud: Bool)
     case moveToICloud
 
-    var id: String { rawValue }
+    var id: Self { self }
 }
 
 extension SyncProviderSetting {
