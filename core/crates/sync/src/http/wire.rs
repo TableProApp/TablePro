@@ -7,7 +7,6 @@ use serde_json::Value;
 use serde_json::value::RawValue;
 use tablepro_cloud_api::v2::types;
 use tablepro_keys::encoding::{AccountId, Version};
-use uuid::Uuid;
 
 use crate::api::ids::{ChangeTag, Cursor, DeviceRowId, EpochId, KindName, ScopeName, parse_typeid, typeid};
 use crate::api::scopes::{
@@ -93,10 +92,11 @@ fn record(record: Record<'_>) -> Result<PulledRecord, Malformed> {
         (true, _) => (None, None),
     };
     // A reason this build does not know keeps the device's copy, as a policy's does.
-    let deleted = record.deleted.then(|| match record.deleted_reason.as_deref() {
+    let reason = match record.deleted_reason.as_deref() {
         Some("user") => DeletedReason::User,
         _ => DeletedReason::Policy,
-    });
+    };
+    let deleted = record.deleted.then_some(reason);
     Ok(PulledRecord {
         kind: KindName::parse(&record.kind).map_err(|_| Malformed)?,
         record_id: record.record_id,
@@ -318,6 +318,6 @@ pub(super) fn device_row_ok(device: &DeviceRowId) -> bool {
 }
 
 #[cfg(test)]
-pub(super) fn epoch_of(uuid: Uuid) -> String {
+pub(super) fn epoch_of(uuid: uuid::Uuid) -> String {
     epoch_text(EpochId(uuid))
 }
