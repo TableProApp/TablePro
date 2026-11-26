@@ -12,8 +12,13 @@ pub mod carry;
 pub mod categories;
 pub mod conflict;
 pub mod fields;
+pub mod history;
+pub mod library;
+pub mod saved_queries;
 pub mod settings;
+pub mod store_journal;
 pub mod team_library;
+pub mod unsettled;
 
 use std::collections::BTreeSet;
 
@@ -35,7 +40,8 @@ pub(crate) async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send 
 }
 
 // A store's copy as it goes up and as a merge reads the device's side: the members the store cannot hold put back
-// from the base, and the base's value in each member the device keeps to itself or that waits for the person.
+// from the base, the base's value in each member the store holds as it reads the base's (`unsettled::reading`), and
+// the base's value in each member the device keeps to itself or that waits for the person.
 pub fn local_view(
     kind: Kind,
     scope: ScopeName,
@@ -44,7 +50,8 @@ pub fn local_view(
     held: &BTreeSet<String>,
 ) -> Value {
     let carried = carry::carried(kind, stored, base);
-    fields::with_members_of(kind, scope, &carried, base, held)
+    let read = unsettled::read(kind, &carried, base);
+    fields::with_members_of(kind, scope, &read, base, held)
 }
 
 // What a pull's store write took: the identity after the last write that landed, and the changes the store refused.

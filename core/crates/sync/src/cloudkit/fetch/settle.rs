@@ -15,11 +15,13 @@ use super::pending::Staged;
 use super::stores::{Local, Planned, carried, overlay};
 use super::{Counts, Fetcher, PROFILES, SCOPE};
 use crate::adapters::approval::{self, Gated};
+use crate::adapters::unsettled;
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
 use crate::api::state::{
-    ApprovalRow, BaseRow, DeferredRow, HeldReason, HeldRow, Row, RowKey, ScopeRow, Standing, StateTxn,
+    ApprovalDecision, ApprovalRow, BaseRow, DeferredRow, HeldReason, HeldRow, Row, RowKey, ScopeRow, Standing,
+    StateTxn,
 };
 use crate::api::transport::{DeletedReason, PulledRecord};
 
@@ -138,6 +140,30 @@ fn held_deletion(key: &RecordKey) -> PulledRecord {
     }
 }
 
+fn base_fields(base: Option<&BaseRow>) -> Option<&Value> {
+    base.and_then(|base| base.fields.as_ref())
+}
+
+fn merged_fields(merged: &Merged) -> Option<&Value> {
+    match merged {
+        Merged::Record(fields)
+        | Merged::Contested { record: fields, .. }
+        | Merged::DeletionContested { kept: fields, .. } => Some(fields),
+        Merged::Deleted | Merged::Reseal => None,
+    }
+}
+
+// What the pulled copy settles of the device's marks on a copy an earlier build wrote.
+fn settled(kind: Kind, merged: Merged, server: &Value) -> Merged {
+    match merged {
+        Merged::Record(mut fields) => {
+            unsettled::settle(kind, &mut fields, server);
+            Merged::Record(fields)
+        }
+        merged => merged,
+    }
+}
+
 impl Fetcher<'_> {
     pub(super) async fn settle(&self, batch: Batch) -> Result<Counts, SyncError> {
         let mut moved = String::new();
@@ -235,13 +261,24 @@ impl<'s, 'f> Settle<'s, 'f> {
             View::Missing => None,
         };
         let pull_wins = self.pull_wins.contains(&copy.kind);
+        let read = self.read(copy.kind, &key, record.as_ref()).await?;
         let merged = self
-            .merged(copy.kind, &key, record.as_ref(), Some(&copy.fields), pull_wins)
+            .merged(copy.kind, &key, read.as_ref(), Some(&copy.fields), pull_wins)
             .await?;
-        let stored = record.as_ref().map(|record| &record.fields);
         let found = self.found(&key).await?;
-        match approval::gate(&mut self.txn, &key, copy.kind, stored, merged).await? {
+        let undecided: BTreeSet<String> = found
+            .approvals
+            .iter()
+            .filter(|row| row.decision != ApprovalDecision::Approved)
+            .map(|row| row.field.clone())
+            .collect();
+        let held = record.as_ref().map(|record| {
+            let (base, merged) = (base_fields(found.base.as_ref()), merged_fields(&merged));
+            unsettled::approval_view(copy.kind, &record.fields, base, merged, &undecided)
+        });
+        match approval::gate(&mut self.txn, &key, copy.kind, held.as_ref(), merged).await? {
             Gated::Apply(merged) => {
+                let merged = settled(copy.kind, merged, &copy.fields);
                 if let Some(planned) = local_change(record.as_ref(), merged) {
                     self.plan_held(copy.kind, &key, planned, held_change(&copy), found);
                 }
@@ -302,11 +339,30 @@ impl<'s, 'f> Settle<'s, 'f> {
         })
     }
 
-    async fn found(&mut self, key: &RecordKey) -> Result<Found, SyncError> {
-        let base = match self.txn.get(&RowKey::Base(key.clone())).await? {
-            Some(Row::Base(base)) => Some(base),
-            _ => None,
+    // The store's copy as the device reads it against the base: what a copy an earlier build wrote leaves unsaid reads
+    // as the base's, so it is neither an edit nor a value the person has to approve again.
+    async fn read(
+        &mut self,
+        kind: Kind,
+        key: &RecordKey,
+        record: Option<&LocalRecord>,
+    ) -> Result<Option<LocalRecord>, SyncError> {
+        let Some(record) = record else {
+            return Ok(None);
         };
+        let base = self.base(key).await?;
+        Ok(Some(LocalRecord {
+            fields: unsettled::read(
+                kind,
+                &record.fields,
+                base.as_ref().and_then(|base| base.fields.as_ref()),
+            ),
+            ..record.clone()
+        }))
+    }
+
+    async fn found(&mut self, key: &RecordKey) -> Result<Found, SyncError> {
+        let base = self.base(key).await?;
         let approvals = approval::rows_of(&mut self.txn, key).await?;
         Ok(Found { base, approvals })
     }
@@ -350,6 +406,7 @@ impl<'s, 'f> Settle<'s, 'f> {
         // Otherwise a content edit here revives the record: it stays, and with no base it goes up as a create. A
         // store in refill went back in time, so what differs from the base there is no edit.
         let pull_wins = self.pull_wins.contains(&kind);
+        let record = self.read(kind, key, record.as_ref()).await?;
         let merged = self.merged(kind, key, record.as_ref(), None, pull_wins).await?;
         let stored = record.as_ref().map(|record| &record.fields);
         let found = self.found(key).await?;

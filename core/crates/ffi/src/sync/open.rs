@@ -4,7 +4,11 @@ use std::sync::Arc;
 
 use tablepro_records::Kind;
 use tablepro_session::runtime::Tasks;
+use tablepro_storage::{ChangeJournal, ConnectionStore, QueryHistory};
 use tablepro_sync::SyncError;
+use tablepro_sync::adapters::library::{DriverNames, StoreStanding};
+use tablepro_sync::adapters::settings::ConnectionStanding;
+use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::{self as sync, StateFiles, TransportError};
 use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::engine::SystemClock;
@@ -34,6 +38,10 @@ pub(crate) struct OpenParts {
     pub(crate) settings: Option<Arc<dyn sync::HostSettings>>,
     pub(crate) device_store: Option<Arc<dyn sync::HostDeviceStore>>,
     pub(crate) legacy_mirror: Option<Arc<dyn sync::LegacyMirror>>,
+    // This Core's connection library; None on a Core opened without storage.
+    pub(crate) library: Option<ConnectionStore>,
+    // This Core's history database; None on a Core opened without storage or when it could not open.
+    pub(crate) history: Option<QueryHistory>,
     // The sign-in's `/v2/sync` link, or why there is none.
     pub(crate) link: Result<ServiceLink, SyncError>,
     // The sign-in's session as sync opened, read before the link, which a later start must still be.
@@ -98,6 +106,8 @@ impl Core {
                     tasks: tasks.clone(),
                 }) as Arc<dyn sync::LegacyMirror>
             }),
+            library: self.connection_store().ok(),
+            history: self.synced_history().await,
             link: Err(TransportError::SignedOut.into()),
             session: None,
             listener: Arc::from(listener),
@@ -109,6 +119,32 @@ impl Core {
             Ok(SyncService::open(tasks, parts).await)
         })
         .await
+    }
+}
+
+impl Core {
+    // The store every caller of `history` shares, so its writes reach the engines' journals.
+    async fn synced_history(&self) -> Option<QueryHistory> {
+        self.paths.as_ref()?;
+        match self.history().await {
+            Ok(store) => Some(store.history.clone()),
+            Err(error) => {
+                tracing::warn!(
+                    code = error.code(),
+                    "saved queries and history do not sync: the history did not open"
+                );
+                None
+            }
+        }
+    }
+}
+
+// The Apple apps keep a connection's engine as the Mac's `DatabaseType` names it, Linux and Windows as the core's
+// driver id.
+fn driver_names(platform: SyncPlatformTag) -> DriverNames {
+    match platform {
+        SyncPlatformTag::Macos | SyncPlatformTag::Ios => DriverNames::Mac,
+        SyncPlatformTag::Linux | SyncPlatformTag::Windows => DriverNames::Core,
     }
 }
 
@@ -131,12 +167,30 @@ impl SyncService {
         let signals = Arc::new(Signals::default());
         let forwarding = forward(Arc::clone(&signals), parts.listener, &tasks);
         let hosts = match (parts.files, parts.device_store) {
-            (Some(files), Some(device_store)) => Ok(Hosts {
-                files,
-                device_store,
-                settings: parts.settings,
-                events: signals,
-            }),
+            (Some(files), Some(device_store)) => {
+                let store_journal = StoreJournal::new();
+                if let Some(history) = &parts.history {
+                    history.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+                }
+                if let Some(store) = &parts.library {
+                    store.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+                }
+                let standing = parts
+                    .library
+                    .clone()
+                    .map(|store| Arc::new(StoreStanding(store)) as Arc<dyn ConnectionStanding>);
+                Ok(Hosts {
+                    files,
+                    device_store,
+                    settings: parts.settings,
+                    events: signals,
+                    library: parts.library,
+                    names: driver_names(parts.config.platform),
+                    history: parts.history,
+                    standing,
+                    store_journal,
+                })
+            }
             (None, _) => Err(SyncError::NotAllowed {
                 what: "sync on a Core opened without storage",
             }),

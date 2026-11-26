@@ -178,6 +178,8 @@ fn exhaustive_connection(connection: SavedConnection) {
         cloud_sql_proxy: _,
         socks_proxy: _,
         tunnel_command: _,
+        tls_mode_unsettled: _,
+        ssh_profile_unlinked: _,
     } = device;
     let TlsConfig {
         mode: _,
@@ -316,6 +318,8 @@ fn the_connection_table_names_every_member_the_store_holds() {
             "device.cloud_sql_proxy",
             "device.socks_proxy",
             "device.tunnel_command",
+            "device.tls_mode_unsettled",
+            "device.ssh_profile_unlinked",
             "unknown",
         ])
     );

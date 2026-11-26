@@ -28,6 +28,7 @@ mod profiles;
 mod ssh;
 #[cfg(test)]
 mod store_tests;
+mod synced;
 mod write_guard;
 
 pub use additions::ImportedConnection;
@@ -42,6 +43,7 @@ pub use ssh::{
     RemoteFileAccess, SavedSshAuth, SavedSshConfig, SshJumpAuth, SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm,
     SshTotpMode,
 };
+pub use synced::{LibraryChange, SyncedLibrary};
 use write_guard::WriteGuard;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

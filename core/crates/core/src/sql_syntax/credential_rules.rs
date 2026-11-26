@@ -2,8 +2,9 @@ use super::SqlGrammar;
 use super::statement_tokens::StatementToken;
 
 /// What marks a statement as one whose text can hold a password or a
-/// connection secret, for one engine. Each driver declares its own next
-/// to its dialect. Words compare without regard to case.
+/// connection secret, for one engine. Each engine's are in
+/// `engine_credentials`, which its driver and sync both read. Words
+/// compare without regard to case.
 ///
 /// Prefixes are looked for at every word, not only where a statement
 /// starts: a T-SQL batch needs no semicolon between its statements, and

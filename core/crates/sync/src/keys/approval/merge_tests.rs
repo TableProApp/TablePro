@@ -22,7 +22,10 @@ fn v(value: u32) -> Version {
 }
 
 fn retired(byte: u8, av: u32) -> Replaced {
-    Replaced { ik: ik(byte), av: v(av) }
+    Replaced {
+        ik: ik(byte),
+        av: v(av),
+    }
 }
 
 fn ik(byte: u8) -> Ed25519Public {

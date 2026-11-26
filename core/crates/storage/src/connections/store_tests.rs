@@ -187,6 +187,8 @@ fn every_device_field() -> DeviceOnly {
             aws_profile: String::new(),
             aws_region: String::new(),
         }),
+        tls_mode_unsettled: true,
+        ssh_profile_unlinked: true,
     }
 }
 

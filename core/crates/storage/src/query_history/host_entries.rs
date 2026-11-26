@@ -14,8 +14,8 @@ use crate::error::StorageError;
 use crate::unix_time::to_unix;
 
 impl QueryHistory {
-    // In one transaction. An entry this store already holds keeps its row, as `record` keeps it. Returns how many
-    // were new.
+    // In one transaction. An entry this store already holds keeps its row, as `record` keeps it, and one the person
+    // deleted stays deleted until sync has pushed that. Returns how many were new.
     pub async fn put(&self, entries: &[NewEntry]) -> Result<u64, StorageError> {
         if let Some(entry) = entries.iter().find(|entry| entry.query.len() > MAX_QUERY_BYTES) {
             return Err(StorageError::TooLarge {
@@ -36,7 +36,9 @@ impl QueryHistory {
             let added = sqlx::query(
                 "INSERT INTO history (record_id, query, query_folded, driver_id, connection_id, connection_name, \
                  executed_at, duration_ms, rows_affected, success, cancelled, error) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (record_id) DO NOTHING",
+                 SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? \
+                 WHERE NOT EXISTS (SELECT 1 FROM history_tombstones WHERE record_id = ?) \
+                 ON CONFLICT (record_id) DO NOTHING",
             )
             .bind(entry.record_id.to_string())
             .bind(&entry.query)
@@ -50,6 +52,7 @@ impl QueryHistory {
             .bind(success)
             .bind(cancelled)
             .bind(error)
+            .bind(entry.record_id.to_string())
             .execute(&mut *transaction)
             .await?
             .rows_affected();

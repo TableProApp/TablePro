@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tablepro_keys::encoding::Version;
 use tablepro_records::Kind;
 use tablepro_records::move_marker::{self, MoveMarker};
+use tablepro_records::schema::readable;
 
 use super::keys::{Family, HistoryOpens, KeyMark, Opens, family, key_mark};
 use super::refill::Cut;
@@ -15,7 +16,7 @@ use super::scopes::refresh;
 use super::{PassCtx, ServiceSync, begin};
 use crate::adapters::approval::{self, Split};
 use crate::adapters::categories::DeviceCategories;
-use crate::adapters::{apply_keeping, conflict, local_view};
+use crate::adapters::{apply_keeping, conflict, local_view, unsettled};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey, ScopeName};
@@ -23,7 +24,7 @@ use crate::api::key_flows::{ArrivalOrder, CaughtUp};
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{
     ApprovalDecision, ApprovalRow, BaseRow, ConflictRow, DeferredRow, DeletedHistoryRow, HeldReason, HeldRow, Row,
-    RowKey, RowRange, ScopeRow, Table,
+    RowKey, RowRange, ScopeRow, Standing, Table,
 };
 use crate::api::transport::{DeletedReason, Proof, PullRequest, PulledPage, PulledRecord, TransportError};
 use crate::engine::{Judgement, base_of, settle, settle_moved};
@@ -454,6 +455,14 @@ impl ServiceSync {
                 writes.held.push(held(HeldReason::Unreadable, key, record));
                 continue;
             }
+            // A copy without what a store needs to hold it is one this build cannot read: held by id, never applied,
+            // so no pass reads its absence from the store as a deletion (0054, Rules for both providers).
+            if let (Some(kind), Some(fields), None) = (record.kind.known(), record.fields.as_ref(), record.deleted)
+                && !readable(kind, &record.record_id, fields)
+            {
+                writes.held.push(held(HeldReason::Unreadable, key, record));
+                continue;
+            }
             if let Some(next) = family(pull.scope, &record.kind) {
                 // What the server holds now, which a push-back after a restore judges by (0051, After a restore).
                 // With its fields, so a different record at the id never reads as this device's copy.
@@ -590,6 +599,11 @@ impl ServiceSync {
             let stored = local.and_then(|local| local.records.get(&key.record_id));
             if !pull.categories.syncs(kind) {
                 Self::while_off(&key, kind, judgement, base, stored, &record, writes);
+                continue;
+            }
+            // A copy this device keeps to itself takes nothing a pull brings, a deletion included, as on iCloud (0054,
+            // Rules for both providers).
+            if stored.is_some_and(|stored| stored.standing == Standing::LocalOnly) {
                 continue;
             }
             if kind == Kind::HistoryEntry && !self.history_taken(&inputs, base, &record, writes) {
@@ -736,10 +750,21 @@ impl ServiceSync {
                 mine_side
             };
         }
-        let stored_fields = stored.map(|stored| &stored.fields);
+        let undecided: BTreeSet<String> = rows
+            .iter()
+            .filter(|row| row.decision != ApprovalDecision::Approved)
+            .map(|row| row.field.clone())
+            .collect();
+        let stored_view = stored.map(|stored| {
+            unsettled::approval_view(kind, &stored.fields, base_fields, settled.kept.as_ref(), &undecided)
+        });
+        let stored_fields = stored_view.as_ref();
         match (&settled.kept, &settled.store) {
             (Some(fields), _) => {
-                let split = approval::split(kind, &key, stored_fields, fields, rows);
+                let mut split = approval::split(kind, &key, stored_fields, fields, rows);
+                if let Some(server) = record.fields.as_ref() {
+                    unsettled::settle(kind, &mut split.fields, server);
+                }
                 if split.hold {
                     writes
                         .held

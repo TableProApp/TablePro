@@ -139,7 +139,11 @@ async fn a_replace_the_pinned_ik_endorsed_is_followed_with_a_notice_and_the_old_
     let pin = device.pin(member.account).await.unwrap();
     assert_eq!(
         (pin.ik, pin.how, pin.replaced.clone()),
-        (next.public().unwrap(), PinHow::Replaced, vec![Replaced { ik: old, av: av(2) }])
+        (
+            next.public().unwrap(),
+            PinHow::Replaced,
+            vec![Replaced { ik: old, av: av(2) }]
+        )
     );
     assert!(device.service.notices().await.unwrap().iter().any(|notice| notice.kind
         == KeyNoticeKind::RecoveryKeyReplaced {

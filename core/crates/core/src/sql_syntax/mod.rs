@@ -3,6 +3,7 @@ mod catalog_change;
 pub mod completion;
 mod created_object;
 mod credential_rules;
+mod engine_credentials;
 mod errors;
 pub mod format;
 mod grammar;

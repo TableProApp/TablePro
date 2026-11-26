@@ -6,9 +6,14 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tablepro_keys::encoding::{AccountId, Origin};
 use tablepro_records::Kind;
+use tablepro_storage::{ConnectionStore, QueryHistory};
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
-use tablepro_sync::adapters::settings::SettingsAdapter;
+use tablepro_sync::adapters::history::HistoryAdapter;
+use tablepro_sync::adapters::library::{self, DriverNames, Provider};
+use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
+use tablepro_sync::adapters::settings::{ConnectionStanding, SettingsAdapter};
+use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::control::{SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
@@ -71,14 +76,43 @@ pub(crate) struct Hosts {
     pub(crate) device_store: Arc<dyn HostDeviceStore>,
     pub(crate) settings: Option<Arc<dyn HostSettings>>,
     pub(crate) events: Arc<dyn EngineEvents>,
+    // This Core's connection library: connections, groups, tags and profiles, named by `names`.
+    pub(crate) library: Option<ConnectionStore>,
+    pub(crate) names: DriverNames,
+    // This Core's history database: its saved queries, their folders and the query history.
+    pub(crate) history: Option<QueryHistory>,
+    // Which connections stay on this device. Until it is known, no history syncs and nothing of a connection does
+    // (0051, What syncs).
+    pub(crate) standing: Option<Arc<dyn ConnectionStanding>>,
+    // What the history database's writes tell each engine that syncs it.
+    pub(crate) store_journal: Arc<StoreJournal>,
 }
 
 impl Hosts {
-    fn adapters(&self) -> Vec<Arc<dyn RecordAdapter>> {
-        self.settings
+    // The adapters over this Core's stores and the app's settings; the stores' writes now also tell `journal`.
+    fn adapters(&self, journal: &Journal, provider: Provider) -> Vec<Arc<dyn RecordAdapter>> {
+        let mut adapters: Vec<Arc<dyn RecordAdapter>> = self
+            .settings
             .iter()
-            .map(|host| Arc::new(SettingsAdapter::new(Arc::clone(host), None)) as Arc<dyn RecordAdapter>)
-            .collect()
+            .map(|host| {
+                Arc::new(SettingsAdapter::new(Arc::clone(host), self.standing.clone())) as Arc<dyn RecordAdapter>
+            })
+            .collect();
+        if self.library.is_some() || self.history.is_some() {
+            self.store_journal.add(journal.clone());
+        }
+        // The table folders and favourites the history database holds come with the library, which says which of
+        // their connections sync.
+        if let Some(store) = &self.library {
+            adapters.extend(library::adapters(store, self.history.as_ref(), self.names, provider));
+        }
+        if let Some(history) = &self.history {
+            adapters.extend(SavedQueryAdapter::all(history, self.standing.clone()));
+            if let Some(standing) = &self.standing {
+                adapters.push(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(standing))));
+            }
+        }
+        adapters
     }
 }
 
@@ -110,7 +144,7 @@ impl IcloudEngine {
         let sync = CloudKitSync::new(CloudKitParts {
             transport,
             files: Arc::clone(&hosts.files),
-            adapters: hosts.adapters(),
+            adapters: hosts.adapters(&journal, Provider::ICloud),
             categories: icloud_categories(categories),
             clock: Arc::new(SystemClock),
             stop: stop.clone(),
@@ -195,7 +229,7 @@ impl ServiceEngine {
         let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: link.transport,
             state,
-            adapters: Adapters::new(hosts.adapters()),
+            adapters: Adapters::new(hosts.adapters(&journal, Provider::TableproSync)),
             keys: Arc::clone(&keys) as Arc<dyn KeyFlows>,
             hooks,
             clock: Arc::new(SystemClock),
@@ -358,3 +392,7 @@ pub(crate) fn journal(
         marks.changed(std::slice::from_ref(&entry));
     }
 }
+
+#[cfg(test)]
+#[path = "engines_tests.rs"]
+mod tests;

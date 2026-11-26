@@ -7,6 +7,7 @@ use tablepro_records::cloudkit::{
     CloudFields, CloudValue, RecordType, parse_record_name, record_name, record_type_named, to_wire,
 };
 use tablepro_records::record_id;
+use tablepro_records::schema::readable;
 
 use super::SCOPE;
 use crate::api::cloudkit::{CloudKitDeletion, CloudKitRecord, CloudKitValue};
@@ -86,14 +87,15 @@ pub(in crate::cloudkit) fn changed(record: &CloudKitRecord) -> Option<Incoming> 
         .filter_map(|field| Some((field.name.clone(), cloud_value(field.value.as_ref()?))))
         .collect();
     Some(match to_wire(record_type.name, &record.name, &fields) {
-        Ok(wire) => Incoming::Changed(Copy {
+        // One without what a store needs to hold it is held by id, as the Mac's decoder refuses it.
+        Ok(wire) if readable(record_type.kind, &wire.record_id, &wire.fields) => Incoming::Changed(Copy {
             key,
             kind: record_type.kind,
             tag,
             fields: wire.fields,
             created_ms: record.created_ms,
         }),
-        Err(_) => Incoming::Unread { key, tag: Some(tag) },
+        Ok(_) | Err(_) => Incoming::Unread { key, tag: Some(tag) },
     })
 }
 
