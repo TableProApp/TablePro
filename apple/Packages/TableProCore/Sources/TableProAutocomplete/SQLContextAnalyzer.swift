@@ -198,7 +198,7 @@ public struct SQLContext: Sendable {
     )
 }
 
-public final class SQLContextAnalyzer {
+public final class SQLContextAnalyzer: Sendable {
     private static let newline = UInt16(UnicodeScalar("\n").value)
     private static let openParen = UInt16(UnicodeScalar("(").value)
     private static let closeParen = UInt16(UnicodeScalar(")").value)
