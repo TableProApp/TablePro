@@ -1437,3 +1437,78 @@ async fn a_removal_cut_off_before_its_candidates_leaves_no_account_keys_on_resum
         assert_eq!(a.av().await, 1, "landing {landing}");
     }
 }
+
+// After `create_only` the server serves back the wrap this device's refused rotation of the same version made to its
+// new account key. A holder signed it, but it carries the refused key, not the one in force: the team is rotated
+// again.
+#[tokio::test]
+async fn a_wrap_from_this_device_s_refused_rotation_leaves_the_team_rotation_due() {
+    use tablepro_keys::wrap::scope_key_target;
+    use tablepro_sync::api::ids::{ChangeTag, KindName, ScopeName};
+    use tablepro_sync::api::key_flows::{ArrivalOrder, KeyArrival};
+    use tablepro_sync::api::scopes::Role;
+    use tablepro_sync::api::transport::{ChangeOp, PulledRecord};
+    let server = FakeServer::new();
+    let (account, admin) = (new_account(), new_account());
+    let team = tablepro_keys::encoding::TeamId(tablepro_keys::encoding::random_uuid().unwrap());
+    server.add_team(team, &[(account, Role::Owner), (admin, Role::Admin)]);
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    crate::harness::team_pass(&a, team).await;
+    a.service.create_team_keys(team).await.unwrap();
+    let c = Device::new(&server, admin, "dev_c").await;
+    c.genesis().await;
+    crate::harness::team_pass(&c, team).await;
+    crate::harness::team_pass(&a, team).await;
+    a.service.confirm_member(team, admin).await.unwrap();
+    crate::harness::team_pass(&c, team).await;
+    c.service.rotate_team(team, Vec::new()).await.unwrap();
+    rotate_keeping_only_self(&a, &r).await;
+    server.set_rotation_due(team, false);
+    crate::harness::team_pass(&a, team).await;
+    let id = KeyRecordId::Wrap(scope_key_target(
+        KeyRef {
+            owner: team.0,
+            purpose: KeyPurpose::Team,
+            version: crate::harness::v(2),
+        },
+        account,
+        crate::harness::v(2),
+    ))
+    .to_wire();
+    let refused = a
+        .wire
+        .pushed
+        .lock()
+        .unwrap()
+        .iter()
+        .flatten()
+        .find_map(|change| match &change.op {
+            ChangeOp::Write { fields, .. } if change.kind.as_str() == "key.wrap" && change.record_id == id => {
+                Some(fields.clone())
+            }
+            _ => None,
+        })
+        .unwrap();
+    a.service
+        .apply_team_objects(KeyArrival {
+            scope: ScopeName::Team(team),
+            records: vec![PulledRecord {
+                kind: KindName::parse("key.wrap").unwrap(),
+                record_id: id,
+                tag: ChangeTag::Service("tag".to_owned()),
+                fields_json: Some(refused.to_string()),
+                fields: Some(refused),
+                deleted: None,
+                service: None,
+            }],
+            order: ArrivalOrder::InOrder,
+            in_force: None,
+        })
+        .await
+        .unwrap();
+
+    a.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(stored_in_team(&server, team, "key.version", &team_version(team, 3)));
+}

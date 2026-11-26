@@ -275,31 +275,30 @@ impl TeamBook {
             .map(|holders| holders.into_iter().map(|holder| holder.account).collect()))
     }
 
-    // The holders of `version`, and whether one of them wrapped it to `recipient` at `av` or later. Each such wrap is
-    // checked in full: a recipient already counted under an older `av` lets its other wraps count unchecked, so the
-    // fields of a wrap the server made up would pass.
-    pub(crate) async fn holders_with_wrap_since(
+    // The holders of `version`, and the wraps of it to `recipient` at `av` or later that a holder signed. Each such
+    // wrap is checked in full: a recipient already counted under an older `av` lets its other wraps count unchecked,
+    // so the fields of a wrap the server made up would pass.
+    pub(crate) async fn holders_with_wraps_since(
         &self,
         version: Version,
         recipient: AccountId,
         av: Version,
         facts: &mut dyn TeamFacts,
-    ) -> Result<Option<(BTreeSet<AccountId>, bool)>, SyncError> {
+    ) -> Result<Option<(BTreeSet<AccountId>, Vec<Wrap>)>, SyncError> {
         let Some(holders) = self.holder_set(version, facts).await? else {
             return Ok(None);
         };
-        let mut wrapped = false;
+        let mut signed = Vec::new();
         for wrap in self.wraps_of(version).filter(|wrap| {
             wrap.target.recipient == Recipient::Account(recipient) && wrap.target.recipient_version >= av
         }) {
             if let WrapCheck::Holder(_) = wrap_check(&self.origin, facts, &holders, wrap, false).await? {
-                wrapped = true;
-                break;
+                signed.push(wrap.clone());
             }
         }
         Ok(Some((
             holders.into_iter().map(|holder| holder.account).collect(),
-            wrapped,
+            signed,
         )))
     }
 

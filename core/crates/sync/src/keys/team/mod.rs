@@ -154,7 +154,7 @@ impl KeyService {
     }
 
     // The accounts that held a team's `version`, and whether a holder wrapped it to this account at `av` or later, by
-    // a wrap that verifies; None while the holders cannot be decided.
+    // a wrap that verifies and opens to the key the version's record names; None while the holders cannot be decided.
     pub(crate) async fn team_holders_since(
         &self,
         txn: &mut dyn StateTxn,
@@ -170,8 +170,20 @@ impl KeyService {
             scope: ScopeName::Team(team),
             cache: &mut cache,
         };
-        book.holders_with_wrap_since(version, self.account(), av, &mut facts)
-            .await
+        let Some((holders, signed)) = book
+            .holders_with_wraps_since(version, self.account(), av, &mut facts)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let mut wrapped = false;
+        for wrap in &signed {
+            if secrets::own_wrap_opens(self, &book, &mut facts, version, wrap).await? {
+                wrapped = true;
+                break;
+            }
+        }
+        Ok(Some((holders, wrapped)))
     }
 
     // Whether `fields` are a version record at `key` that its signer's certificate in the team verifies. Beside the
