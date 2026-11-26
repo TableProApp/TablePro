@@ -520,13 +520,8 @@ impl KeyService {
         Ok(())
     }
 
-    // Where the rotation at `av` this flow wrote stands against what the device holds.
-    async fn rotation_standing(&self, av: Version, steps: &TeamSteps) -> Result<Standing, SyncError> {
-        let _serial = self.serialized().await;
-        self.rotation_standing_locked(av, steps).await
-    }
-
-    // The certificate at `av` decides: this flow's own, named by its signature, is adopted; another that verifies is
+    // Where the rotation at `av` this flow wrote stands against what the device holds, under the serial lock. The
+    // certificate at `av` decides: this flow's own, named by its signature, is adopted; another that verifies is
     // another device's rotation that won, which this flow never runs as its own, a replace's included.
     async fn rotation_standing_locked(&self, av: Version, steps: &TeamSteps) -> Result<Standing, SyncError> {
         let mut txn = self.begin().await?;
@@ -617,12 +612,22 @@ impl KeyService {
 
     // Another device's rotation holds `av`: every candidate this flow wrote at that `av`, its account keys there when
     // they are not the certificate's, the keys R opened for a recovery and the device keys it drew all go. The review's
-    // choices go with the flow, since the rotation they were made for never applied.
+    // choices go with the flow, since the rotation they were made for never applied. The caller holds the serial lock.
     async fn drop_lost_rotation(&self, av: Version, steps: &TeamSteps) -> Result<(), SyncError> {
-        let _serial = self.serialized().await;
         let mut txn = self.begin().await?;
         self.clean_up_lost(txn.as_mut(), av, steps).await?;
         txn.commit().await?;
+        Ok(())
+    }
+
+    // The account keys this flow stored at `av`, unless they are those of the certificate in force there.
+    async fn erase_own_keys_at(&self, txn: &mut dyn StateTxn, av: Version) -> Result<(), SyncError> {
+        let in_force = self.own_certificate(txn, av).await?;
+        if let Some(keys) = self.account_keys(av).await?
+            && in_force.is_none_or(|certificate| keys.check_against(&certificate.ask, &certificate.aek).is_err())
+        {
+            self.erase_account_keys(av).await?;
+        }
         Ok(())
     }
 
@@ -634,12 +639,7 @@ impl KeyService {
             .filter_map(KeyObject::wrap)
             .find(|wrap| wrap.target.purpose == WrapPurpose::Account)
             .map(|wrap| wrap.wrapper.key_device);
-        let in_force = self.own_certificate(txn, av).await?;
-        if let Some(keys) = self.account_keys(av).await?
-            && in_force.is_none_or(|certificate| keys.check_against(&certificate.ask, &certificate.aek).is_err())
-        {
-            self.erase_account_keys(av).await?;
-        }
+        self.erase_own_keys_at(txn, av).await?;
         if let Some(opened) = steps.opened {
             self.erase_account_keys(opened).await?;
         }
@@ -659,14 +659,16 @@ impl KeyService {
         Ok(())
     }
 
-    // Neither applied nor a candidate any more: nothing of the flow can still apply, so the keys R opened for it and
-    // the device keys a recovery drew go, the device store before the row.
+    // Neither applied nor a candidate any more: nothing of the flow can still apply, so the account keys it stored at
+    // `av` before a cut-off kept its candidates from committing, the keys R opened for it and the device keys a recovery
+    // drew go, the device store before the row. The caller holds the serial lock.
     async fn end_gone_flow(&self, av: Version, steps: &TeamSteps) -> Result<(), SyncError> {
+        let mut txn = self.begin().await?;
+        self.erase_own_keys_at(txn.as_mut(), av).await?;
         if let Some(opened) = steps.opened {
             self.erase_account_keys(opened).await?;
         }
         if let Some(drawn) = steps.drawn {
-            let _serial = self.serialized().await;
             let held = self.device_keys().await?;
             if held.pending.as_ref().is_some_and(|pending| pending.key_device == drawn) {
                 self.store_device_keys(&HeldDeviceKeys {
@@ -676,7 +678,10 @@ impl KeyService {
                 .await?;
             }
         }
-        self.end_team_steps(PendingFlow::AccountRotation { av }).await
+        txn.delete(&RowKey::KeyPending(PendingFlow::AccountRotation { av }))
+            .await?;
+        txn.commit().await?;
+        Ok(())
     }
 
     // Every candidate of an account change set to `av` this device wrote and the server never took, its rings with it.
@@ -711,31 +716,33 @@ impl KeyService {
     // (0056, Removing a device).
     async fn team_steps(&self, av: Version) -> Result<(), SyncError> {
         let flow = PendingFlow::AccountRotation { av };
+        // The row, its standing and what a lost or gone flow erases, under one hold of the serial lock: a recovery
+        // retried at the same `av` meanwhile writes the row again and stores keys this flow must not erase.
         let mut steps = {
-            let mut txn = self.begin().await?;
-            match txn.get(&RowKey::KeyPending(flow)).await? {
-                Some(Row::KeyPending(row)) => TeamSteps::decode(&row.state)?,
-                _ => return Ok(()),
+            let _serial = self.serialized().await;
+            let steps = {
+                let mut txn = self.begin().await?;
+                match txn.get(&RowKey::KeyPending(flow)).await? {
+                    Some(Row::KeyPending(row)) => TeamSteps::decode(&row.state)?,
+                    _ => return Ok(()),
+                }
+            };
+            match self.rotation_standing_locked(av, &steps).await? {
+                Standing::Theirs => return self.drop_lost_rotation(av, &steps).await,
+                Standing::Gone => return self.end_gone_flow(av, &steps).await,
+                Standing::Held => return Ok(()),
+                Standing::Unsent => {
+                    if let Resent::Refused(code) = self.push_own_candidates(av).await? {
+                        return Err(SyncError::Rejected { code });
+                    }
+                    if self.rotation_standing_locked(av, &steps).await? != Standing::Ours {
+                        return Ok(());
+                    }
+                }
+                Standing::Ours => {}
             }
+            steps
         };
-        match self.rotation_standing(av, &steps).await? {
-            Standing::Theirs => return self.drop_lost_rotation(av, &steps).await,
-            Standing::Gone => return self.end_gone_flow(av, &steps).await,
-            Standing::Held => return Ok(()),
-            Standing::Unsent => {
-                let resent = {
-                    let _serial = self.serialized().await;
-                    self.push_own_candidates(av).await?
-                };
-                if let Resent::Refused(code) = resent {
-                    return Err(SyncError::Rejected { code });
-                }
-                if self.rotation_standing(av, &steps).await? != Standing::Ours {
-                    return Ok(());
-                }
-            }
-            Standing::Ours => {}
-        }
         let Some((teams, held)) = self.account_teams().await? else {
             self.hooks().pass_soon();
             return Ok(());

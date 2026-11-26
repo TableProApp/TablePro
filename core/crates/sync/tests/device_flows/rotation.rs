@@ -1012,6 +1012,70 @@ async fn a_recovery_cut_off_before_its_candidates_drops_the_device_keys_it_drew_
     assert!(!d.store.inner.holds(&opened));
 }
 
+fn account_keys(account: tablepro_keys::encoding::AccountId, av: u32) -> tablepro_sync::api::device_store::DeviceItem {
+    tablepro_sync::api::device_store::DeviceItem::AccountKeys {
+        origin: crate::harness::origin(),
+        account,
+        av: crate::harness::v(av),
+    }
+}
+
+// The same window leaves the account keys the rotation built at its `av` in the device store: the resume that finds
+// nothing of the rotation erases them too.
+#[tokio::test]
+async fn a_recovery_cut_off_before_its_candidates_erases_the_account_keys_it_stored_on_resume() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    d.fail_commit_after(2);
+
+    d.service.recover(r).await.unwrap_err();
+    let stored = d.store.inner.holds(&account_keys(account, 2));
+    d.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(stored);
+    assert!(!d.store.inner.holds(&account_keys(account, 2)));
+}
+
+// The resume settles the cut-off recovery under the serial lock, so the person's retry at the same `av`, which writes
+// the flow's row again and stores new keys there, waits for it and keeps what it wrote.
+#[tokio::test]
+async fn a_resume_settling_a_cut_off_recovery_never_erases_a_retry_at_the_same_av() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    d.fail_commit_after(2);
+    d.service.recover(r.clone()).await.unwrap_err();
+    // The retry's push goes unanswered, so its row, candidates and keys stay for the next pass.
+    d.wire.fail_next_push(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    let pause = d.pause_next_account_keys_erase();
+    let retry = async {
+        pause.reached().await;
+        let release = async {
+            for _ in 0..8 {
+                tokio::task::yield_now().await;
+            }
+            pause.go();
+        };
+        tokio::join!(d.service.recover(r.clone()), release).0
+    };
+
+    let (resumed, retried) = tokio::join!(d.service.resume_rotation(crate::harness::v(2)), retry);
+
+    resumed.unwrap();
+    assert!(matches!(retried, Err(SyncError::Transport(TransportError::Network { .. }))));
+    assert!(d.store.inner.holds(&account_keys(account, 2)));
+    assert!(d.get(rotation_row(2)).await.is_some());
+}
+
 // The same window on a device that held the account keys R opens, so the flow had nothing else to name before it drew.
 #[tokio::test]
 async fn a_recovery_of_a_device_that_held_its_keys_cut_off_before_its_candidates_drops_what_it_drew() {

@@ -103,10 +103,29 @@ impl StateTxn for FlakyTxn {
     }
 }
 
-// The device store, whose next write of the device keys can be made to fail.
+// The device store, whose next write of the device keys can be made to fail, and whose next erase of account keys can
+// be held until the test lets it go.
 pub struct Store {
     pub inner: Arc<FakeDeviceStore>,
     fail_device_keys: AtomicBool,
+    pause_erase: Mutex<Option<Arc<Pause>>>,
+}
+
+// A device store call held until the test lets it go, as a slow keychain holds it.
+#[derive(Default)]
+pub struct Pause {
+    reached: tokio::sync::Notify,
+    go: tokio::sync::Notify,
+}
+
+impl Pause {
+    pub async fn reached(&self) {
+        self.reached.notified().await;
+    }
+
+    pub fn go(&self) {
+        self.go.notify_one();
+    }
 }
 
 #[async_trait]
@@ -125,6 +144,15 @@ impl HostDeviceStore for Store {
     }
 
     async fn delete(&self, item: DeviceItem) -> Result<(), DeviceStoreError> {
+        let pause = if matches!(item, DeviceItem::AccountKeys { .. }) {
+            self.pause_erase.lock().unwrap().take()
+        } else {
+            None
+        };
+        if let Some(pause) = pause {
+            pause.reached.notify_one();
+            pause.go.notified().await;
+        }
         self.inner.delete(item).await
     }
 }
@@ -309,6 +337,7 @@ impl Device {
         let store = Arc::new(Store {
             inner: Arc::new(FakeDeviceStore::new()),
             fail_device_keys: AtomicBool::new(false),
+            pause_erase: Mutex::new(None),
         });
         let clock = Arc::new(ServerClock(Arc::clone(server), AtomicI64::new(0)));
         Self::open(
@@ -402,6 +431,12 @@ impl Device {
 
     pub fn fail_next_device_keys_write(&self) {
         self.store.fail_device_keys.store(true, Ordering::SeqCst);
+    }
+
+    pub fn pause_next_account_keys_erase(&self) -> Arc<Pause> {
+        let pause = Arc::new(Pause::default());
+        *self.store.pause_erase.lock().unwrap() = Some(Arc::clone(&pause));
+        pause
     }
 
     // The team as the engine meets it: its scope row from the scopes body and the roster read once caught up.
