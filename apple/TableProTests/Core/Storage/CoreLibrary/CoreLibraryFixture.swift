@@ -89,6 +89,14 @@ final class CoreLibraryFixture {
         }
     }
 
+    // The tag a TablePro build writes beside the core's file for these bytes.
+    func stampCore(_ bytes: Data) -> Bool {
+        ConnectionStoreIntegrity.shared.stamp(
+            CoreLibraryStore.tag(forDigest: LegacyLibraryMirror.digest(of: bytes)),
+            fileURL: coreURL
+        )
+    }
+
     // The core's store alone: the previous stable's files are gone, so a launch can only read the core.
     func launchFromCoreOnly() throws -> ConnectionStorage {
         try FileManager.default.removeItem(at: legacyURL)

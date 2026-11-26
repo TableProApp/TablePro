@@ -179,7 +179,7 @@ struct CoreLibraryStoreTests {
         #expect(storage.addConnection(connection("alpha")))
         let newer = Data(#"{"version": 99, "connections": []}"#.utf8)
         try newer.write(to: fixture.coreURL, options: .atomic)
-        #expect(ConnectionStoreIntegrity.shared.stamp(newer, fileURL: fixture.coreURL))
+        #expect(fixture.stampCore(newer))
 
         let relaunched = fixture.launch()
 
@@ -220,7 +220,7 @@ struct CoreLibraryStoreTests {
         try FileManager.default.contentsOfDirectory(at: fixture.coreURL.deletingLastPathComponent(), includingPropertiesForKeys: nil)
             .filter { url in
                 let name = url.lastPathComponent
-                return name.hasPrefix("connections.json.unreadable-") || name.hasPrefix("connections.json.untrusted-")
+                return name.hasPrefix("connections.json.corrupt-") || name.hasPrefix("connections.json.untrusted-")
             }
     }
 
@@ -259,7 +259,7 @@ struct CoreLibraryStoreTests {
         let bytes = try JSONSerialization.data(withJSONObject: document)
         try bytes.write(to: fixture.coreURL, options: .atomic)
         if taggedByTablePro {
-            #expect(ConnectionStoreIntegrity.shared.stamp(bytes, fileURL: fixture.coreURL))
+            #expect(fixture.stampCore(bytes))
         }
     }
 

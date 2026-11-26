@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # T-DWN for the connection library (core ADR 0010, slices 1b and 2): the previous stable reads what this build wrote,
 # and this build takes in what the previous stable wrote after it. Both apps run in one storage sandbox, one at a
-# time. Each run shows which connections it read in the standing it records (SyncMetadataStorage), and the files and
-# their integrity tags show what it wrote.
+# time. The previous stable shows which connections it read in the standing it records (SyncMetadataStorage), this
+# build in the core's store and its mirror record, and the files and their integrity tags show what each wrote.
 #
 # Usage: check-library-downgrade.sh <this build's TablePro.app> <previous stable's TablePro.app>
 set -euo pipefail
@@ -44,29 +44,52 @@ standing() {
     defaults read "$SUITE" "$STANDING" 2>/dev/null | tr -d ' (),"\n' | tr '[:lower:]' '[:upper:]' | fold -w 36 | sort | paste -sd, -
 }
 
-# Launches the app until it has read the library and recorded the standing of what it read, then stops it.
+# The ids this build holds in the core's store, once the mirror record says its last write reached both sides.
+core_ids() {
+    defaults export "$SUITE" - 2>/dev/null | python3 -I -c '
+import hashlib, json, plistlib, sys
+try:
+    record = json.loads(plistlib.loads(sys.stdin.buffer.read())["com.TablePro.library.mirrorRecord"])
+    data = open(sys.argv[1], "rb").read()
+except Exception:
+    sys.exit(0)
+if record.get("legacyBehind", True) or record.get("core") != hashlib.sha256(data).hexdigest():
+    sys.exit(0)
+print(",".join(sorted(entry["id"].upper() for entry in json.loads(data)["connections"])))
+' "$SUPPORT/Core/connections.json"
+}
+
+# What a run read: the previous stable records the standing of what it read, this build writes it to both sides.
+read_ids() {
+    if [ "$1" = "$OLD_APP" ]; then standing; else core_ids; fi
+}
+
+# Launches the app until it has read the library, then stops it.
 run() {
     local app="$1" expected="$2"
     defaults delete "$SUITE" "$STANDING" >/dev/null 2>&1 || true
     TABLEPRO_UI_TEST_SANDBOX="$SANDBOX" "$app/Contents/MacOS/TablePro" >/dev/null 2>&1 &
     PID=$!
     for _ in $(seq 1 90); do
-        [ "$(standing)" = "$expected" ] && break
+        [ "$(read_ids "$app")" = "$expected" ] && break
         sleep 1
     done
     sleep 3
     kill "$PID" 2>/dev/null || true
     wait "$PID" 2>/dev/null || true
     PID=""
-    [ "$(standing)" = "$expected" ] || fail "$(basename "$(dirname "$(dirname "$app")")") read $(standing), expected $expected"
+    [ "$(read_ids "$app")" = "$expected" ] || fail "$(basename "$(dirname "$(dirname "$app")")") read $(read_ids "$app"), expected $expected"
 }
 
-# Whether the file's integrity tag is the one TablePro writes with the sandbox's key.
+# Whether the file's integrity tag is the one TablePro writes with the sandbox's key. The core's file is tagged over
+# the digest the core returns for its bytes.
 tagged() {
-    python3 -I - "$SUPPORT/keychain.json" "$1" <<'PY'
+    python3 -I - "$SUPPORT/keychain.json" "$1" "${2:-bytes}" <<'PY'
 import base64, hashlib, hmac, json, sys
 key = base64.b64decode(json.load(open(sys.argv[1]))["connectionStoreIntegrity"])
 data = open(sys.argv[2], "rb").read()
+if sys.argv[3] == "digest":
+    data = b"sha256:" + hashlib.sha256(data).hexdigest().encode()
 try:
     tag = open(sys.argv[2] + ".hmac", "rb").read()
 except FileNotFoundError:
@@ -126,7 +149,7 @@ run "$NEW_APP" "$FIRST,$SECOND"
 [ "$(orders "$SUPPORT/connections.json" sortOrder)" = "0,1" ] || fail "this build's first write did not reach connections.json"
 [ "$(orders "$SUPPORT/Core/connections.json" safe_mode)" = "alert_full,read_only" ] || fail "the core lost a Safe Mode level"
 tagged "$SUPPORT/connections.json" || fail "this build wrote connections.json without a tag the previous stable trusts"
-tagged "$SUPPORT/Core/connections.json" || fail "this build left the core's store untagged"
+tagged "$SUPPORT/Core/connections.json" digest || fail "this build left the core's store untagged"
 MIRRORED="$(shasum -a 256 "$SUPPORT/connections.json")"
 
 run "$OLD_APP" "$FIRST,$SECOND"
@@ -149,7 +172,7 @@ EDITED="added on the previous stable|billing (edited on the previous stable)|rep
 run "$NEW_APP" "$FIRST,$SECOND,$THIRD"
 [ "$(names "$SUPPORT/Core/connections.json")" = "$EDITED" ] || fail "this build did not take in the previous stable's edit"
 # That build wrote connections.json without a tag, so the core must not vouch for what it brought.
-! tagged "$SUPPORT/Core/connections.json" || fail "the core trusts a library written outside its tag"
+! tagged "$SUPPORT/Core/connections.json" digest || fail "the core trusts a library written outside its tag"
 
 run "$NEW_APP" "$FIRST,$SECOND,$THIRD"
 [ "$(names "$SUPPORT/Core/connections.json")" = "$EDITED" ] || fail "the previous stable's edit did not stay in the core"

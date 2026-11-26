@@ -136,14 +136,18 @@ struct LibraryRecordMappingTests {
         contents.connections[0].connection.color = "teal"
         contents.connections[0].connection.tls.mode = .strict
         contents.connections[0].device.origin = "shared_vault"
-        try await library.replaceLibrary(library: LibraryWriteRecord(
-            connections: contents.connections,
-            groups: contents.groups,
-            tags: contents.tags,
-            favorites: contents.favorites
-        ))
+        _ = try await library.replaceLibrary(
+            library: LibraryWriteRecord(
+                connections: contents.connections,
+                groups: contents.groups,
+                tags: contents.tags,
+                favorites: contents.favorites,
+                removing: []
+            ),
+            over: contents.digest
+        )
         // As a TablePro build that wrote these values tags the store.
-        #expect(ConnectionStoreIntegrity.shared.stamp(try Data(contentsOf: fixture.coreURL), fileURL: fixture.coreURL))
+        #expect(fixture.stampCore(try Data(contentsOf: fixture.coreURL)))
         try FileManager.default.removeItem(at: fixture.legacyURL)
 
         let relaunched = fixture.launch()
