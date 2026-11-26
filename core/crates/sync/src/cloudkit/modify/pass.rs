@@ -273,6 +273,33 @@ impl CloudKitSync {
         })
     }
 
+    // The move's copy while iCloud traffic is forbidden (0055: TablePro Sync forced with iCloud not allowed): the engine
+    // stops with no last pass, and the move meets the service with the state file's CloudKit bases alone. No zone is
+    // read, so no deletion made on iCloud is inferred; only what this device's bases record goes.
+    pub async fn copy_without_icloud(&self) -> Result<IcloudCopy, SyncError> {
+        self.stop.stop();
+        let session = self.session.lock().await;
+        let state = match (&session.state, &session.account) {
+            (Some(state), _) => Some(Arc::clone(state)),
+            (None, Some(account)) => Some(self.files.open(identity(account)).await?),
+            (None, None) => None,
+        };
+        let mut bases = Vec::new();
+        if let Some(state) = state {
+            let mut txn = state.begin().await?;
+            for row in txn.scan(&RowRange::Scope(Table::Bases, SCOPE)).await? {
+                if let Row::Base(base) = row {
+                    bases.push(base);
+                }
+            }
+        }
+        Ok(IcloudCopy {
+            account: session.account.clone(),
+            bases,
+            listed: None,
+        })
+    }
+
     async fn listing(&self, account: &str) -> Result<Option<BTreeSet<RecordKey>>, SyncError> {
         let mut listed = BTreeSet::new();
         let mut token = None;

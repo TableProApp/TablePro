@@ -416,7 +416,7 @@ impl ServiceSync {
         // A move called again after it stopped short goes on from the bases its first try committed, so a record merged
         // then never meets the marker again.
         if !self.arriving.swap(true, Ordering::SeqCst) {
-            self.let_go_of_personal().await?;
+            self.let_go_of_personal(matches!(arrival, Arrival::FirstUpload)).await?;
         }
         let before = std::mem::replace(
             &mut *self.mode.lock().unwrap_or_else(PoisonError::into_inner),
@@ -513,10 +513,25 @@ impl ServiceSync {
     }
 
     // Every personal row but the key objects': bases, held records, refill copies, waiting values and the batch in
-    // flight, so nothing an earlier spell on TablePro Sync agreed stands in for the copy the arrival meets.
-    async fn let_go_of_personal(&self) -> Result<(), SyncError> {
+    // flight, so nothing an earlier spell on TablePro Sync agreed stands in for the copy the arrival meets. A first
+    // upload refills, in the same commit, each kind that lives in the personal scope alone (0066, Per-kind refills),
+    // so the marks outlive a restart and a kind a team scope shares, as the envelopes, takes no refill there.
+    async fn let_go_of_personal(&self, refills: bool) -> Result<(), SyncError> {
         let scope = ScopeName::Personal;
         let mut txn = begin(&self.state).await?;
+        if refills {
+            for adapter in self.adapters.in_scope(scope) {
+                let kind = adapter.kind();
+                if kind.is_key() || kind.scopes() != [tablepro_records::Scope::Personal] {
+                    continue;
+                }
+                txn.put(Row::StoresKind(StoresKindRow {
+                    store: adapter.store().to_owned(),
+                    kind: KindName::of(kind),
+                }))
+                .await?;
+            }
+        }
         for table in [
             Table::Bases,
             Table::Held,

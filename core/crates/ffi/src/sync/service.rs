@@ -120,6 +120,8 @@ pub struct SyncService {
     pub(crate) cloudkit: Option<Arc<dyn tablepro_sync::api::CloudKitTransport>>,
     pub(crate) files: Option<Arc<dyn tablepro_sync::api::StateFiles>>,
     pub(crate) _forward: AbortOnDropHandle<()>,
+    // Leaves a provider as soon as the values the host passes again no longer allow it (core ADR 0055).
+    pub(crate) _policy: std::sync::Mutex<Option<AbortOnDropHandle<()>>>,
 }
 
 impl std::fmt::Debug for SyncService {

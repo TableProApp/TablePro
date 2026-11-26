@@ -12,8 +12,9 @@ pub(crate) use arrival::Arrival;
 use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use crate::api::control::{MoveBackPlan, MovePlan};
 use crate::api::error::SyncError;
-use crate::api::state::{StateFiles, StateIdentity};
-use crate::cloudkit::modify::CloudKitSync;
+use crate::api::ids::ScopeName;
+use crate::api::state::{Row, RowRange, StateFiles, StateIdentity, Table};
+use crate::cloudkit::modify::{CloudKitSync, IcloudCopy};
 use crate::service::ServiceSync;
 
 pub struct MoveParts {
@@ -58,6 +59,41 @@ impl Mover {
         })?;
         icloud.stop_for_move().await?;
         let copy = icloud.copy_for_move().await?;
+        self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
+        Ok(())
+    }
+
+    // The forward move while iCloud traffic is forbidden (0055: TablePro Sync forced, `ICloudSyncAllowed` off): iCloud
+    // stops at once with no last pass and no zone fetch, and each record meets the service against this device's
+    // CloudKit base, so its unsent iCloud edits merge rather than losing to the server. Deletions come only from what
+    // those bases record.
+    // The engine may never have started, as when the values forbade iCloud at launch: the state file it used last
+    // holds the bases then.
+    pub async fn move_to_service_without_icloud(&self) -> Result<(), SyncError> {
+        let copy = match &self.parts.icloud {
+            Some(icloud) => icloud.copy_without_icloud().await?,
+            None => {
+                let account = self.parts.icloud_account.as_ref().ok_or(SyncError::NotAllowed {
+                    what: "move from an iCloud state file this device never used",
+                })?;
+                let state = self.parts.files.open(icloud_file(account)).await?;
+                let mut txn = state.begin().await?;
+                let bases = txn
+                    .scan(&RowRange::Scope(Table::Bases, ScopeName::Personal))
+                    .await?
+                    .into_iter()
+                    .filter_map(|row| match row {
+                        Row::Base(base) => Some(base),
+                        _ => None,
+                    })
+                    .collect();
+                IcloudCopy {
+                    account: Some(account.clone()),
+                    bases,
+                    listed: None,
+                }
+            }
+        };
         self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
         Ok(())
     }

@@ -220,21 +220,20 @@ impl ServiceSync {
         }
         ctx.new_epoch |= row.refill;
         let arrival = ctx.arrival.clone().filter(|_| scope == ScopeName::Personal);
-        // A first upload from no provider is a refill of the device's personal records: the server's copy wins, and
-        // what the server lacks goes up as a create. A move from iCloud merges against the copy both providers last
-        // shared instead, whatever the service file saw of the stores. Otherwise the kinds whose category is on take
-        // the refill they owe. One that is off is read only by the pass that marked its store, for the copies the store
+        // A first upload from no provider refills the kinds only the personal scope holds, by the marks it wrote: the
+        // server's copy wins, and what the server lacks goes up as a create. A move from iCloud merges against the copy
+        // both providers last shared instead, whatever the service file saw of the stores. The kinds whose category is
+        // on take the refill they owe. One that is off is read only by the pass that marked its store, for the copies the store
         // holds then, which it merges against once it is on; a later refill of others never takes them again. It keeps
         // its mark (0066, Per-kind refills; `deferred`).
         let categories = ctx.categories_in(scope);
-        let wins = arrival.as_deref().map(Arrival::pull_wins);
+        let moving = arrival.as_deref().is_some_and(Arrival::meets_its_own_bases);
         let pull_wins: HashSet<Kind> = adapters
             .iter()
             .filter(|adapter| {
-                wins.unwrap_or_else(|| {
-                    ctx.owes(adapter.store(), adapter.kind())
-                        && (categories.syncs(adapter.kind()) || ctx.marked(adapter.store()))
-                })
+                !moving
+                    && ctx.owes(adapter.store(), adapter.kind())
+                    && (categories.syncs(adapter.kind()) || ctx.marked(adapter.store()))
             })
             .map(|adapter| adapter.kind())
             .collect();

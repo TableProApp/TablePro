@@ -688,3 +688,52 @@ async fn with_icloud_off_a_core_store_write_marks_the_swift_metadata_by_the_quit
         "{dirty:?}"
     );
 }
+
+// A profile that forces iCloud on a device already on TablePro Sync stops its personal sync there at once, at open and
+// when the values change while the app runs, while its teams and key objects go on, until the person confirms the move
+// back (core ADR 0055, Leaving a provider).
+#[tokio::test]
+async fn a_profile_that_forces_icloud_rests_personal_data_on_tablepro_sync_at_once() {
+    use crate::account::AccountService;
+    use crate::account::{ManagedPolicyArg, ManagedPolicyValues};
+    use tablepro_sync::service::ServiceMode;
+
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let (held_dir, free_dir) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let forced = ManagedPolicyValues {
+        personal_sync_provider: Some(vec!["icloud".to_owned()]),
+        ..ManagedPolicyValues::default()
+    };
+    let held = AccountService::holding(forced.clone(), tasks.clone(), held_dir.path());
+    let free = AccountService::holding(ManagedPolicyValues::default(), tasks.clone(), free_dir.path());
+    let at_open = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::TableproSync),
+        account: Some(held),
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        ..parts
+    })
+    .await;
+    let running = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::TableproSync),
+        account: Some(Arc::clone(&free)),
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        ..parts
+    })
+    .await;
+    let before = running.service.service.now().unwrap().sync.mode();
+
+    free.apply_policy(ManagedPolicyArg::Read { values: forced });
+    let mut after = running.service.service.now().unwrap().sync.mode();
+    for _ in 0..100 {
+        if after == ServiceMode::TeamsOnly {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        after = running.service.service.now().unwrap().sync.mode();
+    }
+
+    assert_eq!(at_open.service.service.now().unwrap().sync.mode(), ServiceMode::TeamsOnly);
+    assert_eq!(before, ServiceMode::Personal);
+    assert_eq!(after, ServiceMode::TeamsOnly);
+}

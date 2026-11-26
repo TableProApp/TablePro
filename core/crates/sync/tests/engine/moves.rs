@@ -12,7 +12,7 @@ use tablepro_sync::api::adapter::RecordAdapter;
 use tablepro_sync::api::cloudkit::CloudKitTransport;
 use tablepro_sync::api::control::{MovePlan, PassReason};
 use tablepro_sync::api::ids::{RecordKey, ScopeName};
-use tablepro_sync::api::state::{Row, RowKey, StateFiles, StateIdentity};
+use tablepro_sync::api::state::{Row, RowKey, RowRange, StateFiles, StateIdentity, Table};
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync};
 use tablepro_sync::engine::{Clock, Journal, StopSignal};
@@ -248,6 +248,39 @@ async fn an_icloud_edit_after_another_device_moved_merges_with_the_service_s_edi
     );
 }
 
+// TablePro Sync forced with iCloud traffic forbidden (0055): the move makes no iCloud call, no last pass and no zone
+// fetch, and the device's iCloud edit it never sent merges against its CloudKit base with the service's edit rather
+// than losing to the server's copy.
+#[tokio::test]
+async fn a_move_with_icloud_forbidden_merges_the_unsent_icloud_edit_without_an_icloud_call() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    let phone = Apple::on_icloud(&server, &cloud, "dev_phone").await;
+    mac.put(1, carried(1, "Prod", 1));
+    mac.icloud_pass().await;
+    phone.icloud_pass().await;
+    mac.mover(true).move_to_service().await.unwrap();
+    let web = on_the_service(&server).await;
+    web.connections
+        .put(&id(1), with(carried(1, "Prod", 1), "icon_name", json!("server")));
+    web.sync().await;
+    phone.put(1, carried(1, "Prod (phone)", 1));
+    for _ in 0..8 {
+        cloud.fail_next(tablepro_sync::api::cloudkit::CloudKitFailure::Network);
+    }
+
+    phone.mover(true).move_to_service_without_icloud().await.unwrap();
+
+    let merged = with(carried(1, "Prod (phone)", 1), "icon_name", json!("server"));
+    assert_eq!(phone.get(1), Some(merged.clone()));
+    assert_eq!(
+        live(&server, 1).map(|fields| with(fields, MEMBER, Value::Null)),
+        Some(with(merged, MEMBER, Value::Null))
+    );
+    assert!(cloud.account_status().await.is_err(), "the move called CloudKit");
+}
+
 #[tokio::test]
 async fn local_only_records_stay_behind_and_the_plan_counts_them() {
     let server = FakeServer::new();
@@ -369,6 +402,46 @@ async fn a_first_upload_from_off_takes_the_server_s_copy_and_sends_what_the_serv
     assert_eq!(live(&server, 2), Some(carried(2, "Only here", 2)));
     assert!(!mac.files.exists(&icloud_file()));
     assert_eq!(mac.device.sync.mode(), ServiceMode::Personal);
+}
+
+// The first upload's refill is a mark per kind in the state file, written before its pull, so a restart refills them
+// again; only the kinds the personal scope alone holds take it, and the snapshot that ends it clears them.
+#[tokio::test]
+async fn a_first_upload_refills_by_per_kind_marks_that_its_snapshot_clears() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let web = on_the_service(&server).await;
+    web.connections.put(&id(1), carried(1, "Server's", 1));
+    web.sync().await;
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    mac.put(1, carried(1, "Device's", 1));
+    mac.icloud.stop_signal().stop();
+    let (reached, release) = mac.device.wire.hold_next_pull(ScopeName::Personal);
+
+    let marks = || async {
+        mac.device
+            .rows(RowRange::Table(Table::StoresKinds))
+            .await
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::StoresKind(row) => Some((row.store, row.kind.as_str().to_owned())),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let meanwhile = async {
+        reached.notified().await;
+        let during = marks().await;
+        release.notify_one();
+        during
+    };
+    let mover = mac.mover(false);
+    let (uploaded, during) = tokio::join!(mover.first_upload(), meanwhile);
+
+    uploaded.unwrap();
+    assert_eq!(during, [("connections".to_owned(), "connection".to_owned())]);
+    assert!(marks().await.is_empty());
+    assert_eq!(mac.get(1), Some(carried(1, "Server's", 1)));
 }
 
 // A value the move took from the service is the device's base from then on: a change made on the service while the

@@ -20,6 +20,7 @@ use super::engines::{Hosts, IcloudEngine, Restart, ServiceEngine, ServiceLink, S
 use super::events::{Signals, forward};
 use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSettingsBridge};
 use super::legacy::{HostLegacyMirror, LegacyMirrorBridge};
+use super::moves::{allowed, hold_to_policy};
 use super::service::{SyncConfig, SyncListener, SyncPlatformTag, SyncService};
 use super::service_records::categories_arg;
 use crate::account::{AccountService, SyncProviderTag};
@@ -200,7 +201,11 @@ impl SyncService {
         };
         let categories = categories_arg(&parts.config.categories);
         let mirror = parts.legacy_mirror;
+        let icloud_allowed = allowed(parts.account.as_deref(), parts.config.platform, SyncProviderTag::Icloud);
         let icloud = match (parts.config.provider, parts.cloudkit, &hosts, &categories) {
+            (SyncProviderTag::Icloud, Some(_), Ok(_), Ok(_)) if !icloud_allowed => Err(SyncError::NotAllowed {
+                what: "sync with iCloud while the organization's policy does not allow it",
+            }),
             (SyncProviderTag::Icloud, Some(transport), Ok(hosts), Ok(categories)) => Ok(IcloudEngine::start(
                 hosts,
                 transport,
@@ -230,9 +235,13 @@ impl SyncService {
             _ => None,
         };
         let kept = categories.clone().unwrap_or_default();
-        let mode = match parts.config.provider {
-            SyncProviderTag::TableproSync => ServiceMode::Personal,
-            SyncProviderTag::Icloud | SyncProviderTag::Off => ServiceMode::TeamsOnly,
+        // A provider the values no longer allow carries no personal data from the start (0055, Leaving a provider).
+        let personal = parts.config.provider == SyncProviderTag::TableproSync
+            && allowed(parts.account.as_deref(), parts.config.platform, SyncProviderTag::TableproSync);
+        let mode = if personal {
+            ServiceMode::Personal
+        } else {
+            ServiceMode::TeamsOnly
         };
         let restart = match (&parts.account, &hosts) {
             (Some(account), Ok(hosts)) => Some(Restart {
@@ -248,18 +257,26 @@ impl SyncService {
             (Err(error), ..) | (_, _, Err(error)) => Err(error),
             (_, Err(error), _) => Err(error.clone()),
         };
-        Arc::new(Self {
+        let slot = ServiceSlot::new(first, restart, kept);
+        if !personal {
+            slot.forbid_personal();
+        }
+        let service = Arc::new(Self {
             tasks,
             account: parts.account,
             config: parts.config,
             icloud,
-            service: Arc::new(ServiceSlot::new(first, restart, kept)),
+            service: Arc::new(slot),
             connections: parts.connections,
             legacy_marks,
             _marks_hear_stores: marks_hear_stores,
             cloudkit,
             files,
             _forward: forwarding,
-        })
+            _policy: std::sync::Mutex::new(None),
+        });
+        let watching = service.tasks.spawn_owned(hold_to_policy(&Arc::downgrade(&service)));
+        *service._policy.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(watching);
+        service
     }
 }

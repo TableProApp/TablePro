@@ -10,7 +10,7 @@ use tablepro_sync::moves::{MoveParts, Mover};
 use tablepro_sync::service::ServiceMode;
 
 use super::service::{MoveBackPlanInfo, MovePlanInfo, SyncPlatformTag, SyncService};
-use crate::account::SyncProviderTag;
+use crate::account::{AccountService, SyncProviderTag};
 use crate::error::CoreError;
 use crate::runtime::on_runtime;
 
@@ -43,17 +43,66 @@ impl SyncService {
     }
 
     // What the managed policy leaves this platform (0055); with no account there is no policy to hold it to.
-    fn allows(&self, provider: SyncProviderTag) -> bool {
-        let Some(account) = &self.account else {
-            return true;
+    pub(crate) fn allows(&self, provider: SyncProviderTag) -> bool {
+        allowed(self.account.as_deref(), self.config.platform, provider)
+    }
+}
+
+pub(crate) fn allowed(account: Option<&AccountService>, platform: SyncPlatformTag, provider: SyncProviderTag) -> bool {
+    let Some(account) = account else {
+        return true;
+    };
+    let offered: &[SyncProvider] = match platform {
+        SyncPlatformTag::Macos | SyncPlatformTag::Ios => {
+            &[SyncProvider::Off, SyncProvider::ICloud, SyncProvider::TableProSync]
+        }
+        SyncPlatformTag::Linux | SyncPlatformTag::Windows => &[SyncProvider::Off, SyncProvider::TableProSync],
+    };
+    account.account.policy().sync_choices(offered).contains(provider.into())
+}
+
+// The provider in use stops at once once the values no longer allow it, with no last pass (0055, Leaving a provider):
+// iCloud's engine stops, and TablePro Sync keeps its teams and key objects while personal data rests, until the person
+// confirms the move the profile leaves.
+pub(crate) fn hold_to_policy(service: &std::sync::Weak<SyncService>) -> impl Future<Output = ()> + Send + 'static {
+    let service = std::sync::Weak::clone(service);
+    async move {
+        let Some(mut values) = service.upgrade().and_then(|held| held.account.as_ref().map(|account| account.account.watch_policy()))
+        else {
+            return;
         };
-        let offered: &[SyncProvider] = match self.config.platform {
-            SyncPlatformTag::Macos | SyncPlatformTag::Ios => {
-                &[SyncProvider::Off, SyncProvider::ICloud, SyncProvider::TableProSync]
+        loop {
+            let Some(held) = service.upgrade() else {
+                return;
+            };
+            held.leave_a_forbidden_provider().await;
+            drop(held);
+            if values.changed().await.is_err() {
+                return;
             }
-            SyncPlatformTag::Linux | SyncPlatformTag::Windows => &[SyncProvider::Off, SyncProvider::TableProSync],
-        };
-        account.account.policy().sync_choices(offered).contains(provider.into())
+        }
+    }
+}
+
+impl SyncService {
+    pub(crate) async fn leave_a_forbidden_provider(&self) {
+        if self.allows(self.config.provider) {
+            return;
+        }
+        match self.config.provider {
+            SyncProviderTag::Icloud => {
+                if let Ok(engine) = &self.icloud {
+                    engine.stop();
+                }
+            }
+            SyncProviderTag::TableproSync => {
+                self.service.forbid_personal();
+                if let Ok(engine) = self.service.now() {
+                    engine.sync.set_mode(ServiceMode::TeamsOnly).await;
+                }
+            }
+            SyncProviderTag::Off => {}
+        }
     }
 }
 
@@ -105,10 +154,16 @@ impl SyncService {
             .await
     }
 
-    // From iCloud: a last iCloud pass, iCloud stops, and each record meets the service's copy (0054).
+    // From iCloud: a last iCloud pass, iCloud stops, and each record meets the service's copy (0054). While the values
+    // forbid iCloud traffic, no iCloud call runs and the copies meet the service against this device's CloudKit bases.
     pub async fn move_to_service(&self) -> Result<(), CoreError> {
-        self.on_mover(move |mover| async move { mover.move_to_service().await })
-            .await
+        if self.allows(SyncProviderTag::Icloud) {
+            self.on_mover(move |mover| async move { mover.move_to_service().await })
+                .await
+        } else {
+            self.on_mover(move |mover| async move { mover.move_to_service_without_icloud().await })
+                .await
+        }
     }
 
     // From Off: what this device holds goes up under the normal merge, the server's copy winning a conflict.

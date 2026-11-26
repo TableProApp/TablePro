@@ -281,6 +281,11 @@ impl Account {
         self.inner.policy.borrow().clone()
     }
 
+    // The values as the host passes them again, for what applies them at once (core ADR 0055, When a value applies).
+    pub fn watch_policy(&self) -> tokio::sync::watch::Receiver<ManagedPolicy> {
+        self.inner.policy.subscribe()
+    }
+
     // Share-link reads and the AI model catalog refresh ask this before any request (core ADR 0055).
     pub fn allows_tablepro_requests(&self) -> bool {
         self.inner.policy.borrow().allows_tablepro_requests()

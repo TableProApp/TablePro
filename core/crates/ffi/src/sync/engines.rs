@@ -302,6 +302,8 @@ pub(crate) struct ServiceSlot {
     // What the person set while no engine ran, which the next start takes.
     categories: Mutex<SyncCategories>,
     history_window: Mutex<Option<u32>>,
+    // The values no longer allow personal data on TablePro Sync: a later start runs teams-only (0055).
+    personal_forbidden: std::sync::atomic::AtomicBool,
 }
 
 // An anchor the device store could not settle, as while it is locked, is no pass's to retry (0066) but a start's.
@@ -329,7 +331,12 @@ impl ServiceSlot {
             restart,
             categories: Mutex::new(categories),
             history_window: Mutex::new(None),
+            personal_forbidden: std::sync::atomic::AtomicBool::new(false),
         }
+    }
+
+    pub(crate) fn forbid_personal(&self) {
+        self.personal_forbidden.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     // The engine as it stands, with no start: for the calls that answer at once.
@@ -353,7 +360,12 @@ impl ServiceSlot {
         let categories = lock(&self.categories).clone();
         let started = match service_link(Some(&restart.account)).await {
             Ok(link) if restart.session.is_some() && link.session() == restart.session.as_deref() => {
-                ServiceEngine::start(&restart.hosts, link, categories, restart.mode).await
+                let mode = if self.personal_forbidden.load(std::sync::atomic::Ordering::SeqCst) {
+                    ServiceMode::TeamsOnly
+                } else {
+                    restart.mode
+                };
+                ServiceEngine::start(&restart.hosts, link, categories, mode).await
             }
             Ok(_) => Err(TransportError::SignedOut.into()),
             Err(error) => Err(error),

@@ -1,6 +1,6 @@
 // How personal data arriving on the service meets the device's records in its first snapshot (0054, Moving between
 // providers): from iCloud, against the copy both providers last shared, with the move marker written by the first
-// mover; from no provider, as a refill, where the server's copy wins.
+// mover; from no provider, as a refill of the kinds only the personal scope holds, where the server's copy wins.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, PoisonError};
@@ -59,8 +59,10 @@ impl Arrival {
         }
     }
 
-    pub(crate) const fn pull_wins(&self) -> bool {
-        matches!(self, Self::FirstUpload)
+    // A move from iCloud merges against the copy both providers last shared, whatever refills the stores owe. A first
+    // upload refills by the per-kind marks it wrote.
+    pub(crate) const fn meets_its_own_bases(&self) -> bool {
+        matches!(self, Self::FromIcloud(_))
     }
 
     // This device's CloudKit base of a service record, as the merge's base. Its tag is CloudKit's, which no service
