@@ -15,7 +15,7 @@ use tablepro_sync_testing::{FakeCloudKit, FakeDeviceStore, FakeServer};
 use uuid::Uuid;
 
 use super::engines::ServiceLink;
-use super::keys::{GenesisOutcomeTag, KeyStateInfo, team_keys_info, reviewed_member_info};
+use super::keys::{GenesisOutcomeTag, KeyStateInfo, reviewed_member_info, team_keys_info};
 use super::names::{Names, Person};
 use super::open::OpenParts;
 use super::service::{
@@ -193,11 +193,7 @@ async fn a_pass_finishes_while_the_listener_is_still_running() {
     })
     .await;
 
-    let pass = tokio::time::timeout(
-        Duration::from_secs(30),
-        opened.service.sync_now(PassReasonTag::Person),
-    )
-    .await;
+    let pass = tokio::time::timeout(Duration::from_secs(30), opened.service.sync_now(PassReasonTag::Person)).await;
     release.send(()).unwrap();
 
     assert!(matches!(pass, Ok(Ok(()))), "{pass:?}");
@@ -221,12 +217,7 @@ async fn genesis_runs_through_the_service_over_the_engine_s_key_flows() {
     opened.service.sync_now(PassReasonTag::Launch).await.unwrap();
     let before = opened.service.key_state().await.unwrap();
     let draft = opened.service.begin_genesis().await.unwrap();
-    let groups: Vec<String> = draft
-        .text
-        .expose_secret()
-        .split('-')
-        .map(str::to_lowercase)
-        .collect();
+    let groups: Vec<String> = draft.text.expose_secret().split('-').map(str::to_lowercase).collect();
     let typed = draft
         .check
         .iter()
@@ -327,7 +318,10 @@ fn a_team_s_rows_carry_the_names_the_account_could_read_and_none_for_the_rest() 
     assert_eq!(info.team_name.as_deref(), Some("Acme"));
     assert_eq!(info.members[0].name.as_deref(), Some("Ana"));
     assert_eq!(info.members[0].email.as_deref(), Some("ana@example.com"));
-    assert_eq!((info.members[1].name.clone(), info.members[1].email.clone()), (None, None));
+    assert_eq!(
+        (info.members[1].name.clone(), info.members[1].email.clone()),
+        (None, None)
+    );
 }
 
 #[test]

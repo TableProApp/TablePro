@@ -6,6 +6,7 @@ use tablepro_records::Kind;
 use tablepro_session::runtime::Tasks;
 use tablepro_sync::SyncError;
 use tablepro_sync::api::{self as sync, StateFiles, TransportError};
+use tablepro_sync::http::HttpTransport;
 use tablepro_sync::state::SqliteStateFiles;
 
 use super::cloudkit::{CloudKitBridge, CloudKitTransport};
@@ -39,7 +40,8 @@ pub(crate) struct OpenParts {
 impl Core {
     // The engine keeps its state files in this Core's folders and syncs this Core's stores, so it opens on the Core that
     // holds them. `account` may come from another Core; with none, as for iCloud alone, TablePro Sync is unavailable and
-    // iCloud runs (core ADR 0054, Providers). The Apple apps pass their CloudKit transport and device store, and the
+    // iCloud runs (core ADR 0054, Providers). TablePro Sync stays bound to the sign-in the account holds at open, so
+    // after a sign-in, a sign-out or a switch the app opens it again. The Apple apps pass their CloudKit transport and device store, and the
     // Mac its legacy mirror while the previous stable runs the Swift engine. Windows passes none: the core reaches
     // Credential Manager itself. Async, since opening a state file reads its anchor from the device store.
     #[expect(
@@ -63,20 +65,21 @@ impl Core {
             SyncPlatformTag::Linux => Kind::LinuxSettings,
             SyncPlatformTag::Windows => Kind::WindowsSettings,
         };
-        let device_store = device_store.map(|host| {
-            Arc::new(HostDeviceStoreBridge {
-                host: Arc::from(host),
-                tasks: tasks.clone(),
-            }) as Arc<dyn sync::HostDeviceStore>
-        });
+        let device_store = device_store
+            .map(|host| {
+                Arc::new(HostDeviceStoreBridge {
+                    host: Arc::from(host),
+                    tasks: tasks.clone(),
+                }) as Arc<dyn sync::HostDeviceStore>
+            })
+            .or_else(|| own_device_store(&tasks));
         let files = match (&self.paths, &device_store) {
             (Some(paths), Some(store)) => {
                 Some(Arc::new(SqliteStateFiles::new(paths, Arc::clone(store))) as Arc<dyn StateFiles>)
             }
             _ => None,
         };
-        let link = service_link(account.as_deref());
-        let parts = OpenParts {
+        let mut parts = OpenParts {
             config,
             account,
             files,
@@ -89,20 +92,47 @@ impl Core {
                     tasks: tasks.clone(),
                 }) as Arc<dyn sync::LegacyMirror>
             }),
-            link,
+            link: Err(TransportError::SignedOut.into()),
             listener: Arc::from(listener),
         };
         let opener = tasks.clone();
-        on_runtime(&opener, async move { Ok(SyncService::open(tasks, parts).await) }).await
+        on_runtime(&opener, async move {
+            if parts.config.provider == SyncProviderTag::TableproSync {
+                parts.link = service_link(parts.account.as_deref()).await;
+            }
+            Ok(SyncService::open(tasks, parts).await)
+        })
+        .await
     }
 }
 
-// No `/v2/sync` transport is built over the generated client yet, so a sign-in reaches no service engine.
-fn service_link(account: Option<&AccountService>) -> Result<ServiceLink, SyncError> {
-    match account {
-        None => Err(TransportError::SignedOut.into()),
-        Some(_) => Err(SyncError::unimplemented("sync.service_transport")),
-    }
+// Windows keeps its device items in Credential Manager; another platform's app passes its own store or has none.
+#[cfg(windows)]
+fn own_device_store(tasks: &Tasks) -> Option<Arc<dyn sync::HostDeviceStore>> {
+    let manager = crate::credential_manager::CredentialManager::new(crate::credential_manager::PREFIX, tasks.clone());
+    Some(Arc::new(crate::credential_manager::DeviceItems(Arc::new(manager))))
+}
+
+#[cfg(not(windows))]
+fn own_device_store(_: &Tasks) -> Option<Arc<dyn sync::HostDeviceStore>> {
+    None
+}
+
+// The sign-in the account holds now, which the service engine stays bound to for its life.
+async fn service_link(account: Option<&AccountService>) -> Result<ServiceLink, SyncError> {
+    let Some(service) = account else {
+        return Err(TransportError::SignedOut.into());
+    };
+    let http = service.account.http_client();
+    let transport = HttpTransport::open(Arc::new(service.account.clone()), http).await?;
+    let binding = transport.binding().clone();
+    Ok(ServiceLink {
+        origin: binding.origin,
+        sign_in: binding.sign_in,
+        account: binding.account,
+        device_row: binding.device_row,
+        transport: Arc::new(transport),
+    })
 }
 
 impl SyncService {
@@ -146,8 +176,9 @@ impl SyncService {
             (SyncProviderTag::TableproSync, Ok(link), Ok(hosts), Ok(categories)) => {
                 ServiceEngine::start(hosts, link, categories).await
             }
-            (SyncProviderTag::TableproSync, Err(error), ..)
-            | (SyncProviderTag::TableproSync, _, _, Err(error)) => Err(error),
+            (SyncProviderTag::TableproSync, Err(error), ..) | (SyncProviderTag::TableproSync, _, _, Err(error)) => {
+                Err(error)
+            }
             (SyncProviderTag::TableproSync, _, Err(error), _) => Err(error.clone()),
             // The engine has no pass yet that keeps to the team scopes and the key objects (core ADR 0054,
             // Providers), so on Off or iCloud it would carry personal data to the service.

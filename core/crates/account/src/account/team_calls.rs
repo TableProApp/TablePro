@@ -25,7 +25,10 @@ impl Account {
         let mut cursor = None;
         for _ in 0..MEMBER_PAGES {
             self.reachable()?;
-            let page = match api.list_team_members(team_id, cursor.as_deref(), Some(MEMBER_PAGE)).await {
+            let page = match api
+                .list_team_members(team_id, cursor.as_deref(), Some(MEMBER_PAGE))
+                .await
+            {
                 Ok(answer) => answer.into_inner(),
                 Err(error) => return session.answered(Call::TeamMembers, Err(answer_error(error).await.into())),
             };
@@ -131,14 +134,16 @@ mod tests {
     #[tokio::test]
     async fn a_member_who_does_not_manage_the_team_is_refused_the_list() {
         let dir = tempfile::tempdir().expect("a temporary directory");
-        let endpoints = cloud(move |method, path| match (method, path.split('?').next().unwrap_or_default()) {
-            ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
-            ("GET", "/v2/teams/team_01k8d6wk00f8xsr79e7x052rkk/members") => (
-                403,
-                r#"{"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden"}"#.to_owned(),
-            ),
-            _ => (404, String::new()),
-        });
+        let endpoints = cloud(
+            move |method, path| match (method, path.split('?').next().unwrap_or_default()) {
+                ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
+                ("GET", "/v2/teams/team_01k8d6wk00f8xsr79e7x052rkk/members") => (
+                    403,
+                    r#"{"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden"}"#.to_owned(),
+                ),
+                _ => (404, String::new()),
+            },
+        );
         let account = signed_in(dir.path(), endpoints).await;
 
         let members = account.team_members(TEAM).await;

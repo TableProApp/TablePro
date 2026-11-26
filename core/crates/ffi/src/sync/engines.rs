@@ -84,7 +84,12 @@ impl IcloudEngine {
             events: Some(Arc::clone(&hosts.events)),
             last_account,
         }));
-        let scheduler = spawn(Arc::clone(&sync) as Arc<dyn Pass>, wake, stop.clone(), Backoff::STANDARD);
+        let scheduler = spawn(
+            Arc::clone(&sync) as Arc<dyn Pass>,
+            wake,
+            stop.clone(),
+            Backoff::STANDARD,
+        );
         Self {
             sync,
             journal,
@@ -146,7 +151,12 @@ impl ServiceEngine {
             events: Some(Arc::clone(&hosts.events)),
             categories,
         }));
-        let scheduler = spawn(Arc::clone(&sync) as Arc<dyn Pass>, wake, stop.clone(), Backoff::STANDARD);
+        let scheduler = spawn(
+            Arc::clone(&sync) as Arc<dyn Pass>,
+            wake,
+            stop.clone(),
+            Backoff::STANDARD,
+        );
         Ok(Self {
             sync,
             keys,

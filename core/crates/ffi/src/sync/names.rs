@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use tablepro_account::Account;
 use tablepro_keys::encoding::{AccountId, TeamId};
 use tablepro_sync::api::ScopeName;
-use uuid::Uuid;
+use tablepro_sync::api::ids::parse_typeid;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Person {
@@ -46,7 +46,7 @@ impl Names {
             match account.team_members(&ScopeName::Team(*team).wire()).await {
                 Ok(members) => {
                     for member in members {
-                        let Some(id) = typeid_uuid("acct_", &member.account_id) else {
+                        let Some(id) = parse_typeid("acct_", &member.account_id) else {
                             continue;
                         };
                         let person = Person {
@@ -78,39 +78,5 @@ impl Names {
     #[cfg(test)]
     pub(crate) fn insert_person(&mut self, team: TeamId, account: AccountId, person: Person) {
         self.people.insert((team, account), person);
-    }
-}
-
-const TYPEID_ALPHABET: &[u8; 32] = b"0123456789abcdefghjkmnpqrstvwxyz";
-
-// A TypeID's suffix is the UUID in 26 lower-case Crockford base32 symbols, the first carrying the two zero bits above
-// 128; the server names accounts `acct_` and that suffix.
-fn typeid_uuid(prefix: &str, text: &str) -> Option<Uuid> {
-    let suffix = text.strip_prefix(prefix)?;
-    if suffix.len() != 26 || !suffix.starts_with(|c: char| ('0'..='7').contains(&c)) {
-        return None;
-    }
-    let mut value: u128 = 0;
-    for byte in suffix.bytes() {
-        let symbol = TYPEID_ALPHABET.iter().position(|candidate| *candidate == byte)?;
-        value = (value << 5) | u128::try_from(symbol).ok()?;
-    }
-    Some(Uuid::from_u128(value))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_account_typeid_reads_as_the_uuid_a_team_scope_name_encodes_the_same_way() {
-        let uuid = Uuid::from_u128(0x0193_a1b2_c3d4_7e5f_8a9b_0c1d_2e3f_4a5b);
-        let team = ScopeName::Team(TeamId(uuid)).wire();
-        let account = format!("acct_{}", team.trim_start_matches("team_"));
-
-        assert_eq!(typeid_uuid("acct_", &account), Some(uuid));
-        assert_eq!(typeid_uuid("acct_", &team), None);
-        assert_eq!(typeid_uuid("acct_", "acct_81k8d6wk00f8xsr79e7x052rkk"), None);
-        assert_eq!(typeid_uuid("acct_", "acct_01k8d6wk00f8xsr79e7x052rk"), None);
     }
 }

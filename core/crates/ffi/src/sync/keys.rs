@@ -12,14 +12,13 @@ use tablepro_keys::envelope::EnvelopeId;
 use tablepro_sync::SyncError;
 use tablepro_sync::api::ScopeName;
 use tablepro_sync::api::key_flows::{
-    AccountFlows, Acceptance, ApprovalFlows, CancelWith, DeviceFlows, LockCause, RemovalReview, ResetFlows,
+    Acceptance, AccountFlows, ApprovalFlows, CancelWith, DeviceFlows, LockCause, RemovalReview, ResetFlows,
     ReviewedMember, TeamFlows, TeamKeys,
 };
 use tablepro_sync::keys::KeyService;
 
 use super::key_records::{
-    account_arg, draft_arg, ik_arg, key_device_arg, notice_arg, request_arg, reset_arg, team_arg, team_text,
-    typed_arg,
+    account_arg, draft_arg, ik_arg, key_device_arg, notice_arg, request_arg, reset_arg, team_arg, team_text, typed_arg,
 };
 use super::names::Names;
 use super::service::SyncService;

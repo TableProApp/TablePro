@@ -133,6 +133,51 @@ pub fn device_item_class(item: DeviceItemTag) -> DeviceItemClassTag {
     item.class()
 }
 
+// Where the core keeps an item itself, as Windows does in Credential Manager: one name per item under `prefix`, each
+// part of it named apart, so no two items or parts share a credential.
+#[cfg_attr(
+    not(any(windows, test)),
+    expect(dead_code, reason = "only Windows keeps its device items in the core")
+)]
+pub(crate) fn device_item_target(prefix: &str, item: &sync::DeviceItem) -> String {
+    match DeviceItemTag::of(item) {
+        DeviceItemTag::DeviceKeys {
+            origin,
+            account,
+            device_row,
+        } => format!("{prefix}/sync/device-keys/{origin}/{account}/{device_row}"),
+        DeviceItemTag::AccountKeys { origin, account, av } => {
+            format!("{prefix}/sync/account-keys/{origin}/{account}/av-{av}")
+        }
+        DeviceItemTag::ResetKeys { origin, account, reset } => {
+            format!("{prefix}/sync/reset-keys/{origin}/{account}/{reset}")
+        }
+        DeviceItemTag::StateMacKey { state } => format!("{prefix}/sync/state-mac/{state}"),
+        DeviceItemTag::AnchorRoot { state } => format!("{prefix}/sync/anchor-root/{state}"),
+        DeviceItemTag::AnchorCheckpoint {
+            state,
+            checkpoint,
+            part,
+        } => format!("{prefix}/sync/anchor-checkpoint/{state}/{checkpoint}/part-{part}"),
+    }
+}
+
+// What the platform's secret store said, as the engine reads a device store's failure.
+#[cfg_attr(
+    not(any(windows, test)),
+    expect(dead_code, reason = "only Windows keeps its device items in the core")
+)]
+pub(crate) fn device_store_error(error: tablepro_core::credentials::SecretError) -> DeviceStoreError {
+    use tablepro_core::credentials::SecretError;
+    match error {
+        SecretError::ServiceUnavailable { detail } => DeviceStoreError::Unavailable { detail },
+        SecretError::Locked => DeviceStoreError::Locked,
+        other => DeviceStoreError::Failed {
+            detail: other.to_string(),
+        },
+    }
+}
+
 fn store_error(error: HostSecretError) -> DeviceStoreError {
     match error {
         HostSecretError::Unavailable { detail } => DeviceStoreError::Unavailable { detail },
@@ -271,7 +316,9 @@ mod tests {
 
         let dark: serde_json::Value = serde_json::from_str(r#"{"name":"dark"}"#).unwrap();
         let read = sync::HostSettings::categories(&bridge).await.unwrap();
-        sync::HostSettings::apply(&bridge, "theme".to_owned(), Some(dark)).await.unwrap();
+        sync::HostSettings::apply(&bridge, "theme".to_owned(), Some(dark))
+            .await
+            .unwrap();
         sync::HostSettings::apply(&bridge, "editor".to_owned(), None)
             .await
             .unwrap();
@@ -284,6 +331,69 @@ mod tests {
                 ("editor".to_owned(), None)
             ]
         );
+    }
+
+    #[test]
+    fn each_device_item_has_a_target_of_its_own() {
+        let origin = Origin::parse("https://api.tablepro.app").unwrap();
+        let account = AccountId(Uuid::from_u128(1));
+        let state = StateName("ab".repeat(32));
+        let items = [
+            DeviceItem::DeviceKeys {
+                origin: origin.clone(),
+                account,
+                device_row: tablepro_sync::api::DeviceRowId("dev_01".to_owned()),
+            },
+            DeviceItem::AccountKeys {
+                origin: origin.clone(),
+                account,
+                av: Version::new(1).unwrap(),
+            },
+            DeviceItem::AccountKeys {
+                origin,
+                account,
+                av: Version::new(2).unwrap(),
+            },
+            DeviceItem::StateMacKey { state: state.clone() },
+            DeviceItem::AnchorRoot { state: state.clone() },
+            DeviceItem::AnchorCheckpoint {
+                state: state.clone(),
+                checkpoint: [7; 32],
+                part: 0,
+            },
+            DeviceItem::AnchorCheckpoint {
+                state,
+                checkpoint: [7; 32],
+                part: 1,
+            },
+        ];
+
+        let targets: std::collections::HashSet<String> =
+            items.iter().map(|item| device_item_target("TablePro", item)).collect();
+
+        assert_eq!(targets.len(), items.len());
+        assert!(targets.iter().all(|target| target.starts_with("TablePro/sync/")));
+        assert!(
+            targets.iter().all(|target| !target
+                .rsplit('/')
+                .next()
+                .unwrap()
+                .bytes()
+                .all(|byte| byte.is_ascii_digit())),
+            "a target ending in a number reads as a part of another: {targets:?}"
+        );
+    }
+
+    #[test]
+    fn a_locked_or_missing_secret_store_reads_as_the_engine_s_own_failure() {
+        use tablepro_core::credentials::SecretError;
+
+        let unavailable = device_store_error(SecretError::ServiceUnavailable {
+            detail: "no keyring".to_owned(),
+        });
+
+        assert_eq!(device_store_error(SecretError::Locked), DeviceStoreError::Locked);
+        assert!(matches!(unavailable, DeviceStoreError::Unavailable { .. }));
     }
 
     #[test]
