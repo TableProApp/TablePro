@@ -69,6 +69,8 @@ struct Attached {
 pub(crate) struct TeamLibrarySlot {
     attached: OnceLock<Attached>,
     off: AtomicBool,
+    // A delete began here and its file has yet to be seen gone, whether or not its mark landed.
+    file_owed: AtomicBool,
     problems: Mutex<HashMap<ScopeName, String>>,
     // When this run last took the profile's names, so a renamed team shows within one poll of it.
     named_at_ms: Mutex<Option<i64>>,

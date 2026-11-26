@@ -262,8 +262,7 @@ fn a_delete_cut_off_after_its_mark_keeps_the_owner_s_file_unread_until_the_mark_
     let reopened = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
     let while_marked = reopened.teams_blocking();
     let write_while_marked = reopened.put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q2", "b")]);
-    reopened.delete_blocking().expect("deleted");
-    reopened.store_deleted_blocking().expect("settled");
+    reopened.delete_owed_blocking(false).expect("deleted");
     reopened.clear_deleting_blocking("db1").expect("cleared");
 
     assert!(matches!(while_marked, Err(StorageError::DeletePending { .. })));
@@ -273,8 +272,9 @@ fn a_delete_cut_off_after_its_mark_keeps_the_owner_s_file_unread_until_the_mark_
     assert!(reopened.teams_blocking().expect("teams").is_empty());
 }
 
-// One marker per state database (K8t leftover): once the file is gone the owner reads again, and each database's
-// marker stays for its own rows until that database clears it; one database never clears another's.
+// One marker per state database (K8t leftover): once the file is gone the owner reads again, each database's marker
+// stays for its own rows until that database clears it, one database never clears another's, and a database that
+// finishes late leaves a refilled file alone.
 #[test]
 fn each_state_database_keeps_its_own_delete_marker() {
     let root = tempfile::tempdir().expect("tempdir");
@@ -285,19 +285,44 @@ fn each_state_database_keeps_its_own_delete_marker() {
 
     store.mark_deleting_blocking("db1").expect("marked");
     store.mark_deleting_blocking("db2").expect("marked");
-    store.delete_blocking().expect("deleted");
     let before_settled = store.delete_pending_blocking();
-    store.store_deleted_blocking().expect("settled");
+    store.delete_owed_blocking(false).expect("deleted");
     let after_settled = store.delete_pending_blocking();
     store.clear_deleting_blocking("db1").expect("cleared");
+    store
+        .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q2", "b")])
+        .expect("refilled");
+    store.delete_owed_blocking(false).expect("nothing owed");
 
     assert!(before_settled);
     assert!(!after_settled);
+    assert!(store.path().exists());
     assert!(!store.deleting_blocking("db1"));
     assert!(store.deleting_blocking("db2"));
     assert!(!store.delete_pending_blocking());
-    assert!(store.teams_blocking().expect("teams").is_empty());
+    assert_eq!(store.teams_blocking().expect("teams").len(), 1);
     assert!(store.mark_deleting_blocking("../db").is_err());
+}
+
+// A folder whose markers cannot be listed hides no delete: the owner stays unread (K8t leftover, Codex round 1).
+#[cfg(unix)]
+#[test]
+fn markers_that_cannot_be_listed_keep_the_owner_unread() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir().expect("tempdir");
+    let store = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
+    store
+        .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q1", "a")])
+        .expect("put");
+    let folder = store.path().parent().expect("folder").to_owned();
+
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o300)).expect("unlisted");
+    let pending = store.delete_pending_blocking();
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o700)).expect("listed");
+
+    assert!(pending);
+    assert!(!store.delete_pending_blocking());
 }
 
 #[test]

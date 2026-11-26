@@ -64,13 +64,8 @@ impl ServiceSync {
                 "the team library delete goes ahead without its mark"
             );
         }
-        // The file goes whether or not the mark landed.
-        self.store_call(|store| {
-            store.delete_blocking()?;
-            store.store_deleted_blocking()
-        })
-        .await
-        .map_err(|error| failed(&error))?;
+        // The file goes whether or not the mark landed, and stays owed here until it went.
+        self.team_library.file_owed.store(true, Ordering::SeqCst);
         self.finish_delete().await
     }
 
@@ -92,16 +87,13 @@ impl ServiceSync {
     }
 
     // The owner's file, once per delete: a mark that already saw it go owes only its database's rows, so a database
-    // finishing late never takes a file another sign-in has refilled since.
+    // finishing late never takes a file another sign-in has refilled since. A delete whose mark did not land owes the
+    // file all the same.
     async fn delete_store_file(&self) -> Result<(), SyncError> {
-        self.store_call(|store| {
-            if store.delete_pending_blocking() {
-                store.delete_blocking()?;
-                store.store_deleted_blocking()?;
-            }
-            Ok(())
-        })
-        .await
+        let owed = self.team_library.file_owed.load(Ordering::SeqCst);
+        self.store_call(move |store| store.delete_owed_blocking(owed)).await?;
+        self.team_library.file_owed.store(false, Ordering::SeqCst);
+        Ok(())
     }
 
     // The name this state database's mark carries.

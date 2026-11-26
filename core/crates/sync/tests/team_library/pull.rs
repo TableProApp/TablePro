@@ -37,6 +37,18 @@ async fn a_pair_of_ids_that_collide_in_case_is_held_and_neither_is_listed_or_sen
         query_fields("Upper", None),
     );
     let report = mac.device.sync().await;
+    // An edit of the spelling the store already held goes nowhere either.
+    mac.store
+        .put_items_blocking(
+            &scope().wire(),
+            vec![tablepro_storage::TeamLibraryItem {
+                kind: TeamLibraryKind::Query,
+                id: lower(0xab),
+                fields: query_fields("Edited here", None),
+            }],
+        )
+        .unwrap();
+    let edited = mac.device.sync().await;
     let held: Vec<(String, HeldReason)> = mac
         .device
         .rows(RowRange::Scope(Table::Held, scope()))
@@ -52,6 +64,7 @@ async fn a_pair_of_ids_that_collide_in_case_is_held_and_neither_is_listed_or_sen
     assert_eq!(listed(&mac).await, 0);
     assert_eq!(held, vec![(lower(0xab).to_uppercase(), HeldReason::Collides)]);
     assert_eq!(report.pushed, 0);
+    assert_eq!(edited.pushed, 0);
     assert!(
         mac.items(TeamLibraryKind::Query)
             .iter()

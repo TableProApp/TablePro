@@ -360,9 +360,11 @@ impl StateStore for SqliteState {
         }))
     }
 
-    // `secure_delete` already zeroed the rows in their pages; the frames before the delete leave with a checkpoint that
-    // empties the WAL. The file is held exclusively, so no reader keeps the checkpoint waiting.
+    // `secure_delete` zeroes what a delete removes in its pages, but a page freed before it was on can still hold
+    // older copies: the file is rebuilt, then the frames before it leave with a checkpoint that empties the WAL. A
+    // state file is small and held exclusively, so neither waits on a reader or holds the file long.
     async fn purge(&self) -> Result<(), StateError> {
+        sqlx::query("VACUUM").execute(&self.pool).await.map_err(sql)?;
         let (busy, _, _): (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(TRUNCATE)")
             .fetch_one(&self.pool)
             .await

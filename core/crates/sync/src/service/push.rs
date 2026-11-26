@@ -11,6 +11,7 @@ use tablepro_records::record_id::parse_uuid;
 use uuid::Uuid;
 
 use super::scopes::kind_off;
+use super::team_library::{colliding_ids, library_kind};
 use super::{PassCtx, ServiceSync, begin};
 use crate::adapters::{approval, local_view};
 use crate::api::adapter::LocalRecords;
@@ -22,7 +23,7 @@ use crate::api::state::{
 };
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DeletedReason, Proof, PushBatch, TransportError};
 use crate::engine::{
-    KeptOff, Pending, PendingOp, change_bytes, diff, forget_kept_off, hold_kept_off, hold_left_behind,
+    Diffed, KeptOff, Pending, PendingOp, change_bytes, diff, forget_kept_off, hold_kept_off, hold_left_behind,
     kept_off_connections, split,
 };
 
@@ -173,6 +174,26 @@ pub(super) fn fingerprint(change: &Change) -> [u8; 32] {
     hasher.finalize().into()
 }
 
+// A team library record whose id another of its kind holds in other case goes nowhere, whichever spelling changed:
+// the pull holds the one it brought with its base, and the publish plan leaves both out (0052, Team scope; K8t).
+fn hold_colliding(diffed: &mut Diffed, kind: Kind, local: &LocalRecords, bases: &[BaseRow]) {
+    let Some(library) = library_kind(kind) else {
+        return;
+    };
+    let collided = colliding_ids(
+        local
+            .records
+            .iter()
+            .map(|record| (library, record.record_id.as_str()))
+            .chain(bases.iter().map(|base| (library, base.key.record_id.as_str()))),
+    );
+    if !collided.is_empty() {
+        diffed
+            .pending
+            .retain(|pending| !collided.contains(&(library, pending.key.record_id.to_lowercase())));
+    }
+}
+
 // A team scope's deletions go after its writes, the parts before the whole: a query moved out of a folder lands
 // before the folder goes, so the server never deletes it with the folder, and a folder before the connection its
 // queries named (0052, Team scope).
@@ -279,6 +300,7 @@ impl ServiceSync {
             forget_kept_off(&mut diffed, kind, &kept_off);
             let kept_back = hold_kept_off(&mut diffed, kind, &kept_off);
             left_drops.extend(hold_left_behind(&mut diffed, &bases, &left));
+            hold_colliding(&mut diffed, kind, &local, &bases);
             // The marker goes on before a refusal is looked up, so the change a refusal names is the one sent.
             if let Some(arrival) = ctx.arrival.as_deref().filter(|_| scope == ScopeName::Personal) {
                 arrival.mark(&mut diffed.pending);
