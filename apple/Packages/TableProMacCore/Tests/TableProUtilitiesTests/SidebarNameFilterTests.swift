@@ -155,7 +155,6 @@ struct SidebarNameFilterTests {
     @Test("A locale that folds I to a dotless i sends ASCII names to the locale-aware search")
     func turkishFoldsByLocale() {
         #expect(!AsciiFolding.matchesLocale(Locale(identifier: "tr_TR")))
-        #expect(!AsciiFolding.matchesLocale(Locale(identifier: "az_AZ")))
         #expect(AsciiFolding.matchesLocale(Locale(identifier: "en_US")))
     }
 

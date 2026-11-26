@@ -464,11 +464,17 @@ final class SidebarViewModel: ObservableObject {
     // MARK: - Filtering
 
     // The bodies around the outline ask for the same container verdicts on every evaluation; each filters a container
-    // once per query and catalog buffer. Plain storage, since a verdict is derived and never drawn by itself.
+    // once per query and catalog buffer. Plain storage, since a verdict is derived and never drawn by itself. Emptied
+    // when the query changes, so a container read under an earlier query does not keep its rows alive.
     private var containerBucketMemo = DatabaseTreeBucketMemo<DatabaseTreeContainerSlot>()
+    private var containerBucketQuery = ""
 
     func containerBuckets(database: String, schema: String?, source: DatabaseTreeBucketSource) -> DatabaseTreeObjectBuckets {
-        containerBucketMemo.buckets(for: DatabaseTreeContainerSlot(database: database, schema: schema), source: source)
+        if source.searchText != containerBucketQuery {
+            containerBucketMemo = DatabaseTreeBucketMemo()
+            containerBucketQuery = source.searchText
+        }
+        return containerBucketMemo.buckets(for: DatabaseTreeContainerSlot(database: database, schema: schema), source: source)
     }
 
     // Keyed by the rows themselves: a catalog commits its side lists before the generation moves.
