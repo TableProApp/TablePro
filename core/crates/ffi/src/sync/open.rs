@@ -85,10 +85,7 @@ impl Core {
         };
         let device_store = device_store
             .map(|host| {
-                Arc::new(HostDeviceStoreBridge {
-                    host: Arc::from(host),
-                    tasks: tasks.clone(),
-                }) as Arc<dyn sync::HostDeviceStore>
+                Arc::new(HostDeviceStoreBridge::new(Arc::from(host), tasks.clone())) as Arc<dyn sync::HostDeviceStore>
             })
             .or_else(|| own_device_store(&tasks));
         let files = match (&self.paths, &device_store) {
