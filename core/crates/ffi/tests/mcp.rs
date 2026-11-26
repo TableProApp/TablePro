@@ -16,8 +16,9 @@ use secrecy::{ExposeSecret, SecretString};
 use tablepro_cli::{Exit, Host, HostError, Terminal};
 use tablepro_ffi::{
     ConnectionRecord, ConnectionSecrets, Core, DatabaseSession, ExternalAccessTag, FileOpenRequest, HostConfig,
-    HostSecretError, HostSecrets, McpAppHost, McpListener, McpService, McpStatusTag, McpWriteRequest, RunListener,
-    RunOutcome, RunSettings, SafeModeTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings, mcp_address,
+    HostSecretError, HostSecrets, McpAppHost, McpListener, McpService, McpStatusTag, McpWriteRequest, ProfileKindTag,
+    RunListener, RunOutcome, RunSettings, SafeModeTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings,
+    mcp_address,
 };
 
 const WAIT: Duration = Duration::from_secs(20);
@@ -45,6 +46,10 @@ impl HostSecrets for MemorySecrets {
     }
 
     fn delete_connection(&self, _: String) -> Result<(), HostSecretError> {
+        Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
         Ok(())
     }
 

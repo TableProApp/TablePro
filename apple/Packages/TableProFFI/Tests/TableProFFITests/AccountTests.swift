@@ -13,6 +13,7 @@ private final class KeychainItems: HostSecrets, @unchecked Sendable {
     func relabel(connectionId: String, kind: SecretKindTag, label: String) throws {}
     func delete(connectionId: String, kind: SecretKindTag) throws {}
     func deleteConnection(connectionId: String) throws {}
+    func deleteProfile(profileId: String, kind: ProfileKindTag) throws {}
 
     func loadItem(item: SecretItemTag) throws -> String? {
         lock.withLock {

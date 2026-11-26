@@ -11,8 +11,9 @@ use std::time::{Duration, Instant};
 use secrecy::SecretString;
 use tablepro_ffi::{
     CancelToken, ColumnSort, CombinatorTag, Core, CoreError, DatabaseSession, ExportFormatTag, ExportProgress,
-    FileOpenRequest, FilterOpTag, FilterRuleArg, FilterValueArg, HostConfig, HostSecretError, HostSecrets, ResultSet,
-    RunListener, RunOutcome, RunSettings, SecretItemTag, SecretKindTag, TableFilterArg, TableName,
+    FileOpenRequest, FilterOpTag, FilterRuleArg, FilterValueArg, HostConfig, HostSecretError, HostSecrets,
+    ProfileKindTag, ResultSet, RunListener, RunOutcome, RunSettings, SecretItemTag, SecretKindTag, TableFilterArg,
+    TableName,
 };
 
 struct NoSecrets;
@@ -35,6 +36,10 @@ impl HostSecrets for NoSecrets {
     }
 
     fn delete_connection(&self, _: String) -> Result<(), HostSecretError> {
+        Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
         Ok(())
     }
 

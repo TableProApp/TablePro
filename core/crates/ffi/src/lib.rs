@@ -101,7 +101,9 @@ pub use history::{
     HistoryCursorArg, HistoryEntryInfo, HistoryExportFormat, HistoryOutcomeTag, HistoryPageInfo, HistoryRun,
     QueryHistoryStore,
 };
-pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
+pub use host::{
+    HostConfig, HostSecretError, HostSecretStore, HostSecrets, ProfileKindTag, SecretItemTag, SecretKindTag,
+};
 pub use host_stores::{
     FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteDigestsRecord, FavouriteRecordWrite,
     FavouriteStoreContents, FavouriteTableRecord, HistoryEntryRecord, SavedQueryFolderRecord, SavedQueryRecord,

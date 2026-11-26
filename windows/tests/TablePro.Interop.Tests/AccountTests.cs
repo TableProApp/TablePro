@@ -296,6 +296,8 @@ public sealed class AccountTests : IAsyncDisposable
 
         public void DeleteConnection(Guid connectionId) => _store.DeleteConnection(connectionId);
 
+        public void DeleteProfile(Guid profileId, ProfileKind kind) => _store.DeleteProfile(profileId, kind);
+
         public string? LoadItem(SecretItem item)
         {
             lock (_gate)

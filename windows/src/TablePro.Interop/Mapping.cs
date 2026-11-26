@@ -352,6 +352,12 @@ internal static partial class Mapping
         _ => Native.SecretKindTag.DatabasePassword,
     };
 
+    public static ProfileKind Profile(Native.ProfileKindTag kind) => kind switch
+    {
+        Native.ProfileKindTag.Credential => ProfileKind.Credential,
+        _ => ProfileKind.Ssh,
+    };
+
     // A health the app hands back to wait on compares by its fields, and the reason never differs.
     private static Native.ErrorInfo Error(CoreError error) => new(
         error.Code,

@@ -302,6 +302,8 @@ struct CoreLibraryStoreTests {
                 groups: contents.groups,
                 tags: contents.tags,
                 favorites: contents.favorites,
+                sshProfiles: contents.sshProfiles,
+                credentialProfiles: contents.credentialProfiles,
                 removing: []
             ),
             over: contents.digest
@@ -317,6 +319,119 @@ struct CoreLibraryStoreTests {
         #expect(after.connection.name == "Renamed")
         #expect(after.connection.safeMode == .safeModeFull)
         #expect(after.details.startupSql == "SET search_path = app")
+    }
+
+    private func bastionProfile() -> SshProfileRecord {
+        SshProfileRecord(
+            id: UUID().uuidString.lowercased(),
+            name: "Bastion",
+            ssh: SshSettings(host: "bastion", port: 22, username: "ops", jumpHosts: [], auth: .password, enabled: true, options: nil)
+        )
+    }
+
+    private func readonlyProfile() -> CredentialProfileRecord {
+        CredentialProfileRecord(
+            id: UUID().uuidString.lowercased(),
+            name: "Readonly",
+            username: "reader",
+            password: .prompt,
+            secureFieldIds: [],
+            order: 0
+        )
+    }
+
+    // The core's file with these profiles beside what the store wrote, as a Mac's sync would leave it.
+    private func addProfiles(_ ssh: [SshProfileRecord], _ credential: [CredentialProfileRecord]) async throws {
+        let core = try Core(
+            config: HostConfig(clientVersion: "test", storageDir: coreFile.deletingLastPathComponent().path),
+            secrets: ConnectionKeychainSecrets(secureStore: MockSecureStore())
+        )
+        let direct = try core.library()
+        let contents = try await direct.libraryContents()
+        _ = try await direct.replaceLibrary(
+            library: LibraryWriteRecord(
+                connections: contents.connections,
+                groups: contents.groups,
+                tags: contents.tags,
+                favorites: contents.favorites,
+                sshProfiles: ssh,
+                credentialProfiles: credential,
+                removing: []
+            ),
+            over: contents.digest
+        )
+    }
+
+    @Test("SSH and credential profiles the core holds, and the Mac's Keychain items for them, survive every iOS write")
+    func coreProfilesSurviveEveryWrite() async throws {
+        let store = makeStore()
+        var library = try store.load()
+        let held = DatabaseConnection(name: "Held", type: .postgresql)
+        library.connections = [held, DatabaseConnection(name: "Orders", type: .postgresql)]
+        try store.write(library, keepingPastedSSHKeys: [:])
+        let (profile, credential) = (bastionProfile(), readonlyProfile())
+        try await addProfiles([profile], [credential])
+        let profileId = try #require(UUID(uuidString: profile.id))
+        let account = SSHProfileSecretKind.password.account(for: profileId)
+        secureStore.seed(account, "from the Mac")
+        var document = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: coreFile)) as? [String: Any])
+        var entries = try #require(document["connections"] as? [[String: Any]])
+        let index = try #require(entries.firstIndex { ($0["id"] as? String)?.lowercased() == held.id.uuidString.lowercased() })
+        entries[index]["auth_mode"] = "from_the_future"
+        document["connections"] = entries
+        try JSONSerialization.data(withJSONObject: document).write(to: coreFile)
+
+        let reopened = makeStore()
+        var edited = try reopened.load()
+        edited.connections[0].name = "Renamed"
+        try reopened.write(edited, keepingPastedSSHKeys: [:])
+        try reopened.write(edited, keepingPastedSSHKeys: [:], removingUnreadable: UnreadableCopies(connections: [held.id]))
+
+        let after = try await coreContents()
+        #expect(after.connections.map(\.connection.name) == ["Renamed"])
+        #expect(after.unreadable.isEmpty)
+        #expect(after.sshProfiles.map(\.id) == [profile.id])
+        #expect(after.credentialProfiles == [credential])
+        #expect(try secureStore.retrieve(forKey: account) == "from the Mac")
+    }
+
+    @Test("A core write that would take a profile out through the iOS secrets host is refused and keeps it")
+    func profileRemovalIsRefusedOnIOS() async throws {
+        let profile = bastionProfile()
+        try await addProfiles([profile], [])
+        let profileId = try #require(UUID(uuidString: profile.id))
+        let account = SSHProfileSecretKind.password.account(for: profileId)
+        secureStore.seed(account, "from the Mac")
+        let core = try Core(
+            config: HostConfig(clientVersion: "test", storageDir: coreFile.deletingLastPathComponent().path),
+            secrets: ConnectionKeychainSecrets(secureStore: secureStore)
+        )
+        let direct = try core.library()
+        let contents = try await direct.libraryContents()
+
+        var refusal: String?
+        do {
+            _ = try await direct.replaceLibrary(
+                library: LibraryWriteRecord(
+                    connections: contents.connections,
+                    groups: contents.groups,
+                    tags: contents.tags,
+                    favorites: contents.favorites,
+                    sshProfiles: [],
+                    credentialProfiles: [],
+                    removing: []
+                ),
+                over: contents.digest
+            )
+        } catch let CoreError.Failed(info) {
+            refusal = info.code
+        }
+
+        #expect(refusal == "secret.service_unavailable")
+        let after = try await direct.libraryContents()
+        #expect(after.digest == contents.digest)
+        #expect(after.sshProfiles.map(\.id) == [profile.id])
+        #expect(try secureStore.retrieve(forKey: account) == "from the Mac")
     }
 
     @Test("A write that drops a connection the core holds unread lands over the file the deletion left")

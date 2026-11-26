@@ -8,6 +8,7 @@ private final class NoSecrets: HostSecrets, Sendable {
     func relabel(connectionId: String, kind: SecretKindTag, label: String) throws {}
     func delete(connectionId: String, kind: SecretKindTag) throws {}
     func deleteConnection(connectionId: String) throws {}
+    func deleteProfile(profileId: String, kind: ProfileKindTag) throws {}
     func loadItem(item: SecretItemTag) throws -> String? { nil }
     func storeItem(item: SecretItemTag, secret: String) throws {}
     func deleteItem(item: SecretItemTag) throws {}

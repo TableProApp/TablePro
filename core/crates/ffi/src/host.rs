@@ -38,6 +38,9 @@ pub trait HostSecrets: Send + Sync {
 
     fn delete_connection(&self, connection_id: String) -> Result<(), HostSecretError>;
 
+    // Every secret of an SSH or credential profile, which the store keeps apart from connections'.
+    fn delete_profile(&self, profile_id: String, kind: ProfileKindTag) -> Result<(), HostSecretError>;
+
     fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError>;
 
     /// The app names the item in its own words.
@@ -51,6 +54,12 @@ pub enum SecretKindTag {
     DatabasePassword,
     SshPassword,
     SshPassphrase,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum ProfileKindTag {
+    Ssh,
+    Credential,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -182,6 +191,19 @@ impl SecretVault for HostSecretStore {
     }
 }
 
+// Where a store keeps the secrets of SSH and credential profiles.
+#[async_trait]
+pub(crate) trait ProfileSecrets: Send + Sync {
+    async fn delete_profile(&self, id: Uuid, kind: ProfileKindTag) -> Result<(), SecretError>;
+}
+
+#[async_trait]
+impl ProfileSecrets for HostSecretStore {
+    async fn delete_profile(&self, id: Uuid, kind: ProfileKindTag) -> Result<(), SecretError> {
+        self.call(move |host| host.delete_profile(id.to_string(), kind)).await
+    }
+}
+
 #[async_trait]
 impl SecretItems for HostSecretStore {
     async fn load_item(&self, item: SecretItem) -> Result<Option<SecretString>, SecretError> {
@@ -253,6 +275,7 @@ mod tests {
     struct MemorySecrets {
         stored: Mutex<HashMap<(String, SecretKindTag), (SecretString, String)>>,
         items: Mutex<HashMap<SecretItemTag, SecretString>>,
+        profiles_deleted: Mutex<Vec<(String, ProfileKindTag)>>,
         locked: bool,
     }
 
@@ -296,6 +319,14 @@ mod tests {
             Ok(())
         }
 
+        fn delete_profile(&self, profile_id: String, kind: ProfileKindTag) -> Result<(), HostSecretError> {
+            if self.locked {
+                return Err(HostSecretError::Locked);
+            }
+            self.profiles_deleted.lock().unwrap().push((profile_id, kind));
+            Ok(())
+        }
+
         fn load_item(&self, item: SecretItemTag) -> Result<Option<SecretString>, HostSecretError> {
             Ok(self.items.lock().unwrap().get(&item).cloned())
         }
@@ -334,6 +365,33 @@ mod tests {
             Some("hunter2".to_owned())
         );
         assert!(!after_delete.is_stored());
+    }
+
+    #[tokio::test]
+    async fn a_profile_s_secrets_go_by_its_id_and_kind_and_a_locked_store_says_so() {
+        let host = Arc::new(MemorySecrets::default());
+        let store = HostSecretStore {
+            host: host.clone(),
+            tasks: runtime::tasks().unwrap(),
+        };
+        let id = Uuid::new_v4();
+
+        store.delete_profile(id, ProfileKindTag::Credential).await.unwrap();
+        let locked = HostSecretStore::new(
+            Box::new(MemorySecrets {
+                locked: true,
+                ..MemorySecrets::default()
+            }),
+            runtime::tasks().unwrap(),
+        )
+        .delete_profile(id, ProfileKindTag::Ssh)
+        .await;
+
+        assert_eq!(
+            *host.profiles_deleted.lock().unwrap(),
+            [(id.to_string(), ProfileKindTag::Credential)]
+        );
+        assert!(matches!(locked, Err(SecretError::Locked)), "{locked:?}");
     }
 
     #[tokio::test]

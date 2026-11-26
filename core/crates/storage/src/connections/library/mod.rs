@@ -5,9 +5,13 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 use super::placement::{placed, unique};
-use super::{ConnectionList, ConnectionStore, ConnectionsDocument, RemoveOutcome, SavedConnection, StoreState};
+use super::write_guard::WriteGuard;
+use super::{
+    ConnectionList, ConnectionStore, ConnectionsDocument, CredentialProfile, RemoveOutcome, SavedConnection,
+    SshProfile, StoreState,
+};
 use crate::error::StorageError;
-use crate::lenient::Lenient;
+use crate::lenient::{Identified, Lenient};
 use crate::store_identity::StoreIdentity;
 use crate::{ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionTag, GroupTree, LibraryIcon};
 
@@ -17,7 +21,10 @@ pub struct LibraryWrite {
     pub groups: Vec<ConnectionGroup>,
     pub tags: Vec<ConnectionTag>,
     pub favorites: Vec<Uuid>,
-    // Entries this build cannot read that the write takes out, as a deletion another device made, under the same check.
+    pub ssh_profiles: Vec<SshProfile>,
+    pub credential_profiles: Vec<CredentialProfile>,
+    // Connections and profiles this build cannot read that the write takes out, as a deletion another device made,
+    // under the same check.
     pub removing: Vec<Uuid>,
 }
 
@@ -34,6 +41,13 @@ pub struct Rebuilt {
     pub digest: Option<String>,
     // Where a file this build could not read went, kept for the person to recover from.
     pub set_aside: Option<PathBuf>,
+}
+
+// The profiles a library write takes out, the ones this build cannot read included.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProfilesLeaving {
+    pub ssh: Vec<Uuid>,
+    pub credential: Vec<Uuid>,
 }
 
 impl ConnectionStore {
@@ -58,45 +72,8 @@ impl ConnectionStore {
         build: impl FnOnce(&ConnectionList) -> Result<LibraryWrite, E>,
     ) -> Result<Option<String>, E> {
         let mut state = self.lock_to_write();
-        let before = match self.ensure_current(&mut state) {
-            Ok(before) => before,
-            // A file swapped for one that does not read is a change too, and says so first.
-            Err(StorageError::DocumentUnavailable(_)) if bytes_digest(&state).as_deref() != over => {
-                return Err(StorageError::LibraryChanged.into());
-            }
-            Err(error) => return Err(error.into()),
-        };
-        if digest_of(&state).as_deref() != over {
-            return Err(StorageError::LibraryChanged.into());
-        }
-        let write = build(&before.list())?;
-        let named: HashSet<Uuid> = write.connections.iter().map(|connection| connection.id).collect();
-        let held: HashSet<Uuid> = before
-            .connections
-            .held_ids()
-            .into_iter()
-            .filter(|id| !named.contains(id) && !write.removing.contains(id))
-            .collect();
-        write.refuse_what_it_would_lose(&held)?;
-        let LibraryWrite {
-            connections,
-            groups,
-            tags,
-            favorites,
-            removing,
-        } = write;
-        let mut document = before.clone();
-        for id in removing {
-            document.connections.remove_id(id);
-        }
-        for connection in &connections {
-            document.connections.release(connection.id);
-        }
-        *document.connections = connections;
-        document.groups = groups;
-        document.tags = tags;
-        document.favorites = favorites;
-        document.tidy();
+        let before = self.vouched(&mut state, over)?;
+        let document = before.written(build(&before.list())?)?;
         if document != before {
             self.commit(&mut state, document)?;
         } else if self.digest_on_disk()?.as_deref() != over {
@@ -104,6 +81,22 @@ impl ConnectionStore {
             return Err(StorageError::LibraryChanged.into());
         }
         Ok(digest_of(&state))
+    }
+
+    // What `replace_library_blocking` takes out with the same arguments, refused as it would be, so a host can remove
+    // their secrets first. Writes nothing.
+    pub fn profiles_leaving_blocking<E: From<StorageError>>(
+        &self,
+        over: Option<&str>,
+        build: impl FnOnce(&ConnectionList) -> Result<LibraryWrite, E>,
+    ) -> Result<ProfilesLeaving, E> {
+        let mut state = self.lock_to_write();
+        let before = self.vouched(&mut state, over)?;
+        let after = before.written(build(&before.list())?)?;
+        Ok(ProfilesLeaving {
+            ssh: gone(&before.ssh_profiles, &after.ssh_profiles),
+            credential: gone(&before.credential_profiles, &after.credential_profiles),
+        })
     }
 
     // For a file its host cannot vouch for: nothing it held goes on, and a new generation starts, as a restore's does.
@@ -115,6 +108,8 @@ impl ConnectionStore {
             groups,
             tags,
             favorites,
+            ssh_profiles,
+            credential_profiles,
             removing: _,
         } = write;
         let mut state = self.lock_to_write();
@@ -133,14 +128,31 @@ impl ConnectionStore {
             groups,
             tags,
             favorites,
+            ssh_profiles: Lenient::from(ssh_profiles),
+            credential_profiles: Lenient::from(credential_profiles),
             store: Some(StoreIdentity::fresh()),
-            ..ConnectionsDocument::default()
         };
         self.commit(&mut state, document)?;
         Ok(Rebuilt {
             digest: digest_of(&state),
             set_aside,
         })
+    }
+
+    // The file as the store holds it, refused unless it is still the one `over` names.
+    fn vouched(&self, state: &mut WriteGuard<'_>, over: Option<&str>) -> Result<ConnectionsDocument, StorageError> {
+        let before = match self.ensure_current(state) {
+            Ok(before) => before,
+            // A file swapped for one that does not read is a change too, and says so first.
+            Err(StorageError::DocumentUnavailable(_)) if bytes_digest(state).as_deref() != over => {
+                return Err(StorageError::LibraryChanged);
+            }
+            Err(error) => return Err(error),
+        };
+        if digest_of(state).as_deref() != over {
+            return Err(StorageError::LibraryChanged);
+        }
+        Ok(before)
     }
 
     pub fn create_group_blocking(&self, group: ConnectionGroup) -> Result<ConnectionGroup, StorageError> {
@@ -420,6 +432,56 @@ impl ConnectionsDocument {
             }
         }
     }
+
+    // Values as given; an entry this build cannot read stays unless the write names or removes it.
+    fn written(&self, write: LibraryWrite) -> Result<Self, StorageError> {
+        let named: HashSet<Uuid> = write.connections.iter().map(|connection| connection.id).collect();
+        let held: HashSet<Uuid> = self
+            .connections
+            .held_ids()
+            .into_iter()
+            .filter(|id| !named.contains(id) && !write.removing.contains(id))
+            .collect();
+        write.refuse_what_it_would_lose(&held)?;
+        let LibraryWrite {
+            connections,
+            groups,
+            tags,
+            favorites,
+            ssh_profiles,
+            credential_profiles,
+            removing,
+        } = write;
+        let mut document = self.clone();
+        for id in removing {
+            document.connections.remove_id(id);
+            document.ssh_profiles.remove_id(id);
+            document.credential_profiles.remove_id(id);
+        }
+        replace_entries(&mut document.connections, connections);
+        replace_entries(&mut document.ssh_profiles, ssh_profiles);
+        replace_entries(&mut document.credential_profiles, credential_profiles);
+        document.groups = groups;
+        document.tags = tags;
+        document.favorites = favorites;
+        document.tidy();
+        Ok(document)
+    }
+}
+
+// A held entry the write names gives way to the one it brings.
+fn replace_entries<T: Identified>(list: &mut Lenient<T>, entries: Vec<T>) {
+    for entry in &entries {
+        list.release(entry.id());
+    }
+    **list = entries;
+}
+
+// Ids `before` holds, read or held, that `after` no longer does.
+fn gone<T: Identified>(before: &Lenient<T>, after: &Lenient<T>) -> Vec<Uuid> {
+    let ids = |list: &Lenient<T>| -> Vec<Uuid> { list.iter().map(Identified::id).chain(list.held_ids()).collect() };
+    let kept: HashSet<Uuid> = ids(after).into_iter().collect();
+    ids(before).into_iter().filter(|id| !kept.contains(id)).collect()
 }
 
 impl LibraryWrite {
@@ -429,14 +491,23 @@ impl LibraryWrite {
             .or_else(|| first_repeat(self.groups.iter().map(|group| group.id)))
             .or_else(|| first_repeat(self.tags.iter().map(|tag| tag.id)))
             .or_else(|| first_repeat(self.favorites.iter().copied()))
+            .or_else(|| first_repeat(self.ssh_profiles.iter().map(|profile| profile.id)))
+            .or_else(|| first_repeat(self.credential_profiles.iter().map(|profile| profile.id)))
             .or_else(|| {
                 self.connections
                     .iter()
                     .find_map(|connection| first_repeat(connection.tags.iter().copied()))
             });
         let saved: HashSet<Uuid> = self.connections.iter().map(|connection| connection.id).collect();
-        // A connection the write both keeps and takes out is named twice.
-        let kept_and_removed = self.removing.iter().copied().find(|id| saved.contains(id));
+        let kept: HashSet<Uuid> = self
+            .ssh_profiles
+            .iter()
+            .map(|profile| profile.id)
+            .chain(self.credential_profiles.iter().map(|profile| profile.id))
+            .chain(saved.iter().copied())
+            .collect();
+        // An entry the write both keeps and takes out is named twice.
+        let kept_and_removed = self.removing.iter().copied().find(|id| kept.contains(id));
         if let Some(id) = repeated.or(kept_and_removed) {
             return Err(StorageError::RepeatedId { id });
         }

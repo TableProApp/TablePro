@@ -16,6 +16,7 @@ use windows_sys::Win32::Security::Credentials::{
 };
 
 use crate::credential_parts::{self, Layout, PartStore, Stored};
+use crate::host::{ProfileKindTag, ProfileSecrets};
 
 static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -52,6 +53,15 @@ impl CredentialManager {
 
     fn connection_target(&self, id: Uuid, kind: SecretKind) -> String {
         format!("{}/connection/{id}/{}", self.prefix, kind_name(kind))
+    }
+
+    // Named like a connection's, under the profile's kind, so no profile id can reach a connection's secrets.
+    fn profile_target(&self, id: Uuid, profile: ProfileKindTag, kind: SecretKind) -> String {
+        let parent = match profile {
+            ProfileKindTag::Ssh => "ssh-profile",
+            ProfileKindTag::Credential => "credential-profile",
+        };
+        format!("{}/{parent}/{id}/{}", self.prefix, kind_name(kind))
     }
 
     fn item_target(&self, item: SecretItem) -> String {
@@ -368,6 +378,18 @@ impl SecretVault for CredentialManager {
 }
 
 #[async_trait]
+impl ProfileSecrets for CredentialManager {
+    async fn delete_profile(&self, id: Uuid, kind: ProfileKindTag) -> Result<(), SecretError> {
+        let targets: Vec<String> = SecretKind::ALL
+            .iter()
+            .map(|secret| self.profile_target(id, kind, *secret))
+            .collect();
+        self.blocking(move || targets.iter().try_for_each(|target| delete(target)))
+            .await
+    }
+}
+
+#[async_trait]
 impl SecretItems for CredentialManager {
     async fn load_item(&self, item: SecretItem) -> Result<Option<SecretString>, SecretError> {
         let target = self.item_target(item);
@@ -486,6 +508,30 @@ mod tests {
             Some("p\u{e4}ss \u{1f511}".to_owned())
         );
         assert!(!gone.is_stored());
+    }
+
+    #[tokio::test]
+    async fn a_profile_delete_takes_its_own_credentials_and_never_a_connection_s() {
+        let manager = manager();
+        let id = Uuid::new_v4();
+        let target = manager.profile_target(id, ProfileKindTag::Ssh, SecretKind::SshPassword);
+        manager
+            .store(id, SecretKind::SshPassword, &SecretString::from("connection"), "label")
+            .await
+            .unwrap();
+        let written = target.clone();
+        manager
+            .blocking(move || write(&written, "profile", "label"))
+            .await
+            .unwrap();
+
+        manager.delete_profile(id, ProfileKindTag::Ssh).await.unwrap();
+
+        let profile = manager.blocking(move || read(&target)).await.unwrap();
+        let connection = manager.load(id, SecretKind::SshPassword).await.unwrap();
+        manager.delete_connection(id).await.unwrap();
+        assert!(profile.is_none());
+        assert!(connection.is_stored());
     }
 
     #[tokio::test]

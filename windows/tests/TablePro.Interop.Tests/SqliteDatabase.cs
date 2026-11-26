@@ -98,6 +98,11 @@ internal sealed class MemorySecretStore : ISecretStore
         }
     }
 
+    // It keeps no profile secrets.
+    public void DeleteProfile(Guid profileId, ProfileKind kind)
+    {
+    }
+
     public string? LoadItem(SecretItem item)
     {
         lock (_lock)

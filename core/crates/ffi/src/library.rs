@@ -13,14 +13,15 @@ use tablepro_core::{
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionStore, ConnectionTag,
-    ConnectionTagName, LibraryIcon, RemoteFileAccess, SavedConnection, SavedSshAuth, SavedSshConfig, SshJumpAuth,
-    SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm, SshTotpMode, StorageError, SymbolName, english_secret_label,
-    shown_name,
+    ConnectionTagName, LibraryIcon, ProfilesLeaving, RemoteFileAccess, SavedConnection, SavedSshAuth, SavedSshConfig,
+    SshJumpAuth, SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm, SshTotpMode, StorageError, SymbolName,
+    english_secret_label, shown_name,
 };
 use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::export::write_whole_file;
+use crate::host::{ProfileKindTag, ProfileSecrets};
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -436,6 +437,7 @@ pub(crate) async fn keep_proved_secrets(
 pub struct ConnectionLibrary {
     store: ConnectionStore,
     secrets: Arc<dyn SecretVault>,
+    profile_secrets: Arc<dyn ProfileSecrets>,
     tasks: Tasks,
     writes: LibraryWrites,
 }
@@ -444,12 +446,14 @@ impl ConnectionLibrary {
     pub(crate) fn new(
         store: ConnectionStore,
         secrets: Arc<dyn SecretVault>,
+        profile_secrets: Arc<dyn ProfileSecrets>,
         tasks: Tasks,
         writes: LibraryWrites,
     ) -> Self {
         Self {
             store,
             secrets,
+            profile_secrets,
             tasks,
             writes,
         }
@@ -464,6 +468,26 @@ impl ConnectionLibrary {
         on_runtime(&self.tasks, async move {
             for id in ids {
                 vault.delete_connection(id).await.map_err(secret_error)?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    pub(crate) async fn delete_profile_secrets(&self, leaving: ProfilesLeaving) -> Result<(), CoreError> {
+        let vault = self.profile_secrets.clone();
+        on_runtime(&self.tasks, async move {
+            for id in leaving.ssh {
+                vault
+                    .delete_profile(id, ProfileKindTag::Ssh)
+                    .await
+                    .map_err(secret_error)?;
+            }
+            for id in leaving.credential {
+                vault
+                    .delete_profile(id, ProfileKindTag::Credential)
+                    .await
+                    .map_err(secret_error)?;
             }
             Ok(())
         })

@@ -14,8 +14,8 @@ use secrecy::SecretString;
 use tablepro_ffi::window_abi::{TpCursor, TpWindow, tablepro_cursor_fetch, tablepro_cursor_free};
 use tablepro_ffi::{
     ColumnSort, CompletionKindTag, Core, CoreError, DatabaseSession, EndpointInfo, FileOpenRequest, HostConfig,
-    HostSecretError, HostSecrets, ObjectKindTag, ObjectScopeArg, QueryEditor, RunEvent, RunListener, RunOutcome,
-    RunSettings, SecretItemTag, SecretKindTag, SessionHealthTag, TableName, TransactionStateTag, ValueKind,
+    HostSecretError, HostSecrets, ObjectKindTag, ObjectScopeArg, ProfileKindTag, QueryEditor, RunEvent, RunListener,
+    RunOutcome, RunSettings, SecretItemTag, SecretKindTag, SessionHealthTag, TableName, TransactionStateTag, ValueKind,
 };
 
 struct NoSecrets;
@@ -38,6 +38,10 @@ impl HostSecrets for NoSecrets {
     }
 
     fn delete_connection(&self, _: String) -> Result<(), HostSecretError> {
+        Ok(())
+    }
+
+    fn delete_profile(&self, _: String, _: ProfileKindTag) -> Result<(), HostSecretError> {
         Ok(())
     }
 

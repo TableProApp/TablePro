@@ -47,6 +47,8 @@ final class CoreLibraryStore {
     private var storedGroups: [UUID: GroupRecord] = [:]
     private var storedTags: [UUID: TagRecord] = [:]
     private var storedFavorites: [UUID] = []
+    private var storedSSHProfiles: [SshProfileRecord] = []
+    private var storedCredentialProfiles: [CredentialProfileRecord] = []
     private var heldByCore: Set<UUID> = []
     // The digest of the core's file as this store last read or wrote it; a write over another file is refused.
     private var fileDigest: String?
@@ -242,6 +244,8 @@ final class CoreLibraryStore {
             groups: next.groups.map { LibraryRecordMapping.record($0, keeping: storedGroups[$0.id]) },
             tags: next.tags.map { LibraryRecordMapping.record($0, keeping: storedTags[$0.id]) },
             favorites: favorites(of: next.connections, order: favoritesOrder, held: held ?? heldByCore).map(\.uuidString),
+            sshProfiles: storedSSHProfiles,
+            credentialProfiles: storedCredentialProfiles,
             removing: unread.map(\.uuidString)
         )
         do {
@@ -342,6 +346,8 @@ final class CoreLibraryStore {
             uniquingKeysWith: { first, _ in first }
         )
         storedFavorites = contents.favorites.compactMap(UUID.init(uuidString:))
+        storedSSHProfiles = contents.sshProfiles
+        storedCredentialProfiles = contents.credentialProfiles
         heldByCore = Set(contents.unreadable.compactMap(UUID.init(uuidString:)))
         fileDigest = contents.digest
     }
@@ -360,6 +366,8 @@ final class CoreLibraryStore {
         storedGroups = [:]
         storedTags = [:]
         storedFavorites = []
+        storedSSHProfiles = []
+        storedCredentialProfiles = []
         heldByCore = []
         legacyCopiesOfHeld = []
         fileDigest = nil

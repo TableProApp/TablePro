@@ -181,6 +181,10 @@ internal sealed class BenchData : IAsyncDisposable
         {
         }
 
+        public void DeleteProfile(Guid profileId, ProfileKind kind)
+        {
+        }
+
         public string? LoadItem(SecretItem item) => null;
 
         public void StoreItem(SecretItem item, string secret)

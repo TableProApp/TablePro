@@ -27,7 +27,7 @@ use crate::cancel_token::{CancelToken, token};
 use crate::drivers::{self, DriverInfo};
 use crate::error::CoreError;
 use crate::history::QueryHistoryStore;
-use crate::host::{HostConfig, HostRefreshTokens, HostSecretStore, HostSecrets};
+use crate::host::{HostConfig, HostRefreshTokens, HostSecretStore, HostSecrets, ProfileSecrets};
 use crate::library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, LibraryWrites, apply, blank, keep_proved_secrets,
     library_icon, parse_id, tls_config,
@@ -45,6 +45,7 @@ pub struct Core {
     connector: Arc<DriverConnector>,
     deadlines: Arc<DefaultDeadlines>,
     vault: Arc<dyn SecretVault>,
+    profile_secrets: Arc<dyn ProfileSecrets>,
     items: Arc<dyn SecretItems>,
     // The TablePro account's, in the same store as every other secret.
     refresh_tokens: RefreshTokens,
@@ -86,6 +87,7 @@ impl Core {
             config,
             SystemSecrets {
                 vault: host.clone(),
+                profiles: host.clone(),
                 items: host.clone(),
                 refresh_tokens: Arc::new(HostRefreshTokens(host.clone())),
                 folder_token: None,
@@ -129,6 +131,7 @@ impl Core {
         Ok(Arc::new(ConnectionLibrary::new(
             store,
             self.vault.clone(),
+            self.profile_secrets.clone(),
             self.tasks.clone(),
             self.writes.clone(),
         )))
@@ -368,6 +371,7 @@ impl Core {
             connector: Arc::new(DriverConnector::new(services, deadlines.clone())),
             deadlines,
             vault: secrets.vault,
+            profile_secrets: secrets.profiles,
             items: secrets.items,
             refresh_tokens: secrets.refresh_tokens,
             paths,
@@ -460,6 +464,7 @@ pub(crate) type RefreshTokens = Arc<dyn RefreshTokenVaults>;
 
 struct SystemSecrets {
     vault: Arc<dyn SecretVault>,
+    profiles: Arc<dyn ProfileSecrets>,
     items: Arc<dyn SecretItems>,
     refresh_tokens: RefreshTokens,
     // The platform store's MCP token for a data folder; None keeps it as the host's `SecretItem::McpToken`.
@@ -476,6 +481,7 @@ fn system_secrets(tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
     ));
     Ok(SystemSecrets {
         vault: manager.clone(),
+        profiles: manager.clone(),
         items: manager.clone(),
         refresh_tokens: Arc::new(crate::credential_manager::SignInTokens(manager.clone())),
         folder_token: Some(Arc::new(move |dir: &str| {
@@ -697,6 +703,13 @@ mod tests {
     }
 
     #[async_trait]
+    impl ProfileSecrets for NoItems {
+        async fn delete_profile(&self, _: Uuid, _: crate::host::ProfileKindTag) -> Result<(), SecretError> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
     impl SecretItems for NoItems {
         async fn load_item(&self, _: SecretItem) -> Result<Option<SecretString>, SecretError> {
             Ok(None)
@@ -721,6 +734,7 @@ mod tests {
             },
             SystemSecrets {
                 vault: Arc::new(Vault::default()),
+                profiles: Arc::new(NoItems),
                 items: Arc::new(NoItems),
                 refresh_tokens: Arc::new(tablepro_account::SingleVault(Arc::new(NoItems))),
                 folder_token: None,
