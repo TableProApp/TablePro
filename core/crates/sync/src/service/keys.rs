@@ -28,6 +28,17 @@ pub(super) enum Opens {
     Waits,
 }
 
+// What a scope's waiting envelopes were judged against: its key rows and the personal scope's, how many key objects
+// both hold, the pins, and whether the device could check envelopes at all. Key objects only ever join the tables, so
+// only a change here can let a waiting envelope open.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct KeyMark {
+    rows: Vec<Row>,
+    objects: usize,
+    pins: Vec<Row>,
+    can_open: bool,
+}
+
 // Which flow reads a key kind: the account's own objects, an approval session's, a reset's, or a team's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Family {
@@ -130,6 +141,26 @@ impl ServiceSync {
             }
             Err(error) => Err(error),
         }
+    }
+
+    pub(super) async fn key_mark(&self, scope: ScopeName, can_open: bool) -> Result<KeyMark, SyncError> {
+        let mut txn = begin(&self.state).await?;
+        let mut scopes = vec![scope];
+        if scope != ScopeName::Personal {
+            scopes.push(ScopeName::Personal);
+        }
+        let mut rows = Vec::new();
+        let mut objects = 0;
+        for scope in scopes {
+            rows.extend(txn.scan(&RowRange::Scope(Table::KeyVersions, scope)).await?);
+            objects += txn.scan(&RowRange::Scope(Table::KeyObjects, scope)).await?.len();
+        }
+        Ok(KeyMark {
+            rows,
+            objects,
+            pins: txn.scan(&RowRange::Table(Table::KeyPins)).await?,
+            can_open,
+        })
     }
 
     // Whether this device holds the scope's key in force, so envelopes kept waiting can be read again.

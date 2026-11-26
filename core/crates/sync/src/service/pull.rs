@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tablepro_keys::encoding::Version;
 use tablepro_records::Kind;
 
-use super::keys::{Family, Opens, family};
+use super::keys::{Family, KeyMark, Opens, family};
 use super::refill::Cut;
 use super::scopes::refresh;
 use super::{PassCtx, ServiceSync, begin};
@@ -40,6 +40,8 @@ struct Pull {
     buffered: usize,
     // The kinds this build reads in the scope, which the row keeps once a snapshot read them all.
     reading: Vec<KindName>,
+    // An envelope in order waited for the keys: a snapshot reads it again on the next pass.
+    new_waits: bool,
 }
 
 // A server that never lets a pull catch up, or a snapshot too large to keep, ends the pass instead of the device.
@@ -122,7 +124,12 @@ impl ServiceSync {
         })
     }
 
-    pub(super) async fn pull_scope(&self, ctx: &mut PassCtx, info: &ScopeInfo) -> Result<(), SyncError> {
+    pub(super) async fn pull_scope(
+        &self,
+        ctx: &mut PassCtx,
+        waited: &mut HashMap<ScopeName, KeyMark>,
+        info: &ScopeInfo,
+    ) -> Result<(), SyncError> {
         let scope = info.scope;
         let adapters = self.adapters.in_scope(scope);
         let stored = self.scope_row(scope).await?;
@@ -138,9 +145,12 @@ impl ServiceSync {
             .collect();
         let can_open = ctx.keys_ready;
         // Envelopes kept while the device could not check them are read again in a snapshot once it can, which
-        // serves each one's current copy after the key objects (0051, Pull).
-        let waiting =
-            can_open && self.holds_scope_key(scope).await? && !self.waiting_envelopes(scope).await?.is_empty();
+        // serves each one's current copy after the key objects (0051, Pull). Once a snapshot judged them, only a change
+        // of the keys reads them again, so one under a key this account was never given refills nothing.
+        let waiting = can_open
+            && self.holds_scope_key(scope).await?
+            && !self.waiting_envelopes(scope).await?.is_empty()
+            && waited.get(&scope) != Some(&self.key_mark(scope, can_open).await?);
         // A build that reads a kind the last pull did not fetches again what it held for it (0054, Rules).
         let mut reading: Vec<KindName> = adapters.iter().map(|adapter| KindName::of(adapter.kind())).collect();
         reading.sort();
@@ -160,6 +170,7 @@ impl ServiceSync {
             can_open,
             buffered: 0,
             reading,
+            new_waits: false,
         };
         refresh(&mut row, info);
         if row.epoch.is_none() {
@@ -173,6 +184,13 @@ impl ServiceSync {
         let caught_up = self.pull_pages(ctx, &mut pull, &adapters, &mut row).await?;
         if pull.snapshot {
             self.finish_snapshot(ctx, &mut pull, &adapters, &mut row, info).await?;
+            if self.waiting_envelopes(scope).await?.is_empty() {
+                waited.remove(&scope);
+            } else {
+                waited.insert(scope, self.key_mark(scope, can_open).await?);
+            }
+        } else if pull.new_waits {
+            waited.remove(&scope);
         }
         self.read_roster(info, caught_up).await;
         Ok(())
@@ -297,6 +315,7 @@ impl ServiceSync {
                         continue;
                     }
                     Opens::Waits => {
+                        pull.new_waits = true;
                         writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
                         continue;
                     }
