@@ -1,22 +1,24 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{ConnectionColor, ConnectionGroupName, GroupIcon};
+use crate::lenient::Identified;
+
+use crate::{ConnectionColor, ConnectionGroupName, LibraryIcon};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "StoredGroup")]
+#[serde(from = "StoredGroup")]
 pub struct ConnectionGroup {
     pub id: Uuid,
     pub name: ConnectionGroupName,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<Uuid>,
-    /// Every write numbers each parent's groups from 0 again.
+    // Among the siblings; a move numbers them from 0 again.
     #[serde(default)]
     pub order: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<ConnectionColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub icon: Option<GroupIcon>,
+    pub icon: Option<LibraryIcon>,
 }
 
 #[derive(Deserialize)]
@@ -30,21 +32,19 @@ struct StoredGroup {
     #[serde(default)]
     color: Option<ConnectionColor>,
     #[serde(default)]
-    icon: Option<GroupIcon>,
+    icon: Option<LibraryIcon>,
 }
 
-impl TryFrom<StoredGroup> for ConnectionGroup {
-    type Error = crate::GroupNameError;
-
-    fn try_from(stored: StoredGroup) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<StoredGroup> for ConnectionGroup {
+    fn from(stored: StoredGroup) -> Self {
+        Self {
             id: stored.id,
-            name: ConnectionGroupName::from_stored(&stored.name).ok_or(crate::GroupNameError::Empty)?,
+            name: ConnectionGroupName::from_stored(&stored.name),
             parent_id: stored.parent_id,
             order: stored.order,
             color: stored.color,
             icon: stored.icon,
-        })
+        }
     }
 }
 
@@ -61,6 +61,12 @@ impl ConnectionGroup {
             color: None,
             icon: None,
         }
+    }
+}
+
+impl Identified for ConnectionGroup {
+    fn id(&self) -> Uuid {
+        self.id
     }
 }
 
@@ -86,11 +92,12 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_name_is_cleaned_and_a_blank_one_refused() {
+    fn a_stored_name_is_kept_as_written_blank_included() {
         let stored = |name: &str| format!(r#"{{"id":"{}","name":"{name}"}}"#, Uuid::new_v4());
-        let cleaned: ConnectionGroup = serde_json::from_str(&stored(r" Work\tHome ")).expect("a cleaned name");
+        let kept: ConnectionGroup = serde_json::from_str(&stored(r" Work\tHome ")).expect("a name");
+        let blank: ConnectionGroup = serde_json::from_str(&stored(" ")).expect("a blank name");
 
-        assert_eq!(cleaned.name.as_str(), "Work Home");
-        assert!(serde_json::from_str::<ConnectionGroup>(&stored(" ")).is_err());
+        assert_eq!(kept.name.as_str(), " Work\tHome ");
+        assert_eq!(blank.name.as_str(), " ");
     }
 }

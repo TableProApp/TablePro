@@ -103,6 +103,9 @@ pub enum StorageError {
 
     #[error("{} belongs to another account", .path.display())]
     StoreOwnerMismatch { path: std::path::PathBuf },
+
+    #[error("the library names {id} twice")]
+    RepeatedId { id: uuid::Uuid },
 }
 
 impl StorageError {
@@ -140,6 +143,7 @@ impl StorageError {
             Self::GroupCycle { .. } => "storage.group_cycle",
             Self::GroupTooDeep { .. } => "storage.group_too_deep",
             Self::StoreOwnerMismatch { .. } => "storage.store_owner_mismatch",
+            Self::RepeatedId { .. } => "storage.repeated_id",
         }
     }
 }
@@ -171,6 +175,7 @@ mod tests {
             .code(),
             StorageError::GroupCycle { id }.code(),
             StorageError::GroupTooDeep { max: 3 }.code(),
+            StorageError::RepeatedId { id }.code(),
         ];
 
         assert_eq!(
@@ -182,6 +187,7 @@ mod tests {
                 "storage.group_name_taken",
                 "storage.group_cycle",
                 "storage.group_too_deep",
+                "storage.repeated_id",
             ]
         );
     }

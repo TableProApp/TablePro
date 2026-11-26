@@ -139,6 +139,7 @@ fn verify_full(ca: &Path, server_name: &str) -> TlsConfig {
         ca_file: Some(ca.to_owned()),
         client_identity: None,
         server_name: Some(server_name.to_owned()),
+        unknown: Default::default(),
     }
 }
 

@@ -127,7 +127,7 @@ fn request(target: RequestTarget) -> ConnectRequest {
         driver: Arc::new(PgDriver),
         target,
         workspace_settings: WorkspaceSettings::workspace(false),
-        safe_mode: tablepro_core::SafeModeLevel::Off,
+        safe_mode: tablepro_core::SafeModeLevel::Silent,
     }
 }
 

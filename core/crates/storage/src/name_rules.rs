@@ -39,19 +39,13 @@ pub(crate) fn cleaned(value: &str) -> String {
 /// control characters and every other space as a plain space, no blanks
 /// around it, and each letter in its composed form. Two names that read
 /// the same have the same form, so one cannot pass for the other.
-pub(crate) fn shown(value: &str) -> String {
+pub fn shown(value: &str) -> String {
     let visible: String = value
         .chars()
         .filter(|c| !tablepro_core::unicode_blank::is_default_ignorable(*c))
         .map(|c| if c.is_control() || c.is_whitespace() { ' ' } else { c })
         .collect();
     visible.trim().nfc().collect()
-}
-
-/// A stored name, read as [`shown`] gives it.
-pub(crate) fn deserialize_shown<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
-    let name = <String as serde::Deserialize>::deserialize(deserializer)?;
-    Ok(shown(&name))
 }
 
 #[cfg(test)]

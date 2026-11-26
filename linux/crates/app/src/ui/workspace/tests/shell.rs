@@ -552,7 +552,7 @@ fn the_session_menu_changes_safe_mode_through_its_radio_item() {
     wait_until(WAIT, || {
         test.window
             .front_session()
-            .is_some_and(|(_, session)| session.safe_mode() == tablepro_core::SafeModeLevel::ConfirmWrites)
+            .is_some_and(|(_, session)| session.safe_mode() == tablepro_core::SafeModeLevel::Alert)
     })
     .expect("the selected level to reach the session");
     assert_eq!(
