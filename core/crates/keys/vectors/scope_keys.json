@@ -1,0 +1,446 @@
+{
+  "area": "scope_keys",
+  "suite": "tp1",
+  "format": 1,
+  "about": "Key commitments, version records with start 0 and 1, rings and a walk down them (ADR 0056, Signed objects and wraps)",
+  "kid": [
+    {
+      "name": "kid",
+      "op": "kid",
+      "input": {
+        "key_hex": "9d1134badb81df0141237e294171dea6d3cc6f65a7d242aeb2f2bce1af28e7da"
+      },
+      "output": {
+        "info_hex": "000000127461626c6570726f2f76312f6b65792d696400000003747031",
+        "kid_hex": "94ecda6b1b15de28749913ea68812a5ea95585bc5aed0c95cf3320606888a1f4"
+      }
+    }
+  ],
+  "version_records": [
+    {
+      "name": "personal version 1, start 1",
+      "op": "version_record",
+      "input": {
+        "origin": "https://sync.example.com",
+        "owner": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "purpose": "personal",
+        "version": 1,
+        "start": 1,
+        "key_hex": "9d1134badb81df0141237e294171dea6d3cc6f65a7d242aeb2f2bce1af28e7da",
+        "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "signer_av": 2,
+        "signer_ask_seed_hex": "7fd40a1b02ab5e53ce2424c52f06628e293bb5e8aec837e229409df6ce5ae390"
+      },
+      "output": {
+        "message_hex": "000000137461626c6570726f2f76312f76657273696f6e000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000008706572736f6e616c00000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000008706572736f6e616c00000001010000002094ecda6b1b15de28749913ea68812a5ea95585bc5aed0c95cf3320606888a1f400000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000002",
+        "digest_hex": "4a153ad7ed3d69e72b3deac76e1df405d5b2fdd78a086b870d85d145922b803d",
+        "record": {
+          "kind": "key.version",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/personal/1",
+          "fields": {
+            "suite": "tp1",
+            "start": 1,
+            "kid": "lOzaaxsV3ih0mRPqaIEqXqlVhbxa7QyVzzMgYGiIofQ",
+            "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "signer_av": 2,
+            "sig": "eWA2UFtIZWx7bgTlf2Rd4ZLjURUMKHwTePKfDy47rXUs8YrNokVghCLbMcHaAGXE8leioax3xFqMh1G5DdrGDw"
+          }
+        }
+      }
+    },
+    {
+      "name": "history version 2, start 0",
+      "op": "version_record",
+      "input": {
+        "origin": "https://sync.example.com",
+        "owner": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "purpose": "history",
+        "version": 2,
+        "start": 0,
+        "key_hex": "9d1134badb81df0141237e294171dea6d3cc6f65a7d242aeb2f2bce1af28e7da",
+        "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "signer_av": 2,
+        "signer_ask_seed_hex": "7fd40a1b02ab5e53ce2424c52f06628e293bb5e8aec837e229409df6ce5ae390"
+      },
+      "output": {
+        "message_hex": "000000137461626c6570726f2f76312f76657273696f6e000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000008706572736f6e616c00000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000007686973746f727900000002000000002094ecda6b1b15de28749913ea68812a5ea95585bc5aed0c95cf3320606888a1f400000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000002",
+        "digest_hex": "90f2863ff6e3c284042d32a836b78ea5ba6dadb8512e71e1bf5c520699bb778b",
+        "record": {
+          "kind": "key.version",
+          "id": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8/history/2",
+          "fields": {
+            "suite": "tp1",
+            "start": 0,
+            "kid": "lOzaaxsV3ih0mRPqaIEqXqlVhbxa7QyVzzMgYGiIofQ",
+            "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "signer_av": 2,
+            "sig": "26av_vSOoBwLpmGJSjDWX4ZTZ1ZkkDHdPuQHWUPx8EgaNyMrZcEzROPktJRnB6s-KqiSFFATmTYTwvcINeytAw"
+          }
+        }
+      }
+    },
+    {
+      "name": "team version 1, start 1",
+      "op": "version_record",
+      "input": {
+        "origin": "https://sync.example.com",
+        "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63",
+        "purpose": "team",
+        "version": 1,
+        "start": 1,
+        "key_hex": "9d1134badb81df0141237e294171dea6d3cc6f65a7d242aeb2f2bce1af28e7da",
+        "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "signer_av": 2,
+        "signer_ask_seed_hex": "7fd40a1b02ab5e53ce2424c52f06628e293bb5e8aec837e229409df6ce5ae390"
+      },
+      "output": {
+        "message_hex": "000000137461626c6570726f2f76312f76657273696f6e000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000001010000002094ecda6b1b15de28749913ea68812a5ea95585bc5aed0c95cf3320606888a1f400000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000002",
+        "digest_hex": "24a20d8005679aa7523b8a57119c9fd892757c041e0572e630f0685879cce01f",
+        "record": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/1",
+          "fields": {
+            "suite": "tp1",
+            "start": 1,
+            "kid": "lOzaaxsV3ih0mRPqaIEqXqlVhbxa7QyVzzMgYGiIofQ",
+            "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "signer_av": 2,
+            "sig": "E0Ukb9SwQbkr33ezu-Y2T_RUg1qo6cHpjwtKbHcq8B2bIWIah1FRKByZHL-6KG5aWUtjLnxNYqIP9HvLA-a-Dw"
+          }
+        }
+      }
+    },
+    {
+      "name": "team version 5, start 0",
+      "op": "version_record",
+      "input": {
+        "origin": "https://sync.example.com",
+        "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63",
+        "purpose": "team",
+        "version": 5,
+        "start": 0,
+        "key_hex": "9d1134badb81df0141237e294171dea6d3cc6f65a7d242aeb2f2bce1af28e7da",
+        "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "signer_av": 2,
+        "signer_ask_seed_hex": "7fd40a1b02ab5e53ce2424c52f06628e293bb5e8aec837e229409df6ce5ae390"
+      },
+      "output": {
+        "message_hex": "000000137461626c6570726f2f76312f76657273696f6e000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000005000000002094ecda6b1b15de28749913ea68812a5ea95585bc5aed0c95cf3320606888a1f400000010019a6b2e8f3c7d41b2a56c0e9f14d7b800000002",
+        "digest_hex": "584cf40cbc00c8b4f4a381b2025bc14f00e85082c17d2939eb094381b1b42ca1",
+        "record": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/5",
+          "fields": {
+            "suite": "tp1",
+            "start": 0,
+            "kid": "lOzaaxsV3ih0mRPqaIEqXqlVhbxa7QyVzzMgYGiIofQ",
+            "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "signer_av": 2,
+            "sig": "CeP_gAvNNDRHU1Kjcr0F7bf3cmGaEL4SciPd289_cNopuN4Rbcl96JeZDmRefR-eKXVoidKqXUrLD2qX7O-cDw"
+          }
+        }
+      }
+    }
+  ],
+  "rings": [
+    {
+      "name": "ring of team version 4",
+      "op": "ring",
+      "input": {
+        "origin": "https://sync.example.com",
+        "owner": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63",
+        "purpose": "team",
+        "version": 4,
+        "newer_hex": "ad7410a177d63a3220a555393259bc81ecb75bfde3d49237a4382202bbcbb154",
+        "older_hex": "0223fbc7311cc8d5f9a48f5075b43a720ae1f30589c0f349a92f8c43ab692db7",
+        "nonce_hex": "063cd397337e011363d2e85e"
+      },
+      "output": {
+        "key_info_hex": "000000147461626c6570726f2f76312f72696e672d6b6579000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000004",
+        "aad_hex": "000000107461626c6570726f2f76312f72696e67000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000004",
+        "plaintext_hex": "000000030223fbc7311cc8d5f9a48f5075b43a720ae1f30589c0f349a92f8c43ab692db7",
+        "record": {
+          "kind": "key.ring",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/4",
+          "fields": {
+            "suite": "tp1",
+            "nonce": "BjzTlzN-ARNj0uhe",
+            "ct": "1kQ3uodvOn1UScE96I3xqjE1pcpL1OhVHAdqwb-buGv8qqiSvM2vLAA7bs1AprynF7ckog"
+          }
+        }
+      }
+    }
+  ],
+  "walk": [
+    {
+      "name": "a walk down three rings",
+      "op": "ring_walk",
+      "input": {
+        "origin": "https://sync.example.com",
+        "newest_hex": "ad7410a177d63a3220a555393259bc81ecb75bfde3d49237a4382202bbcbb154",
+        "versions": [
+          {
+            "kind": "key.version",
+            "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/1",
+            "fields": {
+              "suite": "tp1",
+              "start": 1,
+              "kid": "7JJ0jR5DbVVz9lS571rcOtw59K_rKeiiGLeBUhIsYJU",
+              "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+              "signer_av": 1,
+              "sig": "6016VJV6w-3t1visehe6-qhp4snG0iWDZfWdramKqLwzOZios_vLUU5sj3J-IwbsYsjxibkA_Eq6CfXD1hbVBg"
+            }
+          },
+          {
+            "kind": "key.version",
+            "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/2",
+            "fields": {
+              "suite": "tp1",
+              "start": 0,
+              "kid": "tjP2wmyryebXGmJuwKMnHhYYgA8Ti4WR8vG-9UN88W8",
+              "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+              "signer_av": 1,
+              "sig": "sQZuJaiyO1eZ9RQU6TRdD9ymmbQ1-d78pK6A5gIlRW7GYj7bb3Cruh8jME6LaVSzpJfTqiMNjH02sJgikh84Dg"
+            }
+          },
+          {
+            "kind": "key.version",
+            "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/3",
+            "fields": {
+              "suite": "tp1",
+              "start": 0,
+              "kid": "2DeLlXbp_ONb3CxZK0-h-McJmMc9feNUjRDnKbH9rW0",
+              "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+              "signer_av": 1,
+              "sig": "HefeopNzk4MynEQZsfIUWs9XsgJEFliVQX07_eR9sFJ8UdijkFMAPVlv2sq4UhOPPOzUtZSQL0I0yimpd6ZmAw"
+            }
+          },
+          {
+            "kind": "key.version",
+            "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/4",
+            "fields": {
+              "suite": "tp1",
+              "start": 0,
+              "kid": "mZPbYX46PMjECPmh9FMmzcw-WWFud2KfRGvvPHDs7e8",
+              "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+              "signer_av": 1,
+              "sig": "1rCSBoQ5Uji8BbfouabMG7rf0-1_wgIMkvqZ8q8fc1baUH4t9gE-lw_QLZKjHegj6Z8hQuFQfHs4wuLlTIGvBg"
+            }
+          }
+        ],
+        "rings": [
+          {
+            "kind": "key.ring",
+            "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/2",
+            "fields": {
+              "suite": "tp1",
+              "nonce": "m-K0DUWprjOwPwZI",
+              "ct": "PO3QI9Z0INauXUE-cQdTtbrqEK8ZEC6kP87ByIgSMtSB373IpeTbgyEAM1AEp_ZXQuYeCQ"
+            }
+          },
+          {
+            "kind": "key.ring",
+            "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/3",
+            "fields": {
+              "suite": "tp1",
+              "nonce": "WJgxccLt6d_uNSti",
+              "ct": "gjVTrTYIWOqxIELAHioWLtcyitv-iSFlIgV6HuW3hDIQUWbZYSJiEzf-hSy4otuRkbhtkg"
+            }
+          },
+          {
+            "kind": "key.ring",
+            "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/4",
+            "fields": {
+              "suite": "tp1",
+              "nonce": "BjzTlzN-ARNj0uhe",
+              "ct": "1kQ3uodvOn1UScE96I3xqjE1pcpL1OhVHAdqwb-buGv8qqiSvM2vLAA7bs1AprynF7ckog"
+            }
+          }
+        ]
+      },
+      "output": {
+        "keys_hex": ["ad7410a177d63a3220a555393259bc81ecb75bfde3d49237a4382202bbcbb154","0223fbc7311cc8d5f9a48f5075b43a720ae1f30589c0f349a92f8c43ab692db7","aa341112c77875280ded39bf5eb27ccf4d9971698077a0cc5402f03bef0c7fdf","1a97a74986b691d43d5d9e0384085bb926b469d557a14cccee91163a4be855eb"]
+      }
+    }
+  ],
+  "open_ring": [
+    {
+      "name": "a ring entry other than the version below",
+      "op": "open_ring",
+      "row": "A ring entry other than the version below",
+      "input": {
+        "origin": "https://sync.example.com",
+        "newer_hex": "ad7410a177d63a3220a555393259bc81ecb75bfde3d49237a4382202bbcbb154",
+        "ring": {
+          "kind": "key.ring",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/4",
+          "fields": {
+            "suite": "tp1",
+            "nonce": "J5RR7oX5tU48CoaR",
+            "ct": "_Mie7Llk_c4ryWwomE_W7dkXx7ZLQq56Zgyvgr1Mnq6hIE13M-gWNcS6czUg6WSnmZL71A"
+          }
+        },
+        "below": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/3",
+          "fields": {
+            "suite": "tp1",
+            "start": 0,
+            "kid": "2DeLlXbp_ONb3CxZK0-h-McJmMc9feNUjRDnKbH9rW0",
+            "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "signer_av": 1,
+            "sig": "HefeopNzk4MynEQZsfIUWs9XsgJEFliVQX07_eR9sFJ8UdijkFMAPVlv2sq4UhOPPOzUtZSQL0I0yimpd6ZmAw"
+          }
+        }
+      },
+      "error": "keys.ring",
+      "server": null
+    },
+    {
+      "name": "a ring key that does not match the version's kid",
+      "op": "open_ring",
+      "row": "A `kid` mismatch, from a wrap or a ring",
+      "input": {
+        "origin": "https://sync.example.com",
+        "newer_hex": "ad7410a177d63a3220a555393259bc81ecb75bfde3d49237a4382202bbcbb154",
+        "ring": {
+          "kind": "key.ring",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/4",
+          "fields": {
+            "suite": "tp1",
+            "nonce": "BjzTlzN-ARNj0uhe",
+            "ct": "1kQ3uodvOn1UScE96I3xqjE1pcpL1OhVHAdqwb-buGv8qqiSvM2vLAA7bs1AprynF7ckog"
+          }
+        },
+        "below": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/3",
+          "fields": {
+            "suite": "tp1",
+            "start": 0,
+            "kid": "7JJ0jR5DbVVz9lS571rcOtw59K_rKeiiGLeBUhIsYJU",
+            "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "signer_av": 1,
+            "sig": "gN54nbXAAetQY1uhteCx-fwM-J--CBbi9-JltliuH8nN5-7GIbAihIyHikNbwKv40Qbj2mzr6MuWKcPpG2VOCQ"
+          }
+        }
+      },
+      "error": "keys.kid",
+      "server": null
+    },
+    {
+      "name": "a ring opened with another key",
+      "op": "open_ring",
+      "row": "A wrong label, or each AAD or `info` field changed",
+      "input": {
+        "origin": "https://sync.example.com",
+        "newer_hex": "0223fbc7311cc8d5f9a48f5075b43a720ae1f30589c0f349a92f8c43ab692db7",
+        "ring": {
+          "kind": "key.ring",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/4",
+          "fields": {
+            "suite": "tp1",
+            "nonce": "BjzTlzN-ARNj0uhe",
+            "ct": "1kQ3uodvOn1UScE96I3xqjE1pcpL1OhVHAdqwb-buGv8qqiSvM2vLAA7bs1AprynF7ckog"
+          }
+        },
+        "below": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/3",
+          "fields": {
+            "suite": "tp1",
+            "start": 0,
+            "kid": "2DeLlXbp_ONb3CxZK0-h-McJmMc9feNUjRDnKbH9rW0",
+            "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "signer_av": 1,
+            "sig": "HefeopNzk4MynEQZsfIUWs9XsgJEFliVQX07_eR9sFJ8UdijkFMAPVlv2sq4UhOPPOzUtZSQL0I0yimpd6ZmAw"
+          }
+        }
+      },
+      "error": "keys.open",
+      "server": null
+    },
+    {
+      "name": "a ring ct of 51 bytes",
+      "op": "key_object",
+      "row": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes",
+      "input": {
+        "record": {
+          "kind": "key.ring",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/4",
+          "fields": {
+            "suite": "tp1",
+            "nonce": "BjzTlzN-ARNj0uhe",
+            "ct": "1kQ3uodvOn1UScE96I3xqjE1pcpL1OhVHAdqwb-buGv8qqiSvM2vLAA7bs1AprynF7ck"
+          }
+        }
+      },
+      "error": "keys.encoding",
+      "server": "bad_statement"
+    },
+    {
+      "name": "the ring AAD with its origin changed",
+      "op": "aead_open",
+      "row": "A wrong label, or each AAD or `info` field changed",
+      "input": {
+        "key_hex": "ad343c5c9e974e3689cf6830d7770190d941509891d38e37e8c3e5acec198fa9",
+        "nonce_hex": "063cd397337e011363d2e85e",
+        "ct_hex": "d64437ba876f3a7d5449c13de88df1aa3135a5ca4bd4e8551c076ac1bf9bb86bfcaaa892bccdaf2c003b6ecd40a6bca717b724a2",
+        "aad_hex": "000000107461626c6570726f2f76312f72696e67000000037470310000001968747470733a2f2f6f746865722e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000004"
+      },
+      "error": "keys.open",
+      "server": null
+    },
+    {
+      "name": "the ring AAD with its owner changed",
+      "op": "aead_open",
+      "row": "A wrong label, or each AAD or `info` field changed",
+      "input": {
+        "key_hex": "ad343c5c9e974e3689cf6830d7770190d941509891d38e37e8c3e5acec198fa9",
+        "nonce_hex": "063cd397337e011363d2e85e",
+        "ct_hex": "d64437ba876f3a7d5449c13de88df1aa3135a5ca4bd4e8551c076ac1bf9bb86bfcaaa892bccdaf2c003b6ecd40a6bca717b724a2",
+        "aad_hex": "000000107461626c6570726f2f76312f72696e67000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b8000000047465616d00000004"
+      },
+      "error": "keys.open",
+      "server": null
+    },
+    {
+      "name": "the ring AAD with its version changed",
+      "op": "aead_open",
+      "row": "A wrong label, or each AAD or `info` field changed",
+      "input": {
+        "key_hex": "ad343c5c9e974e3689cf6830d7770190d941509891d38e37e8c3e5acec198fa9",
+        "nonce_hex": "063cd397337e011363d2e85e",
+        "ct_hex": "d64437ba876f3a7d5449c13de88df1aa3135a5ca4bd4e8551c076ac1bf9bb86bfcaaa892bccdaf2c003b6ecd40a6bca717b724a2",
+        "aad_hex": "000000107461626c6570726f2f76312f72696e67000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d000000047465616d00000010019a6b301d277e9a8c442f5b7a1e0c63000000047465616d00000005"
+      },
+      "error": "keys.open",
+      "server": null
+    }
+  ],
+  "digests": [
+    {
+      "name": "a version record at an anchored version whose digest differs",
+      "op": "check_record_digest",
+      "row": "After a state file restore, a version record at an anchored version whose digest differs",
+      "input": {
+        "origin": "https://sync.example.com",
+        "anchored_hex": "a4fe331092941076198bf00b137bc9ab417ed7eb7d67ad8b0c45ab8e75d6f4ec",
+        "record": {
+          "kind": "key.version",
+          "id": "019A6B30-1D27-7E9A-8C44-2F5B7A1E0C63/team/3",
+          "fields": {
+            "suite": "tp1",
+            "start": 0,
+            "kid": "7JJ0jR5DbVVz9lS571rcOtw59K_rKeiiGLeBUhIsYJU",
+            "signer": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+            "signer_av": 1,
+            "sig": "gN54nbXAAetQY1uhteCx-fwM-J--CBbi9-JltliuH8nN5-7GIbAihIyHikNbwKv40Qbj2mzr6MuWKcPpG2VOCQ"
+          }
+        }
+      },
+      "error": "keys.conflict",
+      "server": null
+    }
+  ]
+}

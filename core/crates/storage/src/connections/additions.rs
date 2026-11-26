@@ -80,11 +80,14 @@ impl ConnectionStore {
 }
 
 impl SavedConnection {
-    // Marks only this app sets, which the other app never had.
+    // Marks and settings only this app sets, which the other app never had.
     fn keep_marks_from(&mut self, existing: &SavedConnection) {
         self.tags.clone_from(&existing.tags);
         self.icon = existing.icon;
         self.last_opened_at = existing.last_opened_at;
+        self.details.clone_from(&existing.details);
+        self.device.clone_from(&existing.device);
+        self.unknown.clone_from(&existing.unknown);
     }
 }
 
@@ -152,6 +155,9 @@ mod tests {
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         }
     }
 
