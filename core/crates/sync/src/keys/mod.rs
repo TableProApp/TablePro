@@ -16,6 +16,7 @@ pub mod pins;
 mod pins_alerts;
 mod reset;
 mod rotation;
+mod team;
 
 use std::any::Any;
 use std::collections::HashMap;
