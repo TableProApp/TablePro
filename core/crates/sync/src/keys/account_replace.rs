@@ -45,6 +45,7 @@ impl KeyService {
         self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         let own = self.rotating_account(txn.as_mut()).await?;
+        self.no_activation_waiting(txn.as_mut(), own.av.next()?).await?;
         // A rotation this device pushed and never heard the end of goes up again, the same objects, before any new
         // one: a second R' must never stand in for one that applied (0054, `key_objects`).
         if let Some(candidates) = self.rotation_candidates(txn.as_mut(), own.av.next()?).await? {
@@ -115,6 +116,7 @@ impl KeyService {
             return Ok(());
         }
         let av = own.av.next()?;
+        self.no_activation_waiting(txn.as_mut(), av).await?;
         let candidates = self.rotation_candidates(txn.as_mut(), av).await?;
         let built = match held {
             // Pushed already, maybe applied: only the same objects may go up again.
@@ -350,6 +352,18 @@ impl KeyService {
         txn.commit().await?;
         self.erase_account_keys(av).await?;
         Ok(false)
+    }
+
+    // This device's reset activation waits at the `av` a replace would take, and its answer may have been lost after
+    // it applied: only that activation goes up there, until its flow settles it (0056, Reset).
+    async fn no_activation_waiting(&self, txn: &mut dyn StateTxn, av: Version) -> Result<(), SyncError> {
+        if self.activation_waiting_at(txn, av).await? {
+            self.hooks().pass_soon();
+            return Err(SyncError::NotAllowed {
+                what: "replace the recovery key while this device's reset activation settles",
+            });
+        }
+        Ok(())
     }
 
     // A replace runs only on an approved device whose file it can trust, never over a stopped or ended key.

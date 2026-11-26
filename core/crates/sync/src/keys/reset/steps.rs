@@ -149,8 +149,20 @@ impl KeyService {
 
     // A reset activation of this device waits as candidates at its reset's `av`, which no rotation may take.
     pub(crate) async fn activation_waiting(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
+        self.activation_waiting_where(txn, None).await
+    }
+
+    // The same, at `av` only.
+    pub(crate) async fn activation_waiting_at(&self, txn: &mut dyn StateTxn, av: Version) -> Result<bool, SyncError> {
+        self.activation_waiting_where(txn, Some(av)).await
+    }
+
+    async fn activation_waiting_where(&self, txn: &mut dyn StateTxn, av: Option<Version>) -> Result<bool, SyncError> {
         for record in self.reset_records(txn).await? {
-            if record.pending() && self.activation_candidates_of(txn, &record).await?.is_some() {
+            if record.pending()
+                && av.is_none_or(|av| record.av == av)
+                && self.activation_candidates_of(txn, &record).await?.is_some()
+            {
                 return Ok(true);
             }
         }

@@ -285,6 +285,27 @@ async fn a_proposer_whose_activation_answer_was_lost_adopts_it_on_resume() {
     assert_eq!(a.av().await, 2);
 }
 
+// An activation whose answer was lost may have applied at the next `av`: a replace there would stand in for it, so
+// none starts until the reset's flow settles it.
+#[tokio::test]
+async fn a_replace_waits_while_this_device_s_reset_activation_settles_at_its_av() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let recovery = a.genesis().await;
+    let proposed = propose_reset(&a, ResetKind::KeepScopeKeys).await;
+    server.advance_clock(7 * DAY_US);
+    a.wire.lose_next_answer();
+    a.service.activate_reset(proposed.reset).await.unwrap_err();
+
+    let refused = a.service.begin_replace(recovery).await.unwrap_err();
+    a.pull().await;
+    a.service.resume_reset(proposed.reset).await.unwrap();
+
+    assert_eq!(refused.code(), "sync.not_allowed");
+    assert_eq!(a.pending_reset_state().await, Some(ResetState::Active));
+}
+
 // The server took the proposal and its answer was lost: the device keeps the keys, the candidate and the row, and
 // sends the same proposal again.
 #[tokio::test]
