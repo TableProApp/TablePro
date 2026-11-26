@@ -4,7 +4,7 @@
 // evidence the server holds the object, so it counts as lacking: pushing an object the server holds again answers
 // `applied` (0051, Push).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
@@ -51,6 +51,8 @@ pub(crate) struct BaseView<'a> {
     bases: &'a Bases,
     // The fields of each key object this device holds, by scope and wire id.
     held: HashMap<(ScopeName, String), Value>,
+    // The ids where the server's other record is one this device checked: only those prove a fork.
+    checked: HashSet<(ScopeName, String)>,
 }
 
 impl<'a> BaseView<'a> {
@@ -67,7 +69,25 @@ impl<'a> BaseView<'a> {
                 Some(((*scope, wire(&object.object.id)), fields))
             })
             .collect();
-        Self { lineages, bases, held }
+        Self {
+            lineages,
+            bases,
+            held,
+            checked: HashSet::new(),
+        }
+    }
+
+    // The server's fields at the id, when they are another record than the one this device holds there.
+    pub(crate) fn other_fields(&self, scope: ScopeName, id: &KeyRecordId) -> Option<&Value> {
+        let base = self.surviving(scope, id)?;
+        if !self.other_record(scope, id, base) {
+            return None;
+        }
+        base.fields.as_ref()
+    }
+
+    pub(crate) fn checked_other(&mut self, scope: ScopeName, id: &KeyRecordId) {
+        self.checked.insert((scope, wire(id)));
     }
 
     // The base the server holds now at the id, the lost-write rule applied.
@@ -97,9 +117,10 @@ impl ServerView for BaseView<'_> {
             .is_some_and(|base| !self.other_record(scope, id, base))
     }
 
+    // Bytes this device could not check prove nothing: its own object then reads as lacking, goes back, and the
+    // server's answer decides.
     fn holds_another(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
-        self.surviving(scope, id)
-            .is_some_and(|base| self.other_record(scope, id, base))
+        self.other_fields(scope, id).is_some() && self.checked.contains(&(scope, wire(id)))
     }
 }
 

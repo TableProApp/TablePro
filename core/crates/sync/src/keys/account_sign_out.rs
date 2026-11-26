@@ -3,9 +3,9 @@
 // row holds no key device and that reset ends. Then every key item and the key tables go. Nothing rotates (D7). What
 // it erases is written down first, so a Sign Out cut off finishes at the next call.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use tablepro_keys::body::KeyBody;
 use tablepro_keys::encoding::{ResetId, Version};
 use tablepro_keys::keys::Ed25519Seed;
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
@@ -68,37 +68,32 @@ impl KeyService {
                 _ => None,
             })
             .collect();
-        let pinned = self.pin(txn.as_mut(), self.account()).await?.map(|pin| pin.av);
-        // Only this device's own candidates and certificates that verify under its pin: an `av` the server alone made up
-        // sets no bound.
-        let mut certified = None;
+        Ok(SigningOut { keys, resets })
+    }
+
+    // The `av`s whose account keys this device may hold: 1, its own pin's, each own certificate the key tables hold,
+    // applied or a candidate, and the one after each, since a rotation stores its new keys before it holds its
+    // candidate. The key tables go only after the erasing, so a Sign Out cut off reads the same ones again. Erasing an
+    // item that is not there succeeds, so an `av` someone planted costs one delete, never a count up to it.
+    async fn account_key_avs(&self) -> Result<BTreeSet<Version>, SyncError> {
+        let mut txn = self.begin().await?;
+        let mut named = BTreeSet::from([Version::FIRST]);
+        if let Some(pin) = self.pin(txn.as_mut(), self.account()).await? {
+            named.insert(pin.av);
+        }
         for held in self
             .held_objects(txn.as_mut(), ScopeName::Personal, KeyKind::Account)
             .await?
         {
-            let (KeyRecordId::Account { av, .. }, KeyBody::Account(body)) = (&held.object.id, &held.object.body) else {
-                continue;
-            };
-            let trusted = !held.applied
-                || self
-                    .verify_certificate(
-                        txn.as_mut(),
-                        ScopeName::Personal,
-                        &body.certificate(self.account(), *av),
-                    )
-                    .await
-                    .is_ok();
-            if trusted {
-                certified = certified.max(Some(*av));
+            if let KeyRecordId::Account { account, av } = held.object.id
+                && account == self.account()
+            {
+                named.insert(av);
             }
         }
-        // One past the newest: a rotation stores its new keys before its push, and may have stopped there.
-        let newest_av = pinned.max(certified).map_or(0, Version::get).saturating_add(1);
-        Ok(SigningOut {
-            keys,
-            newest_av,
-            resets,
-        })
+        let after: Vec<Version> = named.iter().filter_map(|av| av.next().ok()).collect();
+        named.extend(after);
+        Ok(named)
     }
 
     async fn finish_signing_out(&self, signing_out: &SigningOut) -> Result<SignOutOutcome, SyncError> {
@@ -134,10 +129,7 @@ impl KeyService {
             }
         }
 
-        for av in 1..=signing_out.newest_av {
-            let Ok(av) = Version::new(av) else {
-                break;
-            };
+        for av in self.account_key_avs().await? {
             self.erase_account_keys(av).await?;
         }
         for reset in &signing_out.resets {

@@ -34,6 +34,7 @@ fn arrival(records: Vec<PulledRecord>) -> KeyArrival {
         scope: ScopeName::Personal,
         records,
         order: ArrivalOrder::InOrder,
+        in_force: None,
     }
 }
 

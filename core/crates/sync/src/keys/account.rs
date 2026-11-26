@@ -50,7 +50,6 @@ pub struct ResetKeys {
 
 pub(crate) struct SigningOut {
     pub(crate) keys: HeldDeviceKeys,
-    pub(crate) newest_av: u32,
     pub(crate) resets: Vec<ResetId>,
 }
 
@@ -122,9 +121,8 @@ impl KeyService {
         Ok(self.device_store.store(self.device_keys_item(), out).await?)
     }
 
-    // A Sign Out that started and has not finished: the device keys it proves with, the newest `av` whose account
-    // keys it erases, and the resets whose keys it erases. Kept in the device keys' own item, so the secrets go before
-    // the record of what to erase does.
+    // A Sign Out that started and has not finished: the device keys it proves with and the resets whose keys it
+    // erases. Kept in the device keys' own item, so the secrets go before the record of what to erase does.
     pub(crate) async fn signing_out(&self) -> Result<Option<SigningOut>, SyncError> {
         match self.device_store.load(self.device_keys_item()).await? {
             Some(bytes) if bytes.first() == Some(&SIGNING_OUT) => decode_signing_out(&bytes).map(Some),
@@ -134,10 +132,9 @@ impl KeyService {
 
     pub(crate) async fn start_signing_out(&self, signing_out: &SigningOut) -> Result<(), SyncError> {
         let mut out = Zeroizing::new(Vec::with_capacity(
-            1 + 4 + 2 + 16 * signing_out.resets.len() + 2 * (1 + DEVICE_KEYS_LEN),
+            1 + 2 + 16 * signing_out.resets.len() + 2 * (1 + DEVICE_KEYS_LEN),
         ));
         out.push(SIGNING_OUT);
-        out.extend_from_slice(&signing_out.newest_av.to_be_bytes());
         let resets = u16::try_from(signing_out.resets.len()).map_err(|_| SyncError::Malformed {
             what: "too many resets to sign out of",
         })?;
@@ -583,19 +580,13 @@ fn decode_signing_out(bytes: &[u8]) -> Result<SigningOut, SyncError> {
         what: "device keys item",
     };
     let rest = bytes.get(1..).ok_or_else(malformed)?;
-    let newest_av = u32::from_be_bytes(
-        rest.get(..4)
-            .ok_or_else(malformed)?
-            .try_into()
-            .map_err(|_| malformed())?,
-    );
     let count = u16::from_be_bytes(
-        rest.get(4..6)
+        rest.get(..2)
             .ok_or_else(malformed)?
             .try_into()
             .map_err(|_| malformed())?,
     );
-    let mut at = 6;
+    let mut at = 2;
     let mut resets = Vec::with_capacity(usize::from(count));
     for _ in 0..count {
         let id = rest.get(at..at + 16).ok_or_else(malformed)?;
@@ -608,7 +599,6 @@ fn decode_signing_out(bytes: &[u8]) -> Result<SigningOut, SyncError> {
     keys.extend_from_slice(tail);
     Ok(SigningOut {
         keys: decode_held_device_keys(&keys)?,
-        newest_av,
         resets,
     })
 }

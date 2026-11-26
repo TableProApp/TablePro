@@ -69,7 +69,12 @@ pub(super) async fn team_pass(device: &Device, team: TeamId) -> KeyApplied {
             .collect();
         let applied = device
             .service
-            .apply_team_objects(KeyArrival { scope, records, order })
+            .apply_team_objects(KeyArrival {
+                scope,
+                records,
+                order,
+                in_force: (order == ArrivalOrder::InOrder).then_some(row.key_version).flatten(),
+            })
             .await
             .unwrap();
         row.epoch = Some(device.server.epoch());

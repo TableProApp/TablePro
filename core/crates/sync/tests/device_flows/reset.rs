@@ -255,6 +255,7 @@ async fn a_proposer_that_learns_of_its_activation_by_pull_adopts_it() {
             scope: tablepro_sync::api::ids::ScopeName::Personal,
             records: vec![tombstone("key.reset", &id.to_wire())],
             order: tablepro_sync::api::key_flows::ArrivalOrder::InOrder,
+            in_force: None,
         })
         .await
         .unwrap();

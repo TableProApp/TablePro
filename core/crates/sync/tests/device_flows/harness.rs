@@ -379,7 +379,10 @@ impl Device {
             scope,
             role,
             horizon: 0,
-            epochs: Vec::new(),
+            epochs: vec![tablepro_sync::api::scopes::LineageEpoch {
+                id: self.server.epoch(),
+                kept_revision: 0,
+            }],
             writable: true,
             policies: tablepro_sync::api::scopes::ScopePolicies::default(),
             quota: None,
@@ -496,6 +499,7 @@ impl Device {
                 scope: ScopeName::Personal,
                 records: page.records.clone(),
                 order,
+                in_force: (order == ArrivalOrder::InOrder).then_some(row.key_version).flatten(),
             };
             let mut applied = self.service.apply_account_objects(arrival.clone()).await.unwrap();
             for more in [
@@ -686,6 +690,7 @@ pub fn arrival(records: Vec<tablepro_sync::api::transport::PulledRecord>) -> Key
         scope: ScopeName::Personal,
         records,
         order: ArrivalOrder::InOrder,
+        in_force: None,
     }
 }
 

@@ -23,7 +23,7 @@ pub(crate) use self::holders::{Chain, same_holder};
 use super::KeyService;
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, ScopeName};
-use crate::api::key_flows::{Roster, StopAction, StopFlows};
+use crate::api::key_flows::{StopAction, StopFlows};
 use crate::api::state::{
     Holder, KeyPendingRow, KeyPinRow, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn,
     StopClear, StoppedCause, Table,
@@ -129,7 +129,11 @@ impl StopFlows for KeyService {
                 .collect()
         };
         for team in stopped {
-            if let Some(roster) = self.rosters().get(team).filter(Roster::caught_up) {
+            let roster = {
+                let mut txn = self.begin().await?;
+                self.current_roster(&mut *txn, team).await?
+            };
+            if let Some(roster) = roster {
                 self.end_unconfirmable_stop(team, &roster).await?;
             }
         }

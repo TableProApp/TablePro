@@ -176,3 +176,81 @@ async fn a_member_not_yet_confirmed_keeps_the_team_s_envelopes_waiting_and_syncs
     assert!(held.iter().any(|held| held.key.record_id == envelope.to_wire()
         && held.reason == HeldRecordReason::Held(HeldReason::AwaitingDeviceApproval)));
 }
+
+pub(super) async fn push_envelope(owner: &Device, team: TeamId, secret: &str) -> EnvelopeId {
+    let parent = tablepro_keys::encoding::uuid_to_wire(tablepro_keys::encoding::random_uuid().unwrap()).to_lowercase();
+    let envelope = EnvelopeId::new(ParentKind::LibraryConnection, &parent, SecretKind::Password).unwrap();
+    let sealed = owner
+        .keys
+        .seal_team_envelope(team, envelope.clone(), SecretString::from(secret.to_owned()), json!({}))
+        .await
+        .unwrap();
+    let pushed = owner
+        .server
+        .client(owner.keys.account(), owner.row.clone())
+        .push(PushBatch {
+            scope: ScopeName::Team(team),
+            epoch: Some(owner.server.epoch()),
+            idempotency_key: Some(IdempotencyKey(uuid::Uuid::new_v4().to_string())),
+            changes: vec![Change {
+                kind: KindName::parse("secret_envelope").unwrap(),
+                record_id: envelope.to_wire(),
+                base: None,
+                op: ChangeOp::Write {
+                    fields: sealed.clone(),
+                    patch: sealed,
+                },
+            }],
+            proof: Proof::Dpop(owner.keys.dpop_key().await.unwrap()),
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(pushed.outcomes[0], ChangeOutcome::Applied { .. }),
+        "{pushed:?}"
+    );
+    envelope
+}
+
+pub(super) async fn waits(device: &Device, envelope: &EnvelopeId) -> bool {
+    device.sync.held_records().await.unwrap().iter().any(|held| {
+        held.key.record_id == envelope.to_wire()
+            && held.reason == HeldRecordReason::Held(HeldReason::AwaitingDeviceApproval)
+    })
+}
+
+// A member the owner's rotation left out holds the version in force but not its key, so the team's envelope under it
+// waits. It is read again once in a snapshot, then only after the keys change: the next confirmation opens it, and the
+// passes between refill nothing.
+#[tokio::test]
+async fn an_envelope_under_a_key_the_member_was_not_given_waits_without_refilling_its_team_every_pass() {
+    let server = FakeServer::new();
+    let (owner_id, member_id) = (new_account(), new_account());
+    let team = TeamId(tablepro_keys::encoding::random_uuid().unwrap());
+    server.add_team(team, &[(owner_id, Role::Owner), (member_id, Role::Member)]);
+    let owner = Device::new(&server, owner_id, "dev_owner").await;
+    owner.genesis().await;
+    owner.pass().await;
+    owner.keys.create_team_keys(team).await.unwrap();
+    let member = Device::new(&server, member_id, "dev_member").await;
+    member.genesis().await;
+    member.pass().await;
+    owner.pass().await;
+    owner.keys.confirm_member(team, member_id).await.unwrap();
+    member.pass().await;
+    owner.keys.rotate_team(team, vec![member_id]).await.unwrap();
+    let envelope = push_envelope(&owner, team, "s3cret").await;
+
+    member.pass().await;
+    assert!(waits(&member, &envelope).await);
+    member.pass().await;
+    let quiet = [member.pass().await.pulled, member.pass().await.pulled];
+
+    assert_eq!(quiet, [0, 0]);
+    assert!(waits(&member, &envelope).await);
+    owner.pass().await;
+    owner.keys.confirm_member(team, member_id).await.unwrap();
+    member.pass().await;
+    member.pass().await;
+    assert!(!waits(&member, &envelope).await);
+}

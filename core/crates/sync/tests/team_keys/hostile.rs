@@ -86,6 +86,7 @@ async fn served(device: &Device, team: TeamId, objects: &[KeyObject]) -> KeyAppl
             scope: ScopeName::Team(team),
             records: objects.iter().map(record_of).collect(),
             order: ArrivalOrder::InOrder,
+            in_force: None,
         })
         .await
         .unwrap()

@@ -92,6 +92,8 @@ struct Session {
     // Changes the server refused, by what they would send, so a pass does not send them again until they change.
     refused: HashMap<RecordKey, ([u8; 32], String)>,
     stale_handled: bool,
+    // What each scope's waiting envelopes were last judged against in a snapshot.
+    waited: HashMap<ScopeName, keys::KeyMark>,
 }
 
 // What one pass did, for the status and for tests.
@@ -272,13 +274,13 @@ impl ServiceSync {
 
     // An expired cursor reads the scopes body again first, so a new epoch behind it refills (0051, `cursor_expired`).
     async fn pull_or_skip(&self, ctx: &mut PassCtx, session: &mut Session, info: &ScopeInfo) -> Result<(), SyncError> {
-        let mut pulled = self.pull_scope(ctx, info).await;
+        let mut pulled = self.pull_scope(ctx, &mut session.waited, info).await;
         if let Err(SyncError::Transport(TransportError::CursorExpired)) = pulled {
             ctx.body = self.poll_scopes(session).await?;
             let Some(fresh) = ctx.body.scopes.iter().find(|held| held.scope == info.scope).cloned() else {
                 return Ok(());
             };
-            pulled = self.pull_scope(ctx, &fresh).await;
+            pulled = self.pull_scope(ctx, &mut session.waited, &fresh).await;
         }
         match pulled {
             Err(error) => match scope_refusal(&error) {

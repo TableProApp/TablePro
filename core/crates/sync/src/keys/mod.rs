@@ -36,13 +36,16 @@ use crate::api::device_store::HostDeviceStore;
 use crate::api::error::SyncError;
 use crate::api::ids::{DeviceRowId, IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{DraftId, KeyHooks, KeyNotice, KeyNoticeKind, NoticeId, Roster};
-use crate::api::state::{KeyObjectRow, KeyTrust, Row, RowKey, RowRange, StateStore, StateTxn, Table};
+use crate::api::state::{KeyObjectRow, KeyTrust, Row, RowKey, RowRange, ScopeRow, StateStore, StateTxn, Table};
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PushBatch, ServiceTransport};
 use crate::engine::key_base;
 
 pub use account::{AccountObjectsPlan, HeldDeviceKeys, KeptDevice, OwnAccount, ResetKeys};
+// The restore tests' state in memory and the vectors' world, for the unit tests of other modules.
 pub use personal::{CurrentPersonal, ScopeKeyPlan};
 pub use pins::{IkStanding, PinChange};
+#[cfg(test)]
+pub(crate) use restore::tests::{fakes as test_fakes, world as test_world};
 
 // Microseconds since the Unix epoch in UTC, as the service's times are (0051, Pull).
 pub trait Clock: Send + Sync {
@@ -451,6 +454,31 @@ impl Rosters {
     }
 }
 
+// A roster speaks for the epoch the device synced the team in: the one its scope row adopted, with no refill against
+// a newer one under way. One read in an earlier epoch, or while a refill has not been adopted, decides nothing (0051,
+// `members`; After a restore).
+pub(crate) fn roster_in_epoch(roster: &Roster, scope: &ScopeRow) -> bool {
+    roster.caught_up() && !scope.refill && scope.epoch.is_some() && roster.epoch() == scope.epoch
+}
+
+impl KeyService {
+    // The team's roster when it speaks for the epoch the device is in.
+    pub(crate) async fn current_roster(
+        &self,
+        txn: &mut dyn StateTxn,
+        team: TeamId,
+    ) -> Result<Option<Roster>, SyncError> {
+        let Some(roster) = self.rosters().get(team) else {
+            return Ok(None);
+        };
+        let in_epoch = match txn.get(&RowKey::Scope(ScopeName::Team(team))).await? {
+            Some(Row::Scope(scope)) => roster_in_epoch(&roster, &scope),
+            _ => false,
+        };
+        Ok(in_epoch.then_some(roster))
+    }
+}
+
 // What a flow keeps between two calls, by draft id: a recovery key shown and not yet typed back, a review, a session.
 // Each lane stores its own type and takes it back by the same type; another type at the id is `sync.unknown`.
 #[derive(Default)]
@@ -501,7 +529,7 @@ impl Drafts {
 }
 
 // A roster as a pull that caught up after its scopes body leaves it, or as one read before that when `caught_up` is
-// false.
+// false, from a body whose current epoch is `epoch`.
 #[cfg(test)]
 pub(crate) fn test_roster(
     team: TeamId,
@@ -509,13 +537,17 @@ pub(crate) fn test_roster(
     role: Option<crate::api::scopes::Role>,
     rotation_due: bool,
     caught_up: bool,
+    epoch: crate::api::ids::EpochId,
 ) -> Roster {
     let scope = ScopeName::Team(team);
     let info = crate::api::scopes::ScopeInfo {
         scope,
         role,
         horizon: 0,
-        epochs: Vec::new(),
+        epochs: vec![crate::api::scopes::LineageEpoch {
+            id: epoch,
+            kept_revision: 0,
+        }],
         writable: true,
         policies: crate::api::scopes::ScopePolicies::default(),
         quota: None,

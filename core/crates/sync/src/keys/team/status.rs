@@ -21,7 +21,7 @@ impl KeyService {
         let mut txn = self.begin().await?;
         let book = self.load_team(&mut *txn, team).await?;
         let rotation_due = self.scope_row(&mut *txn, scope).await?.rotation_due;
-        let roster = self.rosters().get(team);
+        let roster = self.current_roster(&mut *txn, team).await?;
         let mut cache = FactsCache::default();
         let mut facts = ServiceFacts {
             service: self,

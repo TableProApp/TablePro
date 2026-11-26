@@ -27,6 +27,12 @@ struct Outcome {
     epoch: Option<EpochId>,
 }
 
+// What judging a team again inside another flow's commit changed.
+pub(crate) struct TeamJudged {
+    team: TeamId,
+    events: Vec<TeamEvent>,
+}
+
 fn parse(record: &PulledRecord) -> Result<KeyObject, KeysError> {
     let fields = record.fields_json.as_deref().ok_or(KeysError::Encoding {
         what: "a key object with no fields",
@@ -82,9 +88,10 @@ impl KeyService {
         let mut book = self.load_team(&mut *txn, team).await?;
         let before = book.row().cloned();
         // The replay position: the newest version record the server served at or before each place, which the
-        // honest server writes by, apart from the version this device verified. Only a pull moves it (0056, Rollback,
-        // In order; 0054, `scopes`).
-        let mut in_force = self.scope_row(&mut *txn, arrival.scope).await?.key_version;
+        // honest server writes by, apart from the version this device verified. Only a pull moves it, from where the
+        // engine says the page stands, never back from the one stored (0056, Rollback, In order; 0054, `scopes`).
+        let stored = self.scope_row(&mut *txn, arrival.scope).await?.key_version;
+        let mut in_force = arrival.in_force.max(stored);
         let mut own_member_av = self.own_member_av(&mut *txn, arrival.scope).await?;
         let mut served: BTreeMap<Version, KeyObject> = BTreeMap::new();
         let mut cache = FactsCache::default();
@@ -202,6 +209,36 @@ impl KeyService {
                 _ => None,
             })
             .max())
+    }
+
+    // A restore wait that cleared in `txn`: the versions held above the one the team waited at are judged now, as a
+    // pull judges them, so a restart that passed during the wait is held for the person's words and a next version
+    // that passed is taken, instead of the row reading as current under the older key until another key object
+    // arrives (0062, 0064). The events are told once `txn` committed.
+    pub(crate) async fn judge_resumed_team(
+        &self,
+        txn: &mut dyn StateTxn,
+        team: TeamId,
+    ) -> Result<TeamJudged, SyncError> {
+        let mut book = self.load_team(txn, team).await?;
+        let before = book.row().cloned();
+        let mut cache = FactsCache::default();
+        let progress = self.advance_team(txn, &mut book, &mut cache).await?;
+        if let Some(row) = book.into_row() {
+            self.put_team_row(txn, before.as_ref(), &row).await?;
+        }
+        Ok(TeamJudged {
+            team,
+            events: progress.events,
+        })
+    }
+
+    pub(crate) async fn tell_judged(&self, judged: &TeamJudged) -> Result<(), SyncError> {
+        let outcome = Outcome {
+            events: judged.events.clone(),
+            ..Outcome::default()
+        };
+        self.tell(judged.team, &outcome).await
     }
 
     async fn advance_team(
@@ -374,6 +411,13 @@ impl KeyService {
             return Ok(());
         }
         self.rosters().put(team, roster.clone());
+        let scope = {
+            let mut txn = self.begin().await?;
+            self.scope_row(&mut *txn, ScopeName::Team(team)).await?
+        };
+        if !crate::keys::roster_in_epoch(&roster, &scope) {
+            return Ok(());
+        }
         self.end_unconfirmable_stop(team, &roster).await?;
         if self.own_account_in_team_missing(team).await? {
             self.publish_certificates(team, false).await?;
@@ -471,9 +515,9 @@ impl KeyService {
         book.own_holds(&mut facts).await
     }
 
-    pub(super) fn roster_of(&self, team: TeamId) -> Result<Roster, SyncError> {
-        self.rosters().get(team).ok_or(SyncError::NotAllowed {
-            what: "act on a team before its roster is read",
+    pub(super) async fn roster_of(&self, txn: &mut dyn StateTxn, team: TeamId) -> Result<Roster, SyncError> {
+        self.current_roster(txn, team).await?.ok_or(SyncError::NotAllowed {
+            what: "act on a team before its roster is read in the epoch it syncs in",
         })
     }
 }

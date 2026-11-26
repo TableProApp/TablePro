@@ -144,7 +144,14 @@ fn roster(members: &[(&Account, Role)]) -> Roster {
             role: *role,
         })
         .collect();
-    crate::keys::test_roster(super::team(), members, None, false, true)
+    crate::keys::test_roster(
+        super::team(),
+        members,
+        None,
+        false,
+        true,
+        crate::api::ids::EpochId(uuid::Uuid::nil()),
+    )
 }
 
 #[test]

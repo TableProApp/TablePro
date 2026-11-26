@@ -12,9 +12,11 @@ pub(crate) mod tests;
 use async_trait::async_trait;
 use serde_json::Value;
 use tablepro_keys::encoding::{KeyPurpose, TeamId};
+use tablepro_keys::record_id::KeyRecordId;
 
 use self::plan::{Inputs, Plan, TeamInputs, TeamVerdict};
 use self::server::BaseView;
+use super::team::TeamJudged;
 use super::{HeldObject, KeyService};
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, KindName, ScopeName};
@@ -50,7 +52,8 @@ impl RestoreFlows for KeyService {
                     .map(move |object| (ScopeName::Team(team.team), object))
             }))
             .collect();
-        let view = BaseView::new(&body, &gathered.bases, &held);
+        let mut view = BaseView::new(&body, &gathered.bases, &held);
+        self.check_other_versions(&mut *txn, &held, &mut view).await?;
         let plan = plan::plan(&Inputs {
             account: self.account(),
             key_device: own.device.key_device,
@@ -71,7 +74,7 @@ impl RestoreFlows for KeyService {
         });
         let effects = self.apply_verdicts(&mut *txn, &gathered, &plan, epoch).await?;
         txn.commit().await?;
-        self.announce(&effects)?;
+        self.announce(&effects).await?;
         // An account certificate this device never held leaves nothing of its own to push back: another device of the
         // account puts that set back. Each team's wait or end above still stands.
         if plan.blind {
@@ -179,6 +182,7 @@ pub(crate) struct Gathered {
 struct Effects {
     stopped: Vec<TeamId>,
     resumed: Vec<TeamId>,
+    judged: Vec<TeamJudged>,
     ended: Vec<TeamId>,
     epoch: Option<EpochId>,
 }
@@ -276,6 +280,29 @@ fn push_back_change(held: &HeldObject) -> Result<Change, SyncError> {
 }
 
 impl KeyService {
+    // A team version the server holds as another record ends the team only when this device checked that record: a
+    // version record of the id its signer's certificate in the team verifies, beside the device's own (0051, What
+    // cannot go back).
+    async fn check_other_versions(
+        &self,
+        txn: &mut dyn StateTxn,
+        held: &[(ScopeName, &HeldObject)],
+        view: &mut BaseView<'_>,
+    ) -> Result<(), SyncError> {
+        for (scope, object) in held {
+            let (ScopeName::Team(_), KeyRecordId::Version(key)) = (scope, object.object.id) else {
+                continue;
+            };
+            let Some(fields) = view.other_fields(*scope, &object.object.id).cloned() else {
+                continue;
+            };
+            if self.signed_team_version(txn, key, &fields).await? {
+                view.checked_other(*scope, &object.object.id);
+            }
+        }
+        Ok(())
+    }
+
     // The body names the epoch with or without a proof, so asking for it needs no device keys.
     async fn current_epoch(&self) -> Option<EpochId> {
         match self.transport().scopes(None, Proof::None).await {
@@ -312,11 +339,12 @@ impl KeyService {
                 continue;
             }
             bases.load(txn, info.scope).await?;
-            // The roster a pull that followed its scopes body caught up on, never a stored flag (0051, `members`).
+            // The roster a pull that followed its scopes body caught up on, never a stored flag, and in the epoch it
+            // pushes back for: one of the epoch before the restore speaks for nothing now (0051, `members`).
             let roster = self
                 .rosters()
                 .get(team)
-                .filter(crate::api::key_flows::Roster::caught_up)
+                .filter(|roster| roster.caught_up() && roster.epoch() == Some(body.epoch))
                 .map(|roster| roster.members);
             teams.push(GatheredTeam {
                 team,
@@ -369,6 +397,7 @@ impl KeyService {
                 {
                     txn.put(Row::KeyVersion(stop::resumed(row))).await?;
                     effects.resumed.push(*team);
+                    effects.judged.push(self.judge_resumed_team(txn, *team).await?);
                 }
                 TeamVerdict::Ends => {
                     self.end_team(txn, *team, Some(epoch)).await?;
@@ -380,7 +409,7 @@ impl KeyService {
         Ok(effects)
     }
 
-    fn announce(&self, effects: &Effects) -> Result<(), SyncError> {
+    async fn announce(&self, effects: &Effects) -> Result<(), SyncError> {
         for team in &effects.stopped {
             let scope = ScopeName::Team(*team);
             self.hooks().stop_scope(scope, StoppedCause::RestoreWait);
@@ -392,6 +421,9 @@ impl KeyService {
         for team in &effects.resumed {
             self.hooks().resume_scope(ScopeName::Team(*team));
             self.hooks().pass_soon();
+        }
+        for judged in &effects.judged {
+            self.tell_judged(judged).await?;
         }
         for team in &effects.ended {
             self.team_ended(*team, effects.epoch)?;
