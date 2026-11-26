@@ -77,6 +77,7 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         device_store: Some(device_store as Arc<dyn tablepro_sync::api::HostDeviceStore>),
         legacy_mirror: None,
         link: Err(tablepro_sync::api::TransportError::SignedOut.into()),
+        session: None,
         listener: Arc::new(Listener::default()),
     });
     let opener = tasks.clone();
@@ -130,13 +131,13 @@ async fn with_sync_off_and_no_sign_in_the_status_is_off_and_nothing_runs() {
 
     let status = opened.service.status();
     let pass = opened.service.sync_now(PassReasonTag::Person).await;
-    let approvals = opened.service.approvals().await.unwrap_err();
+    let approvals = opened.service.approvals().await.unwrap();
     let conflicts = opened.service.conflicts().await.unwrap();
 
     assert_eq!(status.phase, SyncPhaseTag::Off);
     assert_eq!(status.provider, Some(SyncProviderTag::Off));
     assert!(pass.is_ok(), "{pass:?}");
-    assert_eq!(code(&approvals), "sync.not_allowed");
+    assert!(approvals.is_empty());
     assert!(conflicts.is_empty());
     assert!(opened.service.scope_statuses().is_empty());
 }
@@ -146,8 +147,11 @@ async fn with_sync_off_and_no_sign_in_the_status_is_off_and_nothing_runs() {
 async fn with_sync_off_a_sign_in_still_syncs_teams_and_its_keys() {
     let tasks = runtime::tasks().unwrap();
     let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account, Role::Owner)]);
     let opened = open(&tasks, |parts| OpenParts {
-        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        link: Ok(link(&server, account)),
         ..parts
     })
     .await;
@@ -155,10 +159,36 @@ async fn with_sync_off_a_sign_in_still_syncs_teams_and_its_keys() {
     opened.service.sync_now(PassReasonTag::Launch).await.unwrap();
     let keys = opened.service.key_state().await.unwrap();
     let scopes = opened.service.scope_statuses();
+    let team_keys = opened.service.team_keys(ScopeName::Team(team).wire()).await.unwrap();
+    let conflicts = opened.service.conflicts().await.unwrap();
+    let personal_approval = opened
+        .service
+        .decide_approval(
+            super::service::SyncRecordRef {
+                scope: "personal".to_owned(),
+                kind: "connection".to_owned(),
+                record_id: "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44".to_owned(),
+            },
+            "host".to_owned(),
+            "00".repeat(32),
+            true,
+        )
+        .await
+        .unwrap_err();
 
     assert_eq!(opened.service.status().phase, SyncPhaseTag::Off);
     assert_eq!(keys, KeyStateInfo::NoKeys);
-    assert!(scopes.iter().any(|scope| scope.scope == "personal"), "{scopes:?}");
+    assert!(
+        scopes.iter().any(|scope| scope.scope == ScopeName::Team(team).wire()),
+        "{scopes:?}"
+    );
+    assert_eq!(team_keys.members.len(), 1, "{team_keys:?}");
+    assert!(conflicts.is_empty());
+    assert_eq!(
+        code(&personal_approval),
+        "sync.not_allowed",
+        "personal data has no engine while sync is off"
+    );
 }
 
 #[tokio::test]

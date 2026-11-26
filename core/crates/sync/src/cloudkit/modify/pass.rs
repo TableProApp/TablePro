@@ -14,10 +14,12 @@ use super::{PushReport, Pusher, Waits, zone};
 use crate::adapters::approval::Queue;
 use crate::api::adapter::RecordAdapter;
 use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
-use crate::api::control::{PassReason, PendingApproval, SyncControl, SyncPhase, SyncStatus};
+use crate::api::control::{
+    HeldRecord, HeldRecordReason, PassReason, PendingApproval, SyncControl, SyncPhase, SyncStatus,
+};
 use crate::api::error::SyncError;
 use crate::api::ids::RecordKey;
-use crate::api::state::{Provider, RowRange, StateFiles, StateIdentity, StateStore, SyncTrust, Table};
+use crate::api::state::{Provider, Row, RowRange, StateFiles, StateIdentity, StateStore, SyncTrust, Table};
 use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, read_everything_again};
 use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalIds, Pass, StopSignal};
 
@@ -433,6 +435,26 @@ impl SyncControl for CloudKitSync {
         };
         let adapters = Adapters::new(self.adapters.clone());
         self.queue(state, &adapters).waiting().await
+    }
+
+    // The records held by id in this account's zone, as the service lists its own (0054, Rules for both providers).
+    async fn held_records(&self) -> Result<Vec<HeldRecord>, SyncError> {
+        let session = self.session.lock().await;
+        let Some(state) = &session.state else {
+            return Ok(Vec::new());
+        };
+        let mut txn = state.begin().await?;
+        let rows = txn.scan(&RowRange::Scope(Table::Held, SCOPE)).await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Held(row) => Some(HeldRecord {
+                    key: row.key,
+                    reason: HeldRecordReason::Held(row.reason),
+                }),
+                _ => None,
+            })
+            .collect())
     }
 
     async fn decide_approval(

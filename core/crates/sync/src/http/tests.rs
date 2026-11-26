@@ -511,3 +511,21 @@ async fn the_bearer_and_the_proof_never_show_in_a_request_s_debug_text() {
     assert!(!text.contains(TOKEN), "{text}");
     assert!(!text.contains("eyJ"), "{text}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_answer_past_its_cap_is_refused_with_no_status_the_scheduler_retries() {
+    let large = format!("{{\"padding\":\"{}\"}}", "x".repeat(ANSWER_BYTES));
+    let (api, _) = server(move |_, _| (503, String::new(), large.clone()));
+    let (transport, _) = transport(&api).await;
+
+    let answered = transport.revoke_key_device(key()).await;
+
+    assert_eq!(
+        answered,
+        Err(TransportError::Server {
+            status: 0,
+            code: "answer_too_large".to_owned(),
+            retry_after_ms: None,
+        })
+    );
+}

@@ -33,6 +33,8 @@ pub(crate) struct OpenParts {
     pub(crate) legacy_mirror: Option<Arc<dyn sync::LegacyMirror>>,
     // The sign-in's `/v2/sync` link, or why there is none.
     pub(crate) link: Result<ServiceLink, SyncError>,
+    // The sign-in's session as sync opened, read before the link, which a later start must still be.
+    pub(crate) session: Option<String>,
     pub(crate) listener: Arc<dyn SyncListener>,
 }
 
@@ -93,10 +95,12 @@ impl Core {
                 }) as Arc<dyn sync::LegacyMirror>
             }),
             link: Err(TransportError::SignedOut.into()),
+            session: None,
             listener: Arc::from(listener),
         };
         let opener = tasks.clone();
         on_runtime(&opener, async move {
+            parts.session = parts.account.as_deref().and_then(Restart::session_of);
             parts.link = service_link(parts.account.as_deref()).await;
             Ok(SyncService::open(tasks, parts).await)
         })
@@ -163,6 +167,7 @@ impl SyncService {
                 hosts: hosts.clone(),
                 account: Arc::clone(account),
                 mode,
+                session: parts.session.clone(),
             }),
             _ => None,
         };

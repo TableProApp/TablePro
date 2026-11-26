@@ -14,7 +14,7 @@ use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
 use tablepro_sync::api::{
     CloudKitTransport, DeviceRowId, DeviceStoreError, HostDeviceStore, HostSettings, RecordAdapter, ServiceTransport,
-    StateFiles, TransportError,
+    StateError, StateFiles, TransportError,
 };
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync};
@@ -37,6 +37,12 @@ pub(crate) struct ServiceLink {
     pub(crate) transport: Arc<dyn ServiceTransport>,
     // The account's sign-in the transport is bound to, which the account's own calls for the same engine must still be.
     pub(crate) binding: Option<Binding>,
+}
+
+impl ServiceLink {
+    fn session(&self) -> Option<&str> {
+        self.binding.as_ref().and_then(Binding::session_id)
+    }
 }
 
 // The sign-in the account holds now, which the service engine stays bound to for its life.
@@ -214,11 +220,23 @@ pub(crate) struct Restart {
     pub(crate) hosts: Hosts,
     pub(crate) account: Arc<AccountService>,
     pub(crate) mode: ServiceMode,
+    // The sign-in the account held when sync opened, which a later start must still be: another one opens sync again.
+    pub(crate) session: Option<String>,
+}
+
+impl Restart {
+    // The account's sign-in at this moment, by its session id, which no file keeps and each sign-in renews.
+    pub(crate) fn session_of(account: &AccountService) -> Option<String> {
+        match &*account.account.status().borrow() {
+            tablepro_account::AccountStatus::SignedIn(signed_in) => signed_in.session_id.clone(),
+            tablepro_account::AccountStatus::SignedOut | tablepro_account::AccountStatus::Offline(_) => None,
+        }
+    }
 }
 
 // The TablePro Sync engine, or why it is not running. A start that failed for a reason that passes, as the network or
-// a locked device store, is tried again by the next call that needs the engine; any other failure holds until the app
-// opens sync again.
+// a locked device store, is tried again by the next call that needs the engine, for the same sign-in only; any other
+// failure holds until the app opens sync again.
 pub(crate) struct ServiceSlot {
     held: Mutex<Result<Arc<ServiceEngine>, SyncError>>,
     starting: tokio::sync::Mutex<()>,
@@ -228,8 +246,13 @@ pub(crate) struct ServiceSlot {
     history_window: Mutex<Option<u32>>,
 }
 
+// An anchor the device store could not settle, as while it is locked, is no pass's to retry (0066) but a start's.
 fn passes(error: &SyncError) -> bool {
-    retryable(error) || matches!(error, SyncError::DeviceStore(DeviceStoreError::Locked))
+    retryable(error)
+        || matches!(
+            error,
+            SyncError::DeviceStore(DeviceStoreError::Locked) | SyncError::State(StateError::AnchorUnsettled)
+        )
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -271,7 +294,10 @@ impl ServiceSlot {
         }
         let categories = lock(&self.categories).clone();
         let started = match service_link(Some(&restart.account)).await {
-            Ok(link) => ServiceEngine::start(&restart.hosts, link, categories, restart.mode).await,
+            Ok(link) if restart.session.is_some() && link.session() == restart.session.as_deref() => {
+                ServiceEngine::start(&restart.hosts, link, categories, restart.mode).await
+            }
+            Ok(_) => Err(TransportError::SignedOut.into()),
             Err(error) => Err(error),
         }
         .map(Arc::new);
@@ -282,8 +308,14 @@ impl ServiceSlot {
         started
     }
 
-    pub(crate) fn keep_categories(&self, categories: SyncCategories) {
-        *lock(&self.categories) = categories;
+    // Waits for a start in flight, which takes them before its engine runs, so no change is lost to one.
+    pub(crate) async fn set_categories(&self, categories: SyncCategories) -> Result<(), SyncError> {
+        let _starting = self.starting.lock().await;
+        *lock(&self.categories) = categories.clone();
+        match self.now() {
+            Ok(engine) => engine.sync.set_categories(categories).await,
+            Err(_) => Ok(()),
+        }
     }
 
     pub(crate) fn set_history_window(&self, entries: Option<u32>) {

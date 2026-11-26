@@ -279,17 +279,37 @@ impl Route {
         }
     }
 
-    // The engines that hold records here, the personal provider's first. TablePro Sync on a device whose personal
-    // provider is another holds only teams, so its absence there, as with no sign-in, leaves nothing out.
-    async fn running(&self) -> Result<Vec<Arc<dyn SyncControl>>, SyncError> {
-        match self.provider {
-            SyncProviderTag::TableproSync => Ok(vec![self.service().await?]),
-            SyncProviderTag::Icloud => Ok([Some(self.icloud.clone()?), self.service().await.ok()]
-                .into_iter()
-                .flatten()
-                .collect()),
-            SyncProviderTag::Off => Ok(self.service().await.ok().into_iter().collect()),
+    // TablePro Sync's engine for the team scopes, or None when there is no sign-in to run it on a device whose
+    // personal provider is another; any other failure is the answer.
+    async fn teams(&self) -> Result<Option<Arc<dyn SyncControl>>, SyncError> {
+        match self.service().await {
+            Ok(control) => Ok(Some(control)),
+            Err(SyncError::Transport(TransportError::SignedOut)) if self.provider != SyncProviderTag::TableproSync => {
+                Ok(None)
+            }
+            Err(error) => Err(error),
         }
+    }
+
+    // The engines that hold records here, the personal provider's first, each looked up on its own, and the first
+    // failure of one that should run.
+    async fn running(&self) -> (Vec<Arc<dyn SyncControl>>, Option<SyncError>) {
+        let mut engines = Vec::new();
+        let mut failed = None;
+        if self.provider == SyncProviderTag::Icloud {
+            match self.icloud.clone() {
+                Ok(control) => engines.push(control),
+                Err(error) => failed = Some(error),
+            }
+        }
+        match self.teams().await {
+            Ok(Some(control)) => engines.push(control),
+            Ok(None) => {}
+            Err(error) => {
+                failed.get_or_insert(error);
+            }
+        }
+        (engines, failed)
     }
 }
 
@@ -375,8 +395,8 @@ impl SyncService {
     // A pass of each engine that holds records here; the first failure is the answer, after every pass ran.
     pub async fn sync_now(&self, why: PassReasonTag) -> Result<(), CoreError> {
         self.on_route(move |route| async move {
-            let mut failed = None;
-            for control in route.running().await? {
+            let (engines, mut failed) = route.running().await;
+            for control in engines {
                 if let Err(error) = control.sync_now(why.into()).await {
                     failed.get_or_insert(error);
                 }
@@ -392,15 +412,8 @@ impl SyncService {
         if let Ok(engine) = &self.icloud {
             engine.sync.set_categories(icloud_categories(&categories));
         }
-        self.service.keep_categories(categories.clone());
-        let service = self.service.now().ok();
-        on_runtime(&self.tasks, async move {
-            if let Some(engine) = service {
-                engine.sync.set_categories(categories).await?;
-            }
-            Ok(())
-        })
-        .await
+        let slot = Arc::clone(&self.service);
+        on_runtime(&self.tasks, async move { Ok(slot.set_categories(categories).await?) }).await
     }
 
     // A store the app still keeps wrote these records of `kind`, after its write landed (core ADR 0060).
@@ -468,8 +481,12 @@ impl SyncService {
 
     pub async fn approvals(&self) -> Result<Vec<PendingApprovalInfo>, CoreError> {
         self.on_route(move |route| async move {
+            let (engines, failed) = route.running().await;
+            if let Some(error) = failed {
+                return Err(error);
+            }
             let mut approvals = Vec::new();
-            for control in route.running().await? {
+            for control in engines {
                 approvals.extend(control.approvals().await?.into_iter().map(PendingApprovalInfo::from));
             }
             Ok(approvals)
@@ -496,10 +513,9 @@ impl SyncService {
     // Only team records meet in a conflict, so they are TablePro Sync's; with no sign-in there are none.
     pub async fn conflicts(&self) -> Result<Vec<TeamConflictInfo>, CoreError> {
         self.on_route(move |route| async move {
-            let conflicts = match route.service().await {
-                Ok(control) => control.conflicts().await?,
-                Err(_) if route.provider != SyncProviderTag::TableproSync => Vec::new(),
-                Err(error) => return Err(error),
+            let conflicts = match route.teams().await? {
+                Some(control) => control.conflicts().await?,
+                None => Vec::new(),
             };
             Ok(conflicts.into_iter().map(TeamConflictInfo::from).collect())
         })
@@ -523,8 +539,12 @@ impl SyncService {
 
     pub async fn held_records(&self) -> Result<Vec<HeldRecordInfo>, CoreError> {
         self.on_route(move |route| async move {
+            let (engines, failed) = route.running().await;
+            if let Some(error) = failed {
+                return Err(error);
+            }
             let mut held = Vec::new();
-            for control in route.running().await? {
+            for control in engines {
                 held.extend(control.held_records().await?.into_iter().map(HeldRecordInfo::from));
             }
             Ok(held)
