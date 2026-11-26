@@ -274,6 +274,7 @@ impl SyncService {
         let signals = Arc::new(Signals::default());
         let forwarding = forward(Arc::clone(&signals), Arc::clone(&parts.listener), &tasks);
         let hosts = parts.hosts(signals);
+        let mode = parts.service_mode();
         let categories = categories_arg(&parts.config.categories);
         let mirror = parts.legacy_mirror;
         let icloud_allowed = allowed(parts.account.as_deref(), parts.config.platform, SyncProviderTag::Icloud);
@@ -309,7 +310,6 @@ impl SyncService {
             Ok(_) => (None, None),
         };
         let kept = categories.clone().unwrap_or_default();
-        let mode = parts.service_mode();
         let last = parts.config.service_account.as_deref().and_then(identity_of);
         let restart = match (&parts.account, &hosts) {
             (Some(account), Ok(hosts)) => Some(Restart {
