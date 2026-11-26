@@ -5,6 +5,8 @@ public protocol SQLCompletionCatalog: Sendable {
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) async -> String?
     func columnCompletionItems(for tableName: String, schema: String?) async -> [SQLCompletionItem]
     func tableCompletionItems() async -> [SQLCompletionItem]
+    // The same tables, in the same order, folded once per list; nil ranks `tableCompletionItems()` instead.
+    func tableNameIndex() async -> SQLCompletionNameIndex?
     func tableCompletionItems(inSchema schema: String) async -> [SQLCompletionItem]
     func tableCompletionItems(inSchema schema: String, isQuoted: Bool) async -> [SQLCompletionItem]
     func schemaCompletionItems() async -> [SQLCompletionItem]
@@ -24,6 +26,8 @@ public extension SQLCompletionCatalog {
     func tableCompletionItems(inSchema schema: String, isQuoted: Bool) async -> [SQLCompletionItem] {
         await tableCompletionItems(inSchema: schema)
     }
+
+    func tableNameIndex() async -> SQLCompletionNameIndex? { nil }
 
     func foreignKeys(of tableName: String, schema: String?) async -> [SQLCompletionForeignKey] { [] }
 
