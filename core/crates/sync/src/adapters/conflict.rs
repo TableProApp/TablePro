@@ -19,7 +19,7 @@ use crate::api::state::{
     ApprovalRow, BaseRow, ConflictRow, HeldReason, HeldRow, Row, RowKey, RowRange, StateStore, Table,
 };
 use crate::api::transport::PulledRecord;
-use crate::engine::Adapters;
+use crate::engine::{Adapters, Fence};
 
 fn member<'a>(copy: Option<&'a Value>, name: &str) -> Option<&'a Value> {
     copy.and_then(|copy| copy.get(name))
@@ -109,6 +109,8 @@ pub fn sides(
 pub struct Conflicts<'a> {
     pub state: &'a Arc<dyn StateStore>,
     pub adapters: &'a Adapters,
+    // Checked before each store write and the commit, as the approval queue does.
+    pub fence: &'a dyn Fence,
 }
 
 impl Conflicts<'_> {
@@ -161,6 +163,7 @@ impl Conflicts<'_> {
         let outcome = outcome(&row, &rows, kind, key, stored.as_ref(), keep);
         match &outcome {
             Outcome::Delete if stored.is_some() => {
+                self.fence.check()?;
                 adapter
                     .apply(
                         key.scope,
@@ -171,6 +174,7 @@ impl Conflicts<'_> {
                     .await?;
             }
             Outcome::Put(fields, _) if stored.as_ref() != Some(fields) => {
+                self.fence.check()?;
                 adapter
                     .apply(
                         key.scope,
@@ -206,6 +210,7 @@ impl Conflicts<'_> {
             .await?;
         }
         txn.delete(&RowKey::Conflict(key.clone())).await?;
+        self.fence.check()?;
         txn.commit().await?;
         Ok(())
     }

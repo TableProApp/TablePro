@@ -1,5 +1,6 @@
 // The engines a `SyncService` runs (core ADR 0054, Providers): iCloud for personal data when the app picked it, and
-// TablePro Sync for one sign-in, each over this Core's state files, with its own journal, scheduler and stop.
+// TablePro Sync for one sign-in, which carries personal data too when it is the personal provider and the team scopes
+// and key objects always, each over this Core's state files, with its own journal, scheduler and stop.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -8,13 +9,14 @@ use tablepro_records::Kind;
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
 use tablepro_sync::adapters::settings::SettingsAdapter;
-use tablepro_sync::api::control::SyncCategories;
+use tablepro_sync::api::control::{SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
 use tablepro_sync::api::{
-    CloudKitTransport, DeviceRowId, DeviceStoreError, HostDeviceStore, HostSettings, RecordAdapter, ServiceTransport,
-    StateFiles, TransportError,
+    CloudKitTransport, DeviceRowId, DeviceStoreError, HostDeviceStore, HostSettings, LegacyMirror, RecordAdapter,
+    ServiceTransport, StateError, StateFiles, TransportError,
 };
+use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync};
 use tablepro_sync::engine::{
@@ -23,7 +25,7 @@ use tablepro_sync::engine::{
 };
 use tablepro_sync::http::{Binding, HttpTransport};
 use tablepro_sync::keys::{KeyService, KeyServiceParts};
-use tablepro_sync::service::{ServiceParts, ServiceSync};
+use tablepro_sync::service::{ServiceMode, ServiceParts, ServiceSync};
 
 use crate::account::AccountService;
 
@@ -36,6 +38,12 @@ pub(crate) struct ServiceLink {
     pub(crate) transport: Arc<dyn ServiceTransport>,
     // The account's sign-in the transport is bound to, which the account's own calls for the same engine must still be.
     pub(crate) binding: Option<Binding>,
+}
+
+impl ServiceLink {
+    fn session(&self) -> Option<&str> {
+        self.binding.as_ref().and_then(Binding::session_id)
+    }
 }
 
 // The sign-in the account holds now, which the service engine stays bound to for its life.
@@ -94,11 +102,12 @@ impl IcloudEngine {
         transport: Arc<dyn CloudKitTransport>,
         categories: &SyncCategories,
         last_account: Option<String>,
+        legacy_mirror: Option<Arc<dyn LegacyMirror>>,
     ) -> Self {
         let wake = Wake::new();
         let journal = Journal::new(wake.clone());
         let stop = StopSignal::new();
-        let sync = Arc::new(CloudKitSync::new(CloudKitParts {
+        let sync = CloudKitSync::new(CloudKitParts {
             transport,
             files: Arc::clone(&hosts.files),
             adapters: hosts.adapters(),
@@ -108,7 +117,13 @@ impl IcloudEngine {
             journal: journal.clone(),
             events: Some(Arc::clone(&hosts.events)),
             last_account,
-        }));
+        });
+        // While the previous stable still runs the Swift engine, the Mac writes what that build reads (0054,
+        // Downgrade mirror).
+        let sync = Arc::new(match legacy_mirror {
+            Some(mirror) => sync.with_legacy_mirror(mirror),
+            None => sync,
+        });
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,
             wake,
@@ -121,6 +136,13 @@ impl IcloudEngine {
             stop,
             _scheduler: scheduler,
         }
+    }
+}
+
+impl IcloudEngine {
+    // The person turned sync off: no pass runs until the app opens sync again.
+    pub(crate) fn stop(&self) {
+        self.stop.stop();
     }
 }
 
@@ -142,7 +164,12 @@ pub(crate) struct ServiceEngine {
 
 impl ServiceEngine {
     // Called on the runtime: it opens the sign-in's state file, and the scheduler's task needs the runtime.
-    pub(crate) async fn start(hosts: &Hosts, link: ServiceLink, categories: SyncCategories) -> Result<Self, SyncError> {
+    pub(crate) async fn start(
+        hosts: &Hosts,
+        link: ServiceLink,
+        categories: SyncCategories,
+        mode: ServiceMode,
+    ) -> Result<Self, SyncError> {
         let binding = link.binding;
         let identity = StateIdentity::Service {
             origin: link.origin.clone(),
@@ -176,6 +203,7 @@ impl ServiceEngine {
             journal: journal.clone(),
             events: Some(Arc::clone(&hosts.events)),
             categories,
+            mode,
         }));
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,
@@ -206,11 +234,24 @@ impl Drop for ServiceEngine {
 pub(crate) struct Restart {
     pub(crate) hosts: Hosts,
     pub(crate) account: Arc<AccountService>,
+    pub(crate) mode: ServiceMode,
+    // The sign-in the account held when sync opened, which a later start must still be: another one opens sync again.
+    pub(crate) session: Option<String>,
+}
+
+impl Restart {
+    // The account's sign-in at this moment, by its session id, which no file keeps and each sign-in renews.
+    pub(crate) fn session_of(account: &AccountService) -> Option<String> {
+        match &*account.account.status().borrow() {
+            tablepro_account::AccountStatus::SignedIn(signed_in) => signed_in.session_id.clone(),
+            tablepro_account::AccountStatus::SignedOut | tablepro_account::AccountStatus::Offline(_) => None,
+        }
+    }
 }
 
 // The TablePro Sync engine, or why it is not running. A start that failed for a reason that passes, as the network or
-// a locked device store, is tried again by the next call that needs the engine; any other failure holds until the app
-// opens sync again.
+// a locked device store, is tried again by the next call that needs the engine, for the same sign-in only; any other
+// failure holds until the app opens sync again.
 pub(crate) struct ServiceSlot {
     held: Mutex<Result<Arc<ServiceEngine>, SyncError>>,
     starting: tokio::sync::Mutex<()>,
@@ -220,8 +261,13 @@ pub(crate) struct ServiceSlot {
     history_window: Mutex<Option<u32>>,
 }
 
+// An anchor the device store could not settle, as while it is locked, is no pass's to retry (0066) but a start's.
 fn passes(error: &SyncError) -> bool {
-    retryable(error) || matches!(error, SyncError::DeviceStore(DeviceStoreError::Locked))
+    retryable(error)
+        || matches!(
+            error,
+            SyncError::DeviceStore(DeviceStoreError::Locked) | SyncError::State(StateError::AnchorUnsettled)
+        )
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -263,7 +309,10 @@ impl ServiceSlot {
         }
         let categories = lock(&self.categories).clone();
         let started = match service_link(Some(&restart.account)).await {
-            Ok(link) => ServiceEngine::start(&restart.hosts, link, categories).await,
+            Ok(link) if restart.session.is_some() && link.session() == restart.session.as_deref() => {
+                ServiceEngine::start(&restart.hosts, link, categories, restart.mode).await
+            }
+            Ok(_) => Err(TransportError::SignedOut.into()),
             Err(error) => Err(error),
         }
         .map(Arc::new);
@@ -274,8 +323,14 @@ impl ServiceSlot {
         started
     }
 
-    pub(crate) fn keep_categories(&self, categories: SyncCategories) {
-        *lock(&self.categories) = categories;
+    // Waits for a start in flight, which takes them before its engine runs, so no change is lost to one.
+    pub(crate) async fn set_categories(&self, categories: SyncCategories) -> Result<(), SyncError> {
+        let _starting = self.starting.lock().await;
+        *lock(&self.categories) = categories.clone();
+        match self.now() {
+            Ok(engine) => engine.sync.set_categories(categories).await,
+            Err(_) => Ok(()),
+        }
     }
 
     pub(crate) fn set_history_window(&self, entries: Option<u32>) {
@@ -287,9 +342,19 @@ impl ServiceSlot {
 }
 
 // A store the app keeps wrote, after the write landed (core ADR 0060). Each engine's diff decides what goes up.
-pub(crate) fn journal(journals: &[&Journal], kind: Kind, written: Vec<String>, deleted: Vec<String>) {
+// The downgrade mirror's marks, when no iCloud engine carries them, take the same signal.
+pub(crate) fn journal(
+    journals: &[&Journal],
+    marks: Option<&LegacyMarks>,
+    kind: Kind,
+    written: Vec<String>,
+    deleted: Vec<String>,
+) {
     let entry = JournalEntry { kind, written, deleted };
     for journal in journals {
         journal.changed(std::slice::from_ref(&entry));
+    }
+    if let Some(marks) = marks {
+        marks.changed(std::slice::from_ref(&entry));
     }
 }

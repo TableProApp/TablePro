@@ -123,8 +123,12 @@ impl ServiceSync {
         if !matches!(scope, ScopeName::Team(_)) && (info.approved != Some(true) || self.hooks.locked().is_some()) {
             return Ok(AfterPush::Done);
         }
-        let pending = self.pending(ctx, session, &row).await?;
+        let mut pending = self.pending(ctx, session, &row).await?;
+        if let Some(arrival) = ctx.arrival.as_deref().filter(|_| scope == ScopeName::Personal) {
+            arrival.mark(&mut pending);
+        }
         ctx.report.queued += pending.len();
+        *ctx.report.queued_in.entry(scope).or_default() += pending.len();
         if pending.is_empty() {
             self.clear_outbox(scope).await?;
         }
@@ -150,7 +154,7 @@ impl ServiceSync {
         let scope = row.scope;
         let skip = self.skipped(scope).await?;
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
-        let categories = ctx.categories.clone();
+        let categories = ctx.categories_in(scope);
         let none = HashSet::new();
         let mut out = Vec::new();
         let mut pruned = Vec::new();
@@ -203,7 +207,7 @@ impl ServiceSync {
                 out.extend(pending);
             }
             if !diffed.acknowledged.is_empty() {
-                self.stop.check()?;
+                self.check_stop()?;
                 adapter
                     .tombstones_pushed(
                         scope,
@@ -213,14 +217,49 @@ impl ServiceSync {
             }
         }
         if !pruned.is_empty() {
-            self.stop.check()?;
+            self.check_stop()?;
             let mut txn = begin(&self.state).await?;
             for key in pruned {
                 txn.delete(&RowKey::Base(key)).await?;
             }
+            self.check_stop()?;
             txn.commit().await?;
         }
         Ok(out)
+    }
+
+    // What the diff would still send of a scope, refused records aside: a move is done only once this is nothing, so no
+    // record goes up later without the marker its move owes it.
+    pub(super) async fn unsent(&self, session: &Session, scope: ScopeName) -> Result<usize, SyncError> {
+        let Some(row) = self.scope_row(scope).await? else {
+            return Ok(0);
+        };
+        let skip = self.skipped(scope).await?;
+        let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
+        let categories = self.categories();
+        let none = HashSet::new();
+        let mut unsent = 0;
+        for adapter in self.adapters.in_scope(scope) {
+            let kind = adapter.kind();
+            if kind_off(row.policies, scope, kind) || !categories.syncs(kind) {
+                continue;
+            }
+            let bases = self.bases_in(scope, kind).await?;
+            let local = going_up(kind, scope, adapter.records(scope).await?, &bases, &held);
+            let diffed = diff(
+                scope,
+                kind,
+                &local,
+                &bases,
+                skip.get(&KindName::of(kind)).unwrap_or(&none),
+            );
+            unsent += diffed
+                .pending
+                .iter()
+                .filter(|pending| !session.refused.contains_key(&pending.key))
+                .count();
+        }
+        Ok(unsent)
     }
 
     // History entries go up sealed under the newest history key, at push time (0056, Envelopes and history). A refusal
@@ -238,7 +277,7 @@ impl ServiceSync {
                 continue;
             };
             let print = fingerprint(&pending.change());
-            self.stop.check()?;
+            self.check_stop()?;
             let sealed = match self.keys.seal_history_entry(HistoryId(id), fields.clone()).await {
                 Ok(sealed) => sealed,
                 Err(error @ (SyncError::Keys(_) | SyncError::NotAllowed { .. } | SyncError::Locked { .. })) => {
@@ -327,7 +366,7 @@ impl ServiceSync {
         let retention_ms = i64::try_from(ctx.body.idempotency_retention_secs.saturating_mul(1_000)).unwrap_or(i64::MAX);
         for fresh in [false, true] {
             let key = self.outbox_key(scope, digest, retention_ms, fresh).await?;
-            self.stop.check()?;
+            self.check_stop()?;
             let request = PushBatch {
                 scope,
                 epoch: Some(epoch),
@@ -376,7 +415,7 @@ impl ServiceSync {
         });
         let key = row.idempotency_key.clone();
         txn.put(Row::Outbox(row)).await?;
-        self.stop.check()?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(key)
     }
@@ -388,19 +427,20 @@ impl ServiceSync {
             return Ok(());
         }
         txn.delete(&RowKey::Outbox(scope)).await?;
-        self.stop.check()?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
 
     async fn epoch_changed(&self, scope: ScopeName) -> Result<(), SyncError> {
-        self.stop.check()?;
+        self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         if let Some(Row::Scope(mut row)) = txn.get(&RowKey::Scope(scope)).await? {
             row.refill = true;
             txn.put(Row::Scope(row)).await?;
         }
         txn.delete(&RowKey::Outbox(scope)).await?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
@@ -501,7 +541,7 @@ impl ServiceSync {
         deleted_history: Vec<String>,
         gone: Vec<RecordKey>,
     ) -> Result<(), SyncError> {
-        self.stop.check()?;
+        self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         // A record the person deleted here has nothing left to approve.
         for key in &gone {
@@ -520,6 +560,7 @@ impl ServiceSync {
             txn.delete(&RowKey::Base(key)).await?;
         }
         txn.delete(&RowKey::Outbox(scope)).await?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
@@ -537,7 +578,7 @@ impl ServiceSync {
                 .into_iter()
                 .find(|adapter| adapter.kind() == kind);
             if let Some(adapter) = adapter {
-                self.stop.check()?;
+                self.check_stop()?;
                 adapter.tombstones_pushed(scope, ids).await?;
             }
         }
