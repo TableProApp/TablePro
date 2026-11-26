@@ -191,6 +191,41 @@ struct AppStateSyncWiringTests {
         }
     }
 
+    @Test("A removal a failed write already made still purges what the connection left once a write goes through")
+    func failedWriteKeepsThePurgeOwed() throws {
+        let held = DatabaseConnection(name: "Held", type: .postgresql)
+        try JSONEncoder().encode([held]).write(to: fixture.connectionsFile)
+        _ = fixture.makeState(syncEnabled: false)
+        var document = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: fixture.coreConnectionsFile)) as? [String: Any]
+        )
+        var entries = try #require(document["connections"] as? [[String: Any]])
+        entries[0]["auth_mode"] = "from_the_future"
+        document["connections"] = entries
+        try JSONSerialization.data(withJSONObject: document).write(to: fixture.coreConnectionsFile)
+        let group = UUID()
+        let groupsFile = fixture.libraryDirectory.appendingPathComponent("groups.json")
+        try Data(#"[{"id":"\#(group.uuidString)","name":7}]"#.utf8).write(to: groupsFile)
+
+        let secureStore = MockSecureStore()
+        try secureStore.store("secret", forKey: "com.TablePro.password.\(held.id.uuidString)")
+        let state = fixture.makeState(syncEnabled: true, secureStore: secureStore)
+        state.connectSync()
+        #expect(state.unreadableCopies == UnreadableCopies(connections: [held.id], groups: [group]))
+        fixture.metadata.removalsPendingForUnreadableCopies = UnreadableCopies(connections: [held.id], groups: [group]).recordNames
+        try FileManager.default.removeItem(at: groupsFile)
+        try FileManager.default.createDirectory(at: groupsFile, withIntermediateDirectories: false)
+        let pulled = DatabaseConnection(name: "Pulled", type: .postgresql)
+
+        #expect(!state.applySyncedConnections([pulled]))
+        try FileManager.default.removeItem(at: groupsFile)
+        #expect(state.applySyncedConnections([pulled]))
+
+        #expect(state.unreadableCopies.isEmpty)
+        #expect(fixture.metadata.removalsPendingForUnreadableCopies.isEmpty)
+        #expect(try secureStore.retrieve(forKey: "com.TablePro.password.\(held.id.uuidString)") == nil)
+    }
+
     @Test("A saved query made on the Mac reaches the saved queries and the file through the app's sync wiring")
     func pulledSavedQueryReachesTheLibrary() async {
         let folder = SavedQueryFolder(name: "Reports")

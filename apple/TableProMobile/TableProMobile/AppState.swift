@@ -411,7 +411,9 @@ final class AppState {
             return false
         }
         settleUnreadableRemovals(pending)
-        purgeRemovedUnreadable(removed.connections)
+        // An earlier write that failed after its copy went still owes that connection's local state its purge.
+        let live = Set(image.connections.map(\.id)).union(library.unreadable.connections)
+        purgeRemovedUnreadable(pending.connections.subtracting(live))
         return true
     }
 
