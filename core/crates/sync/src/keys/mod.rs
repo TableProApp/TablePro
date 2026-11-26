@@ -15,7 +15,9 @@ mod personal_envelopes;
 pub mod pins;
 mod pins_alerts;
 mod reset;
+mod restore;
 mod rotation;
+mod stop;
 mod team;
 
 use std::any::Any;
