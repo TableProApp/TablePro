@@ -326,6 +326,35 @@ async fn a_saved_query_deletion_waits_while_its_connection_stays_on_the_device()
     assert!(stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_none());
 }
 
+// A connection that synced, then stayed on the device and was deleted there: neither its deletion nor its saved
+// query's goes up, as the Swift engine kept them, and nothing waits to go (0054, Rules for both providers).
+#[tokio::test]
+async fn a_deleted_local_only_connection_and_its_records_stay_on_the_server() {
+    let server = FakeServer::new();
+    let queries = MemoryAdapter::new(Kind::SavedQuery, "queries", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&queries))
+        .build()
+        .await;
+    let connection = id(9);
+    mac.connections.put(&connection, json!({"name": "Prod"}));
+    queries.put(
+        &id(1),
+        json!({"name": "Revenue", "query": "SELECT 1", "connection_id": connection}),
+    );
+    mac.sync().await;
+    mac.connections.put_local_only(&connection, json!({"name": "Prod"}));
+    mac.sync().await;
+    mac.connections.remove(&connection);
+    queries.remove(&id(1));
+    mac.sync().await;
+    mac.sync().await;
+
+    assert!(stored(&server, Kind::Connection.as_str(), &connection).is_some());
+    assert!(stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_some());
+    assert_eq!(mac.sync.status().queued_changes, 0);
+}
+
 #[tokio::test]
 async fn a_value_the_device_already_holds_asks_nothing_on_its_first_pass() {
     let server = FakeServer::new();

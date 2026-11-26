@@ -17,9 +17,13 @@ use crate::api::adapter::LocalRecords;
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, EpochId, IdempotencyKey, KindName, RecordKey, ScopeName};
 use crate::api::scopes::ScopeInfo;
-use crate::api::state::{BaseRow, DeletedHistoryRow, OutboxRow, RefusedRow, Row, RowKey, RowRange, ScopeRow, Table};
+use crate::api::state::{
+    BaseRow, DeletedHistoryRow, OutboxRow, RefusedRow, Row, RowKey, RowRange, ScopeRow, Standing, StandingRow, Table,
+};
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DeletedReason, Proof, PushBatch, TransportError};
-use crate::engine::{KeptOff, Pending, PendingOp, change_bytes, diff, hold_kept_off, split};
+use crate::engine::{
+    KeptOff, Pending, PendingOp, change_bytes, diff, forget_kept_off, hold_kept_off, kept_off_connections, split,
+};
 
 enum Sent {
     Answered { conflicts: bool },
@@ -212,7 +216,7 @@ impl ServiceSync {
         let mut out = Vec::new();
         let mut pruned = Vec::new();
         let mut refusals = Refusals::default();
-        let kept_off = self.kept_off(scope).await;
+        let kept_off = self.kept_off(scope).await?;
         for adapter in self.adapters.in_scope(scope) {
             let kind = adapter.kind();
             if kind_off(row.policies, scope, kind)
@@ -238,6 +242,7 @@ impl ServiceSync {
                 &bases,
                 skip.get(&KindName::of(kind)).unwrap_or(&none),
             );
+            forget_kept_off(&mut diffed, kind, &kept_off);
             let kept_back = hold_kept_off(&mut diffed, kind, &kept_off);
             if let Some(ids) = named {
                 diffed.pending.retain(|pending| ids.contains(&pending.key.record_id));
@@ -318,7 +323,7 @@ impl ServiceSync {
         let skip = self.skipped(scope).await?;
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
         let refused = self.refused_in(scope).await?;
-        let kept_off = self.kept_off(scope).await;
+        let kept_off = self.kept_off(scope).await?;
         let categories = self.categories();
         let none = HashSet::new();
         let mut unsent = 0;
@@ -336,6 +341,7 @@ impl ServiceSync {
                 &bases,
                 skip.get(&KindName::of(kind)).unwrap_or(&none),
             );
+            forget_kept_off(&mut diffed, kind, &kept_off);
             hold_kept_off(&mut diffed, kind, &kept_off);
             unsent += diffed
                 .pending
@@ -413,9 +419,11 @@ impl ServiceSync {
     }
 
     // The personal scope's connections that keep their records on the device; a store that cannot be read keeps all.
-    async fn kept_off(&self, scope: ScopeName) -> KeptOff {
+    // The state file records each one a base names, so once the store no longer holds it, its deletion and its
+    // records' stay here too (0054, Rules for both providers). One that syncs again loses its row.
+    async fn kept_off(&self, scope: ScopeName) -> Result<KeptOff, SyncError> {
         if scope != ScopeName::Personal {
-            return KeptOff::default();
+            return Ok(KeptOff::default());
         }
         let connections = match self
             .adapters
@@ -426,7 +434,62 @@ impl ServiceSync {
             Some(adapter) => adapter.records(scope).await.ok(),
             None => None,
         };
-        KeptOff::of(connections.as_ref())
+        let name = KindName::of(Kind::Connection);
+        let mut recorded: HashMap<String, Standing> = HashMap::new();
+        for row in begin(&self.state)
+            .await?
+            .scan(&RowRange::ScopeKind(Table::Standing, scope, name.clone()))
+            .await?
+        {
+            if let Row::Standing(row) = row {
+                recorded.insert(row.key.record_id, row.standing);
+            }
+        }
+        if let Some(local) = &connections {
+            let bases = self.bases_in(scope, Kind::Connection).await?;
+            let kept: HashSet<String> = kept_off_connections(local, &bases)
+                .into_iter()
+                .map(tablepro_records::record_id::uuid_id)
+                .collect();
+            let mut puts = Vec::new();
+            let mut drops = Vec::new();
+            for record in &local.records {
+                let held = recorded.get(&record.record_id);
+                if kept.contains(&record.record_id) {
+                    if held != Some(&record.standing) {
+                        puts.push(StandingRow {
+                            key: RecordKey::new(scope, name.clone(), record.record_id.clone()),
+                            standing: record.standing,
+                        });
+                    }
+                } else if held.is_some() {
+                    drops.push(RecordKey::new(scope, name.clone(), record.record_id.clone()));
+                }
+            }
+            if !puts.is_empty() || !drops.is_empty() {
+                self.check_stop()?;
+                let mut txn = begin(&self.state).await?;
+                for row in &puts {
+                    txn.put(Row::Standing(row.clone())).await?;
+                }
+                for key in &drops {
+                    txn.delete(&RowKey::Standing(key.clone())).await?;
+                }
+                self.check_stop()?;
+                txn.commit().await?;
+            }
+            for row in puts {
+                recorded.insert(row.key.record_id, row.standing);
+            }
+            for key in drops {
+                recorded.remove(&key.record_id);
+            }
+        }
+        let kept = recorded
+            .into_iter()
+            .filter(|(_, standing)| *standing != Standing::Syncs)
+            .filter_map(|(id, _)| Uuid::parse_str(&id).ok());
+        Ok(KeptOff::of(connections.as_ref()).recorded(kept))
     }
 
     async fn skipped(&self, scope: ScopeName) -> Result<HashMap<KindName, HashSet<String>>, SyncError> {

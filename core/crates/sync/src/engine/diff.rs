@@ -122,6 +122,10 @@ pub fn diff(scope: ScopeName, kind: Kind, local: &LocalRecords, bases: &[BaseRow
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KeptOff {
     ids: HashSet<Uuid>,
+    // Connections this device kept off sync, as the state file recorded them, that its store no longer holds: what was
+    // theirs left the device with them.
+    gone: HashSet<Uuid>,
+    present: HashSet<Uuid>,
     unknown: bool,
 }
 
@@ -130,8 +134,8 @@ impl KeptOff {
     pub fn of(connections: Option<&LocalRecords>) -> Self {
         let Some(local) = connections else {
             return Self {
-                ids: HashSet::new(),
                 unknown: true,
+                ..Self::default()
             };
         };
         let ids = local
@@ -142,12 +146,44 @@ impl KeptOff {
             .chain(local.unreadable.iter().map(String::as_str))
             .filter_map(|id| Uuid::parse_str(id).ok())
             .collect();
-        Self { ids, unknown: false }
+        let present = local
+            .records
+            .iter()
+            .map(|record| record.record_id.as_str())
+            .chain(local.unreadable.iter().map(String::as_str))
+            .filter_map(|id| Uuid::parse_str(id).ok())
+            .collect();
+        Self {
+            ids,
+            gone: HashSet::new(),
+            present,
+            unknown: false,
+        }
+    }
+
+    // The connections the state file last saw kept off sync; the ones the store no longer holds are gone.
+    #[must_use]
+    pub fn recorded(mut self, kept: impl IntoIterator<Item = Uuid>) -> Self {
+        let gone: HashSet<Uuid> = kept.into_iter().filter(|id| !self.present.contains(id)).collect();
+        self.gone = gone;
+        self
     }
 
     fn holds(&self, owner: Uuid) -> bool {
         self.unknown || self.ids.contains(&owner)
     }
+}
+
+// The ids of the connections a store holds kept off sync that a base names, which the state file records so their
+// deletions stay on the device once the store no longer holds them.
+pub fn kept_off_connections(connections: &LocalRecords, bases: &[BaseRow]) -> Vec<Uuid> {
+    let based: HashSet<&str> = bases.iter().map(|base| base.key.record_id.as_str()).collect();
+    connections
+        .records
+        .iter()
+        .filter(|record| record.standing != Standing::Syncs && based.contains(record.record_id.as_str()))
+        .filter_map(|record| Uuid::parse_str(&record.record_id).ok())
+        .collect()
 }
 
 // The connection a record of `kind` belongs to: the one a saved query, a folder, a favourite or a table folder names, or
@@ -175,6 +211,36 @@ fn owner(kind: Kind, fields: &Value) -> Option<Uuid> {
         .get(field.key)
         .and_then(Value::as_str)
         .and_then(|id| Uuid::parse_str(id).ok())
+}
+
+// A deletion of a connection this device kept off sync and then deleted, or of a record that was one of its, sends
+// nothing: the record was never this device's to sync, as the Swift engine never sent it (0054, Rules for both
+// providers). Its base is forgotten, as a pruned one is.
+pub fn forget_kept_off(diffed: &mut Diffed, kind: Kind, kept_off: &KeptOff) {
+    if kept_off.gone.is_empty() {
+        return;
+    }
+    let mut forgotten = Vec::new();
+    diffed.pending.retain(|pending| {
+        if pending.op != PendingOp::Delete {
+            return true;
+        }
+        let owner = if kind == Kind::Connection {
+            Uuid::parse_str(&pending.key.record_id).ok()
+        } else {
+            pending
+                .base
+                .as_ref()
+                .and_then(|base| base.fields.as_ref())
+                .and_then(|fields| owner(kind, fields))
+        };
+        let gone = owner.is_some_and(|owner| kept_off.gone.contains(&owner));
+        if gone {
+            forgotten.push(pending.key.clone());
+        }
+        !gone
+    });
+    diffed.pruned.extend(forgotten);
 }
 
 // Each change of a record whose connection stays on the device waits, a deletion by the owner its base names, since the

@@ -115,6 +115,7 @@ pub struct SyncService {
     pub(crate) connections: Option<tablepro_storage::ConnectionStore>,
     // The downgrade mirror's marks while no iCloud engine carries them.
     pub(crate) legacy_marks: Option<Arc<tablepro_sync::cloudkit::LegacyMarks>>,
+    pub(crate) _marks_hear_stores: Option<tablepro_sync::adapters::store_journal::Listening>,
     // CloudKit and this Core's state files, which the moves between providers need whatever the provider is.
     pub(crate) cloudkit: Option<Arc<dyn tablepro_sync::api::CloudKitTransport>>,
     pub(crate) files: Option<Arc<dyn tablepro_sync::api::StateFiles>>,

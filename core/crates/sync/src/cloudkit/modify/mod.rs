@@ -16,6 +16,7 @@ use serde_json::Value;
 use tablepro_records::Kind;
 use tablepro_records::cloudkit::{CloudValue, RecordType, from_wire, record_name, record_type_of};
 use tablepro_records::record_id::shortened;
+use uuid::Uuid;
 
 pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync, IcloudCopy};
 
@@ -27,8 +28,10 @@ use crate::api::adapter::{LocalRecord, LocalRecords};
 use crate::api::cloudkit::{CloudKitFailure, CloudKitField, CloudKitRecord, CloudKitValue};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, KindName, RecordKey};
-use crate::api::state::{BaseRow, Row, RowRange, Standing, Table};
-use crate::engine::{Backoff, JournalIds, KeptOff, Pending, PendingOp, StopSignal, diff, hold_kept_off};
+use crate::api::state::{BaseRow, Row, RowKey, RowRange, Standing, Table};
+use crate::engine::{
+    Backoff, JournalIds, KeptOff, Pending, PendingOp, StopSignal, diff, forget_kept_off, hold_kept_off,
+};
 
 // A pass sends again what a refusal merged, at most this many times; what is left waits for the next pass.
 const ROUNDS: usize = 3;
@@ -153,6 +156,8 @@ struct Leave<'a> {
     named: Option<&'a JournalIds>,
     // A later round sends only what the earlier one merged.
     only: Option<&'a BTreeSet<RecordKey>>,
+    // Only counting what would go: nothing is committed.
+    counting: bool,
 }
 
 fn cloudkit_value(value: CloudValue) -> CloudKitValue {
@@ -272,6 +277,7 @@ impl<'p> Pusher<'p> {
             waits: &waits,
             named: None,
             only: None,
+            counting: true,
         };
         let items = self.pending(&mut PushReport::default(), &leave).await?;
         Ok(u64::try_from(items.len()).unwrap_or(u64::MAX))
@@ -289,6 +295,7 @@ impl<'p> Pusher<'p> {
                 waits,
                 named,
                 only: only.as_ref(),
+                counting: false,
             };
             let items = self.pending(&mut report, &leave).await?;
             if round == 0 {
@@ -404,7 +411,20 @@ impl<'p> Pusher<'p> {
             Some(adapter) => adapter.records(SCOPE).await.ok(),
             None => None,
         };
-        let kept_off = KeptOff::of(connections.as_ref());
+        let recorded = self
+            .fetcher
+            .state
+            .begin()
+            .await?
+            .scan(&RowRange::ScopeKind(Table::Standing, SCOPE, KindName::of(Kind::Connection)))
+            .await?
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Standing(row) if row.standing != Standing::Syncs => Uuid::parse_str(&row.key.record_id).ok(),
+                _ => None,
+            });
+        let kept_off = KeptOff::of(connections.as_ref()).recorded(recorded);
+        let mut forgotten = Vec::new();
         let mut items = Vec::new();
         for (kind, adapter) in &self.fetcher.adapters {
             let kind = *kind;
@@ -442,6 +462,8 @@ impl<'p> Pusher<'p> {
                 report.refuse(RecordKey::new(SCOPE, kind, id), code);
             }
             let mut diffed = diff(SCOPE, kind, &local, &bases, &skip);
+            forget_kept_off(&mut diffed, kind, &kept_off);
+            forgotten.append(&mut diffed.pruned);
             hold_kept_off(&mut diffed, kind, &kept_off);
             for (key, code) in diffed.refused {
                 report.refuse(key, code);
@@ -459,6 +481,15 @@ impl<'p> Pusher<'p> {
                     Err((key, code)) => report.refuse(key, code),
                 }
             }
+        }
+        if !forgotten.is_empty() && !leave.counting {
+            self.stop.check()?;
+            let mut txn = self.fetcher.state.begin().await?;
+            for key in forgotten {
+                txn.delete(&RowKey::Base(key)).await?;
+            }
+            self.stop.check()?;
+            txn.commit().await?;
         }
         Ok(items)
     }

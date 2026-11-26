@@ -11,7 +11,7 @@ use tablepro_sync::adapters::settings::ConnectionStanding;
 use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::{self as sync, StateFiles, TransportError};
 use tablepro_sync::cloudkit::LegacyMarks;
-use tablepro_sync::engine::SystemClock;
+use tablepro_sync::engine::{JournalObserver, SystemClock};
 use tablepro_sync::service::ServiceMode;
 use tablepro_sync::state::SqliteStateFiles;
 
@@ -224,6 +224,11 @@ impl SyncService {
             (Err(_), Some(mirror)) => Some(Arc::new(LegacyMarks::new(mirror, Arc::new(SystemClock)))),
             _ => None,
         };
+        // The core stores' writes mark it too, as the app's own stores' do.
+        let marks_hear_stores = match (&legacy_marks, &hosts) {
+            (Some(marks), Ok(hosts)) => hosts.listen(Arc::clone(marks) as Arc<dyn JournalObserver>),
+            _ => None,
+        };
         let kept = categories.clone().unwrap_or_default();
         let mode = match parts.config.provider {
             SyncProviderTag::TableproSync => ServiceMode::Personal,
@@ -251,6 +256,7 @@ impl SyncService {
             service: Arc::new(ServiceSlot::new(first, restart, kept)),
             connections: parts.connections,
             legacy_marks,
+            _marks_hear_stores: marks_hear_stores,
             cloudkit,
             files,
             _forward: forwarding,

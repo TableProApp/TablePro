@@ -1,17 +1,45 @@
 // A core store's change journal (0060) told to each engine that syncs the store, its records named by the ids the
 // adapters give them on the wire (0052), so a journal pass diffs exactly the records the write changed.
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 
 use tablepro_records::Kind;
 use tablepro_records::record_id::{favourite_database, favourite_table, table_folder_item, uuid_id};
 use tablepro_storage::{ChangeJournal, RecordRef};
 
-use crate::engine::{Journal, JournalEntry};
+use crate::engine::{Journal, JournalEntry, JournalObserver};
 
 #[derive(Default)]
 pub struct StoreJournal {
-    journals: Mutex<Vec<Journal>>,
+    listeners: Mutex<Vec<(u64, Arc<dyn JournalObserver>)>>,
+    next: AtomicU64,
+}
+
+// A listener hears the stores' writes until this drops with the engine or the marks that hold it, so an engine started
+// again never leaves the one it replaced listening.
+#[must_use = "the listener stops hearing the stores once this drops"]
+pub struct Listening {
+    journals: Weak<StoreJournal>,
+    id: u64,
+}
+
+impl Drop for Listening {
+    fn drop(&mut self) {
+        if let Some(journals) = self.journals.upgrade() {
+            journals
+                .listeners
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .retain(|(id, _)| *id != self.id);
+        }
+    }
+}
+
+impl JournalObserver for Journal {
+    fn changed(&self, entries: &[JournalEntry]) {
+        Journal::changed(self, entries);
+    }
 }
 
 impl StoreJournal {
@@ -19,11 +47,21 @@ impl StoreJournal {
         Arc::default()
     }
 
-    pub fn add(&self, journal: Journal) {
-        self.journals
+    // An engine's journal, or the downgrade mirror's marks while no iCloud engine carries them (0054).
+    pub fn listen(self: &Arc<Self>, listener: Arc<dyn JournalObserver>) -> Listening {
+        let id = self.next.fetch_add(1, Ordering::Relaxed);
+        self.listeners
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push(journal);
+            .push((id, listener));
+        Listening {
+            journals: Arc::downgrade(self),
+            id,
+        }
+    }
+
+    pub fn listeners(&self) -> usize {
+        self.listeners.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
 }
 
@@ -73,9 +111,15 @@ impl ChangeJournal for StoreJournal {
         if entries.is_empty() {
             return;
         }
-        let journals = self.journals.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        for journal in journals {
-            journal.changed(&entries);
+        let listeners: Vec<Arc<dyn JournalObserver>> = self
+            .listeners
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|(_, listener)| Arc::clone(listener))
+            .collect();
+        for listener in listeners {
+            listener.changed(&entries);
         }
     }
 }
@@ -92,8 +136,8 @@ mod tests {
     fn each_engine_hears_a_write_by_the_ids_its_adapters_give_the_records() {
         let journals = StoreJournal::new();
         let (icloud, service) = (Journal::new(Wake::new()), Journal::new(Wake::new()));
-        journals.add(icloud.clone());
-        journals.add(service.clone());
+        let _icloud = journals.listen(Arc::new(icloud.clone()));
+        let _service = journals.listen(Arc::new(service.clone()));
         let query = Uuid::parse_str("e9bfe8be-525f-4f8a-9e9c-f795a5f09a01").unwrap();
         let connection = Uuid::parse_str("6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44").unwrap();
         let table = TableRef {
@@ -119,5 +163,21 @@ mod tests {
                 [&favourite_table(connection, Some("shop"), Some("public"), "orders").id]
             );
         }
+    }
+
+    #[test]
+    fn a_listener_hears_each_write_once_and_none_after_its_handle_drops() {
+        let journals = StoreJournal::new();
+        let (kept, replaced) = (Journal::new(Wake::new()), Journal::new(Wake::new()));
+        let _kept = journals.listen(Arc::new(kept.clone()));
+        let gone = journals.listen(Arc::new(replaced.clone()));
+        let id = Uuid::parse_str("e9bfe8be-525f-4f8a-9e9c-f795a5f09a01").unwrap();
+
+        drop(gone);
+        journals.changed(&[StoreEntry::new(RecordKind::SavedQuery).wrote([RecordRef::Id(id)])]);
+
+        assert_eq!(journals.listeners(), 1);
+        assert_eq!(kept.take()[&Kind::SavedQuery].len(), 1);
+        assert!(replaced.take().is_empty());
     }
 }

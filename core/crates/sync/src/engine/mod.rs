@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 pub use backoff::{Backoff, retry_after_ms, retryable};
 pub use batch::{change_bytes, split};
-pub use diff::{Diffed, KeptOff, Pending, PendingOp, diff, hold_kept_off};
+pub use diff::{Diffed, KeptOff, Pending, PendingOp, diff, forget_kept_off, hold_kept_off, kept_off_connections};
 pub use hooks::{EngineEvents, EngineHooks};
 pub use scheduler::{Journal, JournalEntry, JournalIds, JournalObserver, Pass, SchedulerHandle, Wake, spawn};
 pub use settle::{Judgement, Settled, base_of, key_base, mode, settle, settle_moved};

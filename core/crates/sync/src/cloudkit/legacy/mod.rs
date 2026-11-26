@@ -346,6 +346,13 @@ impl LegacyMarks {
     }
 }
 
+// The core stores' writes mark the host as the app's own stores' do.
+impl JournalObserver for LegacyMarks {
+    fn changed(&self, entries: &[JournalEntry]) {
+        Self::changed(self, entries);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

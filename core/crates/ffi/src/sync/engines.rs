@@ -13,7 +13,7 @@ use tablepro_sync::adapters::history::HistoryAdapter;
 use tablepro_sync::adapters::library::{self, DriverNames, Provider};
 use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
 use tablepro_sync::adapters::settings::{ConnectionStanding, SettingsAdapter};
-use tablepro_sync::adapters::store_journal::StoreJournal;
+use tablepro_sync::adapters::store_journal::{Listening, StoreJournal};
 use tablepro_sync::api::control::{SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
@@ -25,8 +25,8 @@ use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync};
 use tablepro_sync::engine::{
-    Adapters, Backoff, EngineEvents, EngineHooks, Journal, JournalEntry, Pass, SchedulerHandle, StopSignal,
-    SystemClock, Wake, retryable, spawn,
+    Adapters, Backoff, EngineEvents, EngineHooks, Journal, JournalEntry, JournalObserver, Pass, SchedulerHandle,
+    StopSignal, SystemClock, Wake, retryable, spawn,
 };
 use tablepro_sync::http::{Binding, HttpTransport};
 use tablepro_sync::keys::{KeyService, KeyServiceParts};
@@ -89,8 +89,8 @@ pub(crate) struct Hosts {
 }
 
 impl Hosts {
-    // The adapters over this Core's stores and the app's settings; the stores' writes now also tell `journal`.
-    fn adapters(&self, journal: &Journal, provider: Provider) -> Vec<Arc<dyn RecordAdapter>> {
+    // The adapters over this Core's stores and the app's settings.
+    fn adapters(&self, provider: Provider) -> Vec<Arc<dyn RecordAdapter>> {
         let mut adapters: Vec<Arc<dyn RecordAdapter>> = self
             .settings
             .iter()
@@ -98,9 +98,6 @@ impl Hosts {
                 Arc::new(SettingsAdapter::new(Arc::clone(host), self.standing.clone())) as Arc<dyn RecordAdapter>
             })
             .collect();
-        if self.library.is_some() || self.history.is_some() {
-            self.store_journal.add(journal.clone());
-        }
         // The table folders and favourites the history database holds come with the library, which says which of
         // their connections sync.
         if let Some(store) = &self.library {
@@ -113,6 +110,11 @@ impl Hosts {
             }
         }
         adapters
+    }
+
+    // The stores' writes tell `listener` until the handle drops with what holds it.
+    pub(crate) fn listen(&self, listener: Arc<dyn JournalObserver>) -> Option<Listening> {
+        (self.library.is_some() || self.history.is_some()).then(|| self.store_journal.listen(listener))
     }
 }
 
@@ -127,6 +129,7 @@ pub(crate) struct IcloudEngine {
     pub(crate) journal: Journal,
     stop: StopSignal,
     _scheduler: SchedulerHandle,
+    _stores: Option<Listening>,
 }
 
 impl IcloudEngine {
@@ -144,7 +147,7 @@ impl IcloudEngine {
         let sync = CloudKitSync::new(CloudKitParts {
             transport,
             files: Arc::clone(&hosts.files),
-            adapters: hosts.adapters(&journal, Provider::ICloud),
+            adapters: hosts.adapters(Provider::ICloud),
             categories: icloud_categories(categories),
             clock: Arc::new(SystemClock),
             stop: stop.clone(),
@@ -164,11 +167,13 @@ impl IcloudEngine {
             stop.clone(),
             Backoff::STANDARD,
         );
+        let stores = hosts.listen(Arc::new(journal.clone()));
         Self {
             sync,
             journal,
             stop,
             _scheduler: scheduler,
+            _stores: stores,
         }
     }
 }
@@ -194,6 +199,7 @@ pub(crate) struct ServiceEngine {
     pub(crate) binding: Option<Binding>,
     stop: StopSignal,
     _scheduler: SchedulerHandle,
+    _stores: Option<Listening>,
 }
 
 impl ServiceEngine {
@@ -229,7 +235,7 @@ impl ServiceEngine {
         let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: link.transport,
             state,
-            adapters: Adapters::new(hosts.adapters(&journal, Provider::TableproSync)),
+            adapters: Adapters::new(hosts.adapters(Provider::TableproSync)),
             keys: Arc::clone(&keys) as Arc<dyn KeyFlows>,
             hooks,
             clock: Arc::new(SystemClock),
@@ -246,6 +252,7 @@ impl ServiceEngine {
             stop.clone(),
             Backoff::STANDARD,
         );
+        let stores = hosts.listen(Arc::new(journal.clone()));
         Ok(Self {
             sync,
             keys,
@@ -253,6 +260,7 @@ impl ServiceEngine {
             binding,
             stop,
             _scheduler: scheduler,
+            _stores: stores,
         })
     }
 }

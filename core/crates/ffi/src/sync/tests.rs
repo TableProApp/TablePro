@@ -640,3 +640,51 @@ async fn with_icloud_off_a_deletion_still_marks_the_swift_metadata_by_the_quit()
         "{tombstones:?}"
     );
 }
+
+// The previous stable marks every write, and the core's own stores are written by the app too, so a saved query
+// written there with iCloud off reaches the Swift metadata by the time the quit returns.
+#[tokio::test]
+async fn with_icloud_off_a_core_store_write_marks_the_swift_metadata_by_the_quit() {
+    let tasks = runtime::tasks().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let paths = tablepro_storage::StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
+    let history = tablepro_storage::QueryHistory::open(&paths).await.unwrap();
+    let mirror = Arc::new(tablepro_sync_testing::FakeLegacyMirror::new());
+    let opened = open(&tasks, |parts| OpenParts {
+        legacy_mirror: Some(mirror.clone() as Arc<dyn tablepro_sync::api::LegacyMirror>),
+        history: Some(history.clone()),
+        ..parts
+    })
+    .await;
+    let id = Uuid::new_v4();
+
+    history
+        .saved_queries()
+        .write(&tablepro_storage::SavedQueryWrite {
+            queries: vec![tablepro_storage::saved_queries::SavedQuery {
+                id,
+                name: "Daily".to_owned(),
+                query: "SELECT 1".to_owned(),
+                connection_id: None,
+                connection_name: String::new(),
+                keyword: None,
+                folder_id: None,
+                order: 0,
+                created_at: std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(1),
+                updated_at: std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(1),
+            }],
+            ..tablepro_storage::SavedQueryWrite::default()
+        })
+        .await
+        .unwrap();
+    opened.service.flush_legacy_marks().await.unwrap();
+
+    let dirty = mirror.metadata().dirty;
+    let wire = id.hyphenated().to_string().to_uppercase();
+    assert!(
+        dirty
+            .iter()
+            .any(|record| record.record_type == "SQLFavorite" && record.id == wire),
+        "{dirty:?}"
+    );
+}

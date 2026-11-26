@@ -165,7 +165,8 @@ impl Settle<'_, '_> {
     }
 
     // Standing is written by id whenever the store reads a record, so a copy it can no longer read keeps the standing
-    // it last had, and one no longer stored loses it.
+    // it last had, and one no longer stored loses it, except a connection kept off sync that a base names: its
+    // deletion, and its records', stay on the device (0054, Rules for both providers).
     async fn keep_standing(&mut self, kind: Kind, local: &Local) -> Result<(), SyncError> {
         let range = RowRange::ScopeKind(Table::Standing, SCOPE, KindName::of(kind));
         let mut known: BTreeMap<String, Standing> = BTreeMap::new();
@@ -184,10 +185,15 @@ impl Settle<'_, '_> {
                     .await?;
             }
         }
-        for id in known.into_keys().filter(|id| !local.unreadable.contains_key(id)) {
-            self.txn
-                .delete(&RowKey::Standing(RecordKey::new(SCOPE, kind, id)))
-                .await?;
+        for (id, standing) in known.into_iter().filter(|(id, _)| !local.unreadable.contains_key(id)) {
+            let key = RecordKey::new(SCOPE, kind, id);
+            if kind == Kind::Connection
+                && standing != Standing::Syncs
+                && matches!(self.txn.get(&RowKey::Base(key.clone())).await?, Some(Row::Base(_)))
+            {
+                continue;
+            }
+            self.txn.delete(&RowKey::Standing(key)).await?;
         }
         Ok(())
     }
