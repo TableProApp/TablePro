@@ -48,6 +48,8 @@ final class CoreLibraryStore {
     private var storedTags: [UUID: TagRecord] = [:]
     private var storedFavorites: [UUID] = []
     private var heldByCore: Set<UUID> = []
+    // The digest of the core's file as this store last read or wrote it; a write over another file is refused.
+    private var fileDigest: String?
     // The previous stable's copies of connections the core holds unread, which every mirror write keeps.
     private var legacyCopiesOfHeld: [DatabaseConnection] = []
     private var flags = ConnectionDeviceFlags()
@@ -199,10 +201,15 @@ final class CoreLibraryStore {
         if removingSecrets || secretCopiesPending {
             try removeSecretCopies()
         }
-        for id in removed.connections.intersection(heldByCore) {
+        let unread = removed.connections.intersection(heldByCore)
+        for id in unread {
             try Self.blocking { try await library.delete(id: id.uuidString) }
             heldByCore.remove(id)
             legacyCopiesOfHeld.removeAll { $0.id == id }
+        }
+        // Each delete rewrote the file, so the write that follows goes over the file as they left it.
+        if !unread.isEmpty {
+            fileDigest = try Self.blocking { try await library.libraryContents() }.digest
         }
         flags = ConnectionDeviceFlags(of: next.connections).keeping(heldByCore, from: flags)
         let digest = try replace(with: next, favoritesOrder: favoritesOrder, in: library)
@@ -229,7 +236,7 @@ final class CoreLibraryStore {
         )
         do {
             try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
-            let written = try Self.blocking { try await library.replaceLibrary(library: write) }
+            let written = try Self.blocking { try await library.replaceLibrary(library: write, over: fileDigest) }
             let contents = try Self.blocking { try await library.libraryContents() }
             remember(contents)
             flags.save(to: defaults)
@@ -321,6 +328,7 @@ final class CoreLibraryStore {
         )
         storedFavorites = contents.favorites.compactMap(UUID.init(uuidString:))
         heldByCore = Set(contents.unreadable.compactMap(UUID.init(uuidString:)))
+        fileDigest = contents.digest
     }
 
     // Until every copy is gone each later write tries again.
@@ -339,6 +347,7 @@ final class CoreLibraryStore {
         storedFavorites = []
         heldByCore = []
         legacyCopiesOfHeld = []
+        fileDigest = nil
     }
 
     // The damaged file is kept beside the store, as the library files keep theirs; the next one replaces it.
