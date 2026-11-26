@@ -41,6 +41,32 @@ impl PinHow {
     }
 }
 
+// An IK seen replaced, with the `av` of the replace certificate that retired it (ADR 0066, Replace points). A
+// certificate under it verifies as history only below that `av`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Replaced {
+    pub ik: Ed25519Public,
+    pub av: Version,
+}
+
+// The replace point of `ik` in a replaced list, if it is in it.
+pub fn replace_point(replaced: &[Replaced], ik: &Ed25519Public) -> Option<Version> {
+    replaced.iter().find(|entry| entry.ik == *ik).map(|entry| entry.av)
+}
+
+// Two replaced lists as one: each IK once, in the order it was replaced, at the lower of its two points (ADR 0066,
+// Replace points).
+pub fn merge_replaced(own: &[Replaced], offered: &[Replaced]) -> Vec<Replaced> {
+    let mut out = own.to_vec();
+    for entry in offered {
+        match out.iter_mut().find(|held| held.ik == entry.ik) {
+            Some(held) => held.av = held.av.min(entry.av),
+            None => out.push(*entry),
+        }
+    }
+    out
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct TrustPin {
     pub account: AccountId,
@@ -49,7 +75,7 @@ pub struct TrustPin {
     pub how: PinHow,
     pub alert: bool,
     // In the order each was replaced.
-    pub replaced: Vec<Ed25519Public>,
+    pub replaced: Vec<Replaced>,
 }
 
 impl TrustPin {
@@ -144,7 +170,11 @@ fn encode_pin(pin: &TrustPin, out: &mut impl Sink) {
         if position > 0 {
             out.push(',');
         }
-        push_string(out, &Zeroizing::new(b64::encode(&replaced.0)));
+        out.push_str("{\"ik\":");
+        push_string(out, &Zeroizing::new(b64::encode(&replaced.ik.0)));
+        out.push_str(",\"av\":");
+        push_version(out, replaced.av);
+        out.push('}');
     }
     out.push_str("]}");
 }
@@ -304,11 +334,15 @@ fn parse_pin(value: &JsonValue) -> Result<TrustPin, KeysError> {
     let av = members.version("av")?;
     let how = PinHow::parse(members.string("how")?)?;
     let alert = members.boolean("alert")?;
-    let replaced = members
+    let replaced: Vec<Replaced> = members
         .array("replaced")?
         .iter()
-        .map(|item| json::as_str(item).and_then(b64::decode_exact).map(Ed25519Public))
+        .map(parse_replaced)
         .collect::<Result<_, _>>()?;
+    let iks: HashSet<Ed25519Public> = replaced.iter().map(|entry| entry.ik).collect();
+    if iks.len() != replaced.len() {
+        return Err(KeysError::encoding("an IK twice in a pin's replaced list"));
+    }
     Ok(TrustPin {
         account,
         ik,
@@ -317,6 +351,13 @@ fn parse_pin(value: &JsonValue) -> Result<TrustPin, KeysError> {
         alert,
         replaced,
     })
+}
+
+fn parse_replaced(value: &JsonValue) -> Result<Replaced, KeysError> {
+    let mut members = Members::of(value)?;
+    let ik = Ed25519Public(b64::decode_exact(members.string("ik")?)?);
+    let av = members.version("av")?;
+    Ok(Replaced { ik, av })
 }
 
 pub(crate) fn parse_version(value: &JsonValue) -> Result<TrustVersion, KeysError> {
@@ -337,7 +378,7 @@ pub(crate) fn parse_version(value: &JsonValue) -> Result<TrustVersion, KeysError
 mod tests {
     use uuid::Uuid;
 
-    use super::{PinHow, TrustPin, TrustPlaintext, TrustVersion, trust_wrap_record_len};
+    use super::{PinHow, Replaced, TrustPin, TrustPlaintext, TrustVersion, merge_replaced, trust_wrap_record_len};
     use crate::KeysError;
     use crate::encoding::{AccountId, KeyPurpose, Version};
     use crate::keys::Ed25519Public;
@@ -349,7 +390,12 @@ mod tests {
             av: Version::new(4).unwrap(),
             how,
             alert,
-            replaced: vec![Ed25519Public([4; 32]); replaced],
+            replaced: (0..replaced)
+                .map(|index| Replaced {
+                    ik: Ed25519Public([4 + u8::try_from(index).unwrap(); 32]),
+                    av: Version::new(2).unwrap(),
+                })
+                .collect(),
         }
     }
 
@@ -371,6 +417,31 @@ mod tests {
         let encoded = trust.encode();
         assert_eq!(encoded.capacity(), encoded.len(), "sized once, so never moved");
         assert_eq!(TrustPlaintext::parse(trust.encode().as_bytes()).unwrap(), trust);
+    }
+
+    #[test]
+    fn a_replaced_entry_carries_its_point_and_one_ik_twice_is_refused() {
+        let text = sample().encode();
+        let entry = format!("{{\"ik\":\"{}\",\"av\":2}}", crate::b64::encode(&[4; 32]));
+        let twice = text.replacen(&entry, &format!("{entry},{entry}"), 1);
+
+        assert!(text.contains(&format!("\"replaced\":[{entry}]")));
+        assert!(matches!(
+            TrustPlaintext::parse(twice.as_bytes()),
+            Err(KeysError::Encoding { .. })
+        ));
+    }
+
+    #[test]
+    fn a_merge_keeps_each_ik_once_in_order_at_its_lower_point() {
+        let entry = |byte: u8, av: u32| Replaced {
+            ik: Ed25519Public([byte; 32]),
+            av: Version::new(av).unwrap(),
+        };
+
+        let merged = merge_replaced(&[entry(1, 5), entry(2, 3)], &[entry(2, 2), entry(3, 7), entry(1, 6)]);
+
+        assert_eq!(merged, vec![entry(1, 5), entry(2, 2), entry(3, 7)]);
     }
 
     #[test]

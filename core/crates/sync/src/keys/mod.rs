@@ -394,6 +394,7 @@ impl KeyService {
                 record_id,
                 fields,
                 applied,
+                served: None,
             },
             Some(row) => {
                 let same = check_same_object(
@@ -415,6 +416,7 @@ impl KeyService {
                         record_id,
                         fields,
                         applied,
+                        served: None,
                     },
                 }
             }
@@ -633,8 +635,8 @@ impl Drafts {
         self.lock().remove(&id);
     }
 
-    // Sign Out drops every draft, and with them any recovery key a flow still held.
-    pub(crate) fn clear(&self) {
+    // Sign Out drops every draft, and with them any recovery key a flow still held; so does a service that closes.
+    pub fn clear(&self) {
         self.lock().clear();
     }
 }

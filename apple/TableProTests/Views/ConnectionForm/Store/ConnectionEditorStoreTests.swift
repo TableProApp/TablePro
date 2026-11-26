@@ -339,7 +339,11 @@ struct ConnectionEditorStoreTests {
         fixture.storage.savePassword("first", for: connection.id)
         let store = fixture.makeStore(.edit(connectionId: connection.id))
 
-        store.update { $0.credentials.password = "second" }
+        // The record changes too: the core's store writes nothing for a save that leaves the record as it was.
+        store.update {
+            $0.name = "Orders (renamed)"
+            $0.credentials.password = "second"
+        }
         try fixture.makeLibraryReadOnly(true)
         #expect(store.save() == .failure(.recordWriteFailed))
         #expect(fixture.storage.loadPassword(for: connection.id) == "second")

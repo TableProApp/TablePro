@@ -139,7 +139,8 @@ struct LocalCredentialConsentTests {
 
     private func bridgeAsking(about connection: DatabaseConnection) throws -> (DatabaseAccessBridge, () -> Void) {
         let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("tablepro-signin-bridge-\(UUID().uuidString).json")
+            .appendingPathComponent("tablepro-signin-bridge-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         let storageSuite = try EphemeralDefaults()
         let storage = ConnectionStorage(fileURL: fileURL, userDefaults: storageSuite.defaults, keychain: InMemoryKeychain())
         storage.addConnection(connection)
@@ -147,7 +148,7 @@ struct LocalCredentialConsentTests {
         return (DatabaseAccessBridge(manager: manager), {
             manager.removeSession(for: connection.id)
             storageSuite.defaults.removePersistentDomain(forName: storageSuite.suiteName)
-            try? FileManager.default.removeItem(at: fileURL)
+            try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
         })
     }
 

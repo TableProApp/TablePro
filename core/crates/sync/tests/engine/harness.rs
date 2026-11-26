@@ -12,9 +12,10 @@ use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Seed;
 use tablepro_records::Kind;
 use tablepro_sync::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
+use tablepro_sync::api::control::{ConflictChoice, SyncControl};
 use tablepro_sync::api::device_store::HostDeviceStore;
 use tablepro_sync::api::error::{AdapterError, StateError, SyncError};
-use tablepro_sync::api::ids::{ChangeTag, DeviceRowId, IdempotencyKey, KindName, ScopeName};
+use tablepro_sync::api::ids::{ChangeTag, DeviceRowId, IdempotencyKey, KindName, RecordKey, ScopeName};
 use tablepro_sync::api::key_flows::{
     AccountFlows, ApprovalFlows, ArrivalOrder, DeviceFlows, KeyApplied, KeyArrival, KeyChangeSet, KeyState,
     OpenedEnvelope, PushBackVerdict, ResetFlows, RestoreFlows, Roster, StopAction, StopFlows, TeamFlows,
@@ -28,7 +29,7 @@ use tablepro_sync::api::transport::{
     Transport, TransportError,
 };
 use tablepro_sync::engine::{Adapters, Clock, EngineHooks, Journal, StopSignal, Wake};
-use tablepro_sync::service::{PassReport, ProofSource, ServiceParts, ServiceSync};
+use tablepro_sync::service::{PassReport, ServiceMode, ServiceParts, ServiceSync};
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
 use tablepro_sync_testing::{FakeClient, FakeDeviceStore, FakeServer, MemoryStateFiles};
@@ -265,21 +266,6 @@ impl RecordAdapter for MemoryAdapter {
     }
 }
 
-// The device's key, and whether the key flows say their tables still rebuild.
-#[derive(Debug)]
-pub struct FixedProof(pub Option<DpopKey>, pub Arc<KeyLog>);
-
-#[async_trait]
-impl ProofSource for FixedProof {
-    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
-        Ok(self.0.clone())
-    }
-
-    fn rebuilding(&self) -> bool {
-        self.1.rebuilding.load(Ordering::SeqCst)
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct TestClock(pub AtomicI64);
 
@@ -307,6 +293,14 @@ pub struct Wire {
     keys: Mutex<Vec<IdempotencyKey>>,
     pushed: Mutex<Vec<Vec<String>>>,
     pub pulls: AtomicUsize,
+    held_pull: Mutex<Option<HeldPull>>,
+}
+
+// The next pull of a scope waits here once the server answered it: told when it is reached, then let go.
+struct HeldPull {
+    scope: ScopeName,
+    reached: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
 }
 
 impl Wire {
@@ -321,7 +315,20 @@ impl Wire {
             keys: Mutex::default(),
             pushed: Mutex::default(),
             pulls: AtomicUsize::new(0),
+            held_pull: Mutex::default(),
         })
+    }
+
+    // The next pull of `scope` holds its answer until the second notify; the first says it was reached.
+    pub fn hold_next_pull(&self, scope: ScopeName) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+        let reached = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        *lock(&self.held_pull) = Some(HeldPull {
+            scope,
+            reached: Arc::clone(&reached),
+            release: Arc::clone(&release),
+        });
+        (reached, release)
     }
 
     pub fn drop_next_push(&self) {
@@ -369,7 +376,20 @@ impl Transport for Wire {
         if request.cursor.is_some() && self.expire_next_cursor.swap(false, Ordering::SeqCst) {
             return Err(TransportError::CursorExpired);
         }
-        self.client.pull(request).await
+        let scope = request.scope;
+        let answer = self.client.pull(request).await;
+        let held = {
+            let mut held = lock(&self.held_pull);
+            match held.as_ref() {
+                Some(waits) if waits.scope == scope => held.take(),
+                _ => None,
+            }
+        };
+        if let Some(held) = held {
+            held.reached.notify_one();
+            held.release.notified().await;
+        }
+        answer
     }
 
     async fn push(&self, batch: PushBatch) -> Result<PushAnswer, TransportError> {
@@ -435,6 +455,8 @@ pub struct KeyLog {
     newest: Mutex<BTreeMap<String, u32>>,
     waiting_for_approval: AtomicBool,
     rebuilding: AtomicBool,
+    // The device's key, which the builder sets.
+    proof: Mutex<Option<DpopKey>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -604,6 +626,14 @@ impl AccountFlows for KeyLog {
                 what: "sealed history entry",
             })
     }
+
+    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
+        Ok(lock(&self.proof).clone())
+    }
+
+    fn rebuilding(&self) -> bool {
+        self.rebuilding.load(Ordering::SeqCst)
+    }
 }
 
 #[async_trait]
@@ -764,6 +794,7 @@ pub struct DeviceBuilder {
     server: Arc<FakeServer>,
     row: String,
     approved: bool,
+    mode: ServiceMode,
     state: Option<Arc<dyn StateStore>>,
     connections: Option<(Arc<MemoryAdapter>, Arc<StoreFile>)>,
     extra: Vec<(ScopeName, Arc<MemoryAdapter>)>,
@@ -778,6 +809,7 @@ impl DeviceBuilder {
             server: Arc::clone(server),
             row: row.to_owned(),
             approved: true,
+            mode: ServiceMode::Personal,
             state: None,
             connections: None,
             extra: Vec::new(),
@@ -790,6 +822,12 @@ impl DeviceBuilder {
     // An adapter of the test's own, over a store that behaves as a core store does.
     pub fn extra_adapter(mut self, adapter: Arc<dyn RecordAdapter>) -> Self {
         self.others.push(adapter);
+        self
+    }
+
+    // A device whose personal provider is iCloud or Off: Team Library and the key objects only.
+    pub fn teams_only(mut self) -> Self {
+        self.mode = ServiceMode::TeamsOnly;
         self
     }
 
@@ -848,6 +886,7 @@ impl DeviceBuilder {
         }
         adapters.extend(self.others);
         let keys = self.keys.unwrap_or_default();
+        *lock(&keys.proof) = Some(DpopKey(Arc::clone(&seed)));
         let wake = Wake::new();
         let hooks = Arc::new(EngineHooks::new(wake.clone(), None));
         let stop = StopSignal::new();
@@ -858,7 +897,6 @@ impl DeviceBuilder {
             adapters: Adapters::new(adapters),
             keys: Arc::clone(&keys) as Arc<dyn tablepro_sync::api::key_flows::KeyFlows>,
             hooks: Arc::clone(&hooks),
-            proofs: Arc::new(FixedProof(Some(DpopKey(Arc::clone(&seed))), Arc::clone(&keys))),
             clock: Arc::clone(&clock) as Arc<dyn Clock>,
             stop: stop.clone(),
             journal: Journal::new(wake),
@@ -867,6 +905,7 @@ impl DeviceBuilder {
                 off: Vec::new(),
                 passwords: true,
             },
+            mode: self.mode,
         });
         Device {
             server: self.server,
@@ -887,6 +926,30 @@ impl DeviceBuilder {
 impl Device {
     pub async fn new(server: &Arc<FakeServer>, row: &str) -> Self {
         DeviceBuilder::new(server, row).build().await
+    }
+
+    // Decides the approval as the person would: on the value `approvals` shows now.
+    pub async fn decide(&self, key: RecordKey, field: &str, approve: bool) -> Result<(), SyncError> {
+        let seen = self
+            .sync
+            .approvals()
+            .await?
+            .into_iter()
+            .find(|approval| approval.key == key && approval.field == field)
+            .map_or([0; 32], |approval| approval.digest);
+        self.sync.decide_approval(key, field.to_owned(), seen, approve).await
+    }
+
+    // Resolves the conflict as the person would: as `conflicts` shows it now.
+    pub async fn resolve(&self, key: RecordKey, keep: ConflictChoice) -> Result<(), SyncError> {
+        let seen = self
+            .sync
+            .conflicts()
+            .await?
+            .into_iter()
+            .find(|conflict| conflict.key == key)
+            .map_or([0; 32], |conflict| conflict.digest);
+        self.sync.resolve_conflict(key, seen, keep).await
     }
 
     pub async fn pass(&self) -> Result<PassReport, SyncError> {

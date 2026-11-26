@@ -152,6 +152,18 @@ pub trait AccountFlows: Send + Sync {
         let _ = (entry, fields);
         unimplemented("keys.open_history_entry")
     }
+
+    // The DSK of the device keys in force, which every personal and history call and every key-object or envelope
+    // write carries (0051, DPoP); None while the device holds no keys (0066, Rules).
+    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
+        unimplemented("keys.dpop_key")
+    }
+
+    // A stale file's key tables still rebuild, so no envelope opens yet: the ones held meanwhile are read again once
+    // the rebuild ends, though no key row moved (0054, A stale file).
+    fn rebuilding(&self) -> bool {
+        false
+    }
 }
 
 // K7-2: Approving a device.
@@ -573,6 +585,8 @@ pub enum KeyNoticeKind {
     // "The team key was started over by Ana. Compare her words before using it." (0064)
     RestartHeld { team: TeamId, signer: AccountId },
     ResetPending { reset: ResetId },
+    // A kind 3 reset a restore lost, which this device proposes again only after a fresh step-up (0065).
+    ResetWaitsForStepUp { reset: ResetId },
     ResetEnded { reset: ResetId, state: ResetState },
     DeviceRemoved { device: DeviceRowId },
     // A wrap or version addressed to one of this account's superseded `av`s: the member copied its certificate again.

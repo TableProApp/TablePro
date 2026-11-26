@@ -164,7 +164,7 @@ final class KeychainHelper: KeychainStoring {
     private static let accessGroupSuffix = ".com.TablePro.shared"
     private static let teamPrefixedGroupPattern = #"^[A-Z0-9]{10}\..+"#
 
-    private static func resolveAccessGroup() -> String? {
+    static func resolveAccessGroup() -> String? {
         guard let task = SecTaskCreateFromSelf(nil),
               let groups = SecTaskCopyValueForEntitlement(task, "keychain-access-groups" as CFString, nil) as? [String]
         else { return nil }

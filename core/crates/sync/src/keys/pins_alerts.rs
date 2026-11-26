@@ -7,9 +7,10 @@ use tablepro_keys::encoding::AccountId;
 use tablepro_keys::fingerprint::{fingerprint, parse_qr};
 use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::record_id::KeyRecordId;
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced};
 
 use super::KeyService;
+use super::pins::seen_replaced;
 use crate::api::error::SyncError;
 use crate::api::key_flows::{Acceptance, Fingerprint, KeyChange, KeyNoticeKind};
 use crate::api::state::{KeyPinRow, Row, RowRange, StateTxn, Table};
@@ -98,8 +99,11 @@ impl KeyService {
             .filter(|certificate| certificate.ik == offered)
             .ok_or(SyncError::Unknown { what: "key change" })?;
         let mut replaced = pin.replaced;
-        if !replaced.contains(&pin.ik) {
-            replaced.push(pin.ik);
+        if !seen_replaced(&replaced, &pin.ik) {
+            replaced.push(Replaced {
+                ik: pin.ik,
+                av: certificate.av,
+            });
         }
         txn.put(Row::KeyPin(KeyPinRow {
             account,
@@ -151,7 +155,7 @@ impl KeyService {
             };
             let offered = certificate.av > pin.av
                 && certificate.ik != pin.ik
-                && !pin.replaced.contains(&certificate.ik)
+                && !seen_replaced(&pin.replaced, &certificate.ik)
                 && certificate.verify(self.origin()).is_ok();
             if offered && newest.as_ref().is_none_or(|held| held.av < certificate.av) {
                 newest = Some(certificate);

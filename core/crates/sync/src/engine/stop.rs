@@ -54,3 +54,14 @@ impl StopSignal {
         }
     }
 }
+
+// What a write the person or a pass makes checks just before it lands: a stop set meanwhile keeps it out.
+pub trait Fence: Send + Sync {
+    fn check(&self) -> Result<(), SyncError>;
+}
+
+impl Fence for StopSignal {
+    fn check(&self) -> Result<(), SyncError> {
+        Self::check(self)
+    }
+}

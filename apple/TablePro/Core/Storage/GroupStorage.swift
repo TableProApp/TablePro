@@ -43,26 +43,19 @@ internal final class GroupStorage {
     internal static let shared = GroupStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "GroupStorage")
 
-    private let groupsKey = "com.TablePro.groups"
-    private let defaults: UserDefaults
     private let syncJournal: SyncHostJournal
     private let connectionStorageProvider: () -> ConnectionStorage
     private let appEvents: AppEvents
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
-    private var cachedGroups: [ConnectionGroup]?
-    /// Set when the stored payload could not be understood at all. Every mutation rewrites the
-    /// whole array, so continuing over an unreadable store would replace the user's groups with
-    /// whatever the caller happened to be holding.
+    /// Set when the library could not be read. Every mutation rewrites the whole library, so
+    /// continuing over an unreadable one would replace the user's groups with whatever the caller
+    /// happened to be holding.
     internal private(set) var storeIsUnreadable = false
 
     internal init(
-        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         syncJournal: SyncHostJournal = .shared,
         connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
         appEvents: AppEvents = .shared
     ) {
-        self.defaults = userDefaults
         self.syncJournal = syncJournal
         self.connectionStorageProvider = connectionStorage
         self.appEvents = appEvents
@@ -70,36 +63,14 @@ internal final class GroupStorage {
 
     // MARK: - Group CRUD
 
-    /// A payload that decodes element by element keeps every group it can read: one entry written
-    /// by a future version, or truncated on disk, used to take the whole list down with it.
     internal func loadGroups() -> [ConnectionGroup] {
-        if let cached = cachedGroups { return cached }
-
-        guard let data = defaults.data(forKey: groupsKey) else {
-            storeIsUnreadable = false
-            cachedGroups = []
-            return []
-        }
-
-        if let groups = try? decoder.decode([ConnectionGroup].self, from: data) {
-            storeIsUnreadable = false
-            cachedGroups = groups
-            return groups
-        }
-
-        guard let salvaged = try? decoder.decode([SalvagedGroup].self, from: data) else {
-            Self.logger.error("Group store could not be read; leaving it untouched")
+        guard let image = connectionStorageProvider().library.current() else {
+            Self.logger.error("The connection library could not be read; leaving the groups untouched")
             storeIsUnreadable = true
             return []
         }
-
-        let groups = salvaged.compactMap(\.group)
-        Self.logger.error(
-            "Dropped \(salvaged.count - groups.count, privacy: .public) unreadable group entries"
-        )
         storeIsUnreadable = false
-        cachedGroups = groups
-        return groups
+        return image.groups
     }
 
     /// Callers that go on to write related state must check the result: a save that failed leaves
@@ -107,21 +78,18 @@ internal final class GroupStorage {
     @discardableResult
     internal func saveGroups(_ groups: [ConnectionGroup]) -> Bool {
         let previous = loadGroups()
-        guard !storeIsUnreadable else {
+        let library = connectionStorageProvider().library
+        guard !storeIsUnreadable, var image = library.current() else {
             Self.logger.error("Refusing to overwrite an unreadable group store")
             return false
         }
-
-        do {
-            let data = try encoder.encode(groups)
-            defaults.set(data, forKey: groupsKey)
-            cachedGroups = nil
-            syncJournal.recorded(.group, written: SyncRecordChanges.changedIds(from: previous, to: groups))
-            return true
-        } catch {
-            Self.logger.error("Failed to save groups: \(error)")
+        image.groups = groups
+        guard library.commit(image, byUser: false) else {
+            Self.logger.error("Failed to save groups")
             return false
         }
+        syncJournal.recorded(.group, written: SyncRecordChanges.changedIds(from: previous, to: groups))
+        return true
     }
 
     internal func addGroup(_ group: ConnectionGroup) throws {
@@ -352,15 +320,5 @@ internal final class GroupStorage {
         case .missingParent:
             return .groupNotFound
         }
-    }
-}
-
-/// Decodes one group and keeps going when it cannot, so a single unreadable entry costs that entry
-/// rather than the whole list.
-private struct SalvagedGroup: Decodable {
-    let group: ConnectionGroup?
-
-    init(from decoder: Decoder) throws {
-        group = try? ConnectionGroup(from: decoder)
     }
 }

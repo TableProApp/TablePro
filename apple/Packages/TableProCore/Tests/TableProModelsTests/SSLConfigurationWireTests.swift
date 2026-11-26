@@ -55,6 +55,17 @@ struct SSLConfigurationWireTests {
         #expect(decoded == original)
     }
 
+    @Test("An older build's require made by hand keeps its spelling in the device's own file, and only for require")
+    func legacyRequireMadeByHand() throws {
+        let legacy = TableProModels.SSLConfiguration(mode: .require, isLegacyRequire: true)
+        let encoder = JSONEncoder()
+        encoder.userInfo[.deviceLibraryFile] = true
+        let stored = try JSONDecoder().decode(TableProModels.SSLConfiguration.self, from: encoder.encode(legacy))
+        #expect(stored == legacy)
+        #expect(stored.isLegacyRequire)
+        #expect(!TableProModels.SSLConfiguration(mode: .verifyCa, isLegacyRequire: true).isLegacyRequire)
+    }
+
     @Test("A Mac Preferred reads as require, writes back as Preferred, and a new mode replaces it")
     func macPreferredRoundTrips() throws {
         let blob = #"{"mode":"Preferred","caCertificatePath":"","clientCertificatePath":"","clientKeyPath":""}"#
