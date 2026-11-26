@@ -9,7 +9,7 @@ use tablepro_records::Kind;
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
 use tablepro_sync::adapters::settings::SettingsAdapter;
-use tablepro_sync::api::control::SyncCategories;
+use tablepro_sync::api::control::{SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
 use tablepro_sync::api::{
