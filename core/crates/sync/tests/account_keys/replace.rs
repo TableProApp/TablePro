@@ -543,11 +543,23 @@ async fn recovered(
     text: &SecretString,
     at: Version,
 ) -> Device {
+    let x = Device::new(server, account, "dev_x").await;
+    recover_on(&x, server, account, text, at).await;
+    x
+}
+
+// The same on a device a test may have shown other objects first.
+async fn recover_on(
+    x: &Device,
+    server: &std::sync::Arc<FakeServer>,
+    account: tablepro_keys::encoding::AccountId,
+    text: &SecretString,
+    at: Version,
+) {
     use tablepro_sync::keys::{AccountObjectsPlan, KeptDevice};
 
     let recovery = RecoveryKey::parse(text.expose_secret()).unwrap();
     let next = at.next().unwrap();
-    let x = Device::new(server, account, "dev_x").await;
     x.pull().await;
     let certificate = crate::harness::stored_certificate(server, account, at);
     let keys = recovery
@@ -577,7 +589,7 @@ async fn recovered(
         .unwrap();
     for purpose in [KeyPurpose::Personal, KeyPurpose::History] {
         let current = carried(server, account, purpose, at, &keys, &certificate);
-        objects.extend(next_version(&x, purpose, next, &current, &new_keys, device.key_device));
+        objects.extend(next_version(x, purpose, next, &current, &new_keys, device.key_device));
     }
     x.service.store_account_keys(next, &new_keys).await.unwrap();
     let changes = objects
@@ -596,7 +608,6 @@ async fn recovered(
     txn.commit().await.unwrap();
     x.server_approves().await;
     x.pull().await;
-    x
 }
 
 // The scope key of `purpose` at `at`, opened from its wrap to the account's AEK there, as a recovery carries it.
@@ -680,4 +691,115 @@ async fn a_recovery_from_zero_devices_reads_the_old_versions_through_their_rings
     assert_eq!(opened.secret.expose_secret(), "from av 1");
     assert_eq!(pin.av, av(3));
     assert_eq!(pin.replaced.len(), 1);
+}
+
+#[tokio::test]
+async fn a_recovered_device_never_takes_an_older_certificate_the_server_made_up_as_its_own_history() {
+    let (server, b, _c, text) = approved_pair().await;
+    let account = b.account;
+    let next = replace(&b, &text, Vec::new()).await;
+    let forged = tablepro_keys::cert::AccountCertificate::sign(
+        &origin(),
+        account,
+        Version::FIRST,
+        CertKind::GenesisOrRotation,
+        &tablepro_keys::keys::Ed25519Seed::generate().unwrap(),
+        tablepro_keys::keys::AccountKeys::generate().unwrap().public().unwrap(),
+        None,
+    )
+    .unwrap();
+    // The server shows the recovering device its own certificate at av 1 in place of the account's.
+    let x = Device::new(&server, account, "dev_x").await;
+    x.feed(
+        vec![crate::harness::record_of(&KeyObject {
+            id: tablepro_keys::record_id::KeyRecordId::Account {
+                account,
+                av: Version::FIRST,
+            },
+            body: KeyBody::Account(tablepro_keys::body::AccountBody::of(&forged)),
+        })],
+        ArrivalOrder::InOrder,
+    )
+    .await;
+
+    recover_on(&x, &server, account, &next, av(2)).await;
+
+    let pin = x.pin(account).await.unwrap();
+    assert!(!pin.replaced.contains(&forged.ik));
+    let mut txn = x.txn().await;
+    let verified = x
+        .service
+        .verify_certificate(txn.as_mut(), ScopeName::Personal, &forged)
+        .await;
+    assert!(verified.is_err());
+}
+
+#[tokio::test]
+async fn a_replace_whose_answer_was_lost_goes_up_again_before_any_new_one() {
+    let (server, b, c, text) = approved_pair().await;
+    let account = b.account;
+    let c_device = key_device(&c).await;
+    b.pull().await;
+    let first = b.service.begin_replace(text.clone()).await.unwrap();
+    b.transport.lose_next_answer();
+    let lost = b
+        .service
+        .finish_replace(first.recovery.draft, typed_back(&first.recovery), vec![c_device])
+        .await
+        .unwrap_err();
+    assert_eq!(lost.code(), "sync.network");
+
+    let second = b.service.begin_replace(text).await.unwrap_err();
+
+    assert_eq!(second.code(), "sync.not_allowed");
+    let pin = b.pin(account).await.unwrap();
+    let applied = RecoveryKey::parse(first.recovery.text.expose_secret()).unwrap();
+    assert_eq!(
+        pin.ik,
+        applied.identity_seed(&origin(), account).unwrap().public().unwrap()
+    );
+    applied
+        .open_blob(
+            &origin(),
+            account,
+            av(2),
+            &crate::harness::stored_blob(&server, account, av(2)),
+        )
+        .unwrap();
+    assert!(
+        b.get(RowKey::KeyPending(PendingFlow::AccountRotation { av: av(2) }))
+            .await
+            .is_some()
+    );
+    assert!(b.get(RowKey::KeyDevicePin(c_device)).await.is_some());
+}
+
+#[tokio::test]
+async fn a_retry_names_the_kept_devices_in_any_order() {
+    let (_server, b, c, text) = approved_pair().await;
+    let d = Device::new(&b.server, b.account, "dev_d").await;
+    d.approved_by(&b).await;
+    let (c_device, d_device) = (key_device(&c).await, key_device(&d).await);
+    b.pull().await;
+    let draft = b.service.begin_replace(text).await.unwrap();
+    b.transport.lose_next_answer();
+    b.service
+        .finish_replace(
+            draft.recovery.draft,
+            typed_back(&draft.recovery),
+            vec![c_device, d_device],
+        )
+        .await
+        .unwrap_err();
+
+    b.service
+        .finish_replace(
+            draft.recovery.draft,
+            typed_back(&draft.recovery),
+            vec![d_device, c_device],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(b.pin(b.account).await.unwrap().av, av(2));
 }

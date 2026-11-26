@@ -51,6 +51,7 @@ impl KeyService {
             });
         }
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         let mut applied = KeyApplied::default();
         let mut fresh = Vec::new();
@@ -86,6 +87,7 @@ impl KeyService {
         if own_genesis && !self.is_unanchored() && !self.is_rebuilding() {
             self.adopt_own_genesis(txn.as_mut()).await?;
         }
+        self.forget_lost_genesis(txn.as_mut()).await?;
         self.settle_account(txn.as_mut()).await?;
         let mut in_force = match txn.get(&RowKey::Scope(ScopeName::Personal)).await? {
             Some(Row::Scope(row)) => row.key_version,

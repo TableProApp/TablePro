@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{AccountBody, DeviceBody, KeyBody, KeyObject, WrapBody};
-use tablepro_keys::cert::{AccountCertificate, CertKind, DeviceCertificate};
+use tablepro_keys::cert::{AccountCertificate, CertKind, DeviceCertificate, IkChange};
 use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, ResetId, Version, WrapPurpose};
 use tablepro_keys::keys::{
     AccountKeys, AccountPublicKeys, DeviceKeys, Ed25519Public, Ed25519Seed, X25519Public, X25519Secret,
@@ -166,6 +166,10 @@ impl KeyService {
 
     // ASK and AEK at one `av`, kept while a scope key is still wrapped to that AEK.
     pub async fn account_keys(&self, av: Version) -> Result<Option<AccountKeys>, SyncError> {
+        // A Sign Out under way leaves no key a flow may use.
+        if self.signing_out().await?.is_some() {
+            return Ok(None);
+        }
         match self.device_store.load(self.account_keys_item(av)).await? {
             Some(bytes) => {
                 let body = item_body(&bytes, ACCOUNT_KEYS_LEN, "account keys item")?;
@@ -389,6 +393,34 @@ impl KeyService {
         Ok(objects)
     }
 
+    // The IKs the account had before `certificate`, oldest first, as far down as each step keeps the IK or is a replace
+    // the older IK endorsed. A step nothing endorsed ends it, so a certificate the server made up never joins.
+    async fn endorsed_chain(
+        &self,
+        txn: &mut dyn StateTxn,
+        certificate: &AccountCertificate,
+    ) -> Result<Vec<Ed25519Public>, SyncError> {
+        let mut chain = Vec::new();
+        let mut above = certificate.clone();
+        while let Some(av) = above.av.previous() {
+            let Some(older) = self.own_certificate(txn, av).await? else {
+                break;
+            };
+            if older.verify(&self.origin).is_err() {
+                break;
+            }
+            if older.ik != above.ik {
+                match above.ik_change(&self.origin, &older.ik) {
+                    Ok(IkChange::Endorsed) => chain.push(older.ik),
+                    _ => break,
+                }
+            }
+            above = older;
+        }
+        chain.reverse();
+        Ok(chain)
+    }
+
     // An account change set this device pushed, once applied: its objects held as applied, the own pin at its `av`
     // with every IK the account had before it in `replaced`, and the personal and history versions it brings made
     // current. Each version must be the account's own, signed under the new ASK and above the one held.
@@ -444,13 +476,9 @@ impl KeyService {
         }
         let held = self.pin(txn, self.account).await?;
         let mut replaced = held.as_ref().map(|pin| pin.replaced.clone()).unwrap_or_default();
-        for av in 1..certificate.av.get() {
-            if let Some(older) = self.own_certificate(txn, Version::new(av)?).await?
-                && older.ik != certificate.ik
-                && !replaced.contains(&older.ik)
-                && older.verify(&self.origin).is_ok()
-            {
-                replaced.push(older.ik);
+        for older in self.endorsed_chain(txn, &certificate).await? {
+            if !replaced.contains(&older) {
+                replaced.push(older);
             }
         }
         if let Some(pin) = &held
@@ -559,7 +587,7 @@ fn decode_signing_out(bytes: &[u8]) -> Result<SigningOut, SyncError> {
         resets.push(ResetId(Uuid::from_slice(id).map_err(|_| malformed())?));
         at += 16;
     }
-    let mut keys = vec![ITEM_FORMAT];
+    let mut keys = Zeroizing::new(vec![ITEM_FORMAT]);
     keys.extend_from_slice(rest.get(at..).ok_or_else(malformed)?);
     Ok(SigningOut {
         keys: decode_held_device_keys(&keys)?,

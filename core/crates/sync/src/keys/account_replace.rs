@@ -43,8 +43,20 @@ struct BuiltReplace {
 impl KeyService {
     pub(crate) async fn start_replace(&self, recovery_key: &SecretString) -> Result<RotationDraft, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         let own = self.rotating_account(txn.as_mut()).await?;
+        // A rotation this device pushed and never heard the end of goes up again, the same objects, before any new
+        // one: a second R' must never stand in for one that applied (0054, `key_objects`).
+        if let Some(candidates) = self.rotation_candidates(txn.as_mut(), own.av.next()?).await? {
+            drop(txn);
+            if self.push_rotation_candidates(&own, &candidates).await? {
+                return Err(SyncError::NotAllowed {
+                    what: "replace again: this device's earlier rotation applied",
+                });
+            }
+            txn = self.begin().await?;
+        }
         let current = RecoveryKey::parse(recovery_key.expose_secret())?;
         if current.identity_seed(self.origin(), self.account())?.public()? != own.ik {
             return Err(KeysError::Signature.into());
@@ -72,6 +84,7 @@ impl KeyService {
         keep: &[KeyDeviceId],
     ) -> Result<(), SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let held = self
             .drafts()
             .with(draft, |held: &mut ReplaceDraft| held.built.clone())?;
@@ -91,6 +104,7 @@ impl KeyService {
                 keep_ids.push(*key_device);
             }
         }
+        keep_ids.sort();
         // A retry after an answer that never came, when a pull since showed the replace applied.
         if let Some(built) = &held
             && own.av == built.av
@@ -102,12 +116,24 @@ impl KeyService {
             return Ok(());
         }
         let av = own.av.next()?;
+        let candidates = self.rotation_candidates(txn.as_mut(), av).await?;
         let built = match held {
-            Some(built) if built.av == av && built.keep == keep_ids => built,
+            // Pushed already, maybe applied: only the same objects may go up again.
+            Some(built) if built.av == av && built.keep != keep_ids => {
+                return Err(SyncError::NotAllowed {
+                    what: "keep the devices this replace was built with",
+                });
+            }
+            Some(built) if built.av == av => built,
             Some(_) => {
                 self.drafts().remove(draft);
                 return Err(SyncError::NotAllowed {
                     what: "finish a replace the account moved past; start it again",
+                });
+            }
+            None if candidates.is_some() => {
+                return Err(SyncError::NotAllowed {
+                    what: "replace while an earlier rotation on this device is unresolved",
                 });
             }
             None => match self.build_replace(txn.as_mut(), draft, &own, &keep_ids, av).await {
@@ -201,6 +227,90 @@ impl KeyService {
             held.built = Some(built.clone());
             Ok(built)
         })?
+    }
+
+    // This device's own objects of a rotation to `av` that never applied: its certificate and blob, the device
+    // certificates and `account` wraps at `av`, and the personal and history versions signed under it with their rings
+    // and wraps. None when no certificate of its own at `av` waits.
+    pub(crate) async fn rotation_candidates(
+        &self,
+        txn: &mut dyn StateTxn,
+        av: Version,
+    ) -> Result<Option<Vec<KeyObject>>, SyncError> {
+        let id = KeyRecordId::Account {
+            account: self.account(),
+            av,
+        };
+        let waiting = self
+            .held_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
+            .await?
+            .is_some_and(|held| !held.applied);
+        if !waiting {
+            return Ok(None);
+        }
+        let mut objects: Vec<KeyObject> = Vec::new();
+        for kind in [
+            KeyKind::Account,
+            KeyKind::Recovery,
+            KeyKind::Device,
+            KeyKind::Version,
+            KeyKind::Ring,
+            KeyKind::Wrap,
+        ] {
+            for held in self.held_objects(txn, ScopeName::Personal, kind).await? {
+                // A ring goes with its version record, so only the rings of this rotation's versions.
+                let ours = match held.object.id {
+                    KeyRecordId::Ring(key) => objects.iter().any(|object| object.id == KeyRecordId::Version(key)),
+                    _ => of_rotation(&held.object, av),
+                };
+                if !held.applied && ours {
+                    objects.push(held.object);
+                }
+            }
+        }
+        Ok(Some(objects))
+    }
+
+    // Pushes a rotation's candidates again and settles the answer: true when it applied and was adopted, false when it
+    // was refused and is gone. A failed call leaves them waiting.
+    async fn push_rotation_candidates(&self, own: &OwnAccount, objects: &[KeyObject]) -> Result<bool, SyncError> {
+        let Some(av) = objects.iter().find_map(|object| match object.id {
+            KeyRecordId::Account { av, .. } => Some(av),
+            _ => None,
+        }) else {
+            return Ok(false);
+        };
+        let keep: Vec<KeyDeviceId> = objects
+            .iter()
+            .filter_map(|object| match object.id {
+                KeyRecordId::Device { key_device, .. } => Some(key_device),
+                _ => None,
+            })
+            .collect();
+        let changes = objects.iter().map(create_change).collect::<Result<Vec<_>, _>>()?;
+        let outcomes = self
+            .push_change_set(ScopeName::Personal, changes, DpopKey(Arc::new(own.device.dsk.clone())))
+            .await?;
+        let mut txn = self.begin().await?;
+        let applied = refusal(&outcomes).is_none();
+        if applied {
+            self.adopt_account_change_set(txn.as_mut(), objects).await?;
+            self.forget_pins_left_out(txn.as_mut(), &keep).await?;
+        } else {
+            self.drop_candidates(txn.as_mut(), ScopeName::Personal, objects).await?;
+            txn.delete(&RowKey::KeyPending(PendingFlow::AccountRotation { av }))
+                .await?;
+        }
+        let in_force = self.own_certificate(txn.as_mut(), av).await?;
+        txn.commit().await?;
+        if !applied
+            && let Some(keys) = self.account_keys(av).await?
+            && in_force.is_none_or(|certificate| keys.check_against(&certificate.ask, &certificate.aek).is_err())
+        {
+            self.erase_account_keys(av).await?;
+        }
+        self.hooks().pass_soon();
+        Ok(applied)
     }
 
     // A replace runs only on an approved device whose file it can trust, never over a stopped or ended key.
@@ -349,5 +459,20 @@ fn reviewed(key_device: KeyDeviceId, this_device: bool) -> ReviewedDevice {
             compared: true,
         },
         keep_by_default: true,
+    }
+}
+
+// An object of a rotation's change set to `av`.
+fn of_rotation(object: &KeyObject, av: Version) -> bool {
+    match &object.id {
+        KeyRecordId::Account { av: at, .. }
+        | KeyRecordId::Recovery { av: at, .. }
+        | KeyRecordId::Device { av: at, .. } => *at == av,
+        KeyRecordId::Version(_) => object.version_record().is_some_and(|record| record.signer_av == av),
+        KeyRecordId::Wrap(target) => match target.purpose {
+            tablepro_keys::encoding::WrapPurpose::Account => target.version == av,
+            _ => object.wrap().is_some_and(|wrap| wrap.wrapper.av == av),
+        },
+        _ => false,
     }
 }

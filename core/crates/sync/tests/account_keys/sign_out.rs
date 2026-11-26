@@ -252,3 +252,38 @@ async fn a_device_with_no_store_reports_it_and_signs_out_with_nothing_to_erase()
     assert_eq!(device.service.sign_out().await.unwrap(), SignOutOutcome::Revoked);
     assert_eq!(key_rows(&device).await, 0);
 }
+
+#[tokio::test]
+async fn a_sign_out_cut_off_partway_leaves_no_secret_readable_before_it_finishes() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let id = tablepro_keys::envelope::EnvelopeId::new(
+        tablepro_keys::envelope::ParentKind::Connection,
+        &tablepro_keys::encoding::uuid_to_wire(random_uuid().unwrap()),
+        tablepro_keys::envelope::SecretKind::Password,
+    )
+    .unwrap();
+    let sealed = device
+        .service
+        .seal_personal_envelope(id.clone(), secrecy::SecretString::from("x"), serde_json::json!({}))
+        .await
+        .unwrap();
+    let cut_off = device.restarted_over(std::sync::Arc::new(crate::harness::CutOff {
+        store: device.store.clone(),
+        armed: std::sync::Mutex::new(true),
+    }));
+    cut_off.service.sign_out().await.unwrap_err();
+
+    let restarted = device.restarted();
+    let refused = restarted
+        .service
+        .open_personal_envelope(id, sealed, None)
+        .await
+        .unwrap_err();
+
+    assert_eq!(refused.code(), "sync.not_allowed");
+    assert!(restarted.store.is_empty());
+    assert_eq!(key_rows(&restarted).await, 0);
+}

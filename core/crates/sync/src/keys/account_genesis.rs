@@ -127,6 +127,7 @@ impl KeyService {
 
     pub(crate) async fn start_genesis(&self) -> Result<RecoveryKeyDraft, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let mut txn = self.begin().await?;
         // A genesis this device pushed and never heard the end of goes up again, the same objects, before any new
         // one: a second set of keys must never stand in for one that applied (0054, `key_objects`).
@@ -164,6 +165,7 @@ impl KeyService {
         typed: &TypedBack,
     ) -> Result<GenesisOutcome, SyncError> {
         let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
         let built = self
             .drafts()
             .with(draft, |held: &mut GenesisDraft| held.built.clone())?;
@@ -177,9 +179,23 @@ impl KeyService {
         }
         let mut txn = self.begin().await?;
         if self.account_has_keys(txn.as_mut()).await? {
-            // The genesis that applied may be this device's own, its answer lost and no pull since.
-            self.adopt_own_genesis(txn.as_mut()).await?;
-            let ours = self.own_account(txn.as_mut()).await?.is_some();
+            // The genesis that applied may be this device's own, its answer lost and no pull since. Only when it is
+            // this draft's own certificate is it created; any other is a genesis that won.
+            let first = KeyRecordId::Account {
+                account: self.account(),
+                av: Version::FIRST,
+            };
+            let in_force = self
+                .applied_object(txn.as_mut(), ScopeName::Personal, KeyKind::Account, &first.to_wire())
+                .await?;
+            let ours = built.as_ref().is_some_and(|(objects, _)| {
+                objects
+                    .iter()
+                    .any(|object| object.id == first && in_force.as_ref() == Some(object))
+            });
+            if ours {
+                self.adopt_own_genesis(txn.as_mut()).await?;
+            }
             txn.commit().await?;
             self.drafts().remove(draft);
             if ours {
@@ -330,6 +346,34 @@ impl KeyService {
         Ok(Some(objects))
     }
 
+    // A genesis of this device that a pull showed lost, its draft gone: the certificate in force at `av` 1 is another
+    // device's, so this device's leftover candidates and its `av` 1 keys go (0056, Genesis, step 3). An approval in
+    // flight, which stores the account's real keys, is left alone.
+    pub(crate) async fn forget_lost_genesis(&self, txn: &mut dyn StateTxn) -> Result<(), SyncError> {
+        if self.pin(txn, self.account()).await?.is_some() || pending_request(txn).await?.is_some() {
+            return Ok(());
+        }
+        let Some(in_force) = self.own_certificate(txn, Version::FIRST).await? else {
+            return Ok(());
+        };
+        let Some(keys) = self.account_keys(Version::FIRST).await? else {
+            return Ok(());
+        };
+        if keys.check_against(&in_force.ask, &in_force.aek).is_ok() {
+            return Ok(());
+        }
+        let mut leftovers = Vec::new();
+        for kind in [KeyKind::Recovery, KeyKind::Device, KeyKind::Version, KeyKind::Wrap] {
+            for held in self.held_objects(txn, ScopeName::Personal, kind).await? {
+                if !held.applied && genesis_object(&held.object) {
+                    leftovers.push(held.object);
+                }
+            }
+        }
+        self.drop_candidates(txn, ScopeName::Personal, &leftovers).await?;
+        self.erase_account_keys(Version::FIRST).await
+    }
+
     // The objects go, and so do the account keys at `av` 1 unless they are the ones the certificate in force names:
     // those are this device's own genesis after all.
     async fn discard_losing_genesis(&self, objects: &[KeyObject]) -> Result<(), SyncError> {
@@ -347,7 +391,7 @@ impl KeyService {
 }
 
 // An object a genesis sends: everything at `av` 1.
-fn genesis_object(object: &KeyObject) -> bool {
+pub(crate) fn genesis_object(object: &KeyObject) -> bool {
     match &object.id {
         KeyRecordId::Account { av, .. } | KeyRecordId::Recovery { av, .. } | KeyRecordId::Device { av, .. } => {
             *av == Version::FIRST
