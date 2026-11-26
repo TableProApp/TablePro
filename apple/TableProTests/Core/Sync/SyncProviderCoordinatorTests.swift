@@ -28,6 +28,8 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         var hostChangeAttempts = 0
         var refuseHostChanges = false
         var refuseCategories = false
+        // As the core's service opened Off answers every provider call.
+        var refusesProviderCalls = false
         var icloudAccount: String?
         var uploadsAgain = 0
         var pass: (@Sendable (PassReasonTag) async -> Void)?
@@ -48,7 +50,8 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
     }
 
     func syncNow(why: PassReasonTag) async throws {
-        let pass = state.withLockUnchecked { state in
+        let pass = try state.withLockUnchecked { state in
+            guard !state.refusesProviderCalls else { throw Self.notAllowed }
             state.passes.append(why)
             return state.pass
         }
@@ -56,10 +59,15 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
     }
 
     func chooseProvider(provider: SyncProviderTag) async throws {
-        update { state in
+        try state.withLockUnchecked { state in
+            guard !state.refusesProviderCalls else { throw Self.notAllowed }
             state.providers.append(provider)
             state.info.provider = provider
         }
+    }
+
+    private static var notAllowed: AccountError {
+        .network("sync personal data while sync is off")
     }
 
     func setCategories(categories: SyncCategoriesArg) async throws {
@@ -104,6 +112,9 @@ private final class Fixture {
     let notifications = NotificationCenter()
     let journal = SyncHostJournal()
     var opening: AsyncGate?
+    // The provider each open was for, and the engine an open for Off gives when one is set.
+    private(set) var opened: [SyncProviderTag] = []
+    var offEngine: FakeSyncEngine?
     var enabled = true
     var settings = SyncSettings.default
     var keptAccounts: [String?] = []
@@ -121,10 +132,14 @@ private final class Fixture {
         let host = SyncEngineHost(
             transport: transport,
             keepICloudAccount: { [unowned self] in keptAccounts.append($0) },
-            open: { [unowned self] listener in
+            open: { [unowned self] provider, listener in
                 await opening?.wait()
                 guard opens else { throw AccountError.network("the account did not open") }
+                opened.append(provider)
                 self.listener = listener
+                if provider == .off, let offEngine {
+                    return offEngine
+                }
                 return engine
             }
         )
@@ -298,6 +313,7 @@ struct SyncProviderCoordinatorTests {
 
         #expect(fixture.coordinator.syncStatus == .disabled(.userDisabled))
         #expect(fixture.transport.isClosed)
+        #expect(fixture.opened == [.icloud])
     }
 
     @Test("Turning the switch on opens the transport and runs the person's pass")
@@ -313,6 +329,46 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.passes == [.person])
         #expect(fixture.providers == [.icloud])
         #expect(!fixture.transport.isClosed)
+    }
+
+    @Test("Turned on after a write opened the engine Off, iCloud opens an engine of its own, which runs the pass")
+    func switchingOnAfterAnOffOpen() async throws {
+        let fixture = try Fixture()
+        let off = FakeSyncEngine()
+        off.update { state in
+            state.refusesProviderCalls = true
+            state.info.provider = .off
+            state.info.phase = .off
+        }
+        fixture.offEngine = off
+        fixture.enabled = false
+        fixture.coordinator.start()
+        fixture.journal.recorded(.connection, written: ["A"])
+        try await waitUntil { off.read { $0.hostChanges.count } == 1 }
+
+        fixture.enabled = true
+        fixture.coordinator.enableSync()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.opened == [.off, .icloud])
+        #expect(fixture.providers == [.icloud])
+        #expect(fixture.passes == [.person])
+        #expect(off.read { $0.passes }.isEmpty)
+        #expect(fixture.coordinator.syncStatus == .idle)
+    }
+
+    @Test("With iCloud stopped by the organization and the switch on, a write opens the engine Off, not for iCloud")
+    func writeUnderAPolicyOpensOff() async throws {
+        let fixture = try Fixture()
+        fixture.policy = .managedPolicy
+        fixture.coordinator.start()
+
+        fixture.journal.recorded(.group, written: ["G"])
+        try await waitUntil { fixture.engine.read { $0.hostChanges.count } == 1 }
+
+        #expect(fixture.opened == [.off])
+        #expect(fixture.passes.isEmpty)
+        #expect(fixture.transport.isClosed)
     }
 
     @Test("A CloudKit notice asks the engine for a pass")
@@ -629,7 +685,6 @@ struct SyncProviderCoordinatorStatusTests {
     @Test("Each switch that is off names its core kinds, and passwords ride only with connections")
     func categoriesFromTheSwitches() {
         var settings = SyncSettings.default
-    var keptAccounts: [String?] = []
         settings.enabled = true
         settings.syncGroupsAndTags = false
         settings.syncSQLFavorites = false

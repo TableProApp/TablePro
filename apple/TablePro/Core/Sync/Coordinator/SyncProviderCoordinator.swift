@@ -149,7 +149,7 @@ final class SyncProviderCoordinator: ObservableObject {
     func categoriesChanged() {
         guard syncStatus.isEnabled else { return }
         Task {
-            guard let engine = host.openedEngine else { return }
+            guard let engine = host.openedEngine(for: .icloud) else { return }
             do {
                 try await tellCategories(to: engine)
             } catch {
@@ -180,7 +180,7 @@ final class SyncProviderCoordinator: ObservableObject {
 
     // After TablePro's data was removed from iCloud, nothing is uploaded until the person asks.
     func uploadAgain() async {
-        guard syncStatus.error == .blocked(.dataDeletedFromICloud), let engine = try? await host.engine() else { return }
+        guard syncStatus.error == .blocked(.dataDeletedFromICloud), let engine = try? await host.engine(for: .icloud) else { return }
         pushChannel.forgetSubscription()
         do {
             try await engine.uploadAgain()
@@ -226,9 +226,10 @@ final class SyncProviderCoordinator: ObservableObject {
             }
             await journalDelivery?.value
             // A category turned off must hold before anything else goes up.
-            try await tellCategories(to: host.engine())
+            let engine = try await host.engine(for: .icloud)
+            try await tellCategories(to: engine)
             if started == generation {
-                try await host.engine().syncNow(why: why)
+                try await engine.syncNow(why: why)
             }
         } catch {
             Self.logger.error("A sync pass failed: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
@@ -238,8 +239,8 @@ final class SyncProviderCoordinator: ObservableObject {
         }
         if started == generation, syncStatus.isEnabled {
             refreshStatus()
-            if host.openedEngine == nil {
-                // The account's core did not open, so there is no engine to sync with.
+            if host.openedEngine(for: .icloud) == nil {
+                // The engine did not open for iCloud, so there is none to sync with.
                 syncStatus = .error(.unexpected)
             } else if syncStatus.error == nil {
                 startActivationCooldown()
@@ -272,7 +273,7 @@ final class SyncProviderCoordinator: ObservableObject {
         let choice = Task<Result<Void, any Error>, Never> {
             await previous?.value
             do {
-                let engine = try await host.engine()
+                let engine = try await host.engine(for: provider)
                 guard isCurrent() else { return .success(()) }
                 if engine.status().provider != provider {
                     try await engine.chooseProvider(provider: provider)
@@ -328,7 +329,7 @@ final class SyncProviderCoordinator: ObservableObject {
         guard !changes.isEmpty else { return }
         var delivered = 0
         do {
-            let engine = try await host.engine()
+            let engine = try await host.engine(for: syncStatus.isEnabled ? .icloud : .off)
             for change in changes {
                 try await engine.recordHostChanges(kind: change.kind, written: change.written, deleted: change.deleted)
                 delivered += 1
@@ -348,7 +349,7 @@ final class SyncProviderCoordinator: ObservableObject {
     }
 
     private func refreshStatus() {
-        guard syncStatus.isEnabled, let engine = host.openedEngine else { return }
+        guard syncStatus.isEnabled, let engine = host.openedEngine(for: .icloud) else { return }
         host.rememberICloudAccount()
         let info = engine.status()
         syncStatus = SyncEngineRules.status(info)

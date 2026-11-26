@@ -33,15 +33,21 @@ final class SyncEngineHost {
     let transport: CloudKitCoreTransport
     let statusChanges = PassthroughSubject<Void, Never>()
     let keyChanges = PassthroughSubject<Void, Never>()
-    private let open: @MainActor (any SyncListener) async throws -> any SyncEngine
+    private let open: @MainActor (SyncProviderTag, any SyncListener) async throws -> any SyncEngine
     private let keepICloudAccount: @MainActor (String?) -> Void
-    private var opening: Task<any SyncEngine, any Error>?
-    private(set) var openedEngine: (any SyncEngine)?
+    private typealias Opening = (provider: SyncProviderTag, task: Task<any SyncEngine, any Error>)
+    private var opening: Opening?
+    private var opened: (provider: SyncProviderTag, engine: any SyncEngine)?
+
+    func openedEngine(for provider: SyncProviderTag) -> (any SyncEngine)? {
+        guard let opened, Self.serves(opened.provider, provider) else { return nil }
+        return opened.engine
+    }
 
     init(
         transport: CloudKitCoreTransport,
         keepICloudAccount: @escaping @MainActor (String?) -> Void = { _ in },
-        open: @escaping @MainActor (any SyncListener) async throws -> any SyncEngine
+        open: @escaping @MainActor (SyncProviderTag, any SyncListener) async throws -> any SyncEngine
     ) {
         self.transport = transport
         self.keepICloudAccount = keepICloudAccount
@@ -49,29 +55,41 @@ final class SyncEngineHost {
     }
 
     func rememberICloudAccount() {
-        guard let openedEngine else { return }
-        keepICloudAccount(openedEngine.icloudAccount())
+        guard let opened else { return }
+        keepICloudAccount(opened.engine.icloudAccount())
     }
 
-    // A failed open is tried again by the next caller.
-    func engine() async throws -> any SyncEngine {
-        if let openedEngine {
-            return openedEngine
-        }
-        let task = opening ?? Task { [open, listener = SyncEngineListener(host: self)] in
-            try await open(listener)
-        }
-        opening = task
-        do {
-            let engine = try await task.value
-            openedEngine = engine
-            return engine
-        } catch {
-            if opening == task {
+    // The provider is fixed when the service opens, and one opened Off refuses every provider call, so iCloud turned
+    // on after that opens a new service. One opened for iCloud is kept when iCloud stops, and told Off. A failed open
+    // is tried again by the next caller.
+    func engine(for provider: SyncProviderTag) async throws -> any SyncEngine {
+        while true {
+            if let opened, Self.serves(opened.provider, provider) {
+                return opened.engine
+            }
+            let current = opening ?? startOpening(provider)
+            let result = await current.task.result
+            if opening?.task == current.task {
                 opening = nil
             }
-            throw error
+            if case .failure(let error) = result, Self.serves(current.provider, provider) {
+                throw error
+            }
         }
+    }
+
+    private func startOpening(_ provider: SyncProviderTag) -> Opening {
+        let task = Task { [weak self, open, listener = SyncEngineListener(host: self)] in
+            let engine = try await open(provider, listener)
+            self?.opened = (provider, engine)
+            return engine
+        }
+        opening = (provider, task)
+        return (provider, task)
+    }
+
+    private static func serves(_ opened: SyncProviderTag, _ wanted: SyncProviderTag) -> Bool {
+        opened == wanted || wanted == .off
     }
 
     fileprivate func listenerSignalled(keys: Bool) {
@@ -82,9 +100,9 @@ final class SyncEngineHost {
         }
     }
 
-    // No settings host yet, and no device store: the state file's MAC key and anchor need one (core ADR 0054, Integrity
-    // and freshness). The engine runs on the core that holds the stores; the account is optional, since iCloud needs
-    // none (Providers).
+    // No settings host yet, and no device store, which holds the state file's MAC key and anchor (core ADR 0054,
+    // Integrity and freshness): until one lands, the core starts no iCloud engine and answers each call as unavailable.
+    // The account is optional, since iCloud needs none (Providers).
     private static func live() -> SyncEngineHost {
         let transport = CloudKitCoreTransport()
         let mirror = LegacySyncMetadataMirror(
@@ -98,13 +116,13 @@ final class SyncEngineHost {
                 guard defaults.string(forKey: icloudAccountKey) != account else { return }
                 defaults.set(account, forKey: icloudAccountKey)
             },
-            open: { listener in
+            open: { provider, listener in
                 let settings = AppSettingsStorage.shared.loadSync()
                 let account = await AccountServices.shared.syncAccount?.accountService()
                 return try await CoreStoreHost.shared.core().openSync(
                     config: SyncConfig(
                         platform: .macos,
-                        provider: settings.enabled ? .icloud : .off,
+                        provider: provider,
                         categories: SyncProviderCoordinator.categories(settings),
                         icloudAccount: defaults.string(forKey: icloudAccountKey)
                     ),
