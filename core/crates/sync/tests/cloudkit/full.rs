@@ -305,6 +305,45 @@ async fn kinds_that_share_a_restored_store_each_refill_when_their_category_is_on
     );
 }
 
+// 0066, `deferred` and `stores_kinds`: favourites off while their shared file refills keep the copy the restore left,
+// so once on they merge against it. An edit made here meanwhile stays, and what was not edited takes the zone's copy.
+#[tokio::test]
+async fn a_kind_off_while_its_store_refills_merges_its_later_edits_against_the_restored_copy() {
+    let rig = Rig::new().await;
+    let favourite = |name: &str| tablepro_records::record_id::favourite_table(uuid::Uuid::nil(), Some("shop"), None, name).id;
+    let (edited, untouched) = (favourite("orders"), favourite("users"));
+    let table = |name: &str, schema: &str| json!({"connection_id": A, "database": "shop", "name": name, "schema": schema});
+    rig.save_elsewhere(Kind::SavedQuery, B, &json!({"name": "top", "query": "SELECT 1"}));
+    rig.save_elsewhere(Kind::FavouriteTable, &edited, &table("orders", "public"));
+    rig.save_elsewhere(Kind::FavouriteTable, &untouched, &table("users", "public"));
+    rig.fetch().await.unwrap();
+    rig.turn_off(Kind::FavouriteTable);
+    rig.store(Kind::FavouriteTable).restore(vec![
+        (&edited, projected(Kind::FavouriteTable, &edited, &table("orders", "public"))),
+        (&untouched, projected(Kind::FavouriteTable, &untouched, &table("users", "stale"))),
+    ]);
+    let sibling = rig.fetch().await.unwrap();
+    let kept = rig.deferred(Kind::FavouriteTable, &edited).await.is_some();
+    rig.store(Kind::FavouriteTable)
+        .put(&edited, projected(Kind::FavouriteTable, &edited, &table("orders", "mine")));
+
+    rig.turn_on(Kind::FavouriteTable);
+    let on = rig.fetch().await.unwrap();
+
+    assert_eq!(sibling.refilled, [Kind::SavedQuery]);
+    assert!(kept);
+    assert_eq!(on.refilled, [Kind::FavouriteTable]);
+    assert_eq!(
+        rig.store(Kind::FavouriteTable).fields(&edited),
+        Some(projected(Kind::FavouriteTable, &edited, &table("orders", "mine")))
+    );
+    assert_eq!(
+        rig.store(Kind::FavouriteTable).fields(&untouched),
+        Some(projected(Kind::FavouriteTable, &untouched, &table("users", "public")))
+    );
+    assert!(rig.deferred(Kind::FavouriteTable, &edited).await.is_none());
+}
+
 // The pull wins over what iCloud carries; a field only this device keeps stays.
 #[tokio::test]
 async fn a_refill_keeps_the_fields_icloud_does_not_carry() {

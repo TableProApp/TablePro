@@ -463,3 +463,46 @@ async fn a_certificate_under_a_replaced_ik_counts_only_below_the_av_of_its_repla
     assert_eq!(before, IkStanding::Replaced);
     assert_eq!(after.code(), "keys.retired_ik");
 }
+
+// 0066, Replace points: an approver's trust names the replace at `av` 3, and the server withholds that certificate,
+// serving one the old IK signed at 3 under a recovery key it kept, then the new IK at 4.
+#[tokio::test]
+async fn a_replace_point_holds_whatever_certificates_the_server_serves_around_it() {
+    let device = device().await;
+    let scope = team();
+    let old = Member::new();
+    let next = Member {
+        account: old.account,
+        ik: Ed25519Seed::generate().unwrap(),
+    };
+    device
+        .put(vec![
+            Row::KeyPin(KeyPinRow {
+                account: old.account,
+                ik: next.ik.public().unwrap(),
+                av: av(4),
+                how: PinHow::Replaced,
+                alert: false,
+                replaced: vec![Replaced {
+                    ik: old.ik.public().unwrap(),
+                    av: av(3),
+                }],
+            }),
+            member_row(scope, &old.certificate(3)),
+            member_row(scope, &next.certificate(4)),
+        ])
+        .await;
+    let mut txn = device.txn().await;
+
+    let forged = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &old.certificate(3))
+        .await;
+    let history = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &old.certificate(2))
+        .await;
+
+    assert_eq!(forged.unwrap_err().code(), "keys.retired_ik");
+    assert_eq!(history.unwrap(), IkStanding::Replaced);
+}

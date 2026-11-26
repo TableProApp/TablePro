@@ -260,6 +260,50 @@ async fn a_refused_change_stays_on_the_device_and_is_not_sent_again() {
 }
 
 #[tokio::test]
+async fn a_refused_change_is_not_sent_again_after_a_restart_until_it_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let server = FakeServer::new();
+    let envelopes = MemoryAdapter::new(Kind::SecretEnvelope, "secrets", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .state(open_on_disk(dir.path(), "dev_mac", &device_store).await)
+        .adapter(ScopeName::Personal, Arc::clone(&envelopes))
+        .build()
+        .await;
+    mac.sync().await;
+    // No personal key version is on the server yet, so an envelope under one is `key_version_unknown`.
+    let envelope = format!("connection/{}/password", id(1));
+    envelopes.put(&envelope, json!({"suite": "tp1", "kv": 1, "nonce": "n", "ct": "c"}));
+    let refused = mac.sync().await;
+    let seed = Arc::clone(&mac.seed);
+    drop(mac);
+
+    let restarted = DeviceBuilder::new(&server, "dev_mac")
+        .state(open_on_disk(dir.path(), "dev_mac", &device_store).await)
+        .adapter(ScopeName::Personal, Arc::clone(&envelopes))
+        .seed(Arc::clone(&seed))
+        .build()
+        .await;
+    let held = restarted.sync.held_records().await.unwrap();
+    let again = restarted.sync().await;
+    let sent_again = restarted.wire.pushed().len();
+    envelopes.put(&envelope, json!({"suite": "tp1", "kv": 1, "nonce": "m", "ct": "d"}));
+    let changed = restarted.sync().await;
+
+    assert_eq!(refused.refused.len(), 1);
+    assert_eq!(
+        held.iter().map(|record| &record.reason).collect::<Vec<_>>(),
+        [&HeldRecordReason::Refused {
+            code: "key_version_unknown".to_owned()
+        }]
+    );
+    assert_eq!(sent_again, 0, "the same change is not sent again");
+    assert!(again.refused.is_empty());
+    assert_eq!(restarted.wire.pushed().len(), 1, "a change that differs goes up");
+    assert_eq!(changed.refused.len(), 1);
+}
+
+#[tokio::test]
 async fn a_local_only_connection_never_leaves_the_device() {
     let server = FakeServer::new();
     let mac = Device::new(&server, "dev_mac").await;

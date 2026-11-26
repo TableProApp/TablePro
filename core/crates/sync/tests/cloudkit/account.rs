@@ -1,5 +1,6 @@
 // The iCloud account a pass runs for (0054, Every call is bound to one account): another account deletes the last
-// one's state file and starts its own from a full fetch, and an account change during a call saves nothing to either.
+// one's state file and starts its own from a full fetch, which sends nothing until the person picks Move my data or
+// Start empty (0066, Rules), and an account change during a call saves nothing to either.
 
 use std::sync::Arc;
 
@@ -7,8 +8,8 @@ use serde_json::json;
 use tablepro_records::Kind;
 use tablepro_sync::api::SyncError;
 use tablepro_sync::api::cloudkit::{CloudKitFailure, CloudKitTransport};
-use tablepro_sync::api::control::PassReason;
-use tablepro_sync::api::state::{StateFiles, StateIdentity};
+use tablepro_sync::api::control::{NewIdentityChoice, PassReason, SyncControl, SyncPhase};
+use tablepro_sync::api::state::{PushWait, StateFiles, StateIdentity};
 
 use crate::faults::Flaky;
 use crate::support::{A, B, Rig, USER, name, projected};
@@ -30,13 +31,55 @@ async fn another_account_deletes_the_last_account_s_state_file_and_starts_from_a
     rig.cloud.switch_account(Some(OTHER));
 
     let switched = sync.run_pass(PassReason::AccountChanged).await.unwrap();
+    let phase = sync.status().phase;
+    let sent_unasked = rig.zone_fields_of(OTHER, Kind::Connection, A).is_some();
+    sync.choose_for_new_identity(NewIdentityChoice::MoveMyData).await.unwrap();
 
     assert_eq!(switched.switched_from.as_deref(), Some(USER));
     assert!(switched.zone_made && switched.fetch.full);
+    assert_eq!(switched.push_wait, Some(PushWait::AccountChoice));
+    assert_eq!(phase, SyncPhase::NewIdentity);
+    assert!(!sent_unasked);
     assert!(!rig.files.exists(&icloud(USER)));
     assert!(rig.files.exists(&icloud(OTHER)));
     assert!(rig.zone_fields_of(OTHER, Kind::Connection, A).is_some());
     assert_eq!(sync.account().as_deref(), Some(OTHER));
+    assert_eq!(sync.status().phase, SyncPhase::Idle);
+}
+
+#[tokio::test]
+async fn the_wait_for_the_person_s_choice_outlives_a_restart_and_start_empty_sends_nothing_yet() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    let sync = rig.sync(None);
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.cloud.switch_account(Some(OTHER));
+    sync.run_pass(PassReason::AccountChanged).await.unwrap();
+    let kept = sync.account();
+    drop(sync);
+
+    let relaunched = rig.sync(kept.as_deref());
+    let after_restart = relaunched.run_pass(PassReason::Launch).await.unwrap();
+    let start_empty = relaunched.choose_for_new_identity(NewIdentityChoice::StartEmpty).await;
+    let again = relaunched.run_pass(PassReason::Poll).await.unwrap();
+
+    assert_eq!(after_restart.switched_from, None);
+    assert_eq!(after_restart.push_wait, Some(PushWait::AccountChoice));
+    assert_eq!(start_empty.unwrap_err().code(), "sync.unimplemented");
+    assert_eq!(again.push_wait, Some(PushWait::AccountChoice));
+    assert!(rig.zone_fields_of(OTHER, Kind::Connection, A).is_none());
+    assert_eq!(relaunched.status().phase, SyncPhase::NewIdentity);
+}
+
+#[tokio::test]
+async fn move_my_data_is_refused_while_no_account_switch_waits() {
+    let rig = Rig::new().await;
+    let sync = rig.sync(None);
+    sync.run_pass(PassReason::Launch).await.unwrap();
+
+    let refused = sync.choose_for_new_identity(NewIdentityChoice::MoveMyData).await;
+
+    assert_eq!(refused.unwrap_err().code(), "sync.not_allowed");
 }
 
 #[tokio::test]

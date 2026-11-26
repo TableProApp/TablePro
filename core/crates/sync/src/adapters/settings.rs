@@ -297,6 +297,41 @@ mod tests {
         );
     }
 
+    // 0066, Rules: a category this build's registry does not name, as a newer build's, goes up and comes back as it
+    // was, so the diff never reads it as gone.
+    #[tokio::test]
+    async fn a_category_the_registry_does_not_name_comes_back_unchanged() {
+        let host = Arc::new(Host::default());
+        let adapter = SettingsAdapter::new(host.clone(), None);
+        let document = json!({"newerOption": {"nested": [1, 2]}, "flag": true});
+
+        adapter
+            .apply(
+                ScopeName::Personal,
+                vec![LocalChange::Put {
+                    record_id: "future.panel".to_owned(),
+                    fields: json!({"category": "future.panel", "options": document}),
+                }],
+            )
+            .await
+            .unwrap();
+        let records = adapter.records(ScopeName::Personal).await.unwrap().records;
+
+        assert_eq!(
+            host.categories().await.unwrap(),
+            [SettingsDocument {
+                category: "future.panel".to_owned(),
+                document: document.clone(),
+            }]
+        );
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].record_id, "future.panel");
+        assert_eq!(
+            records[0].fields,
+            json!({"category": "future.panel", "options": document})
+        );
+    }
+
     #[tokio::test]
     async fn a_deleted_theme_goes_a_named_category_stays_and_a_record_whose_category_is_not_its_id_is_left_out() {
         let host = Arc::new(Host::default());

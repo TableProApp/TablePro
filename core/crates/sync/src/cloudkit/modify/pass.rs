@@ -17,7 +17,7 @@ use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use crate::api::control::{PassReason, PendingApproval, SyncControl, SyncPhase, SyncStatus};
 use crate::api::error::SyncError;
 use crate::api::ids::RecordKey;
-use crate::api::state::{Provider, RowRange, StateFiles, StateIdentity, StateStore, SyncTrust, Table};
+use crate::api::state::{Provider, PushWait, RowRange, StateFiles, StateIdentity, StateStore, SyncTrust, Table};
 use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, read_everything_again};
 use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalIds, Pass, StopSignal};
 
@@ -50,6 +50,8 @@ pub struct CloudKitReport {
     pub push: PushReport,
     // How long until the first record CloudKit asked to wait may go again, while one waits.
     pub waiting_ms: Option<u64>,
+    // What held the push back: the fetch ran, and nothing went up.
+    pub push_wait: Option<PushWait>,
 }
 
 impl CloudKitReport {
