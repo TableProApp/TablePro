@@ -341,12 +341,13 @@ struct TeamLibraryTests {
         let fixture = try await TeamLibraryFixture(engine: engine)
         try await fixture.start()
 
-        let deleted = await fixture.library.signOut { [services = fixture.account.services] in
+        let deleted = await fixture.library.signOut(session: fixture.account.access.state.sessionID) {
+            [services = fixture.account.services] in
             engine.endSignIn()
             await services.signOut()
         }
 
-        #expect(deleted)
+        #expect(deleted == true)
         #expect(engine.deletes == 1)
         #expect(!fixture.account.access.state.isSignedIn)
     }
@@ -358,9 +359,24 @@ struct TeamLibraryTests {
         let fixture = try await TeamLibraryFixture(engine: engine)
         try await fixture.start()
 
-        let deleted = await fixture.library.signOut { [services = fixture.account.services] in await services.signOut() }
+        let deleted = await fixture.library.signOut(session: fixture.account.access.state.sessionID) {
+            [services = fixture.account.services] in await services.signOut()
+        }
 
-        #expect(!deleted)
+        #expect(deleted == false)
+    }
+
+    @Test("A Sign Out for a sign-in that already ended signs nothing out and deletes nothing")
+    func staleSignOutDoesNothing() async throws {
+        let fixture = try await TeamLibraryFixture()
+        try await fixture.start()
+        var signedOut = false
+
+        let deleted = await fixture.library.signOut(session: "a sign-in that ended") { signedOut = true }
+
+        #expect(deleted == nil)
+        #expect(!signedOut)
+        #expect(fixture.engine.deletes == 0)
     }
 
     @Test("Each unsent edit is named, with why when the team refused it or changed it since")

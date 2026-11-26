@@ -45,6 +45,8 @@ internal struct TeamLibraryLegacyImport {
         removeOtherCaches(keeping: owner)
         try? FileManager.default.removeItem(at: legacyFile)
         var teams: [String: TeamLibraryImportArg] = [:]
+        // A folder that cannot be listed is not an empty one: nothing is decided until it can.
+        guard let hasFlat = flatPresence else { return nil }
         if hasFlat, claimFlat(for: owner, restoredAtLaunch: restoredAtLaunch, isProduction: isProduction) {
             guard let flat = Self.read(flatDirectory, withEdits: true, owner: owner) else { return nil }
             for team in flat {
@@ -59,6 +61,18 @@ internal struct TeamLibraryLegacyImport {
         return teams.values.sorted { $0.teamId < $1.teamId }
     }
 
+    // A voluntary Sign Out: what earlier builds left for this owner goes unread and for good, the claim on the 0.88
+    // store included. False when a file remains.
+    func discard(for owner: TeamLibraryOwnerArg) -> Bool {
+        defaults.set(true, forKey: Self.consideredKey)
+        defaults.removeObject(forKey: Self.ownerKey)
+        let owned = [flatDirectory, cacheFolder(for: owner), legacyFile]
+        for url in owned {
+            try? FileManager.default.removeItem(at: url)
+        }
+        return !owned.contains { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
     // The core holds them now.
     func imported(for owner: TeamLibraryOwnerArg) {
         try? FileManager.default.removeItem(at: flatDirectory)
@@ -69,8 +83,10 @@ internal struct TeamLibraryLegacyImport {
 
     // MARK: - 0.88
 
-    private var hasFlat: Bool {
-        let files = (try? FileManager.default.contentsOfDirectory(atPath: flatDirectory.path)) ?? []
+    // Whether the 0.88 store holds a file; nil when its folder exists but cannot be listed.
+    private var flatPresence: Bool? {
+        guard FileManager.default.fileExists(atPath: flatDirectory.path) else { return false }
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: flatDirectory.path) else { return nil }
         return !files.isEmpty
     }
 

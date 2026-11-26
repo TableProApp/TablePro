@@ -399,6 +399,31 @@ struct AccountSettingsModelTests {
         #expect(fixture.discarded.isEmpty)
     }
 
+    @Test("Another account that signs in during Upload and Sign Out is neither signed out nor deleted")
+    func newSignInDuringUploadIsKept() async throws {
+        let gate = AsyncGate()
+        let engine = FakeTeamLibraryEngine()
+        engine.hold(unsent: [TeamLibraryFixture.unsent("Orders")])
+        engine.holdNextPass(at: gate)
+        let fixture = try await TeamLibraryFixture(engine: engine)
+        try await fixture.start()
+        let prompt = ScriptedSignOutPrompt([.upload, .upload])
+        let model = AccountSettingsModel(services: fixture.account.services, teamLibrary: { fixture.library }, askSignOut: prompt.ask)
+        let signingOut = Task { await model.signOut() }
+        await gate.arrived(1)
+
+        try await fixture.refuseRefresh()
+        await fixture.account.server.set { $0.accountID = "acct_other" }
+        try await fixture.account.signIn()
+        await gate.open()
+        await signingOut.value
+
+        #expect(fixture.account.services.isSignedIn)
+        #expect(fixture.account.access.state.entitlement?.accountID == "acct_other")
+        #expect(engine.deletes == 0)
+        #expect(prompt.asked.count == 1)
+    }
+
     // A Team Library that holds nothing, for an account fixture that has none.
     static func idleTeamLibrary(_ fixture: AccountFixture) -> TeamLibrary {
         let root = FileManager.default.temporaryDirectory

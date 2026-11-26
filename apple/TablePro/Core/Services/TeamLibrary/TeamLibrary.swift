@@ -285,23 +285,35 @@ internal final class TeamLibrary: ObservableObject {
         return (left, failure ?? problem ?? .offline)
     }
 
-    // The sign-out, then the account's Team Library data, unsent edits included, verified gone, through the service of
-    // the sign-in that ends: it still deletes after the sign-in ended. False when the delete failed, which keeps Team
-    // Library off for that account until a later delete succeeds.
-    func signOut(through signOut: @MainActor () async -> Void) async -> Bool {
-        let held = owner != nil
+    // The sign-out of `session`, then all of the account's Team Library data, verified gone: the engine's, through the
+    // service of the sign-in that ends, which still deletes after it ended, and what earlier builds left. False when
+    // any of it remains, which keeps Team Library off for that account until a later delete succeeds; nil when the
+    // session ended another way first, so nothing was signed out or deleted.
+    func signOut(session: String?, through signOut: @MainActor () async -> Void) async -> Bool? {
+        let leaving = owner
         let engine = try? await source.engine()
+        guard account.access.state.sessionID == session, account.access.state.isSignedIn else { return nil }
         await signOut()
-        guard let engine else { return !held }
-        do {
-            try await engine.deleteTeamLibraryData()
-        } catch {
-            Self.logger.error("Deleting the Team Library data failed: \(error.publicLogShape, privacy: .public)")
-            return false
+        var deleted = true
+        if let engine {
+            do {
+                try await engine.deleteTeamLibraryData()
+            } catch {
+                Self.logger.error("Deleting the Team Library data failed: \(error.publicLogShape, privacy: .public)")
+                deleted = false
+            }
+        } else if leaving != nil {
+            deleted = false
         }
-        owner = nil
-        ownerUnsent = []
-        return true
+        if let leaving, !legacy.discard(for: leaving) {
+            Self.logger.error("Deleting the earlier builds' Team Library files failed")
+            deleted = false
+        }
+        if deleted, owner == leaving {
+            owner = nil
+            ownerUnsent = []
+        }
+        return deleted
     }
 
     nonisolated static func name(of edit: UnsentTeamEditInfo) -> String {

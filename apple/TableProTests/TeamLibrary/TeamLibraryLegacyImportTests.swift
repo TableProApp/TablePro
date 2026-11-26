@@ -180,6 +180,47 @@ struct TeamLibraryLegacyImportTests {
         #expect(fixture.engine.imports.isEmpty)
     }
 
+    @Test("Sign Out after an import the core could not take deletes the earlier files and their claim")
+    func signOutDeletesKeptEarlierFiles() async throws {
+        let fixture = try await TeamLibraryFixture()
+        try Self.writeFlat(Self.flatTeam(), in: fixture)
+        let cache = try Self.writeCache(published: [["kind": "folder", "clientID": "f1"]], for: "acct_test", in: fixture)
+        fixture.engine.failImports(with: TeamConflictFixture.failure("sync.state.io"))
+        try await fixture.start()
+        try await waitUntil { fixture.defaults.defaults.string(forKey: TeamLibraryLegacyImport.ownerKey) != nil }
+
+        let deleted = await fixture.library.signOut(session: fixture.account.access.state.sessionID) {
+            [services = fixture.account.services] in await services.signOut()
+        }
+
+        #expect(deleted == true)
+        #expect(!Self.exists(fixture.legacy.flatDirectory))
+        #expect(!Self.exists(cache))
+        #expect(fixture.defaults.defaults.string(forKey: TeamLibraryLegacyImport.ownerKey) == nil)
+        #expect(fixture.defaults.defaults.bool(forKey: TeamLibraryLegacyImport.consideredKey))
+    }
+
+    @Test("A 0.88 folder that cannot be listed decides nothing, and is read once it can be")
+    func unlistableFolderDecidesNothing() async throws {
+        let fixture = try await TeamLibraryFixture()
+        try Self.writeFlat(Self.flatTeam(), in: fixture)
+        let folder = fixture.legacy.flatDirectory
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: folder.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+
+        try await fixture.start()
+
+        #expect(fixture.engine.imports.isEmpty)
+        #expect(!fixture.defaults.defaults.bool(forKey: TeamLibraryLegacyImport.consideredKey))
+        #expect(fixture.defaults.defaults.string(forKey: TeamLibraryLegacyImport.ownerKey) == nil)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
+        fixture.relaunch()
+        try await fixture.start()
+
+        try await waitUntil { fixture.engine.imports.count == 1 }
+    }
+
     @Test("Once 0.89 read the store, it is never read again")
     func consideredStoreIsNeverRead() async throws {
         let fixture = try await TeamLibraryFixture()

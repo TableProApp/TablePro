@@ -250,9 +250,12 @@ internal final class AccountSettingsModel: ObservableObject {
         activity = .signingOut
         defer { activity = nil }
         let teamLibrary = teamLibrary()
+        // Everything below is this sign-in's: another one that began meanwhile is never signed out or deleted.
+        let session = services.access.state.sessionID
+        let isCurrent = { [services] in services.isSignedIn && services.access.state.sessionID == session }
         var changes = await teamLibrary.unsentChanges()
         var failure: TeamLibraryFailure?
-        while services.isSignedIn {
+        while isCurrent() {
             asksSignOut = true
             let answer = await askSignOut(AccountSignOutConfirmation(
                 teamChanges: changes,
@@ -260,26 +263,26 @@ internal final class AccountSettingsModel: ObservableObject {
                 removesOfflineFile: services.access.state.entitlement?.isOffline == true
             ))
             asksSignOut = false
-            guard services.isSignedIn else { return }
+            guard isCurrent() else { return }
             switch answer {
             case .cancel:
                 return
             case .discard:
-                await finishSignOut(teamLibrary)
+                await finishSignOut(teamLibrary, session: session)
                 return
             case .upload:
                 (changes, failure) = await teamLibrary.upload()
-                if changes?.isEmpty == true, services.isSignedIn {
-                    await finishSignOut(teamLibrary)
+                if changes?.isEmpty == true, isCurrent() {
+                    await finishSignOut(teamLibrary, session: session)
                     return
                 }
             }
         }
     }
 
-    private func finishSignOut(_ teamLibrary: TeamLibrary) async {
-        let deleted = await teamLibrary.signOut { [services] in await services.signOut() }
-        guard !deleted else { return }
+    private func finishSignOut(_ teamLibrary: TeamLibrary, session: String?) async {
+        let deleted = await teamLibrary.signOut(session: session) { [services] in await services.signOut() }
+        guard deleted == false else { return }
         actionFailure = AccountActionFailure(
             title: String(localized: "Team Library data is still on this Mac"),
             message: String(localized: "TablePro couldn't delete the Team Library data of the account you signed out of. Team Library stays off until it can.")
