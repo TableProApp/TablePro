@@ -10,8 +10,9 @@ pub const LICENSE_TYPE: &str = "license+jwt";
 // Every license file is signed by TablePro, whichever server holds it (core ADR 0044, Licensing).
 pub const LICENSE_ISSUER: &str = "https://tablepro.app";
 const AUDIENCE: &str = "tablepro-app";
-// What a license keeps past its grace: pulls and exports of the Team Library go on, pushes are refused.
-pub const KEPT_PAST_GRACE: &str = "team_library";
+// What a license keeps past its grace, as the server's `LapsedFeature` does (0051, Gates): pulls go on and only key-object
+// writes are taken.
+pub const KEPT_PAST_GRACE: [&str; 2] = ["service_sync", "team_library"];
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LicenseError {
@@ -86,7 +87,7 @@ pub enum LicenseState {
     Active,
     // Past `exp`, until the grace ends: every feature still works.
     Grace { ends_at: DateTime<Utc> },
-    // Past the grace: only the Team Library's pull and export.
+    // Past the grace: pulls of the sync features, and key-object writes.
     Lapsed,
 }
 
@@ -180,9 +181,9 @@ impl License {
         self.claims.features.iter().any(|code| code == feature)
     }
 
-    // Whether the license lets a feature work now: false past the grace, except for the Team Library.
+    // Whether the license lets a feature work now: false past the grace, except for the sync features it keeps.
     pub fn allows(&self, feature: &str, now: DateTime<Utc>) -> bool {
-        self.includes(feature) && (feature == KEPT_PAST_GRACE || self.state(now) != LicenseState::Lapsed)
+        self.includes(feature) && (KEPT_PAST_GRACE.contains(&feature) || self.state(now) != LicenseState::Lapsed)
     }
 }
 
@@ -360,7 +361,12 @@ mod tests {
     fn grace_lasts_until_the_file_s_grace_until_30_days_after_exp_or_7_on_a_monthly_file() {
         let issued = DateTime::from_timestamp(Utc::now().timestamp(), 0).expect("now");
         let yearly = verify(
-            &fakes::license_claims(ORIGIN, issued, TimeDelta::days(365), &["team_library", "service_sync"]),
+            &fakes::license_claims(
+                ORIGIN,
+                issued,
+                TimeDelta::days(365),
+                &["team_library", "service_sync", "query_insights"],
+            ),
             issued,
         )
         .expect("a license");
@@ -389,8 +395,9 @@ mod tests {
         ));
         let lapsed = exp + TimeDelta::days(31);
         assert!(yearly.allows("team_library", lapsed));
-        assert!(!yearly.allows("service_sync", lapsed));
-        assert!(yearly.allows("service_sync", exp + TimeDelta::days(29)));
+        assert!(yearly.allows("service_sync", lapsed));
+        assert!(!yearly.allows("query_insights", lapsed));
+        assert!(yearly.allows("query_insights", exp + TimeDelta::days(29)));
         assert!(!yearly.allows("env_var_references", issued));
     }
 

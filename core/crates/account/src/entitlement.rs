@@ -180,7 +180,7 @@ impl Entitlement {
             && self.license.as_ref().is_none_or(|license| license.includes(feature))
     }
 
-    // Whether the server's license still lets an included feature work: past its grace, only the Team Library does.
+    // Whether the server's license still lets an included feature work: past its grace, only the sync features do.
     pub fn license_allows(&self, feature: &str, now: DateTime<Utc>) -> bool {
         self.license.as_ref().is_none_or(|license| license.allows(feature, now))
     }
@@ -379,20 +379,20 @@ mod tests {
     }
 
     #[test]
-    fn a_company_server_s_license_cuts_the_features_and_past_its_grace_keeps_only_the_team_library() {
+    fn a_company_server_s_license_cuts_the_features_and_past_its_grace_keeps_only_the_sync_features() {
         let now = DateTime::from_timestamp(Utc::now().timestamp(), 0).expect("now");
         let origin = "https://api.example.com";
         let mut granted = claims(
             now,
             TimeDelta::days(14),
-            &["team_library", "service_sync", "env_var_references"],
+            &["team_library", "service_sync", "query_insights", "env_var_references"],
         );
         granted.iss = origin.to_owned();
         let license_claims = crate::fakes::license_claims(
             origin,
             now - TimeDelta::days(380),
             TimeDelta::days(365),
-            &["team_library", "service_sync"],
+            &["team_library", "service_sync", "query_insights"],
         );
         let license = crate::license::License::verify(
             &crate::fakes::sign_license(&license_claims).expect("a license"),
@@ -409,8 +409,11 @@ mod tests {
             .within(Arc::new(license));
 
         assert!(!entitlement.includes("env_var_references"));
-        assert_eq!(entitlement.features_at(in_grace), ["team_library", "service_sync"]);
-        assert_eq!(entitlement.features_at(past_grace), ["team_library"]);
+        assert_eq!(
+            entitlement.features_at(in_grace),
+            ["team_library", "service_sync", "query_insights"]
+        );
+        assert_eq!(entitlement.features_at(past_grace), ["team_library", "service_sync"]);
     }
 
     #[test]
