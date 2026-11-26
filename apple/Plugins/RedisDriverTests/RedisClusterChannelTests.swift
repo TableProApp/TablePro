@@ -116,7 +116,7 @@ struct RedisClusterDispatchTests {
         let replies = try await cluster.channel.executePipeline(
             [["TYPE", "a"], ["TYPE", "b"], ["TYPE", "c"]].map { $0.map { Data($0.utf8) } }, scope: .outsideBlock
         )
-        #expect(replies == [.status("string"), .status("hash"), .status("list")])
+        #expect(replies.map(\.stringValue) == ["string", "hash", "list"])
         #expect(cluster.first.pipelineSizes == [2])
         #expect(cluster.second.pipelineSizes == [1])
     }
