@@ -22,9 +22,19 @@ const ACCESS_TOKEN_LIFETIME: Duration = Duration::from_secs(15 * 60);
 // RFC 8693, with tablepro-cloud's own subject token type (api.md, Legacy key exchange).
 const TOKEN_EXCHANGE: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
 const LICENSE_KEY_TOKEN_TYPE: &str = "https://account.tablepro.app/token-types/license-key";
-// A token answer is a few kilobytes, and a refused revocation's text is only logged.
+// A token answer is a few kilobytes, as is a refused revocation's OAuth error.
 const TOKEN_ANSWER_LIMIT: usize = 64 * 1024;
 const REVOKE_DETAIL_LIMIT: usize = 4 * 1024;
+// RFC 6749 section 5.2 and RFC 7009 section 2.2.1: the codes a refused revocation can name.
+const REVOCATION_ERRORS: [&str; 7] = [
+    "invalid_request",
+    "invalid_client",
+    "invalid_grant",
+    "unauthorized_client",
+    "unsupported_token_type",
+    "server_error",
+    "temporarily_unavailable",
+];
 
 type Client = BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
 
@@ -163,7 +173,8 @@ impl OAuth {
         answer.map(tokens).map_err(|error| grant_error(error, limited.get()))
     }
 
-    // RFC 7009 by hand: oauth2 refuses a revocation URL that is not https.
+    // RFC 7009 by hand: oauth2 refuses a revocation URL that is not https. A refusal keeps only a standard error code:
+    // its body may echo the token, and callers log the error.
     pub(crate) async fn revoke(&self, refresh: &SecretString) -> Result<(), AccountError> {
         let form = [
             ("token", refresh.expose_secret()),
@@ -183,8 +194,11 @@ impl OAuth {
                 let status = response.status().as_u16();
                 let detail = read_capped(response, REVOKE_DETAIL_LIMIT)
                     .await
-                    .map(|body| String::from_utf8_lossy(&body).into_owned())
-                    .unwrap_or_default();
+                    .ok()
+                    .and_then(|body| serde_json::from_slice::<ExchangeRefusal>(&body).ok())
+                    .and_then(|refusal| REVOCATION_ERRORS.into_iter().find(|code| *code == refusal.error))
+                    .unwrap_or_default()
+                    .to_owned();
                 Err(AccountError::Refused {
                     status,
                     code: "revoke".to_owned(),
@@ -306,4 +320,69 @@ fn grant_error(
 
 fn protocol(error: url::ParseError) -> AccountError {
     AccountError::Protocol(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{BufRead as _, BufReader, Read as _, Write as _};
+
+    use super::*;
+
+    // A revocation endpoint that refuses with `body`.
+    fn refusing(body: &'static str) -> Endpoints {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+        let base = format!("http://{}", listener.local_addr().expect("its address"));
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(stream.try_clone().expect("a second handle"));
+                let mut length = 0;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).expect("a line");
+                    if line.trim().is_empty() {
+                        break;
+                    }
+                    if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse().expect("a length");
+                    }
+                }
+                let mut request = vec![0; length];
+                reader.read_exact(&mut request).expect("the body");
+                let mut stream = stream;
+                write!(
+                    stream,
+                    "HTTP/1.1 500 Stub\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .expect("the answer");
+            }
+        });
+        Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints")
+    }
+
+    async fn refusal(body: &'static str) -> AccountError {
+        let oauth = OAuth::new(AppClient::LINUX, &refusing(body), reqwest::Client::new()).expect("a client");
+        oauth
+            .revoke(&SecretString::from("live-refresh-token"))
+            .await
+            .expect_err("refused")
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_refused_revocation_keeps_a_standard_code_and_never_the_body() {
+        let echoed = refusal(r#"{"error":"server_error","error_description":"bad token live-refresh-token"}"#).await;
+        let named = refusal(r#"{"error":"live-refresh-token"}"#).await;
+        let page = refusal("<html>live-refresh-token</html>").await;
+
+        assert!(
+            matches!(&echoed, AccountError::Refused { status: 500, code, detail } if code == "revoke" && detail == "server_error"),
+            "{echoed:?}"
+        );
+        for error in [&echoed, &named, &page] {
+            assert!(
+                !format!("{error} {error:?}").contains("live-refresh-token"),
+                "{error:?}"
+            );
+        }
+    }
 }
