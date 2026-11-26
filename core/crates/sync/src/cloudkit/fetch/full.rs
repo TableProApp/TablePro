@@ -19,15 +19,17 @@ impl Settle<'_, '_> {
     }
 
     // A deferred deletion of a record the zone lists again settles unapplied: the record was saved after it. A
-    // profile's never applies late, since deleting one removes Keychain secrets no pull can bring back.
+    // profile's never applies late, since deleting one removes Keychain secrets no pull can bring back. A copy a refill
+    // kept while the kind was off is no deletion: the fetch's own listing judges the record, by `unlisted`'s rules.
     async fn deferred_due(&mut self, listed: &BTreeSet<RecordKey>) -> Result<(), SyncError> {
         for row in self.txn.scan(&RowRange::Scope(Table::Deferred, SCOPE)).await? {
             let Row::Deferred(deferred) = row else {
                 continue;
             };
+            let deletion = deferred.record.deleted.is_some();
             match kind_of(&deferred.key) {
                 Some(kind) if !self.fetcher.categories.syncs(kind) => {}
-                Some(kind) if !listed.contains(&deferred.key) && !PROFILES.contains(&kind) => {
+                Some(kind) if deletion && !listed.contains(&deferred.key) && !PROFILES.contains(&kind) => {
                     self.deleted(&deferred.key).await?;
                 }
                 _ => self.txn.delete(&RowKey::Deferred(deferred.key)).await?,

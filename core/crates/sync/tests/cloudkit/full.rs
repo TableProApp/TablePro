@@ -354,6 +354,36 @@ async fn a_kind_off_while_its_store_refills_merges_its_later_edits_against_the_r
     assert!(rig.deferred(Kind::FavouriteTable, &edited).await.is_none());
 }
 
+// A kept copy is no deletion: a full fetch that lists nothing proves none, whatever the refill kept.
+#[tokio::test]
+async fn a_copy_kept_while_off_deletes_nothing_on_a_full_fetch_that_lists_nothing() {
+    let rig = Rig::new().await;
+    let favourite = tablepro_records::record_id::favourite_table(uuid::Uuid::nil(), Some("shop"), None, "orders").id;
+    rig.save_elsewhere(
+        Kind::FavouriteTable,
+        &favourite,
+        &json!({"connection_id": A, "database": "shop", "name": "orders"}),
+    );
+    rig.fetch().await.unwrap();
+    rig.turn_off(Kind::FavouriteTable);
+    let mut txn = rig.state.begin().await.unwrap();
+    let Some(Row::Scope(scope)) = txn.get(&RowKey::Scope(ScopeName::Personal)).await.unwrap() else {
+        panic!("no scope row");
+    };
+    txn.put(Row::Scope(ScopeRow { refill: true, ..scope })).await.unwrap();
+    txn.commit().await.unwrap();
+    rig.fetch().await.unwrap();
+    let kept = rig.deferred(Kind::FavouriteTable, &favourite).await.is_some();
+    rig.delete_elsewhere(Kind::FavouriteTable, &favourite);
+
+    rig.turn_on(Kind::FavouriteTable);
+    let on = rig.fetch().await.unwrap();
+
+    assert!(kept);
+    assert!(on.full);
+    assert!(rig.store(Kind::FavouriteTable).holds(&favourite));
+}
+
 // The pull wins over what iCloud carries; a field only this device keeps stays.
 #[tokio::test]
 async fn a_refill_keeps_the_fields_icloud_does_not_carry() {

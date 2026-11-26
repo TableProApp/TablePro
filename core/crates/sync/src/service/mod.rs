@@ -476,9 +476,10 @@ impl ServiceSync {
                     })
                     .collect();
                 drop(txn);
+                // The row this pass wrote, or the one the state held, so a store that moved on since gets its row.
                 let seen = StoreSeen {
                     start,
-                    stored: Some(start),
+                    stored: if marked { Some(start) } else { stored },
                     owed,
                     marked,
                     scopes: HashSet::from([info.scope]),

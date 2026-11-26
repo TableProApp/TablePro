@@ -466,7 +466,7 @@ impl CloudKitSync {
                 }
                 status.phase = match report.push_wait {
                     None => SyncPhase::Idle,
-                    Some(PushWait::AccountChoice) => SyncPhase::NewIdentity,
+                    Some(PushWait::AccountChoice { .. }) => SyncPhase::NewIdentity,
                     Some(PushWait::UploadAgain) => SyncPhase::ZoneRemoved,
                 };
             }

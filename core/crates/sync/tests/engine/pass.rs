@@ -356,6 +356,35 @@ async fn past_grace_the_pass_only_pulls() {
     assert_eq!(stored(&server, &id(1)), None);
 }
 
+// A store edited between passes has its row moved on by the next pass, though that pass writes nothing to it, so a
+// later rollback to before the edit still shows as one.
+#[tokio::test]
+async fn a_pass_keeps_the_sequence_a_store_moved_on_to_without_it() {
+    let server = FakeServer::new();
+    let file = StoreFile::new();
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .connections(
+            MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file)),
+            Arc::clone(&file),
+        )
+        .build()
+        .await;
+    mini.sync().await;
+    mini.connections.put(&id(1), connection("Edited"));
+    let edited = file.stamp();
+
+    mini.sync().await;
+
+    assert_eq!(
+        mini.row(RowKey::Store("connections".to_owned())).await,
+        Some(Row::Store(tablepro_sync::api::state::StoreRow {
+            store: "connections".to_owned(),
+            generation: edited.generation,
+            sequence: edited.sequence,
+        }))
+    );
+}
+
 #[tokio::test]
 async fn a_restored_store_refills_every_kind_it_holds() {
     let server = FakeServer::new();
