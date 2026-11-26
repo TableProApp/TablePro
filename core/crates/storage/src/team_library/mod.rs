@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 
 use crate::document::VersionedDocument;
 use crate::error::StorageError;
-use crate::journal::{ChangeJournal, JournalSlot, RecordKind};
+use crate::journal::{ChangeJournal, JournalEntry, JournalSlot, RecordKind, RecordRef};
 use crate::paths::StoragePaths;
 use crate::store_identity::StoreIdentity;
 
@@ -155,9 +155,9 @@ impl TeamLibraryStore {
         }
         self.write(|document| {
             let team = team_mut(document, team_id);
-            let mut kinds = Vec::new();
+            let mut written = Vec::new();
             for item in items {
-                let kind = item.kind.record_kind();
+                let record = (item.kind.record_kind(), item_record(team_id, &item.id));
                 match team
                     .items
                     .iter_mut()
@@ -167,9 +167,9 @@ impl TeamLibraryStore {
                     Some(held) => *held = item,
                     None => team.items.push(item),
                 }
-                kinds.push(kind);
+                written.push(record);
             }
-            kinds
+            entries(written, Vec::new())
         })
     }
 
@@ -183,30 +183,34 @@ impl TeamLibraryStore {
             let Some(team) = document.teams.iter_mut().find(|team| team.team_id == team_id) else {
                 return Vec::new();
             };
-            let mut kinds = Vec::new();
+            let mut deleted = Vec::new();
             team.items.retain(|held| {
                 let gone = items.iter().any(|(kind, id)| held.kind == *kind && held.id == *id);
                 if gone {
-                    kinds.push(held.kind.record_kind());
+                    deleted.push((held.kind.record_kind(), item_record(team_id, &held.id)));
                 }
                 !gone
             });
-            kinds
+            entries(Vec::new(), deleted)
         })
     }
 
     /// Drops a team the account left or lost, with every item of it.
     pub fn remove_team_blocking(&self, team_id: &str) -> Result<(), StorageError> {
         self.write(|document| {
-            let mut kinds = Vec::new();
+            let mut deleted = Vec::new();
             document.teams.retain(|team| {
                 if team.team_id != team_id {
                     return true;
                 }
-                kinds.extend(team.items.iter().map(|item| item.kind.record_kind()));
+                deleted.extend(
+                    team.items
+                        .iter()
+                        .map(|item| (item.kind.record_kind(), item_record(team_id, &item.id))),
+                );
                 false
             });
-            kinds
+            entries(Vec::new(), deleted)
         })
     }
 
@@ -270,8 +274,8 @@ impl TeamLibraryStore {
     }
 
     // A change that changes nothing writes nothing. The journal hears of it once both locks are gone.
-    fn write(&self, change: impl FnOnce(&mut TeamLibraryDocument) -> Vec<RecordKind>) -> Result<(), StorageError> {
-        let mut kinds = {
+    fn write(&self, change: impl FnOnce(&mut TeamLibraryDocument) -> Vec<JournalEntry>) -> Result<(), StorageError> {
+        let entries = {
             let _held = self.lock();
             if let Some(parent) = self.inner.path.parent() {
                 crate::fs::ensure_private_dir(parent)?;
@@ -279,20 +283,44 @@ impl TeamLibraryStore {
             let _file = crate::fs::lock_beside_blocking(&self.inner.path);
             let before = self.read()?;
             let mut document = before.clone();
-            let kinds = change(&mut document);
+            let entries = change(&mut document);
             document.teams.retain(|team| !team.items.is_empty());
             if document == before {
                 return Ok(());
             }
             document.store = Some(StoreIdentity::after_write(document.store));
             crate::document::write_document_blocking(&self.inner.path, &document)?;
-            kinds
+            entries
         };
-        kinds.sort();
-        kinds.dedup();
-        self.inner.journal.notify(&kinds);
+        self.inner.journal.notify(&entries);
         Ok(())
     }
+}
+
+fn item_record(team_id: &str, id: &str) -> RecordRef {
+    RecordRef::TeamItem {
+        team_id: team_id.to_owned(),
+        id: id.to_owned(),
+    }
+}
+
+// One entry per kind, in the order of the kinds.
+fn entries(written: Vec<(RecordKind, RecordRef)>, deleted: Vec<(RecordKind, RecordRef)>) -> Vec<JournalEntry> {
+    let mut kinds: Vec<RecordKind> = written.iter().chain(&deleted).map(|(kind, _)| *kind).collect();
+    kinds.sort();
+    kinds.dedup();
+    kinds
+        .into_iter()
+        .map(|kind| {
+            let of = |list: &[(RecordKind, RecordRef)]| -> Vec<RecordRef> {
+                list.iter()
+                    .filter(|(each, _)| *each == kind)
+                    .map(|(_, record)| record.clone())
+                    .collect()
+            };
+            JournalEntry::new(kind).wrote(of(&written)).deleted(of(&deleted))
+        })
+        .collect()
 }
 
 impl std::fmt::Debug for TeamLibraryStore {

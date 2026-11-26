@@ -207,7 +207,7 @@ impl WorkspaceModel {
             file_size: size,
             connection: session.metadata().name.clone(),
             transactional,
-            confirms_writes: session.safe_mode() == SafeModeLevel::ConfirmWrites,
+            confirms_writes: session.safe_mode() == SafeModeLevel::Alert,
         };
         let running: Rc<RefCell<Option<CancellationToken>>> = Rc::default();
         let stopping = running.clone();

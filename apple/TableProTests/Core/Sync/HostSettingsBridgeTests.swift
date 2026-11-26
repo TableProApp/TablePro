@@ -44,13 +44,13 @@ struct HostSettingsBridgeTests {
         ))
     }
 
-    @Test("The core's blocking thread reads and writes the stores on the main thread")
-    func callsFromABlockingThreadReachTheMainThread() async throws {
+    @Test("A call from a core thread reads and writes the stores on the main actor and returns once they wrote")
+    func callsFromACoreThreadReachTheMainActor() async throws {
         let stores = RecordingStores()
         let bridge = bridge(stores)
 
-        let categories = try await Task.detached { try bridge.categories() }.value
-        try await Task.detached { try bridge.apply(category: "editor", document: #"{"tabWidth":2}"#) }.value
+        let categories = try await Task.detached { try await bridge.categories() }.value
+        try await Task.detached { try await bridge.apply(category: "editor", document: #"{"tabWidth":2}"#) }.value
 
         #expect(categories == [SettingsCategoryArg(category: "tabs", document: #"{"enablePreviewTabs":false}"#)])
         #expect(stores.writesOnMainThread == [true])
@@ -65,7 +65,7 @@ struct HostSettingsBridgeTests {
 
         let failure = await Task.detached { () -> HostSecretError? in
             do {
-                _ = try bridge.categories()
+                _ = try await bridge.categories()
                 return nil
             } catch {
                 return error as? HostSecretError

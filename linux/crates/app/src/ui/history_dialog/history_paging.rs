@@ -91,6 +91,7 @@ mod tests {
     fn cursor(id: i64) -> HistoryCursor {
         HistoryCursor::after(&Entry {
             id,
+            record_id: Uuid::nil(),
             query: String::new(),
             driver_id: String::new(),
             connection_id: Uuid::nil(),

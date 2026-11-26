@@ -24,7 +24,7 @@ extension AccountServices {
         )
         let services = AccountServices(
             backend: backend,
-            syncOpener: backend,
+            syncAccount: backend,
             transport: AccountAPI.transport(session: liveSession()),
             storedKey: StoredLicenseKey(
                 keychain: environment.keychain,

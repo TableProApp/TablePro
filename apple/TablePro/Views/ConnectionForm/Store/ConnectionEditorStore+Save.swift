@@ -175,7 +175,7 @@ extension ConnectionEditorStore {
     private func finishSave(_ record: DatabaseConnection, reviewed: DatabaseConnection, connect: Bool) {
         approveSavedDefinition(record, reviewed: reviewed)
         if !record.localOnly {
-            services.syncTracker.markDirty(.connection, id: record.id.uuidString)
+            services.syncJournal.recorded(.connection, written: [record.id.uuidString])
         }
         baseline = draft
         loadedRecord = record

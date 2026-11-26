@@ -181,6 +181,19 @@ struct SyncMetadataStorageTests {
         #expect(storage.lastSyncDate?.timeIntervalSince1970 == now.timeIntervalSince1970)
     }
 
+    @Test("A forgotten zone state reads again as a build before the key inferred it")
+    func forgottenZoneStateIsInferred() {
+        let storage = makeStorage()
+        storage.zoneState = .removed
+        storage.forgetZoneState()
+        #expect(storage.zoneState == .unknown)
+
+        storage.zoneState = .removed
+        storage.lastSyncDate = Date()
+        storage.forgetZoneState()
+        #expect(storage.zoneState == .confirmed)
+    }
+
     @Test("The last account identifier round-trips")
     func lastAccountIdRoundTrips() {
         let storage = makeStorage()

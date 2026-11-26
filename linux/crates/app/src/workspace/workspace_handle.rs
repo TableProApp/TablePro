@@ -398,7 +398,7 @@ impl WorkspaceHandle {
             .deps
             .session
             .get()
-            .filter(|session| session.safe_mode() == SafeModeLevel::ConfirmWrites)
+            .filter(|session| session.safe_mode() == SafeModeLevel::Alert)
         else {
             return Ok(());
         };
@@ -546,7 +546,7 @@ impl WorkspaceHandle {
             .deps
             .session
             .get()
-            .filter(|session| session.safe_mode() == SafeModeLevel::ConfirmWrites)
+            .filter(|session| session.safe_mode() == SafeModeLevel::Alert)
             .map(|session| session.metadata().name.clone());
         if asks_first.is_some() || review.requires_confirmation(engine.ddl_writes) {
             if review_dialog::confirm(parent, &table, &review, engine, asks_first.as_deref()).await

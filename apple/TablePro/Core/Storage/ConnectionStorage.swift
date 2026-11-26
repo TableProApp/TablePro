@@ -23,7 +23,7 @@ final class ConnectionStorage {
     private let migratedToFileKey = "com.TablePro.connectionsMigratedToFile"
     private let defaults: UserDefaults
     private static let sshRoutePublisherKey = "com.TablePro.sshRoutePublisherId"
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let appSettingsProvider: () -> AppSettingsStorage
 
     private var cachedConnections: [DatabaseConnection]?
@@ -51,7 +51,7 @@ final class ConnectionStorage {
     init(
         fileURL: URL = ConnectionStorage.defaultFileURL(),
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared,
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
         appEvents: @escaping @autoclosure () -> AppEvents = .shared,
@@ -65,7 +65,7 @@ final class ConnectionStorage {
             integrity: integrity
         )
         self.defaults = userDefaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.appSettingsProvider = appSettings
         self.keychain = keychain
         self.appEventsProvider = appEvents
@@ -108,12 +108,6 @@ final class ConnectionStorage {
         let connections = storedConnections.map { stored in
             stored.toConnection()
         }
-        syncTracker.recordConnectionStanding(
-            syncing: Set(connections.filter(\.participatesInSync).map(\.id)),
-            keptOff: Set(connections.filter { !$0.participatesInSync }.map(\.id)),
-            unreadable: file.unreadableIds
-        )
-
         let migrated = Self.numberingUnrankedGroups(connections)
         if migrated != connections, storeIsTrusted {
             persist(migrated)
@@ -132,7 +126,7 @@ final class ConnectionStorage {
         return lastLoadFailed
     }
 
-    // False refuses dependent writes (sync marks, keychain items), or a password goes while its record stays.
+    // False refuses dependent writes (journal entries, keychain items), or a password goes while its record stays.
     // `byUser` false is a write the app makes itself, which never clears a failed integrity check.
     // `removingUnreadable` drops records this build cannot read, by id, as a deletion another device made does.
     @discardableResult
@@ -189,7 +183,7 @@ final class ConnectionStorage {
             return false
         }
         if connection.participatesInSync {
-            syncTracker.markDirty(.connection, id: connection.id.uuidString)
+            syncJournal.recorded(.connection, written: [connection.id.uuidString])
         }
 
         if let password = password, !password.isEmpty {
@@ -256,7 +250,7 @@ final class ConnectionStorage {
         let dirtyIds = (replaced + added)
             .filter(\.participatesInSync)
             .map { $0.id.uuidString }
-        syncTracker.markDirty(.connection, ids: dirtyIds)
+        syncJournal.recorded(.connection, written: dirtyIds)
         appEventsProvider().connectionUpdated.send(nil)
         return ConnectionImportWrite(added: added.map(\.id), replaced: replaced.map(\.id))
     }
@@ -270,7 +264,7 @@ final class ConnectionStorage {
                 return
             }
             if connection.participatesInSync {
-                syncTracker.markDirty(.connection, id: connection.id.uuidString)
+                syncJournal.recorded(.connection, written: [connection.id.uuidString])
             }
 
             if let password = password {
@@ -301,7 +295,7 @@ final class ConnectionStorage {
         let dirtyIds = updatesById.values
             .filter(\.participatesInSync)
             .map { $0.id.uuidString }
-        syncTracker.markDirty(.connection, ids: dirtyIds)
+        syncJournal.recorded(.connection, written: dirtyIds)
         return true
     }
 
@@ -348,7 +342,7 @@ final class ConnectionStorage {
         let dirtyIds = changed
             .filter(\.participatesInSync)
             .map { $0.id.uuidString }
-        syncTracker.markDirty(.connection, ids: dirtyIds)
+        syncJournal.recorded(.connection, written: dirtyIds)
         appEventsProvider().connectionUpdated.send(changed.count == 1 ? changed.first?.id : nil)
         return true
     }
@@ -455,7 +449,7 @@ final class ConnectionStorage {
 
         let updatedConnection = connections[index]
         if updatedConnection.participatesInSync {
-            syncTracker.markDirty(.connection, id: updatedConnection.id.uuidString)
+            syncJournal.recorded(.connection, written: [updatedConnection.id.uuidString])
         }
 
         return true
@@ -470,16 +464,10 @@ final class ConnectionStorage {
             return false
         }
         if connection.participatesInSync {
-            syncTracker.markDeleted(.connection, id: connection.id.uuidString)
+            syncJournal.recorded(.connection, deleted: [connection.id.uuidString])
         }
-        let origin: ConnectionLocalState.Origin = connection.participatesInSync ? .local : .localOnly
-        deleteSecrets(of: [connection], origin: origin)
-        ConnectionLocalState.purge(
-            connectionIds: [connection.id],
-            origin: origin,
-            appSettings: appSettingsProvider(),
-            syncTracker: syncTracker
-        )
+        deleteSecrets(of: [connection], origin: connection.participatesInSync ? .local : .localOnly)
+        ConnectionLocalState.purge(connectionIds: [connection.id], appSettings: appSettingsProvider())
         return true
     }
 
@@ -492,24 +480,11 @@ final class ConnectionStorage {
             Self.logger.error("Aborted deleteConnections: persistence failed for \(idsToDelete.count, privacy: .public) connection(s)")
             return false
         }
-        for conn in connectionsToDelete where conn.participatesInSync {
-            syncTracker.markDeleted(.connection, id: conn.id.uuidString)
-        }
         let syncedIds = Set(connectionsToDelete.filter(\.participatesInSync).map(\.id))
+        syncJournal.recorded(.connection, deleted: syncedIds.map(\.uuidString))
         deleteSecrets(of: connectionsToDelete.filter { syncedIds.contains($0.id) }, origin: .local)
         deleteSecrets(of: connectionsToDelete.filter { !syncedIds.contains($0.id) }, origin: .localOnly)
-        ConnectionLocalState.purge(
-            connectionIds: syncedIds,
-            origin: .local,
-            appSettings: appSettingsProvider(),
-            syncTracker: syncTracker
-        )
-        ConnectionLocalState.purge(
-            connectionIds: idsToDelete.subtracting(syncedIds),
-            origin: .localOnly,
-            appSettings: appSettingsProvider(),
-            syncTracker: syncTracker
-        )
+        ConnectionLocalState.purge(connectionIds: idsToDelete, appSettings: appSettingsProvider())
         return true
     }
 
@@ -580,7 +555,7 @@ final class ConnectionStorage {
         let dirtyIds = ([placedDuplicate] + renumbered)
             .filter(\.participatesInSync)
             .map { $0.id.uuidString }
-        syncTracker.markDirty(.connection, ids: dirtyIds)
+        syncJournal.recorded(.connection, written: dirtyIds)
 
         /// A duplicate that shares a credential profile takes the link, not a copy of the secret.
         /// Copying it would put the connection straight back into the N-copies-of-one-password
@@ -863,7 +838,7 @@ final class ConnectionStorage {
     func deleteSecrets(of connections: [DatabaseConnection], origin: ConnectionLocalState.Origin) {
         for connection in connections {
             for key in secretKeys(for: connection) {
-                if origin.leavesTombstones {
+                if origin.isFollowedEverywhere {
                     deleteSecret(forKey: key, connectionId: connection.id)
                 } else {
                     keychain.delete(forKey: key, deviceOnly: true)

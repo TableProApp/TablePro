@@ -126,7 +126,7 @@ struct ImportColumnMappingStoreTests {
         store.remember(["Name": .column("full_name")], forFields: ["Name"], in: deleted)
         store.remember(["Name": .column("full_name")], forFields: ["Name"], in: kept)
 
-        store.purgeConnections([deleted.connectionId], leavesTombstones: true)
+        store.purgeConnections([deleted.connectionId])
 
         #expect(store.overrides(for: deleted).isEmpty)
         #expect(store.overrides(for: kept) == ["Name": .column("full_name")])

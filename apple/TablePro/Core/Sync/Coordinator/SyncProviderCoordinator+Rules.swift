@@ -7,7 +7,7 @@ import Foundation
 import TableProFFI
 import TableProSyncTransport
 
-// Rules that read nothing but their arguments, and the record cache the Swift engine left.
+// The Mac's rules that read nothing but their arguments, and the record cache the Swift engine left.
 extension SyncProviderCoordinator {
     nonisolated static func makeRecordCache() -> SyncRecordCache {
         SyncRecordCache(
@@ -31,67 +31,16 @@ extension SyncProviderCoordinator {
         }
     }
 
-    // The engine's status while iCloud runs on this Mac. Only the engine's own phase says the zone was removed, which is
-    // what offers Upload Again. An engine still reading the provider off is about to run it.
-    nonisolated static func status(_ info: SyncStatusInfo) -> SyncStatus {
-        switch info.phase {
-        case .syncing:
-            return .syncing
-        case .zoneRemoved:
-            return .error(.blocked(.dataDeletedFromICloud))
-        case .waiting:
-            return .error(info.problem.flatMap(error(forProblem:)) ?? .busy)
-        case .unavailable:
-            return .error(info.problem.flatMap(error(forProblem:)) ?? .blocked(.unavailable))
-        // Phases of TablePro Sync, which this Mac does not run.
-        case .pullOnly, .newIdentity:
-            return .error(.unexpected)
-        case .off, .idle:
-            return info.problem.flatMap(error(forProblem:)).map { .error($0) } ?? .idle
+    // The kinds this Mac's switches leave out, and whether passwords ride along. A connection project groups connections,
+    // so it goes with them. The password switch holds on either provider: `syncsPasswords` also asks for iCloud on, which
+    // TablePro Sync turns off, and envelopes would then never sync.
+    nonisolated static func categories(_ settings: SyncSettings) -> SyncCategoriesArg {
+        var off = SyncRecordType.allCases.filter { !settings.syncs($0) }.map(\.coreKind)
+        if !settings.syncConnections {
+            off.append(connectionProjectKind)
         }
+        return SyncCategoriesArg(offKinds: off, passwords: settings.syncConnections && settings.syncPasswords)
     }
 
-    // The last pass's error code (core `SyncError::code`), in the terms the person can act on. Nil for a pass that only
-    // gave way: the account changed or the pass was cancelled, and the next one reports.
-    nonisolated static func error(forProblem code: String) -> SyncError? {
-        switch code {
-        case "sync.icloud.no_account":
-            return .blocked(.signedOut)
-        case "sync.icloud.restricted":
-            return .blocked(.accountRestricted)
-        case "sync.icloud.account_temporarily_unavailable":
-            return .blocked(.accountNotReady)
-        case "sync.icloud.quota_exceeded":
-            return .blocked(.storageFull)
-        case "sync.icloud.network":
-            return .offline
-        case "sync.icloud.throttled", "sync.state.busy":
-            return .busy
-        case "sync.adapter.store":
-            return .pullNotSaved
-        case "sync.icloud.account_changed", "sync.cancelled":
-            return nil
-        // A contract the engine's lanes have not filled yet.
-        case "sync.unimplemented":
-            return .blocked(.unavailable)
-        default:
-            return .unexpected
-        }
-    }
-
-    // A pass the person asked for runs whatever held the last one back, so it stands in for any other.
-    nonisolated static func stronger(_ pending: PassReasonTag?, _ incoming: PassReasonTag) -> PassReasonTag {
-        guard let pending else { return incoming }
-        return rank(incoming) > rank(pending) ? incoming : pending
-    }
-
-    nonisolated private static func rank(_ reason: PassReasonTag) -> Int {
-        switch reason {
-        case .foreground: return 0
-        case .networkBack: return 1
-        case .cloudKitPush: return 2
-        case .launch: return 3
-        case .person: return 4
-        }
-    }
+    nonisolated static let connectionProjectKind = "connection_project"
 }

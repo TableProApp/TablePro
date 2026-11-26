@@ -615,7 +615,7 @@ mod tests {
     #[gtk4::test]
     fn the_row_shows_the_icon_the_node_names() {
         let saved = SavedConnection {
-            icon: Some(ConnectionIcon::Cloud),
+            icon: Some(tablepro_storage::LibraryIcon::Named(ConnectionIcon::Cloud)),
             ..saved_connection("cloud")
         };
         let rows = Rows::new(&[shown(&saved, &[])]);

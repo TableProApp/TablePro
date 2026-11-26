@@ -23,6 +23,14 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         )
         var passes: [PassReasonTag] = []
         var providers: [SyncProviderTag] = []
+        var categories: [SyncCategoriesArg] = []
+        var hostChanges: [SyncHostChange] = []
+        var hostChangeAttempts = 0
+        var refuseHostChanges = false
+        var refuseCategories = false
+        // As the core's service opened Off answers every provider call.
+        var refusesProviderCalls = false
+        var icloudAccount: String?
         var uploadsAgain = 0
         var pass: (@Sendable (PassReasonTag) async -> Void)?
     }
@@ -42,7 +50,8 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
     }
 
     func syncNow(why: PassReasonTag) async throws {
-        let pass = state.withLockUnchecked { state in
+        let pass = try state.withLockUnchecked { state in
+            guard !state.refusesProviderCalls else { throw Self.notAllowed }
             state.passes.append(why)
             return state.pass
         }
@@ -50,14 +59,46 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
     }
 
     func chooseProvider(provider: SyncProviderTag) async throws {
-        update { state in
+        try state.withLockUnchecked { state in
+            guard !state.refusesProviderCalls else { throw Self.notAllowed }
             state.providers.append(provider)
             state.info.provider = provider
         }
     }
 
+    private static var notAllowed: AccountError {
+        .network("sync personal data while sync is off")
+    }
+
+    func setCategories(categories: SyncCategoriesArg) async throws {
+        let refused = state.withLockUnchecked { state in
+            guard !state.refuseCategories else { return true }
+            state.categories.append(categories)
+            return false
+        }
+        if refused {
+            throw AccountError.network("the engine did not take the categories")
+        }
+    }
+
+    func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws {
+        let refused = state.withLockUnchecked { state in
+            state.hostChangeAttempts += 1
+            guard !state.refuseHostChanges else { return true }
+            state.hostChanges.append(SyncHostChange(kind: kind, written: written, deleted: deleted))
+            return false
+        }
+        if refused {
+            throw AccountError.network("the engine is not ready")
+        }
+    }
+
     func uploadAgain() async throws {
         update { $0.uploadsAgain += 1 }
+    }
+
+    func icloudAccount() -> String? {
+        read { $0.icloudAccount }
     }
 }
 
@@ -69,8 +110,14 @@ private final class Fixture {
     let clock = ManualClock()
     let policyChanges = PassthroughSubject<DisableReason?, Never>()
     let notifications = NotificationCenter()
+    let journal = SyncHostJournal()
     var opening: AsyncGate?
+    // The provider each open was for, and the engine an open for Off gives when one is set.
+    private(set) var opened: [SyncProviderTag] = []
+    var offEngine: FakeSyncEngine?
     var enabled = true
+    var settings = SyncSettings.default
+    var keptAccounts: [String?] = []
     var policy: DisableReason?
     var opens = true
     var listener: (any SyncListener)?
@@ -82,16 +129,24 @@ private final class Fixture {
         suite = try EphemeralDefaults("SyncProviderCoordinatorTests")
         metadata = SyncMetadataStorage(userDefaults: suite.defaults)
         transport = CloudKitCoreTransport(database: database)
-        let host = SyncEngineHost(transport: transport) { [unowned self] listener in
-            await opening?.wait()
-            guard opens else { throw AccountError.network("the account did not open") }
-            self.listener = listener
-            return engine
-        }
+        let host = SyncEngineHost(
+            transport: transport,
+            keepICloudAccount: { [unowned self] in keptAccounts.append($0) },
+            open: { [unowned self] provider, listener in
+                await opening?.wait()
+                guard opens else { throw AccountError.network("the account did not open") }
+                opened.append(provider)
+                self.listener = listener
+                if provider == .off, let offEngine {
+                    return offEngine
+                }
+                return engine
+            }
+        )
         coordinator = SyncProviderCoordinator(
             host: host,
             loadSettings: { [unowned self] in
-                var settings = SyncSettings.default
+                var settings = settings
                 settings.enabled = enabled
                 return settings
             },
@@ -99,6 +154,7 @@ private final class Fixture {
             policyGate: { [unowned self] in policy },
             policyChanges: policyChanges.eraseToAnyPublisher(),
             licenseChanges: Empty().eraseToAnyPublisher(),
+            journal: journal,
             makeNetworkMonitor: { nil },
             metadata: metadata,
             pushRegistrar: .inert,
@@ -123,7 +179,7 @@ private final class Fixture {
                 for name in ["Tag_A", "Tag_B"] {
                     _ = try? await transport.modify(
                         account: "_alice",
-                        saves: [CloudKitRecord(recordType: "ConnectionTag", name: name, systemFields: nil, fields: [])],
+                        saves: [CloudKitRecord(recordType: "ConnectionTag", name: name, systemFields: nil, createdMs: nil, fields: [])],
                         deletes: []
                     )
                 }
@@ -257,6 +313,7 @@ struct SyncProviderCoordinatorTests {
 
         #expect(fixture.coordinator.syncStatus == .disabled(.userDisabled))
         #expect(fixture.transport.isClosed)
+        #expect(fixture.opened == [.icloud])
     }
 
     @Test("Turning the switch on opens the transport and runs the person's pass")
@@ -272,6 +329,46 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.passes == [.person])
         #expect(fixture.providers == [.icloud])
         #expect(!fixture.transport.isClosed)
+    }
+
+    @Test("Turned on after a write opened the engine Off, iCloud opens an engine of its own, which runs the pass")
+    func switchingOnAfterAnOffOpen() async throws {
+        let fixture = try Fixture()
+        let off = FakeSyncEngine()
+        off.update { state in
+            state.refusesProviderCalls = true
+            state.info.provider = .off
+            state.info.phase = .off
+        }
+        fixture.offEngine = off
+        fixture.enabled = false
+        fixture.coordinator.start()
+        fixture.journal.recorded(.connection, written: ["A"])
+        try await waitUntil { off.read { $0.hostChanges.count } == 1 }
+
+        fixture.enabled = true
+        fixture.coordinator.enableSync()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.opened == [.off, .icloud])
+        #expect(fixture.providers == [.icloud])
+        #expect(fixture.passes == [.person])
+        #expect(off.read { $0.passes }.isEmpty)
+        #expect(fixture.coordinator.syncStatus == .idle)
+    }
+
+    @Test("With iCloud stopped by the organization and the switch on, a write opens the engine Off, not for iCloud")
+    func writeUnderAPolicyOpensOff() async throws {
+        let fixture = try Fixture()
+        fixture.policy = .managedPolicy
+        fixture.coordinator.start()
+
+        fixture.journal.recorded(.group, written: ["G"])
+        try await waitUntil { fixture.engine.read { $0.hostChanges.count } == 1 }
+
+        #expect(fixture.opened == [.off])
+        #expect(fixture.passes.isEmpty)
+        #expect(fixture.transport.isClosed)
     }
 
     @Test("A CloudKit notice asks the engine for a pass")
@@ -386,8 +483,142 @@ struct SyncProviderCoordinatorTests {
         try await waitUntil { fixture.passes.count == 2 }
         await fixture.coordinator.passesFinished()
 
-        #expect(fixture.passes == [.launch, .launch])
+        #expect(fixture.passes == [.launch, .accountChanged])
         #expect(!fixture.transport.isClosed)
+    }
+
+    @Test("A store's write reaches the engine at once, offline too, and asks for one pass after a quiet spell")
+    func journalReachesTheEngineAndDebouncesAPass() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.journal.recorded(.connection, written: ["A"])
+        fixture.journal.recorded(.group, deleted: ["G"])
+        try await waitUntil { fixture.engine.read { $0.hostChanges.count } == 2 }
+        #expect(fixture.engine.read { $0.hostChanges } == [
+            SyncHostChange(kind: "connection", written: ["A"], deleted: []),
+            SyncHostChange(kind: "group", written: [], deleted: ["G"])
+        ])
+        #expect(fixture.passes == [.launch])
+
+        // The activation hold after the launch pass sleeps too, for longer.
+        try await waitUntil { fixture.clock.pendingSleeperCount == 2 }
+        fixture.clock.advance(by: SyncProviderCoordinator.journalDebounce)
+        try await waitUntil { fixture.passes.count == 2 }
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.passes == [.launch, .journal])
+    }
+
+    @Test("With iCloud off, a store's write still reaches the engine for the previous stable, and asks for no pass")
+    func journalWhileOffReachesTheEngine() async throws {
+        let fixture = try Fixture()
+        fixture.enabled = false
+        fixture.coordinator.start()
+
+        fixture.journal.recorded(.connection, deleted: ["A"])
+
+        try await waitUntil { fixture.engine.read { $0.hostChanges.count } == 1 }
+        await fixture.coordinator.passesFinished()
+        #expect(fixture.engine.read { $0.hostChanges } == [SyncHostChange(kind: "connection", written: [], deleted: ["A"])])
+        #expect(fixture.passes.isEmpty)
+        #expect(fixture.transport.isClosed)
+    }
+
+    @Test("A change the engine did not take goes again with the next, ahead of it and merged by kind")
+    func refusedHostChangesGoAgain() async throws {
+        let fixture = try Fixture()
+        fixture.enabled = false
+        fixture.engine.update { $0.refuseHostChanges = true }
+        fixture.coordinator.start()
+        fixture.journal.recorded(.connection, written: ["A"])
+        fixture.journal.recorded(.group, deleted: ["G"])
+        try await waitUntil { fixture.engine.read { $0.hostChangeAttempts } >= 2 }
+
+        fixture.engine.update { $0.refuseHostChanges = false }
+        fixture.journal.recorded(.connection, deleted: ["A"])
+
+        try await waitUntil { fixture.engine.read { $0.hostChanges.count } == 2 }
+        #expect(fixture.engine.read { $0.hostChanges } == [
+            SyncHostChange(kind: "connection", written: [], deleted: ["A"]),
+            SyncHostChange(kind: "group", written: [], deleted: ["G"])
+        ])
+    }
+
+    @Test("A pass tells the engine this Mac's categories once, and a change tells it again with a pass")
+    func categoriesReachTheEngine() async throws {
+        let fixture = try Fixture()
+        fixture.settings.syncTableFavorites = false
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        #expect(fixture.engine.read { $0.categories } == [SyncCategoriesArg(offKinds: ["favourite_table"], passwords: false)])
+
+        fixture.settings.syncTableFavorites = true
+        fixture.coordinator.categoriesChanged()
+        try await waitUntil { fixture.engine.read { $0.categories.count } == 2 }
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.engine.read { $0.categories }.last == SyncCategoriesArg(offKinds: [], passwords: false))
+        #expect(fixture.passes.last == .person)
+    }
+
+    @Test("The iCloud account the engine used is kept after each pass, for the next launch's open")
+    func theEnginesICloudAccountIsKept() async throws {
+        let fixture = try Fixture()
+        fixture.engine.update { $0.icloudAccount = "_alice" }
+
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.keptAccounts.last == "_alice")
+    }
+
+    @Test("A pass whose categories the engine refused sends nothing, so a category turned off never goes up")
+    func refusedCategoriesStopThePass() async throws {
+        let fixture = try Fixture()
+        fixture.engine.update { $0.refuseCategories = true }
+
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.providers == [.icloud])
+        #expect(fixture.passes.isEmpty)
+    }
+
+    @Test("A stop followed at once by an allow still stops iCloud before it waits for the switch again")
+    func stopThenAllowStillStops() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        var seen: [SyncStatus] = []
+        let watching = fixture.coordinator.$syncStatus.sink { seen.append($0) }
+        defer { watching.cancel() }
+
+        fixture.policy = .managedPolicy
+        fixture.policyChanges.send(.managedPolicy)
+        fixture.policy = nil
+        fixture.policyChanges.send(nil)
+        try await waitUntil { seen.last == .idle }
+        await fixture.coordinator.passesFinished()
+
+        #expect(seen.contains(.disabled(.managedPolicy)))
+        #expect(fixture.transport.isClosed == false)
+    }
+
+    @Test("Allowed again with the switch off, iCloud stays off for the person's reason")
+    func allowedAgainFollowsTheSwitch() async throws {
+        let fixture = try Fixture()
+        fixture.enabled = false
+        fixture.policy = .managedPolicy
+        fixture.coordinator.start()
+        #expect(fixture.coordinator.syncStatus == .disabled(.managedPolicy))
+
+        fixture.policy = nil
+        fixture.policyChanges.send(nil)
+
+        try await waitUntil { fixture.coordinator.syncStatus == .disabled(.userDisabled) }
+        #expect(fixture.transport.isClosed)
     }
 }
 
@@ -407,17 +638,17 @@ struct SyncProviderCoordinatorStatusTests {
 
     @Test("Each phase of the engine reads as the status the app already shows")
     func phases() {
-        #expect(SyncProviderCoordinator.status(Self.info(.idle)) == .idle)
-        #expect(SyncProviderCoordinator.status(Self.info(.syncing)) == .syncing)
-        #expect(SyncProviderCoordinator.status(Self.info(.zoneRemoved)) == .error(.blocked(.dataDeletedFromICloud)))
-        #expect(SyncProviderCoordinator.status(Self.info(.waiting(retryInMs: 500))) == .error(.busy))
-        #expect(SyncProviderCoordinator.status(Self.info(.off)) == .idle)
-        #expect(SyncProviderCoordinator.status(Self.info(.unavailable)) == .error(.blocked(.unavailable)))
-        #expect(SyncProviderCoordinator.status(Self.info(.pullOnly)) == .error(.unexpected))
-        #expect(SyncProviderCoordinator.status(Self.info(.idle, problem: "sync.icloud.network")) == .error(.offline))
-        #expect(SyncProviderCoordinator.status(Self.info(.idle, problem: "sync.icloud.account_changed")) == .idle)
+        #expect(SyncEngineRules.status(Self.info(.idle)) == .idle)
+        #expect(SyncEngineRules.status(Self.info(.syncing)) == .syncing)
+        #expect(SyncEngineRules.status(Self.info(.zoneRemoved)) == .error(.blocked(.dataDeletedFromICloud)))
+        #expect(SyncEngineRules.status(Self.info(.waiting(retryInMs: 500))) == .error(.busy))
+        #expect(SyncEngineRules.status(Self.info(.off)) == .idle)
+        #expect(SyncEngineRules.status(Self.info(.unavailable)) == .error(.blocked(.unavailable)))
+        #expect(SyncEngineRules.status(Self.info(.pullOnly)) == .error(.unexpected))
+        #expect(SyncEngineRules.status(Self.info(.idle, problem: "sync.icloud.network")) == .error(.offline))
+        #expect(SyncEngineRules.status(Self.info(.idle, problem: "sync.icloud.account_changed")) == .idle)
         // Only the engine's phase offers Upload Again.
-        #expect(SyncProviderCoordinator.status(Self.info(.idle, problem: "sync.icloud.zone_deleted_by_user")) == .error(.unexpected))
+        #expect(SyncEngineRules.status(Self.info(.idle, problem: "sync.icloud.zone_deleted_by_user")) == .error(.unexpected))
     }
 
     @Test("Each iCloud problem code is the condition the person can act on")
@@ -436,14 +667,38 @@ struct SyncProviderCoordinatorStatusTests {
             "sync.icloud.other": .unexpected
         ]
         for (code, error) in expected {
-            #expect(SyncProviderCoordinator.error(forProblem: code) == error, "\(code)")
+            #expect(SyncEngineRules.error(forProblem: code) == error, "\(code)")
         }
     }
 
-    @Test("The person's pass stands in for any other")
+    @Test("The person's pass stands in for any other, and a journal pass for none")
     func strongestPass() {
-        #expect(SyncProviderCoordinator.stronger(nil, .foreground) == .foreground)
-        #expect(SyncProviderCoordinator.stronger(.foreground, .person) == .person)
-        #expect(SyncProviderCoordinator.stronger(.person, .cloudKitPush) == .person)
+        #expect(SyncEngineRules.stronger(nil, .foreground) == .foreground)
+        #expect(SyncEngineRules.stronger(.foreground, .person) == .person)
+        #expect(SyncEngineRules.stronger(.person, .cloudKitPush) == .person)
+        #expect(SyncEngineRules.stronger(.journal, .foreground) == .foreground)
+        #expect(SyncEngineRules.stronger(.cloudKitPush, .journal) == .cloudKitPush)
+        #expect(SyncEngineRules.stronger(.cloudKitPush, .accountChanged) == .accountChanged)
+        #expect(SyncEngineRules.stronger(.accountChanged, .person) == .person)
     }
+
+    @Test("Each switch that is off names its core kinds, and passwords ride only with connections")
+    func categoriesFromTheSwitches() {
+        var settings = SyncSettings.default
+        settings.enabled = true
+        settings.syncGroupsAndTags = false
+        settings.syncSQLFavorites = false
+        settings.syncPasswords = true
+
+        let categories = SyncProviderCoordinator.categories(settings)
+
+        #expect(Set(categories.offKinds) == ["group", "tag", "saved_query", "saved_query_folder"])
+        #expect(categories.passwords)
+        #expect(!SyncProviderCoordinator.categories(settings.settingConnections(false)).passwords)
+        #expect(SyncProviderCoordinator.categories(settings.settingConnections(false)).offKinds.contains("connection"))
+    }
+}
+
+extension SyncPushRegistrar {
+    static let inert = SyncPushRegistrar(register: {}, unregister: {})
 }

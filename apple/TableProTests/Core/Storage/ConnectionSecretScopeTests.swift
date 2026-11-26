@@ -8,7 +8,7 @@ import Testing
 struct ConnectionSecretScopeTests {
     private let keychain = ScopeRecordingKeychain()
     private let suite: EphemeralDefaults
-    private let tracker: SyncChangeTracker
+    private let tracker: SyncJournalRecorder
     private let storage: ConnectionStorage
 
     init() throws {
@@ -17,11 +17,11 @@ struct ConnectionSecretScopeTests {
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("secret-scope-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults))
+        tracker = SyncJournalRecorder()
         storage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: suite.defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain,
             appEvents: AppEvents(),
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: InMemoryKeychain()))
@@ -432,7 +432,5 @@ struct ConnectionSecretScopeTests {
             #expect(keychain.localValue(forKey: totpKey(synced.id)) == nil)
             #expect(keychain.syncedValue(forKey: totpKey(synced.id)) == nil)
         }
-        // The purge releases a Local only owner from a Task; waiting keeps that defaults write inside the case.
-        try await waitUntil { tracker.ownersKeptOffSync.isEmpty }
     }
 }

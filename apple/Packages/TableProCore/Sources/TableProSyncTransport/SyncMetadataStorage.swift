@@ -101,6 +101,11 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         userDefaults.removeObject(forKey: dirtyKey(type))
     }
 
+    // One write, so no reader ever sees the set emptied between two.
+    public func replaceDirtyIds(_ ids: Set<String>, for type: SyncRecordType) {
+        saveDirtyIds(ids, for: type)
+    }
+
     // MARK: - Tombstones
 
     public func tombstones(for type: SyncRecordType) -> [Tombstone] {
@@ -163,6 +168,11 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         userDefaults.removeObject(forKey: tombstoneKey(type))
     }
 
+    // One write, so no reader ever sees the list emptied between two.
+    public func replaceTombstones(_ tombstones: [Tombstone], for type: SyncRecordType) {
+        saveTombstones(tombstones, for: type)
+    }
+
     public func pruneTombstones(
         olderThan days: Int,
         where isPushable: (SyncRecordType, Tombstone) -> Bool
@@ -192,6 +202,10 @@ public final class SyncMetadataStorage: @unchecked Sendable {
     public func keepOffSync(owners: Set<UUID>) {
         guard !owners.isEmpty else { return }
         saveOwnersKeptOffSync(ownersKeptOffSync().union(owners))
+    }
+
+    public func replaceOwnersKeptOffSync(_ owners: Set<UUID>) {
+        saveOwnersKeptOffSync(owners)
     }
 
     public func releaseOwnersKeptOffSync(_ owners: Set<UUID>) {
@@ -383,6 +397,11 @@ public final class SyncMetadataStorage: @unchecked Sendable {
             return hasStoredToken || lastSyncDate != nil ? .confirmed : .unknown
         }
         set { userDefaults.set(newValue.rawValue, forKey: key("zoneState")) }
+    }
+
+    // Back to what the getter infers from the token and the last sync date, as before the key existed.
+    public func forgetZoneState() {
+        userDefaults.removeObject(forKey: key("zoneState"))
     }
 
     // MARK: - Reset

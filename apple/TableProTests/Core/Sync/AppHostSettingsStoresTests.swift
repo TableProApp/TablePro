@@ -21,29 +21,30 @@ struct AppHostSettingsStoresTests {
             let pool = EphemeralDefaultsPool()
             let root = FileManager.default.temporaryDirectory
                 .appendingPathComponent("AppHostSettingsStoresTests-\(UUID().uuidString)", isDirectory: true)
-            let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: try pool.make().defaults))
+            let journal = SyncHostJournal()
             let trash = root.appendingPathComponent("Trash", isDirectory: true)
             try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
             let themes = ThemeCatalog(
                 userDirectory: root.appendingPathComponent("Themes", isDirectory: true),
                 bundleDirectory: nil,
                 fileTrash: .folder(trash),
-                syncTracker: tracker
+                syncJournal: journal
             )
             let storage = AppSettingsStorage(userDefaults: try pool.make().defaults)
             let manager = AppSettingsManager(
                 storage: storage,
                 themeEngine: ThemeEngine(catalog: themes),
-                syncTracker: tracker,
+                syncJournal: journal,
                 appEvents: AppEvents(),
                 passwordSyncDefaults: try pool.make().defaults,
-                switchSync: { _ in }
+                switchSync: { _ in },
+                changeSyncCategories: {}
             )
-            let slashCommands = CustomSlashCommandStorage(defaults: try pool.make().defaults, syncTracker: tracker)
+            let slashCommands = CustomSlashCommandStorage(defaults: try pool.make().defaults, syncJournal: journal)
             let columnLayouts = FileColumnLayoutPersister(
                 storageDirectory: root.appendingPathComponent("ColumnLayout", isDirectory: true),
                 defaults: try pool.make().defaults,
-                syncTracker: tracker
+                syncJournal: journal
             )
             self.pool = pool
             self.root = root
@@ -220,7 +221,11 @@ struct AppHostSettingsStoresTests {
         let harness = try Harness()
         let blocked = harness.root.appendingPathComponent("NotADirectory", isDirectory: false)
         try Data().write(to: blocked)
-        let persister = FileColumnLayoutPersister(storageDirectory: blocked, defaults: try harness.pool.make().defaults)
+        let persister = FileColumnLayoutPersister(
+            storageDirectory: blocked,
+            defaults: try harness.pool.make().defaults,
+            syncJournal: SyncHostJournal()
+        )
         let key = ColumnLayoutTableKey(connectionId: UUID(), databaseName: "db", schemaName: nil, tableName: "t")
 
         #expect(throws: (any Error).self) {

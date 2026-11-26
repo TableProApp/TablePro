@@ -33,10 +33,10 @@ final class KeychainProviderFollower {
         self.record = record
     }
 
-    // Only reads the engine once it is open: following it never opens it.
+    // Only reads the engine once it is open, whatever provider it was opened for: following it never opens it.
     func start(host: SyncEngineHost) {
         start(changes: host.statusChanges.eraseToAnyPublisher()) { [weak host] in
-            host?.openedEngine?.status().provider
+            host?.openedEngine(for: .off)?.status().provider
         }
     }
 

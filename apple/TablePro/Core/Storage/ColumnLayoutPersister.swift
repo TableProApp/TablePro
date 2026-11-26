@@ -32,16 +32,16 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
 
     private let storageDirectory: URL
     private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     private var cache: [UUID: [String: PersistedColumnLayout]] = [:]
 
-    init(storageDirectory: URL? = nil, defaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncTracker: SyncChangeTracker = .shared) {
+    init(storageDirectory: URL? = nil, defaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncJournal: SyncHostJournal = .shared) {
         self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()
         self.defaults = defaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
 
         do {
             try FileManager.default.createDirectory(
@@ -77,7 +77,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         entries[key.storageKey] = entry
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
+        syncJournal.recorded(.settings, written: [Self.syncCategory(for: key.storageKey)])
     }
 
     func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? {
@@ -129,14 +129,10 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         entries[key.storageKey] = entry
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
+        syncJournal.recorded(.settings, written: [Self.syncCategory(for: key.storageKey)])
     }
 
     /// Moves a table's saved widths, order and hidden columns onto its new name.
-    ///
-    /// Persisted before either sync marker is written, because `markDeleted` posts a change
-    /// notification that can start a sync, and a sync reading the old file would put the entry
-    /// back under the name that has gone.
     func renameTable(from oldScope: TableScope, to newScope: TableScope) {
         let oldKey = oldScope.storageComponent
         let newKey = newScope.storageComponent
@@ -146,8 +142,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         entries[newKey] = entry
         cache[oldScope.connectionId] = entries
         writeEntries(entries, for: oldScope.connectionId)
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: newKey))
-        syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: oldKey)], owner: oldScope.connectionId)
+        syncJournal.recorded(.settings, written: [Self.syncCategory(for: newKey)], deleted: [Self.syncCategory(for: oldKey)])
     }
 
     /// Moves every table's saved layout from one container to another. Same prefix rewrite as the
@@ -177,10 +172,11 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         }
         cache[connectionId] = entries
         writeEntries(entries, for: connectionId)
-        for key in moving {
-            syncTracker.markDirty(.settings, id: Self.syncCategory(for: newPrefix + key.dropFirst(oldPrefix.count)))
-            syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: key)], owner: connectionId)
-        }
+        syncJournal.recorded(
+            .settings,
+            written: moving.map { Self.syncCategory(for: newPrefix + $0.dropFirst(oldPrefix.count)) },
+            deleted: moving.map(Self.syncCategory(for:))
+        )
     }
 
     func dropTable(_ scope: TableScope) {
@@ -193,9 +189,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         ))
     }
 
-    /// Drops every table's layout under a container. The sync deletions go out after the file is
-    /// written, not before, so a sync fired by the notification cannot read the entries back off a
-    /// stale file and re-upload them.
+    /// Drops every table's layout under a container.
     func dropContainer(connectionId: UUID, database: String, schema: String?) {
         let prefix = TableScope.storagePrefix(connectionId: connectionId, database: database, schema: schema)
         var entries = loadEntries(for: connectionId)
@@ -206,24 +200,17 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         }
 
         guard store(entries, for: connectionId) else { return }
-        syncTracker.markDeleted(.settings, ids: dropping.map(Self.syncCategory(for:)), owner: connectionId)
+        syncJournal.recorded(.settings, deleted: dropping.map(Self.syncCategory(for:)))
     }
 
-    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
-        var categoriesByConnection: [UUID: Set<String>] = [:]
+    func purgeConnections(_ connectionIds: Set<UUID>) {
+        var categories: [String] = []
         for connectionId in connectionIds {
-            categoriesByConnection[connectionId] = Set(loadEntries(for: connectionId).keys.map(Self.syncCategory(for:)))
+            categories += loadEntries(for: connectionId).keys.map(Self.syncCategory(for:))
             cache[connectionId] = [:]
             removeFile(for: connectionId)
         }
-        /// The dirty marks go either way. A tombstone from a remote delete would push the sender's
-        /// own deletion back at it, but leaving the ids dirty means the next push looks for entries
-        /// that are gone and never drains them.
-        if leavesTombstones {
-            syncTracker.markDeleted(.settings, idsByOwner: categoriesByConnection)
-        } else {
-            syncTracker.discardDirty(.settings, ids: categoriesByConnection.values.flatMap { $0 })
-        }
+        syncJournal.recorded(.settings, deleted: categories)
     }
 
     func clear(for key: ColumnLayoutTableKey) {
@@ -233,7 +220,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         guard entries.removeValue(forKey: key.storageKey) != nil else { return }
 
         guard store(entries, for: key.connectionId) else { return }
-        syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: key.storageKey)], owner: key.connectionId)
+        syncJournal.recorded(.settings, deleted: [Self.syncCategory(for: key.storageKey)])
     }
 
     func clearGeometry(for key: ColumnLayoutTableKey) {
@@ -248,11 +235,11 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
             entries[key.storageKey] = entry
             cache[key.connectionId] = entries
             writeEntries(entries, for: key.connectionId)
-            syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
+            syncJournal.recorded(.settings, written: [Self.syncCategory(for: key.storageKey)])
         } else {
             entries.removeValue(forKey: key.storageKey)
             guard store(entries, for: key.connectionId) else { return }
-            syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: key.storageKey)], owner: key.connectionId)
+            syncJournal.recorded(.settings, deleted: [Self.syncCategory(for: key.storageKey)])
         }
     }
 
@@ -288,7 +275,6 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
                 continue
             }
             removed.forEach(removeLegacyHidden(storageKey:))
-            syncTracker.discardDirty(.settings, ids: removed.map(Self.syncCategory(for:)))
         }
         return persisted
     }

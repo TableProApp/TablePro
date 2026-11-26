@@ -385,7 +385,7 @@ struct MacImportLibraryStoreTests {
         let refusing = ConnectionStorage(
             fileURL: library.directory.appendingPathComponent("refusing-connections.json"),
             userDefaults: suite.defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: library.metadata),
+            syncJournal: SyncHostJournal(),
             keychain: RefusingKeychain(),
             appEvents: library.appEvents,
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: InMemoryKeychain()))

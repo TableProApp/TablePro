@@ -446,7 +446,7 @@ impl Fixture {
                 options: Default::default(),
             },
             workspace_settings: WorkspaceSettings::workspace(false),
-            safe_mode: tablepro_core::SafeModeLevel::Off,
+            safe_mode: tablepro_core::SafeModeLevel::Silent,
         }
     }
 
