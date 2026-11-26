@@ -8,7 +8,7 @@ use tablepro_records::Kind;
 
 use super::copy::{self, Incoming, kind_of, name_of};
 use super::settle::{Batch, Settle, View};
-use super::{Counts, Fetcher, SCOPE};
+use super::{Counts, Fetcher, SCOPE, Waited};
 use crate::api::cloudkit::{CloudKitFailure, CloudKitFetched};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, RecordKey};
@@ -74,9 +74,11 @@ impl Fetcher<'_> {
         Ok((answers, unanswered))
     }
 
-    // Recovered in the same fetch as a refill, a change takes the pull as the refill did.
-    pub(super) async fn recover(&self, pull_wins: BTreeSet<Kind>) -> Result<Counts, SyncError> {
-        let recovery = self.recovery().await?;
+    // Recovered in the same fetch as a refill, a change takes the pull as the refill did. A record CloudKit asked to
+    // wait for in this fetch is not asked for again in it.
+    pub(super) async fn recover(&self, pull_wins: BTreeSet<Kind>, waited: &mut Waited) -> Result<Counts, SyncError> {
+        let mut recovery = self.recovery().await?;
+        recovery.names.retain(|name| !waited.holds(name));
         if recovery.names.is_empty() && recovery.deletions.is_empty() && recovery.release.is_empty() {
             return Ok(Counts::default());
         }
@@ -94,7 +96,11 @@ impl Fetcher<'_> {
                 }
                 // Gone from the zone with no deletion a delta brought: the change no longer stands.
                 CloudKitFetched::Missing { name } => release.extend(copy::key_of_name(&name)),
-                CloudKitFetched::Failed { .. } => {}
+                CloudKitFetched::Failed {
+                    name,
+                    code,
+                    retry_after_ms,
+                } => waited.note(&name, code, retry_after_ms),
             }
         }
         let mut counts = self
@@ -129,6 +135,8 @@ impl Fetcher<'_> {
                 View::NoAdapter | View::Unreadable(_) => {}
                 _ if held.record.deleted.is_some() => recovery.deletions.push(held.key),
                 View::Stored(record) if record.standing == Standing::LocalOnly => recovery.release.push(held.key),
+                // CloudKit asked to wait before this record is asked for again.
+                View::Stored(_) | View::Missing if self.waiting.contains(&held.key) => {}
                 View::Stored(_) | View::Missing => recovery.names.extend(name_of(&held.key)),
             }
         }

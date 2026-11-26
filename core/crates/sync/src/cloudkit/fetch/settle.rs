@@ -1,13 +1,16 @@
-// One commit of what the zone said (0054, A pass): each copy merged three ways against its base, the stores written,
-// then the bases, the held and deferred sets and last the token, in one state commit. A crash before the commit
-// replays the batch, and the merge leaves what a store already took as it is.
+// One batch of what the zone said (0054, A pass): each copy merged three ways against its base, the stores written,
+// then the bases, the held and deferred sets and last the token, in one state commit. A batch that writes a store
+// first commits its bases as pending rows (0064), so a crash before the last commit replays the batch and leaves what a
+// store already took as it is, even once the zone changed again.
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde_json::Value;
 use tablepro_records::Kind;
 use tablepro_records::merge::{self, Merged, Mode, Sides};
 
 use super::copy::{Copy, Incoming, kind_of};
+use super::pending::Staged;
 use super::stores::{Local, Planned, carried, overlay};
 use super::{Counts, Fetcher, PROFILES, SCOPE};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
@@ -62,7 +65,7 @@ pub(super) enum View {
 
 pub(super) struct Settle<'s, 'f> {
     pub fetcher: &'s Fetcher<'f>,
-    pub txn: Box<dyn StateTxn>,
+    pub txn: Staged,
     pub counts: Counts,
     pub locals: BTreeMap<Kind, Option<Local>>,
     pub changes: BTreeMap<Kind, BTreeMap<String, LocalChange>>,
@@ -125,6 +128,17 @@ impl Fetcher<'_> {
         if let Some(finish) = &batch.finish {
             settle.finish(finish).await?;
         }
+        if let Some(store) = settle.moved {
+            return Ok(Err(store));
+        }
+        self.check_stop()?;
+        if settle.changes.is_empty() {
+            settle.clear_pending().await?;
+        } else {
+            let planned = settle.txn;
+            settle.txn = planned.split(self.state).await?;
+            self.check_stop()?;
+        }
         if settle.write_stores().await?.is_none() {
             return Ok(Err(settle.moved.unwrap_or_default()));
         }
@@ -137,6 +151,7 @@ impl Fetcher<'_> {
         settle
             .store_token(batch.token, batch.caught_up, batch.finish.is_some())
             .await?;
+        self.check_stop()?;
         settle.commit().await.map(Ok)
     }
 }
@@ -145,7 +160,7 @@ impl<'s, 'f> Settle<'s, 'f> {
     pub(super) fn new(fetcher: &'s Fetcher<'f>, txn: Box<dyn StateTxn>, pull_wins: BTreeSet<Kind>) -> Self {
         Self {
             fetcher,
-            txn,
+            txn: Staged::new(txn),
             counts: Counts::default(),
             locals: BTreeMap::new(),
             changes: BTreeMap::new(),
@@ -180,23 +195,10 @@ impl<'s, 'f> Settle<'s, 'f> {
             View::Stored(record) => Some(record),
             View::Missing => None,
         };
-        let local = record.as_ref().map(|record| &record.fields);
-        let held = local.and_then(|local| carried(copy.kind, &key.record_id, local));
-        let merged = if self.pull_wins.contains(&copy.kind) {
-            Merged::Record(copy.fields.clone())
-        } else {
-            let base = self.base(&key).await?;
-            let sides = Sides {
-                base: base.as_ref().and_then(|base| base.fields.as_ref()),
-                local: held.as_ref().or(local),
-                server: Some(&copy.fields),
-            };
-            merge::merge(copy.kind, Mode::Personal, sides)
-        };
-        let merged = match (merged, local, &held) {
-            (Merged::Record(fields), Some(local), Some(held)) => Merged::Record(overlay(local, held, &fields)),
-            (merged, ..) => merged,
-        };
+        let pull_wins = self.pull_wins.contains(&copy.kind);
+        let merged = self
+            .merged(copy.kind, &key, record.as_ref(), Some(&copy.fields), pull_wins)
+            .await?;
         self.settle_local(copy.kind, &key, record.as_ref(), merged);
         self.txn
             .put(Row::Base(BaseRow {
@@ -211,6 +213,36 @@ impl<'s, 'f> Settle<'s, 'f> {
             }))
             .await?;
         self.release(&key).await
+    }
+
+    // What a pulled copy, or a deletion when `server` is None, leaves of the store's copy: the merge of what iCloud
+    // carries of it against the base, put back on the local copy with what iCloud does not carry. In refill the pull
+    // wins.
+    pub(super) async fn merged(
+        &mut self,
+        kind: Kind,
+        key: &RecordKey,
+        record: Option<&LocalRecord>,
+        server: Option<&Value>,
+        pull_wins: bool,
+    ) -> Result<Merged, SyncError> {
+        let local = record.map(|record| &record.fields);
+        let held = local.and_then(|local| carried(kind, &key.record_id, local));
+        let merged = if pull_wins {
+            server.map_or(Merged::Deleted, |server| Merged::Record(server.clone()))
+        } else {
+            let base = self.base(key).await?;
+            let sides = Sides {
+                base: base.as_ref().and_then(|base| base.fields.as_ref()),
+                local: held.as_ref().or(local),
+                server,
+            };
+            merge::merge(kind, Mode::Personal, sides)
+        };
+        Ok(match (merged, local, &held) {
+            (Merged::Record(fields), Some(local), Some(held)) => Merged::Record(overlay(local, held, &fields)),
+            (merged, ..) => merged,
+        })
     }
 
     fn settle_local(&mut self, kind: Kind, key: &RecordKey, record: Option<&LocalRecord>, merged: Merged) {
@@ -252,17 +284,10 @@ impl<'s, 'f> Settle<'s, 'f> {
             View::Stored(record) => Some(record),
             View::Missing => None,
         };
-        let base = self.base(key).await?;
-        let local = record.as_ref().map(|record| &record.fields);
-        let held = local.and_then(|local| carried(kind, &key.record_id, local));
-        let sides = Sides {
-            base: base.as_ref().and_then(|base| base.fields.as_ref()),
-            local: held.as_ref().or(local),
-            server: None,
-        };
         // Otherwise a content edit here revives the record: it stays, and with no base it goes up as a create. A
         // store in refill went back in time, so what differs from the base there is no edit.
-        let goes = self.pull_wins.contains(&kind) || merge::merge(kind, Mode::Personal, sides) == Merged::Deleted;
+        let pull_wins = self.pull_wins.contains(&kind);
+        let goes = self.merged(kind, key, record.as_ref(), None, pull_wins).await? == Merged::Deleted;
         if record.is_some() && goes {
             self.plan(kind, key, Planned::Delete);
         }

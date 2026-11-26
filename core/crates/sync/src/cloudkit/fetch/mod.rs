@@ -18,15 +18,19 @@ use crate::api::cloudkit::{CloudKitChanges, CloudKitFailure, CloudKitFetched, Cl
 use crate::api::error::{StateError, SyncError};
 use crate::api::ids::{Cursor, RecordKey, ScopeName};
 use crate::api::state::{Row, RowKey, StateIdentity, StateStore};
+use crate::cloudkit::codes;
+use crate::engine::{Backoff, StopSignal};
 
 mod copy;
 mod full;
 mod held;
+mod pending;
 mod rebase;
 mod settle;
 mod stores;
 
 pub use rebase::{RebaseFailure, Rebased, ServerChanged};
+pub(in crate::cloudkit) use stores::carried;
 
 use copy::Incoming;
 use settle::{Batch, Finish};
@@ -36,7 +40,7 @@ pub const SCOPE: ScopeName = ScopeName::Personal;
 
 // A profile's deletion unlinks connections and removes Keychain secrets no pull can bring back: it waits for a build
 // that reads the profile, and a deletion found late, deferred or by a full fetch, never removes one.
-const PROFILES: [Kind; 2] = [Kind::SshProfile, Kind::CredentialProfile];
+pub(in crate::cloudkit) const PROFILES: [Kind; 2] = [Kind::SshProfile, Kind::CredentialProfile];
 
 // The `stores` row of one kind. Kinds that share a store can be in different categories, so each refills on its own.
 fn identity_row(kind: Kind, store: &str) -> String {
@@ -95,14 +99,48 @@ pub struct FetchReport {
     pub refilled: Vec<Kind>,
     pub pages: u32,
     pub counts: Counts,
+    // The longest wait CloudKit named for a record it could not return; the next pass waits it out.
+    pub retry_after_ms: Option<u64>,
+    // Each record CloudKit asked to wait for, and how long, which the engine does not ask for before then.
+    pub waits: Vec<(RecordKey, u64)>,
+    // CloudKit asked to be tried again later, or the network dropped, for a record it named no wait for.
+    pub throttled: bool,
 }
 
 pub struct Fetcher<'a> {
-    transport: &'a dyn CloudKitTransport,
-    state: &'a dyn StateStore,
-    account: String,
-    adapters: BTreeMap<Kind, Arc<dyn RecordAdapter>>,
-    categories: Categories,
+    pub(in crate::cloudkit) transport: &'a dyn CloudKitTransport,
+    pub(in crate::cloudkit) state: &'a dyn StateStore,
+    pub(in crate::cloudkit) account: String,
+    pub(in crate::cloudkit) adapters: BTreeMap<Kind, Arc<dyn RecordAdapter>>,
+    pub(in crate::cloudkit) categories: Categories,
+    stop: Option<StopSignal>,
+    // Records CloudKit asked to wait for that are still waiting: their changes stay held and are not asked for.
+    waiting: BTreeSet<RecordKey>,
+}
+
+// Records CloudKit could not return and asked to wait for, which the fetch does not ask for again. A wait past the
+// scheduler's cap is read as the cap, so CloudKit cannot hold a record off until a restart.
+#[derive(Debug, Default)]
+struct Waited {
+    keys: BTreeMap<RecordKey, u64>,
+    later: bool,
+}
+
+impl Waited {
+    fn note(&mut self, name: &str, code: i64, retry_after_ms: Option<u64>) {
+        match (copy::key_of_name(name), retry_after_ms) {
+            (Some(key), Some(wait)) => {
+                let wait = wait.min(Backoff::MAX_RETRY_AFTER_MS);
+                let held = self.keys.entry(key).or_insert(wait);
+                *held = (*held).max(wait);
+            }
+            _ => self.later |= codes::later(code),
+        }
+    }
+
+    fn holds(&self, name: &str) -> bool {
+        copy::key_of_name(name).is_some_and(|key| self.keys.contains_key(&key))
+    }
 }
 
 // Where the fetch starts: the stored token, the kinds whose store went back or was replaced, and each kind's store
@@ -213,16 +251,37 @@ impl<'a> Fetcher<'a> {
                 .map(|adapter| (adapter.kind(), Arc::clone(adapter)))
                 .collect(),
             categories,
+            stop: None,
+            waiting: BTreeSet::new(),
         })
     }
 
+    // A provider stop ends the fetch before its next store write or state commit (P1-M4).
+    #[must_use]
+    pub fn stopped_by(mut self, stop: StopSignal) -> Self {
+        self.stop = Some(stop);
+        self
+    }
+
+    #[must_use]
+    pub fn waiting(mut self, keys: BTreeSet<RecordKey>) -> Self {
+        self.waiting = keys;
+        self
+    }
+
+    pub(in crate::cloudkit) fn check_stop(&self) -> Result<(), SyncError> {
+        self.stop.as_ref().map_or(Ok(()), StopSignal::check)
+    }
+
     pub async fn fetch(&self) -> Result<FetchReport, SyncError> {
+        self.settle_pending().await?;
         let start = self.start().await?;
         let mut report = FetchReport {
             refilled: start.refill.iter().copied().collect(),
             ..FetchReport::default()
         };
         let mut pass = Pass::new(start);
+        let mut waited = Waited::default();
         loop {
             let changes = match self
                 .transport
@@ -244,7 +303,7 @@ impl<'a> Fetcher<'a> {
             }
             let last = !changes.more;
             let token = changes.token.clone();
-            let items = self.read(changes).await?;
+            let items = self.read(changes, &mut waited).await?;
             let batch = pass.batch(items, token.clone(), last);
             report.counts.add(self.settle(batch).await?);
             if last {
@@ -253,7 +312,10 @@ impl<'a> Fetcher<'a> {
             pass.next = Some(token);
         }
         report.full = pass.full;
-        report.counts.add(self.recover(pass.refill()).await?);
+        report.counts.add(self.recover(pass.refill(), &mut waited).await?);
+        report.retry_after_ms = waited.keys.values().max().copied();
+        report.waits = waited.keys.into_iter().collect();
+        report.throttled = waited.later;
         Ok(report)
     }
 
@@ -303,19 +365,24 @@ impl<'a> Fetcher<'a> {
 
     // A record the zone reported changed whose fetch failed is fetched by name, and held when it still fails, so the
     // token can pass it without losing the change.
-    async fn read(&self, changes: CloudKitChanges) -> Result<Vec<Incoming>, SyncError> {
+    async fn read(&self, changes: CloudKitChanges, waited: &mut Waited) -> Result<Vec<Incoming>, SyncError> {
         let mut items: Vec<Incoming> = changes.changed.iter().filter_map(copy::changed).collect();
-        let unfetched: Vec<String> = changes
+        let (waiting, unfetched): (Vec<String>, Vec<String>) = changes
             .unfetched
             .into_iter()
             .filter(|name| copy::key_of_name(name).is_some())
-            .collect();
+            .partition(|name| copy::key_of_name(name).is_some_and(|key| self.waiting.contains(&key)));
         let (answers, unanswered) = self.fetch_asked(unfetched).await?;
         for answer in answers {
             match answer {
                 CloudKitFetched::Found { record } => items.extend(copy::changed(&record)),
                 CloudKitFetched::Missing { .. } => {}
-                CloudKitFetched::Failed { name, .. } => {
+                CloudKitFetched::Failed {
+                    name,
+                    code,
+                    retry_after_ms,
+                } => {
+                    waited.note(&name, code, retry_after_ms);
                     items.extend(copy::key_of_name(&name).map(|key| Incoming::Unread { key, tag: None }));
                 }
             }
@@ -323,6 +390,7 @@ impl<'a> Fetcher<'a> {
         items.extend(
             unanswered
                 .iter()
+                .chain(&waiting)
                 .filter_map(|name| copy::key_of_name(name))
                 .map(|key| Incoming::Unread { key, tag: None }),
         );

@@ -89,8 +89,8 @@ async fn a_store_that_refuses_the_write_commits_no_base_and_no_token() {
     assert!(rig.store(Kind::Connection).fields(A).is_some());
 }
 
-// The crash window between the store write and the state commit: the replay finds the store already holding the
-// merge and writes nothing new, then commits the base and the token.
+// The crash window between the store write and the state commit after it, the second of the batch's commits: the
+// replay finds the store already holding the merge and writes nothing new, then commits the base and the token.
 #[tokio::test]
 async fn a_crash_after_the_store_write_replays_with_no_effect() {
     let rig = Rig::new().await;
@@ -102,9 +102,9 @@ async fn a_crash_after_the_store_write_replays_with_no_effect() {
     );
     rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 6432}));
     let crashing = Crashing::new(rig.state.clone());
-    crashing.crash_next_commit();
+    crashing.crash_after_commits(1);
 
-    let crashed = rig.fetcher_on(&rig.cloud, &crashing).fetch().await;
+    let crashed = rig.fetcher_on(rig.cloud.as_ref(), &crashing).fetch().await;
     let after_crash = rig.store(Kind::Connection).fields(A);
     let writes = rig.store(Kind::Connection).writes();
     let replay = rig.fetch().await.unwrap();
@@ -151,7 +151,7 @@ async fn a_state_file_of_another_provider_is_refused() {
         .await
         .unwrap();
 
-    let refused = Fetcher::new(&rig.cloud, service.as_ref(), &[], Categories::default());
+    let refused = Fetcher::new(rig.cloud.as_ref(), service.as_ref(), &[], Categories::default());
 
     assert!(matches!(refused, Err(SyncError::State(StateError::WrongIdentity))));
 }

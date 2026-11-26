@@ -1,5 +1,5 @@
 // Faults the fake zone and state file do not play on their own: records the zone lists but cannot return, a fetch
-// that stops midway, and a crash between the store write and the state commit.
+// that stops midway, a crash at one of the state commits, and a modify call's answers changed on the way back.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -25,6 +25,9 @@ type Hook<'a> = Box<dyn FnOnce() + Send + 'a>;
 struct Faults {
     unfetched: BTreeSet<String>,
     failing_reads: BTreeMap<String, u32>,
+    // The wait a failing read names, and its code when not 15.
+    read_wait: Option<u64>,
+    read_code: Option<i64>,
     fetch_calls_before_failure: Option<(usize, CloudKitFailure)>,
     read_call_failure: Option<CloudKitFailure>,
     names_per_call: Option<usize>,
@@ -60,6 +63,15 @@ impl<'a> Unreliable<'a> {
     // The next `times` reads of the record by name fail.
     pub fn fail_reads(&self, name: &str, times: u32) {
         lock(&self.faults).failing_reads.insert(name.to_owned(), times);
+    }
+
+    // A failing read asks to be tried again after this long, as a throttled one does.
+    pub fn wait_on_failed_reads(&self, ms: u64) {
+        lock(&self.faults).read_wait = Some(ms);
+    }
+
+    pub fn failed_reads_answer(&self, code: i64) {
+        lock(&self.faults).read_code = Some(code);
     }
 
     // After `calls` more change fetches, the next one fails with the network.
@@ -211,8 +223,8 @@ impl<'a> CloudKitTransport for Unreliable<'a> {
                         *times -= 1;
                         CloudKitFetched::Failed {
                             name,
-                            code: 15,
-                            retry_after_ms: None,
+                            code: faults.read_code.unwrap_or(15),
+                            retry_after_ms: faults.read_wait,
                         }
                     }
                     _ => answer,
@@ -231,22 +243,27 @@ impl<'a> CloudKitTransport for Unreliable<'a> {
     }
 }
 
-// The process stops after the stores took a batch and before the state file committed it.
+// The process stops at a state commit: the commits before it land, it and everything after it do not.
 pub struct Crashing {
     inner: Arc<dyn StateStore>,
-    crash_next_commit: Arc<Mutex<bool>>,
+    // The commits still to land before the crash.
+    crash: Arc<Mutex<Option<usize>>>,
 }
 
 impl Crashing {
     pub fn new(inner: Arc<dyn StateStore>) -> Self {
         Self {
             inner,
-            crash_next_commit: Arc::new(Mutex::new(false)),
+            crash: Arc::new(Mutex::new(None)),
         }
     }
 
     pub fn crash_next_commit(&self) {
-        *lock(&self.crash_next_commit) = true;
+        self.crash_after_commits(0);
+    }
+
+    pub fn crash_after_commits(&self, landing: usize) {
+        *lock(&self.crash) = Some(landing);
     }
 }
 
@@ -263,14 +280,14 @@ impl StateStore for Crashing {
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError> {
         Ok(Box::new(CrashingTxn {
             inner: self.inner.begin().await?,
-            crash: Arc::clone(&self.crash_next_commit),
+            crash: Arc::clone(&self.crash),
         }))
     }
 }
 
 struct CrashingTxn {
     inner: Box<dyn StateTxn>,
-    crash: Arc<Mutex<bool>>,
+    crash: Arc<Mutex<Option<usize>>>,
 }
 
 #[async_trait]
@@ -300,11 +317,166 @@ impl StateTxn for CrashingTxn {
     }
 
     async fn commit(self: Box<Self>) -> Result<Committed, StateError> {
-        if std::mem::take(&mut *lock(&self.crash)) {
-            return Err(StateError::Io {
-                detail: "the process stopped".to_owned(),
-            });
+        {
+            let mut crash = lock(&self.crash);
+            match *crash {
+                Some(0) => {
+                    return Err(StateError::Io {
+                        detail: "the process stopped".to_owned(),
+                    });
+                }
+                Some(landing) => *crash = Some(landing - 1),
+                None => {}
+            }
         }
         self.inner.commit().await
+    }
+}
+
+type ModifyHook = Box<dyn FnOnce(&FakeCloudKit) + Send>;
+
+#[derive(Default)]
+struct ModifyFaults {
+    before_modify: Vec<ModifyHook>,
+    // The next answer for the record, in place of what the zone gave.
+    answers: BTreeMap<String, CloudKitOutcome>,
+    // Answers the call leaves out.
+    unanswered: BTreeSet<String>,
+    // The next modify call never answers.
+    hang: bool,
+    // Records a change fetch lists but does not return, and the wait their next read by name asks for.
+    unfetched: BTreeMap<String, u64>,
+    // Each name read by name, in order.
+    read: Vec<String>,
+}
+
+// The fake zone behind the pass, with calls it does not play on its own: the account switching as a modify call
+// starts, a record's answer changed or left out, a call that never answers, and a record CloudKit asks to wait for.
+pub struct Flaky {
+    inner: Arc<FakeCloudKit>,
+    faults: Mutex<ModifyFaults>,
+    // Told once a modify call starts.
+    pub modifying: tokio::sync::Notify,
+}
+
+impl Flaky {
+    pub fn new(inner: Arc<FakeCloudKit>) -> Arc<Self> {
+        Arc::new(Self {
+            inner,
+            faults: Mutex::new(ModifyFaults::default()),
+            modifying: tokio::sync::Notify::new(),
+        })
+    }
+
+    pub fn hang_next_modify(&self) {
+        lock(&self.faults).hang = true;
+    }
+
+    // The change fetch leaves the record out, and its first read by name answers that CloudKit asks to wait `ms`.
+    pub fn wait_on_read(&self, name: &str, ms: u64) {
+        lock(&self.faults).unfetched.insert(name.to_owned(), ms);
+    }
+
+    pub fn reads_of(&self, name: &str) -> usize {
+        lock(&self.faults).read.iter().filter(|read| *read == name).count()
+    }
+
+    pub fn before_next_modify(&self, hook: ModifyHook) {
+        lock(&self.faults).before_modify.push(hook);
+    }
+
+    pub fn answer_once(&self, name: &str, outcome: CloudKitOutcome) {
+        lock(&self.faults).answers.insert(name.to_owned(), outcome);
+    }
+
+    pub fn leave_unanswered(&self, name: &str) {
+        lock(&self.faults).unanswered.insert(name.to_owned());
+    }
+}
+
+#[async_trait]
+impl CloudKitTransport for Flaky {
+    async fn account_status(&self) -> Result<CloudKitAccount, CloudKitFailure> {
+        self.inner.account_status().await
+    }
+
+    async fn ensure_zone(&self, account: String) -> Result<(), CloudKitFailure> {
+        self.inner.ensure_zone(account).await
+    }
+
+    async fn delete_zone(&self, account: String) -> Result<(), CloudKitFailure> {
+        self.inner.delete_zone(account).await
+    }
+
+    async fn fetch_changes(&self, account: String, token: Option<Vec<u8>>) -> Result<CloudKitChanges, CloudKitFailure> {
+        let mut changes = self.inner.fetch_changes(account, token).await?;
+        let faults = lock(&self.faults);
+        let (left, kept): (Vec<CloudKitRecord>, Vec<CloudKitRecord>) = changes
+            .changed
+            .into_iter()
+            .partition(|record| faults.unfetched.contains_key(&record.name));
+        changes.changed = kept;
+        changes.unfetched.extend(left.into_iter().map(|record| record.name));
+        Ok(changes)
+    }
+
+    async fn fetch_records(
+        &self,
+        account: String,
+        names: Vec<String>,
+    ) -> Result<Vec<CloudKitFetched>, CloudKitFailure> {
+        let answers = self.inner.fetch_records(account, names.clone()).await?;
+        let mut faults = lock(&self.faults);
+        faults.read.extend(names);
+        Ok(answers
+            .into_iter()
+            .map(|answer| match answer {
+                CloudKitFetched::Found { record } => match faults.unfetched.remove(&record.name) {
+                    Some(wait) => CloudKitFetched::Failed {
+                        name: record.name,
+                        code: 7,
+                        retry_after_ms: Some(wait),
+                    },
+                    None => CloudKitFetched::Found { record },
+                },
+                other => other,
+            })
+            .collect())
+    }
+
+    async fn modify(
+        &self,
+        account: String,
+        saves: Vec<CloudKitRecord>,
+        deletes: Vec<String>,
+    ) -> Result<Vec<CloudKitOutcome>, CloudKitFailure> {
+        self.modifying.notify_one();
+        if std::mem::take(&mut lock(&self.faults).hang) {
+            std::future::pending::<()>().await;
+        }
+        let hooks = std::mem::take(&mut lock(&self.faults).before_modify);
+        for hook in hooks {
+            hook(&self.inner);
+        }
+        let changed: BTreeSet<String> = {
+            let faults = lock(&self.faults);
+            saves
+                .iter()
+                .map(|save| &save.name)
+                .chain(&deletes)
+                .filter(|name| faults.answers.contains_key(*name))
+                .cloned()
+                .collect()
+        };
+        // A record whose answer is replaced never reaches the zone.
+        let saves = saves.into_iter().filter(|save| !changed.contains(&save.name)).collect();
+        let deletes = deletes.into_iter().filter(|name| !changed.contains(name)).collect();
+        let mut outcomes = self.inner.modify(account, saves, deletes).await?;
+        let mut faults = lock(&self.faults);
+        for name in changed {
+            outcomes.extend(faults.answers.remove(&name));
+        }
+        outcomes.retain(|outcome| !faults.unanswered.remove(outcome.name()));
+        Ok(outcomes)
     }
 }
