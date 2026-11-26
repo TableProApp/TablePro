@@ -9,6 +9,11 @@ use crate::error::StorageError;
 use crate::journal::{JournalEntry, RecordKind, RecordRef, Signals};
 use crate::unix_time::to_unix;
 
+#[path = "favourites_batch.rs"]
+mod batch;
+
+pub use batch::{FavouriteContents, FavouriteDigests, FavouriteWrite};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseEnvironment {
     Development,

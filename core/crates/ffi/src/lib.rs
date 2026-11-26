@@ -26,6 +26,7 @@ mod foreign_import;
 mod history;
 mod host;
 mod host_key;
+mod host_stores;
 mod import;
 mod key_read;
 mod keymap;
@@ -101,6 +102,12 @@ pub use history::{
     QueryHistoryStore,
 };
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
+pub use host_stores::{
+    FavouriteDatabaseKey, FavouriteDatabaseRecord, FavouriteDigestsRecord, FavouriteRecordWrite,
+    FavouriteStoreContents, FavouriteTableRecord, HistoryEntryRecord, SavedQueryFolderRecord, SavedQueryRecord,
+    SavedQueryRecordWrite, SavedQueryStoreContents, SavedQueryWriteOutcome, TableFolderRecordWrite,
+    TableFolderStoreContents, TableKeyRecord, TablePlacementRecord,
+};
 pub use import::{
     CsvDelimiterTag, CsvImport, CsvImportCheck, CsvImportOutcome, CsvPreview, CsvReadOptions, CsvRowFault,
     ImportColumnInfo, LineSpan,
