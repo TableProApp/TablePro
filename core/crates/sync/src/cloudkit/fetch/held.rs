@@ -78,7 +78,7 @@ impl Fetcher<'_> {
     // wait for in this fetch is not asked for again in it.
     pub(super) async fn recover(&self, pull_wins: BTreeSet<Kind>, waited: &mut Waited) -> Result<Counts, SyncError> {
         let mut recovery = self.recovery().await?;
-        recovery.names.retain(|name| !waited.names.contains(name));
+        recovery.names.retain(|name| !waited.holds(name));
         if recovery.names.is_empty() && recovery.deletions.is_empty() && recovery.release.is_empty() {
             return Ok(Counts::default());
         }
@@ -133,6 +133,8 @@ impl Fetcher<'_> {
                 View::NoAdapter | View::Unreadable(_) => {}
                 _ if held.record.deleted.is_some() => recovery.deletions.push(held.key),
                 View::Stored(record) if record.standing == Standing::LocalOnly => recovery.release.push(held.key),
+                // CloudKit asked to wait before this record is asked for again.
+                View::Stored(_) | View::Missing if self.waiting.contains(&held.key) => {}
                 View::Stored(_) | View::Missing => recovery.names.extend(name_of(&held.key)),
             }
         }

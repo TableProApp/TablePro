@@ -10,6 +10,7 @@ mod pass;
 mod zone;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::{Mutex, PoisonError};
 
 use serde_json::Value;
 use tablepro_records::Kind;
@@ -18,30 +19,42 @@ use tablepro_records::record_id::shortened;
 
 pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync};
 
-use super::fetch::{Fetcher, PROFILES, SCOPE, ServerChanged, carried};
+use super::fetch::{Categories, Fetcher, PROFILES, SCOPE, ServerChanged, carried};
 use crate::api::adapter::{LocalRecord, LocalRecords};
 use crate::api::cloudkit::{CloudKitFailure, CloudKitField, CloudKitRecord, CloudKitValue};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, KindName, RecordKey};
 use crate::api::state::{BaseRow, Row, RowRange, Standing, Table};
-use crate::engine::{JournalIds, Pending, PendingOp, StopSignal, diff};
+use crate::engine::{Backoff, JournalIds, Pending, PendingOp, StopSignal, diff};
 
 // A pass sends again what a refusal merged, at most this many times; what is left waits for the next pass.
 const ROUNDS: usize = 3;
 
 // Records CloudKit asked to wait, until when, in milliseconds since the Unix epoch. Kept for the engine's session, so a
-// pass the person or a CloudKit push starts early still does not send them.
+// pass the person or a CloudKit push starts early still does not send or ask for them. A wait past the scheduler's cap
+// is read as the cap, so CloudKit cannot hold a record off until a restart.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Waits(BTreeMap<RecordKey, i64>);
 
 impl Waits {
-    pub fn hold(&mut self, key: RecordKey, until_ms: i64) {
+    pub fn hold(&mut self, key: RecordKey, now_ms: i64, wait_ms: u64) {
+        let wait = i64::try_from(wait_ms.min(Backoff::MAX_RETRY_AFTER_MS)).unwrap_or(i64::MAX);
+        let until_ms = now_ms.saturating_add(wait);
         let until = self.0.entry(key).or_insert(until_ms);
         *until = (*until).max(until_ms);
     }
 
     pub fn holds(&self, key: &RecordKey, now_ms: i64) -> bool {
         self.0.get(key).is_some_and(|until| *until > now_ms)
+    }
+
+    // Every record still waiting.
+    pub fn keys(&self, now_ms: i64) -> BTreeSet<RecordKey> {
+        self.0
+            .iter()
+            .filter(|(_, until)| **until > now_ms)
+            .map(|(key, _)| key.clone())
+            .collect()
     }
 
     fn prune(&mut self, now_ms: i64) {
@@ -69,8 +82,8 @@ pub struct PushReport {
     pub calls: u32,
     // Left for a later pass, with CloudKit's code; None when it gave no answer for the record or its copy did not read.
     pub failed: Vec<(RecordKey, Option<i64>)>,
-    // Kept on the device with a notice: too large for CloudKit, or a value the projection cannot write.
-    pub refused: Vec<(RecordKey, String)>,
+    // Kept on the device with a notice, with the code: too large for CloudKit, or a value the projection cannot write.
+    pub refused: BTreeMap<RecordKey, String>,
     // CloudKit throttled a record. The next pass waits at least `retry_after_ms`, or backs off when it named none.
     pub throttled: bool,
     pub retry_after_ms: Option<u64>,
@@ -78,14 +91,13 @@ pub struct PushReport {
 
 impl PushReport {
     fn refuse(&mut self, key: RecordKey, code: &str) {
-        if !self.refused.iter().any(|(held, _)| *held == key) {
-            self.refused.push((key, code.to_owned()));
-        }
+        self.refused.entry(key).or_insert_with(|| code.to_owned());
     }
 
     fn wait(&mut self, retry_after_ms: Option<u64>) {
         self.throttled = true;
-        self.retry_after_ms = self.retry_after_ms.max(retry_after_ms);
+        let capped = retry_after_ms.map(|wait| wait.min(Backoff::MAX_RETRY_AFTER_MS));
+        self.retry_after_ms = self.retry_after_ms.max(capped);
     }
 }
 
@@ -154,11 +166,32 @@ pub struct Pusher<'p> {
     fetcher: &'p Fetcher<'p>,
     stop: &'p StopSignal,
     now_ms: i64,
+    // The categories as the person sets them while the push runs; the fetcher's otherwise.
+    live: Option<&'p Mutex<Categories>>,
 }
 
 impl<'p> Pusher<'p> {
     pub const fn new(fetcher: &'p Fetcher<'p>, stop: &'p StopSignal, now_ms: i64) -> Self {
-        Self { fetcher, stop, now_ms }
+        Self {
+            fetcher,
+            stop,
+            now_ms,
+            live: None,
+        }
+    }
+
+    // A category turned off while the push runs sends nothing more from its next call on.
+    #[must_use]
+    pub const fn following(mut self, categories: &'p Mutex<Categories>) -> Self {
+        self.live = Some(categories);
+        self
+    }
+
+    fn syncs(&self, kind: Kind) -> bool {
+        match self.live {
+            Some(live) => live.lock().unwrap_or_else(PoisonError::into_inner).syncs(kind),
+            None => self.fetcher.categories.syncs(kind),
+        }
     }
 
     pub async fn push(&self, waits: &mut Waits, named: Option<&JournalIds>) -> Result<PushReport, SyncError> {
@@ -216,7 +249,7 @@ impl<'p> Pusher<'p> {
                     continue;
                 };
                 if let Some(wait) = refusal.retry_after_ms {
-                    waits.hold(held.clone(), self.until(wait));
+                    waits.hold(held.clone(), self.now_ms, wait);
                     report.wait(Some(wait));
                 }
                 failed.insert(held.clone());
@@ -230,20 +263,22 @@ impl<'p> Pusher<'p> {
                 .saturating_add(u32::try_from(settled.gone.len()).unwrap_or(u32::MAX));
             gone.extend(settled.gone);
         }
-        // A profile the zone lost keeps its base until its deletion comes through the changes, so this pass does not
-        // send it again.
-        for held in gone.iter().filter_map(|name| key(name)) {
-            if held.kind.known().is_some_and(|kind| PROFILES.contains(&kind)) {
-                failed.insert(held);
-            } else {
+        let (profiles, others): (Vec<RecordKey>, Vec<RecordKey>) = gone
+            .iter()
+            .filter_map(|name| key(name))
+            .partition(|held| held.kind.known().is_some_and(|kind| PROFILES.contains(&kind)));
+        again.extend(others);
+        // A lost profile with no content edit keeps its base until its deletion comes through the changes, so this
+        // pass does not send it again.
+        let revived = self.fetcher.revive(&profiles).await?;
+        for held in profiles {
+            if revived.contains(&held) {
                 again.insert(held);
+            } else {
+                failed.insert(held);
             }
         }
         Ok(again)
-    }
-
-    fn until(&self, wait_ms: u64) -> i64 {
-        self.now_ms.saturating_add(i64::try_from(wait_ms).unwrap_or(i64::MAX))
     }
 
     async fn held(&self) -> Result<BTreeSet<RecordKey>, SyncError> {
@@ -279,7 +314,7 @@ impl<'p> Pusher<'p> {
         let mut items = Vec::new();
         for (kind, adapter) in &self.fetcher.adapters {
             let kind = *kind;
-            if !self.fetcher.categories.syncs(kind) {
+            if !self.syncs(kind) {
                 continue;
             }
             let Some(record_type) = record_type_of(kind).filter(|record_type| record_type.deployed) else {
@@ -434,6 +469,13 @@ impl<'p> Pusher<'p> {
         calls.reverse();
         while let Some(call) = calls.pop() {
             self.stop.check()?;
+            let call: Vec<Item> = call
+                .into_iter()
+                .filter(|item| item.key.kind.known().is_some_and(|kind| self.syncs(kind)))
+                .collect();
+            if call.is_empty() {
+                continue;
+            }
             let mut saves = Vec::new();
             let mut deletes = Vec::new();
             for item in &call {

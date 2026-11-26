@@ -4,6 +4,7 @@
 // file, so the next pass reads the account again. A removed zone clears the state and nothing goes up until the person
 // asks to upload again.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -69,13 +70,18 @@ pub struct CloudKitSync {
     transport: Arc<dyn CloudKitTransport>,
     files: Arc<dyn StateFiles>,
     adapters: Vec<Arc<dyn RecordAdapter>>,
+    // Set by the person at any time, outside the pass, which reads them before each modify call.
     categories: Mutex<Categories>,
+    // A category turned on: the next pass reads the zone whole.
+    read_again: AtomicBool,
     clock: Arc<dyn Clock>,
     stop: StopSignal,
     journal: Journal,
     events: Option<Arc<dyn EngineEvents>>,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
+    // The session's account, readable while a pass runs.
+    account: Mutex<Option<String>>,
     status: Mutex<SyncStatus>,
 }
 
@@ -96,10 +102,12 @@ impl CloudKitSync {
             files: parts.files,
             adapters: parts.adapters,
             categories: Mutex::new(parts.categories),
+            read_again: AtomicBool::new(false),
             clock: parts.clock,
             stop: parts.stop,
             journal: parts.journal,
             events: parts.events,
+            account: Mutex::new(parts.last_account.clone()),
             session: tokio::sync::Mutex::new(Session {
                 account: parts.last_account,
                 ..Session::default()
@@ -126,27 +134,23 @@ impl CloudKitSync {
     }
 
     // The account whose state file the device uses now, for the host to keep and hand back at the next launch.
-    pub async fn account(&self) -> Option<String> {
-        self.session.lock().await.account.clone()
+    pub fn account(&self) -> Option<String> {
+        lock(&self.account).clone()
     }
 
-    // A category turned on is read whole on the next fetch: a delta never sends again what earlier fetches passed over,
-    // and the deletions that waited for it apply once a full fetch read it.
-    pub async fn set_categories(&self, categories: Categories) -> Result<(), SyncError> {
-        let session = self.session.lock().await;
-        let turned_on = {
-            let mut held = lock(&self.categories);
-            let on = self
-                .adapters
-                .iter()
-                .any(|adapter| categories.syncs(adapter.kind()) && !held.syncs(adapter.kind()));
-            *held = categories;
-            on
-        };
-        if let (true, Some(state)) = (turned_on, &session.state) {
-            read_everything_again(state.as_ref()).await?;
+    // A category turned off sends nothing from the running pass's next call on. One turned on is read whole on the next
+    // fetch: a delta never sends again what earlier fetches passed over, and the deletions that waited for it apply
+    // once a full fetch read it.
+    pub fn set_categories(&self, categories: Categories) {
+        let mut held = lock(&self.categories);
+        let turned_on = self
+            .adapters
+            .iter()
+            .any(|adapter| categories.syncs(adapter.kind()) && !held.syncs(adapter.kind()));
+        *held = categories;
+        if turned_on {
+            self.read_again.store(true, Ordering::SeqCst);
         }
-        Ok(())
     }
 
     fn set_phase(&self, phase: SyncPhase) {
@@ -180,8 +184,17 @@ impl CloudKitSync {
         self.set_phase(SyncPhase::Syncing);
         let taken = self.journal.take();
         let named = (why == PassReason::Journal).then(|| taken.clone());
-        let outcome = self.run(session, named.as_ref()).await;
-        if outcome.is_err() {
+        // A pass that stops drops the call in flight, which cancels the Swift task and its CloudKit operation.
+        let outcome = tokio::select! {
+            outcome = self.run(session, named.as_ref()) => outcome,
+            () = self.stop.stopped() => Err(SyncError::Cancelled),
+        };
+        // What a pass left for later is named again, so the journal pass that follows a wait sends it.
+        let left = match &outcome {
+            Ok(report) => !report.push.failed.is_empty() || report.throttle().is_some(),
+            Err(_) => true,
+        };
+        if left {
             self.journal.give_back(taken);
         }
         self.finish(session, &outcome, named.is_some()).await;
@@ -255,6 +268,7 @@ impl CloudKitSync {
         }
         let state = self.files.open(identity(account)).await?;
         session.account = Some(account.to_owned());
+        *lock(&self.account) = Some(account.to_owned());
         session.state = Some(Arc::clone(&state));
         Ok((state, switched_from))
     }
@@ -272,11 +286,23 @@ impl CloudKitSync {
             zone::saw(state).await?;
             report.zone_made = true;
         }
+        if self.read_again.swap(false, Ordering::SeqCst)
+            && let Err(error) = read_everything_again(state).await
+        {
+            self.read_again.store(true, Ordering::SeqCst);
+            return Err(error);
+        }
         let categories = lock(&self.categories).clone();
-        let fetcher = Fetcher::new(self.transport.as_ref(), state, &self.adapters, categories)?;
+        let now_ms = self.clock.now_ms();
+        let fetcher = Fetcher::new(self.transport.as_ref(), state, &self.adapters, categories)?
+            .stopped_by(self.stop.clone())
+            .waiting(session.waits.keys(now_ms));
         report.fetch = fetcher.fetch().await?;
+        for (key, wait) in &report.fetch.waits {
+            session.waits.hold(key.clone(), now_ms, *wait);
+        }
         self.stop.check()?;
-        let pusher = Pusher::new(&fetcher, &self.stop, self.clock.now_ms());
+        let pusher = Pusher::new(&fetcher, &self.stop, self.clock.now_ms()).following(&self.categories);
         report.push = pusher.push(&mut session.waits, named).await?;
         Ok(())
     }

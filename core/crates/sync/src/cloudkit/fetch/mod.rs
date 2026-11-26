@@ -18,6 +18,7 @@ use crate::api::cloudkit::{CloudKitChanges, CloudKitFailure, CloudKitFetched, Cl
 use crate::api::error::{StateError, SyncError};
 use crate::api::ids::{Cursor, RecordKey, ScopeName};
 use crate::api::state::{Row, RowKey, StateIdentity, StateStore};
+use crate::engine::{Backoff, StopSignal};
 
 mod copy;
 mod full;
@@ -99,6 +100,8 @@ pub struct FetchReport {
     pub counts: Counts,
     // The longest wait CloudKit named for a record it could not return; the next pass waits it out.
     pub retry_after_ms: Option<u64>,
+    // Each record CloudKit asked to wait for, and how long, which the engine does not ask for before then.
+    pub waits: Vec<(RecordKey, u64)>,
 }
 
 pub struct Fetcher<'a> {
@@ -107,21 +110,29 @@ pub struct Fetcher<'a> {
     pub(in crate::cloudkit) account: String,
     pub(in crate::cloudkit) adapters: BTreeMap<Kind, Arc<dyn RecordAdapter>>,
     pub(in crate::cloudkit) categories: Categories,
+    stop: Option<StopSignal>,
+    // Records CloudKit asked to wait for that are still waiting: their changes stay held and are not asked for.
+    waiting: BTreeSet<RecordKey>,
 }
 
-// Records CloudKit could not return and asked to wait for, which the fetch does not ask for again.
+// Records CloudKit could not return and asked to wait for, which the fetch does not ask for again. A wait past the
+// scheduler's cap is read as the cap, so CloudKit cannot hold a record off until a restart.
 #[derive(Debug, Default)]
 struct Waited {
-    names: BTreeSet<String>,
-    longest: Option<u64>,
+    keys: BTreeMap<RecordKey, u64>,
 }
 
 impl Waited {
     fn note(&mut self, name: &str, retry_after_ms: Option<u64>) {
-        if retry_after_ms.is_some() {
-            self.names.insert(name.to_owned());
-            self.longest = self.longest.max(retry_after_ms);
+        if let (Some(key), Some(wait)) = (copy::key_of_name(name), retry_after_ms) {
+            let wait = wait.min(Backoff::MAX_RETRY_AFTER_MS);
+            let held = self.keys.entry(key).or_insert(wait);
+            *held = (*held).max(wait);
         }
+    }
+
+    fn holds(&self, name: &str) -> bool {
+        copy::key_of_name(name).is_some_and(|key| self.keys.contains_key(&key))
     }
 }
 
@@ -233,7 +244,26 @@ impl<'a> Fetcher<'a> {
                 .map(|adapter| (adapter.kind(), Arc::clone(adapter)))
                 .collect(),
             categories,
+            stop: None,
+            waiting: BTreeSet::new(),
         })
+    }
+
+    // A provider stop ends the fetch before its next store write or state commit (P1-M4).
+    #[must_use]
+    pub fn stopped_by(mut self, stop: StopSignal) -> Self {
+        self.stop = Some(stop);
+        self
+    }
+
+    #[must_use]
+    pub fn waiting(mut self, keys: BTreeSet<RecordKey>) -> Self {
+        self.waiting = keys;
+        self
+    }
+
+    pub(in crate::cloudkit) fn check_stop(&self) -> Result<(), SyncError> {
+        self.stop.as_ref().map_or(Ok(()), StopSignal::check)
     }
 
     pub async fn fetch(&self) -> Result<FetchReport, SyncError> {
@@ -276,7 +306,8 @@ impl<'a> Fetcher<'a> {
         }
         report.full = pass.full;
         report.counts.add(self.recover(pass.refill(), &mut waited).await?);
-        report.retry_after_ms = waited.longest;
+        report.retry_after_ms = waited.keys.values().max().copied();
+        report.waits = waited.keys.into_iter().collect();
         Ok(report)
     }
 
@@ -328,11 +359,11 @@ impl<'a> Fetcher<'a> {
     // token can pass it without losing the change.
     async fn read(&self, changes: CloudKitChanges, waited: &mut Waited) -> Result<Vec<Incoming>, SyncError> {
         let mut items: Vec<Incoming> = changes.changed.iter().filter_map(copy::changed).collect();
-        let unfetched: Vec<String> = changes
+        let (waiting, unfetched): (Vec<String>, Vec<String>) = changes
             .unfetched
             .into_iter()
             .filter(|name| copy::key_of_name(name).is_some())
-            .collect();
+            .partition(|name| copy::key_of_name(name).is_some_and(|key| self.waiting.contains(&key)));
         let (answers, unanswered) = self.fetch_asked(unfetched).await?;
         for answer in answers {
             match answer {
@@ -349,6 +380,7 @@ impl<'a> Fetcher<'a> {
         items.extend(
             unanswered
                 .iter()
+                .chain(&waiting)
                 .filter_map(|name| copy::key_of_name(name))
                 .map(|key| Incoming::Unread { key, tag: None }),
         );

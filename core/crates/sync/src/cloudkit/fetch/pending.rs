@@ -136,6 +136,14 @@ fn holds(record: Option<&LocalRecord>, merged: &Merged) -> bool {
 }
 
 impl Settle<'_, '_> {
+    // A batch that writes no store commits once, and what an earlier attempt of it staged no longer stands.
+    pub(super) async fn clear_pending(&mut self) -> Result<(), SyncError> {
+        for row in self.txn.scan(&RowRange::Scope(Table::PendingBases, SCOPE)).await? {
+            self.txn.delete(&row.key()).await?;
+        }
+        Ok(())
+    }
+
     // The pull left the store as it is now: merging it again against the base the state still holds would write
     // nothing. A copy this build cannot read proves nothing, so its base stays.
     async fn took(&mut self, pending: &BaseRow) -> Result<bool, SyncError> {
@@ -186,6 +194,7 @@ impl Fetcher<'_> {
             }
             settle.txn.delete(&RowKey::PendingBase(key)).await?;
         }
+        self.check_stop()?;
         settle.txn.commit().await?;
         Ok(())
     }

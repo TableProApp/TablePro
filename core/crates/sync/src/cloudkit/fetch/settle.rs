@@ -131,9 +131,13 @@ impl Fetcher<'_> {
         if let Some(store) = settle.moved {
             return Ok(Err(store));
         }
-        if !settle.changes.is_empty() {
+        self.check_stop()?;
+        if settle.changes.is_empty() {
+            settle.clear_pending().await?;
+        } else {
             let planned = settle.txn;
             settle.txn = planned.split(self.state).await?;
+            self.check_stop()?;
         }
         if settle.write_stores().await?.is_none() {
             return Ok(Err(settle.moved.unwrap_or_default()));
@@ -147,6 +151,7 @@ impl Fetcher<'_> {
         settle
             .store_token(batch.token, batch.caught_up, batch.finish.is_some())
             .await?;
+        self.check_stop()?;
         settle.commit().await.map(Ok)
     }
 }

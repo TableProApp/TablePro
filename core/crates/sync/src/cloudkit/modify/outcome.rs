@@ -16,8 +16,9 @@ use crate::cloudkit::fetch::ServerChanged;
 enum Failure {
     // Every record that follows fails the same way: the upload stops, and the pass with it.
     Stops(CloudKitFailure),
-    // CloudKit asks to be tried again later.
-    Busy,
+    // CloudKit asks to be tried again later, or the network dropped: the pass ends as a throttle, so the scheduler tries
+    // again.
+    Later,
     TooLarge,
     Retry,
 }
@@ -32,7 +33,7 @@ fn failure(code: i64) -> Failure {
         36 => Failure::Stops(CloudKitFailure::AccountTemporarilyUnavailable),
         // A container, entitlement, database or permission CloudKit refuses, or an app it finds too old.
         5 | 8 | 10 | 18 | 24 => Failure::Stops(CloudKitFailure::Other { code }),
-        6 | 7 | 23 | 34 => Failure::Busy,
+        3 | 4 | 6 | 7 | 23 | 34 => Failure::Later,
         27 => Failure::TooLarge,
         _ => Failure::Retry,
     }
@@ -85,7 +86,10 @@ impl Pusher<'_> {
                 continue;
             };
             match (op, outcome) {
-                (Op::Save { fields, .. }, CloudKitOutcome::Saved { system_fields, .. }) => {
+                // A save always lands on new system fields; one with none is no answer this engine can settle.
+                (Op::Save { fields, .. }, CloudKitOutcome::Saved { system_fields, .. })
+                    if !system_fields.is_empty() =>
+                {
                     txn.put(Row::Base(saved(key, base.as_ref(), system_fields, fields)))
                         .await?;
                     report.saved = report.saved.saturating_add(1);
@@ -95,7 +99,8 @@ impl Pusher<'_> {
                     txn.delete(&RowKey::Base(key)).await?;
                     report.deleted = report.deleted.saturating_add(1);
                 }
-                (_, CloudKitOutcome::ServerChanged { name, server }) => {
+                // A deletion carries no change tag, so CloudKit never refuses one as changed.
+                (Op::Save { .. }, CloudKitOutcome::ServerChanged { name, server }) => {
                     answers.keys.insert(name.clone(), key);
                     answers.conflicts.push(ServerChanged { name, server });
                 }
@@ -110,7 +115,7 @@ impl Pusher<'_> {
                     },
                 ) => {
                     if let Some(wait) = retry_after_ms {
-                        waits.hold(key.clone(), self.until(wait));
+                        waits.hold(key.clone(), self.now_ms, wait);
                         report.wait(Some(wait));
                     }
                     failed.insert(key.clone());
@@ -121,7 +126,7 @@ impl Pusher<'_> {
                             }
                             report.failed.push((key, Some(code)));
                         }
-                        Failure::Busy => {
+                        Failure::Later => {
                             report.wait(None);
                             report.failed.push((key, Some(code)));
                         }

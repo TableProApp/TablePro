@@ -331,13 +331,21 @@ struct ModifyFaults {
     answers: BTreeMap<String, CloudKitOutcome>,
     // Answers the call leaves out.
     unanswered: BTreeSet<String>,
+    // The next modify call never answers.
+    hang: bool,
+    // Records a change fetch lists but does not return, and the wait their next read by name asks for.
+    unfetched: BTreeMap<String, u64>,
+    // Each name read by name, in order.
+    read: Vec<String>,
 }
 
-// The fake zone behind the pass, with modify calls it does not play on its own: the account switching as one starts,
-// a record's answer changed, and an answer left out.
+// The fake zone behind the pass, with calls it does not play on its own: the account switching as a modify call
+// starts, a record's answer changed or left out, a call that never answers, and a record CloudKit asks to wait for.
 pub struct Flaky {
     inner: Arc<FakeCloudKit>,
     faults: Mutex<ModifyFaults>,
+    // Told once a modify call starts.
+    pub modifying: tokio::sync::Notify,
 }
 
 impl Flaky {
@@ -345,7 +353,21 @@ impl Flaky {
         Arc::new(Self {
             inner,
             faults: Mutex::new(ModifyFaults::default()),
+            modifying: tokio::sync::Notify::new(),
         })
+    }
+
+    pub fn hang_next_modify(&self) {
+        lock(&self.faults).hang = true;
+    }
+
+    // The change fetch leaves the record out, and its first read by name answers that CloudKit asks to wait `ms`.
+    pub fn wait_on_read(&self, name: &str, ms: u64) {
+        lock(&self.faults).unfetched.insert(name.to_owned(), ms);
+    }
+
+    pub fn reads_of(&self, name: &str) -> usize {
+        lock(&self.faults).read.iter().filter(|read| *read == name).count()
     }
 
     pub fn before_next_modify(&self, hook: ModifyHook) {
@@ -376,7 +398,15 @@ impl CloudKitTransport for Flaky {
     }
 
     async fn fetch_changes(&self, account: String, token: Option<Vec<u8>>) -> Result<CloudKitChanges, CloudKitFailure> {
-        self.inner.fetch_changes(account, token).await
+        let mut changes = self.inner.fetch_changes(account, token).await?;
+        let faults = lock(&self.faults);
+        let (left, kept): (Vec<CloudKitRecord>, Vec<CloudKitRecord>) = changes
+            .changed
+            .into_iter()
+            .partition(|record| faults.unfetched.contains_key(&record.name));
+        changes.changed = kept;
+        changes.unfetched.extend(left.into_iter().map(|record| record.name));
+        Ok(changes)
     }
 
     async fn fetch_records(
@@ -384,7 +414,23 @@ impl CloudKitTransport for Flaky {
         account: String,
         names: Vec<String>,
     ) -> Result<Vec<CloudKitFetched>, CloudKitFailure> {
-        self.inner.fetch_records(account, names).await
+        let answers = self.inner.fetch_records(account, names.clone()).await?;
+        let mut faults = lock(&self.faults);
+        faults.read.extend(names);
+        Ok(answers
+            .into_iter()
+            .map(|answer| match answer {
+                CloudKitFetched::Found { record } => match faults.unfetched.remove(&record.name) {
+                    Some(wait) => CloudKitFetched::Failed {
+                        name: record.name,
+                        code: 7,
+                        retry_after_ms: Some(wait),
+                    },
+                    None => CloudKitFetched::Found { record },
+                },
+                other => other,
+            })
+            .collect())
     }
 
     async fn modify(
@@ -393,6 +439,10 @@ impl CloudKitTransport for Flaky {
         saves: Vec<CloudKitRecord>,
         deletes: Vec<String>,
     ) -> Result<Vec<CloudKitOutcome>, CloudKitFailure> {
+        self.modifying.notify_one();
+        if std::mem::take(&mut lock(&self.faults).hang) {
+            std::future::pending::<()>().await;
+        }
         let hooks = std::mem::take(&mut lock(&self.faults).before_modify);
         for hook in hooks {
             hook(&self.inner);

@@ -4,11 +4,17 @@
 // next push sends the difference on the server's change tag. A save answered `unknownItem` meets the deletion rules
 // the same way (D12).
 
-use super::copy::{self, Incoming};
-use super::settle::Batch;
+use std::collections::BTreeSet;
+
+use tablepro_records::merge::Merged;
+
+use super::copy::{self, Incoming, kind_of};
+use super::settle::{Batch, Settle, View};
 use super::{Fetcher, PROFILES};
 use crate::api::cloudkit::{CloudKitFetched, CloudKitRecord};
 use crate::api::error::SyncError;
+use crate::api::ids::RecordKey;
+use crate::api::state::{RowKey, Standing};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServerChanged {
@@ -124,5 +130,34 @@ impl Fetcher<'_> {
         })
         .await?;
         Ok(rebased)
+    }
+
+    // Profiles the zone lost. A deletion found late never removes one, but a content edit to it still revives it, as
+    // for any record (D12): its base goes, so it goes up as a create. One with no content edit keeps its base until
+    // its deletion comes through the changes. Returns the profiles revived.
+    pub(in crate::cloudkit) async fn revive(&self, keys: &[RecordKey]) -> Result<Vec<RecordKey>, SyncError> {
+        let txn = self.state.begin().await?;
+        let mut settle = Settle::new(self, txn, BTreeSet::new());
+        let mut revived = Vec::new();
+        for key in keys {
+            let Some(kind) = kind_of(key) else {
+                continue;
+            };
+            let View::Stored(record) = settle.view(key, kind).await? else {
+                continue;
+            };
+            if record.standing != Standing::Syncs {
+                continue;
+            }
+            if settle.merged(kind, key, Some(&record), None, false).await? != Merged::Deleted {
+                settle.txn.delete(&RowKey::Base(key.clone())).await?;
+                revived.push(key.clone());
+            }
+        }
+        if !revived.is_empty() {
+            self.check_stop()?;
+            settle.txn.commit().await?;
+        }
+        Ok(revived)
     }
 }

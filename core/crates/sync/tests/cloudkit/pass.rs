@@ -8,10 +8,10 @@ use serde_json::json;
 use tablepro_records::Kind;
 use tablepro_sync::api::SyncError;
 use tablepro_sync::api::cloudkit::{CloudKitFailure, CloudKitOutcome, CloudKitTransport};
-use tablepro_sync::api::control::PassReason;
+use tablepro_sync::api::control::{PassReason, SyncControl, SyncPhase};
 use tablepro_sync::api::state::StateFiles;
 use tablepro_sync::cloudkit::fetch::Categories;
-use tablepro_sync::engine::Pass;
+use tablepro_sync::engine::{JournalEntry, Pass, StopSignal};
 use tablepro_sync::state::SqliteStateFiles;
 use tokio::time::timeout;
 
@@ -74,7 +74,7 @@ async fn a_category_turned_on_is_read_whole_on_the_next_pass() {
     let skipped = !rig.store(Kind::Group).holds(B);
     sync.run_pass(PassReason::Poll).await.unwrap();
 
-    sync.set_categories(Categories::new(KINDS)).await.unwrap();
+    sync.set_categories(Categories::new(KINDS));
     let report = sync.run_pass(PassReason::Person).await.unwrap();
 
     assert!(skipped);
@@ -113,4 +113,102 @@ async fn a_pass_over_the_state_file_on_disk_commits_around_its_store_writes() {
     assert_eq!(second.push.saved, 1);
     assert_eq!(rig.store(Kind::Connection).fields(A), Some(merged.clone()));
     assert_eq!(rig.zone_fields(Kind::Connection, A), Some(merged));
+}
+
+// A record CloudKit could not return and asked to wait for is not asked for again before the wait ends, whichever pass
+// comes next.
+#[tokio::test]
+async fn a_record_cloudkit_asks_to_wait_for_on_a_fetch_is_not_read_again_before_its_wait_ends() {
+    let rig = Rig::new().await;
+    let flaky = Flaky::new(Arc::clone(&rig.cloud));
+    let sync = rig.sync_through(Arc::clone(&flaky) as Arc<dyn CloudKitTransport>, None);
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.save_elsewhere(Kind::Group, A, &json!({"name": "Work"}));
+    flaky.wait_on_read(&name(Kind::Group, A), 30_000);
+
+    let waited = sync.run_pass(PassReason::CloudKitPush).await.unwrap();
+    rig.clock.advance(10_000);
+    sync.run_pass(PassReason::Person).await.unwrap();
+    let reads_while_waiting = flaky.reads_of(&name(Kind::Group, A));
+    rig.clock.advance(20_000);
+    sync.run_pass(PassReason::Poll).await.unwrap();
+
+    assert_eq!(waited.fetch.retry_after_ms, Some(30_000));
+    assert!(waited.throttle().is_some());
+    assert_eq!(reads_while_waiting, 1);
+    assert!(rig.store(Kind::Group).holds(A));
+}
+
+// The pass that follows a wait is a journal pass, and still sends what the throttled one left.
+#[tokio::test]
+async fn a_journal_pass_after_a_throttle_sends_what_the_throttled_pass_left() {
+    let rig = Rig::new().await;
+    let flaky = Flaky::new(Arc::clone(&rig.cloud));
+    let sync = rig.sync_through(Arc::clone(&flaky) as Arc<dyn CloudKitTransport>, None);
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.store(Kind::Group)
+        .put(A, projected(Kind::Group, A, &json!({"name": "Work"})));
+    sync.journal().changed(&[JournalEntry {
+        kind: Kind::Group,
+        written: vec![A.to_owned()],
+        deleted: Vec::new(),
+    }]);
+    flaky.answer_once(
+        &name(Kind::Group, A),
+        CloudKitOutcome::Failed {
+            name: name(Kind::Group, A),
+            code: 7,
+            retry_after_ms: Some(30_000),
+        },
+    );
+
+    let throttled = sync.pass(PassReason::Journal).await;
+    rig.clock.advance(30_000);
+    let again = sync.run_pass(PassReason::Journal).await.unwrap();
+
+    assert!(throttled.is_err());
+    assert_eq!(again.push.saved, 1);
+}
+
+// A pass that stops drops the call in flight, which cancels the Swift task and its CloudKit operation (0054).
+#[tokio::test]
+async fn a_stop_drops_a_call_that_never_answers() {
+    let rig = Rig::new().await;
+    let flaky = Flaky::new(Arc::clone(&rig.cloud));
+    let sync = rig.sync_through(Arc::clone(&flaky) as Arc<dyn CloudKitTransport>, None);
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.store(Kind::Group)
+        .put(A, projected(Kind::Group, A, &json!({"name": "Work"})));
+    flaky.hang_next_modify();
+
+    let (stopped, ()) = tokio::join!(sync.run_pass(PassReason::Person), async {
+        flaky.modifying.notified().await;
+        sync.stop_signal().stop();
+    });
+
+    assert_eq!(stopped.unwrap_err(), SyncError::Cancelled);
+    assert_eq!(sync.status().phase, SyncPhase::Off);
+    assert!(rig.zone_fields(Kind::Group, A).is_none());
+    assert!(rig.base(Kind::Group, A).await.is_none());
+}
+
+// A stop during a fetch ends it before its next commit, so a later page writes nothing.
+#[tokio::test]
+async fn a_stop_during_a_fetch_writes_nothing_more() {
+    let rig = Rig::new().await;
+    rig.fetch().await.unwrap();
+    rig.cloud.set_limits(1, 400, 1 << 20);
+    for id in [A, B] {
+        rig.save_elsewhere(Kind::Group, id, &json!({"name": id}));
+    }
+    let stop = StopSignal::new();
+    let transport = Unreliable::new(&rig.cloud);
+    let stopping = stop.clone();
+    transport.before_call(1, Box::new(move || stopping.stop()));
+
+    let stopped = rig.fetcher(&transport).stopped_by(stop).fetch().await;
+
+    assert_eq!(stopped.unwrap_err(), SyncError::Cancelled);
+    assert!(rig.store(Kind::Group).holds(A));
+    assert!(!rig.store(Kind::Group).holds(B));
 }

@@ -36,7 +36,7 @@ async fn another_account_deletes_the_last_account_s_state_file_and_starts_from_a
     assert!(!rig.files.exists(&icloud(USER)));
     assert!(rig.files.exists(&icloud(OTHER)));
     assert!(rig.zone_fields_of(OTHER, Kind::Connection, A).is_some());
-    assert_eq!(sync.account().await.as_deref(), Some(OTHER));
+    assert_eq!(sync.account().as_deref(), Some(OTHER));
 }
 
 #[tokio::test]

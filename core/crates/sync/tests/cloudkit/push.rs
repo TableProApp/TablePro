@@ -2,7 +2,8 @@
 // refused save, D12 on `unknownItem`, batches split on `limitExceeded`, a record CloudKit asks to wait, a full iCloud,
 // and a crash between CloudKit's answer and the commit of its bases.
 
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 use serde_json::json;
 use tablepro_records::Kind;
@@ -11,10 +12,12 @@ use tablepro_sync::api::cloudkit::{CloudKitFailure, CloudKitOutcome};
 use tablepro_sync::api::control::PassReason;
 use tablepro_sync::api::ids::ChangeTag;
 use tablepro_sync::api::state::Standing;
-use tablepro_sync::engine::JournalEntry;
+use tablepro_sync::cloudkit::fetch::Categories;
+use tablepro_sync::cloudkit::modify::{Pusher, Waits};
+use tablepro_sync::engine::{Clock, JournalEntry, StopSignal};
 
 use crate::faults::{Crashing, Flaky};
-use crate::support::{A, B, C, D, Rig, USER, name, projected};
+use crate::support::{A, B, C, D, KINDS, Rig, USER, name, projected};
 
 async fn synced(rig: &Rig, kind: Kind, id: &str, wire: &serde_json::Value) {
     rig.save_elsewhere(kind, id, wire);
@@ -170,7 +173,10 @@ async fn a_record_too_large_alone_stays_on_the_device_and_the_rest_go_up() {
 
     let key = crate::support::key(Kind::Connection, A);
     assert_eq!(report.saved, 2);
-    assert_eq!(report.refused, [(key, "sync.icloud.limit_exceeded".to_owned())]);
+    assert_eq!(
+        report.refused,
+        BTreeMap::from([(key, "sync.icloud.limit_exceeded".to_owned())])
+    );
     assert!(rig.cloud.record(USER, &name(Kind::Connection, A)).is_none());
     assert!(rig.base(Kind::Connection, A).await.is_none());
 }
@@ -346,22 +352,119 @@ async fn a_transport_that_drops_the_call_keeps_every_base() {
     );
 }
 
-// A profile's deletion unlinks connections and removes Keychain secrets, so one the zone lost is not deleted by a save's
-// answer: it keeps its base until the deletion comes through the changes, and is not sent again meanwhile.
+// A deletion found late never removes a profile, but a content edit to one the zone lost still brings it back (D12).
 #[tokio::test]
-async fn a_profile_answered_unknown_item_keeps_its_base_and_is_not_sent_again_in_the_pass() {
+async fn a_profile_answered_unknown_item_comes_back_with_its_content_edit() {
     let rig = Rig::new().await;
     synced(&rig, Kind::SshProfile, A, &json!({"name": "bastion", "host": "jump"})).await;
-    rig.store(Kind::SshProfile).put(
-        A,
-        projected(Kind::SshProfile, A, &json!({"name": "bastion", "host": "jump2"})),
-    );
+    let edited = projected(Kind::SshProfile, A, &json!({"name": "bastion", "host": "jump2"}));
+    rig.store(Kind::SshProfile).put(A, edited.clone());
     rig.delete_elsewhere(Kind::SshProfile, A);
 
     let report = rig.push().await.unwrap();
 
-    assert_eq!((report.lost, report.calls), (1, 1));
-    assert!(rig.store(Kind::SshProfile).holds(A));
-    assert!(rig.base(Kind::SshProfile, A).await.is_some());
-    assert!(rig.cloud.record(USER, &name(Kind::SshProfile, A)).is_none());
+    assert_eq!((report.lost, report.saved), (1, 1));
+    assert_eq!(rig.store(Kind::SshProfile).fields(A), Some(edited.clone()));
+    assert_eq!(rig.zone_fields(Kind::SshProfile, A), Some(edited));
+    assert_eq!(
+        rig.base(Kind::SshProfile, A).await.unwrap().tag,
+        tag_of(&rig, Kind::SshProfile, A)
+    );
+}
+
+// CloudKit deletes carry no change tag, so a refusal of one as changed is no answer the push takes.
+#[tokio::test]
+async fn a_deletion_answered_as_changed_is_left_for_a_later_push() {
+    let rig = Rig::new().await;
+    let flaky = Flaky::new(Arc::clone(&rig.cloud));
+    synced(&rig, Kind::Group, A, &json!({"name": "Work"})).await;
+    rig.store(Kind::Group).remove(A);
+    let server = rig.cloud.record(USER, &name(Kind::Group, A));
+    flaky.answer_once(
+        &name(Kind::Group, A),
+        CloudKitOutcome::ServerChanged {
+            name: name(Kind::Group, A),
+            server,
+        },
+    );
+
+    let report = rig.push_through(flaky.as_ref()).await.unwrap();
+
+    assert_eq!(report.failed, [(crate::support::key(Kind::Group, A), None)]);
+    assert!(!rig.store(Kind::Group).holds(A));
+    assert!(rig.base(Kind::Group, A).await.is_some());
+}
+
+#[tokio::test]
+async fn a_save_answered_with_no_system_fields_settles_no_base() {
+    let rig = Rig::new().await;
+    let flaky = Flaky::new(Arc::clone(&rig.cloud));
+    rig.store(Kind::Group)
+        .put(A, projected(Kind::Group, A, &json!({"name": "Work"})));
+    flaky.answer_once(
+        &name(Kind::Group, A),
+        CloudKitOutcome::Saved {
+            name: name(Kind::Group, A),
+            system_fields: Vec::new(),
+        },
+    );
+
+    let report = rig.push_through(flaky.as_ref()).await.unwrap();
+
+    assert_eq!(report.saved, 0);
+    assert_eq!(report.failed, [(crate::support::key(Kind::Group, A), None)]);
+    assert!(rig.base(Kind::Group, A).await.is_none());
+}
+
+// A wait past the scheduler's cap is read as the cap, so CloudKit cannot hold a record off until a restart.
+#[tokio::test]
+async fn a_wait_cloudkit_names_is_capped_at_an_hour() {
+    let rig = Rig::new().await;
+    let flaky = Flaky::new(Arc::clone(&rig.cloud));
+    rig.store(Kind::Group)
+        .put(A, projected(Kind::Group, A, &json!({"name": "Work"})));
+    flaky.answer_once(
+        &name(Kind::Group, A),
+        CloudKitOutcome::Failed {
+            name: name(Kind::Group, A),
+            code: 7,
+            retry_after_ms: Some(u64::MAX),
+        },
+    );
+
+    let throttled = rig.push_through(flaky.as_ref()).await.unwrap();
+    rig.clock.advance(60 * 60 * 1_000);
+    let after = rig.push_through(flaky.as_ref()).await.unwrap();
+
+    assert_eq!(throttled.retry_after_ms, Some(60 * 60 * 1_000));
+    assert_eq!(after.saved, 1);
+}
+
+// The person turns a category off while the push runs: its next call leaves that category's records out.
+#[tokio::test]
+async fn a_category_turned_off_while_the_push_runs_sends_nothing_more() {
+    let rig = Rig::new().await;
+    rig.cloud.set_limits(200, 1, 2 << 20);
+    let flaky = Flaky::new(Arc::clone(&rig.cloud));
+    rig.store(Kind::Connection)
+        .put(A, projected(Kind::Connection, A, &json!({"name": "prod"})));
+    rig.store(Kind::Group)
+        .put(B, projected(Kind::Group, B, &json!({"name": "Work"})));
+    let live = Arc::new(Mutex::new(Categories::new(KINDS)));
+    let turn_off = Arc::clone(&live);
+    flaky.before_next_modify(Box::new(move |_| {
+        *turn_off.lock().unwrap() = Categories::new(KINDS.into_iter().filter(|kind| *kind != Kind::Group));
+    }));
+    let fetcher = rig.fetcher(flaky.as_ref());
+    let stop = StopSignal::new();
+
+    let report = Pusher::new(&fetcher, &stop, rig.clock.now_ms())
+        .following(&live)
+        .push(&mut Waits::default(), None)
+        .await
+        .unwrap();
+
+    assert_eq!(report.saved, 1);
+    assert!(rig.zone_fields(Kind::Connection, A).is_some());
+    assert!(rig.zone_fields(Kind::Group, B).is_none());
 }

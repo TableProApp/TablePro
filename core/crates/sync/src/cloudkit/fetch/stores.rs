@@ -265,6 +265,7 @@ impl Settle<'_, '_> {
             let Some(adapter) = fetcher.adapters.get(&kind) else {
                 continue;
             };
+            fetcher.check_stop()?;
             let changes: Vec<LocalChange> = changes.into_values().collect();
             for change in &changes {
                 match change {
