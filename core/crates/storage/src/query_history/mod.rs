@@ -47,6 +47,7 @@ pub use new_entry::NewEntry;
 pub use outcome::Outcome;
 pub use prune_report::PruneReport;
 pub use status_filter::StatusFilter;
+pub use synced::HistoryTombstone;
 
 use export::{history_csv, history_sql};
 use history_query::TermMatch;

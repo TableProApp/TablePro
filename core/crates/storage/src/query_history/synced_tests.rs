@@ -3,7 +3,9 @@ use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
 use super::super::fixtures::old_database;
-use super::super::{HistoryPageRequest, HistoryQuery, MAX_UNPINNED_ENTRIES, NewEntry, Outcome, QueryHistory};
+use super::super::{
+    HistoryPageRequest, HistoryQuery, HistoryTombstone, MAX_UNPINNED_ENTRIES, NewEntry, Outcome, QueryHistory,
+};
 use crate::StoragePaths;
 
 async fn history(root: &tempfile::TempDir) -> QueryHistory {
@@ -24,6 +26,16 @@ fn entry(query: &str, connection: Uuid, seconds: u64) -> NewEntry {
         rows_affected: None,
         outcome: Outcome::Success,
     }
+}
+
+async fn ids(history: &QueryHistory) -> Vec<Uuid> {
+    history
+        .tombstones()
+        .await
+        .expect("tombstones")
+        .into_iter()
+        .map(|tombstone| tombstone.record_id)
+        .collect()
 }
 
 async fn rowids(history: &QueryHistory) -> Vec<i64> {
@@ -71,7 +83,16 @@ async fn the_person_s_deletions_leave_tombstones_and_a_prune_or_a_removal_leaves
 
     assert_eq!(
         history.tombstones().await.expect("tombstones"),
-        vec![picked.record_id, of_blog.record_id]
+        vec![
+            HistoryTombstone {
+                record_id: picked.record_id,
+                connection_id: shop,
+            },
+            HistoryTombstone {
+                record_id: of_blog.record_id,
+                connection_id: blog,
+            },
+        ]
     );
     assert!(history.entries().await.expect("entries").is_empty());
 }
@@ -90,7 +111,7 @@ async fn clearing_tombstones_every_entry_and_an_undo_takes_its_tombstone_back() 
     assert!(history.tombstones().await.expect("after the undo").is_empty());
     history.clear_all().await.expect("clear");
 
-    let mut tombstones = history.tombstones().await.expect("tombstones");
+    let mut tombstones: Vec<Uuid> = ids(&history).await;
     tombstones.sort();
     let mut expected = vec![first.record_id, second.record_id];
     expected.sort();
@@ -122,7 +143,8 @@ async fn a_tombstone_stays_however_many_wait_until_sync_drops_it() {
     let history = history(&root).await;
     sqlx::query(
         "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?) \
-         INSERT INTO history_tombstones (record_id) SELECT printf('00000000-0000-4000-8000-%012d', i) FROM n",
+         INSERT INTO history_tombstones (record_id, connection_id) \
+         SELECT printf('00000000-0000-4000-8000-%012d', i), '7d3f1e9a-5b2c-4d6e-8f0a-1b3c5d7e9f20' FROM n",
     )
     .bind(MAX_UNPINNED_ENTRIES)
     .execute(history.pool())
@@ -133,7 +155,7 @@ async fn a_tombstone_stays_however_many_wait_until_sync_drops_it() {
 
     history.clear_all().await.expect("clear");
 
-    let tombstones = history.tombstones().await.expect("tombstones");
+    let tombstones = ids(&history).await;
     assert_eq!(
         tombstones.len(),
         usize::try_from(MAX_UNPINNED_ENTRIES).expect("fits") + 1

@@ -8,6 +8,13 @@ use uuid::Uuid;
 use super::{ENTRY_COLUMNS, Entry, IDS_PER_STATEMENT, QueryHistory};
 use crate::error::StorageError;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HistoryTombstone {
+    pub record_id: Uuid,
+    // The connection the deleted run was of.
+    pub connection_id: Uuid,
+}
+
 impl QueryHistory {
     // Oldest row first.
     pub async fn entries(&self) -> Result<Vec<Entry>, StorageError> {
@@ -21,15 +28,21 @@ impl QueryHistory {
     }
 
     // Oldest first.
-    pub async fn tombstones(&self) -> Result<Vec<Uuid>, StorageError> {
-        let texts: Vec<String> = sqlx::query_scalar("SELECT record_id FROM history_tombstones ORDER BY id")
-            .fetch_all(&self.pool)
-            .await?;
-        texts
-            .iter()
-            .map(|text| {
-                Uuid::parse_str(text)
-                    .map_err(|_| StorageError::Schema("a history tombstone's record_id is not a UUID".to_owned()))
+    pub async fn tombstones(&self) -> Result<Vec<HistoryTombstone>, StorageError> {
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("SELECT record_id, connection_id FROM history_tombstones ORDER BY id")
+                .fetch_all(&self.pool)
+                .await?;
+        let uuid = |text: &str| {
+            Uuid::parse_str(text)
+                .map_err(|_| StorageError::Schema("a history tombstone holds a non-UUID id".to_owned()))
+        };
+        rows.iter()
+            .map(|(record_id, connection_id)| {
+                Ok(HistoryTombstone {
+                    record_id: uuid(record_id)?,
+                    connection_id: uuid(connection_id)?,
+                })
             })
             .collect()
     }
@@ -48,7 +61,10 @@ pub(super) async fn tombstone(
     filter: &str,
     binds: &[super::Bind],
 ) -> Result<(), StorageError> {
-    let sql = format!("INSERT OR IGNORE INTO history_tombstones (record_id) SELECT record_id FROM history {filter}");
+    let sql = format!(
+        "INSERT OR IGNORE INTO history_tombstones (record_id, connection_id) \
+         SELECT record_id, connection_id FROM history {filter}"
+    );
     let mut statement = sqlx::query(AssertSqlSafe(sql));
     for bind in binds {
         statement = match bind {
