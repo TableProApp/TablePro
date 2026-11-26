@@ -627,3 +627,22 @@ async fn a_record_the_person_deletes_here_leaves_nothing_to_approve() {
         Some(DeletedReason::User)
     );
 }
+
+#[tokio::test]
+async fn a_snapshot_that_serves_a_waiting_record_again_keeps_it_waiting() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "host": "db.example.com"}));
+    mac.sync().await;
+    mini.sync().await;
+
+    mini.wire.expire_next_cursor();
+    mini.sync().await;
+    mini.sync().await;
+
+    let held = mini.rows(RowRange::Table(Table::Held)).await;
+    assert!(matches!(&held[..], [Row::Held(row)] if row.reason == HeldReason::AwaitingApproval));
+    assert_eq!(server.stored(personal(), "connection", &id(1)).unwrap().deleted, None);
+}

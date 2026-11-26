@@ -124,6 +124,8 @@ struct SettleInputs {
     bases: HashMap<RecordKey, BaseRow>,
     conflicts: HashMap<RecordKey, ConflictRow>,
     approvals: HashMap<RecordKey, Vec<ApprovalRow>>,
+    // Records held whole until the person decides.
+    awaiting: HashSet<RecordKey>,
     deleted_history: HashSet<String>,
 }
 
@@ -480,9 +482,14 @@ impl ServiceSync {
             if open.is_some() && settled.base.is_some() && settled.conflict.is_none() {
                 writes.resolved.push(key.clone());
             }
+            // A copy pulled again unchanged leaves a record that waits for the person waiting, else the diff would
+            // read the store's lack of it as a deletion.
+            let unchanged = settled.base.is_none();
             writes.bases.extend(settled.base);
             writes.conflicts.extend(settled.conflict);
-            writes.unheld.push(key);
+            if !(unchanged && inputs.awaiting.contains(&key)) {
+                writes.unheld.push(key);
+            }
         }
         self.write_store(pull.scope, adapters, writes).await
     }
@@ -525,6 +532,11 @@ impl ServiceSync {
             }
             if let Some(Row::Conflict(row)) = txn.get(&RowKey::Conflict(key.clone())).await? {
                 inputs.conflicts.insert(key.clone(), row);
+            }
+            if let Some(Row::Held(row)) = txn.get(&RowKey::Held(key.clone())).await?
+                && row.reason == HeldReason::AwaitingApproval
+            {
+                inputs.awaiting.insert(key.clone());
             }
             if key.kind.known() == Some(Kind::HistoryEntry)
                 && txn.get(&RowKey::DeletedHistory(key.record_id.clone())).await?.is_some()
