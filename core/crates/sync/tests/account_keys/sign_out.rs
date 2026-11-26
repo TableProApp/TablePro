@@ -236,3 +236,19 @@ async fn a_sign_out_cut_off_partway_finishes_at_the_next_call() {
     assert_eq!(key_rows(&restarted).await, 0);
     assert!(restarted.store.is_empty());
 }
+
+#[tokio::test]
+async fn a_device_with_no_store_reports_it_and_signs_out_with_nothing_to_erase() {
+    let server = FakeServer::new();
+    let device = Device::with_store(
+        &server,
+        new_account(),
+        "dev_linux",
+        std::sync::Arc::new(tablepro_sync_testing::FakeDeviceStore::without_store()),
+    )
+    .await;
+
+    assert_eq!(device.key_state().await, KeyState::NoDeviceStore);
+    assert_eq!(device.service.sign_out().await.unwrap(), SignOutOutcome::Revoked);
+    assert_eq!(key_rows(&device).await, 0);
+}
