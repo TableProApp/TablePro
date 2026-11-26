@@ -680,8 +680,8 @@ async fn a_move_back_revoked_between_its_steps_commits_nothing_more() {
     mac.device.sync().await;
     let plan = mac.mover(false).plan_move_to_icloud().await.unwrap();
 
-    // The first two checks pass (the move's start and the deletion's request), the commit after it does not.
-    let back = mac.mover_revoked_after(2).move_to_icloud(plan.icloud_deletions).await;
+    // The first three checks pass (the move's start, its open row and the deletion's request), the commit after does not.
+    let back = mac.mover_revoked_after(3).move_to_icloud(plan.icloud_deletions).await;
     let row = mac.device.sync.move_row().await.unwrap();
 
     assert_eq!(back.unwrap_err().code(), "sync.not_allowed");
@@ -690,6 +690,29 @@ async fn a_move_back_revoked_between_its_steps_commits_nothing_more() {
         Some((tablepro_sync::api::state::Provider::ICloud, MovePhase::Open))
     );
     assert_eq!(mac.device.sync.mode(), ServiceMode::TeamsOnly);
+}
+
+// The values forbid iCloud right after the move back starts: its open row is refused at its commit, so personal data
+// stays on TablePro Sync with no move back recorded (Codex round 4).
+#[tokio::test]
+async fn a_move_back_revoked_before_its_open_row_commits_records_no_move() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    mac.put(1, carried(1, "Prod", 1));
+    mac.icloud_pass().await;
+    mac.mover(true).move_to_service().await.unwrap();
+    let plan = mac.mover(false).plan_move_to_icloud().await.unwrap();
+
+    let back = mac.mover_revoked_after(1).move_to_icloud(plan.icloud_deletions).await;
+    let row = mac.device.sync.move_row().await.unwrap();
+
+    assert_eq!(back.unwrap_err().code(), "sync.not_allowed");
+    assert_ne!(
+        row.map(|row| row.target),
+        Some(tablepro_sync::api::state::Provider::ICloud)
+    );
+    assert_eq!(mac.device.sync.mode(), ServiceMode::Personal);
 }
 
 // Only what the person confirmed leaves the zone: a record the device no longer holds for any other reason, as one

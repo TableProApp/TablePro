@@ -428,6 +428,44 @@ async fn a_value_a_refill_could_not_write_takes_the_pull_when_the_store_takes_it
     );
 }
 
+// A refused refill value takes the pull in a snapshot too: another store's refill reads the scope again before the
+// held record is retried, and the copy the restore left still never goes up (Codex round 4).
+#[tokio::test]
+async fn a_refill_s_refused_value_takes_the_pull_in_a_later_snapshot() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let file = StoreFile::new();
+    let connections = MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file));
+    let settings_file = StoreFile::new();
+    let settings = MemoryAdapter::new(Kind::MacosSettings, "settings", Arc::clone(&settings_file));
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .adapter(ScopeName::Personal, Arc::clone(&settings))
+        .build()
+        .await;
+    mac.connections.put(&id(1), json!({"name": "Old"}));
+    mac.sync().await;
+    mini.sync().await;
+    mac.connections.put(&id(1), json!({"name": "New"}));
+    mac.sync().await;
+    mini.sync().await;
+
+    file.restored();
+    connections.put(&id(1), json!({"name": "Old"}));
+    connections.refuse_value(&id(1), true);
+    mini.sync().await;
+    connections.refuse_value(&id(1), false);
+    settings_file.restored();
+    mini.sync().await;
+    mini.sync().await;
+
+    assert_eq!(connections.get(&id(1)), Some(json!({"name": "New"})));
+    assert_eq!(
+        stored(&server, Kind::Connection.as_str(), &id(1)),
+        Some(json!({"name": "New"}))
+    );
+}
+
 #[tokio::test]
 async fn a_value_the_device_already_holds_asks_nothing_on_its_first_pass() {
     let server = FakeServer::new();

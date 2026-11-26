@@ -156,7 +156,12 @@ impl Fetcher<'_> {
             match settle.view(&held.key, kind).await? {
                 View::NoAdapter | View::Unreadable(_) => {}
                 _ if refused => {}
-                _ if held.record.deleted.is_some() => recovery.deletions.push(held.key),
+                _ if held.record.deleted.is_some() => {
+                    if held.reason == HeldReason::RefusedInRefill {
+                        recovery.refilled.insert(held.key.clone());
+                    }
+                    recovery.deletions.push(held.key);
+                }
                 View::Stored(record) if record.standing == Standing::LocalOnly => recovery.release.push(held.key),
                 // CloudKit asked to wait before this record is asked for again.
                 View::Stored(_) | View::Missing if self.waiting.contains(&held.key) => {}

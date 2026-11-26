@@ -743,6 +743,59 @@ async fn a_profile_that_forces_icloud_rests_personal_data_on_tablepro_sync_at_on
     assert_eq!(after, ServiceMode::TeamsOnly);
 }
 
+// A restored file can hold an account-choice wait under the sign-in the app already keeps: the choice then answers
+// and the engine's own file stays (Codex round 4).
+#[tokio::test]
+async fn a_choice_on_a_restored_wait_keeps_the_engine_s_own_file() {
+    use tablepro_sync::api::state::{PushWait, Row, ScopeRow, StateIdentity};
+
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let files: Arc<dyn StateFiles> = Arc::new(SqliteStateFiles::at(dir.path().join("sync"), device_store.clone()));
+    let signed_in = link(&server, account);
+    let own = StateIdentity::Service {
+        origin: signed_in.origin.clone(),
+        sign_in: signed_in.sign_in.clone(),
+        account,
+        device_row: signed_in.device_row.clone(),
+    };
+    {
+        let state = files.open(own.clone()).await.unwrap();
+        let mut txn = state.begin().await.unwrap();
+        txn.put(Row::Scope(ScopeRow {
+            push_wait: Some(PushWait::AccountChoice { unsent: 0 }),
+            ..ScopeRow::new(ScopeName::Personal)
+        }))
+        .await
+        .unwrap();
+        txn.commit().await.unwrap();
+    }
+    let kept = super::engines::identity_text(&own);
+    let restored = open(&tasks, |parts| OpenParts {
+        config: SyncConfig {
+            service_account: kept.clone(),
+            ..config(SyncProviderTag::TableproSync)
+        },
+        files: Some(Arc::clone(&files)),
+        device_store: Some(device_store as Arc<dyn tablepro_sync::api::HostDeviceStore>),
+        link: Ok(signed_in),
+        ..parts
+    })
+    .await;
+
+    let plan = restored.service.plan_new_identity().await.unwrap();
+    let chosen = restored
+        .service
+        .choose_for_new_identity(super::service::NewIdentityChoiceTag::MoveMyData, plan.account)
+        .await;
+
+    assert!(chosen.is_ok(), "{chosen:?}");
+    assert_eq!(restored.service.service_account(), kept);
+}
+
 // A sign-in to another account than the one whose file this device used last pushes nothing personal until the person
 // picks Move my data or Start empty; a new sign-in of the same account is no switch (core ADR 0054, Another account or
 // server).

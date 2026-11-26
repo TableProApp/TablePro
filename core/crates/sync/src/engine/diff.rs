@@ -225,19 +225,19 @@ pub fn left_behind_digest(fields: &Value) -> [u8; 32] {
 }
 
 // A settings copy Start empty left on the device goes up only once the person edits it here: its create of the copy
-// kept then sends nothing (orchestrator ruling on 0066). Returns the records whose row goes, edited or met on the
-// provider.
+// kept then sends nothing (orchestrator ruling on 0066), nor does its revival over a tombstone, since the device keeps
+// a named category a deletion reaches. Returns the records whose row goes, edited or met live on the provider.
 pub fn hold_left_behind(diffed: &mut Diffed, bases: &[BaseRow], left: &HashMap<RecordKey, [u8; 32]>) -> Vec<RecordKey> {
     let mut gone: Vec<RecordKey> = bases
         .iter()
-        .filter(|base| left.contains_key(&base.key))
+        .filter(|base| base.deleted.is_none() && left.contains_key(&base.key))
         .map(|base| base.key.clone())
         .collect();
     diffed.pending.retain(|pending| {
         let Some(kept) = left.get(&pending.key) else {
             return true;
         };
-        let same = pending.base.is_none()
+        let same = pending.base.as_ref().is_none_or(|base| base.deleted.is_some())
             && matches!(&pending.op, PendingOp::Write { fields, .. } if left_behind_digest(fields) == *kept);
         if !same {
             gone.push(pending.key.clone());
@@ -357,6 +357,40 @@ mod tests {
             }],
             ..LocalRecords::default()
         }
+    }
+
+    // A tombstone on the new account is no live copy: the settings Start empty kept stay unsent until edited, and only
+    // a live base lets their row go (Codex security round 4).
+    #[test]
+    fn a_tombstone_keeps_a_left_behind_setting_unsent() {
+        let kind = Kind::MacosSettings;
+        let fields = json!({"category": "ai", "options": {"chatMode": "ask"}});
+        let local = LocalRecords {
+            records: vec![LocalRecord {
+                record_id: "ai".to_owned(),
+                fields: fields.clone(),
+                standing: Standing::Syncs,
+            }],
+            ..LocalRecords::default()
+        };
+        let key = RecordKey::new(ScopeName::Personal, KindName::of(kind), "ai");
+        let left = HashMap::from([(key.clone(), left_behind_digest(&fields))]);
+        let tombstone = BaseRow {
+            deleted: Some(crate::api::transport::DeletedReason::User),
+            fields: None,
+            ..base(kind, "ai", json!({}))
+        };
+        let live = base(kind, "ai", fields.clone());
+
+        let mut over_tombstone = diff(ScopeName::Personal, kind, &local, &[tombstone.clone()], &HashSet::new());
+        let gone_over_tombstone = hold_left_behind(&mut over_tombstone, &[tombstone], &left);
+        let mut over_live = diff(ScopeName::Personal, kind, &local, &[live.clone()], &HashSet::new());
+        let gone_over_live = hold_left_behind(&mut over_live, &[live], &left);
+
+        assert!(over_tombstone.pending.is_empty());
+        assert!(gone_over_tombstone.is_empty());
+        assert!(over_live.pending.is_empty());
+        assert_eq!(gone_over_live, vec![key]);
     }
 
     #[test]

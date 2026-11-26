@@ -130,6 +130,47 @@ async fn a_value_the_store_refuses_is_held_and_the_fetch_goes_on() {
     assert!(rig.held(Kind::Connection, A).await.is_none());
 }
 
+// What a refill's store refused takes the pull on the next page that brings it, and so does a refused deletion when
+// the store takes it: the copy the restore left is no edit that wins or revives the record (Codex round 4).
+#[tokio::test]
+async fn a_refill_s_refusal_takes_the_pull_on_a_later_page_and_for_a_deletion() {
+    use tablepro_sync::api::state::HeldReason;
+    let rig = Rig::new().await;
+    let connection = |name: &str| json!({"name": name});
+    rig.save_elsewhere(Kind::Connection, A, &connection("v1"));
+    rig.save_elsewhere(Kind::Connection, B, &connection("v1"));
+    rig.fetch().await.unwrap();
+    let store = rig.store(Kind::Connection);
+    store.restore(vec![
+        (A, projected(Kind::Connection, A, &connection("old"))),
+        (B, projected(Kind::Connection, B, &connection("old"))),
+    ]);
+    rig.save_elsewhere(Kind::Connection, A, &connection("v2"));
+    rig.delete_elsewhere(Kind::Connection, B);
+    store.refuse_value(A, true);
+    store.refuse_value(B, true);
+
+    rig.fetch().await.unwrap();
+    let held = (
+        rig.held(Kind::Connection, A).await.map(|row| row.reason),
+        rig.held(Kind::Connection, B).await.map(|row| row.reason),
+    );
+    store.refuse_value(A, false);
+    store.refuse_value(B, false);
+    rig.save_elsewhere(Kind::Connection, A, &connection("v3"));
+    rig.fetch().await.unwrap();
+    rig.push().await.unwrap();
+
+    assert_eq!(
+        held,
+        (Some(HeldReason::RefusedInRefill), Some(HeldReason::RefusedInRefill))
+    );
+    assert_eq!(store.fields(A), Some(projected(Kind::Connection, A, &connection("v3"))));
+    assert!(!store.holds(B));
+    assert!(rig.zone_fields(Kind::Connection, B).is_none());
+    assert!(rig.held(Kind::Connection, A).await.is_none());
+}
+
 // A deletion the store refuses leaves the record as the device held it: its base, and the pulled value it waits on
 // for the person, are what they were, and the deletion is held by id.
 #[tokio::test]

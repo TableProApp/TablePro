@@ -17,7 +17,7 @@ use crate::api::adapter::{RecordAdapter, StoreStamp};
 use crate::api::cloudkit::{CloudKitChanges, CloudKitFailure, CloudKitFetched, CloudKitTransport};
 use crate::api::error::{StateError, SyncError};
 use crate::api::ids::{Cursor, KindName, RecordKey, ScopeName};
-use crate::api::state::{Row, RowKey, StateIdentity, StateStore, StoreRow, StoresKindRow};
+use crate::api::state::{HeldReason, Row, RowKey, RowRange, StateIdentity, StateStore, StoreRow, StoresKindRow, Table};
 use crate::cloudkit::codes;
 use crate::engine::{Backoff, StopSignal};
 
@@ -153,6 +153,8 @@ struct Start {
     // restore left, and a later refill of others never takes it again (0066, `deferred`).
     keep_copies: BTreeSet<Kind>,
     stores: BTreeMap<String, StoreStamp>,
+    // Records a refill's store refused, which take the pull on whatever page brings them, as the refill would have.
+    refill_held: BTreeSet<RecordKey>,
 }
 
 struct Pass {
@@ -224,7 +226,7 @@ impl Pass {
             started: self.start.stores.clone(),
             release: Vec::new(),
             keep_copies: self.start.keep_copies.clone(),
-            pull_wins_keys: BTreeSet::new(),
+            pull_wins_keys: self.start.refill_held.clone(),
         }
     }
 }
@@ -330,11 +332,21 @@ impl<'a> Fetcher<'a> {
             Some(Cursor::CloudKit(token)) => Some(token),
             _ => None,
         });
+        let refill_held = txn
+            .scan(&RowRange::Scope(Table::Held, SCOPE))
+            .await?
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Held(held) if held.reason == HeldReason::RefusedInRefill => Some(held.key),
+                _ => None,
+            })
+            .collect();
         let mut start = Start {
             token,
             refill: BTreeSet::new(),
             keep_copies: BTreeSet::new(),
             stores: BTreeMap::new(),
+            refill_held,
         };
         for adapter in self.adapters.values() {
             if !start.stores.contains_key(adapter.store()) {

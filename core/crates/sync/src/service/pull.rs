@@ -37,6 +37,8 @@ struct Pull {
     cut: Option<Cut>,
     // Kinds whose store was restored, replaced or never seen: the pull wins.
     pull_wins: HashSet<Kind>,
+    // Records a refill's store refused: the pull wins on whatever page brings them, as the refill would have.
+    held_refills: HashSet<RecordKey>,
     cursor: Option<Cursor>,
     older_cursor: Option<Cursor>,
     in_force: Option<Version>,
@@ -89,8 +91,8 @@ impl Pull {
         Ok(())
     }
 
-    fn judge(&self, kind: Kind, base: Option<&BaseRow>, record: &PulledRecord) -> Judgement {
-        if self.pull_wins.contains(&kind) {
+    fn judge(&self, kind: Kind, key: &RecordKey, base: Option<&BaseRow>, record: &PulledRecord) -> Judgement {
+        if self.pull_wins.contains(&kind) || self.held_refills.contains(key) {
             return Judgement::PullWins;
         }
         match (&self.cut, base) {
@@ -273,6 +275,7 @@ impl ServiceSync {
             snapshot,
             cut: row.refill.then(|| Cut::new(&row.lineage, &info.epochs)),
             pull_wins,
+            held_refills: self.held_refills(scope).await?,
             cursor: if snapshot { None } else { row.cursor.clone() },
             older_cursor: None,
             in_force: if snapshot { None } else { row.key_version },
@@ -446,6 +449,19 @@ impl ServiceSync {
             }
         }
         Ok(())
+    }
+
+    async fn held_refills(&self, scope: ScopeName) -> Result<HashSet<RecordKey>, SyncError> {
+        Ok(begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::Held, scope))
+            .await?
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Held(held) if held.reason == HeldReason::RefusedInRefill => Some(held.key),
+                _ => None,
+            })
+            .collect())
     }
 
     // A history entry settles in the clear once it opens; one that cannot open yet is held.
@@ -640,7 +656,7 @@ impl ServiceSync {
             let moved = arrival.and_then(|arrival| arrival.icloud_base(&key));
             let marker = arrival.and_then(|arrival| arrival.marker(&key));
             let base = stored_base.or(moved.as_ref());
-            let mut judgement = pull.judge(kind, base, &record);
+            let mut judgement = pull.judge(kind, &key, base, &record);
             // A copy a refill kept while the kind was off stands for the store the restore left: once the kind is on,
             // its refill merges against that copy, so what was edited since goes up (0066, `deferred`).
             let kept_copy = inputs
@@ -951,7 +967,8 @@ impl ServiceSync {
                         Some(sealed) if record.deleted.is_none() && sealed.tag == record.tag => sealed.clone(),
                         _ => record,
                     };
-                    let refilling = record.kind.known().is_some_and(|kind| pull.pull_wins.contains(&kind));
+                    let refilling = pull.held_refills.contains(&key)
+                        || record.kind.known().is_some_and(|kind| pull.pull_wins.contains(&kind));
                     writes.refuse(key, record, refilling);
                 }
             }
@@ -1129,6 +1146,7 @@ impl ServiceSync {
             snapshot: true,
             cut: None,
             pull_wins: HashSet::new(),
+            held_refills: self.held_refills(scope).await?,
             cursor: None,
             older_cursor: None,
             in_force: None,

@@ -16,7 +16,7 @@ use crate::api::control::PassReason;
 use crate::api::error::SyncError;
 use crate::api::ids::{RecordKey, ScopeName};
 use crate::api::state::{Provider, Row, RowKey, RowRange, StateStore, Table};
-use crate::cloudkit::fetch::{read_everything_again, wire_fields};
+use crate::cloudkit::fetch::{SCOPE, wire_fields};
 use tablepro_records::cloudkit::record_name;
 
 pub(super) struct MoveBack {
@@ -99,11 +99,15 @@ impl MoveBack {
                 txn.delete(&RowKey::Base(base.key)).await?;
             }
         }
-        // The file syncs on iCloud again once its move back ends.
+        // The file syncs on iCloud again once its move back ends, from a fetch that reads the zone whole.
         txn.delete(&RowKey::Move).await?;
+        if let Some(Row::Scope(mut scope)) = txn.get(&RowKey::Scope(SCOPE)).await? {
+            scope.cursor = None;
+            txn.put(Row::Scope(scope)).await?;
+        }
         super::fence(allowed, Provider::ICloud)?;
         txn.commit().await?;
-        read_everything_again(state.as_ref()).await
+        Ok(())
     }
 }
 

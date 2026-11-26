@@ -494,8 +494,11 @@ impl SyncService {
                 && engine.sync.plan_new_identity().await.is_ok()
             {
                 engine.sync.choose_for_new_identity(choice.into(), account).await?;
-                // Chosen: the last sign-in's file has told what it held and goes, as iCloud's does.
-                if let (Some(files), Some(previous)) = last {
+                // Chosen: the last sign-in's file has told what it held and goes, as iCloud's does. A restored file
+                // can hold a wait under the sign-in the app kept, whose file is this engine's own and stays.
+                if let (Some(files), Some(previous)) = last
+                    && previous != *engine.sync.identity()
+                {
                     files.delete(previous).await.map_err(SyncError::from)?;
                 }
                 return Ok(());

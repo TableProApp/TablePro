@@ -439,7 +439,7 @@ impl ServiceSync {
     // `moves` row holds the arrival open from the commit that lets go until the commit that ends it, so a move called
     // again after it stopped short, in this process or after a restart, goes on from the bases its first try committed
     // and a record merged then never meets the marker again.
-    pub(crate) async fn run_arrival(&self, arrival: Arrival) -> Result<PassReport, SyncError> {
+    pub(crate) async fn run_arrival(&self, arrival: Arrival, fence: &dyn Fence) -> Result<PassReport, SyncError> {
         let mut session = self.session.lock().await;
         self.check_stop()?;
         if self.policy_rests() {
@@ -458,7 +458,7 @@ impl ServiceSync {
         );
         // A move back that went through rests personal data here; a new arrival starts over from it.
         if !open {
-            self.let_go_of_personal(matches!(arrival, Arrival::FirstUpload), from)
+            self.let_go_of_personal(matches!(arrival, Arrival::FirstUpload), from, fence)
                 .await?;
         }
         let before = std::mem::replace(
@@ -469,7 +469,7 @@ impl ServiceSync {
             .pass_locked(&mut session, PassReason::Person, Some(Arc::new(arrival)))
             .await
         {
-            Ok(report) => self.arrived(report).await,
+            Ok(report) => self.arrived(report, fence).await,
             Err(error) => Err(error),
         };
         if outcome.is_err() {
@@ -482,7 +482,7 @@ impl ServiceSync {
     // The personal scope was pulled to the end and nothing personal is left to send, so no record goes up later without
     // the rules of the move. The row then says done until the app keeps TablePro Sync as its provider, so a move that
     // went through while the app was not watching still tells it.
-    async fn arrived(&self, report: PassReport) -> Result<PassReport, SyncError> {
+    async fn arrived(&self, report: PassReport, fence: &dyn Fence) -> Result<PassReport, SyncError> {
         let personal = ScopeName::Personal;
         let reached = report.reached.contains(&personal)
             && !report.pull_only
@@ -491,7 +491,6 @@ impl ServiceSync {
         if !reached || self.unsent(personal).await? != 0 {
             return Err(SyncError::MoveIncomplete);
         }
-        self.check_stop()?;
         let from = self.move_row().await?.and_then(|row| row.from);
         let mut txn = begin(&self.state).await?;
         txn.put(Row::Move(MoveRow {
@@ -500,6 +499,8 @@ impl ServiceSync {
             phase: MovePhase::Done,
         }))
         .await?;
+        fence.check()?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(report)
     }
@@ -531,8 +532,7 @@ impl ServiceSync {
     }
 
     // A move back to iCloud starts: until it ends, personal data rests here as on iCloud, after a restart too.
-    pub(crate) async fn leave_for_icloud(&self) -> Result<(), SyncError> {
-        self.check_stop()?;
+    pub(crate) async fn leave_for_icloud(&self, fence: &dyn Fence) -> Result<(), SyncError> {
         let mut txn = begin(&self.state).await?;
         txn.put(Row::Move(MoveRow {
             from: Some(Provider::Service),
@@ -540,15 +540,16 @@ impl ServiceSync {
             phase: MovePhase::Open,
         }))
         .await?;
+        fence.check()?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
 
     // The move back went through: iCloud holds the personal data, which stays resting here; the row says done until the
     // app keeps iCloud as its provider.
-    pub(crate) async fn left_for_icloud(&self) -> Result<(), SyncError> {
+    pub(crate) async fn left_for_icloud(&self, fence: &dyn Fence) -> Result<(), SyncError> {
         self.set_mode(ServiceMode::TeamsOnly).await;
-        self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         txn.put(Row::Move(MoveRow {
             from: Some(Provider::Service),
@@ -556,6 +557,8 @@ impl ServiceSync {
             phase: MovePhase::Done,
         }))
         .await?;
+        fence.check()?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
@@ -625,7 +628,12 @@ impl ServiceSync {
     // flight, so nothing an earlier spell on TablePro Sync agreed stands in for the copy the arrival meets. A first
     // upload refills, in the same commit, each kind that lives in the personal scope alone (0066, Per-kind refills),
     // so the marks outlive a restart and a kind a team scope shares, as the envelopes, takes no refill there.
-    async fn let_go_of_personal(&self, refills: bool, from: Option<Provider>) -> Result<(), SyncError> {
+    async fn let_go_of_personal(
+        &self,
+        refills: bool,
+        from: Option<Provider>,
+        fence: &dyn Fence,
+    ) -> Result<(), SyncError> {
         let scope = ScopeName::Personal;
         let mut txn = begin(&self.state).await?;
         txn.put(Row::Move(MoveRow {
@@ -674,6 +682,7 @@ impl ServiceSync {
             row.read_kinds.clear();
             txn.put(Row::Scope(row)).await?;
         }
+        fence.check()?;
         self.check_stop()?;
         txn.commit().await?;
         Ok(())
