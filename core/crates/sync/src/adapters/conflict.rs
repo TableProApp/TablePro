@@ -58,7 +58,7 @@ pub fn contested(row: &ConflictRow) -> Vec<String> {
         .collect()
 }
 
-fn overlay(onto: &Value, from: Option<&Value>, names: &[String]) -> Value {
+pub fn overlay(onto: &Value, from: Option<&Value>, names: &[String]) -> Value {
     let mut out = onto.clone();
     let Some(members) = out.as_object_mut() else {
         return out;

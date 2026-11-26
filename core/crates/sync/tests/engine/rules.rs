@@ -830,3 +830,107 @@ async fn a_policy_revival_sends_the_device_s_own_value_of_a_member_still_waiting
         Some(json!({"name": "Prod", "host": "a"}))
     );
 }
+
+#[tokio::test]
+async fn an_edit_made_after_a_restore_while_the_kind_was_off_goes_up_and_the_rest_takes_the_server_s_copy() {
+    let server = FakeServer::new();
+    let file = StoreFile::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .connections(
+            MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file)),
+            Arc::clone(&file),
+        )
+        .build()
+        .await;
+    let named = |name: &str| json!({"name": name, "sort_order": 1});
+    mac.connections.put(&id(1), named("Old 1"));
+    mac.connections.put(&id(2), named("Old 2"));
+    mac.sync().await;
+    mini.sync().await;
+    mac.connections.put(&id(1), named("New 1"));
+    mac.connections.put(&id(2), named("New 2"));
+    mac.sync().await;
+    mini.sync().await;
+    let off = |off: bool| SyncCategories {
+        off: if off {
+            vec![KindName::of(Kind::Connection)]
+        } else {
+            Vec::new()
+        },
+        passwords: true,
+    };
+
+    mini.sync.set_categories(off(true)).await.unwrap();
+    mini.connections.put(&id(1), named("Old 1"));
+    mini.connections.put(&id(2), named("Old 2"));
+    file.restored();
+    mini.sync().await;
+    mini.connections.put(&id(2), named("Edited after the restore"));
+    mini.sync().await;
+    mini.sync.set_categories(off(false)).await.unwrap();
+    mini.sync().await;
+
+    assert_eq!(mini.connections.get(&id(1)), Some(named("New 1")));
+    assert_eq!(stored(&server, "connection", &id(1)), Some(named("New 1")));
+    assert_eq!(
+        stored(&server, "connection", &id(2)),
+        Some(named("Edited after the restore"))
+    );
+}
+
+#[tokio::test]
+async fn keep_mine_never_sends_a_value_the_device_refused_as_its_own() {
+    let server = FakeServer::new();
+    server.add_team(team(), &[(account(), Role::Owner)]);
+    let scope = ScopeName::Team(team());
+    let items = |row: &str| {
+        (
+            row.to_owned(),
+            MemoryAdapter::new(Kind::LibraryConnection, "team_library", StoreFile::new()),
+        )
+    };
+    let (mac_row, mac_items) = items("dev_mac");
+    let (mini_row, mini_items) = items("dev_mini");
+    let mac = DeviceBuilder::new(&server, &mac_row)
+        .adapter(scope, Arc::clone(&mac_items))
+        .build()
+        .await;
+    let mini = DeviceBuilder::new(&server, &mini_row)
+        .adapter(scope, Arc::clone(&mini_items))
+        .build()
+        .await;
+    let item = |name: &str, host: &str| json!({"name": name, "host": host});
+    let lib_key = RecordKey::new(scope, Kind::LibraryConnection, "c1");
+    mac_items.put("c1", item("P", "a"));
+    mac.sync().await;
+    mini.sync().await;
+    mini.sync
+        .decide_approval(lib_key.clone(), "/host".to_owned(), true)
+        .await
+        .unwrap();
+    mac_items.put("c1", item("P", "b"));
+    mac.sync().await;
+    mini.sync().await;
+    mini.sync
+        .decide_approval(lib_key.clone(), "/host".to_owned(), false)
+        .await
+        .unwrap();
+
+    mini_items.put("c1", item("P mini", "a"));
+    mac_items.put("c1", item("P mac", "c"));
+    mac.sync().await;
+    mini.sync().await;
+    let open = mini.sync.conflicts().await.unwrap();
+    mini.sync
+        .resolve_conflict(lib_key, ConflictChoice::KeepMine)
+        .await
+        .unwrap();
+    mini.sync().await;
+
+    assert_eq!(open[0].fields, ["name"]);
+    let team_copy = server
+        .stored(ScopeOwner::Team(team()), "library_connection", "c1")
+        .unwrap();
+    assert_eq!(team_copy.fields, Some(item("P mini", "c")));
+}

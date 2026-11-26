@@ -287,6 +287,7 @@ impl ServiceSync {
     async fn run(&self, session: &mut Session, named: Option<JournalIds>) -> Result<PassReport, SyncError> {
         self.stop.check()?;
         self.refill_stale_file(session).await?;
+        self.queue().finish_decided().await?;
         let body = self.poll_scopes(session).await?;
         let keyed = self.proofs.dpop_key().await?.is_some();
         let approved = body

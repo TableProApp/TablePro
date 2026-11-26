@@ -17,7 +17,7 @@ use crate::adapters::categories::DeviceCategories;
 use crate::adapters::{conflict, local_view};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
 use crate::api::error::SyncError;
-use crate::api::ids::{Cursor, KindName, RecordKey, ScopeName};
+use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{ArrivalOrder, CaughtUp};
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{
@@ -133,8 +133,8 @@ struct SettleInputs {
     approvals: HashMap<RecordKey, Vec<ApprovalRow>>,
     // Records held whole until the person decides.
     awaiting: HashSet<RecordKey>,
-    // Copies a store refill took while their kind was off, which win once the kind is read.
-    deferred: HashSet<RecordKey>,
+    // The store's copies a refill found while their kind was off, which the kind merges against once it is read.
+    deferred: HashMap<RecordKey, PulledRecord>,
     deleted_history: HashSet<String>,
 }
 
@@ -448,24 +448,34 @@ impl ServiceSync {
             }
             let base = inputs.bases.get(&key);
             let judgement = pull.judge(kind, base, &record);
+            let stored = local.and_then(|local| local.records.get(&key.record_id));
             if !pull.categories.syncs(kind) {
-                Self::while_off(&key, kind, judgement, base, &record, writes);
+                Self::while_off(&key, kind, judgement, base, stored, &record, writes);
                 continue;
             }
             if kind == Kind::HistoryEntry && !self.history_taken(&inputs, base, &record, writes) {
                 continue;
             }
-            // A refill that came while the kind was off wins now that it is read (0054, Store identity).
-            let judgement = if inputs.deferred.contains(&key) {
+            // A store restored while its kind was off merges against the copy the restore left, so what was edited
+            // since goes up and the rest takes the server's copy (0054, Store identity).
+            let refill = inputs.deferred.get(&key).map(|deferred| {
                 writes.undeferred.push(key.clone());
-                match judgement {
-                    Judgement::Merge => Judgement::PullWins,
-                    other => other,
-                }
-            } else {
-                judgement
+                deferred.fields.as_ref().map(|fields| BaseRow {
+                    key: key.clone(),
+                    // The copy has no tag of its own, so it never reads as the server's copy unchanged.
+                    tag: ChangeTag::Service(String::new()),
+                    version: None,
+                    revision: None,
+                    epoch: None,
+                    deleted: None,
+                    fields: Some(fields.clone()),
+                    created_ms: None,
+                })
+            });
+            let base = match (&refill, judgement) {
+                (Some(refill), Judgement::Merge) => refill.as_ref(),
+                _ => base,
             };
-            let stored = local.and_then(|local| local.records.get(&key.record_id));
             self.settle_one(pull, &inputs, key, kind, index, judgement, base, stored, record, writes);
         }
         // A conflict is kept before the store takes the server's side of it, so a crash between the two never loses
@@ -482,13 +492,14 @@ impl ServiceSync {
     }
 
     // What a kind turned off takes from a refill without touching its store: a base the restore lost, which the
-    // device's copy goes up on once the kind is on, and, from a store that was restored, the copy that wins once the
-    // kind is read again. Anything else is read again when the kind is turned on.
+    // device's copy goes up on once the kind is on, and, from a store that was restored, the copy the restore left,
+    // which the kind merges against once it is read again. Anything else is read again when the kind is turned on.
     fn while_off(
         key: &RecordKey,
         kind: Kind,
         judgement: Judgement,
         base: Option<&BaseRow>,
+        stored: Option<&LocalRecord>,
         record: &PulledRecord,
         writes: &mut PageWrites,
     ) {
@@ -500,7 +511,13 @@ impl ServiceSync {
             }
             Judgement::PullWins => writes.deferred.push(DeferredRow {
                 key: key.clone(),
-                record: record.clone(),
+                record: PulledRecord {
+                    fields: stored.map(|stored| stored.fields.clone()),
+                    fields_json: None,
+                    deleted: None,
+                    service: None,
+                    ..record.clone()
+                },
             }),
             Judgement::Merge => {}
         }
@@ -552,10 +569,20 @@ impl ServiceSync {
             ..mine
         });
         let mut settled = settle(&key, kind, judgement, base_view.as_ref(), mine.as_ref(), &record);
-        // The row keeps the device's own copy, never the merge's view of it, so Keep Mine writes nothing the device
-        // did not hold.
+        // The row keeps the device's own values in the members it contests, never the merge's view of them, so Keep
+        // Mine writes nothing the device did not hold; the members the merge did not contest stay as the merge read
+        // them, so a value that waits or was refused is never taken for the device's edit. Against a deletion the
+        // device keeps its own copy whole.
         if let Some(conflict) = settled.conflict.as_mut() {
-            conflict.mine = mine_side;
+            conflict.mine = if conflict.theirs.is_some() {
+                let names = conflict::contested(conflict);
+                conflict
+                    .mine
+                    .as_ref()
+                    .map(|view| conflict::overlay(view, mine_side.as_ref(), &names))
+            } else {
+                mine_side
+            };
         }
         let stored_fields = stored.map(|stored| &stored.fields);
         match (&settled.kept, &settled.store) {
@@ -639,8 +666,8 @@ impl ServiceSync {
             {
                 inputs.awaiting.insert(key.clone());
             }
-            if txn.get(&RowKey::Deferred(key.clone())).await?.is_some() {
-                inputs.deferred.insert(key.clone());
+            if let Some(Row::Deferred(row)) = txn.get(&RowKey::Deferred(key.clone())).await? {
+                inputs.deferred.insert(key.clone(), row.record);
             }
             if key.kind.known() == Some(Kind::HistoryEntry)
                 && txn.get(&RowKey::DeletedHistory(key.record_id.clone())).await?.is_some()
@@ -788,9 +815,9 @@ impl ServiceSync {
                 .map(|adapter| adapter.store().to_owned());
             let except = envelopes.filter(|_| unchecked);
             writes.rows = self.settled_stores(ctx, pull.scope, except.as_deref()).await?;
-            // A history snapshot that stopped at its window did not serve the older entries it holds back.
-            let whole_history = pull.scope != ScopeName::History || pull.older_cursor.is_none();
-            if pull.can_open && whole_history {
+            // In a history snapshot that stopped at its window this also lets go of older entries kept for the keys;
+            // paging back serves them again and opens them then.
+            if pull.can_open {
                 writes
                     .unheld
                     .extend(self.waiting_envelopes(pull.scope).await?.into_iter().filter(|key| {

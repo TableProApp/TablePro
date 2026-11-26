@@ -175,6 +175,7 @@ pub async fn gate(
             for row in rows {
                 txn.delete(&RowKey::Approval(row.key, row.field)).await?;
             }
+            txn.delete(&RowKey::Held(key.clone())).await?;
             return Ok(Gated::Apply(merged));
         }
         Merged::DeletionContested { .. } | Merged::Reseal => return Ok(Gated::Apply(merged)),
@@ -183,6 +184,10 @@ pub async fn gate(
     write(txn, key, &split).await?;
     if split.hold {
         return Ok(Gated::Hold);
+    }
+    // A record that waited whole and now goes in is no longer held, so no later decision writes the held copy over it.
+    if awaits(txn, key).await? {
+        txn.delete(&RowKey::Held(key.clone())).await?;
     }
     Ok(Gated::Apply(match merged {
         Merged::Contested { fields, .. } => Merged::Contested {
@@ -334,9 +339,20 @@ impl Queue<'_> {
         txn.put(Row::Approval(row)).await?;
         let rows = rows_of(txn.as_mut(), &key).await?;
         txn.commit().await?;
-        let ready = rows.iter().all(|row| row.decision == ApprovalDecision::Approved);
-        let (Some(pulled), Some(adapter), Some(kind), true) = (pulled, self.adapter(&key), key.kind.known(), ready)
-        else {
+        if rows.iter().all(|row| row.decision == ApprovalDecision::Approved) {
+            self.apply_held(&key, pulled, rows).await?;
+        }
+        Ok(())
+    }
+
+    async fn apply_held(
+        &self,
+        key: &RecordKey,
+        pulled: Option<Value>,
+        rows: Vec<ApprovalRow>,
+    ) -> Result<(), SyncError> {
+        let key = key.clone();
+        let (Some(pulled), Some(adapter), Some(kind)) = (pulled, self.adapter(&key), key.kind.known()) else {
             return Ok(());
         };
         let split = split(kind, &key, None, &pulled, &rows);
@@ -361,6 +377,29 @@ impl Queue<'_> {
         }
         txn.delete(&RowKey::Held(key)).await?;
         txn.commit().await?;
+        Ok(())
+    }
+
+    // A record new to the device whose every waiting member the person approved, which a crash left out of the store:
+    // it goes in now, before the pass reads the stores.
+    pub async fn finish_decided(&self) -> Result<(), SyncError> {
+        let mut txn = self.state.begin().await?;
+        let held = txn.scan(&RowRange::Table(Table::Held)).await?;
+        let mut ready = Vec::new();
+        for row in held {
+            let Row::Held(held) = row else { continue };
+            if held.reason != HeldReason::AwaitingApproval {
+                continue;
+            }
+            let rows = rows_of(txn.as_mut(), &held.key).await?;
+            if !rows.is_empty() && rows.iter().all(|row| row.decision == ApprovalDecision::Approved) {
+                ready.push((held, rows));
+            }
+        }
+        drop(txn);
+        for (held, rows) in ready {
+            self.apply_held(&held.key, held.record.fields, rows).await?;
+        }
         Ok(())
     }
 
