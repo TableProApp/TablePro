@@ -1876,8 +1876,6 @@ static class _UniFFILib {
     
     
     
-    
-    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
