@@ -495,16 +495,15 @@ class DetectChangedPathsTests(unittest.TestCase):
     def test_the_mac_tests_run_on_the_model_merge_cases_they_share(self):
         self.assertEqual(self.verdict_after("macos", "core/crates/ai/tests/model-merge-cases.json"), "true")
 
-    def test_the_mac_app_runs_on_the_shortcut_presets_it_bundles(self):
+    def test_the_apple_apps_run_on_the_shortcut_presets_the_core_they_link_bundles(self):
         spec = self.repo / "apple/TableProMobile/project.yml"
         spec.parent.mkdir(parents=True)
         spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
         self.seed = self.commit([])
         presets = "core/crates/core/keymaps.json"
-        for suite in ["macos", "release", "shipped", "linux", "core", "windows"]:
+        for suite in ["macos", "ios", "release", "shipped", "linux", "core", "windows"]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.verdict_after(suite, presets), "true")
-        self.assertEqual(self.verdict_after("ios", presets), "false")
         self.assertEqual(self.verdict_after("plugins", presets), "false")
 
     def test_both_apple_apps_run_on_the_sample_database_the_core_holds(self):

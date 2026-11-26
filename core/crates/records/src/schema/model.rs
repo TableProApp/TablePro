@@ -11,9 +11,11 @@ pub enum Target {
     Wire(&'static str),
     // Never pushed.
     DeviceOnly,
+    // Keys a newer build wrote, kept and sent back as they came (0054, The engine).
+    Kept,
 }
 
-use Target::{DeviceOnly, Id, Wire};
+use Target::{DeviceOnly, Id, Kept, Wire};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Model {
@@ -63,6 +65,71 @@ const SAVED_CONNECTION: &[(&str, Target)] = &[
     ("options.replica_set", Wire("network_options.replica_set")),
     ("options.more_hosts", Wire("network_options.more_hosts")),
     ("options.channel_binding", Wire("network_options.channel_binding")),
+    ("details.startup_sql", Wire("startup_commands")),
+    ("details.ai_rules", Wire("ai_rules")),
+    ("details.ai_allowed_tools", Wire("ai_always_allowed_tools")),
+    ("details.ssh_profile_id", Wire("ssh_profile_id")),
+    ("details.ssh_route", Wire("ssh_route")),
+    ("details.credential_profile_id", Wire("credential_profile_id")),
+    ("details.credential_reference", Wire("credential_reference")),
+    ("details.redis_database", Wire("redis_database")),
+    ("details.additional_fields", Wire("additional_fields")),
+    ("device.local_only", DeviceOnly),
+    ("device.is_sample", DeviceOnly),
+    ("device.origin", DeviceOnly),
+    ("device.password_source", DeviceOnly),
+    ("device.cloudflare_tunnel", DeviceOnly),
+    ("device.cloud_sql_proxy", DeviceOnly),
+    ("device.socks_proxy", DeviceOnly),
+    ("device.tunnel_command", DeviceOnly),
+    ("unknown", Kept),
+];
+
+// `tablepro_storage::SshProfile`. Whether a key's passphrase is kept is this device's to know.
+const SSH_PROFILE: &[(&str, Target)] = &[
+    ("id", Id),
+    ("name", Wire("name")),
+    ("ssh.host", Wire("host")),
+    ("ssh.port", Wire("port")),
+    ("ssh.username", Wire("username")),
+    ("ssh.jump_hosts", Wire("jump_hosts")),
+    ("ssh.auth.kind", Wire("auth_method")),
+    ("ssh.auth.path", Wire("private_key_path")),
+    ("ssh.auth.has_passphrase", DeviceOnly),
+    ("unknown", Kept),
+];
+
+// `tablepro_storage::CredentialProfile`. A password source, a reference included, never leaves the device, as on
+// the Mac; the mode does.
+const CREDENTIAL_PROFILE: &[(&str, Target)] = &[
+    ("id", Id),
+    ("name", Wire("name")),
+    ("username", Wire("username")),
+    ("password.mode", Wire("password_mode")),
+    ("password.reference", DeviceOnly),
+    ("password.source", DeviceOnly),
+    ("secure_field_ids", Wire("secure_field_ids")),
+    ("order", Wire("sort_order")),
+    ("unknown", Kept),
+];
+
+const TABLE_FOLDER: &[(&str, Target)] = &[
+    ("id", Id),
+    ("scope.connection_id", Wire("connection_id")),
+    ("scope.database", Wire("database")),
+    ("scope.schema", Wire("schema")),
+    ("name", Wire("name")),
+    ("created_at_ms", Wire("created_at")),
+    ("updated_at_ms", Wire("updated_at")),
+];
+
+// The id is a digest of the table it files (0052, Derived ids).
+const TABLE_FOLDER_ITEM: &[(&str, Target)] = &[
+    ("table.connection_id", Wire("connection_id")),
+    ("table.database", Wire("database")),
+    ("table.schema", Wire("schema")),
+    ("table.name", Wire("name")),
+    ("folder_id", Wire("folder_id")),
 ];
 
 const CONNECTION_GROUP: &[(&str, Target)] = &[
@@ -144,6 +211,26 @@ pub const MODELS: &[Model] = &[
         name: "ConnectionTag",
         kind: Kind::Tag,
         members: CONNECTION_TAG,
+    },
+    Model {
+        name: "SshProfile",
+        kind: Kind::SshProfile,
+        members: SSH_PROFILE,
+    },
+    Model {
+        name: "CredentialProfile",
+        kind: Kind::CredentialProfile,
+        members: CREDENTIAL_PROFILE,
+    },
+    Model {
+        name: "TableFolder",
+        kind: Kind::TableFolder,
+        members: TABLE_FOLDER,
+    },
+    Model {
+        name: "TableFolderItem",
+        kind: Kind::TableFolderItem,
+        members: TABLE_FOLDER_ITEM,
     },
     Model {
         name: "FavouriteTable",

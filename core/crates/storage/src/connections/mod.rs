@@ -1,11 +1,11 @@
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
-use std::ops::{Deref, DerefMut};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tablepro_core::credentials::SecretKind;
 use tablepro_core::{AiPolicy, AuthMode, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig};
 use tokio::sync::watch;
@@ -13,14 +13,30 @@ use uuid::Uuid;
 
 use crate::document_problem::{DocumentProblem, DocumentProblemKind};
 use crate::error::StorageError;
+use crate::journal::{ChangeJournal, JournalSlot, RecordKind};
+use crate::lenient::{Identified, Lenient};
+use crate::store_identity::StoreIdentity;
 use crate::{ConnectionGroup, ConnectionTag, ConnectionTagName, GroupTree};
 
 mod additions;
 mod cloud;
+mod details;
+pub mod field_trust;
 mod library;
 mod placement;
+mod profiles;
+#[cfg(test)]
+mod store_tests;
+mod write_guard;
 
 pub use additions::ImportedConnection;
+pub use details::{
+    CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionOrigin,
+    CredentialReference, DeviceOnly, KnownOrigin, LocalPasswordSource, SocksProxy, SshRoute, SshRouteHop,
+    SshRouteTarget, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
+};
+pub use profiles::{CredentialPassword, CredentialProfile, SshProfile};
+use write_guard::WriteGuard;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {
@@ -76,6 +92,19 @@ pub struct SavedConnection {
     /// it.
     #[serde(default, skip_serializing_if = "NetworkOptions::is_default")]
     pub options: NetworkOptions,
+    #[serde(flatten)]
+    pub details: ConnectionDetails,
+    #[serde(flatten)]
+    pub device: DeviceOnly,
+    /// Keys a newer build wrote, kept as they were and written back.
+    #[serde(flatten)]
+    pub unknown: BTreeMap<String, Value>,
+}
+
+impl Identified for SavedConnection {
+    fn id(&self) -> Uuid {
+        self.id
+    }
 }
 
 impl SavedConnection {
@@ -110,9 +139,8 @@ impl SavedConnection {
         }
     }
 
-    /// Whether the two differ at most in how the list shows them. A
-    /// field added later counts as part of the connection until it is
-    /// listed here.
+    /// Whether the two differ at most in how the list shows them and in what a file never carries.
+    /// A field added later counts as part of the connection until it is listed here.
     pub fn connects_like(&self, other: &Self) -> bool {
         let shown_alike = |saved: &Self| Self {
             name: String::new(),
@@ -122,9 +150,29 @@ impl SavedConnection {
             order: 0,
             tags: Vec::new(),
             icon: None,
-            ..saved.clone()
+            ..saved.portable(false)
         };
         shown_alike(self) == shown_alike(other)
+    }
+
+    /// The connection as a file carries it. What this device alone holds stays out, and so does
+    /// anything that would run, send or sign in on the reader's device without the import showing
+    /// it: startup SQL, AI rules and tools, credential sources, profile links and plugin fields that
+    /// are not portable. A key this build does not know may be either, so it stays out too.
+    pub fn portable(&self, keep_local_credentials: bool) -> Self {
+        Self {
+            details: ConnectionDetails {
+                redis_database: self.details.redis_database,
+                additional_fields: field_trust::portable_fields(
+                    &self.details.additional_fields,
+                    keep_local_credentials,
+                ),
+                ..ConnectionDetails::default()
+            },
+            device: DeviceOnly::default(),
+            unknown: BTreeMap::new(),
+            ..self.clone()
+        }
     }
 
     fn database_target(&self) -> String {
@@ -190,16 +238,27 @@ pub enum SavedSshAuth {
     KeyboardInteractive,
 }
 
-/// The saved-connection list as it sits on disk.
+/// The saved-connection list as it sits on disk. A connection or a profile this build cannot read
+/// is held and written back, so a value a newer build wrote leaves the rest of the list usable.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct ConnectionsDocument {
-    connections: Vec<SavedConnection>,
+    connections: Lenient<SavedConnection>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     groups: Vec<ConnectionGroup>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<ConnectionTag>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     favorites: Vec<Uuid>,
+    #[serde(default, skip_serializing_if = "is_empty_list")]
+    ssh_profiles: Lenient<SshProfile>,
+    #[serde(default, skip_serializing_if = "is_empty_list")]
+    credential_profiles: Lenient<CredentialProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    store: Option<StoreIdentity>,
+}
+
+fn is_empty_list<T>(list: &Lenient<T>) -> bool {
+    list.is_empty() && list.held_count() == 0
 }
 
 impl ConnectionsDocument {
@@ -228,7 +287,7 @@ impl ConnectionsDocument {
             }
         }
         self.tags = kept;
-        for connection in &mut self.connections {
+        for connection in self.connections.iter_mut() {
             connection.name = crate::name_rules::shown(&connection.name);
             let mut seen = HashSet::with_capacity(connection.tags.len());
             connection.tags = std::mem::take(&mut connection.tags)
@@ -246,6 +305,77 @@ impl ConnectionsDocument {
             groups: Arc::from(self.groups.as_slice()),
             tags: Arc::from(self.tags.as_slice()),
             favorites: Arc::from(self.favorites.as_slice()),
+            ssh_profiles: Arc::from(self.ssh_profiles.as_slice()),
+            credential_profiles: Arc::from(self.credential_profiles.as_slice()),
+            unreadable: Arc::from(self.connections.held_ids()),
+            unreadable_profiles: self
+                .ssh_profiles
+                .held_ids()
+                .into_iter()
+                .chain(self.credential_profiles.held_ids())
+                .collect(),
+            store: self.store,
+        }
+    }
+
+    /// Every connection id the list holds, the ones this build cannot read included.
+    fn connection_ids(&self) -> HashSet<Uuid> {
+        self.connections
+            .iter()
+            .map(|saved| saved.id)
+            .chain(self.connections.held_ids())
+            .collect()
+    }
+
+    /// The kinds whose records differ between the two.
+    fn changed_kinds(&self, before: &Self) -> Vec<RecordKind> {
+        let mut kinds = Vec::new();
+        if self.connections != before.connections || self.favorites != before.favorites {
+            kinds.push(RecordKind::Connection);
+        }
+        if self.groups != before.groups {
+            kinds.push(RecordKind::Group);
+        }
+        if self.tags != before.tags {
+            kinds.push(RecordKind::Tag);
+        }
+        if self.ssh_profiles != before.ssh_profiles {
+            kinds.push(RecordKind::SshProfile);
+        }
+        if self.credential_profiles != before.credential_profiles {
+            kinds.push(RecordKind::CredentialProfile);
+        }
+        kinds
+    }
+
+    /// What an export writes: the connections as a file carries them, with their groups, tags and
+    /// favourites, and nothing this build could not read.
+    fn exported(&self) -> Self {
+        let mut connections = self.connections.without_held();
+        for connection in connections.iter_mut() {
+            *connection = connection.portable(true);
+        }
+        Self {
+            connections,
+            groups: self.groups.clone(),
+            tags: self.tags.clone(),
+            favorites: self.favorites.clone(),
+            ..Self::default()
+        }
+    }
+
+    /// What an import takes from a file: the same, read as untrusted.
+    fn imported(self) -> Self {
+        let mut connections = self.connections.without_held();
+        for connection in connections.iter_mut() {
+            *connection = connection.portable(false);
+        }
+        Self {
+            connections,
+            groups: self.groups,
+            tags: self.tags,
+            favorites: self.favorites,
+            ..Self::default()
         }
     }
 }
@@ -263,6 +393,14 @@ pub struct ConnectionList {
     pub groups: Arc<[ConnectionGroup]>,
     pub tags: Arc<[ConnectionTag]>,
     pub favorites: Arc<[Uuid]>,
+    pub ssh_profiles: Arc<[SshProfile]>,
+    pub credential_profiles: Arc<[CredentialProfile]>,
+    /// Ids of connections this build cannot read. The file keeps them as they were.
+    pub unreadable: Arc<[Uuid]>,
+    /// Ids of SSH and credential profiles this build cannot read.
+    pub unreadable_profiles: Arc<[Uuid]>,
+    /// `None` until the file's first write by a build that stamps one.
+    pub store: Option<StoreIdentity>,
 }
 
 impl ConnectionList {
@@ -272,6 +410,11 @@ impl ConnectionList {
             groups: Arc::from([]),
             tags: tags.into(),
             favorites: Arc::from([]),
+            ssh_profiles: Arc::from([]),
+            credential_profiles: Arc::from([]),
+            unreadable: Arc::from([]),
+            unreadable_profiles: Arc::from([]),
+            store: None,
         }
     }
 
@@ -433,7 +576,8 @@ type FileBytes = Option<Vec<u8>>;
 #[derive(Debug)]
 enum StoreState {
     Unloaded,
-    Ready(ConnectionsDocument, FileBytes),
+    // Boxed: the list is far larger than the other states.
+    Ready(Box<ConnectionsDocument>, FileBytes),
     // `None` when the file could not be read at all.
     Unavailable(DocumentProblem, Option<FileBytes>),
 }
@@ -448,25 +592,7 @@ struct StoreInner {
     path: PathBuf,
     state: Mutex<StoreState>,
     snapshot: watch::Sender<ConnectionListSnapshot>,
-}
-
-struct WriteGuard<'a> {
-    state: MutexGuard<'a, StoreState>,
-    _file: Option<std::fs::File>,
-}
-
-impl Deref for WriteGuard<'_> {
-    type Target = StoreState;
-
-    fn deref(&self) -> &StoreState {
-        &self.state
-    }
-}
-
-impl DerefMut for WriteGuard<'_> {
-    fn deref_mut(&mut self) -> &mut StoreState {
-        &mut self.state
-    }
+    journal: JournalSlot,
 }
 
 impl ConnectionStore {
@@ -480,7 +606,32 @@ impl ConnectionStore {
                 path: paths.connections_file(),
                 state: Mutex::new(StoreState::Unloaded),
                 snapshot,
+                journal: JournalSlot::default(),
             }),
+        }
+    }
+
+    /// The journal every later write tells, or none.
+    pub fn set_journal(&self, journal: Option<Arc<dyn ChangeJournal>>) {
+        self.inner.journal.set(journal);
+    }
+
+    /// The file's identity, `None` until a build that stamps one writes it.
+    pub fn identity_blocking(&self) -> Result<Option<StoreIdentity>, StorageError> {
+        let mut state = self.lock();
+        Ok(self.ensure_loaded(&mut state)?.store)
+    }
+
+    /// For a host that restored the file from a backup of its own: a new generation tells sync the
+    /// file is not the one it last saw.
+    pub fn start_new_generation_blocking(&self) -> Result<StoreIdentity, StorageError> {
+        let mut state = self.lock_to_write();
+        let mut document = self.ensure_current(&mut state)?;
+        document.store = Some(StoreIdentity::fresh());
+        self.commit(&mut state, document)?;
+        match &*state {
+            StoreState::Ready(document, _) => document.store.ok_or(StorageError::NotFound),
+            StoreState::Unloaded | StoreState::Unavailable(..) => Err(StorageError::NotFound),
         }
     }
 
@@ -498,12 +649,12 @@ impl ConnectionStore {
 
     pub fn load_blocking(&self) -> Result<Arc<[SavedConnection]>, StorageError> {
         let mut state = self.lock();
-        Ok(Arc::from(self.ensure_loaded(&mut state)?.connections))
+        Ok(Arc::from(self.ensure_loaded(&mut state)?.connections.as_slice()))
     }
 
     pub fn tags_blocking(&self) -> Result<Arc<[ConnectionTag]>, StorageError> {
         let mut state = self.lock();
-        Ok(Arc::from(self.ensure_loaded(&mut state)?.tags))
+        Ok(Arc::from(self.ensure_loaded(&mut state)?.tags.as_slice()))
     }
 
     /// A new entry, or one that changed group, goes last in its group.
@@ -518,6 +669,7 @@ impl ConnectionStore {
             .map(|saved| (saved.group_id, saved.order));
         document.settle_place(&mut connection, stored);
         document.connections.retain(|saved| saved.id != connection.id);
+        document.connections.release(connection.id);
         document.connections.push(connection);
         self.commit(&mut state, document)
     }
@@ -552,16 +704,16 @@ impl ConnectionStore {
             }
             None => document.settle_place(&mut connection, stored),
         }
+        document.connections.release(connection.id);
         document.connections.push(connection);
         self.commit(&mut state, document)
     }
 
+    /// Deletes the connection, one this build cannot read included, since its secrets go with it.
     pub fn remove_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
         let mut state = self.lock_to_write();
         let mut document = self.ensure_current(&mut state)?;
-        let before = document.connections.len();
-        document.connections.retain(|saved| saved.id != id);
-        if document.connections.len() == before {
+        if !document.connections.remove_id(id) {
             return Ok(RemoveOutcome::NotPresent);
         }
         self.commit(&mut state, document)?;
@@ -671,7 +823,7 @@ impl ConnectionStore {
     pub fn export_blocking(&self) -> Result<Vec<u8>, StorageError> {
         let mut state = self.lock();
         let document = self.ensure_loaded(&mut state)?;
-        Ok(crate::document::encode_document(&document)?)
+        Ok(crate::document::encode_document(&document.exported())?)
     }
 
     /// Merge an exported document back into the list, as
@@ -711,7 +863,8 @@ impl ConnectionStore {
     /// then by the same name in the same place, the same way.
     pub fn preview_import_blocking(&self, path: &Path, bytes: &[u8]) -> Result<ImportPreview, StorageError> {
         let mut incoming = crate::document::decode_document::<ConnectionsDocument>(path, bytes)
-            .map_err(StorageError::DocumentUnavailable)?;
+            .map_err(StorageError::DocumentUnavailable)?
+            .imported();
         incoming.tidy();
         let mut state = self.lock();
         let before = self.ensure_loaded(&mut state)?;
@@ -727,8 +880,13 @@ impl ConnectionStore {
         let mut landed: HashMap<Uuid, Uuid> = HashMap::with_capacity(incoming.connections.len());
         // Added entries follow the list's own and keep the file's order.
         let mut after: HashMap<Option<Uuid>, u32> = HashMap::new();
-        for mut connection in incoming.connections {
+        // An entry this build cannot read still owns its secrets, which the keyring files by id.
+        let unreadable: HashSet<Uuid> = document.connections.held_ids().into_iter().collect();
+        for mut connection in std::mem::take(&mut *incoming.connections) {
             let from = connection.id;
+            if unreadable.contains(&connection.id) {
+                connection.id = Uuid::new_v4();
+            }
             connection.tags = connection
                 .tags
                 .iter()
@@ -789,7 +947,7 @@ impl ConnectionStore {
             Err(error) => return Err(error),
         }
         let moved = crate::fs::move_aside_blocking(&self.inner.path, now)?;
-        *state = StoreState::Ready(ConnectionsDocument::default(), None);
+        *state = StoreState::Ready(Box::default(), None);
         self.publish(&state);
         Ok(moved)
     }
@@ -810,7 +968,7 @@ impl ConnectionStore {
     fn lock_to_write(&self) -> WriteGuard<'_> {
         let state = self.lock();
         let file = crate::fs::lock_beside_blocking(&self.inner.path);
-        WriteGuard { state, _file: file }
+        WriteGuard::new(state, file, &self.inner.journal)
     }
 
     fn ensure_loaded(&self, state: &mut StoreState) -> Result<ConnectionsDocument, StorageError> {
@@ -833,7 +991,7 @@ impl ConnectionStore {
                 if !unchanged {
                     let decoded = decode(path, found.as_deref());
                     *state = match decoded {
-                        Ok(document) => StoreState::Ready(document, found),
+                        Ok(document) => StoreState::Ready(Box::new(document), found),
                         Err(problem) => StoreState::Unavailable(problem, Some(found)),
                     };
                     self.publish(state);
@@ -847,7 +1005,7 @@ impl ConnectionStore {
                             source,
                         });
                     }
-                    return Ok(document.clone());
+                    return Ok((**document).clone());
                 }
                 let problem = DocumentProblem::new(
                     path,
@@ -862,7 +1020,7 @@ impl ConnectionStore {
             }
         }
         match state {
-            StoreState::Ready(document, _) => Ok(document.clone()),
+            StoreState::Ready(document, _) => Ok((**document).clone()),
             StoreState::Unavailable(problem, _) => Err(StorageError::DocumentUnavailable(problem.clone())),
             StoreState::Unloaded => unreachable!("just loaded"),
         }
@@ -888,14 +1046,22 @@ impl ConnectionStore {
     fn commit(&self, state: &mut WriteGuard<'_>, mut document: ConnectionsDocument) -> Result<(), StorageError> {
         // A connection saved with a tag deleted meanwhile drops it here.
         document.tidy();
+        let changed = match &**state {
+            StoreState::Ready(before, _) => document.changed_kinds(before),
+            StoreState::Unloaded | StoreState::Unavailable(..) => {
+                document.changed_kinds(&ConnectionsDocument::default())
+            }
+        };
+        document.store = Some(StoreIdentity::after_write(document.store));
         let bytes = crate::document::encode_document(&document)?;
         crate::upgrade_copies::keep_before_write_blocking::<ConnectionsDocument>(&self.inner.path)?;
         // Before the list itself, so a deleted connection is never gone from the list but kept in a
         // copy, and a failed trim leaves both as they were for the next write to try again.
-        let kept = document.connections.iter().map(|saved| saved.id.to_string()).collect();
+        let kept = document.connection_ids().iter().map(Uuid::to_string).collect();
         crate::upgrade_copies::trim_connection_copies_blocking(&self.inner.path, &kept)?;
         crate::fs::write_private_blocking(&self.inner.path, &bytes)?;
-        **state = StoreState::Ready(document, Some(bytes));
+        state.changed(changed);
+        **state = StoreState::Ready(Box::new(document), Some(bytes));
         self.publish(state);
         Ok(())
     }
@@ -1096,6 +1262,9 @@ mod tests {
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         }
     }
 
@@ -1126,6 +1295,9 @@ mod tests {
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
+            details: Default::default(),
+            device: Default::default(),
+            unknown: Default::default(),
         }
     }
 
@@ -1218,59 +1390,66 @@ mod tests {
         assert!(matches!(refused, Err(StorageError::DocumentUnavailable(_))));
     }
 
-    #[test]
-    fn unknown_auth_mode_is_corrupt_not_empty() {
+    /// Seeds `contents`, saves another connection beside it, and returns the list and the file.
+    fn held_through_a_write(contents: &str) -> (ConnectionList, serde_json::Value) {
         let root = TempDir::new().expect("tempdir");
-        seed(&root, &connections_json(r#","auth_mode":"from_the_future""#));
+        let path = seed(&root, contents);
+        let store = store(&root);
+        store.upsert_blocking(sample_connection()).expect("a save beside it");
+        let raw = serde_json::from_slice(&std::fs::read(path).expect("read")).expect("json");
+        (store.list_blocking().expect("the list"), raw)
+    }
 
-        let refused = store(&root).load_blocking();
-
-        // Silently treating this as an empty list would lose every saved
-        // connection the moment a newer auth mode appears.
-        assert!(
-            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
-            "{refused:?}"
-        );
+    fn held_entry(raw: &serde_json::Value) -> Option<&serde_json::Value> {
+        raw["connections"]
+            .as_array()?
+            .iter()
+            .find(|entry| entry["id"] == "550e8400-e29b-41d4-a716-446655440000")
     }
 
     #[test]
-    fn an_entry_without_a_level_a_policy_or_an_access_level_is_refused() {
+    fn unknown_auth_mode_is_held_not_dropped() {
+        let (list, raw) = held_through_a_write(&connections_json(r#","auth_mode":"from_the_future""#));
+
+        // Dropping it would lose the connection the moment a newer auth mode appears, and reading
+        // it as another mode would connect some other way.
+        assert_eq!(list.connections.len(), 1);
+        assert_eq!(list.unreadable.len(), 1);
+        assert_eq!(held_entry(&raw).expect("kept")["auth_mode"], "from_the_future");
+    }
+
+    #[test]
+    fn an_entry_without_a_level_a_policy_or_an_access_level_is_held_not_guessed() {
         for (field, value) in [
             ("safe_mode", r#""off""#),
             ("external_access", r#""read_only""#),
             ("ai_policy", r#""ask""#),
         ] {
-            let root = TempDir::new().expect("tempdir");
             let full = connections_json("");
             let without = full.replace(&format!(r#","{field}":{value}"#), "");
             assert_ne!(without, full, "{field}");
-            seed(&root, &without);
 
-            let refused = store(&root).load_blocking();
+            let (list, raw) = held_through_a_write(&without);
 
             // Guessing would drop a guard the user set.
-            assert!(
-                matches!(refused, Err(StorageError::DocumentUnavailable(_))),
-                "{field}: {refused:?}"
-            );
+            assert!(list.connections.iter().all(|saved| saved.name != "n"), "{field}");
+            assert_eq!(list.unreadable.len(), 1, "{field}");
+            assert!(held_entry(&raw).expect("kept").get(field).is_none(), "{field}");
         }
     }
 
     #[test]
-    fn saved_connection_requires_tls_field() {
-        let root = TempDir::new().expect("tempdir");
+    fn an_entry_without_tls_is_held_not_guessed() {
         let full = connections_json("");
         let without = full.replace(r#","tls":{"mode":"disable"}"#, "");
         assert_ne!(without, full);
-        seed(&root, &without);
 
-        let refused = store(&root).load_blocking();
+        let (list, raw) = held_through_a_write(&without);
 
         // A guessed mode could connect in the clear.
-        assert!(
-            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
-            "{refused:?}"
-        );
+        assert!(list.connections.iter().all(|saved| saved.name != "n"));
+        assert_eq!(list.unreadable.len(), 1);
+        assert!(held_entry(&raw).expect("kept").get("tls").is_none());
     }
 
     #[test]
@@ -1742,7 +1921,7 @@ mod tests {
         store.upsert_blocking(connection.clone()).expect("upsert");
         connection.name = "production (renamed)".to_owned();
         let document = ConnectionsDocument {
-            connections: vec![connection],
+            connections: vec![connection].into(),
             ..ConnectionsDocument::default()
         };
         let bytes = crate::document::encode_document(&document).expect("encode");
@@ -1774,7 +1953,7 @@ mod tests {
             };
             store.upsert_blocking(mine.clone()).expect("upsert");
             let bytes = crate::document::encode_document(&ConnectionsDocument {
-                connections: vec![crafted.clone()],
+                connections: vec![crafted.clone()].into(),
                 ..ConnectionsDocument::default()
             })
             .expect("encode");
@@ -1815,7 +1994,7 @@ mod tests {
             ..saved("staging")
         };
         let bytes = crate::document::encode_document(&ConnectionsDocument {
-            connections: vec![theirs],
+            connections: vec![theirs].into(),
             ..ConnectionsDocument::default()
         })
         .expect("encode");
@@ -1844,7 +2023,7 @@ mod tests {
             ..saved("Production")
         };
         let bytes = crate::document::encode_document(&ConnectionsDocument {
-            connections: vec![lookalike.clone(), lookalike.clone()],
+            connections: vec![lookalike.clone(), lookalike.clone()].into(),
             ..ConnectionsDocument::default()
         })
         .expect("encode");
@@ -1882,7 +2061,7 @@ mod tests {
             ..saved("other")
         };
         let bytes = crate::document::encode_document(&ConnectionsDocument {
-            connections: vec![theirs.clone(), renamed, taken, theirs.clone()],
+            connections: vec![theirs.clone(), renamed, taken, theirs.clone()].into(),
             ..ConnectionsDocument::default()
         })
         .expect("encode");
@@ -1916,7 +2095,7 @@ mod tests {
             ..saved("production")
         };
         let bytes = crate::document::encode_document(&ConnectionsDocument {
-            connections: vec![renamed, lookalike.clone()],
+            connections: vec![renamed, lookalike.clone()].into(),
             ..ConnectionsDocument::default()
         })
         .expect("encode");
@@ -1953,7 +2132,7 @@ mod tests {
             },
         ];
         let bytes = crate::document::encode_document(&ConnectionsDocument {
-            connections: swapped,
+            connections: swapped.into(),
             ..ConnectionsDocument::default()
         })
         .expect("encode");
@@ -1983,7 +2162,7 @@ mod tests {
             ..mine.clone()
         };
         let bytes = crate::document::encode_document(&ConnectionsDocument {
-            connections: vec![renamed, elsewhere],
+            connections: vec![renamed, elsewhere].into(),
             ..ConnectionsDocument::default()
         })
         .expect("encode");
@@ -2043,7 +2222,7 @@ mod tests {
             ..production
         };
         let bytes = crate::document::encode_document(&ConnectionsDocument {
-            connections: vec![renamed, staging],
+            connections: vec![renamed, staging].into(),
             ..ConnectionsDocument::default()
         })
         .expect("encode");
@@ -2086,7 +2265,7 @@ mod tests {
                 ..saved(lookalike)
             };
             let bytes = crate::document::encode_document(&ConnectionsDocument {
-                connections: vec![imported.clone()],
+                connections: vec![imported.clone()].into(),
                 ..ConnectionsDocument::default()
             })
             .expect("encode");
@@ -2126,7 +2305,7 @@ mod tests {
             ..saved("theirs")
         };
         let bytes = crate::document::encode_document(&ConnectionsDocument {
-            connections: vec![theirs.clone()],
+            connections: vec![theirs.clone()].into(),
             ..ConnectionsDocument::default()
         })
         .expect("encode");
@@ -2187,7 +2366,7 @@ mod tests {
         let store = store(&root);
         store.upsert_blocking(saved("mine")).expect("upsert");
         let bytes = crate::document::encode_document(&ConnectionsDocument {
-            connections: Vec::new(),
+            connections: Vec::new().into(),
             ..ConnectionsDocument::default()
         })
         .expect("encode");
@@ -2344,7 +2523,7 @@ mod tests {
 
     fn document(connections: Vec<SavedConnection>, tags: Vec<ConnectionTag>) -> Vec<u8> {
         crate::document::encode_document(&ConnectionsDocument {
-            connections,
+            connections: connections.into(),
             tags,
             ..ConnectionsDocument::default()
         })

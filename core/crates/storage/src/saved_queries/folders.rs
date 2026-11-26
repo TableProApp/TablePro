@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use sqlx::{AssertSqlSafe, Connection, Row, SqliteConnection, SqlitePool};
@@ -8,6 +7,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::error::StorageError;
+use crate::journal::{RecordKind, Signals};
 use crate::name_rules::{self, NameFault};
 use crate::unix_time::{from_unix, to_unix};
 
@@ -28,21 +28,20 @@ const MAX_NAME_CHARS: usize = 200;
 pub struct SavedQueryFolders {
     pool: SqlitePool,
     path: PathBuf,
-    changes: Arc<watch::Sender<u64>>,
+    signals: Signals,
 }
 
 impl SavedQueryFolders {
-    pub(crate) fn new(pool: SqlitePool, path: PathBuf, changes: Arc<watch::Sender<u64>>) -> Self {
-        Self { pool, path, changes }
+    pub(crate) fn new(pool: SqlitePool, path: PathBuf, signals: Signals) -> Self {
+        Self { pool, path, signals }
     }
 
     pub fn changes(&self) -> watch::Receiver<u64> {
-        self.changes.subscribe()
+        self.signals.subscribe()
     }
 
     fn changed(&self) {
-        self.changes
-            .send_modify(|revision| *revision = revision.wrapping_add(1));
+        self.signals.changed(&[RecordKind::SavedQueryFolder]);
     }
 
     pub async fn create(&self, connection: Uuid, name: &str, parent: Option<i64>) -> Result<i64, StorageError> {
@@ -136,7 +135,9 @@ impl SavedQueryFolders {
 
     pub async fn delete(&self, id: i64) -> Result<(), StorageError> {
         super::deletion::delete_folder(&self.pool, &self.path, id).await?;
-        self.changed();
+        // Its queries move to the top, which changes them too.
+        self.signals
+            .changed(&[RecordKind::SavedQuery, RecordKind::SavedQueryFolder]);
         Ok(())
     }
 
