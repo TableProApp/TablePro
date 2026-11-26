@@ -35,7 +35,7 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::api::device_store::HostDeviceStore;
 use crate::api::error::SyncError;
-use crate::api::ids::{DeviceRowId, IdempotencyKey, KindName, ScopeName};
+use crate::api::ids::{DeviceRowId, EpochId, IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{DraftId, KeyHooks, KeyNotice, KeyNoticeKind, NoticeId, PendingReset, Roster};
 use crate::api::state::{
     KeyObjectRow, KeyTrust, KeysSettled, Row, RowKey, RowRange, ScopeRow, StateStore, StateTxn, Table,
@@ -50,6 +50,12 @@ pub use personal::{CurrentPersonal, ScopeKeyPlan};
 pub use pins::{IkStanding, PinChange};
 #[cfg(test)]
 pub(crate) use restore::tests::{fakes as test_fakes, world as test_world};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MetRotation {
+    pub epoch: EpochId,
+    pub revision: u64,
+}
 
 // Microseconds since the Unix epoch in UTC, as the service's times are (0051, Pull).
 pub trait Clock: Send + Sync {
@@ -106,8 +112,8 @@ pub struct KeyService {
     // Each approval session's comparison until its reveal. Only memory holds r_N before it is revealed, so a restart
     // ends a session that has not reached it (0056, Approving a device).
     comparisons: Mutex<HashMap<RequestId, Comparison>>,
-    // The revision each team's last rotation from this device applied at, which met the team's `rotation_due` mark.
-    met_rotations: Mutex<HashMap<TeamId, u64>>,
+    // Where each team's last rotation from this device applied, which met the team's `rotation_due` mark.
+    met_rotations: Mutex<HashMap<TeamId, MetRotation>>,
 }
 
 impl KeyService {
@@ -152,7 +158,7 @@ impl KeyService {
         lock(&self.comparisons)
     }
 
-    pub(crate) fn met_rotations(&self) -> MutexGuard<'_, HashMap<TeamId, u64>> {
+    pub(crate) fn met_rotations(&self) -> MutexGuard<'_, HashMap<TeamId, MetRotation>> {
         lock(&self.met_rotations)
     }
 

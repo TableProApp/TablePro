@@ -476,13 +476,16 @@ impl KeyService {
             return Ok(());
         }
         // The engine reads a team's roster again from the body the pass started with, as after a push conflict. A body
-        // whose horizon is below this device's own rotation was read before that rotation met the mark, so its mark
-        // no longer stands.
+        // whose horizon is below this device's own rotation, in the epoch it was pushed in, was read before that
+        // rotation met the mark, so its mark no longer stands. Revisions of another epoch say nothing (0051, Epochs).
         let met = self.met_rotations().get(&team).copied();
         let scope = {
             let mut txn = self.begin().await?;
             let mut scope = self.scope_row(&mut *txn, ScopeName::Team(team)).await?;
-            if roster.rotation_due && met.is_some_and(|met| scope.horizon.is_some_and(|horizon| horizon < met)) {
+            let before_met = met.is_some_and(|met| {
+                scope.epoch == Some(met.epoch) && scope.horizon.is_some_and(|horizon| horizon < met.revision)
+            });
+            if roster.rotation_due && before_met {
                 roster.rotation_due = false;
                 if scope.rotation_due {
                     scope.rotation_due = false;

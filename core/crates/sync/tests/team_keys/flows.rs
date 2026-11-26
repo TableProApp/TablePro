@@ -47,14 +47,22 @@ pub(super) async fn team_pass(device: &Device, team: TeamId) -> KeyApplied {
 
 // The same, with what the roster read answered.
 async fn team_pass_read(device: &Device, team: TeamId) -> (KeyApplied, Result<(), SyncError>) {
+    let proof = Proof::Dpop(device.proof().await);
+    let ScopesAnswer::Body { body, .. } = device.transport.scopes(None, proof).await.unwrap() else {
+        return (KeyApplied::default(), Ok(()));
+    };
+    let (last, caught_up) = pull_team(device, team).await;
+    let read = read_roster_from(device, team, &body, caught_up).await;
+    (last, read)
+}
+
+// The team's pages pulled until caught up, their key objects applied in order.
+async fn pull_team(device: &Device, team: TeamId) -> (KeyApplied, Option<CaughtUp>) {
     let scope = ScopeName::Team(team);
     let proof = Proof::Dpop(device.proof().await);
     let mut row = match device.get(RowKey::Scope(scope)).await {
         Some(Row::Scope(row)) => row,
         _ => ScopeRow::new(scope),
-    };
-    let ScopesAnswer::Body { body, .. } = device.transport.scopes(None, proof.clone()).await.unwrap() else {
-        return (KeyApplied::default(), Ok(()));
     };
     let mut last = KeyApplied::default();
     let caught_up = loop {
@@ -101,8 +109,7 @@ async fn team_pass_read(device: &Device, team: TeamId) -> (KeyApplied, Result<()
             break mark;
         }
     };
-    let read = read_roster_from(device, team, &body, caught_up).await;
-    (last, read)
+    (last, caught_up)
 }
 
 // The roster as the engine reads it from `body` once the team's pull caught up: the scope row refreshed from the body,
@@ -400,34 +407,14 @@ async fn a_roster_read_again_from_the_pass_s_first_body_rotates_the_team_once() 
     team_pass(&t.owner, t.team).await;
     t.server.set_rotation_due(t.team, true);
     let proof = Proof::Dpop(t.owner.proof().await);
-    let ScopesAnswer::Body { body, .. } = t.owner.transport.scopes(None, proof.clone()).await.unwrap() else {
+    let ScopesAnswer::Body { body, .. } = t.owner.transport.scopes(None, proof).await.unwrap() else {
         panic!("no scopes body");
     };
     team_pass(&t.owner, t.team).await;
     let rotated = t.owner.service.team_keys(t.team).await.unwrap().version;
-    let Some(Row::Scope(row)) = t.owner.get(RowKey::Scope(ScopeName::Team(t.team))).await else {
-        panic!("no scope row");
-    };
-    let page = t
-        .owner
-        .transport
-        .pull(PullRequest {
-            scope: ScopeName::Team(t.team),
-            cursor: row.cursor,
-            limit: None,
-            proof,
-        })
-        .await
-        .unwrap();
+    let (_, caught_up) = pull_team(&t.owner, t.team).await;
 
-    read_roster_from(
-        &t.owner,
-        t.team,
-        &body,
-        CaughtUp::from_page(ScopeName::Team(t.team), &page),
-    )
-    .await
-    .unwrap();
+    read_roster_from(&t.owner, t.team, &body, caught_up).await.unwrap();
 
     assert_eq!(rotated, Some(v(2)));
     assert_eq!(t.owner.service.team_keys(t.team).await.unwrap().version, Some(v(2)));

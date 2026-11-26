@@ -23,7 +23,7 @@ use crate::api::key_flows::Roster;
 use crate::api::scopes::Role;
 use crate::api::state::{Holder, KeyVersionRow, KeyVersionState, Row, StateTxn};
 use crate::api::transport::{ChangeOutcome, RejectedCode};
-use crate::keys::{KeyService, OwnAccount, create_change};
+use crate::keys::{KeyService, MetRotation, OwnAccount, create_change};
 
 fn rejected(code: RejectedCode) -> SyncError {
     SyncError::Rejected { code }
@@ -442,6 +442,7 @@ impl KeyService {
         // A whole team rotation change set applied, which meets every `rotation_due` mark set before it.
         let scope = ScopeName::Team(team);
         let mut scope_row = self.scope_row(&mut *txn, scope).await?;
+        let epoch = scope_row.epoch;
         if scope_row.rotation_due {
             scope_row.rotation_due = false;
             txn.put(Row::Scope(scope_row)).await?;
@@ -451,8 +452,8 @@ impl KeyService {
             roster.rotation_due = false;
             self.rosters().put(team, roster);
         }
-        if let Some(revision) = revision {
-            self.met_rotations().insert(team, revision);
+        if let (Some(epoch), Some(revision)) = (epoch, revision) {
+            self.met_rotations().insert(team, MetRotation { epoch, revision });
         }
         Ok(())
     }
