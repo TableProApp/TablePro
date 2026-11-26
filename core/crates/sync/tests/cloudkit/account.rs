@@ -102,6 +102,49 @@ async fn start_empty_leaves_the_synced_records_behind_keeps_local_only_ones_and_
     assert_eq!(relaunched.status().phase, SyncPhase::Idle);
 }
 
+// Start empty keeps the device's settings: the new account's copy wins where it has one, and a category only this
+// device holds goes up once the person edits it here (orchestrator ruling).
+#[tokio::test]
+async fn start_empty_keeps_settings_the_new_account_s_copy_wins_and_an_edit_sends_the_rest() {
+    let rig = Rig::new().await;
+    let editor = |width: i64| json!({"category": "editor", "options": {"tabWidth": width}});
+    let keyboard =
+        |key: &str| json!({"category": "keyboard", "options": {"shortcuts": [{"id": key, "value": {"keyCode": 1}}]}});
+    let settings = rig.store(Kind::MacosSettings);
+    settings.put("editor", projected(Kind::MacosSettings, "editor", &editor(2)));
+    settings.put("keyboard", projected(Kind::MacosSettings, "keyboard", &keyboard("b")));
+    let sync = rig.sync(None);
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    rig.cloud.save_elsewhere(
+        OTHER,
+        record_type_of(Kind::MacosSettings).unwrap().name,
+        &name(Kind::MacosSettings, "editor"),
+        cloud_fields(Kind::MacosSettings, "editor", &editor(8)),
+    );
+    rig.cloud.switch_account(Some(OTHER));
+    sync.run_pass(PassReason::AccountChanged).await.unwrap();
+
+    let plan = sync.plan_new_identity().await.unwrap();
+    sync.choose_for_new_identity(NewIdentityChoice::StartEmpty, plan.account.clone())
+        .await
+        .unwrap();
+    sync.run_pass(PassReason::Poll).await.unwrap();
+    let kept = settings.fields("keyboard");
+    let sent_unedited = rig.zone_fields_of(OTHER, Kind::MacosSettings, "keyboard");
+    settings.put("keyboard", projected(Kind::MacosSettings, "keyboard", &keyboard("c")));
+    sync.run_pass(PassReason::Poll).await.unwrap();
+
+    assert_eq!(
+        settings.fields("editor"),
+        Some(projected(Kind::MacosSettings, "editor", &editor(8)))
+    );
+    assert_eq!(kept, Some(projected(Kind::MacosSettings, "keyboard", &keyboard("b"))));
+    assert!(sent_unedited.is_none());
+    assert!(rig.zone_fields_of(OTHER, Kind::MacosSettings, "keyboard").is_some());
+    assert!(rig.zone_fields(Kind::MacosSettings, "keyboard").is_some());
+    assert_eq!(sync.status().phase, SyncPhase::Idle);
+}
+
 // An answer to a prompt shown for one account changes nothing once another account is signed in: a stale Move my data
 // never sends the library to the account after it (Codex security round 1).
 #[tokio::test]

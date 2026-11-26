@@ -218,6 +218,37 @@ pub(crate) fn owner(kind: Kind, fields: &Value) -> Option<Uuid> {
         .and_then(|id| Uuid::parse_str(id).ok())
 }
 
+// The digest Start empty keeps of a settings copy it left on the device, over what a push would send of it.
+pub fn left_behind_digest(fields: &Value) -> [u8; 32] {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(serde_json::to_vec(fields).unwrap_or_default()).into()
+}
+
+// A settings copy Start empty left on the device goes up only once the person edits it here: its create of the copy
+// kept then sends nothing (orchestrator ruling on 0066). Returns the records whose row goes, edited or met on the
+// provider.
+pub fn hold_left_behind(diffed: &mut Diffed, bases: &[BaseRow], left: &HashMap<RecordKey, [u8; 32]>) -> Vec<RecordKey> {
+    let mut gone: Vec<RecordKey> = bases
+        .iter()
+        .filter(|base| left.contains_key(&base.key))
+        .map(|base| base.key.clone())
+        .collect();
+    diffed.pending.retain(|pending| {
+        let Some(kept) = left.get(&pending.key) else {
+            return true;
+        };
+        let same = pending.base.is_none()
+            && matches!(&pending.op, PendingOp::Write { fields, .. } if left_behind_digest(fields) == *kept);
+        if !same {
+            gone.push(pending.key.clone());
+        }
+        !same
+    });
+    gone.sort_by(|a, b| a.record_id.cmp(&b.record_id));
+    gone.dedup();
+    gone
+}
+
 // A deletion of a connection this device kept off sync and then deleted, or of a record that was one of its, sends
 // nothing: the record was never this device's to sync, as the Swift engine never sent it (0054, Rules for both
 // providers). Its base is forgotten, as a pruned one is.

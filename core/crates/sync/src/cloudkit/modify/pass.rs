@@ -760,6 +760,18 @@ impl CloudKitSync {
         if choice == NewIdentityChoice::StartEmpty {
             self.stop.check()?;
             zone::forget(state.as_ref()).await?;
+            let categories = lock(&self.categories).clone();
+            let fetcher = Fetcher::new(self.transport.as_ref(), state.as_ref(), &self.adapters, categories)?;
+            let kept = Pusher::new(&fetcher, &self.stop, self.clock.now_ms())
+                .leave_settings_behind()
+                .await?;
+            drop(fetcher);
+            self.stop.check()?;
+            let mut txn = state.begin().await?;
+            for row in kept {
+                txn.put(row).await?;
+            }
+            txn.commit().await?;
             self.leave_synced_records().await?;
         }
         self.stop.check()?;
@@ -767,14 +779,17 @@ impl CloudKitSync {
         self.run_locked(&mut session, PassReason::Person).await
     }
 
-    // Every record that syncs leaves its store. Local only records stay, and so does what a store cannot read, whose
-    // standing it cannot tell.
+    // Every record that syncs leaves its store, settings aside (`Pusher::leave_settings_behind`). Local only records
+    // stay, and so does what a store cannot read, whose standing it cannot tell; the connections go last, so no record
+    // of one reads as unknown and stays.
     async fn leave_synced_records(&self) -> Result<(), SyncError> {
-        for adapter in self
+        let mut adapters: Vec<&Arc<dyn RecordAdapter>> = self
             .adapters
             .iter()
-            .filter(|adapter| record_type_of(adapter.kind()).is_some())
-        {
+            .filter(|adapter| record_type_of(adapter.kind()).is_some() && !adapter.kind().is_settings())
+            .collect();
+        adapters.sort_by_key(|adapter| adapter.kind() == tablepro_records::Kind::Connection);
+        for adapter in adapters {
             let held = adapter.records(SCOPE).await?;
             let leaving: Vec<LocalChange> = held
                 .records

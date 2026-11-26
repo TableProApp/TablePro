@@ -18,8 +18,9 @@ use crate::api::scopes::{LineageEpoch, Role, ScopePolicies};
 use crate::api::state::{
     ApprovalDecision, ApprovalRow, BaseRow, BindingRow, ConflictRow, DeferredRow, DeletedHistoryRow, HeldReason,
     HeldRow, Holder, KeyComparisonRow, KeyDevicePinRow, KeyEnvelopeRow, KeyObjectRow, KeyPendingRow, KeyPinRow,
-    KeyVersionRow, KeyVersionState, LegacyMirrorRow, MovePhase, MoveRow, OutboxRow, PendingFlow, Provider, PushWait,
-    RefusedRow, Row, ScopeRow, Served, Standing, StandingRow, StoppedCause, StoreRow, StoresKindRow, Table,
+    KeyVersionRow, KeyVersionState, LeftBehindRow, LegacyMirrorRow, MovePhase, MoveRow, OutboxRow, PendingFlow,
+    Provider, PushWait, RefusedRow, Row, ScopeRow, Served, Standing, StandingRow, StoppedCause, StoreRow,
+    StoresKindRow, Table,
 };
 use crate::api::transport::{DeletedReason, PulledRecord, ServiceMeta};
 
@@ -481,6 +482,9 @@ pub(crate) fn columns(row: &Row) -> Vec<u8> {
         Row::LegacyMirror(row) => {
             out.bytes(&row.value);
         }
+        Row::LeftBehind(row) => {
+            out.bytes(&row.digest);
+        }
         Row::Move(row) => {
             out.maybe(row.from, |out, from| out.text(provider_name(from)))
                 .text(provider_name(row.target))
@@ -753,6 +757,10 @@ pub(crate) fn decode(table: Table, key: &[u8], columns: &[u8]) -> Result<Row, St
         Table::LegacyMirror => Row::LegacyMirror(LegacyMirrorRow {
             item: keys.text("item")?,
             value: read.bytes("value")?,
+        }),
+        Table::LeftBehind => Row::LeftBehind(LeftBehindRow {
+            key: record_key(&mut keys)?,
+            digest: read.fixed("left behind digest")?,
         }),
         Table::Moves => Row::Move(MoveRow {
             from: read.maybe(|bytes| provider(&text(bytes)?))?,

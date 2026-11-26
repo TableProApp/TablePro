@@ -12,9 +12,10 @@ use crate::api::control::{NewIdentityChoice, NewIdentityPlan, PassReason};
 use crate::api::error::SyncError;
 use crate::api::ids::{KindName, ScopeName};
 use crate::api::state::{
-    HeldReason, PushWait, Row, RowKey, RowRange, ScopeRow, Standing, StateIdentity, StateStore, Table,
+    HeldReason, LeftBehindRow, PushWait, Row, RowKey, RowRange, ScopeRow, Standing, StateIdentity, StateStore,
+    StoresKindRow, Table,
 };
-use crate::engine::{Adapters, diff};
+use crate::engine::{Adapters, PendingOp, diff, left_behind_digest};
 
 // The scopes that hold this person's own data, which the choice decides about.
 const OWN: [ScopeName; 2] = [ScopeName::Personal, ScopeName::History];
@@ -147,6 +148,7 @@ impl ServiceSync {
             }
             if choice == NewIdentityChoice::StartEmpty {
                 self.forget_own_scopes().await?;
+                self.keep_settings_behind().await?;
                 self.leave_synced_records().await?;
             }
             self.stop.check()?;
@@ -195,12 +197,50 @@ impl ServiceSync {
         Ok(())
     }
 
+    // The device's settings stay (orchestrator ruling): the new account's copy wins where it has one, as a refill of each
+    // settings kind, and a category only this device holds goes up only once the person edits it here.
+    async fn keep_settings_behind(&self) -> Result<(), SyncError> {
+        let mut rows = Vec::new();
+        for scope in OWN {
+            let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
+            for adapter in self.adapters.in_scope(scope) {
+                let kind = adapter.kind();
+                if !kind.is_settings() {
+                    continue;
+                }
+                rows.push(Row::StoresKind(StoresKindRow {
+                    store: adapter.store().to_owned(),
+                    kind: KindName::of(kind),
+                }));
+                let local = super::push::going_up(kind, scope, adapter.records(scope).await?, &[], &held);
+                for pending in diff(scope, kind, &local, &[], &HashSet::new()).pending {
+                    if let PendingOp::Write { fields, .. } = &pending.op {
+                        rows.push(Row::LeftBehind(LeftBehindRow {
+                            digest: left_behind_digest(fields),
+                            key: pending.key,
+                        }));
+                    }
+                }
+            }
+        }
+        self.stop.check()?;
+        let mut txn = begin(&self.state).await?;
+        for row in rows {
+            txn.put(row).await?;
+        }
+        txn.commit().await?;
+        Ok(())
+    }
+
     // Every record that leaves is read before any goes, since a record's standing follows its connection, and the
-    // connections go last, so no record of one reads as unknown and stays.
+    // connections go last, so no record of one reads as unknown and stays. Settings stay (`keep_settings_behind`).
     async fn leave_synced_records(&self) -> Result<(), SyncError> {
         let mut leaving: Vec<(ScopeName, Arc<dyn crate::api::adapter::RecordAdapter>, Vec<LocalChange>)> = Vec::new();
         for scope in OWN {
             for adapter in self.adapters.in_scope(scope) {
+                if adapter.kind().is_settings() {
+                    continue;
+                }
                 let changes: Vec<LocalChange> = adapter
                     .records(scope)
                     .await?

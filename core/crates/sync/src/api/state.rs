@@ -153,6 +153,9 @@ pub enum Table {
     LegacyMirror,
     // A move between providers this device started: its target and how far it went (0054, Moving between providers).
     Moves,
+    // Per settings record Start empty left on the device: the digest of the copy it held then, which goes up only once
+    // the person edits it here.
+    LeftBehind,
     KeyObjects,
     KeyPins,
     KeyDevicePins,
@@ -164,7 +167,7 @@ pub enum Table {
 }
 
 impl Table {
-    pub const SYNC: [Self; 15] = [
+    pub const SYNC: [Self; 16] = [
         Self::Binding,
         Self::Scopes,
         Self::Stores,
@@ -180,6 +183,7 @@ impl Table {
         Self::Conflicts,
         Self::LegacyMirror,
         Self::Moves,
+        Self::LeftBehind,
     ];
 
     pub const KEY: [Self; 8] = [
@@ -210,6 +214,7 @@ impl Table {
             Self::Conflicts => "conflicts",
             Self::LegacyMirror => "legacy_mirror",
             Self::Moves => "moves",
+            Self::LeftBehind => "left_behind",
             Self::KeyObjects => "key_objects",
             Self::KeyPins => "key_pins",
             Self::KeyDevicePins => "key_device_pins",
@@ -450,6 +455,12 @@ pub struct ConflictRow {
 pub enum MovePhase {
     Open,
     Done,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeftBehindRow {
+    pub key: RecordKey,
+    pub digest: [u8; 32],
 }
 
 // The one row of `moves`. `from` is None for a first upload from no provider.
@@ -715,6 +726,7 @@ pub enum Row {
     Conflict(ConflictRow),
     LegacyMirror(LegacyMirrorRow),
     Move(MoveRow),
+    LeftBehind(LeftBehindRow),
     KeyObject(KeyObjectRow),
     KeyPin(KeyPinRow),
     KeyDevicePin(KeyDevicePinRow),
@@ -742,6 +754,7 @@ pub enum RowKey {
     Conflict(RecordKey),
     LegacyMirror(String),
     Move,
+    LeftBehind(RecordKey),
     KeyObject(ScopeName, KindName, String),
     KeyPin(AccountId),
     KeyDevicePin(KeyDeviceId),
@@ -770,6 +783,7 @@ impl Row {
             Self::Conflict(row) => RowKey::Conflict(row.key.clone()),
             Self::LegacyMirror(row) => RowKey::LegacyMirror(row.item.clone()),
             Self::Move(_) => RowKey::Move,
+            Self::LeftBehind(row) => RowKey::LeftBehind(row.key.clone()),
             Self::KeyObject(row) => RowKey::KeyObject(row.scope, row.kind.clone(), row.record_id.clone()),
             Self::KeyPin(row) => RowKey::KeyPin(row.account),
             Self::KeyDevicePin(row) => RowKey::KeyDevicePin(row.key_device),
@@ -814,6 +828,7 @@ impl RowKey {
             Self::Conflict(_) => Table::Conflicts,
             Self::LegacyMirror(_) => Table::LegacyMirror,
             Self::Move => Table::Moves,
+            Self::LeftBehind(_) => Table::LeftBehind,
             Self::KeyObject(..) => Table::KeyObjects,
             Self::KeyPin(_) => Table::KeyPins,
             Self::KeyDevicePin(_) => Table::KeyDevicePins,
@@ -845,6 +860,7 @@ impl RowKey {
             | Self::Held(key)
             | Self::Deferred(key)
             | Self::Refused(key)
+            | Self::LeftBehind(key)
             | Self::Conflict(key) => {
                 record_columns(&mut out, key);
             }

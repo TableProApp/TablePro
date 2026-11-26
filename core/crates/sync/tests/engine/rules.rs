@@ -251,7 +251,7 @@ async fn a_held_record_never_goes_in_over_a_copy_the_store_cannot_read() {
 
 // The store cannot keep one pulled value: that record is held by id with the server's copy, the pass goes on and says
 // so on every pass it stays held, a later change of another record still lands, and the held one goes in once the
-// store takes it, with no change on the server.
+// store takes it, with no change on the server. A new device's first pull refills every kind, so the hold keeps that.
 #[tokio::test]
 async fn a_value_the_store_refuses_is_held_and_the_pass_goes_on() {
     let server = FakeServer::new();
@@ -278,7 +278,7 @@ async fn a_value_the_store_refuses_is_held_and_the_pass_goes_on() {
     let Some(Row::Held(held)) = held else {
         panic!("the refused record is not held");
     };
-    assert_eq!(held.reason, HeldReason::Unreadable);
+    assert_eq!(held.reason, HeldReason::RefusedInRefill);
     assert_eq!(held.record.fields, Some(json!({"name": "Prod"})));
     assert_eq!(later, Some(json!({"name": "Stage 2"})));
     assert_eq!(still, Some("sync.adapter.unreadable"));
@@ -422,7 +422,10 @@ async fn a_value_a_refill_could_not_write_takes_the_pull_when_the_store_takes_it
         "{held:?}"
     );
     assert_eq!(connections.get(&id(1)), Some(json!({"name": "New"})));
-    assert_eq!(stored(&server, Kind::Connection.as_str(), &id(1)), Some(json!({"name": "New"})));
+    assert_eq!(
+        stored(&server, Kind::Connection.as_str(), &id(1)),
+        Some(json!({"name": "New"}))
+    );
 }
 
 #[tokio::test]
@@ -1362,6 +1365,50 @@ async fn start_empty_on_another_account_fills_from_it_and_keeps_local_only_recor
     assert_eq!(mini.connections.get(&id(3)), Some(json!({"name": "This Mac only"})));
     assert_eq!(stored(&server, "connection", &id(1)), None);
     assert_eq!(stored(&server, "connection", &id(3)), None);
+    assert_eq!(mini.sync.status().phase, SyncPhase::Idle);
+}
+
+// Start empty keeps the device's settings: the new account's copy wins where it has one, and a category only this
+// device holds goes up once the person edits it here (orchestrator ruling).
+#[tokio::test]
+async fn start_empty_keeps_settings_the_new_account_s_copy_wins_and_an_edit_sends_the_rest() {
+    let server = FakeServer::new();
+    let mac_settings = MemoryAdapter::new(Kind::MacosSettings, "settings", StoreFile::new());
+    let mini_settings = MemoryAdapter::new(Kind::MacosSettings, "settings", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&mac_settings))
+        .build()
+        .await;
+    let editor = |width: i64| json!({"category": "editor", "options": {"tabWidth": width}});
+    let keyboard =
+        |key: &str| json!({"category": "keyboard", "options": {"shortcuts": [{"id": key, "value": {"keyCode": 1}}]}});
+    mac_settings.put("editor", editor(8));
+    mac.sync().await;
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .adapter(ScopeName::Personal, Arc::clone(&mini_settings))
+        .follows(2)
+        .build()
+        .await;
+    mini_settings.put("editor", editor(2));
+    mini_settings.put("keyboard", keyboard("b"));
+    mini.sync().await;
+
+    let plan = mini.sync.plan_new_identity().await.unwrap();
+    mini.sync
+        .choose_for_new_identity(NewIdentityChoice::StartEmpty, plan.account)
+        .await
+        .unwrap();
+    mini.sync().await;
+    let kept = mini_settings.get("keyboard");
+    let sent_unedited = stored(&server, "macos_settings", "keyboard");
+    mini_settings.put("keyboard", keyboard("c"));
+    mini.sync().await;
+
+    assert_eq!(mini_settings.get("editor"), Some(editor(8)));
+    assert_eq!(stored(&server, "macos_settings", "editor"), Some(editor(8)));
+    assert_eq!(kept, Some(keyboard("b")));
+    assert_eq!(sent_unedited, None);
+    assert_eq!(stored(&server, "macos_settings", "keyboard"), Some(keyboard("c")));
     assert_eq!(mini.sync.status().phase, SyncPhase::Idle);
 }
 

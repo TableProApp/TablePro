@@ -110,6 +110,9 @@ pub(super) async fn wait(state: &dyn StateStore, wait: Option<PushWait>) -> Resu
 pub(super) async fn upload_again(state: &dyn StateStore) -> Result<(), SyncError> {
     let mut txn = state.begin().await?;
     clear(txn.as_mut()).await?;
+    for row in txn.scan(&RowRange::Scope(Table::LeftBehind, SCOPE)).await? {
+        txn.delete(&row.key()).await?;
+    }
     txn.delete(&RowKey::Scope(SCOPE)).await?;
     txn.commit().await?;
     Ok(())

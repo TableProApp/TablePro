@@ -31,7 +31,7 @@ use crate::api::ids::{ChangeTag, KindName, RecordKey};
 use crate::api::state::{BaseRow, Row, RowKey, RowRange, Standing, StandingRow, Table};
 use crate::engine::{
     Backoff, JournalIds, KeptOff, Pending, PendingOp, StopSignal, diff, forget_kept_off, hold_kept_off,
-    kept_off_connections,
+    hold_left_behind, kept_off_connections, left_behind_digest,
 };
 
 // A pass sends again what a refusal merged, at most this many times; what is left waits for the next pass.
@@ -408,6 +408,8 @@ impl<'p> Pusher<'p> {
         let held = self.held().await?;
         let waiting = approval::held_members(self.fetcher.state.begin().await?.as_mut(), SCOPE).await?;
         let kept_off = self.kept_off(leave.counting).await?;
+        let left = self.left_behind().await?;
+        let mut left_drops = Vec::new();
         let mut forgotten = Vec::new();
         let mut items = Vec::new();
         for (kind, adapter) in &self.fetcher.adapters {
@@ -449,6 +451,7 @@ impl<'p> Pusher<'p> {
             forget_kept_off(&mut diffed, kind, &kept_off);
             forgotten.append(&mut diffed.pruned);
             hold_kept_off(&mut diffed, kind, &kept_off);
+            left_drops.extend(hold_left_behind(&mut diffed, &bases, &left));
             for (key, code) in diffed.refused {
                 report.refuse(key, code);
             }
@@ -466,16 +469,62 @@ impl<'p> Pusher<'p> {
                 }
             }
         }
-        if !forgotten.is_empty() && !leave.counting {
+        if (!forgotten.is_empty() || !left_drops.is_empty()) && !leave.counting {
             self.stop.check()?;
             let mut txn = self.fetcher.state.begin().await?;
             for key in forgotten {
                 txn.delete(&RowKey::Base(key)).await?;
             }
+            for key in left_drops {
+                txn.delete(&RowKey::LeftBehind(key)).await?;
+            }
             self.stop.check()?;
             txn.commit().await?;
         }
         Ok(items)
+    }
+
+    async fn left_behind(&self) -> Result<HashMap<RecordKey, [u8; 32]>, SyncError> {
+        let rows = self
+            .fetcher
+            .state
+            .begin()
+            .await?
+            .scan(&RowRange::Scope(Table::LeftBehind, SCOPE))
+            .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::LeftBehind(row) => Some((row.key, row.digest)),
+                _ => None,
+            })
+            .collect())
+    }
+
+    // Start empty keeps the device's settings (orchestrator ruling): each settings kind refills from the new account,
+    // whose copy wins, and the digest of each copy only this device holds is kept, so it goes up only once edited here.
+    pub(super) async fn leave_settings_behind(&self) -> Result<Vec<Row>, SyncError> {
+        let mut rows = Vec::new();
+        for (kind, adapter) in &self.fetcher.adapters {
+            let kind = *kind;
+            if !kind.is_settings() || !record_type_of(kind).is_some_and(|record_type| record_type.deployed) {
+                continue;
+            }
+            rows.push(Row::StoresKind(crate::api::state::StoresKindRow {
+                store: adapter.store().to_owned(),
+                kind: KindName::of(kind),
+            }));
+            let (local, _, _) = Self::carried_copies(kind, adapter.records(SCOPE).await?);
+            for pending in diff(SCOPE, kind, &local, &[], &HashSet::new()).pending {
+                if let PendingOp::Write { fields, .. } = &pending.op {
+                    rows.push(Row::LeftBehind(crate::api::state::LeftBehindRow {
+                        digest: left_behind_digest(fields),
+                        key: pending.key,
+                    }));
+                }
+            }
+        }
+        Ok(rows)
     }
 
     // The connections that keep their records on the device; a store that cannot be read keeps all, and an engine with

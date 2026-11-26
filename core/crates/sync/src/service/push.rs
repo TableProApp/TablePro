@@ -22,7 +22,8 @@ use crate::api::state::{
 };
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DeletedReason, Proof, PushBatch, TransportError};
 use crate::engine::{
-    KeptOff, Pending, PendingOp, change_bytes, diff, forget_kept_off, hold_kept_off, kept_off_connections, split,
+    KeptOff, Pending, PendingOp, change_bytes, diff, forget_kept_off, hold_kept_off, hold_left_behind,
+    kept_off_connections, split,
 };
 
 enum Sent {
@@ -232,6 +233,8 @@ impl ServiceSync {
         let mut pruned = Vec::new();
         let mut refusals = Refusals::default();
         let kept_off = self.kept_off(scope).await?;
+        let left = self.left_behind(scope).await?;
+        let mut left_drops = Vec::new();
         for adapter in self.adapters.in_scope(scope) {
             let kind = adapter.kind();
             if kind_off(row.policies, scope, kind)
@@ -259,6 +262,7 @@ impl ServiceSync {
             );
             forget_kept_off(&mut diffed, kind, &kept_off);
             let kept_back = hold_kept_off(&mut diffed, kind, &kept_off);
+            left_drops.extend(hold_left_behind(&mut diffed, &bases, &left));
             // The marker goes on before a refusal is looked up, so the change a refusal names is the one sent.
             if let Some(arrival) = ctx.arrival.as_deref().filter(|_| scope == ScopeName::Personal) {
                 arrival.mark(&mut diffed.pending);
@@ -315,19 +319,43 @@ impl ServiceSync {
                     .await?;
             }
         }
-        self.forget_pruned(pruned, refusals).await?;
+        self.forget_pruned(pruned, refusals, left_drops).await?;
         Ok(out)
     }
 
-    // The bases a diff let go of and the refusals it no longer stands by, or newly found, in one commit.
-    async fn forget_pruned(&self, pruned: Vec<RecordKey>, refusals: Refusals) -> Result<(), SyncError> {
-        if pruned.is_empty() && refusals.is_empty() {
+    // The settings records Start empty left on the device in `scope`, by record.
+    async fn left_behind(&self, scope: ScopeName) -> Result<HashMap<RecordKey, [u8; 32]>, SyncError> {
+        let rows = begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::LeftBehind, scope))
+            .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::LeftBehind(row) => Some((row.key, row.digest)),
+                _ => None,
+            })
+            .collect())
+    }
+
+    // The bases a diff let go of, the refusals it no longer stands by or newly found, and the settings left behind that
+    // were edited or met on the provider, in one commit.
+    async fn forget_pruned(
+        &self,
+        pruned: Vec<RecordKey>,
+        refusals: Refusals,
+        left_drops: Vec<RecordKey>,
+    ) -> Result<(), SyncError> {
+        if pruned.is_empty() && refusals.is_empty() && left_drops.is_empty() {
             return Ok(());
         }
         self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         for key in pruned {
             txn.delete(&RowKey::Base(key)).await?;
+        }
+        for key in left_drops {
+            txn.delete(&RowKey::LeftBehind(key)).await?;
         }
         for row in refusals.puts {
             txn.put(Row::Refused(row)).await?;
@@ -350,6 +378,7 @@ impl ServiceSync {
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
         let refused = self.refused_in(scope).await?;
         let kept_off = self.kept_off(scope).await?;
+        let left = self.left_behind(scope).await?;
         let categories = self.categories();
         let none = HashSet::new();
         let mut unsent = 0;
@@ -369,6 +398,7 @@ impl ServiceSync {
             );
             forget_kept_off(&mut diffed, kind, &kept_off);
             hold_kept_off(&mut diffed, kind, &kept_off);
+            hold_left_behind(&mut diffed, &bases, &left);
             // A record the server refused waits for the person whatever the marker made of its change.
             unsent += diffed
                 .pending
