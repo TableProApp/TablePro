@@ -72,11 +72,13 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         config: config(SyncProviderTag::Off),
         account: None,
         files: Some(files as Arc<dyn StateFiles>),
+        connections: None,
         cloudkit: None,
         settings: None,
         device_store: Some(device_store as Arc<dyn tablepro_sync::api::HostDeviceStore>),
         legacy_mirror: None,
         link: Err(tablepro_sync::api::TransportError::SignedOut.into()),
+        session: None,
         listener: Arc::new(Listener::default()),
     });
     let opener = tasks.clone();
@@ -124,16 +126,70 @@ async fn without_an_account_tablepro_sync_reports_unavailable_and_its_calls_say_
 }
 
 #[tokio::test]
-async fn with_sync_off_the_status_is_off_and_nothing_runs() {
+async fn with_sync_off_and_no_sign_in_the_status_is_off_and_nothing_runs() {
     let tasks = runtime::tasks().unwrap();
     let opened = open(&tasks, |parts| parts).await;
 
     let status = opened.service.status();
-    let pass = opened.service.sync_now(PassReasonTag::Person).await.unwrap_err();
+    let pass = opened.service.sync_now(PassReasonTag::Person).await;
+    let approvals = opened.service.approvals().await.unwrap();
+    let conflicts = opened.service.conflicts().await.unwrap();
 
     assert_eq!(status.phase, SyncPhaseTag::Off);
     assert_eq!(status.provider, Some(SyncProviderTag::Off));
-    assert_eq!(code(&pass), "sync.not_allowed");
+    assert!(pass.is_ok(), "{pass:?}");
+    assert!(approvals.is_empty());
+    assert!(conflicts.is_empty());
+    assert!(opened.service.scope_statuses().is_empty());
+}
+
+// Team scopes and the key objects use TablePro Sync whatever the personal provider is (core ADR 0054, Providers).
+#[tokio::test]
+async fn with_sync_off_a_sign_in_still_syncs_teams_and_its_keys() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account, Role::Owner)]);
+    let opened = open(&tasks, |parts| OpenParts {
+        link: Ok(link(&server, account)),
+        ..parts
+    })
+    .await;
+
+    opened.service.sync_now(PassReasonTag::Launch).await.unwrap();
+    let keys = opened.service.key_state().await.unwrap();
+    let scopes = opened.service.scope_statuses();
+    let team_keys = opened.service.team_keys(ScopeName::Team(team).wire()).await.unwrap();
+    let conflicts = opened.service.conflicts().await.unwrap();
+    let personal_approval = opened
+        .service
+        .decide_approval(
+            super::service::SyncRecordRef {
+                scope: "personal".to_owned(),
+                kind: "connection".to_owned(),
+                record_id: "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44".to_owned(),
+            },
+            "host".to_owned(),
+            "00".repeat(32),
+            true,
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(opened.service.status().phase, SyncPhaseTag::Off);
+    assert_eq!(keys, KeyStateInfo::NoKeys);
+    assert!(
+        scopes.iter().any(|scope| scope.scope == ScopeName::Team(team).wire()),
+        "{scopes:?}"
+    );
+    assert_eq!(team_keys.members.len(), 1, "{team_keys:?}");
+    assert!(conflicts.is_empty());
+    assert_eq!(
+        code(&personal_approval),
+        "sync.not_allowed",
+        "personal data has no engine while sync is off"
+    );
 }
 
 #[tokio::test]
@@ -157,8 +213,8 @@ async fn icloud_runs_without_an_account_and_gives_back_the_account_it_synced() {
     assert_eq!(opened.service.icloud_account().as_deref(), Some("_a"));
     assert_eq!(
         code(&opened.service.key_state().await.unwrap_err()),
-        "sync.unimplemented",
-        "the service engine has no team-only pass on iCloud yet"
+        "sync.signed_out",
+        "with no sign-in the teams and the keys have no engine"
     );
 }
 
@@ -297,10 +353,12 @@ async fn a_discarded_replace_draft_is_gone_with_the_recovery_key_it_held() {
         .await
         .unwrap_err();
     let malformed = opened.service.discard_key_draft("not a draft".to_owned()).unwrap_err();
+    let reset = opened.service.resume_reset("not a reset".to_owned()).await.unwrap_err();
 
     assert!(again.is_ok());
     assert_eq!(code(&finished), "sync.unknown");
     assert_eq!(code(&malformed), "sync.malformed");
+    assert_eq!(code(&reset), "sync.malformed");
 }
 
 #[tokio::test]
@@ -395,7 +453,7 @@ fn a_team_s_rows_carry_the_names_the_account_could_read_and_none_for_the_rest() 
         stopped: Vec::new(),
     };
 
-    let info = team_keys_info(keys, &names(team, ana));
+    let info = team_keys_info(keys, &names(team, ana), bo);
 
     assert_eq!(info.team, ScopeName::Team(team).wire());
     assert_eq!(info.team_name.as_deref(), Some("Acme"));
@@ -417,11 +475,12 @@ fn a_reviewed_member_names_its_team_and_reads_back_as_the_engine_s() {
         confirmed_under_av: Version::new(3).unwrap(),
     };
 
-    let info = reviewed_member_info(member, &names(team, ana));
+    let info = reviewed_member_info(member, &names(team, ana), ana);
     let back = super::keys::reviewed_member_arg(&info).unwrap();
 
     assert_eq!(info.team_name.as_deref(), Some("Acme"));
     assert_eq!(info.name.as_deref(), Some("Ana"));
+    assert!(info.is_self);
     assert_eq!(back, member);
     assert_eq!(
         super::keys::reviewed_member_arg(&super::keys::ReviewedMemberInfo {
@@ -445,4 +504,137 @@ async fn a_start_that_failed_for_a_reason_that_stays_is_not_tried_again() {
 
     assert_eq!(first, Some("sync.signed_out"));
     assert_eq!(again, Some("sync.signed_out"));
+}
+
+#[test]
+fn a_credential_to_rotate_names_its_connection_while_the_store_holds_it() {
+    use tablepro_keys::envelope::{EnvelopeId, ParentKind, SecretKind};
+
+    let kept = Uuid::from_u128(5);
+    let gone = Uuid::from_u128(6);
+    let names = std::collections::HashMap::from([(kept, ("Prod".to_owned(), "postgresql".to_owned()))]);
+    let id = |connection: Uuid, kind| {
+        EnvelopeId::new(
+            ParentKind::Connection,
+            &tablepro_keys::encoding::uuid_to_wire(connection),
+            kind,
+        )
+        .unwrap()
+    };
+    let profile = EnvelopeId::new(
+        ParentKind::SshProfile,
+        &tablepro_keys::encoding::uuid_to_wire(kept),
+        SecretKind::SshPassword,
+    )
+    .unwrap();
+
+    let named = super::keys::credential_info(&id(kept, SecretKind::Password), &names);
+    let missing = super::keys::credential_info(&id(gone, SecretKind::Plugin("token".to_owned())), &names);
+    let other = super::keys::credential_info(&profile, &names);
+
+    assert_eq!(named.connection_name.as_deref(), Some("Prod"));
+    assert_eq!(named.connection_driver.as_deref(), Some("postgresql"));
+    assert_eq!(named.field, "password");
+    assert_eq!(named.connection, Some(tablepro_keys::encoding::uuid_to_wire(kept)));
+    assert_eq!(
+        (missing.connection_name.clone(), missing.connection_driver.clone()),
+        (None, None)
+    );
+    assert_eq!(missing.field, "plugin.token");
+    assert_eq!((other.connection.clone(), other.connection_name.clone()), (None, None));
+    assert_eq!(other.parent_kind, "ssh_profile");
+}
+
+// An edit the app reported just before it quits reaches the Swift metadata before the quit goes on, and a mark the app
+// still refuses when the quit sends it again is the quit call's failure.
+#[tokio::test]
+async fn the_quit_call_waits_for_the_downgrade_marks_and_says_when_one_failed() {
+    let tasks = runtime::tasks().unwrap();
+    let mirror = Arc::new(tablepro_sync_testing::FakeLegacyMirror::new());
+    let opened = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::Icloud),
+        cloudkit: Some(Arc::new(FakeCloudKit::signed_in("_a")) as Arc<dyn tablepro_sync::api::CloudKitTransport>),
+        legacy_mirror: Some(mirror.clone() as Arc<dyn tablepro_sync::api::LegacyMirror>),
+        ..parts
+    })
+    .await;
+    let id = "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44".to_owned();
+
+    opened
+        .service
+        .record_host_changes("connection".to_owned(), vec![id.clone()], Vec::new())
+        .await
+        .unwrap();
+    opened.service.flush_legacy_marks().await.unwrap();
+    let marked = mirror.marks();
+    // The mark the write sent and the one the quit sends again are both refused.
+    mirror.fail_marks(2);
+    opened
+        .service
+        .record_host_changes("connection".to_owned(), Vec::new(), vec![id])
+        .await
+        .unwrap();
+    let refused = opened.service.flush_legacy_marks().await;
+    let later = opened.service.flush_legacy_marks().await;
+
+    assert!(marked >= 1, "no mark reached the Swift metadata");
+    assert!(refused.is_err(), "{refused:?}");
+    assert!(later.is_ok(), "{later:?}");
+}
+
+// Off to TablePro Sync is the first upload; the move back needs the count the person confirmed; a zone this device never
+// used is not one to delete.
+#[tokio::test]
+async fn a_provider_change_runs_its_own_move_and_refuses_the_ones_that_need_the_person() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let off = open(&tasks, |parts| OpenParts {
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        ..parts
+    })
+    .await;
+    let on = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::TableproSync),
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        cloudkit: Some(Arc::new(FakeCloudKit::signed_in("_a")) as Arc<dyn tablepro_sync::api::CloudKitTransport>),
+        ..parts
+    })
+    .await;
+
+    let first = off.service.choose_provider(SyncProviderTag::TableproSync).await;
+    let back = on.service.choose_provider(SyncProviderTag::Icloud).await.unwrap_err();
+    let zone = on.service.delete_icloud_zone().await.unwrap_err();
+    let same = on.service.choose_provider(SyncProviderTag::TableproSync).await;
+
+    assert!(first.is_ok(), "{first:?}");
+    assert_eq!(code(&back), "sync.not_allowed");
+    assert_eq!(code(&zone), "sync.not_allowed");
+    assert!(same.is_ok(), "{same:?}");
+}
+
+// The previous stable marks every write whatever the switch says, so a deletion with iCloud off still reaches the Swift
+// metadata by the time the quit returns.
+#[tokio::test]
+async fn with_icloud_off_a_deletion_still_marks_the_swift_metadata_by_the_quit() {
+    let tasks = runtime::tasks().unwrap();
+    let mirror = Arc::new(tablepro_sync_testing::FakeLegacyMirror::new());
+    let opened = open(&tasks, |parts| OpenParts {
+        legacy_mirror: Some(mirror.clone() as Arc<dyn tablepro_sync::api::LegacyMirror>),
+        ..parts
+    })
+    .await;
+    let id = "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44".to_owned();
+
+    opened
+        .service
+        .record_host_changes("connection".to_owned(), Vec::new(), vec![id.clone()])
+        .await
+        .unwrap();
+    opened.service.flush_legacy_marks().await.unwrap();
+
+    let tombstones = mirror.metadata().tombstones;
+    assert!(
+        tombstones.iter().any(|tombstone| tombstone.record.id == id),
+        "{tombstones:?}"
+    );
 }

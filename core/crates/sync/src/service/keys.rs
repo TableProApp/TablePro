@@ -155,7 +155,7 @@ impl ServiceSync {
             if set.is_empty() {
                 continue;
             }
-            self.stop.check()?;
+            self.check_stop()?;
             let applied = self.arrive(scope, wanted, set, ArrivalOrder::Snapshot, None).await?;
             in_force = applied.in_force.or(in_force);
         }
@@ -179,7 +179,7 @@ impl ServiceSync {
         let Ok(envelope) = EnvelopeId::parse(&record.record_id) else {
             return Ok(Opens::Refused);
         };
-        self.stop.check()?;
+        self.check_stop()?;
         let opened = match scope {
             ScopeName::Team(team) => self.keys.open_team_envelope(team, envelope, fields, in_force).await,
             ScopeName::Personal | ScopeName::History => {
@@ -206,7 +206,7 @@ impl ServiceSync {
         let (Some(fields), Some(id)) = (record.fields.clone(), parse_uuid(&record.record_id)) else {
             return Ok(HistoryOpens::Refused);
         };
-        self.stop.check()?;
+        self.check_stop()?;
         match self.keys.open_history_entry(HistoryId(id), fields).await {
             Ok(plain) if plain.is_object() => Ok(HistoryOpens::Plain(plain)),
             Ok(_) => Ok(HistoryOpens::Refused),
@@ -267,7 +267,7 @@ impl ServiceSync {
             if closed.contains(&set.scope) {
                 continue;
             }
-            self.stop.check()?;
+            self.check_stop()?;
             let scope = set.scope;
             let batch = PushBatch {
                 scope,
@@ -330,11 +330,12 @@ impl ServiceSync {
         if bases.is_empty() {
             return Ok(());
         }
-        self.stop.check()?;
+        self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         for base in bases {
             txn.put(Row::Base(base)).await?;
         }
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
@@ -353,7 +354,7 @@ impl ServiceSync {
         if adopt.is_empty() {
             return Ok(());
         }
-        self.stop.check()?;
+        self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         for (scope, against, lineage) in adopt {
             if let Some(Row::Scope(mut row)) = txn.get(&RowKey::Scope(scope)).await? {
@@ -363,6 +364,7 @@ impl ServiceSync {
                 txn.put(Row::Scope(row)).await?;
             }
         }
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
@@ -374,7 +376,7 @@ impl ServiceSync {
             Err(_) => Vec::new(),
         };
         for row in pending {
-            if self.stop.is_stopped() {
+            if self.stopping() {
                 return;
             }
             let Row::KeyPending(row) = row else { continue };
@@ -403,7 +405,7 @@ impl ServiceSync {
             }
         };
         for action in actions {
-            self.stop.check()?;
+            self.check_stop()?;
             let Some(key) = self.keys.dpop_key().await? else {
                 return Ok(());
             };
@@ -429,7 +431,7 @@ impl ServiceSync {
         let ScopeName::Team(team) = info.scope else {
             return;
         };
-        if self.stop.is_stopped() || caught_up.is_none() {
+        if self.stopping() || caught_up.is_none() {
             return;
         }
         if let Err(error) = self.keys.roster_read(team, Roster::of(info, caught_up)).await {

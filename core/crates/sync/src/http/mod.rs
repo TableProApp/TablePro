@@ -87,6 +87,11 @@ impl Binding {
         }
     }
 
+    // The sign-in's id in the account's process, which a sign-in or a restore renews.
+    pub fn session_id(&self) -> Option<&str> {
+        self.session_id.as_deref()
+    }
+
     // The same sign-in as the one the transport opened for: server, account, device row and session.
     pub fn holds(&self, signed_in: &SignedIn) -> bool {
         Self::of(signed_in).is_ok_and(|now| now == *self)
@@ -230,9 +235,9 @@ impl HttpTransport {
         let (status, headers) = (answer.status(), answer.headers().clone());
         let body = read_capped(answer, limit).await.map_err(|error| match error {
             ApiError::Unreachable(detail) => TransportError::Network { detail },
-            // Past the cap: a retry reads the same answer.
+            // Past the cap: a retry reads the same answer, so no status lets the scheduler try again.
             _ => TransportError::Server {
-                status: status.as_u16(),
+                status: 0,
                 code: "answer_too_large".to_owned(),
                 retry_after_ms: None,
             },
