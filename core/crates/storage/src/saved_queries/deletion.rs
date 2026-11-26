@@ -267,7 +267,7 @@ async fn unfile_queries(
     Ok(unfiled)
 }
 
-fn rowid_deletes(table: &'static str, ids: &[i64]) -> Vec<CopyDelete> {
+pub(super) fn rowid_deletes(table: &'static str, ids: &[i64]) -> Vec<CopyDelete> {
     ids.chunks(IDS_PER_STATEMENT)
         .map(|chunk| CopyDelete {
             table,
@@ -280,7 +280,7 @@ fn rowid_deletes(table: &'static str, ids: &[i64]) -> Vec<CopyDelete> {
         .collect()
 }
 
-async fn delete_folder_rows(database: &mut SqliteConnection, ids: &[i64]) -> Result<(), StorageError> {
+pub(super) async fn delete_folder_rows(database: &mut SqliteConnection, ids: &[i64]) -> Result<(), StorageError> {
     for chunk in ids.chunks(IDS_PER_STATEMENT) {
         let sql = format!(
             "DELETE FROM saved_query_folders WHERE id IN ({})",
