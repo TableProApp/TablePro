@@ -508,7 +508,3 @@ fn in_change_set(object: &KeyObject, av: Version) -> bool {
         _ => false,
     }
 }
-
-// The rotation's team steps call K7-3's team flows, whose `impl` is not on `integ/core-engine` yet. Integration keeps
-// K7-3's and drops this one.
-impl TeamFlows for KeyService {}
