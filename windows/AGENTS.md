@@ -33,7 +33,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `scripts/engine-glyphs.py`: writes `src/TablePro.App/Resources/EngineGlyphs.xaml` from the macOS app's engine artwork. Run it after that artwork changes or an engine is added.
 - `scripts/package-assets.py`: writes the MSIX logos in `src/TablePro.App/Assets` from the app icon. Run it after the icon changes.
 - `scripts/editor-schemes.py`: writes `src/TablePro.Editor.Model/ColorSchemes.Themes.cs`, the editor's color schemes, from the macOS app's built-in themes. Run it after a theme changes.
-- `RELEASING.md`: how a release is built, signed, published and sent to winget.
+- `RELEASING.md`: how a release is built, signed, published and sent to winget. `CHANGELOG.md` and `changelog.d/`: the towncrier notes (`.claude/rules/changelog.md`).
 - `docs/decisions/`: the decisions only the Windows app makes.
 - The core's side of the boundary: `core/crates/ffi` (`core/ARCHITECTURE.md`, Bindings).
 
@@ -108,9 +108,10 @@ Pass `-p:UniffiBindgenCs=<path>` when it is not on `PATH`; the target refuses an
 ## Every change
 
 1. **Tests.** Behavior of the interop library gets a test in `tests/` against a real database file. Behavior of the core gets its Rust test in `core/crates/ffi`.
-2. **Strings.** Every word the app shows is in `src/TablePro.App/Strings/en-US/Resources.resw`: `x:Uid` in XAML, `Strings.Get`, `Format` or `Plural` in the app, `HostStrings` in a control. A count takes `Plural` and `{n:N0}`, never a comparison with one, and a join of words is a string too (`docs/decisions/0021-localization.md`). `LocalizationTests` fails on the common shapes; a literal a helper passes on to a control is the review's to catch.
-3. **Code style.** `.editorconfig` and the analyzers; a warning fails the build. A comment is one `//` line that says why, never what: no XML doc and no multi-line block.
-4. **Commits and pull requests** follow the root rules, with scope `windows` or `windows-<area>`.
+2. **Changelog.** A user-visible change adds `changelog.d/<PR>.<type>.md`; only a release PR edits `CHANGELOG.md` (`.claude/rules/changelog.md`).
+3. **Strings.** Every word the app shows is in `src/TablePro.App/Strings/en-US/Resources.resw`: `x:Uid` in XAML, `Strings.Get`, `Format` or `Plural` in the app, `HostStrings` in a control. A count takes `Plural` and `{n:N0}`, never a comparison with one, and a join of words is a string too (`docs/decisions/0021-localization.md`). `LocalizationTests` fails on the common shapes; a literal a helper passes on to a control is the review's to catch.
+4. **Code style.** `.editorconfig` and the analyzers; a warning fails the build. A comment is one `//` line that says why, never what: no XML doc and no multi-line block.
+5. **Commits and pull requests** follow the root rules, with scope `windows` or `windows-<area>`.
 
 ## CI
 
