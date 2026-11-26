@@ -221,15 +221,15 @@ impl ServiceSync {
     }
 
     // Team plaintext carries no proof; personal and history calls, and team envelope or key writes, do (0051, DPoP).
-    fn push_proof(ctx: &PassCtx, scope: ScopeName, changes: &[Change]) -> Proof {
+    // The key is read for each push, since an approval or a recovery in this pass changes which DSK proves.
+    async fn push_proof(&self, scope: ScopeName, changes: &[Change]) -> Result<Proof, SyncError> {
         let keyed = changes
             .iter()
             .any(|change| change.kind.is_key() || change.kind.known() == Some(Kind::SecretEnvelope));
-        match (scope, &ctx.key) {
-            (ScopeName::Team(_), _) if !keyed => Proof::None,
-            (_, Some(key)) => Proof::Dpop(key.clone()),
-            (_, None) => Proof::None,
+        if matches!(scope, ScopeName::Team(_)) && !keyed {
+            return Ok(Proof::None);
         }
+        Ok(self.proofs.dpop_key().await?.map_or(Proof::None, Proof::Dpop))
     }
 
     async fn send(
@@ -241,7 +241,7 @@ impl ServiceSync {
         batch: &[Pending],
     ) -> Result<Sent, SyncError> {
         let changes: Vec<Change> = batch.iter().map(Pending::change).collect();
-        let proof = Self::push_proof(ctx, scope, &changes);
+        let proof = self.push_proof(scope, &changes).await?;
         let digest = request_digest(epoch, &changes);
         let retention_ms = i64::try_from(ctx.body.idempotency_retention_secs.saturating_mul(1_000)).unwrap_or(i64::MAX);
         for fresh in [false, true] {

@@ -66,14 +66,6 @@ impl ServerView for BaseView<'_> {
         };
         survives(base, lineage)
     }
-
-    fn judged(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
-        self.lineages.contains_key(&scope)
-            && self
-                .bases
-                .get(scope, id)
-                .is_some_and(|base| base.epoch.is_some() && base.revision.is_some())
-    }
 }
 
 pub(crate) fn survives(base: &BaseRow, lineage: &[LineageEpoch]) -> bool {

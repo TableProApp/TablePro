@@ -112,7 +112,8 @@ struct StoreSeen {
 
 struct PassCtx {
     body: ScopesBody,
-    key: Option<DpopKey>,
+    // The device held a key when the pass began, which decides the scopes it reaches; each call reads the key itself.
+    keyed: bool,
     stores: HashMap<String, StoreSeen>,
     snapshots_done: HashSet<ScopeName>,
     // A refill against a new epoch was pulled, and the key objects still have to go back before anything else.
@@ -223,14 +224,14 @@ impl ServiceSync {
         self.stop.check()?;
         self.refill_stale_file(session).await?;
         let body = self.poll_scopes(session).await?;
-        let key = self.proofs.dpop_key().await?;
+        let keyed = self.proofs.dpop_key().await?.is_some();
         let approved = body
             .scopes
             .iter()
             .any(|info| info.scope == ScopeName::Personal && info.approved == Some(true));
         let mut ctx = PassCtx {
             body,
-            key,
+            keyed,
             stores: HashMap::new(),
             snapshots_done: HashSet::new(),
             new_epoch: false,
@@ -365,8 +366,8 @@ impl ServiceSync {
             .iter()
             .filter(|info| match info.scope {
                 ScopeName::Team(_) => true,
-                ScopeName::Personal => ctx.key.is_some() && !locked,
-                ScopeName::History => ctx.key.is_some() && !locked && info.approved == Some(true),
+                ScopeName::Personal => ctx.keyed && !locked,
+                ScopeName::History => ctx.keyed && !locked && info.approved == Some(true),
             })
             .cloned()
             .collect()

@@ -260,9 +260,9 @@ impl ServiceSync {
 
     // The stop reports and withdrawals the flows queued, withdrawals first per team, each told back once sent.
     pub(super) async fn stop_actions(&self, ctx: &PassCtx) -> Result<(), SyncError> {
-        let Some(key) = ctx.key.clone() else {
+        if !ctx.keyed {
             return Ok(());
-        };
+        }
         let actions = match self.keys.stop_actions().await {
             Ok(actions) => actions,
             Err(error) => {
@@ -272,11 +272,14 @@ impl ServiceSync {
         };
         for action in actions {
             self.stop.check()?;
+            let Some(key) = self.proofs.dpop_key().await? else {
+                return Ok(());
+            };
             match action {
                 StopAction::Report { team, version } => {
-                    self.transport.report_stopped(team, version, key.clone()).await?;
+                    self.transport.report_stopped(team, version, key).await?;
                 }
-                StopAction::Withdraw { team } => self.transport.withdraw_stopped(team, key.clone()).await?,
+                StopAction::Withdraw { team } => self.transport.withdraw_stopped(team, key).await?,
             }
             self.keys.stop_action_sent(action).await?;
         }

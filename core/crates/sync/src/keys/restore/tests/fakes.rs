@@ -335,11 +335,6 @@ impl ServerView for Holds {
         self.0
             .contains(&(scope, format!("{}:{}", id.kind().name(), id.to_wire())))
     }
-
-    fn judged(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
-        let _ = (scope, id);
-        true
-    }
 }
 
 // A server the device has no bases for at all.
@@ -347,11 +342,6 @@ pub(crate) struct Unjudged;
 
 impl ServerView for Unjudged {
     fn holds(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
-        let _ = (scope, id);
-        false
-    }
-
-    fn judged(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
         let _ = (scope, id);
         false
     }

@@ -21,7 +21,7 @@ use crate::api::ids::{EpochId, KindName, ScopeName};
 use crate::api::key_flows::{KeyChangeSet, KeyNoticeKind, LockCause, PushBackVerdict, RestoreFlows};
 use crate::api::scopes::{ScopeInfo, ScopesAnswer, ScopesBody};
 use crate::api::state::{KeyVersionRow, KeyVersionState, Row, RowKey, RowRange, StateTxn, StoppedCause, Table};
-use crate::api::transport::{Change, ChangeOp, ChangeOutcome, Proof};
+use crate::api::transport::{Change, ChangeOp, ChangeOutcome, Proof, RejectedCode};
 use crate::keys::stop;
 
 #[async_trait]
@@ -95,7 +95,7 @@ impl RestoreFlows for KeyService {
         {
             return Ok(PushBackVerdict::Continue);
         }
-        let refusal = refusal(&set);
+        let refusal = refusal(&set, &outcomes);
         if refusal == Refusal::Nothing {
             return Ok(PushBackVerdict::Continue);
         }
@@ -155,7 +155,8 @@ struct Effects {
 
 // What a refused push-back set does (0051, What cannot go back): an account change set ends the account, a team
 // version ends the team, and a wrap or a `key.member` alone ends nothing: neither is a version, a lost confirmation
-// is made again at the next team version, and the account copies its next certificate after its next `av`.
+// is made again at the next team version, and the account copies its next certificate after its next `av`. A set
+// refused only for `key_dependency` ends nothing either: what it depends on can still come back (0064).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Refusal {
     AccountEnds,
@@ -163,7 +164,18 @@ enum Refusal {
     Nothing,
 }
 
-fn refusal(set: &KeyChangeSet) -> Refusal {
+fn refusal(set: &KeyChangeSet, outcomes: &[ChangeOutcome]) -> Refusal {
+    // The rest of a refused change set answers `change_set`, which is no cause of its own.
+    let causes: Vec<&RejectedCode> = outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            ChangeOutcome::Rejected { code } if *code != RejectedCode::ChangeSet => Some(code),
+            _ => None,
+        })
+        .collect();
+    if !causes.is_empty() && causes.iter().all(|code| **code == RejectedCode::KeyDependency) {
+        return Refusal::Nothing;
+    }
     match set.scope {
         ScopeName::Personal | ScopeName::History => Refusal::AccountEnds,
         ScopeName::Team(team) => {

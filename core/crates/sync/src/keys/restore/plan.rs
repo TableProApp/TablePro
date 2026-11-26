@@ -14,13 +14,10 @@ use crate::api::scopes::TeamMember;
 use crate::api::state::{KeyVersionRow, KeyVersionState};
 use crate::keys::HeldObject;
 
-// Whether the server holds a key object now, in the current epoch.
+// Whether the server holds a key object now, in the current epoch. An object with no base reads as lacking: pushing
+// one the server holds again answers `applied` (0051, Push).
 pub(crate) trait ServerView {
     fn holds(&self, scope: ScopeName, id: &KeyRecordId) -> bool;
-
-    // Whether the device knows where the object stands at all: a base it can judge. An object with none reads as
-    // lacking, which is safe to push again everywhere but in an account set, whose older blob the server deleted.
-    fn judged(&self, scope: ScopeName, id: &KeyRecordId) -> bool;
 }
 
 pub(crate) struct Inputs<'a> {
@@ -67,14 +64,13 @@ pub(crate) enum TeamVerdict {
 pub(crate) struct Plan {
     pub sets: Vec<PlannedSet>,
     pub teams: Vec<(TeamId, TeamVerdict)>,
-    // An account certificate above the server's has no base to judge: nothing is planned rather than guessed.
+    // An account certificate above the server's that the device does not hold: nothing above it can go back.
     pub blind: bool,
 }
 
 pub(crate) fn plan(inputs: &Inputs<'_>) -> Plan {
     let mut plan = Plan::default();
-    // An account `av` the device verified with no certificate it holds, or none it can judge: nothing above it can
-    // go back.
+    // An account `av` the device verified with no certificate it holds: nothing above it can go back.
     let Some(personal) = plan_personal(inputs) else {
         plan.blind = true;
         return plan;
@@ -151,14 +147,7 @@ fn plan_personal(inputs: &Inputs<'_>) -> Option<Vec<PlannedSet>> {
     let first = server_av.map_or(1, |av| av.get() + 1);
     (first..=inputs.newest_av.get())
         .filter_map(|av| Version::new(av).ok())
-        .map(|av| {
-            let id = KeyRecordId::Account { account, av };
-            inputs
-                .server
-                .judged(ScopeName::Personal, &id)
-                .then(|| account_set(&objects, account, av, av == inputs.newest_av))
-                .flatten()
-        })
+        .map(|av| account_set(&objects, account, av, av == inputs.newest_av))
         .collect()
 }
 
@@ -433,7 +422,21 @@ fn version_set(team: &Team<'_>, record_held: &HeldObject, record: &VersionRecord
     };
     previous_holders.insert(team.account);
     for (held, wrap) in team.own_wraps(version) {
+        // A wrap whose recipient's certificate the server lacks would make the server refuse the whole set with
+        // `key_dependency`, so it goes back later on its own. The account's own `key.member` goes back first, so a
+        // wrap to itself stays (0064).
+        let recipient_known = match wrap.target.recipient {
+            Recipient::Account(recipient) => {
+                recipient == team.account
+                    || team.server_holds(&KeyRecordId::Member {
+                        account: recipient,
+                        av: wrap.target.recipient_version,
+                    })
+            }
+            Recipient::Device(_) => false,
+        };
         let in_set = wrap.wrapper.av == record.signer_av
+            && recipient_known
             && matches!(wrap.target.recipient, Recipient::Account(recipient) if previous_holders.contains(&recipient));
         if in_set {
             objects.push(held.clone());

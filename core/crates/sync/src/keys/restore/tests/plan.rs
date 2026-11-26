@@ -590,6 +590,27 @@ fn version_1_and_a_restart_go_back_with_no_wait() {
     assert_eq!(restart.plan(), (vec![ids(&v5)], TeamVerdict::Done));
 }
 
+// 0064: a wrap to a recipient whose `key.member` the server lacks leaves its version's set and goes back on its own.
+#[test]
+fn a_wrap_to_a_recipient_the_server_has_no_certificate_for_goes_back_alone() {
+    let mut case = TeamCase::new("A", 7);
+    let v6 = case.version(6, "A", Start::Next);
+    let to_m_6 = case.wrap(6, "A", "M");
+    let v7 = vec![
+        case.version(7, "A", Start::Next),
+        case.world.team_ring(7),
+        case.wrap(7, "A", "A"),
+    ];
+    let to_m = case.wrap(7, "A", "M");
+    let own = case.members(&["A"]);
+    case.back(own).back([v6, to_m_6]).hold(v7.clone()).hold([to_m.clone()]);
+
+    let (sets, verdict) = case.plan();
+
+    assert_eq!(sets, [ids(&v7), one(&to_m)]);
+    assert_eq!(verdict, TeamVerdict::Done);
+}
+
 #[test]
 fn a_later_confirmation_leaves_the_rotation_set_and_goes_back_alone() {
     let mut case = TeamCase::new("A", 7);
@@ -776,8 +797,10 @@ fn without_the_record_of_the_version_before_the_device_cannot_call_the_wrap_a_co
     assert!(matches!(case.plan().1, TeamVerdict::Waits { version, .. } if version == v(3)));
 }
 
+// 0064: an account change set needs no blob, so a certificate with no base reads as lacking and its group goes back,
+// the older one without its blob.
 #[test]
-fn an_account_certificate_with_no_base_to_judge_plans_nothing_rather_than_guessing() {
+fn an_account_certificate_with_no_base_goes_back_and_only_the_newest_carries_a_blob() {
     let personal = Personal::new();
     let held = personal.held();
 
@@ -791,6 +814,16 @@ fn an_account_certificate_with_no_base_to_judge_plans_nothing_rather_than_guessi
         server: &super::fakes::Unjudged,
     });
 
-    assert!(plan.blind);
-    assert!(plan.sets.is_empty());
+    assert!(!plan.blind);
+    let blobs: Vec<usize> = plan
+        .sets
+        .iter()
+        .map(|set| {
+            set.objects
+                .iter()
+                .filter(|held| held.object.id.kind() == tablepro_keys::record_id::KeyKind::Recovery)
+                .count()
+        })
+        .collect();
+    assert_eq!(blobs, [0, 1]);
 }

@@ -114,11 +114,12 @@ fn held(reason: HeldReason, key: RecordKey, record: PulledRecord) -> HeldRow {
 }
 
 impl ServiceSync {
-    fn scope_proof(ctx: &PassCtx, scope: ScopeName) -> Proof {
-        match scope {
+    // Read for each call, since an approval or a recovery in this pass changes which DSK proves (0051, DPoP).
+    async fn scope_proof(&self, scope: ScopeName) -> Result<Proof, SyncError> {
+        Ok(match scope {
             ScopeName::Team(_) => Proof::None,
-            ScopeName::Personal | ScopeName::History => ctx.key.clone().map_or(Proof::None, Proof::Dpop),
-        }
+            ScopeName::Personal | ScopeName::History => self.proofs.dpop_key().await?.map_or(Proof::None, Proof::Dpop),
+        })
     }
 
     pub(super) async fn pull_scope(&self, ctx: &mut PassCtx, info: &ScopeInfo) -> Result<(), SyncError> {
@@ -189,7 +190,7 @@ impl ServiceSync {
                 scope: pull.scope,
                 cursor: pull.cursor.clone(),
                 limit: None,
-                proof: Self::scope_proof(ctx, pull.scope),
+                proof: self.scope_proof(pull.scope).await?,
             };
             let page = match self.transport.pull(request).await {
                 // The next pull takes a snapshot; the caller reads the scopes body first (0051, `cursor_expired`).
@@ -520,13 +521,15 @@ impl ServiceSync {
             .collect())
     }
 
+    // A key object's base stays: the push-back judges by its epoch and revision whether a restore lost it, and the
+    // key object goes back from `key_objects`, never as a create of the diff (0051, After a restore).
     async fn unseen_bases(&self, pull: &Pull) -> Result<Vec<RecordKey>, SyncError> {
         let mut txn = begin(&self.state).await?;
         let rows = txn.scan(&RowRange::Scope(Table::Bases, pull.scope)).await?;
         Ok(rows
             .into_iter()
             .filter_map(|row| match row {
-                Row::Base(base) => Some(base.key),
+                Row::Base(base) if !base.key.kind.is_key() => Some(base.key),
                 _ => None,
             })
             .filter(|key| {

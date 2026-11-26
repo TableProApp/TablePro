@@ -186,6 +186,32 @@ async fn a_refused_key_member_alone_ends_nothing() {
     );
 }
 
+// 0064: a wrap or version naming a recipient whose `key.member` the server lacks can still go back once it is there.
+#[tokio::test]
+async fn a_set_refused_only_for_a_missing_certificate_ends_nothing() {
+    let world = World::load();
+    let team = ScopeName::Team(world.team);
+    let rig = Rig::new(&world.origin, world.account("A"));
+    rig.put([scope_row(team), row(team, KeyPurpose::Team, 6)]).await;
+    serving(&rig, epoch(5));
+    let objects = [world.team_version(7, "A", 2, Start::Next), world.team_ring(7)];
+
+    let verdict = rig
+        .service
+        .push_back_answered(
+            set(team, &objects),
+            vec![rejected(RejectedCode::KeyDependency), rejected(RejectedCode::ChangeSet)],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(verdict, PushBackVerdict::Continue);
+    assert_eq!(
+        version_row(&rig, team, KeyPurpose::Team).await.state,
+        KeyVersionState::Ok
+    );
+}
+
 #[tokio::test]
 async fn a_refusal_the_server_cannot_name_an_epoch_for_is_still_recorded() {
     let world = World::load();
