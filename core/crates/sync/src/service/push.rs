@@ -296,22 +296,29 @@ impl ServiceSync {
                     .await?;
             }
         }
-        if !pruned.is_empty() || !refusals.is_empty() {
-            self.check_stop()?;
-            let mut txn = begin(&self.state).await?;
-            for key in pruned {
-                txn.delete(&RowKey::Base(key)).await?;
-            }
-            for row in refusals.puts {
-                txn.put(Row::Refused(row)).await?;
-            }
-            for key in refusals.drops {
-                txn.delete(&RowKey::Refused(key)).await?;
-            }
-            self.check_stop()?;
-            txn.commit().await?;
-        }
+        self.forget_pruned(pruned, refusals).await?;
         Ok(out)
+    }
+
+    // The bases a diff let go of and the refusals it no longer stands by, or newly found, in one commit.
+    async fn forget_pruned(&self, pruned: Vec<RecordKey>, refusals: Refusals) -> Result<(), SyncError> {
+        if pruned.is_empty() && refusals.is_empty() {
+            return Ok(());
+        }
+        self.check_stop()?;
+        let mut txn = begin(&self.state).await?;
+        for key in pruned {
+            txn.delete(&RowKey::Base(key)).await?;
+        }
+        for row in refusals.puts {
+            txn.put(Row::Refused(row)).await?;
+        }
+        for key in refusals.drops {
+            txn.delete(&RowKey::Refused(key)).await?;
+        }
+        self.check_stop()?;
+        txn.commit().await?;
+        Ok(())
     }
 
     // What the diff would still send of a scope, refused and kept-back records aside: a move is done only once this

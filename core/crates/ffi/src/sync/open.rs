@@ -161,44 +161,52 @@ fn own_device_store(_: &Tasks) -> Option<Arc<dyn sync::HostDeviceStore>> {
     None
 }
 
+impl OpenParts {
+    // The host's services and this Core's stores, which both engines share; the stores' writes reach the engines that
+    // listen from now on.
+    fn hosts(&mut self, events: Arc<Signals>) -> Result<Hosts, SyncError> {
+        let Some(files) = self.files.take() else {
+            return Err(SyncError::NotAllowed {
+                what: "sync on a Core opened without storage",
+            });
+        };
+        let Some(device_store) = self.device_store.take() else {
+            return Err(SyncError::NotAllowed {
+                what: "sync without a device store",
+            });
+        };
+        let store_journal = StoreJournal::new();
+        if let Some(history) = &self.history {
+            history.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+        }
+        if let Some(store) = &self.library {
+            store.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+        }
+        let standing = self
+            .library
+            .clone()
+            .map(|store| Arc::new(StoreStanding(store)) as Arc<dyn ConnectionStanding>);
+        Ok(Hosts {
+            files,
+            device_store,
+            settings: self.settings.take(),
+            events,
+            library: self.library.take(),
+            names: driver_names(self.config.platform),
+            history: self.history.take(),
+            standing,
+            store_journal,
+        })
+    }
+}
+
 impl SyncService {
     // On the runtime. An engine that cannot start keeps why, which its calls answer; the others run.
-    pub(crate) async fn open(tasks: Tasks, parts: OpenParts) -> Arc<Self> {
+    pub(crate) async fn open(tasks: Tasks, mut parts: OpenParts) -> Arc<Self> {
         let (cloudkit, files) = (parts.cloudkit.clone(), parts.files.clone());
         let signals = Arc::new(Signals::default());
         let forwarding = forward(Arc::clone(&signals), parts.listener, &tasks);
-        let hosts = match (parts.files, parts.device_store) {
-            (Some(files), Some(device_store)) => {
-                let store_journal = StoreJournal::new();
-                if let Some(history) = &parts.history {
-                    history.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
-                }
-                if let Some(store) = &parts.library {
-                    store.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
-                }
-                let standing = parts
-                    .library
-                    .clone()
-                    .map(|store| Arc::new(StoreStanding(store)) as Arc<dyn ConnectionStanding>);
-                Ok(Hosts {
-                    files,
-                    device_store,
-                    settings: parts.settings,
-                    events: signals,
-                    library: parts.library,
-                    names: driver_names(parts.config.platform),
-                    history: parts.history,
-                    standing,
-                    store_journal,
-                })
-            }
-            (None, _) => Err(SyncError::NotAllowed {
-                what: "sync on a Core opened without storage",
-            }),
-            (Some(_), None) => Err(SyncError::NotAllowed {
-                what: "sync without a device store",
-            }),
-        };
+        let hosts = parts.hosts(signals);
         let categories = categories_arg(&parts.config.categories);
         let mirror = parts.legacy_mirror;
         let icloud_allowed = allowed(parts.account.as_deref(), parts.config.platform, SyncProviderTag::Icloud);
