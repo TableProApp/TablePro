@@ -10,9 +10,10 @@ mod digest;
 mod rebuild;
 
 pub use digest::{key_digest, sync_digest};
-pub use rebuild::rebuild_shown;
+pub use rebuild::{Reading, rebuild_shown};
 
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use aws_lc_rs::{constant_time, hmac};
 use sqlx::{AssertSqlSafe, Sqlite, Transaction};
@@ -22,8 +23,8 @@ use tokio::sync::Mutex as AsyncMutex;
 use zeroize::Zeroizing;
 
 use self::anchor::{
-    CHECKPOINT_TABLES, CheckpointRef, Entry, Items, Owed, PART_BYTES, Root, checkpoint_bytes, checkpoint_ref_of,
-    unsettled,
+    CHECKPOINT_TABLES, CheckpointRef, Entry, Items, Owed, PART_BYTES, Root, RootItem, checkpoint_bytes,
+    checkpoint_ref_of, unsettled,
 };
 use super::codec;
 use super::file::{read, sql, write};
@@ -111,22 +112,48 @@ fn lp(out: &mut Vec<u8>, bytes: &[u8]) {
     out.extend_from_slice(bytes);
 }
 
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
-}
+// The MAC column of a file no device store ever sealed. A real MAC is all zeros with probability 2^-256.
+const UNSEALED: [u8; 32] = [0; 32];
 
-#[derive(Debug, Default, Clone, Copy)]
-struct Settles {
+// What one commit settles of the distrust an open found (0054, A stale file). It takes effect only with that commit's
+// second step, so a commit that never lands settles nothing.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Settles {
     rebuilt: bool,
     reapproved: bool,
+    // Sign Out cleared the key tables: the device joins again as a new device would.
+    cleared: bool,
+}
+
+impl Settles {
+    pub(crate) fn add(&mut self, settled: KeysSettled) {
+        match settled {
+            KeysSettled::Rebuilt => self.rebuilt = true,
+            KeysSettled::Reapproved => self.reapproved = true,
+        }
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.cleared = true;
+    }
+
+    fn apply(self, owed: Owed) -> Owed {
+        match owed {
+            _ if self.cleared => Owed::Trusted,
+            Owed::Rebuild(_) if self.rebuilt => Owed::Trusted,
+            Owed::Unanchored if self.reapproved => Owed::Trusted,
+            owed => owed,
+        }
+    }
 }
 
 // What the last settled commit left: its key digest and checkpoint, which a commit that leaves the key tables alone
-// keeps, and the anchor's root as this process last stored it.
+// keeps, the anchor's root as this process last stored it, and what the pending entry's commit settles.
 struct Anchor {
     root: Option<Root>,
     key_digest: [u8; 32],
     checkpoint: CheckpointRef,
+    pending_settles: Settles,
 }
 
 // One open file's seal. Without a device store nothing can be sealed or anchored: the file then holds no key it could
@@ -136,9 +163,11 @@ pub(crate) struct Seal {
     name: StateName,
     party: Party,
     key: Option<Zeroizing<[u8; 32]>>,
+    // A key made for a file whose key was gone goes into the device store only once the file it seals landed, so a
+    // crash before leaves a file whose key is gone again, never one sealed under a key the file does not match.
+    key_unstored: AtomicBool,
     part_bytes: usize,
     anchor: AsyncMutex<Anchor>,
-    settles: Mutex<Settles>,
 }
 
 impl std::fmt::Debug for Seal {
@@ -161,31 +190,14 @@ impl Seal {
     pub(crate) const fn provider(&self) -> Provider {
         self.party.provider()
     }
+}
 
-    pub(crate) fn settle_keys(&self, settled: KeysSettled) {
-        let mut settles = lock(&self.settles);
-        match settled {
-            KeysSettled::Rebuilt => settles.rebuilt = true,
-            KeysSettled::Reapproved => settles.reapproved = true,
-        }
-    }
-
-    // What is owed once the settles asked for since the last stored root apply.
-    fn settled(&self, owed: Owed) -> (Owed, Settles) {
-        let settles = std::mem::take(&mut *lock(&self.settles));
-        let owed = match owed {
-            Owed::Rebuild(_) if settles.rebuilt => Owed::Trusted,
-            Owed::Unanchored if settles.reapproved => Owed::Trusted,
-            owed => owed,
-        };
-        (owed, settles)
-    }
-
-    fn unsettle(&self, taken: Settles) {
-        let mut settles = lock(&self.settles);
-        settles.rebuilt |= taken.rebuilt;
-        settles.reapproved |= taken.reapproved;
-    }
+// What a commit changed beyond its rows.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct Written {
+    // A key table changed, so the key digest and the checkpoint are computed again.
+    pub(crate) key_tables: bool,
+    pub(crate) settles: Settles,
 }
 
 // The binding an open found or made, and whether the file is new.
@@ -202,11 +214,11 @@ enum Found {
     Restored { keys: Owed },
 }
 
-fn found(binding: &BindingRow, root: Option<&Root>) -> Found {
+fn found(binding: &BindingRow, root: &RootItem) -> Found {
     let stale = |root: &Root| Found::Restored {
         keys: root.newest().map_or(Owed::Unanchored, Owed::Rebuild),
     };
-    let Some(root) = root else {
+    let RootItem::Held(root) = root else {
         return Found::Restored { keys: Owed::Unanchored };
     };
     if root.file_id != binding.file_id {
@@ -317,6 +329,27 @@ async fn install(tx: &mut Transaction<'static, Sqlite>, checkpoint: &Checkpoint)
     Ok(())
 }
 
+// A file no device store sealed, met by a device that holds its MAC key: nothing proves any of it, so none of it is
+// kept and the file starts again as a new one would, with a new file id. A local writer gets no further than by
+// deleting the file.
+async fn start_over(tx: &mut Transaction<'static, Sqlite>, binding: &BindingRow) -> Result<BindingRow, StateError> {
+    for table in Table::SYNC.into_iter().chain(Table::KEY) {
+        let statement = format!("DELETE FROM {}", table.name());
+        sqlx::query(AssertSqlSafe(statement))
+            .execute(&mut **tx)
+            .await
+            .map_err(sql)?;
+    }
+    let fresh = BindingRow {
+        file_id: FileId(*uuid::Uuid::new_v4().as_bytes()),
+        counter: 0,
+        state_mac: UNSEALED,
+        ..binding.clone()
+    };
+    write(tx, &Row::Binding(fresh.clone())).await?;
+    Ok(fresh)
+}
+
 pub(crate) async fn open(
     mut tx: Transaction<'static, Sqlite>,
     identity: &StateIdentity,
@@ -338,80 +371,153 @@ pub(crate) async fn open(
     };
     let (key, root) = match loaded {
         Ok(loaded) => loaded,
-        Err(DeviceStoreError::Unavailable { .. }) => return unsealed(tx, bound, store, name, party).await,
+        // A file no store ever sealed goes on unsealed; a sealed one waits for its store to come back, since commits
+        // it could not seal would leave it unable to verify once the store is back.
+        Err(DeviceStoreError::Unavailable { .. }) if bound.new_file || bound.binding.state_mac == UNSEALED => {
+            return unsealed(tx, bound, store, name, party).await;
+        }
         Err(error) => return Err(unsettled(&error)),
     };
-    let Bound { binding, new_file } = bound;
+    let Bound {
+        mut binding,
+        mut new_file,
+    } = bound;
+    if !new_file && key.is_some() && binding.state_mac == UNSEALED {
+        binding = start_over(&mut tx, &binding).await?;
+        new_file = true;
+    }
     let key_digest = digest::key_digest_in(&mut tx, party.provider()).await?;
     let checkpoint = checkpoint_ref_of(&checkpoint_bytes(&checkpoint_in(&mut tx).await?), PART_BYTES);
-    let found = match &key {
-        // An anchor with no file, as after a reinstall that kept the device store, rebuilds as a stale file does.
-        _ if new_file => match &root {
-            None => Found::Fresh { pending: false },
-            Some(root) => Found::Restored {
-                keys: root.newest().map_or(Owed::Unanchored, Owed::Rebuild),
-            },
-        },
-        // A file whose state MAC key is gone cannot verify, and opens as a file with no anchor.
-        None => Found::Restored { keys: Owed::Unanchored },
-        Some(key) => {
-            let sync_digest = digest::sync_digest_in(&mut tx).await?;
-            let expected = party.mac(key, &binding.file_id, binding.counter, &key_digest, &sync_digest)?;
-            if constant_time::verify_slices_are_equal(&expected, &binding.state_mac).is_err() {
-                return Err(StateError::Integrity);
-            }
-            found(&binding, root.as_ref())
-        }
+    let checked = Checked {
+        party: &party,
+        binding: &binding,
+        new_file,
+        key_digest,
     };
-    // A new file, or one whose key is gone, writes its MAC key before its anchor (0054, A new file writes its anchor
-    // first).
-    let key = match key {
-        Some(key) => key,
+    let found = checked.find(&mut tx, key.as_ref(), &root).await?;
+    // A new file writes its MAC key before its anchor (0054, A new file writes its anchor first): the file exists only
+    // once that commit lands. An existing file whose key is gone gets its new key once the commit sealing it landed.
+    let (key, key_unstored) = match key {
+        Some(key) => (key, false),
         None => {
             let key = random_key()?;
-            items.put_mac_key(&key).await.map_err(|error| unsettled(&error))?;
-            key
+            if new_file {
+                items.put_mac_key(&key).await.map_err(|error| unsettled(&error))?;
+            }
+            (key, !new_file)
         }
+    };
+    let root = match root {
+        RootItem::Held(root) => Some(*root),
+        RootItem::Absent | RootItem::Malformed => None,
     };
     let seal = Arc::new(Seal {
         store,
         name,
         party,
         key: Some(key),
+        key_unstored: AtomicBool::new(key_unstored),
         part_bytes: PART_BYTES,
         anchor: AsyncMutex::new(Anchor {
             root,
             key_digest,
             checkpoint,
+            pending_settles: Settles::default(),
         }),
-        settles: Mutex::default(),
     });
-    let opened = match found {
+    let opened = finish_open(&seal, tx, &binding, new_file, found).await?;
+    Ok((seal, opened))
+}
+
+// Acts on what the open found: a new file's first commit, the second step a crash cut off, or a stale file's repair.
+async fn finish_open(
+    seal: &Seal,
+    tx: Transaction<'static, Sqlite>,
+    binding: &BindingRow,
+    new_file: bool,
+    found: Found,
+) -> Result<Opened, StateError> {
+    Ok(match found {
         Found::Fresh { pending } => {
             if new_file {
-                commit(&seal, tx, true).await?;
+                commit(
+                    seal,
+                    tx,
+                    Written {
+                        key_tables: true,
+                        ..Written::default()
+                    },
+                )
+                .await?;
             } else {
                 drop(tx);
                 let mut anchor = seal.anchor.lock().await;
                 if pending {
-                    settle_forward(&seal, &mut anchor).await;
+                    settle_forward(seal, &mut anchor).await;
                 }
-                forget_retired(&seal, &mut anchor).await;
+                forget_retired(seal, &mut anchor).await;
             }
             Opened {
                 sync_tables: SyncTrust::Trusted,
-                key_tables: owed_trust(&seal).await?,
+                key_tables: owed_trust(seal).await?,
             }
         }
         Found::Restored { keys } => {
-            repair(&seal, tx, &binding, keys).await?;
+            repair(seal, tx, binding, keys).await?;
             Opened {
                 sync_tables: SyncTrust::Refill,
-                key_tables: owed_trust(&seal).await?,
+                key_tables: owed_trust(seal).await?,
             }
         }
-    };
-    Ok((seal, opened))
+    })
+}
+
+// What an open compares against the anchor.
+struct Checked<'a> {
+    party: &'a Party,
+    binding: &'a BindingRow,
+    new_file: bool,
+    key_digest: [u8; 32],
+}
+
+impl Checked<'_> {
+    async fn find(
+        &self,
+        tx: &mut Transaction<'static, Sqlite>,
+        key: Option<&Zeroizing<[u8; 32]>>,
+        root: &RootItem,
+    ) -> Result<Found, StateError> {
+        let found = match (key, root) {
+            // An anchor with no file, as after a reinstall that kept the device store, rebuilds as a stale file does.
+            // A MAC key with no anchor beside it says one existed and was lost, as does an anchor this build cannot
+            // read.
+            (_, RootItem::Held(root)) if self.new_file => Found::Restored {
+                keys: root.newest().map_or(Owed::Unanchored, Owed::Rebuild),
+            },
+            (None, RootItem::Absent) if self.new_file => Found::Fresh { pending: false },
+            _ if self.new_file => Found::Restored { keys: Owed::Unanchored },
+            // A file whose state MAC key is gone cannot verify, and opens as a file with no anchor.
+            (None, _) => Found::Restored { keys: Owed::Unanchored },
+            (Some(key), root) => {
+                let binding = self.binding;
+                let sync_digest = digest::sync_digest_in(tx).await?;
+                let expected =
+                    self.party
+                        .mac(key, &binding.file_id, binding.counter, &self.key_digest, &sync_digest)?;
+                if constant_time::verify_slices_are_equal(&expected, &binding.state_mac).is_err() {
+                    return Err(StateError::Integrity);
+                }
+                found(binding, root)
+            }
+        };
+        // An iCloud file has no key tables, so nothing about them is owed.
+        Ok(match found {
+            Found::Restored { .. } if self.party.provider() == Provider::ICloud => {
+                Found::Restored { keys: Owed::Trusted }
+            }
+            found => found,
+        })
+    }
 }
 
 // A stale or unanchored file's open: its refill and, for a rebuild, the anchored checkpoint in place of its key
@@ -426,7 +532,8 @@ async fn repair(
     let mut anchor = seal.anchor.lock().await;
     let mut root = anchor.root.clone().unwrap_or_else(|| Root::new(binding.file_id));
     root.file_id = binding.file_id;
-    let mut owed = root.owed.stricter(keys);
+    let before = root.owed;
+    let mut owed = before.stricter(keys);
     if let (Owed::Rebuild(floor), Owed::Rebuild(_)) = (owed, keys) {
         match seal
             .items()
@@ -440,13 +547,20 @@ async fn repair(
         }
     }
     root.owed = owed;
+    if let Owed::Rebuild(floor) = before {
+        root.retire(floor);
+    }
     // The open judged the pending entry a crash left, and this commit's own takes its place.
     if let Some(left) = root.pending.take() {
         root.retire(left.checkpoint);
     }
     anchor.root = Some(root);
     drop(anchor);
-    commit(seal, tx, true).await.map(|_| ())
+    let written = Written {
+        key_tables: true,
+        ..Written::default()
+    };
+    commit(seal, tx, written).await.map(|_| ())
 }
 
 async fn owed_trust(seal: &Seal) -> Result<KeyTrust, StateError> {
@@ -468,6 +582,7 @@ async fn owed_trust(seal: &Seal) -> Result<KeyTrust, StateError> {
                 // Stored with the next commit, so the lost floor is not forgotten.
                 if let Some(root) = anchor.root.as_mut() {
                     root.owed = Owed::Unanchored;
+                    root.retire(floor);
                 }
                 KeyTrust::Unanchored
             }
@@ -492,6 +607,7 @@ async fn unsealed(
         name,
         party,
         key: None,
+        key_unstored: AtomicBool::new(false),
         part_bytes: PART_BYTES,
         anchor: AsyncMutex::new(Anchor {
             root: None,
@@ -500,8 +616,8 @@ async fn unsealed(
                 digest: [0; 32],
                 parts: 0,
             },
+            pending_settles: Settles::default(),
         }),
-        settles: Mutex::default(),
     });
     // Nothing here proves the key tables are the device's latest.
     let opened = Opened {
@@ -523,7 +639,7 @@ async fn binding_in(tx: &mut Transaction<'static, Sqlite>) -> Result<BindingRow,
 pub(crate) async fn commit(
     seal: &Seal,
     mut tx: Transaction<'static, Sqlite>,
-    key_written: bool,
+    written: Written,
 ) -> Result<Committed, StateError> {
     let Some(key) = seal.key.as_ref() else {
         let mut binding = binding_in(&mut tx).await?;
@@ -538,7 +654,7 @@ pub(crate) async fn commit(
     settle_left(seal, &mut anchor, &mut tx).await?;
     let mut binding = binding_in(&mut tx).await?;
     binding.counter = binding.counter.checked_add(1).ok_or(StateError::Integrity)?;
-    let (key_digest, checkpoint, bytes) = if key_written {
+    let (key_digest, checkpoint, bytes) = if written.key_tables {
         let bytes = checkpoint_bytes(&checkpoint_in(&mut tx).await?);
         (
             digest::key_digest_in(&mut tx, seal.provider()).await?,
@@ -581,11 +697,17 @@ pub(crate) async fn commit(
         return Err(unsettled(&error));
     }
     anchor.root = Some(root);
+    anchor.pending_settles = written.settles;
 
     // Whether a failed commit landed is read at the next commit, which settles the pending entry either way first.
     tx.commit().await.map_err(sql)?;
     anchor.key_digest = key_digest;
     anchor.checkpoint = checkpoint;
+    if seal.key_unstored.load(Ordering::SeqCst) {
+        // The file now verifies only under this key: until it is stored, the next open finds the key gone again.
+        seal.items().put_mac_key(key).await.map_err(|error| unsettled(&error))?;
+        seal.key_unstored.store(false, Ordering::SeqCst);
+    }
     settle_forward(seal, &mut anchor).await;
     Ok(Committed {
         counter: binding.counter,
@@ -634,9 +756,8 @@ async fn settle_forward(seal: &Seal, anchor: &mut Anchor) {
     let Some(pending) = root.pending else {
         return;
     };
-    let (owed, taken) = seal.settled(root.owed);
     let mut next = Root {
-        owed,
+        owed: anchor.pending_settles.apply(root.owed),
         current: Some(pending),
         pending: None,
         ..root.clone()
@@ -645,7 +766,6 @@ async fn settle_forward(seal: &Seal, anchor: &mut Anchor) {
         next.retire(dropped);
     }
     if let Err(error) = seal.items().put_root(&next).await {
-        seal.unsettle(taken);
         tracing::warn!(
             code = error.code(),
             "the anchor's second step waits for the next commit"
@@ -653,10 +773,11 @@ async fn settle_forward(seal: &Seal, anchor: &mut Anchor) {
         return;
     }
     anchor.root = Some(next);
+    anchor.pending_settles = Settles::default();
     forget_retired(seal, anchor).await;
 }
 
-// The commit did not land: the pending entry goes, and with it the checkpoint only it named.
+// The commit did not land: the pending entry goes, and with it the checkpoint only it named and what it settled.
 async fn settle_back(seal: &Seal, anchor: &mut Anchor) {
     let Some(root) = anchor.root.clone() else {
         return;
@@ -676,6 +797,7 @@ async fn settle_back(seal: &Seal, anchor: &mut Anchor) {
         return;
     }
     anchor.root = Some(next);
+    anchor.pending_settles = Settles::default();
     forget_retired(seal, anchor).await;
 }
 

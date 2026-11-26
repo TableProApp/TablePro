@@ -21,8 +21,25 @@ struct Inner {
     items: Items,
     recording: Option<Vec<Items>>,
     locked: bool,
+    // A Linux session with no Secret Service.
+    unavailable: bool,
+    fail_mac_key_write: bool,
     // Fails the nth root write from now, counting from 1.
     fail_root_write: Option<usize>,
+}
+
+impl Inner {
+    fn admit(&self) -> Result<(), DeviceStoreError> {
+        if self.unavailable {
+            return Err(DeviceStoreError::Unavailable {
+                detail: "no secret service".to_owned(),
+            });
+        }
+        if self.locked {
+            return Err(DeviceStoreError::Locked);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -47,6 +64,14 @@ impl Store {
 
     pub fn set_locked(&self, locked: bool) {
         self.lock().locked = locked;
+    }
+
+    pub fn set_unavailable(&self, unavailable: bool) {
+        self.lock().unavailable = unavailable;
+    }
+
+    pub fn fail_mac_key_write(&self) {
+        self.lock().fail_mac_key_write = true;
     }
 
     pub fn fail_root_write(&self, nth: usize) {
@@ -77,8 +102,12 @@ impl Store {
 
     fn change(&self, item: &DeviceItem, apply: impl FnOnce(&mut Items)) -> Result<(), DeviceStoreError> {
         let mut inner = self.lock();
-        if inner.locked {
-            return Err(DeviceStoreError::Locked);
+        inner.admit()?;
+        if matches!(item, DeviceItem::StateMacKey { .. }) && inner.fail_mac_key_write {
+            inner.fail_mac_key_write = false;
+            return Err(DeviceStoreError::Failed {
+                detail: "MAC key write failed".to_owned(),
+            });
         }
         if matches!(item, DeviceItem::AnchorRoot { .. })
             && let Some(nth) = inner.fail_root_write
@@ -104,9 +133,7 @@ impl Store {
 impl HostDeviceStore for Store {
     async fn load(&self, item: DeviceItem) -> Result<Option<Zeroizing<Vec<u8>>>, DeviceStoreError> {
         let inner = self.lock();
-        if inner.locked {
-            return Err(DeviceStoreError::Locked);
-        }
+        inner.admit()?;
         Ok(inner.items.get(&item).cloned())
     }
 

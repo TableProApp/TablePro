@@ -16,7 +16,7 @@ use crate::api::device_store::DeviceStoreError;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::{DraftId, GenesisOutcome, KeyState, LockCause, RecoveryKeyDraft, TypedBack};
-use crate::api::state::{KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
+use crate::api::state::{KeyVersionState, KeysSettled, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
 use crate::api::transport::{ChangeOutcome, RejectedCode};
 
 const GROUPS: u8 = 14;
@@ -257,6 +257,8 @@ impl KeyService {
             None => {
                 let mut txn = self.begin().await?;
                 self.adopt_account_change_set(txn.as_mut(), objects).await?;
+                // A new account's own keys and tables: nothing a file with no anchor held stands in them.
+                txn.settle_keys(KeysSettled::Reapproved);
                 txn.commit().await?;
                 self.hooks().pass_soon();
                 Ok(GenesisOutcome::Created)

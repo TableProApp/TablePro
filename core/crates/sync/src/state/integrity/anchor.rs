@@ -58,6 +58,15 @@ impl Owed {
     }
 }
 
+// The root item as the device store holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RootItem {
+    Absent,
+    Held(Box<Root>),
+    // Written by a format this build cannot read, or damaged: an anchor existed, and what it holds is unknown.
+    Malformed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Root {
     pub(crate) file_id: FileId,
@@ -306,16 +315,17 @@ impl Items<'_> {
         }
     }
 
-    // A root that does not parse is no anchor: nothing it says can be relied on.
-    pub(crate) async fn root(&self) -> Result<Option<Root>, DeviceStoreError> {
+    pub(crate) async fn root(&self) -> Result<RootItem, DeviceStoreError> {
         let Some(bytes) = self.store.load(self.root_item()).await? else {
-            return Ok(None);
+            return Ok(RootItem::Absent);
         };
-        let root = Root::decode(&bytes);
-        if root.is_none() {
-            tracing::warn!("the state file's anchor root is malformed and counts as no anchor");
-        }
-        Ok(root)
+        Ok(match Root::decode(&bytes) {
+            Some(root) => RootItem::Held(Box::new(root)),
+            None => {
+                tracing::warn!("the state file's anchor root does not parse");
+                RootItem::Malformed
+            }
+        })
     }
 
     pub(crate) async fn put_root(&self, root: &Root) -> Result<(), DeviceStoreError> {
@@ -372,7 +382,7 @@ impl Items<'_> {
 
     // Every item of the anchor: the checkpoints the root names or retired, the root, then the MAC key.
     pub(crate) async fn forget(&self) -> Result<(), DeviceStoreError> {
-        if let Some(root) = self.root().await? {
+        if let RootItem::Held(root) = self.root().await? {
             for checkpoint in root.named().into_iter().chain(root.retired.iter().copied()) {
                 self.delete_checkpoint(checkpoint).await?;
             }

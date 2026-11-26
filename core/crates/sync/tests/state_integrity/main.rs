@@ -15,3 +15,4 @@ mod digests;
 mod freshness;
 mod rebuild;
 mod support;
+mod transitions;

@@ -88,9 +88,7 @@ impl TeamFlows for KeyService {
 
     async fn apply_team_objects(&self, arrival: KeyArrival) -> Result<KeyApplied, SyncError> {
         let _serial = self.serialized().await;
-        let applied = self.apply_team(arrival).await?;
-        self.check_rebuild().await?;
-        Ok(applied)
+        self.apply_team(arrival).await
     }
 
     async fn seal_team_envelope(

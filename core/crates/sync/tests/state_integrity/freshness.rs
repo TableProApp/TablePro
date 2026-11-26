@@ -13,7 +13,7 @@ use tablepro_sync::api::ids::{ChangeTag, Cursor, IdempotencyKey, KindName, Recor
 use tablepro_sync::api::state::{
     ApprovalDecision, ApprovalRow, BaseRow, Checkpoint, DeletedHistoryRow, Holder, KeyEnvelopeRow, KeyObjectRow,
     KeyPinRow, KeyTrust, KeyVersionRow, KeyVersionState, KeysSettled, Opened, OutboxRow, Row, RowKey, ScopeRow,
-    StateFiles, StoppedCause, StoreRow, SyncTrust, Table,
+    StateFiles, StateStore, StoppedCause, StoreRow, SyncTrust, Table,
 };
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::FakeDeviceStore;
@@ -433,10 +433,17 @@ async fn a_file_restored_without_its_anchor_opens_unanchored() {
     }
 }
 
-// What an open found stays owed until a key flow settles it: a restart neither forgets an unanchored file nor a
-// rebuild, and the settle lasts once a commit stored it.
+async fn settle(state: &Arc<dyn StateStore>, settled: KeysSettled) -> Result<u64, StateError> {
+    let mut txn = state.begin().await.unwrap();
+    txn.settle_keys(settled);
+    txn.put(store_row()).await.unwrap();
+    txn.commit().await.map(|committed| committed.counter)
+}
+
+// What an open found stays owed until a commit settles it: a restart forgets neither an unanchored file nor a rebuild,
+// a settle whose commit did not land settles nothing, and only the settle the finding calls for ends it.
 #[tokio::test]
-async fn an_unanchored_file_stays_unanchored_across_restarts_until_it_is_approved_again() {
+async fn an_unanchored_file_stays_unanchored_across_restarts_until_a_commit_reapproves_it() {
     let disk = Disk::new();
     let state = disk.open().await;
     put(&state, vec![store_row()]).await;
@@ -448,24 +455,34 @@ async fn an_unanchored_file_stays_unanchored_across_restarts_until_it_is_approve
 
     let restarted = disk.open().await;
     let still = restarted.opened().clone();
-    restarted.settle_keys(KeysSettled::Rebuilt);
-    put(&restarted, vec![store_row()]).await;
+    settle(&restarted, KeysSettled::Rebuilt).await.unwrap();
     drop(restarted);
     let wrong_settle = disk.open().await.opened().clone();
     let state = disk.open().await;
-    state.settle_keys(KeysSettled::Reapproved);
+    disk.store.set_locked(true);
+    let refused = settle(&state, KeysSettled::Reapproved).await.err();
+    disk.store.set_locked(false);
+    let mut dropped = state.begin().await.unwrap();
+    dropped.settle_keys(KeysSettled::Reapproved);
+    drop(dropped);
     put(&state, vec![store_row()]).await;
+    drop(state);
+    let unlanded = disk.open().await.opened().clone();
+    let state = disk.open().await;
+    settle(&state, KeysSettled::Reapproved).await.unwrap();
     drop(state);
     let approved = disk.open().await;
 
     assert_eq!(still.key_tables, KeyTrust::Unanchored);
     assert_eq!(still.sync_tables, SyncTrust::Trusted);
     assert_eq!(wrong_settle.key_tables, KeyTrust::Unanchored);
+    assert_eq!(refused, Some(StateError::AnchorUnsettled));
+    assert_eq!(unlanded.key_tables, KeyTrust::Unanchored);
     assert_eq!(approved.opened(), &Opened::FRESH);
 }
 
 #[tokio::test]
-async fn a_rebuild_stays_owed_across_restarts_until_it_is_done() {
+async fn a_rebuild_stays_owed_across_restarts_until_its_commit_lands() {
     let disk = Disk::new();
     let copy = moved_on(&disk).await;
     disk.restore(&identity(), &copy).await;
@@ -477,17 +494,58 @@ async fn a_rebuild_stays_owed_across_restarts_until_it_is_done() {
     let restarted = disk.open().await;
     let still = restarted.opened().clone();
     let kept = table(&restarted, Table::KeyObjects).await;
-    restarted.settle_keys(KeysSettled::Rebuilt);
-    let unstored = restarted.opened().clone();
-    put(&restarted, vec![store_row()]).await;
+    settle(&restarted, KeysSettled::Rebuilt).await.unwrap();
+    let unchanged = restarted.opened().clone();
     drop(restarted);
     let rebuilt = disk.open().await;
 
     assert_eq!(still.sync_tables, SyncTrust::Trusted);
     assert_eq!(checkpoint_of(&still), floor);
     assert_eq!(kept, vec![object("A/2")]);
-    assert!(rebuild(&unstored));
+    assert!(rebuild(&unchanged));
     assert_eq!(rebuilt.opened(), &Opened::FRESH);
+    assert_eq!(disk.store.count(is_checkpoint), 1);
+}
+
+// Sign Out clears the key tables and the device joins again as a new device would, so no floor stays owed.
+#[tokio::test]
+async fn clearing_the_key_tables_ends_what_was_owed() {
+    let disk = Disk::new();
+    let copy = moved_on(&disk).await;
+    disk.restore(&identity(), &copy).await;
+    let state = disk.open().await;
+    let opened = state.opened().clone();
+    let mut txn = state.begin().await.unwrap();
+    txn.clear_key_tables().await.unwrap();
+    txn.commit().await.unwrap();
+    drop(state);
+
+    let state = disk.open().await;
+
+    assert!(rebuild(&opened));
+    assert_eq!(state.opened(), &Opened::FRESH);
+    assert!(table(&state, Table::KeyPins).await.is_empty());
+    assert_eq!(disk.store.count(is_checkpoint), 1);
+}
+
+// A second restore replaces the floor the first left: the first floor's items go with it.
+#[tokio::test]
+async fn a_newer_floor_retires_the_one_it_replaces() {
+    let disk = Disk::new();
+    let copy = moved_on(&disk).await;
+    disk.restore(&identity(), &copy).await;
+    let state = disk.open().await;
+    let first = checkpoint_of(state.opened());
+    put(&state, vec![Row::KeyEnvelope(envelope(3))]).await;
+    drop(state);
+
+    disk.restore(&identity(), &copy).await;
+    let state = disk.open().await;
+    let second = checkpoint_of(state.opened());
+    drop(state);
+
+    assert_eq!(first.envelopes, vec![envelope(2)]);
+    assert_eq!(second.envelopes, vec![envelope(3)]);
     assert_eq!(disk.store.count(is_checkpoint), 1);
 }
 

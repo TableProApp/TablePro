@@ -23,7 +23,9 @@ use crate::api::ids::{DeviceRowId, ScopeName};
 use crate::api::key_flows::{
     AccountDevice, DeviceFlows, DraftId, KeyNoticeKind, RemovalReview, ReviewedDevice, ReviewedMember, TeamFlows,
 };
-use crate::api::state::{KeyPendingRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
+use crate::api::state::{
+    KeyPendingRow, KeyVersionState, KeysSettled, PendingFlow, Row, RowKey, RowRange, StateTxn, Table,
+};
 use crate::api::transport::{RejectedCode, TransportError};
 
 // What a removal holds between the review and the rotation: R, the lost devices and the members it listed.
@@ -359,6 +361,10 @@ impl KeyService {
                 what: "the rotation's writing key device",
             })?;
         let held = self.device_keys().await?;
+        let recovered = held
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.key_device == writer);
         if let Some(pending) = held.pending.filter(|pending| pending.key_device == writer) {
             self.store_device_keys(&HeldDeviceKeys {
                 current: Some(pending),
@@ -369,6 +375,11 @@ impl KeyService {
         }
         let kept = kept_of(objects, av);
         let mut txn = self.begin().await?;
+        // A recovery with R starts over from what it verified, so the anchor stops owing a file with no anchor once
+        // this commit lands.
+        if recovered {
+            txn.settle_keys(KeysSettled::Reapproved);
+        }
         let stopped = self.stopped_personal(txn.as_mut()).await?;
         // A pull may have followed the certificate already; then only the objects are held as applied.
         let followed = self

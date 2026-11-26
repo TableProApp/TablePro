@@ -114,6 +114,10 @@ pub enum Reconfirmation {
 impl StopFlows for KeyService {
     async fn stop_actions(&self) -> Result<Vec<StopAction>, SyncError> {
         let _serial = self.serialized().await;
+        // The engine asks at the end of every pass, the one point where each team the pass read has its roster.
+        if let Err(error) = self.check_rebuild().await {
+            tracing::debug!(code = error.code(), "the rebuild is judged again after the next pass");
+        }
         // A catch-up stop no owner or admin on the roster can clear ends first, by the rule a roster read applies, so
         // its report goes as a withdrawal rather than a report.
         let stopped: Vec<TeamId> = {

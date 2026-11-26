@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use tablepro_keys::body::{KeyBody, KeyObject};
-use tablepro_keys::encoding::{AccountId, Origin, Version};
+use tablepro_keys::encoding::{AccountId, Origin, TeamId, Version};
 use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::record_id::KeyRecordId;
 use tablepro_keys::scope_key::KeyRef;
@@ -37,17 +37,41 @@ async fn certificates(txn: &mut dyn StateTxn) -> Result<HashMap<(AccountId, Vers
     Ok(held)
 }
 
+// The scopes the device reads now, beside the personal and history scopes it always reads: each team whose pull caught
+// up, with the members its roster names.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Reading {
+    pub teams: HashMap<TeamId, Vec<AccountId>>,
+}
+
+impl Reading {
+    // Its own account's pin, and the pin of each member of a team it reads.
+    fn meets(&self, own: AccountId, account: AccountId) -> bool {
+        account == own || self.teams.values().any(|members| members.contains(&account))
+    }
+
+    fn reads(&self, scope: ScopeName) -> bool {
+        match scope {
+            ScopeName::Team(team) => self.teams.contains_key(&team),
+            ScopeName::Personal | ScopeName::History => true,
+        }
+    }
+}
+
 // Each anchored pin is shown when the pin stands at its `av` or above under an IK the anchor did not see replaced, and
 // the certificate at that `av` under that IK is in force. Each anchored version is shown when the version record at it
-// with the anchored digest is in force; a row that ended waits for nothing, since nothing clears it.
+// with the anchored digest is in force. Only what the device still reads is waited for: a team it left, or an account
+// it no longer shares a team with, can never be shown, and its anchored rows stay in the key tables as the floor any
+// later copy is held to. A row that ended waits for nothing, since nothing clears it.
 pub async fn rebuild_shown(
     txn: &mut dyn StateTxn,
     origin: &Origin,
     account: AccountId,
     checkpoint: &Checkpoint,
+    reading: &Reading,
 ) -> Result<bool, SyncError> {
     let certificates = certificates(txn).await?;
-    for anchored in &checkpoint.pins {
+    for anchored in checkpoint.pins.iter().filter(|pin| reading.meets(account, pin.account)) {
         let Some(Row::KeyPin(pin)) = txn.get(&RowKey::KeyPin(anchored.account)).await? else {
             return Ok(false);
         };
@@ -59,7 +83,7 @@ pub async fn rebuild_shown(
         }
     }
     for anchored in &checkpoint.versions {
-        if anchored.state == KeyVersionState::Ended {
+        if anchored.state == KeyVersionState::Ended || !reading.reads(anchored.scope) {
             continue;
         }
         let owner = match anchored.scope {

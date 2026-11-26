@@ -4,13 +4,15 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use async_trait::async_trait;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous};
+use sqlx::sqlite::{
+    SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
+};
 use sqlx::{AssertSqlSafe, ConnectOptions, Sqlite, Transaction};
 use tablepro_storage::StoragePaths;
 use uuid::Uuid;
 
 use super::codec;
-use super::integrity::{self, Bound, Seal};
+use super::integrity::{self, Bound, Seal, Written};
 use super::name::state_path;
 use crate::api::device_store::HostDeviceStore;
 use crate::api::error::StateError;
@@ -171,19 +173,54 @@ fn bound_to(binding: &BindingRow, identity: &StateIdentity) -> bool {
 async fn connect(path: &Path) -> Result<SqlitePool, StateError> {
     // Pre-created at 0600 so the WAL and SHM copy its mode.
     tablepro_storage::fs::create_private_file_if_missing(path).map_err(io)?;
+    // Held exclusively for as long as the store is open, so no other process writes rows a commit would then seal.
     let options = SqliteConnectOptions::new()
         .filename(path)
         .create_if_missing(true)
+        .locking_mode(SqliteLockingMode::Exclusive)
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Full)
+        .pragma("trusted_schema", "OFF")
         .disable_statement_logging();
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
+        .idle_timeout(None)
+        .max_lifetime(None)
         .connect_with(options)
         .await
         .map_err(sql)?;
+    check_schema(&pool).await?;
     MIGRATOR.run(&pool).await.map_err(io)?;
+    check_schema(&pool).await?;
     Ok(pool)
+}
+
+// The MAC covers rows, not the schema: a trigger or a view a local writer added could change what a commit then seals.
+// So the file holds only the tables the migrations make, each as they make it.
+async fn check_schema(pool: &SqlitePool) -> Result<(), StateError> {
+    let objects: Vec<(String, String, Option<String>)> = sqlx::query_as("SELECT type, name, sql FROM sqlite_schema")
+        .fetch_all(pool)
+        .await
+        .map_err(sql)?;
+    for (kind, name, statement) in objects {
+        let expected = match kind.as_str() {
+            "table" if name == "_sqlx_migrations" => true,
+            "table" => Table::SYNC.into_iter().chain(Table::KEY).any(|table| {
+                table.name() == name
+                    && statement.as_deref()
+                        == Some(&*format!(
+                            "CREATE TABLE {name} (key BLOB PRIMARY KEY NOT NULL, columns BLOB NOT NULL) WITHOUT ROWID"
+                        ))
+            }),
+            // The index SQLite makes for a primary key has no SQL of its own.
+            "index" => statement.is_none(),
+            _ => false,
+        };
+        if !expected {
+            return Err(StateError::Integrity);
+        }
+    }
+    Ok(())
 }
 
 // A file is bound once, when it is made, in the commit that anchors it. One that holds rows and no binding was not made
@@ -281,20 +318,15 @@ impl StateStore for SqliteState {
         Ok(Box::new(SqliteTxn {
             tx,
             seal: Arc::clone(&self.seal),
-            key_written: false,
+            written: Written::default(),
         }))
-    }
-
-    fn settle_keys(&self, settled: KeysSettled) {
-        self.seal.settle_keys(settled);
     }
 }
 
 struct SqliteTxn {
     tx: Transaction<'static, Sqlite>,
     seal: Arc<Seal>,
-    // A commit computes the key digest and the checkpoint again only when a key table changed.
-    key_written: bool,
+    written: Written,
 }
 
 impl SqliteTxn {
@@ -304,7 +336,7 @@ impl SqliteTxn {
             if self.seal.provider() == Provider::ICloud {
                 return Err(StateError::WrongIdentity);
             }
-            self.key_written = true;
+            self.written.key_tables = true;
         }
         Ok(())
     }
@@ -401,7 +433,8 @@ impl StateTxn for SqliteTxn {
     }
 
     async fn clear_key_tables(&mut self) -> Result<(), StateError> {
-        self.key_written = true;
+        self.written.key_tables = true;
+        self.written.settles.clear();
         for table in Table::KEY {
             let statement = format!("DELETE FROM {}", table.name());
             sqlx::query(AssertSqlSafe(statement))
@@ -412,8 +445,12 @@ impl StateTxn for SqliteTxn {
         Ok(())
     }
 
+    fn settle_keys(&mut self, settled: KeysSettled) {
+        self.written.settles.add(settled);
+    }
+
     async fn commit(self: Box<Self>) -> Result<Committed, StateError> {
-        let Self { tx, seal, key_written } = *self;
-        integrity::commit(&seal, tx, key_written).await
+        let Self { tx, seal, written } = *self;
+        integrity::commit(&seal, tx, written).await
     }
 }

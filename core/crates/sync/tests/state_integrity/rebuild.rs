@@ -394,3 +394,40 @@ async fn a_team_key_rebuilds_on_its_anchored_version() {
     assert_eq!(owner.team_row(team).await, Some(anchored));
     drop(member);
 }
+
+// A team the device left while its file went back can never be shown: the rebuild ends on what it still reads, and the
+// team's anchored row stays as the floor a later copy is held to.
+#[tokio::test]
+async fn a_team_the_device_left_does_not_hold_the_rebuild_open() {
+    let server = FakeServer::new();
+    let (owner_id, member_id) = (AccountId(random_uuid().unwrap()), AccountId(random_uuid().unwrap()));
+    let team = TeamId(random_uuid().unwrap());
+    server.add_team(team, &[(owner_id, Role::Owner), (member_id, Role::Member)]);
+    let (owner_disk, member_disk) = (Disk::new(), Disk::new());
+    let owner = Device::launch_on(&owner_disk, &server, owner_id, "dev_owner").await;
+    owner.genesis().await;
+    owner.pass().await;
+    owner.keys.create_team_keys(team).await.unwrap();
+    let member = Device::launch_on(&member_disk, &server, member_id, "dev_member").await;
+    member.genesis().await;
+    member.pass().await;
+    owner.pass().await;
+    owner.keys.confirm_member(team, member_id).await.unwrap();
+    member.pass().await;
+    drop(member);
+    let copy = member_disk.copy(&identity_on(member_id, "dev_member")).await;
+    let member = Device::launch_on(&member_disk, &server, member_id, "dev_member").await;
+    member.state.begin().await.unwrap().commit().await.unwrap();
+    let anchored = member.team_row(team).await.unwrap();
+    drop(member);
+
+    server.set_role(team, member_id, None);
+    member_disk.restore(&identity_on(member_id, "dev_member"), &copy).await;
+    let member = Device::launch_on(&member_disk, &server, member_id, "dev_member").await;
+    member.pass().await;
+
+    assert!(!member.keys.is_rebuilding());
+    assert!(member.seal().await.is_ok());
+    assert_eq!(member.team_row(team).await, Some(anchored));
+    drop(owner);
+}
