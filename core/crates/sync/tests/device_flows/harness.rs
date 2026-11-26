@@ -138,6 +138,8 @@ pub struct Wire {
     pub client: FakeClient,
     pub pushed: Mutex<Vec<Vec<Change>>>,
     refuse: Mutex<Option<RejectedCode>>,
+    // Counts down the pushes before the one the server refuses, with the code it refuses it with.
+    refuse_after: Mutex<Option<(i64, RejectedCode)>>,
     fail: Mutex<Option<TransportError>>,
     lose: AtomicBool,
     // Counts down the pushes before the one whose answer is lost; 0 loses none.
@@ -157,6 +159,11 @@ impl Wire {
 
     pub fn refuse_next_push(&self, code: RejectedCode) {
         *self.refuse.lock().unwrap() = Some(code);
+    }
+
+    // The server applies the next `skip` pushes and refuses the one after them.
+    pub fn refuse_push_after(&self, skip: i64, code: RejectedCode) {
+        *self.refuse_after.lock().unwrap() = Some((skip, code));
     }
 
     pub fn fail_next_push(&self, error: TransportError) {
@@ -196,7 +203,18 @@ impl Transport for Wire {
             return Err(error);
         }
         self.pushed.lock().unwrap().push(batch.changes.clone());
-        if let Some(code) = self.refuse.lock().unwrap().take() {
+        let refused_now = {
+            let mut after = self.refuse_after.lock().unwrap();
+            match after.take() {
+                Some((0, code)) => Some(code),
+                Some((skip, code)) => {
+                    *after = Some((skip - 1, code));
+                    None
+                }
+                None => None,
+            }
+        };
+        if let Some(code) = self.refuse.lock().unwrap().take().or(refused_now) {
             let mut outcomes = vec![ChangeOutcome::Rejected { code }];
             outcomes.resize(
                 batch.changes.len(),
@@ -264,6 +282,7 @@ impl Device {
             client: server.client(account, row.clone()),
             pushed: Mutex::new(Vec::new()),
             refuse: Mutex::new(None),
+            refuse_after: Mutex::new(None),
             fail: Mutex::new(None),
             lose: AtomicBool::new(false),
             lose_after: AtomicI64::new(0),
@@ -710,4 +729,112 @@ pub fn foreign_certificate(account: AccountId, av: u32) -> KeyObject {
         },
         body: tablepro_keys::body::KeyBody::Account(tablepro_keys::body::AccountBody::of(&certificate)),
     }
+}
+
+// The engine's part of a pass for one team: its pages pulled and their key objects applied in order, then the
+// scopes body's `rotation_due` kept and the roster read once the pull caught up.
+pub async fn team_pass(device: &Device, team: TeamId) -> KeyApplied {
+    use tablepro_sync::api::key_flows::CaughtUp;
+    let scope = ScopeName::Team(team);
+    let proof = Proof::Dpop(device.proof().await);
+    let mut row = match device.get(RowKey::Scope(scope)).await {
+        Some(Row::Scope(row)) => row,
+        _ => ScopeRow::new(scope),
+    };
+    let ScopesAnswer::Body { body, .. } = device.wire.scopes(None, proof.clone()).await.unwrap() else {
+        return KeyApplied::default();
+    };
+    let mut last = KeyApplied::default();
+    let caught_up = loop {
+        let page = device
+            .wire
+            .pull(PullRequest {
+                scope,
+                cursor: row.cursor.clone(),
+                limit: None,
+                proof: proof.clone(),
+            })
+            .await
+            .unwrap();
+        let mark = CaughtUp::from_page(scope, &page);
+        let order = if row.cursor.is_none() {
+            ArrivalOrder::Snapshot
+        } else {
+            ArrivalOrder::InOrder
+        };
+        let records = page
+            .records
+            .into_iter()
+            .filter(|record| record.kind.as_str().starts_with("key."))
+            .collect();
+        let applied = device
+            .service
+            .apply_team_objects(KeyArrival { scope, records, order })
+            .await
+            .unwrap();
+        row.epoch = Some(device.server.epoch());
+        row.cursor = page.cursor.or(row.cursor);
+        row.key_version = applied.in_force.or(row.key_version);
+        row.caught_up = page.caught_up;
+        put_rows(device, vec![Row::Scope(row.clone())]).await;
+        last.refused.extend(applied.refused);
+        last.held = applied.held;
+        last.in_force = applied.in_force;
+        if mark.is_some() {
+            break mark;
+        }
+    };
+    let info = body.scopes.iter().find(|info| info.scope == scope).unwrap();
+    row.role = info.role;
+    row.rotation_due = info.rotation_due;
+    put_rows(device, vec![Row::Scope(row)]).await;
+    device
+        .service
+        .roster_read(team, Roster::of(info, caught_up))
+        .await
+        .unwrap();
+    last
+}
+
+// The key object `key_objects` holds at an id of the personal scope, applied or not.
+pub async fn held(device: &Device, kind: tablepro_keys::record_id::KeyKind, id: &str) -> Option<(KeyObject, bool)> {
+    let mut txn = device.txn().await;
+    device
+        .service
+        .held_object(txn.as_mut(), ScopeName::Personal, kind, id)
+        .await
+        .unwrap()
+        .map(|held| (held.object, held.applied))
+}
+
+// A device certificate at `av` signed by an ASK of the server's own: what a server cannot sign as the account.
+pub fn forged_device_certificate(
+    account: AccountId,
+    key_device: tablepro_keys::encoding::KeyDeviceId,
+    av: u32,
+) -> KeyObject {
+    let keys = tablepro_keys::keys::AccountKeys::generate().unwrap();
+    let device = tablepro_keys::keys::DeviceKeys::generate().unwrap();
+    let certificate = tablepro_keys::cert::DeviceCertificate::sign(
+        &origin(),
+        account,
+        Version::new(av).unwrap(),
+        key_device,
+        device.dek.public().unwrap(),
+        device.dsk.public().unwrap(),
+        &keys.ask,
+    )
+    .unwrap();
+    KeyObject {
+        id: tablepro_keys::record_id::KeyRecordId::Device {
+            account,
+            key_device,
+            av: Version::new(av).unwrap(),
+        },
+        body: tablepro_keys::body::KeyBody::Device(tablepro_keys::body::DeviceBody::of(&certificate)),
+    }
+}
+
+pub fn v(value: u32) -> Version {
+    Version::new(value).unwrap()
 }

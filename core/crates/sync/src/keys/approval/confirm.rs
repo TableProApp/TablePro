@@ -2,6 +2,7 @@
 // the trust plaintext into its key tables in one commit (0056, Approving a device, steps 6 to 8; 0054, `key_versions`).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{KeyBody, KeyObject};
@@ -21,7 +22,7 @@ use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::{KeyNoticeKind, SessionEnd};
 use crate::api::state::{KeyDevicePinRow, Row, RowKey, RowRange, StateTxn, Table};
-use crate::api::transport::RejectedCode;
+use crate::api::transport::{DpopKey, RejectedCode};
 use crate::keys::{HeldDeviceKeys, HeldObject, KeyService, OwnAccount, create_change};
 
 async fn scan_rows(txn: &mut dyn StateTxn, table: Table) -> Result<Vec<Row>, SyncError> {
@@ -390,7 +391,7 @@ impl KeyService {
         };
         let opened = match change_set::open(self.origin(), self.account(), &n_keys, &approver, &record.ik, &arrived) {
             Ok(opened) => opened,
-            Err(error) => return self.refuse_approval(record, held_keys, error).await,
+            Err(error) => return self.refuse_approval(record, error).await,
         };
         // A file with no anchor trusts none of its tables: it starts from the approver's pins and versions (0054, A
         // stale file).
@@ -413,7 +414,7 @@ impl KeyService {
                 self.hooks().pass_soon();
                 return Ok(false);
             }
-            Err(error) => return self.refuse_approval(record, held_keys, error).await,
+            Err(error) => return self.refuse_approval(record, error).await,
         };
         drop(facts);
         // The tables commit first and the device keys switch after, so a crash between the two leaves the session
@@ -463,28 +464,45 @@ impl KeyService {
         Ok(())
     }
 
-    // N refuses the approval and keeps its prior keys and tables; the pending device keys go (keys.stale, a wrap N
-    // did not compare, keys.conflict).
-    async fn refuse_approval(
-        &self,
-        record: &mut SessionRecord,
-        held_keys: HeldDeviceKeys,
-        error: KeysError,
-    ) -> Result<bool, SyncError> {
-        self.store_device_keys(&HeldDeviceKeys {
-            current: held_keys.current,
-            pending: None,
-        })
-        .await?;
+    // N refuses the approval and keeps its prior keys and tables (keys.stale, a wrap N did not compare, keys.conflict).
+    // The server applied it and bound N's new key device to the row, so the session ends here with no cancel step and
+    // N revokes that key device with Sign Out's call, so the row holds none; its pending keys go after (0064).
+    async fn refuse_approval(&self, record: &mut SessionRecord, error: KeysError) -> Result<bool, SyncError> {
         record.cancel(SessionEnd::User).ok();
         record.sent.cancel = true;
+        record.sent.revoke_owed = true;
         self.save_session(record).await?;
         if error == KeysError::Conflict {
             self.raise_notice(KeyNoticeKind::Conflict {
                 scope: ScopeName::Personal,
             })?;
         }
+        if let Err(SyncError::Transport(_)) = self.revoke_refused(record).await {
+            self.hooks().pass_soon();
+        }
         Err(error.into())
+    }
+
+    // The revoke a refusal owes, under the DSK of the key device it revokes, then its pending keys gone. A failed call
+    // keeps both for the next pass.
+    pub(super) async fn revoke_refused(&self, record: &mut SessionRecord) -> Result<(), SyncError> {
+        let held = self.device_keys().await?;
+        if let Some(pending) = held
+            .pending
+            .as_ref()
+            .filter(|keys| keys.key_device == record.n.key_device)
+        {
+            self.transport()
+                .revoke_key_device(DpopKey(Arc::new(pending.dsk.clone())))
+                .await?;
+            self.store_device_keys(&HeldDeviceKeys {
+                current: held.current,
+                pending: None,
+            })
+            .await?;
+        }
+        record.sent.revoke_owed = false;
+        self.save_session(record).await
     }
 
     // Every pin and version row becomes what the merge gives, so rows it left out go.

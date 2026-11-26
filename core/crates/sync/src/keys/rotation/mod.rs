@@ -9,7 +9,7 @@ mod review;
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_keys::body::{KeyBody, KeyObject};
-use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, TeamId, Version, WrapPurpose};
+use tablepro_keys::encoding::{AccountId, KeyDeviceId, KeyPurpose, TeamId, Version, WrapPurpose};
 use tablepro_keys::keys::{DeviceKeys, Signature};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::recovery::RecoveryKey;
@@ -22,8 +22,11 @@ use crate::api::error::SyncError;
 use crate::api::ids::{DeviceRowId, ScopeName};
 use crate::api::key_flows::{
     AccountDevice, DeviceFlows, DraftId, KeyNoticeKind, RemovalReview, ReviewedDevice, ReviewedMember, TeamFlows,
+    TeamKeys,
 };
-use crate::api::state::{KeyPendingRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
+use crate::api::state::{
+    KeyPendingRow, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn, Table,
+};
 use crate::api::transport::{RejectedCode, TransportError};
 
 // What a removal holds between the review and the rotation: R, the lost devices and the members it listed.
@@ -135,10 +138,6 @@ impl KeyService {
                 what: "reviewed member",
             });
         }
-        let steps = TeamSteps {
-            remove: remove.iter().map(|member| (member.team, member.account)).collect(),
-            ..TeamSteps::default()
-        };
         let mut txn = self.begin().await?;
         let own = self.approved_device_account(txn.as_mut(), "remove a device").await?;
         check_recovery_key(self, &draft.recovery, &own.ik)?;
@@ -151,12 +150,19 @@ impl KeyService {
             });
         }
         let mut txn = self.begin().await?;
-        // An earlier rotation still settling its team steps finishes before another starts.
+        // Only an earlier rotation whose account change set has not settled holds a removal back. Team steps an earlier
+        // one still owes, stuck ones included, carry into this one: removing a lost device with R always works (D7).
         if self.rotation_pending(txn.as_mut()).await? {
             self.hooks().pass_soon();
             return Err(SyncError::NotAllowed {
                 what: "remove a device while an earlier rotation settles",
             });
+        }
+        let mut steps = self.carried_steps(txn.as_mut()).await?;
+        for member in remove {
+            if !steps.remove.contains(&(member.team, member.account)) {
+                steps.remove.push((member.team, member.account));
+            }
         }
         let kept = kept_devices(txn.as_mut(), &own.device, keep).await?;
         let current = self.current_keys(txn.as_mut()).await?;
@@ -181,6 +187,13 @@ impl KeyService {
         if !self.may_ask_again(txn.as_mut()).await? {
             return Err(SyncError::NotAllowed {
                 what: "recover a device that holds the account's keys",
+            });
+        }
+        // A request still open, or an approval whose device key switch is owed, needs the pending device keys a
+        // recovery would draw over.
+        if self.asking(txn.as_mut()).await? || self.switch_owed(txn.as_mut()).await? {
+            return Err(SyncError::NotAllowed {
+                what: "recover while an approval of this device is open",
             });
         }
         let recovered = self.read_with_recovery_key(txn.as_mut(), &recovery).await?;
@@ -211,6 +224,7 @@ impl KeyService {
                 what: "recover while an earlier rotation settles",
             });
         }
+        let mut steps = self.carried_steps(txn.as_mut()).await?;
         // A file with no anchor trusts nothing it holds: a device recovered with R starts with no pins and no team
         // key (0054, A stale file; 0056, Pins).
         if self.is_unanchored() {
@@ -223,7 +237,9 @@ impl KeyService {
         } else {
             drop(txn);
         }
-        let held_before = self.account_keys(recovered.certificate.av).await?.is_some();
+        if self.account_keys(recovered.certificate.av).await?.is_none() {
+            steps.opened = Some(recovered.certificate.av);
+        }
         // It compared with no device, so the rotation keeps only itself, under new device keys.
         let device = DeviceKeys::generate()?;
         let held = self.device_keys().await?;
@@ -242,22 +258,13 @@ impl KeyService {
             kept: &kept,
             current: &recovered.current,
         };
-        let av = match self.rotate_account(&rotation, &TeamSteps::default(), Some(held)).await {
-            Ok(av) => av,
-            Err(error) => {
-                // A refused recovery leaves no copy of the account keys R opened.
-                if matches!(error, SyncError::Rejected { .. }) && !held_before {
-                    self.erase_account_keys(recovered.certificate.av).await?;
-                }
-                return Err(error);
-            }
-        };
+        let av = self.rotate_account(&rotation, &steps, Some(held)).await?;
         self.clear_unanchored();
         Ok(av)
     }
 
+    // The devices the account certifies at its current `av`, each under that `av`'s ASK.
     async fn devices_of_account(&self, txn: &mut dyn StateTxn) -> Result<Vec<AccountDevice>, SyncError> {
-        let account = self.account();
         let own = self.own_account(txn).await?;
         let this = self.device_keys().await?.current.map(|keys| keys.key_device);
         let pins: Vec<KeyDeviceId> = txn
@@ -269,22 +276,11 @@ impl KeyService {
                 _ => None,
             })
             .collect();
-        let mut devices = Vec::new();
         let Some(own) = own else {
-            return Ok(devices);
+            return Ok(Vec::new());
         };
-        for held in self.held_objects(txn, ScopeName::Personal, KeyKind::Device).await? {
-            let KeyRecordId::Device {
-                account: owner,
-                key_device,
-                av,
-            } = held.object.id
-            else {
-                continue;
-            };
-            if owner != account || av != own.av || !held.applied {
-                continue;
-            }
+        let mut devices = Vec::new();
+        for key_device in self.certified_devices(txn, own.av).await? {
             devices.push(AccountDevice {
                 key_device,
                 device: (Some(key_device) == this).then(|| self.device_row().clone()),
@@ -338,7 +334,7 @@ impl KeyService {
                 Ok(built.av)
             }
             Ok(Pushed::Refused(code)) => {
-                self.rotation_refused(built.av, &built.objects, recovering.is_some())
+                self.rotation_refused(built.av, &built.objects, recovering.is_some(), steps.opened)
                     .await?;
                 Err(SyncError::Rejected { code })
             }
@@ -367,10 +363,10 @@ impl KeyService {
             .await?;
             self.clear_unanchored();
         }
-        let kept = kept_of(objects, av);
         let mut txn = self.begin().await?;
         let stopped = self.stopped_personal(txn.as_mut()).await?;
-        // A pull may have followed the certificate already; then only the objects are held as applied.
+        // A pull may have followed the certificate already; then the objects are held as applied, and a key the pull
+        // left stopped moves to the rotation's version, which this device wrote.
         let followed = self
             .pin(txn.as_mut(), self.account())
             .await?
@@ -380,10 +376,13 @@ impl KeyService {
                 self.hold_object(txn.as_mut(), ScopeName::Personal, object, true)
                     .await?;
             }
+            self.resume_stopped_personal(txn.as_mut(), objects, av).await?;
         } else {
             self.adopt_account_change_set(txn.as_mut(), objects).await?;
         }
+        let kept = self.certified_devices(txn.as_mut(), av).await?;
         prune_device_pins(txn.as_mut(), &kept).await?;
+        self.end_superseded_flows(txn.as_mut(), av).await?;
         txn.commit().await?;
         for scope in stopped {
             self.hooks().resume_scope(scope);
@@ -409,8 +408,57 @@ impl KeyService {
         Ok(stopped)
     }
 
-    async fn rotation_refused(&self, av: Version, objects: &[KeyObject], recovering: bool) -> Result<(), SyncError> {
+    // The personal and history versions this device's own rotation to `av` wrote, made current where a key still
+    // stands stopped below them.
+    async fn resume_stopped_personal(
+        &self,
+        txn: &mut dyn StateTxn,
+        objects: &[KeyObject],
+        av: Version,
+    ) -> Result<(), SyncError> {
+        for object in objects {
+            let Some(record) = object.version_record() else {
+                continue;
+            };
+            if record.signer_av != av || record.key.purpose == KeyPurpose::Team {
+                continue;
+            }
+            let Some(record) = self.verified_personal_record(txn, &record).await? else {
+                continue;
+            };
+            let Some(row) = self.personal_row(txn, record.key.purpose).await? else {
+                continue;
+            };
+            if row.state != KeyVersionState::Stopped || record.key.version <= row.version {
+                continue;
+            }
+            txn.put(Row::KeyVersion(KeyVersionRow {
+                scope: ScopeName::Personal,
+                purpose: record.key.purpose,
+                version: record.key.version,
+                record: record.digest(self.origin())?,
+                holders: Vec::new(),
+                state: KeyVersionState::Ok,
+                stopped_cause: None,
+                epoch: None,
+            }))
+            .await?;
+        }
+        Ok(())
+    }
+
+    // A recovery that never applied leaves no copy of the account keys R opened, nor the device keys it drew.
+    async fn rotation_refused(
+        &self,
+        av: Version,
+        objects: &[KeyObject],
+        recovering: bool,
+        opened: Option<Version>,
+    ) -> Result<(), SyncError> {
         self.erase_account_keys(av).await?;
+        if let Some(opened) = opened {
+            self.erase_account_keys(opened).await?;
+        }
         let mut txn = self.begin().await?;
         self.drop_candidates(txn.as_mut(), ScopeName::Personal, objects).await?;
         txn.delete(&RowKey::KeyPending(PendingFlow::AccountRotation { av }))
@@ -433,37 +481,21 @@ impl KeyService {
         self.rotation_standing_locked(av, steps).await
     }
 
-    // Only a certificate this flow names as its own is adopted here; a flow that names none, as Replace's, leaves its
-    // rotation to the flow that wrote it.
+    // The certificate at `av` decides: this flow's own, named by its signature, is adopted; another that verifies is
+    // another device's rotation that won, which this flow never runs as its own, a replace's included.
     async fn rotation_standing_locked(&self, av: Version, steps: &TeamSteps) -> Result<Standing, SyncError> {
         let mut txn = self.begin().await?;
-        let id = KeyRecordId::Account {
-            account: self.account(),
-            av,
-        };
-        let applied = self
-            .applied_object(txn.as_mut(), ScopeName::Personal, KeyKind::Account, &id.to_wire())
-            .await?;
+        let applied = self.own_certificate(txn.as_mut(), av).await?;
         let candidates = self.rotation_candidates(txn.as_mut(), av).await?;
-        let Some(applied) = applied else {
-            return Ok(match (candidates.is_some(), steps.certificate.is_some()) {
-                (true, _) => Standing::Unsent,
-                (false, true) => Standing::Gone,
-                (false, false) => Standing::Waiting,
+        let Some(applied) = applied.filter(|certificate| certificate.verify(self.origin()).is_ok()) else {
+            return Ok(if candidates.is_some() {
+                Standing::Unsent
+            } else {
+                Standing::Gone
             });
         };
-        let ours = certificate_signature(std::slice::from_ref(&applied));
-        match steps.certificate {
-            Some(signature) if ours != Some(signature) => return Ok(Standing::Theirs),
-            Some(_) => {}
-            None => {
-                let own = self.own_account(txn.as_mut()).await?;
-                return Ok(if own.is_some_and(|own| own.av >= av) {
-                    Standing::Ours
-                } else {
-                    Standing::Waiting
-                });
-            }
+        if steps.certificate != Some(applied.sig) {
+            return Ok(Standing::Theirs);
         }
         drop(txn);
         // Applied, its answer possibly lost and a pull since: adopted from what the server holds, once.
@@ -474,9 +506,10 @@ impl KeyService {
             own.is_some_and(|own| own.av >= av)
         };
         if adopted {
-            let kept = kept_of(&objects, av);
             let mut txn = self.begin().await?;
+            let kept = self.certified_devices(txn.as_mut(), av).await?;
             prune_device_pins(txn.as_mut(), &kept).await?;
+            self.end_superseded_flows(txn.as_mut(), av).await?;
             txn.commit().await?;
         } else {
             self.rotation_adopted(av, &objects).await?;
@@ -484,13 +517,13 @@ impl KeyService {
         Ok(Standing::Ours)
     }
 
-    // Another device's rotation holds `av`: this flow's candidates, its account keys at `av` when they are not the
-    // certificate's, and the device keys a recovery drew for it go. Its review's choices go with it, since the
-    // rotation they were made for never applied.
-    async fn drop_lost_rotation(&self, av: Version) -> Result<(), SyncError> {
+    // Another device's rotation holds `av`: every candidate this flow wrote at that `av`, its account keys there when
+    // they are not the certificate's, the keys R opened for a recovery and the device keys it drew all go. The review's
+    // choices go with the flow, since the rotation they were made for never applied.
+    async fn drop_lost_rotation(&self, av: Version, steps: &TeamSteps) -> Result<(), SyncError> {
         let _serial = self.serialized().await;
         let mut txn = self.begin().await?;
-        let leftovers = self.rotation_candidates(txn.as_mut(), av).await?.unwrap_or_default();
+        let leftovers = self.candidates_at(txn.as_mut(), av).await?;
         let writer = leftovers
             .iter()
             .filter_map(KeyObject::wrap)
@@ -502,10 +535,13 @@ impl KeyService {
         txn.delete(&RowKey::KeyPending(PendingFlow::AccountRotation { av }))
             .await?;
         txn.commit().await?;
-        if let (Some(keys), Some(certificate)) = (self.account_keys(av).await?, in_force)
-            && keys.check_against(&certificate.ask, &certificate.aek).is_err()
+        if let Some(keys) = self.account_keys(av).await?
+            && in_force.is_none_or(|certificate| keys.check_against(&certificate.ask, &certificate.aek).is_err())
         {
             self.erase_account_keys(av).await?;
+        }
+        if let Some(opened) = steps.opened {
+            self.erase_account_keys(opened).await?;
         }
         let held = self.device_keys().await?;
         if writer.is_some() && held.pending.as_ref().map(|pending| pending.key_device) == writer {
@@ -518,10 +554,35 @@ impl KeyService {
         Ok(())
     }
 
+    // Every candidate of an account change set to `av` this device wrote and the server never took, its rings with it.
+    pub(crate) async fn candidates_at(&self, txn: &mut dyn StateTxn, av: Version) -> Result<Vec<KeyObject>, SyncError> {
+        let mut objects: Vec<KeyObject> = Vec::new();
+        for kind in [
+            KeyKind::Account,
+            KeyKind::Recovery,
+            KeyKind::Device,
+            KeyKind::Version,
+            KeyKind::Ring,
+            KeyKind::Wrap,
+        ] {
+            for held in self.held_objects(txn, ScopeName::Personal, kind).await? {
+                let ours = match held.object.id {
+                    KeyRecordId::Ring(key) => objects.iter().any(|object| object.id == KeyRecordId::Version(key)),
+                    _ => super::account_replace::of_rotation(&held.object, av),
+                };
+                if !held.applied && ours {
+                    objects.push(held.object);
+                }
+            }
+        }
+        Ok(objects)
+    }
+
     // The change set at `av` resent while its candidates have not applied, then, once this device holds the account
     // at `av`, each team of the account: this account's certificate copied in as `key.member`, and each team where it
     // holds the key rotated without the members the review marked, whether or not the server still lists them. A
-    // rotation another device won at that `av` leaves nothing of this flow to do.
+    // rotation another device won at that `av` leaves nothing of this flow to do. A team the server does not take yet
+    // waits for the next pass; one it refuses for good is recorded and the flow carries on (0056, Removing a device).
     async fn team_steps(&self, av: Version) -> Result<(), SyncError> {
         let flow = PendingFlow::AccountRotation { av };
         let mut steps = {
@@ -532,8 +593,7 @@ impl KeyService {
             }
         };
         match self.rotation_standing(av, &steps).await? {
-            Standing::Waiting => return Ok(()),
-            Standing::Theirs => return self.drop_lost_rotation(av).await,
+            Standing::Theirs => return self.drop_lost_rotation(av, &steps).await,
             Standing::Gone => return self.end_team_steps(flow).await,
             Standing::Unsent => {
                 let resent = {
@@ -583,28 +643,31 @@ impl KeyService {
                 .collect();
             (teams, held)
         };
+        let mut waiting = false;
         for team in teams {
-            if steps.done.contains(&team) {
+            if steps.settled(team) {
                 continue;
             }
-            match self.publish_member_certificate(team).await {
-                // A team this account has left takes nothing more from it.
-                Err(SyncError::Transport(TransportError::SeatRequired | TransportError::NotFound)) => {}
-                other => {
-                    other?;
-                    if held.contains(&team) && !self.team_rotated_since(team, av).await? {
-                        match self.rotate_team(team, steps.removals_for(team)).await {
-                            // Already written, by this flow before a crash or a lost answer, or by another holder
-                            // first: the rotation is met, as a holder that meets `create_only` takes it.
-                            Err(SyncError::Rejected {
-                                code: RejectedCode::CreateOnly,
-                            }) => {}
-                            other => other?,
-                        }
-                    }
+            match self.team_step(team, av, &steps, held.contains(&team)).await {
+                Ok(Step::Done) => {
+                    steps.retry.retain(|(retried, _)| *retried != team);
+                    steps.done.push(team);
                 }
+                Ok(Step::Wait) => waiting = true,
+                Ok(Step::Retry(version)) => {
+                    steps.retry.retain(|(retried, _)| *retried != team);
+                    steps.retry.push((team, version));
+                    waiting = true;
+                }
+                Err(SyncError::Transport(_)) => waiting = true,
+                Err(
+                    SyncError::Rejected { .. }
+                    | SyncError::Keys(_)
+                    | SyncError::NotAllowed { .. }
+                    | SyncError::Locked { .. },
+                ) => steps.stuck.push(team),
+                Err(other) => return Err(other),
             }
-            steps.done.push(team);
             let _serial = self.serialized().await;
             let mut txn = self.begin().await?;
             txn.put(Row::KeyPending(KeyPendingRow {
@@ -614,11 +677,65 @@ impl KeyService {
             .await?;
             txn.commit().await?;
         }
+        if waiting {
+            self.hooks().pass_soon();
+            return Ok(());
+        }
+        // A stuck team stays recorded in the row, which no longer holds anything back; the next rotation takes it on.
+        if !steps.stuck.is_empty() {
+            return Ok(());
+        }
         self.end_team_steps(flow).await
     }
 
-    // Right after the account rotation applied. A team step the server does not take yet, as before it approves the
-    // rotated key device, stays in `key_pending` for the next pass; the account part is done either way.
+    // One team's step. Two holders that rotate at once are serialized: the second meets `create_only`, pulls, and
+    // rotates again only if a rotation is still due (0056, Version records).
+    async fn team_step(&self, team: TeamId, av: Version, steps: &TeamSteps, holds: bool) -> Result<Step, SyncError> {
+        match self.publish_member_certificate(team).await {
+            // A team this account has left takes nothing more from it.
+            Err(SyncError::Transport(TransportError::SeatRequired | TransportError::NotFound)) => {
+                return Ok(Step::Done);
+            }
+            other => other?,
+        }
+        if !holds || self.team_rotated_since(team, av).await? {
+            return Ok(Step::Done);
+        }
+        let keys = self.team_keys(team).await?;
+        if let Some((_, met_at)) = steps.retry.iter().find(|(retried, _)| *retried == team) {
+            if keys.version.is_none_or(|version| version <= *met_at) {
+                return Ok(Step::Wait);
+            }
+            if !self.rotation_still_due(team, &keys, &steps.removals_for(team)).await? {
+                return Ok(Step::Done);
+            }
+        }
+        match self.rotate_team(team, steps.removals_for(team)).await {
+            Err(SyncError::Rejected {
+                code: RejectedCode::CreateOnly,
+            }) => Ok(Step::Retry(keys.version.unwrap_or(Version::FIRST))),
+            other => other.map(|()| Step::Done),
+        }
+    }
+
+    // The server still marks the team, or a member the review marked holds the version in force.
+    async fn rotation_still_due(&self, team: TeamId, keys: &TeamKeys, marked: &[AccountId]) -> Result<bool, SyncError> {
+        if keys.rotation_due {
+            return Ok(true);
+        }
+        let Some(version) = keys.version else {
+            return Ok(false);
+        };
+        let _serial = self.serialized().await;
+        let mut txn = self.begin().await?;
+        Ok(match self.team_holders_at(txn.as_mut(), team, version).await? {
+            Some(holders) => marked.iter().any(|account| holders.contains(account)),
+            None => !marked.is_empty(),
+        })
+    }
+
+    // Right after the account rotation applied. A step the server does not take yet stays in `key_pending` for the
+    // next pass; the account part is done either way.
     async fn team_steps_now(&self, av: Version) -> Result<(), SyncError> {
         match self.team_steps(av).await {
             Err(SyncError::Transport(_)) => {
@@ -629,13 +746,58 @@ impl KeyService {
         }
     }
 
-    // A pending account rotation of this device, which settles before any new rotation or approval starts.
+    // An account change set of this device that has not settled: a rotation's candidates waiting at an `av` above the
+    // one the device follows, or its reset's activation. It settles before any new rotation or approval starts; team
+    // steps alone hold nothing back.
     pub(crate) async fn rotation_pending(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
-        Ok(txn
-            .scan(&RowRange::Table(Table::KeyPending))
-            .await?
-            .iter()
-            .any(|row| matches!(row, Row::KeyPending(row) if matches!(row.flow, PendingFlow::AccountRotation { .. }))))
+        if self.activation_waiting(txn).await? {
+            return Ok(true);
+        }
+        let followed = self.pin(txn, self.account()).await?.map(|pin| pin.av);
+        for av in rotation_flows(txn).await? {
+            if followed.is_some_and(|at| av <= at) {
+                continue;
+            }
+            if self.rotation_candidates(txn, av).await?.is_some() {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    // What earlier rotations of this device that applied still owe their teams, which a new rotation takes on.
+    async fn carried_steps(&self, txn: &mut dyn StateTxn) -> Result<TeamSteps, SyncError> {
+        let mut carried = TeamSteps::default();
+        for av in rotation_flows(txn).await? {
+            let Some(Row::KeyPending(row)) = txn
+                .get(&RowKey::KeyPending(PendingFlow::AccountRotation { av }))
+                .await?
+            else {
+                continue;
+            };
+            let steps = TeamSteps::decode(&row.state)?;
+            let applied = self.own_certificate(txn, av).await?;
+            if applied.is_none_or(|certificate| steps.certificate != Some(certificate.sig)) {
+                continue;
+            }
+            for (team, account) in steps.remove {
+                if !steps.done.contains(&team) && !carried.remove.contains(&(team, account)) {
+                    carried.remove.push((team, account));
+                }
+            }
+        }
+        Ok(carried)
+    }
+
+    // Once a rotation of this device applied at `av`, the flows of earlier ones end: it carried what they still owed.
+    async fn end_superseded_flows(&self, txn: &mut dyn StateTxn, av: Version) -> Result<(), SyncError> {
+        for earlier in rotation_flows(txn).await? {
+            if earlier < av {
+                txn.delete(&RowKey::KeyPending(PendingFlow::AccountRotation { av: earlier }))
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     async fn end_team_steps(&self, flow: PendingFlow) -> Result<(), SyncError> {
@@ -742,7 +904,17 @@ impl KeyService {
             }
             Pushed::Refused(code) => {
                 let recovering = held.pending.is_some_and(|pending| pending.key_device == wrapper);
-                self.rotation_refused(av, &objects, recovering).await?;
+                let opened = {
+                    let mut txn = self.begin().await?;
+                    match txn
+                        .get(&RowKey::KeyPending(PendingFlow::AccountRotation { av }))
+                        .await?
+                    {
+                        Some(Row::KeyPending(row)) => TeamSteps::decode(&row.state)?.opened,
+                        _ => None,
+                    }
+                };
+                self.rotation_refused(av, &objects, recovering, opened).await?;
                 Ok(Resent::Refused(code))
             }
         }
@@ -760,8 +932,6 @@ enum Resent {
 enum Standing {
     // Its candidates have not applied and go up again.
     Unsent,
-    // Left to the flow that wrote it, which names no certificate of its own here.
-    Waiting,
     // Neither applied nor a candidate any more: nothing of it can still apply.
     Gone,
     // Applied and adopted.
@@ -770,14 +940,31 @@ enum Standing {
     Theirs,
 }
 
-fn kept_of(objects: &[KeyObject], av: Version) -> Vec<KeyDeviceId> {
-    objects
+// Where one team's step stands after this pass.
+enum Step {
+    Done,
+    // Met `create_only` while this device held the version named: waits for a pull past it.
+    Retry(Version),
+    // A pull has not moved past the version a `create_only` was met at.
+    Wait,
+}
+
+// The `av`s this device's account rotation flows wait at, lowest first.
+async fn rotation_flows(txn: &mut dyn StateTxn) -> Result<Vec<Version>, SyncError> {
+    let mut avs: Vec<Version> = txn
+        .scan(&RowRange::Table(Table::KeyPending))
+        .await?
         .iter()
-        .filter_map(|object| match object.id {
-            KeyRecordId::Device { key_device, av: at, .. } if at == av => Some(key_device),
+        .filter_map(|row| match row {
+            Row::KeyPending(KeyPendingRow {
+                flow: PendingFlow::AccountRotation { av },
+                ..
+            }) => Some(*av),
             _ => None,
         })
-        .collect()
+        .collect();
+    avs.sort_unstable();
+    Ok(avs)
 }
 
 // Own-device pins only of the devices a rotation kept.
@@ -790,6 +977,15 @@ async fn prune_device_pins(txn: &mut dyn StateTxn, kept: &[KeyDeviceId]) -> Resu
         }
     }
     Ok(())
+}
+
+// A replace's flow in `key_pending` as it starts: no team step done, and its certificate named.
+pub(crate) fn flow_state(objects: &[KeyObject]) -> Vec<u8> {
+    TeamSteps {
+        certificate: certificate_signature(objects),
+        ..TeamSteps::default()
+    }
+    .encode()
 }
 
 // The signature of the account certificate an account change set carries.

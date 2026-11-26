@@ -7,7 +7,7 @@ use tablepro_keys::record_id::KeyRecordId;
 use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::scope_key::{KeyRef, Start};
 use tablepro_sync::api::error::SyncError;
-use tablepro_sync::api::key_flows::{AccountFlows, DeviceFlows, KeyState, LockCause, ResetKind};
+use tablepro_sync::api::key_flows::{AccountFlows, DeviceFlows, KeyState, LockCause, ResetKind, TeamFlows};
 use tablepro_sync::api::transport::TransportError;
 use tablepro_sync_testing::FakeServer;
 
@@ -495,7 +495,8 @@ async fn a_server_certificate_at_a_pending_rotation_s_av_is_never_adopted() {
     assert!(!pin.replaced.contains(&ik));
 }
 
-// A team rotation whose answer was lost goes up again and meets `create_only` on its own version: the step is met.
+// A team rotation whose answer was lost goes up again and meets `create_only` on its own version: once a pull brings
+// that version, the step is met.
 #[tokio::test]
 async fn a_team_step_whose_answer_was_lost_is_met_on_resume() {
     let server = FakeServer::new();
@@ -514,6 +515,12 @@ async fn a_team_step_whose_answer_was_lost_is_met_on_resume() {
             },
         ))
         .await;
+    // The step goes up again and meets `create_only`; after a pull of the team it finds its own version in force.
+    a.service
+        .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
+        .await
+        .unwrap();
+    crate::harness::team_pass(&a, team).await;
     a.service
         .resume_rotation(tablepro_keys::encoding::Version::new(2).unwrap())
         .await
@@ -655,4 +662,334 @@ async fn a_refused_recovery_keeps_no_account_keys() {
         av: tablepro_keys::encoding::Version::FIRST,
     };
     assert!(!d.store.inner.holds(&opened));
+}
+
+fn rotation_row(av: u32) -> tablepro_sync::api::state::RowKey {
+    tablepro_sync::api::state::RowKey::KeyPending(tablepro_sync::api::state::PendingFlow::AccountRotation {
+        av: crate::harness::v(av),
+    })
+}
+
+fn team_version(team: tablepro_keys::encoding::TeamId, number: u32) -> String {
+    KeyRecordId::Version(KeyRef {
+        owner: team.0,
+        purpose: KeyPurpose::Team,
+        version: crate::harness::v(number),
+    })
+    .to_wire()
+}
+
+// A device certificate the account's ASK did not sign is refused, never held as applied and never listed.
+#[tokio::test]
+async fn a_device_certificate_that_does_not_verify_is_never_applied_nor_listed() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let stranger = KeyDeviceId(tablepro_keys::encoding::random_uuid().unwrap());
+    let forged = crate::harness::forged_device_certificate(account, stranger, 1);
+
+    let applied = a
+        .service
+        .apply_account_objects(crate::harness::arrival(vec![crate::harness::served(&forged)]))
+        .await
+        .unwrap();
+
+    assert_eq!(applied.refused.len(), 1);
+    assert_eq!(applied.refused[0].error.code(), "keys.signature");
+    assert!(
+        crate::harness::held(&a, tablepro_keys::record_id::KeyKind::Device, &forged.id.to_wire())
+            .await
+            .is_none()
+    );
+    let devices = a.service.account_devices().await.unwrap();
+    assert!(!devices.iter().any(|device| device.key_device == stranger));
+}
+
+// A removal's answer was lost. A forged certificate for the removed device at the new `av`, held until the account
+// certificate arrived, is refused once it does and keeps no pin of that device.
+#[tokio::test]
+async fn a_forged_device_certificate_at_a_removal_s_av_keeps_no_pin_of_the_removed_device() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let b_device = key_device(&b).await;
+    a.wire.lose_next_answer();
+    let review = a.service.begin_removal(r, vec![b_device]).await.unwrap();
+    a.service
+        .finish_removal(review.review, Vec::new(), Vec::new())
+        .await
+        .unwrap_err();
+    let forged = crate::harness::forged_device_certificate(account, b_device, 2);
+    a.service
+        .apply_account_objects(crate::harness::arrival(vec![crate::harness::served(&forged)]))
+        .await
+        .unwrap();
+    a.pull().await;
+
+    a.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert_eq!(a.av().await, 2);
+    assert!(!a.device_pins().await.iter().any(|pin| pin.key_device == b_device));
+    let devices = a.service.account_devices().await.unwrap();
+    assert!(!devices.iter().any(|device| device.key_device == b_device));
+}
+
+// A replace whose push never went up loses its `av` to B's rotation. A, whose file has no anchor so no pull settles
+// it, drops it on resume instead of running B's rotation as its own, team steps included.
+#[tokio::test]
+async fn a_replace_that_lost_to_another_device_s_rotation_settles_on_resume() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let team = owned_team(&a).await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let a_device = key_device(&a).await;
+    a.pull().await;
+    let draft = a.service.begin_replace(r.clone()).await.unwrap();
+    a.wire.fail_next_push(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    a.service
+        .finish_replace(
+            draft.recovery.draft,
+            crate::harness::typed_back(&draft.recovery),
+            Vec::new(),
+        )
+        .await
+        .unwrap_err();
+    let review = b.service.begin_removal(r, Vec::new()).await.unwrap();
+    b.service
+        .finish_removal(review.review, vec![a_device], Vec::new())
+        .await
+        .unwrap();
+    let a = a
+        .reopen(crate::harness::opened_with(
+            tablepro_sync::api::state::KeyTrust::Unanchored,
+        ))
+        .await;
+    a.pull().await;
+
+    a.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(a.get(rotation_row(2)).await.is_none());
+    assert!(!stored_in_team(&server, team, "key.version", &team_version(team, 2)));
+    let ik = a.pin(account).await.unwrap().ik;
+    let b_ik = b.pin(account).await.unwrap().ik;
+    assert_eq!(ik, b_ik);
+}
+
+// A's team step meets `create_only`: C, an admin of the team, rotated it before A's account rotation. A pulls the
+// team and, the rotation still due, rotates it again.
+#[tokio::test]
+async fn a_team_step_that_meets_create_only_rotates_again_after_a_pull_while_still_due() {
+    use tablepro_sync::api::scopes::Role;
+    let server = FakeServer::new();
+    let (account, admin) = (new_account(), new_account());
+    let team = tablepro_keys::encoding::TeamId(tablepro_keys::encoding::random_uuid().unwrap());
+    server.add_team(team, &[(account, Role::Owner), (admin, Role::Admin)]);
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    crate::harness::team_pass(&a, team).await;
+    a.service.create_team_keys(team).await.unwrap();
+    let c = Device::new(&server, admin, "dev_c").await;
+    c.genesis().await;
+    crate::harness::team_pass(&c, team).await;
+    crate::harness::team_pass(&a, team).await;
+    a.service.confirm_member(team, admin).await.unwrap();
+    crate::harness::team_pass(&c, team).await;
+    c.service.rotate_team(team, Vec::new()).await.unwrap();
+    assert!(stored_in_team(&server, team, "key.version", &team_version(team, 2)));
+
+    rotate_keeping_only_self(&a, &r).await;
+    // The server marks the team when the account rotation applies.
+    server.set_rotation_due(team, true);
+    let waiting = a.get(rotation_row(2)).await;
+    crate::harness::team_pass(&a, team).await;
+    a.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(waiting.is_some());
+    assert!(stored_in_team(&server, team, "key.version", &team_version(team, 3)));
+    assert!(a.get(rotation_row(2)).await.is_none());
+}
+
+// A team step the server refuses for good is recorded and the flow carries on: removing a lost device with R still
+// works afterwards (D7).
+#[tokio::test]
+async fn a_team_step_refused_for_good_does_not_block_the_next_removal() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    owned_team(&a).await;
+    // The account rotation and the certificate copied into the team apply; the team rotation is refused.
+    a.wire
+        .refuse_push_after(2, tablepro_sync::api::transport::RejectedCode::Role);
+
+    let first = a.service.begin_removal(r.clone(), Vec::new()).await.unwrap();
+    let finished = a.service.finish_removal(first.review, Vec::new(), Vec::new()).await;
+    a.pull().await;
+    let second = a.service.begin_removal(r, Vec::new()).await.unwrap();
+    let again = a.service.finish_removal(second.review, Vec::new(), Vec::new()).await;
+
+    finished.unwrap();
+    again.unwrap();
+    a.pull().await;
+    assert_eq!(a.av().await, 3);
+}
+
+// A's removal never went up and a certificate whose signature fails stands at its `av`: it decides nothing, and A's
+// own rotation goes up on resume.
+#[tokio::test]
+async fn a_certificate_whose_signature_fails_never_decides_another_device_won() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    a.wire.fail_next_push(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    let review = a.service.begin_removal(r, Vec::new()).await.unwrap();
+    a.service
+        .finish_removal(review.review, Vec::new(), Vec::new())
+        .await
+        .unwrap_err();
+    let mut forged = crate::harness::foreign_certificate(account, 2);
+    if let tablepro_keys::body::KeyBody::Account(body) = &mut forged.body {
+        body.sig.0[0] ^= 1;
+    }
+    a.service
+        .apply_account_objects(crate::harness::arrival(vec![crate::harness::served(&forged)]))
+        .await
+        .unwrap();
+
+    a.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+    a.pull().await;
+
+    assert_eq!(a.av().await, 2);
+    assert!(a.service.account_keys(crate::harness::v(2)).await.unwrap().is_some());
+}
+
+// The recovery's answer was lost and a pull followed the certificate before the resume adopted it: the stopped
+// personal key moves to the recovery's version and is no longer stopped.
+#[tokio::test]
+async fn a_recovery_adopted_after_a_pull_clears_the_stopped_personal_rows() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let key = tablepro_sync::api::state::RowKey::KeyVersion(
+        tablepro_sync::api::ids::ScopeName::Personal,
+        KeyPurpose::Personal,
+    );
+    let Some(tablepro_sync::api::state::Row::KeyVersion(mut row)) = b.get(key.clone()).await else {
+        unreachable!("no personal key row")
+    };
+    row.stop(tablepro_sync::api::state::StoppedCause::CatchUp);
+    crate::harness::put_rows(&b, vec![tablepro_sync::api::state::Row::KeyVersion(row)]).await;
+    b.wire.lose_next_answer();
+
+    b.service.recover(r).await.unwrap_err();
+    b.pull().await;
+    b.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    let Some(tablepro_sync::api::state::Row::KeyVersion(row)) = b.get(key).await else {
+        unreachable!("no personal key row")
+    };
+    assert_eq!(row.state, tablepro_sync::api::state::KeyVersionState::Ok);
+    assert_eq!(row.version.get(), 2);
+}
+
+// D's recovery never went up and A's rotation won its `av`: on resume D drops its candidates and the device keys it
+// drew for the recovery.
+#[tokio::test]
+async fn a_recovery_another_device_won_drops_its_candidates_and_device_keys() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    d.wire.fail_next_push(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    d.service.recover(r.clone()).await.unwrap_err();
+    assert!(d.service.device_keys().await.unwrap().pending.is_some());
+    rotate_keeping_only_self(&a, &r).await;
+    d.pull().await;
+
+    d.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(d.service.device_keys().await.unwrap().pending.is_none());
+    assert!(d.get(rotation_row(2)).await.is_none());
+    let candidates = d
+        .rows(tablepro_sync::api::state::Table::KeyObjects)
+        .await
+        .into_iter()
+        .filter(|row| matches!(row, tablepro_sync::api::state::Row::KeyObject(object) if !object.applied))
+        .count();
+    assert_eq!(candidates, 0);
+}
+
+// A recovery that never went up is refused when it goes up again: the account keys R opened go too.
+#[tokio::test]
+async fn a_recovery_refused_on_resume_keeps_no_account_keys() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    d.wire.fail_next_push(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    d.service.recover(r).await.unwrap_err();
+    d.wire
+        .refuse_next_push(tablepro_sync::api::transport::RejectedCode::BadStatement);
+
+    let refused = d.service.resume_rotation(crate::harness::v(2)).await.unwrap_err();
+
+    assert_eq!(
+        refused,
+        SyncError::Rejected {
+            code: tablepro_sync::api::transport::RejectedCode::BadStatement
+        }
+    );
+    let opened = tablepro_sync::api::device_store::DeviceItem::AccountKeys {
+        origin: crate::harness::origin(),
+        account,
+        av: tablepro_keys::encoding::Version::FIRST,
+    };
+    assert!(!d.store.inner.holds(&opened));
+    assert!(d.service.device_keys().await.unwrap().pending.is_none());
+}
+
+// A device asking for approval holds device keys the request needs: a recovery waits until that request ends.
+#[tokio::test]
+async fn a_recovery_does_not_start_while_the_device_asks_for_approval() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    tablepro_sync::api::key_flows::ApprovalFlows::request_approval(&n.service)
+        .await
+        .unwrap();
+    let asking = n.service.device_keys().await.unwrap().pending.unwrap().key_device;
+
+    let refused = n.service.recover(r).await.unwrap_err();
+
+    assert!(matches!(refused, SyncError::NotAllowed { .. }));
+    assert_eq!(
+        n.service.device_keys().await.unwrap().pending.unwrap().key_device,
+        asking
+    );
 }

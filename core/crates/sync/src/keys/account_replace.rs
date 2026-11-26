@@ -150,10 +150,11 @@ impl KeyService {
             self.hold_object(txn.as_mut(), ScopeName::Personal, object, false)
                 .await?;
         }
-        // Written with the candidates, so the team steps still run when the device stops after the push applies.
+        // Written with the candidates, so the team steps still run when the device stops after the push applies. It
+        // names the replace's certificate, so a rotation another device won at `av` is never taken for it.
         txn.put(Row::KeyPending(KeyPendingRow {
             flow: PendingFlow::AccountRotation { av },
-            state: Vec::new(),
+            state: super::rotation::flow_state(&built.objects),
         }))
         .await?;
         // What the push changes is not known until a pull after it catches up.
@@ -268,10 +269,18 @@ impl KeyService {
             account: self.account(),
             av,
         };
+        // A reset's activation waits at the same id, and is only ever sent by its own flow.
         let waiting = self
             .held_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
             .await?
-            .is_some_and(|held| !held.applied);
+            .is_some_and(|held| {
+                !held.applied
+                    && matches!(
+                        &held.object.body,
+                        KeyBody::Account(body)
+                            if matches!(body.certificate(self.account(), av).kind, CertKind::GenesisOrRotation | CertKind::Replace)
+                    )
+            });
         if !waiting {
             return Ok(None);
         }

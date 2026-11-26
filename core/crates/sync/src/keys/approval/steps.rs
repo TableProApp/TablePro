@@ -151,8 +151,25 @@ impl KeyService {
         })
     }
 
+    // This device's own request, still open and not past `expires_at`, or one whose revoke is owed: its pending device
+    // keys are the request's.
+    pub(crate) async fn asking(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
+        let now = self.now_us();
+        Ok(self.session_records(txn).await?.iter().any(|record| {
+            record.role == Role::NewDevice && (record.sent.revoke_owed || (record.live() && now < record.expires_at_us))
+        }))
+    }
+
+    pub(super) async fn revoke_owed(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
+        Ok(self
+            .session_records(txn)
+            .await?
+            .iter()
+            .any(|record| record.sent.revoke_owed))
+    }
+
     // N's own session whose approval merged and whose device key switch is still owed.
-    pub(super) async fn switch_owed(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
+    pub(crate) async fn switch_owed(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
         Ok(self.session_records(txn).await?.iter().any(|record| {
             record.role == Role::NewDevice
                 && record.end == Some(super::session::Ended::Approved)
@@ -191,7 +208,11 @@ impl KeyService {
         let switching = record.role == Role::NewDevice
             && record.end == Some(super::session::Ended::Approved)
             && !record.sent.approval;
-        if record.live() || switching || (record.end.is_some() && !record.sent.cancel && cancels(record)) {
+        if record.live()
+            || switching
+            || record.sent.revoke_owed
+            || (record.end.is_some() && !record.sent.cancel && cancels(record))
+        {
             if txn.get(&RowKey::KeyPending(flow)).await?.is_none() {
                 txn.put(Row::KeyPending(KeyPendingRow {
                     flow,

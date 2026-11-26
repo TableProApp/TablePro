@@ -1,19 +1,20 @@
-// The proposal and activation change sets of a reset (0056, Account flows, Reset; 0051, Resets), and the rows a
-// device keeps for the resets it sees.
+// The proposal and activation change sets of a reset (0056, Account flows, Reset; 0051, Resets), the row a device
+// keeps for its own proposal, and the view of another device's from `key_objects` (0064).
 
+use sha2::{Digest, Sha256};
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{AccountBody, DeviceBody, KeyBody, KeyObject, ResetBody};
 use tablepro_keys::cert::{AccountCertificate, CertKind};
 use tablepro_keys::encoding::{AccountId, KeyPurpose, ResetId, Version};
-use tablepro_keys::keys::{AccountKeys, DeviceKeys, ScopeKey};
+use tablepro_keys::keys::{AccountKeys, DeviceKeys, Ed25519Public, ScopeKey};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::recovery::{RecoveryBlob, RecoveryKey};
 use tablepro_keys::scope_key::Start;
 
-use super::record::ResetRecord;
+use super::record::{HOLD_US, ResetRecord};
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
-use crate::api::key_flows::{KeyNoticeKind, ResetKind, ResetState};
+use crate::api::key_flows::{KeyNoticeKind, PendingReset, ResetKind, ResetState};
 use crate::api::state::{PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
 use crate::keys::{AccountObjectsPlan, KeptDevice, KeyService, ScopeKeyPlan};
 
@@ -45,6 +46,11 @@ pub(super) fn check_proposal(
         .certificate(account, body.key_device, body.av)
         .verify(service.origin(), &certificate.ask)?;
     Ok((certificate, kind))
+}
+
+// SHA-256 of a proposal's fields as this device wrote them.
+pub(super) fn proposal_digest(object: &KeyObject) -> [u8; 32] {
+    Sha256::digest(object.fields_json().as_bytes()).into()
 }
 
 // The three records the activation pushes exactly as the proposal holds them (0051, Resets, Activation).
@@ -102,20 +108,66 @@ impl KeyService {
         Ok(())
     }
 
-    // A reset that ended: its notice, and for this device's own proposal its waiting keys erased.
-    pub(super) async fn end_reset(&self, record: &mut ResetRecord, state: ResetState) -> Result<(), SyncError> {
+    // This device's reset ended without its activation: its notice, its waiting keys erased and the activation
+    // candidates it built dropped.
+    pub(super) async fn end_reset(
+        &self,
+        txn: &mut dyn StateTxn,
+        record: &mut ResetRecord,
+        state: ResetState,
+    ) -> Result<(), SyncError> {
         if !record.pending() {
             return Ok(());
         }
         record.state = state;
-        if record.mine && state != ResetState::Active {
+        if state != ResetState::Active {
             self.erase_reset_keys(record.reset).await?;
+            if let Some(candidates) = self.activation_candidates_of(txn, record).await? {
+                self.drop_candidates(txn, ScopeName::Personal, &candidates).await?;
+            }
         }
         self.raise_notice(KeyNoticeKind::ResetEnded {
             reset: record.reset,
             state,
         })?;
         Ok(())
+    }
+
+    // A reset activation of this device waits as candidates at its reset's `av`, which no rotation may take.
+    pub(crate) async fn activation_waiting(&self, txn: &mut dyn StateTxn) -> Result<bool, SyncError> {
+        for record in self.reset_records(txn).await? {
+            if record.pending() && self.activation_candidates_of(txn, &record).await?.is_some() {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    // The activation candidates this device built for its reset: the certificate waiting at the reset's `av` is the
+    // proposal's, of a reset kind under its IK. Never a rotation's, which waits at the same id.
+    pub(super) async fn activation_candidates_of(
+        &self,
+        txn: &mut dyn StateTxn,
+        record: &ResetRecord,
+    ) -> Result<Option<Vec<KeyObject>>, SyncError> {
+        let id = KeyRecordId::Account {
+            account: self.account(),
+            av: record.av,
+        };
+        let ours = self
+            .held_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
+            .await?
+            .is_some_and(|held| {
+                !held.applied
+                    && matches!(&held.object.body, KeyBody::Account(body)
+                        if body.ik == record.ik
+                            && matches!(body.certificate(self.account(), record.av).kind,
+                                CertKind::ResetKeepingKeys | CertKind::ResetEmpty))
+            });
+        if !ours {
+            return Ok(None);
+        }
+        Ok(Some(self.candidates_at(txn, record.av).await?))
     }
 
     // Ends every pending reset that is overdue, and returns the rows as they stand.
@@ -126,9 +178,9 @@ impl KeyService {
         let mut changed = false;
         for record in &mut records {
             // An activation of this device's own that applied is adopted, never ended for its age.
-            let ended = record.overdue(now) || self.av_taken(txn.as_mut(), record).await?;
-            if ended && !self.own_activation_applied(record).await? {
-                self.end_reset(record, ResetState::Superseded).await?;
+            let ended = record.overdue(now) || self.av_taken(txn.as_mut(), record.av, &record.ik).await?;
+            if ended && record.pending() && !self.own_activation_applied(record).await? {
+                self.end_reset(txn.as_mut(), record, ResetState::Superseded).await?;
                 self.put_reset(txn.as_mut(), record).await?;
                 changed = true;
             }
@@ -139,15 +191,12 @@ impl KeyService {
         Ok(records)
     }
 
-    // Another certificate applied at the `av` a pending reset proposed: a rotation or a replace by someone holding R,
-    // which ends it (0056, Reset).
-    async fn av_taken(&self, txn: &mut dyn StateTxn, record: &ResetRecord) -> Result<bool, SyncError> {
-        if !record.pending() {
-            return Ok(false);
-        }
+    // Another certificate applied at the `av` a reset proposed: a rotation or a replace by someone holding R, which
+    // ends it (0056, Reset).
+    async fn av_taken(&self, txn: &mut dyn StateTxn, av: Version, ik: &Ed25519Public) -> Result<bool, SyncError> {
         let id = KeyRecordId::Account {
             account: self.account(),
-            av: record.av,
+            av,
         };
         Ok(
             match self
@@ -155,10 +204,54 @@ impl KeyService {
                 .await?
                 .map(|object| object.body)
             {
-                Some(KeyBody::Account(body)) => body.ik != record.ik,
+                Some(KeyBody::Account(body)) => body.ik != *ik,
                 _ => false,
             },
         )
+    }
+
+    // Other devices' resets: each `key.reset` `key_objects` holds that this device did not propose, with the times a
+    // pull served beside it this session, and those that ended since. A time no pull served this session reads 0.
+    pub(super) async fn others_resets(&self, txn: &mut dyn StateTxn) -> Result<Vec<PendingReset>, SyncError> {
+        let now = self.now_us();
+        let own: Vec<ResetId> = self
+            .reset_records(txn)
+            .await?
+            .iter()
+            .map(|record| record.reset)
+            .collect();
+        let served = self.served_resets().clone();
+        let mut views: Vec<PendingReset> = served
+            .values()
+            .filter(|view| view.state != ResetState::Pending)
+            .cloned()
+            .collect();
+        for held in self.held_objects(txn, ScopeName::Personal, KeyKind::Reset).await? {
+            let (KeyRecordId::Reset { reset, .. }, KeyBody::Reset(body)) = (&held.object.id, &held.object.body) else {
+                continue;
+            };
+            if !held.applied || own.contains(reset) || views.iter().any(|view| view.reset == *reset) {
+                continue;
+            }
+            let Ok((certificate, kind)) = check_proposal(self, self.account(), body) else {
+                continue;
+            };
+            let mut view = served.get(reset).cloned().unwrap_or(PendingReset {
+                reset: *reset,
+                kind,
+                state: ResetState::Pending,
+                mine: false,
+                proposed_by: None,
+                taken_at_us: 0,
+                held_until_us: 0,
+            });
+            let overdue = view.held_until_us != 0 && now >= view.held_until_us.saturating_add(HOLD_US);
+            if overdue || self.av_taken(txn, body.av, &certificate.ik).await? {
+                view.state = ResetState::Superseded;
+            }
+            views.push(view);
+        }
+        Ok(views)
     }
 
     // A rotation that applies at `av` ends a pending reset that proposed the same `av`: whoever rotated holds R.
@@ -166,7 +259,8 @@ impl KeyService {
         let mut txn = self.begin().await?;
         for mut record in self.reset_records(txn.as_mut()).await? {
             if record.pending() && record.av == av {
-                self.end_reset(&mut record, ResetState::Superseded).await?;
+                self.end_reset(txn.as_mut(), &mut record, ResetState::Superseded)
+                    .await?;
                 self.put_reset(txn.as_mut(), &record).await?;
             }
         }

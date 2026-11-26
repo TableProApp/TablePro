@@ -38,6 +38,8 @@ pub(crate) struct Sent {
     pub cancel: bool,
     // The server purged the request: N, still waiting for its approval, takes one already held or ends.
     pub purged: bool,
+    // N refused an approval the server applied: Sign Out's revoke of the key device the server bound is owed.
+    pub revoke_owed: bool,
 }
 
 #[derive(Clone)]
@@ -519,10 +521,11 @@ const fn sent_bits(sent: Sent) -> u8 {
         | (sent.approval as u8) << 2
         | (sent.cancel as u8) << 3
         | (sent.purged as u8) << 4
+        | (sent.revoke_owed as u8) << 5
 }
 
 const fn sent_from_bits(bits: u8) -> Option<Sent> {
-    if bits & 0xe0 != 0 {
+    if bits & 0xc0 != 0 {
         return None;
     }
     Some(Sent {
@@ -531,6 +534,7 @@ const fn sent_from_bits(bits: u8) -> Option<Sent> {
         approval: bits & 4 != 0,
         cancel: bits & 8 != 0,
         purged: bits & 16 != 0,
+        revoke_owed: bits & 32 != 0,
     })
 }
 

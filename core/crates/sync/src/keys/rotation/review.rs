@@ -15,26 +15,41 @@ use crate::api::key_flows::ReviewedMember;
 use crate::api::state::{Row, RowRange, StateTxn, Table};
 use crate::keys::KeyService;
 
-// Format 1 carried no certificate.
-const FORMAT: u8 = 2;
+// Format 1 carried no certificate; format 2 no stuck or retried teams and no opened `av`.
+const FORMAT: u8 = 3;
 
 // The team steps an account rotation still owes: the members marked for removal per team, the teams done, and the
-// signature of this flow's own certificate at that `av`, which tells its rotation from another device's. An empty
-// state, as Replace writes it, marks no one, has done nothing and names no certificate.
+// signature of this flow's own certificate at that `av`, which tells its rotation from another device's. Teams the
+// server refused for good are recorded and carried into the next rotation; a team that met `create_only` waits for a
+// pull past the version this device held then. A recovery names the `av` whose account keys R opened on a device that
+// did not hold them, which go if the recovery never applies.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct TeamSteps {
     pub remove: Vec<(TeamId, AccountId)>,
     pub done: Vec<TeamId>,
     pub certificate: Option<Signature>,
+    pub stuck: Vec<TeamId>,
+    pub retry: Vec<(TeamId, Version)>,
+    pub opened: Option<Version>,
 }
 
 fn push_count(out: &mut Vec<u8>, count: usize) {
     out.extend_from_slice(&u32::try_from(count).unwrap_or(u32::MAX).to_be_bytes());
 }
 
+fn push_optional(out: &mut Vec<u8>, bytes: Option<&[u8]>) {
+    match bytes {
+        Some(bytes) => {
+            out.push(1);
+            out.extend_from_slice(bytes);
+        }
+        None => out.push(0),
+    }
+}
+
 impl TeamSteps {
     pub fn encode(&self) -> Vec<u8> {
-        if self.remove.is_empty() && self.done.is_empty() && self.certificate.is_none() {
+        if *self == Self::default() {
             return Vec::new();
         }
         let mut out = vec![FORMAT];
@@ -47,13 +62,26 @@ impl TeamSteps {
         for team in &self.done {
             out.extend_from_slice(team.0.as_bytes());
         }
-        match &self.certificate {
-            Some(signature) => {
-                out.push(1);
-                out.extend_from_slice(&signature.0);
-            }
-            None => out.push(0),
+        push_optional(
+            &mut out,
+            self.certificate.as_ref().map(|signature| signature.0.as_slice()),
+        );
+        push_count(&mut out, self.stuck.len());
+        for team in &self.stuck {
+            out.extend_from_slice(team.0.as_bytes());
         }
+        push_count(&mut out, self.retry.len());
+        for (team, version) in &self.retry {
+            out.extend_from_slice(team.0.as_bytes());
+            out.extend_from_slice(&version.get().to_be_bytes());
+        }
+        push_optional(
+            &mut out,
+            self.opened
+                .map(|av| av.get().to_be_bytes())
+                .as_ref()
+                .map(<[u8; 4]>::as_slice),
+        );
         out
     }
 
@@ -73,11 +101,16 @@ impl TeamSteps {
             .map(|(_, account)| *account)
             .collect()
     }
+
+    // A team this flow has nothing more to do in.
+    pub fn settled(&self, team: TeamId) -> bool {
+        self.done.contains(&team) || self.stuck.contains(&team)
+    }
 }
 
 fn decode(bytes: &[u8]) -> Option<TeamSteps> {
     let (format, mut rest) = bytes.split_first()?;
-    if !matches!(*format, 1 | FORMAT) {
+    if !matches!(*format, 1..=FORMAT) {
         return None;
     }
     let format = *format;
@@ -100,10 +133,25 @@ fn decode(bytes: &[u8]) -> Option<TeamSteps> {
     for _ in 0..count(take(4)?)? {
         steps.done.push(TeamId(uuid(take(16)?)?));
     }
-    if format == FORMAT {
+    if format >= 2 {
         steps.certificate = match take(1)? {
             [0] => None,
             [1] => Some(Signature(take(64)?.try_into().ok()?)),
+            _ => return None,
+        };
+    }
+    if format >= 3 {
+        for _ in 0..count(take(4)?)? {
+            steps.stuck.push(TeamId(uuid(take(16)?)?));
+        }
+        for _ in 0..count(take(4)?)? {
+            let team = TeamId(uuid(take(16)?)?);
+            let version = Version::new(u32::from_be_bytes(take(4)?.try_into().ok()?)).ok()?;
+            steps.retry.push((team, version));
+        }
+        steps.opened = match take(1)? {
+            [0] => None,
+            [1] => Some(Version::new(u32::from_be_bytes(take(4)?.try_into().ok()?)).ok()?),
             _ => return None,
         };
     }
@@ -278,6 +326,9 @@ mod tests {
             remove: vec![(TeamId(Uuid::from_u128(1)), account(2))],
             done: vec![TeamId(Uuid::from_u128(3))],
             certificate: Some(Signature([9; 64])),
+            stuck: vec![TeamId(Uuid::from_u128(5))],
+            retry: vec![(TeamId(Uuid::from_u128(6)), v(7))],
+            opened: Some(v(2)),
         };
         let marker_only = TeamSteps {
             certificate: Some(Signature([8; 64])),
@@ -295,8 +346,8 @@ mod tests {
     fn a_truncated_or_padded_state_is_refused() {
         let encoded = TeamSteps {
             remove: vec![(TeamId(Uuid::from_u128(1)), account(2))],
-            done: Vec::new(),
             certificate: Some(Signature([7; 64])),
+            ..TeamSteps::default()
         }
         .encode();
         let mut padded = encoded.clone();
@@ -304,7 +355,8 @@ mod tests {
 
         assert!(TeamSteps::decode(&encoded[..encoded.len() - 1]).is_err());
         assert!(TeamSteps::decode(&padded).is_err());
-        assert!(TeamSteps::decode(&[2]).is_err());
+        assert!(TeamSteps::decode(&[3]).is_err());
+        assert!(TeamSteps::decode(&[4]).is_err());
     }
 
     // A rotated to version 2 while its lost device held `av` 1, and in the same `av` confirmed E back after a removal

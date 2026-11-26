@@ -1,25 +1,25 @@
-// A reset as this device holds it in `key_pending` (0054): the proposal's `av`, IK and key device, its state and the
+// This device's own reset as `key_pending` holds it (0054): the proposal's `av`, IK and key device, its state, the
 // server's `taken_at` and `held_until`, which a pull serves beside the record and never in its fields (0051, Key
-// object bodies). Resets other devices proposed are kept the same way so every device shows the wait.
+// object bodies), the digest of the proposal it wrote and the epoch the server last took it in. Other devices' resets
+// live only in `key_objects` as served (0064).
 
 use tablepro_keys::encoding::{KeyDeviceId, ResetId, TeamId, Version};
 use tablepro_keys::keys::Ed25519Public;
 use uuid::Uuid;
 
 use crate::api::error::SyncError;
-use crate::api::ids::DeviceRowId;
+use crate::api::ids::{DeviceRowId, EpochId};
 use crate::api::key_flows::{PendingReset, ResetKind, ResetState};
 use crate::api::state::{KeyPendingRow, PendingFlow};
 
-const FORMAT: u8 = 1;
+// Format 1 also kept other devices' resets and carried no proposal digest or epoch.
+const FORMAT: u8 = 2;
 // 7 days from when the server took the proposal, then 7 more for its activation (0051, Resets).
 pub(crate) const HOLD_US: i64 = 7 * 24 * 3600 * 1_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResetRecord {
     pub reset: ResetId,
-    // This device proposed it: its new keys wait in the device store.
-    pub mine: bool,
     // The proposal applied on the server.
     pub sent: bool,
     pub kind: ResetKind,
@@ -32,6 +32,10 @@ pub(crate) struct ResetRecord {
     pub proposed_by: Option<DeviceRowId>,
     // After activation, the teams this account's new certificate was copied into.
     pub published: Vec<TeamId>,
+    // SHA-256 of the proposal's fields as this device wrote them: only that proposal is ever sent or activated.
+    pub proposal: [u8; 32],
+    // The personal scope's epoch when the server took the proposal; a restore since may have lost it (0064).
+    pub epoch: Option<EpochId>,
 }
 
 impl ResetRecord {
@@ -49,7 +53,7 @@ impl ResetRecord {
             reset: self.reset,
             kind: self.kind,
             state: self.state,
-            mine: self.mine,
+            mine: true,
             proposed_by: self.proposed_by.clone(),
             taken_at_us: self.taken_at_us,
             held_until_us: self.held_until_us,
@@ -57,7 +61,7 @@ impl ResetRecord {
     }
 
     pub fn to_row(&self) -> KeyPendingRow {
-        let mut state = vec![FORMAT, u8::from(self.mine) | u8::from(self.sent) << 1];
+        let mut state = vec![FORMAT, u8::from(self.sent)];
         state.push(match self.kind {
             ResetKind::KeepScopeKeys => 2,
             ResetKind::StartEmpty => 3,
@@ -84,6 +88,14 @@ impl ResetRecord {
         state.extend_from_slice(&u32::try_from(self.published.len()).unwrap_or(u32::MAX).to_be_bytes());
         for team in &self.published {
             state.extend_from_slice(team.0.as_bytes());
+        }
+        state.extend_from_slice(&self.proposal);
+        match &self.epoch {
+            Some(epoch) => {
+                state.push(1);
+                state.extend_from_slice(epoch.0.as_bytes());
+            }
+            None => state.push(0),
         }
         KeyPendingRow {
             flow: PendingFlow::ResetProposal { reset: self.reset },
@@ -125,10 +137,11 @@ fn decode(reset: ResetId, bytes: &[u8]) -> Option<ResetRecord> {
     if reader.byte()? != FORMAT {
         return None;
     }
-    let flags = reader.byte()?;
-    if flags & !3 != 0 {
-        return None;
-    }
+    let sent = match reader.byte()? {
+        0 => false,
+        1 => true,
+        _ => return None,
+    };
     let kind = match reader.byte()? {
         2 => ResetKind::KeepScopeKeys,
         3 => ResetKind::StartEmpty,
@@ -159,13 +172,18 @@ fn decode(reset: ResetId, bytes: &[u8]) -> Option<ResetRecord> {
     for _ in 0..count {
         published.push(TeamId(Uuid::from_bytes(reader.array()?)));
     }
+    let proposal = reader.array()?;
+    let epoch = match reader.byte()? {
+        0 => None,
+        1 => Some(EpochId(Uuid::from_bytes(reader.array()?))),
+        _ => return None,
+    };
     if !reader.0.is_empty() {
         return None;
     }
     Some(ResetRecord {
         reset,
-        mine: flags & 1 != 0,
-        sent: flags & 2 != 0,
+        sent,
         kind,
         av,
         ik,
@@ -175,6 +193,8 @@ fn decode(reset: ResetId, bytes: &[u8]) -> Option<ResetRecord> {
         held_until_us,
         proposed_by,
         published,
+        proposal,
+        epoch,
     })
 }
 
@@ -185,7 +205,6 @@ mod tests {
     fn record() -> ResetRecord {
         ResetRecord {
             reset: ResetId(Uuid::from_u128(1)),
-            mine: true,
             sent: false,
             kind: ResetKind::StartEmpty,
             av: Version::new(3).unwrap(),
@@ -196,6 +215,8 @@ mod tests {
             held_until_us: 10 + HOLD_US,
             proposed_by: Some(DeviceRowId("dev_1".to_owned())),
             published: vec![TeamId(Uuid::from_u128(3))],
+            proposal: [5; 32],
+            epoch: Some(EpochId(Uuid::from_u128(4))),
         }
     }
 
