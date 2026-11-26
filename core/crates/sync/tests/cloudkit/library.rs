@@ -73,7 +73,7 @@ impl Shelf {
             adapters: &adapters,
         };
         for approval in queue.waiting().await.unwrap() {
-            queue.decide(&approval.key, &approval.field, true).await.unwrap();
+            queue.decide(&approval.key, &approval.field, approval.digest, true).await.unwrap();
         }
     }
 }

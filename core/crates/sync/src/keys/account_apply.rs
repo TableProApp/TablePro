@@ -10,10 +10,11 @@ use tablepro_keys::cert::{AccountCertificate, IkChange};
 use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, Version, WrapPurpose};
 use tablepro_keys::keys::{AccountPublicKeys, DeviceKeys, Ed25519Public};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced};
 use tablepro_keys::wrap::{Recipient, Wrap, device_target};
 
 use super::KeyService;
+use super::pins::seen_replaced;
 use crate::api::error::SyncError;
 use crate::api::ids::{KindName, ScopeName};
 use crate::api::key_flows::{KeyApplied, KeyArrival, KeyNoticeKind, LockCause, RefusedObject};
@@ -355,7 +356,7 @@ impl KeyService {
             }
             let endorsed = if certificate.ik == pin.ik {
                 false
-            } else if pin.replaced.contains(&certificate.ik) {
+            } else if seen_replaced(&pin.replaced, &certificate.ik) {
                 break;
             } else {
                 match certificate.ik_change(&self.origin, &pin.ik) {
@@ -814,7 +815,10 @@ fn followed_pin(pin: KeyPinRow, certificate: &AccountCertificate, endorsed: bool
         };
     }
     let mut replaced = pin.replaced;
-    replaced.push(pin.ik);
+    replaced.push(Replaced {
+        ik: pin.ik,
+        av: certificate.av,
+    });
     KeyPinRow {
         account: pin.account,
         ik: certificate.ik,

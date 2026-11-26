@@ -87,7 +87,7 @@ async fn take_everything(device: &Device) {
         for approval in waiting {
             device
                 .sync
-                .decide_approval(approval.key, approval.field, true)
+                .decide_approval(approval.key, approval.field, approval.digest, true)
                 .await
                 .unwrap();
         }
