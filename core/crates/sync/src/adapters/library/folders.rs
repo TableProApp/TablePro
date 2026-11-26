@@ -121,6 +121,24 @@ pub(super) fn item_from_wire(fields: &Value) -> Option<TableFolderItem> {
     })
 }
 
+// Which connections sync, so what the history database files under one kept off sync stays here.
+pub(super) async fn connection_standing_map(
+    connections: &ConnectionStore,
+) -> Result<HashMap<Uuid, Standing>, AdapterError> {
+    let connections = connections.clone();
+    let list = blocking(move || connections.list_blocking())
+        .await?
+        .map_err(|error| AdapterError::Store {
+            store: super::STORE.to_owned(),
+            detail: error.to_string(),
+        })?;
+    Ok(list
+        .connections
+        .iter()
+        .map(|saved| (saved.id, super::connection_standing(saved)))
+        .collect())
+}
+
 // What the store holds once `write` lands on `contents`.
 fn written(contents: &TableFolderContents, write: TableFolderWrite) -> (Vec<TableFolder>, Vec<TableFolderItem>) {
     let mut folders: Vec<TableFolder> = contents
@@ -145,22 +163,6 @@ fn written(contents: &TableFolderContents, write: TableFolderWrite) -> (Vec<Tabl
 }
 
 impl TableFolderAdapter {
-    // Which connections sync, so a folder of one kept off sync stays here.
-    async fn standing(&self) -> Result<HashMap<Uuid, Standing>, AdapterError> {
-        let connections = self.connections.clone();
-        let list = blocking(move || connections.list_blocking())
-            .await?
-            .map_err(|error| AdapterError::Store {
-                store: super::STORE.to_owned(),
-                detail: error.to_string(),
-            })?;
-        Ok(list
-            .connections
-            .iter()
-            .map(|saved| (saved.id, super::connection_standing(saved)))
-            .collect())
-    }
-
     fn read(&self, contents: &TableFolderContents, standing: &HashMap<Uuid, Standing>) -> LocalRecords {
         let standing = |connection: Uuid| standing.get(&connection).copied().unwrap_or(Standing::Unknown);
         let records = match self.kind {
@@ -245,7 +247,7 @@ impl RecordAdapter for TableFolderAdapter {
             return Ok(LocalRecords::default());
         }
         let contents = self.folders.contents().await.map_err(store_error)?;
-        let records = self.read(&contents, &self.standing().await?);
+        let records = self.read(&contents, &connection_standing_map(&self.connections).await?);
         *lock(&self.seen) = Some(seen(&records));
         Ok(records)
     }
@@ -259,7 +261,7 @@ impl RecordAdapter for TableFolderAdapter {
         let expected = lock(&self.seen).take();
         let contents = self.folders.contents().await.map_err(store_error)?;
         if let Some(expected) = expected {
-            let now = seen(&self.read(&contents, &self.standing().await?));
+            let now = seen(&self.read(&contents, &connection_standing_map(&self.connections).await?));
             if changed_since(&expected, &now, &changes) {
                 return Err(stale(HISTORY_STORE));
             }

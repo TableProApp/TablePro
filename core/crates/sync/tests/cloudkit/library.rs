@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 use tablepro_records::Kind;
-use tablepro_records::record_id::table_folder_item;
+use tablepro_records::record_id::{favourite_database, favourite_table, table_folder_item};
 use tablepro_storage::{ConnectionStore, QueryHistory, StoragePaths};
 use tablepro_sync::adapters::approval::Queue;
 use tablepro_sync::adapters::library;
@@ -73,7 +73,10 @@ impl Shelf {
             adapters: &adapters,
         };
         for approval in queue.waiting().await.unwrap() {
-            queue.decide(&approval.key, &approval.field, approval.digest, true).await.unwrap();
+            queue
+                .decide(&approval.key, &approval.field, approval.digest, true)
+                .await
+                .unwrap();
         }
     }
 }
@@ -133,6 +136,17 @@ fn save_mac_library(rig: &Rig) {
         &json!({"connection_id": A, "database": "shop", "name": "Billing", "created_at": 1_000, "updated_at": 2_000,
             "schema_version": 1}),
     );
+    let connection = Uuid::parse_str(A).unwrap();
+    rig.save_elsewhere(
+        Kind::FavouriteTable,
+        &favourite_table(connection, Some("shop"), None, "orders").id,
+        &json!({"connection_id": A, "database": "shop", "name": "orders", "schema_version": 1}),
+    );
+    rig.save_elsewhere(
+        Kind::FavouriteDatabase,
+        &favourite_database(connection, "shop"),
+        &json!({"connection_id": A, "database": "shop", "environment": "production", "schema_version": 1}),
+    );
     let item = table_folder_item(Uuid::parse_str(A).unwrap(), "shop", None, "orders");
     rig.save_elsewhere(
         Kind::TableFolderItem,
@@ -164,6 +178,8 @@ async fn a_mac_library_reads_into_the_stores_and_a_push_after_it_sends_nothing()
     assert_eq!((list.groups.len(), list.tags.len()), (1, 1));
     assert_eq!((list.ssh_profiles.len(), list.credential_profiles.len()), (1, 1));
     assert_eq!((folders.folders.len(), folders.items.len()), (1, 1));
+    let favourites = shelf.history.favourites().contents().await.unwrap();
+    assert_eq!((favourites.tables.len(), favourites.databases.len()), (1, 1));
 }
 
 #[tokio::test]

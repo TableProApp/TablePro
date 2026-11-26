@@ -517,3 +517,26 @@ fn a_pull_that_changes_the_driver_fields_keeps_what_sync_never_carries() {
     assert_eq!(after.details.additional_fields["mongoParam_proxyPassword"], "hunter2");
     assert!(!after.details.additional_fields.contains_key("mongoAuthSource"));
 }
+
+#[test]
+fn a_favourite_goes_up_as_the_mac_writes_it_under_the_id_of_what_it_names() {
+    let table = favourites::table_from_wire(&json!({"connection_id": CONNECTION, "name": "orders"})).unwrap();
+    let database = favourites::database_from_wire(
+        &json!({"connection_id": CONNECTION, "database": "shop", "environment": "staging-eu"}),
+    )
+    .unwrap();
+
+    assert_eq!(
+        favourites::table_to_wire(&table),
+        json!({"connection_id": CONNECTION, "name": "orders"})
+    );
+    assert_eq!(
+        favourites::table_id(&table),
+        tablepro_records::record_id::favourite_table(id(), None, None, "orders").id
+    );
+    assert_eq!(database.environment, tablepro_storage::DatabaseEnvironment::Unassigned);
+    assert_eq!(
+        favourites::database_id(&database),
+        tablepro_records::record_id::favourite_database(id(), "shop")
+    );
+}

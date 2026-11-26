@@ -11,7 +11,7 @@ use tablepro_records::Kind;
 use tablepro_records::record_id::uuid_id;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, ConnectionTagName, CredentialProfile,
-    QueryHistory, SavedConnection, SshProfile, StoragePaths, TableRef, TableScope,
+    DatabaseEnvironment, FavouriteTable, QueryHistory, SavedConnection, SshProfile, StoragePaths, TableRef, TableScope,
 };
 use tablepro_sync::adapters::library;
 use tablepro_sync::api::control::SyncControl;
@@ -141,6 +141,20 @@ async fn seed(library: &Library) -> (Uuid, Uuid) {
             }],
             folder.id,
         )
+        .await
+        .unwrap();
+    let favourites = library.history.favourites();
+    favourites
+        .add_table(&FavouriteTable {
+            connection_id: Uuid::from_u128(CONNECTION),
+            database: Some("shop".to_owned()),
+            schema: None,
+            name: "orders".to_owned(),
+        })
+        .await
+        .unwrap();
+    favourites
+        .set_database(Uuid::from_u128(CONNECTION), "shop", DatabaseEnvironment::Production)
         .await
         .unwrap();
     (group.id, folder.id)

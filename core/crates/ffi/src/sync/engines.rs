@@ -5,10 +5,11 @@ use std::sync::Arc;
 
 use tablepro_keys::encoding::{AccountId, Origin};
 use tablepro_records::Kind;
-use tablepro_storage::QueryHistory;
+use tablepro_storage::{ConnectionStore, QueryHistory};
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
 use tablepro_sync::adapters::history::HistoryAdapter;
+use tablepro_sync::adapters::library::{self, DriverNames};
 use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
 use tablepro_sync::adapters::settings::{ConnectionStanding, SettingsAdapter};
 use tablepro_sync::adapters::store_journal::StoreJournal;
@@ -42,6 +43,9 @@ pub(crate) struct Hosts {
     pub(crate) device_store: Arc<dyn HostDeviceStore>,
     pub(crate) settings: Option<Arc<dyn HostSettings>>,
     pub(crate) events: Arc<dyn EngineEvents>,
+    // This Core's connection library: connections, groups, tags and profiles, named by `names`.
+    pub(crate) library: Option<ConnectionStore>,
+    pub(crate) names: DriverNames,
     // This Core's history database: its saved queries, their folders and the query history.
     pub(crate) history: Option<QueryHistory>,
     // Which connections stay on this device. Until it is known, no history syncs and nothing of a connection does
@@ -57,10 +61,19 @@ impl Hosts {
         let mut adapters: Vec<Arc<dyn RecordAdapter>> = self
             .settings
             .iter()
-            .map(|host| Arc::new(SettingsAdapter::new(Arc::clone(host), None)) as Arc<dyn RecordAdapter>)
+            .map(|host| {
+                Arc::new(SettingsAdapter::new(Arc::clone(host), self.standing.clone())) as Arc<dyn RecordAdapter>
+            })
             .collect();
-        if let Some(history) = &self.history {
+        if self.library.is_some() || self.history.is_some() {
             self.store_journal.add(journal.clone());
+        }
+        // The table folders and favourites the history database holds come with the library, which says which of
+        // their connections sync.
+        if let Some(store) = &self.library {
+            adapters.extend(library::adapters(store, self.history.as_ref(), self.names));
+        }
+        if let Some(history) = &self.history {
             adapters.extend(SavedQueryAdapter::all(history, self.standing.clone()));
             if let Some(standing) = &self.standing {
                 adapters.push(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(standing))));

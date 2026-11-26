@@ -11,7 +11,7 @@ use serde_json::Value;
 use tablepro_records::Kind;
 use uuid::Uuid;
 
-use super::{connection, details, folders, groups, profiles};
+use super::{connection, details, favourites, folders, groups, profiles};
 use crate::adapters::fields::{get, members};
 use crate::api::ids::ScopeName;
 
@@ -35,6 +35,10 @@ fn read_back(kind: Kind, base: &Value) -> Option<Value> {
         Kind::CredentialProfile => Some(profiles::credential_to_wire(&profiles::credential(id, base, None))),
         Kind::TableFolder => folders::folder_from_wire(id, base).map(|folder| folders::folder_to_wire(&folder)),
         Kind::TableFolderItem => folders::item_from_wire(base).map(|item| folders::item_to_wire(&item)),
+        Kind::FavouriteTable => favourites::table_from_wire(base).map(|table| favourites::table_to_wire(&table)),
+        Kind::FavouriteDatabase => {
+            favourites::database_from_wire(base).map(|database| favourites::database_to_wire(&database))
+        }
         _ => None,
     }
 }

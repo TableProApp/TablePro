@@ -177,7 +177,17 @@ async fn an_older_copy_with_its_anchor_intact_opens_stale_on_the_anchored_checkp
     let opened = state.opened().clone();
     assert_eq!(opened.sync_tables, SyncTrust::Refill);
     let checkpoint = checkpoint_of(&opened);
-    assert_eq!(checkpoint.pins, vec![pin(2, true, vec![Replaced { ik: Ed25519Public([1; 32]), av: v(2) }])]);
+    assert_eq!(
+        checkpoint.pins,
+        vec![pin(
+            2,
+            true,
+            vec![Replaced {
+                ik: Ed25519Public([1; 32]),
+                av: v(2)
+            }]
+        )]
+    );
     assert_eq!(
         checkpoint.versions,
         vec![team_version(
@@ -197,7 +207,14 @@ async fn an_older_copy_with_its_anchor_intact_opens_stale_on_the_anchored_checkp
     );
     assert_eq!(
         table(&state, Table::KeyPins).await,
-        vec![Row::KeyPin(pin(2, true, vec![Replaced { ik: Ed25519Public([1; 32]), av: v(2) }]))]
+        vec![Row::KeyPin(pin(
+            2,
+            true,
+            vec![Replaced {
+                ik: Ed25519Public([1; 32]),
+                av: v(2)
+            }]
+        ))]
     );
     assert_eq!(
         table(&state, Table::KeyEnvelopes).await,

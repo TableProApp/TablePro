@@ -45,6 +45,8 @@ async fn the_history_database_s_kinds_sync_its_writes_reach_the_engine_and_histo
         device_store: Arc::clone(&device_store) as Arc<dyn HostDeviceStore>,
         settings: None,
         events: Arc::new(Signals::default()),
+        library: None,
+        names: tablepro_sync::adapters::library::DriverNames::Mac,
         history: Some(history.clone()),
         standing,
         store_journal: Arc::clone(&store_journal),
@@ -78,4 +80,56 @@ async fn the_history_database_s_kinds_sync_its_writes_reach_the_engine_and_histo
     assert_eq!(known, [Kind::SavedQuery, Kind::SavedQueryFolder, Kind::HistoryEntry]);
     let named = journal.take();
     assert!(named[&Kind::SavedQuery].contains(&id.hyphenated().to_string().to_uppercase()));
+}
+
+#[tokio::test]
+async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_engine() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
+    let history = QueryHistory::open(&paths).await.unwrap();
+    let store = tablepro_storage::ConnectionStore::new(&paths);
+    let store_journal = StoreJournal::new();
+    store.set_journal(Some(Arc::clone(&store_journal) as Arc<dyn ChangeJournal>));
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let hosts = Hosts {
+        files: Arc::new(SqliteStateFiles::at(
+            dir.path().join("sync"),
+            Arc::clone(&device_store) as Arc<dyn HostDeviceStore>,
+        )) as Arc<dyn StateFiles>,
+        device_store: Arc::clone(&device_store) as Arc<dyn HostDeviceStore>,
+        settings: None,
+        events: Arc::new(Signals::default()),
+        library: Some(store.clone()),
+        names: tablepro_sync::adapters::library::DriverNames::Core,
+        history: Some(history),
+        standing: Some(Arc::new(tablepro_sync::adapters::library::StoreStanding(store.clone()))),
+        store_journal,
+    };
+    let journal = Journal::new(Wake::new());
+
+    let found = kinds(&hosts.adapters(&journal));
+    let tag = store
+        .create_tag_blocking(
+            tablepro_storage::ConnectionTagName::new("prod").unwrap(),
+            tablepro_storage::ConnectionColor::Red,
+        )
+        .unwrap();
+
+    for kind in [
+        Kind::Connection,
+        Kind::Group,
+        Kind::Tag,
+        Kind::SshProfile,
+        Kind::CredentialProfile,
+        Kind::TableFolder,
+        Kind::TableFolderItem,
+        Kind::FavouriteTable,
+        Kind::FavouriteDatabase,
+        Kind::SavedQuery,
+        Kind::HistoryEntry,
+    ] {
+        assert!(found.contains(&kind), "{kind:?} in {found:?}");
+    }
+    let named = journal.take();
+    assert!(named[&Kind::Tag].contains(&tag.id.hyphenated().to_string().to_uppercase()));
 }

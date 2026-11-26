@@ -6,6 +6,7 @@
 
 mod connection;
 mod details;
+mod favourites;
 mod folders;
 mod groups;
 mod profiles;
@@ -26,6 +27,7 @@ use tablepro_storage::{
 use uuid::Uuid;
 
 pub use connection::DriverNames;
+pub use favourites::FavouriteAdapter;
 pub use folders::TableFolderAdapter;
 pub use reads::at_base;
 
@@ -82,6 +84,7 @@ pub fn adapters(
     let mut all = LibraryAdapter::all(store, names);
     if let Some(history) = history {
         all.extend(TableFolderAdapter::all(history, store));
+        all.extend(FavouriteAdapter::all(history, store));
     }
     all
 }

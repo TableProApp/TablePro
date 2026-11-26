@@ -1,12 +1,12 @@
-// What a table folder or a filed table needs before its store can hold it, as the Mac's decoders require it
+// What a table folder, a filed table or a favourite needs before its store can hold it, as the Mac's decoders require it
 // (`SyncRecordMapper`): a record without it is one this build cannot read, held by its id (0054, Rules for both
-// providers), never applied and never read as a deletion. A filed table is named by the table, so fields that name
-// another table are not this record. Every other kind's store takes any record its schema shapes.
+// providers), never applied and never read as a deletion. A filed table and a favourite are named by what they name, so
+// fields that name another are not this record. Every other kind's store takes any record its schema shapes.
 
 use serde_json::Value;
 
 use crate::kind::Kind;
-use crate::record_id::table_folder_item;
+use crate::record_id::{favourite_database, favourite_table, table_folder_item};
 
 fn text<'a>(fields: &'a Value, key: &str) -> Option<&'a str> {
     fields.get(key).and_then(Value::as_str)
@@ -35,6 +35,25 @@ pub fn readable(kind: Kind, record_id: &str, fields: &Value) -> bool {
             };
             let database = text(fields, "database").unwrap_or_default();
             table_folder_item(connection, database, text(fields, "schema"), name) == record_id
+        }
+        Kind::FavouriteTable => {
+            let (Some(connection), Some(name)) = (
+                uuid(fields, "connection_id"),
+                text(fields, "name").filter(|name| !name.is_empty()),
+            ) else {
+                return false;
+            };
+            let id = favourite_table(connection, text(fields, "database"), text(fields, "schema"), name);
+            id.id == record_id || id.alias.as_deref() == Some(record_id)
+        }
+        Kind::FavouriteDatabase => {
+            let (Some(connection), Some(database)) = (
+                uuid(fields, "connection_id"),
+                text(fields, "database").filter(|database| !database.is_empty()),
+            ) else {
+                return false;
+            };
+            favourite_database(connection, database) == record_id
         }
         _ => true,
     }
@@ -72,5 +91,27 @@ mod tests {
         assert!(readable(Kind::TableFolderItem, &id, &item));
         assert!(!readable(Kind::TableFolderItem, &id, &other));
         assert!(!readable(Kind::TableFolderItem, &id, &unfiled));
+    }
+
+    #[test]
+    fn a_favourite_is_readable_under_its_id_or_the_alias_an_older_mac_gave_it() {
+        let connection = uuid::Uuid::parse_str(CONNECTION).unwrap();
+        let table = json!({"connection_id": CONNECTION, "database": "shop", "name": "a|b"});
+        let id = favourite_table(connection, Some("shop"), None, "a|b");
+        let database = json!({"connection_id": CONNECTION, "database": "shop", "environment": "production"});
+
+        assert!(readable(Kind::FavouriteTable, &id.id, &table));
+        assert!(readable(Kind::FavouriteTable, id.alias.as_deref().unwrap(), &table));
+        assert!(!readable(Kind::FavouriteTable, FOLDER, &table));
+        assert!(readable(
+            Kind::FavouriteDatabase,
+            &favourite_database(connection, "shop"),
+            &database
+        ));
+        assert!(!readable(
+            Kind::FavouriteDatabase,
+            &favourite_database(connection, "other"),
+            &database
+        ));
     }
 }
