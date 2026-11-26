@@ -186,13 +186,14 @@ impl ServiceSync {
             .map(|adapter| adapter.kind())
             .collect();
         let can_open = ctx.keys_ready;
+        let rebuilding = self.proofs.rebuilding();
         // Envelopes kept while the device could not check them are read again in a snapshot once it can, which
         // serves each one's current copy after the key objects (0051, Pull). Once a snapshot judged them, only a change
         // of the keys reads them again, so one under a key this account was never given refills nothing.
         let waiting = can_open
             && self.holds_scope_key(scope).await?
             && !self.waiting_envelopes(scope).await?.is_empty()
-            && waited.get(&scope) != Some(&key_mark(&self.state, scope, can_open).await?);
+            && waited.get(&scope) != Some(&key_mark(&self.state, scope, can_open, rebuilding).await?);
         // A build that reads a kind the last pull did not fetches again what it held for it (0054, Rules).
         // A kind this device turned off is not read, so turning it on reads it again the same way.
         let categories = ctx.categories.clone();
@@ -242,7 +243,7 @@ impl ServiceSync {
             if self.waiting_envelopes(scope).await?.is_empty() {
                 waited.remove(&scope);
             } else {
-                waited.insert(scope, key_mark(&self.state, scope, can_open).await?);
+                waited.insert(scope, key_mark(&self.state, scope, can_open, rebuilding).await?);
             }
         } else if pull.new_waits {
             waited.remove(&scope);

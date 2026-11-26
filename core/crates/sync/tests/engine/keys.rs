@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use serde_json::{Value, json};
-use tablepro_keys::encoding::{TeamId, Version};
+use tablepro_keys::encoding::{KeyPurpose, TeamId, Version};
 use tablepro_records::Kind;
 use tablepro_sync::api::control::SyncControl;
 use tablepro_sync::api::ids::{KindName, ScopeName};
 use tablepro_sync::api::key_flows::{ArrivalOrder, KeyChangeSet, PushBackVerdict};
 use tablepro_sync::api::scopes::Role;
-use tablepro_sync::api::state::{Row, RowKey};
+use tablepro_sync::api::state::{HeldReason, KeyVersionRow, KeyVersionState, Row, RowKey};
 use tablepro_sync::api::transport::{ChangeOutcome, DpopKey};
 use tablepro_sync_testing::FakeServer;
 use uuid::Uuid;
@@ -457,4 +457,53 @@ async fn a_refill_that_kept_envelopes_unchecked_refills_them_once_the_device_can
         )
         .and_then(|record| record.fields);
     assert_eq!(stored, Some(sealed(1)));
+}
+
+// A stale file's rebuild ending moves no key row, yet the envelopes it held can open now: the next pass reads them
+// again (0054, A stale file).
+#[tokio::test]
+async fn envelopes_held_while_the_key_tables_rebuild_are_read_again_once_the_rebuild_ends() {
+    let server = FakeServer::new();
+    let keys = Arc::new(KeyLog::rebuilding());
+    let secrets = envelopes();
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .keys(Arc::clone(&keys))
+        .adapter(ScopeName::Personal, Arc::clone(&secrets))
+        .build()
+        .await;
+    let other = Device::new(&server, "dev_other").await;
+    with_cursor(&mac).await;
+    let mut txn = mac.state.begin().await.unwrap();
+    txn.put(Row::KeyVersion(KeyVersionRow {
+        scope: ScopeName::Personal,
+        purpose: KeyPurpose::Personal,
+        version: Version::FIRST,
+        record: [0; 32],
+        holders: Vec::new(),
+        state: KeyVersionState::Ok,
+        stopped_cause: None,
+        epoch: None,
+    }))
+    .await
+    .unwrap();
+    txn.commit().await.unwrap();
+    rotate(&other, 1).await;
+    seal(&other, 1, 1).await;
+
+    mac.sync().await;
+    mac.sync().await;
+    let held = match mac.row(RowKey::Held(personal_key(&envelope_id(1)))).await {
+        Some(Row::Held(row)) => Some(row.reason),
+        _ => None,
+    };
+    keys.rebuilt();
+    mac.sync().await;
+
+    assert_eq!(held, Some(HeldReason::AwaitingDeviceApproval));
+    assert_eq!(secrets.get(&envelope_id(1)), Some(sealed(1)));
+    assert!(mac.row(RowKey::Held(personal_key(&envelope_id(1)))).await.is_none());
+}
+
+fn personal_key(record_id: &str) -> tablepro_sync::api::ids::RecordKey {
+    tablepro_sync::api::ids::RecordKey::new(ScopeName::Personal, Kind::SecretEnvelope, record_id)
 }

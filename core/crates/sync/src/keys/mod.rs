@@ -246,6 +246,8 @@ impl KeyService {
         for judged in &judged {
             self.tell_judged(judged).await?;
         }
+        // The envelopes held while the tables rebuilt are read again.
+        self.hooks.pass_soon();
         Ok(())
     }
 

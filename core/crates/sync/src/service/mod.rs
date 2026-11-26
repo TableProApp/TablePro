@@ -41,6 +41,12 @@ use crate::keys::KeyService;
 #[async_trait]
 pub trait ProofSource: Send + Sync {
     async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError>;
+
+    // A stale file's key tables still rebuild, so no envelope opens yet: the ones held meanwhile are read again once
+    // the rebuild ends, though no key row moved (0054, A stale file).
+    fn rebuilding(&self) -> bool {
+        false
+    }
 }
 
 // The device keys are made on the first call, since a device proves even its first pull and its genesis or first
@@ -59,6 +65,10 @@ impl ProofSource for KeyService {
             Err(SyncError::DeviceStore(DeviceStoreError::Unavailable { .. })) => Ok(None),
             Err(error) => Err(error),
         }
+    }
+
+    fn rebuilding(&self) -> bool {
+        self.is_rebuilding()
     }
 }
 

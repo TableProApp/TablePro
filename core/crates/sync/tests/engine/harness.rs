@@ -265,13 +265,18 @@ impl RecordAdapter for MemoryAdapter {
     }
 }
 
+// The device's key, and whether the key flows say their tables still rebuild.
 #[derive(Debug)]
-pub struct FixedProof(pub Option<DpopKey>);
+pub struct FixedProof(pub Option<DpopKey>, pub Arc<KeyLog>);
 
 #[async_trait]
 impl ProofSource for FixedProof {
     async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
         Ok(self.0.clone())
+    }
+
+    fn rebuilding(&self) -> bool {
+        self.1.rebuilding.load(Ordering::SeqCst)
     }
 }
 
@@ -429,6 +434,7 @@ pub struct KeyLog {
     verdict: Mutex<Option<PushBackVerdict>>,
     newest: Mutex<BTreeMap<String, u32>>,
     waiting_for_approval: AtomicBool,
+    rebuilding: AtomicBool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -455,6 +461,17 @@ impl KeyLog {
 
     pub fn approved(&self) {
         self.waiting_for_approval.store(false, Ordering::SeqCst);
+    }
+
+    // A stale file's key tables rebuild: the device is approved, but opens no envelope until `rebuilt`.
+    pub fn rebuilding() -> Self {
+        let keys = Self::default();
+        keys.rebuilding.store(true, Ordering::SeqCst);
+        keys
+    }
+
+    pub fn rebuilt(&self) {
+        self.rebuilding.store(false, Ordering::SeqCst);
     }
 
     pub fn events(&self) -> Vec<KeyEvent> {
@@ -512,6 +529,11 @@ impl KeyLog {
         fields: &Value,
         in_force: Option<Version>,
     ) -> Result<OpenedEnvelope, SyncError> {
+        if self.rebuilding.load(Ordering::SeqCst) {
+            return Err(SyncError::NotAllowed {
+                what: "handle a secret before the key tables are rebuilt",
+            });
+        }
         let kv = fields.get("kv").and_then(Value::as_u64).unwrap_or(0);
         let newest = u64::from(lock(&self.newest).get(&scope.wire()).copied().unwrap_or(0));
         let fits = in_force.map_or(kv <= newest && kv > 0, |held| u64::from(held.get()) == kv);
@@ -836,7 +858,7 @@ impl DeviceBuilder {
             adapters: Adapters::new(adapters),
             keys: Arc::clone(&keys) as Arc<dyn tablepro_sync::api::key_flows::KeyFlows>,
             hooks: Arc::clone(&hooks),
-            proofs: Arc::new(FixedProof(Some(DpopKey(Arc::clone(&seed))))),
+            proofs: Arc::new(FixedProof(Some(DpopKey(Arc::clone(&seed))), Arc::clone(&keys))),
             clock: Arc::clone(&clock) as Arc<dyn Clock>,
             stop: stop.clone(),
             journal: Journal::new(wake),

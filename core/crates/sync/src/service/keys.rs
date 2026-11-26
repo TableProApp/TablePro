@@ -32,20 +32,22 @@ pub(super) enum Opens {
 }
 
 // What a scope's waiting envelopes were judged against: its key rows and the personal scope's, a digest of the key
-// objects both hold, the pins, and whether the device could check envelopes at all. Only a change here can let a
-// waiting envelope open.
+// objects both hold, the pins, whether the device could check envelopes at all, and whether its key tables still
+// rebuilt. Only a change here can let a waiting envelope open.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct KeyMark {
     rows: Vec<Row>,
     objects: [u8; 32],
     pins: Vec<Row>,
     can_open: bool,
+    rebuilding: bool,
 }
 
 pub(super) async fn key_mark(
     state: &Arc<dyn StateStore>,
     scope: ScopeName,
     can_open: bool,
+    rebuilding: bool,
 ) -> Result<KeyMark, SyncError> {
     let mut txn = begin(state).await?;
     let mut scopes = vec![scope];
@@ -76,6 +78,7 @@ pub(super) async fn key_mark(
         objects: objects.finalize().into(),
         pins: txn.scan(&RowRange::Table(Table::KeyPins)).await?,
         can_open,
+        rebuilding,
     })
 }
 
@@ -462,7 +465,7 @@ mod tests {
         let state = rig.service.state().clone();
         let team = ScopeName::Team(world.team);
         rig.put([object(ScopeName::Personal, "request/nonce")]).await;
-        let before = key_mark(&state, team, true).await.unwrap();
+        let before = key_mark(&state, team, true, false).await.unwrap();
 
         let mut txn = rig.service.begin().await.unwrap();
         txn.delete(&RowKey::KeyObject(
@@ -474,8 +477,21 @@ mod tests {
         .unwrap();
         txn.put(object(team, "ring")).await.unwrap();
         txn.commit().await.unwrap();
-        let after = key_mark(&state, team, true).await.unwrap();
+        let after = key_mark(&state, team, true, false).await.unwrap();
 
         assert_ne!(before, after);
+    }
+
+    // A rebuild that ends moves no key row, yet the envelopes it held can open now.
+    #[tokio::test]
+    async fn the_key_mark_moves_when_the_rebuild_ends() {
+        let world = World::load();
+        let rig = Rig::new(&world.origin, world.account("P"));
+        let state = rig.service.state().clone();
+
+        let rebuilding = key_mark(&state, ScopeName::Personal, true, true).await.unwrap();
+        let rebuilt = key_mark(&state, ScopeName::Personal, true, false).await.unwrap();
+
+        assert_ne!(rebuilding, rebuilt);
     }
 }
