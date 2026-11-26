@@ -301,7 +301,8 @@ struct CoreLibraryStoreTests {
                 connections: contents.connections,
                 groups: contents.groups,
                 tags: contents.tags,
-                favorites: contents.favorites
+                favorites: contents.favorites,
+                removing: []
             ),
             over: contents.digest
         )

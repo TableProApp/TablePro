@@ -816,6 +816,7 @@ fn library_as_another_app_holds_it() -> LibraryWrite {
         connections: vec![first, second],
         groups: vec![blank],
         tags: vec![preset, long],
+        removing: Vec::new(),
     }
 }
 
@@ -833,6 +834,7 @@ fn a_library_write_keeps_every_id_and_value_as_given() {
             groups: list.groups.to_vec(),
             tags: list.tags.to_vec(),
             favorites: list.favorites.to_vec(),
+            removing: Vec::new(),
         }
     };
 
@@ -1163,6 +1165,7 @@ fn a_library_read_and_write_give_the_digest_of_the_bytes_on_disk() {
                 groups: read.list.groups.to_vec(),
                 tags: read.list.tags.to_vec(),
                 favorites: read.list.favorites.to_vec(),
+                removing: Vec::new(),
             }
         )
         .expect("a write that changes nothing"),
@@ -1301,6 +1304,27 @@ fn a_rebuild_sets_aside_a_file_the_system_will_not_let_it_read() {
 
     assert!(rebuilt.set_aside.is_some());
     assert_eq!(store.list_blocking().expect("list").connections.to_vec(), [kept]);
+}
+
+#[test]
+fn a_library_write_takes_out_an_entry_this_build_cannot_read_that_it_names() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, held) = seeded_with_unreadable(&root, false);
+    let kept = plain("kept");
+
+    replace(
+        &store,
+        LibraryWrite {
+            connections: vec![kept.clone()],
+            removing: vec![held.id],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+
+    let list = store.list_blocking().expect("list");
+    assert!(list.unreadable.is_empty(), "{:?}", list.unreadable);
+    assert_eq!(list.connections.to_vec(), [kept]);
 }
 
 #[test]

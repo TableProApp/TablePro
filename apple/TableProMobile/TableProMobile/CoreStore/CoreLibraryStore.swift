@@ -20,7 +20,6 @@ final class CoreLibraryStore {
         case repeatedId
         case heldByUnreadableRecord(UUID)
         case noAnswer
-        case libraryChanged
     }
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CoreLibraryStore")
@@ -202,22 +201,13 @@ final class CoreLibraryStore {
         if removingSecrets || secretCopiesPending {
             try removeSecretCopies()
         }
+        // Taken out by the same write, under its check of the file, rather than by deletes that would not check it.
         let unread = removed.connections.intersection(heldByCore)
-        if !unread.isEmpty {
-            // A delete goes over whatever file is there, so it waits for the file to still be the one this store read.
-            let over = fileDigest
-            let current = try Self.blocking { try await library.libraryContents() }.digest
-            guard current == over else { throw Failure.libraryChanged }
-        }
-        for id in unread {
-            try Self.blocking { try await library.delete(id: id.uuidString) }
-            heldByCore.remove(id)
-            legacyCopiesOfHeld.removeAll { $0.id == id }
-            // After each delete, so one that fails later leaves the digest at the file the others left.
-            fileDigest = try Self.blocking { try await library.libraryContents() }.digest
-        }
-        flags = ConnectionDeviceFlags(of: next.connections).keeping(heldByCore, from: flags)
-        let digest = try replace(with: next, favoritesOrder: favoritesOrder, in: library)
+        let staying = heldByCore.subtracting(unread)
+        flags = ConnectionDeviceFlags(of: next.connections).keeping(staying, from: flags)
+        let digest = try replace(with: next, favoritesOrder: favoritesOrder, removing: unread, keepingHeld: staying, in: library)
+        heldByCore.subtract(unread)
+        legacyCopiesOfHeld.removeAll { unread.contains($0.id) }
         pastedSSHKeys = pasted
         do {
             try mirrorWrite(next, coreDigest: digest ?? "", removingSecrets: removingSecrets, removingUnreadable: removed)
@@ -232,12 +222,19 @@ final class CoreLibraryStore {
         }
     }
 
-    private func replace(with next: Library, favoritesOrder: [UUID], in library: ConnectionLibrary) throws -> String? {
+    private func replace(
+        with next: Library,
+        favoritesOrder: [UUID],
+        removing unread: Set<UUID> = [],
+        keepingHeld held: Set<UUID>? = nil,
+        in library: ConnectionLibrary
+    ) throws -> String? {
         let write = LibraryWriteRecord(
             connections: next.connections.map { LibraryRecordMapping.record($0, keeping: stored[$0.id]) },
             groups: next.groups.map { LibraryRecordMapping.record($0, keeping: storedGroups[$0.id]) },
             tags: next.tags.map { LibraryRecordMapping.record($0, keeping: storedTags[$0.id]) },
-            favorites: favorites(of: next.connections, order: favoritesOrder).map(\.uuidString)
+            favorites: favorites(of: next.connections, order: favoritesOrder, held: held ?? heldByCore).map(\.uuidString),
+            removing: unread.map(\.uuidString)
         )
         do {
             try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
@@ -259,12 +256,12 @@ final class CoreLibraryStore {
 
     // The order this device shows its favourites in, then the rest as listed; favourites this build cannot read keep
     // their place in the core's list after them.
-    private func favorites(of connections: [DatabaseConnection], order: [UUID]) -> [UUID] {
+    private func favorites(of connections: [DatabaseConnection], order: [UUID], held: Set<UUID>) -> [UUID] {
         let favoriteIds = Set(connections.filter(\.isFavorite).map(\.id))
         var seen: Set<UUID> = []
         var list = order.filter { favoriteIds.contains($0) && seen.insert($0).inserted }
         list += connections.map(\.id).filter { favoriteIds.contains($0) && seen.insert($0).inserted }
-        list += storedFavorites.filter { heldByCore.contains($0) && seen.insert($0).inserted }
+        list += storedFavorites.filter { held.contains($0) && seen.insert($0).inserted }
         return list
     }
 

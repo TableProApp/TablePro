@@ -17,6 +17,8 @@ pub struct LibraryWrite {
     pub groups: Vec<ConnectionGroup>,
     pub tags: Vec<ConnectionTag>,
     pub favorites: Vec<Uuid>,
+    // Entries this build cannot read that the write takes out, as a deletion another device made, under the same check.
+    pub removing: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone)]
@@ -73,7 +75,7 @@ impl ConnectionStore {
             .connections
             .held_ids()
             .into_iter()
-            .filter(|id| !named.contains(id))
+            .filter(|id| !named.contains(id) && !write.removing.contains(id))
             .collect();
         write.refuse_what_it_would_lose(&held)?;
         let LibraryWrite {
@@ -81,8 +83,12 @@ impl ConnectionStore {
             groups,
             tags,
             favorites,
+            removing,
         } = write;
         let mut document = before.clone();
+        for id in removing {
+            document.connections.remove_id(id);
+        }
         for connection in &connections {
             document.connections.release(connection.id);
         }
@@ -103,11 +109,13 @@ impl ConnectionStore {
     // For a file its host cannot vouch for: nothing it held goes on, and a new generation starts, as a restore's does.
     pub fn rebuild_library_blocking(&self, write: LibraryWrite, now: SystemTime) -> Result<Rebuilt, StorageError> {
         write.refuse_what_it_would_lose(&HashSet::new())?;
+        // Nothing held goes on in a rebuild, so `removing` has nothing left to take out.
         let LibraryWrite {
             connections,
             groups,
             tags,
             favorites,
+            removing: _,
         } = write;
         let mut state = self.lock_to_write();
         // A file that will not read, for its contents or for the system, goes aside whatever the store held before.

@@ -26443,7 +26443,8 @@ internal record LibraryWriteRecord (
     LibraryConnectionRecord[] Connections, 
     GroupRecord[] Groups, 
     TagRecord[] Tags, 
-    string[] Favorites
+    string[] Favorites, 
+    string[] Removing
 ) {
 }
 
@@ -26455,7 +26456,8 @@ class FfiConverterTypeLibraryWriteRecord: FfiConverterRustBuffer<LibraryWriteRec
             Connections: FfiConverterSequenceTypeLibraryConnectionRecord.INSTANCE.Read(stream),
             Groups: FfiConverterSequenceTypeGroupRecord.INSTANCE.Read(stream),
             Tags: FfiConverterSequenceTypeTagRecord.INSTANCE.Read(stream),
-            Favorites: FfiConverterSequenceString.INSTANCE.Read(stream)
+            Favorites: FfiConverterSequenceString.INSTANCE.Read(stream),
+            Removing: FfiConverterSequenceString.INSTANCE.Read(stream)
         );
     }
 
@@ -26464,7 +26466,8 @@ class FfiConverterTypeLibraryWriteRecord: FfiConverterRustBuffer<LibraryWriteRec
             + FfiConverterSequenceTypeLibraryConnectionRecord.INSTANCE.AllocationSize(value.Connections)
             + FfiConverterSequenceTypeGroupRecord.INSTANCE.AllocationSize(value.Groups)
             + FfiConverterSequenceTypeTagRecord.INSTANCE.AllocationSize(value.Tags)
-            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Favorites);
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Favorites)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.Removing);
     }
 
     public override void Write(LibraryWriteRecord value, BigEndianStream stream) {
@@ -26472,6 +26475,7 @@ class FfiConverterTypeLibraryWriteRecord: FfiConverterRustBuffer<LibraryWriteRec
             FfiConverterSequenceTypeGroupRecord.INSTANCE.Write(value.Groups, stream);
             FfiConverterSequenceTypeTagRecord.INSTANCE.Write(value.Tags, stream);
             FfiConverterSequenceString.INSTANCE.Write(value.Favorites, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.Removing, stream);
     }
 }
 

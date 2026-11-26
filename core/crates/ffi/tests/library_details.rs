@@ -466,6 +466,7 @@ fn mac_library() -> LibraryWriteRecord {
             is_preset: true,
         }],
         favorites: vec!["6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44".to_owned()],
+        removing: Vec::new(),
     }
 }
 

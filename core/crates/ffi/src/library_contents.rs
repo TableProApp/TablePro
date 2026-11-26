@@ -44,6 +44,8 @@ pub struct LibraryWriteRecord {
     pub groups: Vec<GroupRecord>,
     pub tags: Vec<TagRecord>,
     pub favorites: Vec<String>,
+    // Ids of connections this build cannot read that the write takes out, with their secrets.
+    pub removing: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -79,6 +81,11 @@ impl ConnectionLibrary {
         over: Option<String>,
     ) -> Result<LibraryWritten, CoreError> {
         let _held = self.hold_writes().await;
+        let removing = parse_ids(&library.removing)?;
+        // Their secrets go first, as a delete's do; a write refused after leaves entries already on their way out.
+        if !removing.is_empty() {
+            self.delete_secrets(removing).await?;
+        }
         self.blocking(move |store| {
             let digest = store.replace_library_blocking(over.as_deref(), |list| {
                 let stored: HashMap<Uuid, &SavedConnection> =
@@ -128,6 +135,7 @@ fn library_write<'a>(
             .collect::<Result<_, CoreError>>()?,
         tags: library.tags.iter().map(stored_tag).collect::<Result<_, CoreError>>()?,
         favorites: parse_ids(&library.favorites)?,
+        removing: parse_ids(&library.removing)?,
     })
 }
 
