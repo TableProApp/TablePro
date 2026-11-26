@@ -219,13 +219,20 @@ fn gone(kind: Kind, id: Uuid) -> LibraryChange {
 fn put(kind: Kind, names: DriverNames, list: &ConnectionList, id: Uuid, fields: &Value) -> LibraryChange {
     match kind {
         Kind::Connection => {
-            let held = list.connections.iter().find(|saved| saved.id == id).map(|saved| connection::Held {
-                saved,
-                favorite: list.is_favorite(id),
-                profile: followed(list, saved),
-            });
+            let held = list
+                .connections
+                .iter()
+                .find(|saved| saved.id == id)
+                .map(|saved| connection::Held {
+                    saved,
+                    favorite: list.is_favorite(id),
+                    profile: followed(list, saved),
+                });
             let (connection, favorite) = connection::model(id, fields, held, names);
-            LibraryChange::Connection { connection, favorite }
+            LibraryChange::Connection {
+                connection: Box::new(connection),
+                favorite,
+            }
         }
         Kind::Group => {
             let stored = list.groups.iter().find(|group| group.id == id);

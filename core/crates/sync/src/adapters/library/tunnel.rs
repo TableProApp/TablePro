@@ -155,7 +155,9 @@ fn hop_from_wire(fields: &Value, stored: &[SshJumpHost], owner: Uuid) -> SshJump
         id: uuid(text(fields, "id")),
         host: text(fields, "host").unwrap_or_default().to_owned(),
         port: integer(fields, "port").map(clamped),
-        username: text(fields, "username").filter(|name| !name.is_empty()).map(str::to_owned),
+        username: text(fields, "username")
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned),
         auth: Some(match text(fields, "auth_method") {
             Some(PRIVATE_KEY | "privateKey" | "publicKey") => SshJumpAuth::PrivateKey,
             _ => SshJumpAuth::Agent,
@@ -204,7 +206,9 @@ pub(super) fn shared_from_wire(fields: &Value, has_passphrase: bool) -> SavedSsh
         _ => path,
     };
     SavedSshConfig {
-        username: text(fields, "username").filter(|name| !name.is_empty()).map(str::to_owned),
+        username: text(fields, "username")
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned),
         port: integer(fields, "port").map(clamped),
         kept_key_path,
         agent_socket: local(text(fields, "agent_socket_path")),

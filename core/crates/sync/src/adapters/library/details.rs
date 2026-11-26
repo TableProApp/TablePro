@@ -8,7 +8,10 @@ use super::values::{Object, clamped, integer, text, uuid, uuid_value};
 
 fn endpoint(alias: &str, host: &str, port: u16, username: &str) -> Object {
     let mut out = Object::default();
-    out.put("alias", alias).put("host", host).put("port", port).put("username", username);
+    out.put("alias", alias)
+        .put("host", host)
+        .put("port", port)
+        .put("username", username);
     out
 }
 
@@ -89,7 +92,13 @@ pub(super) fn same_hosts(left: &Value, right: &Value) -> bool {
             .map(|hop| (hop.host.clone(), hop.port, hop.username.clone()))
             .collect()
     };
-    let target = |route: &SshRoute| (route.target.host.clone(), route.target.port, route.target.username.clone());
+    let target = |route: &SshRoute| {
+        (
+            route.target.host.clone(),
+            route.target.port,
+            route.target.username.clone(),
+        )
+    };
     left.version == right.version
         && left.basis == right.basis
         && hops(&left) == hops(&right)
@@ -106,7 +115,9 @@ pub(super) fn reference_to_wire(reference: &CredentialReference) -> Value {
             out.put("kind", "onePassword").put("reference", reference.as_str());
         }
         CredentialReference::Vault { path, field } => {
-            out.put("kind", "vault").put("path", path.as_str()).put("field", field.as_str());
+            out.put("kind", "vault")
+                .put("path", path.as_str())
+                .put("field", field.as_str());
         }
         CredentialReference::AwsSecretsManager { secret_id, json_key } => {
             out.put("kind", "awsSecretsManager")
@@ -141,7 +152,9 @@ fn vault_auth_to_wire(auth: &VaultAuth) -> Value {
                 .put("secret_id_path", secret_id_path.to_string_lossy().into_owned());
         }
         VaultAuth::Oidc { mount, role } => {
-            out.put("method", "oidc").put("mount", mount.as_str()).put("role", role.as_str());
+            out.put("method", "oidc")
+                .put("mount", mount.as_str())
+                .put("role", role.as_str());
         }
     }
     out.done()

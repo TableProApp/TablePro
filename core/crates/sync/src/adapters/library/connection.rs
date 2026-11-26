@@ -7,7 +7,9 @@
 use std::collections::BTreeMap;
 
 use serde_json::Value;
-use tablepro_core::{AiPolicy, AuthMode, ClientIdentity, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode};
+use tablepro_core::{
+    AiPolicy, AuthMode, ClientIdentity, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode,
+};
 use tablepro_records::cloudkit::library::{color_name, icon_for_symbol, symbol_for_icon};
 use tablepro_records::schema::{core_driver, wire_type};
 use tablepro_storage::{
@@ -264,13 +266,16 @@ fn tunnel_to_wire(saved: &SavedConnection, profile: Option<&SshProfile>) -> Valu
     out.done()
 }
 
-fn tunnel_from_wire(saved: &SavedConnection, fields: Option<&Value>, stored: Option<&SavedSshConfig>) -> Option<SavedSshConfig> {
+fn tunnel_from_wire(
+    saved: &SavedConnection,
+    fields: Option<&Value>,
+    stored: Option<&SavedSshConfig>,
+) -> Option<SavedSshConfig> {
     let linked = saved.details.ssh_profile_id.is_some();
     let Some(fields) = fields else {
         return linked.then(|| SavedSshConfig::new("", tablepro_storage::SavedSshAuth::Password));
     };
-    let has_passphrase =
-        boolean(fields, "passphrase_stored").unwrap_or_else(|| keeps_passphrase(stored));
+    let has_passphrase = boolean(fields, "passphrase_stored").unwrap_or_else(|| keeps_passphrase(stored));
     let mut ssh = shared_from_wire(fields, has_passphrase);
     ssh.enabled = linked || boolean(fields, "enabled").unwrap_or(false);
     ssh.jump_hosts = hops_from_wire(
@@ -374,7 +379,12 @@ fn non_empty(text: Option<&String>) -> Option<&str> {
     text.map(String::as_str).filter(|text| !text.is_empty())
 }
 
-pub(super) fn to_wire(saved: &SavedConnection, favorite: bool, profile: Option<&SshProfile>, names: DriverNames) -> Value {
+pub(super) fn to_wire(
+    saved: &SavedConnection,
+    favorite: bool,
+    profile: Option<&SshProfile>,
+    names: DriverNames,
+) -> Value {
     let details = &saved.details;
     let tunnel_on = saved.ssh.as_ref().is_some_and(|ssh| ssh.enabled);
     let mut out = Object::default();
@@ -398,18 +408,34 @@ pub(super) fn to_wire(saved: &SavedConnection, favorite: bool, profile: Option<&
         .put_some("ai_rules", non_empty(details.ai_rules.as_ref()))
         .put_some("redis_database", details.redis_database)
         .put_some("startup_commands", non_empty(details.startup_sql.as_ref()))
-        .put_some("ssh_profile_id", details.ssh_profile_id.filter(|_| tunnel_on).map(uuid_value))
+        .put_some(
+            "ssh_profile_id",
+            details.ssh_profile_id.filter(|_| tunnel_on).map(uuid_value),
+        )
         .put_some("ssh_route", details.ssh_route.as_ref().map(route_to_wire))
         .put("ssh_config", tunnel_to_wire(saved, profile))
         .put("ssl_config", tls_to_wire(&saved.tls))
         .put_some("additional_fields", fields_to_wire(saved))
         .put("external_access", external_access_name(saved.external_access))
         .put_some("credential_profile_id", details.credential_profile_id.map(uuid_value))
-        .put_some("credential_reference", details.credential_reference.as_ref().map(reference_to_wire))
-        .put("auth_mode", if saved.auth_mode == AuthMode::Kerberos { "kerberos" } else { "password" })
+        .put_some(
+            "credential_reference",
+            details.credential_reference.as_ref().map(reference_to_wire),
+        )
+        .put(
+            "auth_mode",
+            if saved.auth_mode == AuthMode::Kerberos {
+                "kerberos"
+            } else {
+                "password"
+            },
+        )
         .put_some("network_options", options_to_wire(&saved.options));
     if !saved.tags.is_empty() {
-        out.put("tag_ids", saved.tags.iter().copied().map(uuid_value).collect::<Vec<_>>());
+        out.put(
+            "tag_ids",
+            saved.tags.iter().copied().map(uuid_value).collect::<Vec<_>>(),
+        );
     }
     if !details.ai_allowed_tools.is_empty() {
         out.put(
@@ -450,14 +476,20 @@ pub(super) fn model(id: Uuid, fields: &Value, held: Option<Held<'_>>, names: Dri
 
 fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>, names: DriverNames) -> SavedConnection {
     let mut additional_fields = fields_from_wire(fields.get("additional_fields"));
-    let legacy_timeout = additional_fields.remove(QUERY_TIMEOUT).and_then(|raw| raw.parse::<i64>().ok());
+    let legacy_timeout = additional_fields
+        .remove(QUERY_TIMEOUT)
+        .and_then(|raw| raw.parse::<i64>().ok());
     let query_timeout_secs = integer(fields, "query_timeout_seconds")
         .or(legacy_timeout)
         .filter(|seconds| (0..=i64::from(QUERY_TIMEOUT_MAX)).contains(seconds))
         .map(clamped);
     let details = ConnectionDetails {
-        startup_sql: text(fields, "startup_commands").filter(|sql| !sql.is_empty()).map(str::to_owned),
-        ai_rules: text(fields, "ai_rules").filter(|rules| !rules.is_empty()).map(str::to_owned),
+        startup_sql: text(fields, "startup_commands")
+            .filter(|sql| !sql.is_empty())
+            .map(str::to_owned),
+        ai_rules: text(fields, "ai_rules")
+            .filter(|rules| !rules.is_empty())
+            .map(str::to_owned),
         ai_allowed_tools: fields
             .get("ai_always_allowed_tools")
             .and_then(Value::as_array)
@@ -505,7 +537,11 @@ fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>, names: Drive
         },
         unknown: unknown_members(fields, MEMBERS),
     };
-    saved.ssh = tunnel_from_wire(&saved, fields.get("ssh_config"), stored.and_then(|stored| stored.ssh.as_ref()));
+    saved.ssh = tunnel_from_wire(
+        &saved,
+        fields.get("ssh_config"),
+        stored.and_then(|stored| stored.ssh.as_ref()),
+    );
     saved
 }
 

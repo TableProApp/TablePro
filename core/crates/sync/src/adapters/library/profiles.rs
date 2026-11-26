@@ -65,7 +65,9 @@ fn password_mode(password: &CredentialPassword) -> &'static str {
     match password {
         CredentialPassword::Stored => "stored",
         CredentialPassword::Pgpass => "pgpass",
-        CredentialPassword::Prompt | CredentialPassword::Reference { .. } | CredentialPassword::Local { .. } => "prompt",
+        CredentialPassword::Prompt | CredentialPassword::Reference { .. } | CredentialPassword::Local { .. } => {
+            "prompt"
+        }
     }
 }
 

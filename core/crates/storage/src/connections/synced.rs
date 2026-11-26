@@ -9,7 +9,10 @@ use crate::{ConnectionGroup, ConnectionTag};
 // pull can bring a connection before its group, tag or profile, and its siblings' places with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LibraryChange {
-    Connection { connection: SavedConnection, favorite: bool },
+    Connection {
+        connection: Box<SavedConnection>,
+        favorite: bool,
+    },
     ConnectionGone(Uuid),
     Group(ConnectionGroup),
     GroupGone(Uuid),
@@ -67,7 +70,7 @@ impl ConnectionStore {
 impl ConnectionsDocument {
     fn apply_synced(&mut self, change: LibraryChange) {
         match change {
-            LibraryChange::Connection { connection, favorite } => self.put_synced(connection, favorite),
+            LibraryChange::Connection { connection, favorite } => self.put_synced(*connection, favorite),
             LibraryChange::ConnectionGone(id) => {
                 self.connections.remove_id(id);
                 self.favorites.retain(|held| *held != id);
@@ -96,9 +99,15 @@ impl ConnectionsDocument {
     fn put_synced(&mut self, mut connection: SavedConnection, favorite: bool) {
         let id = connection.id;
         if let Some(stored) = self.connections.iter().find(|saved| saved.id == id) {
-            let marks = (connection.device.tls_mode_unsettled, connection.device.ssh_profile_unlinked);
+            let marks = (
+                connection.device.tls_mode_unsettled,
+                connection.device.ssh_profile_unlinked,
+            );
             connection.device = stored.device.clone();
-            (connection.device.tls_mode_unsettled, connection.device.ssh_profile_unlinked) = marks;
+            (
+                connection.device.tls_mode_unsettled,
+                connection.device.ssh_profile_unlinked,
+            ) = marks;
             connection.last_opened_at = stored.last_opened_at;
         }
         self.connections.release(id);
@@ -124,6 +133,10 @@ fn put_by_id<T>(list: &mut Vec<T>, entry: T, id: impl Fn(&T) -> Uuid) {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_types,
+    reason = "JSON in a test is written with json!; its key order means nothing to the store"
+)]
 mod tests {
     use chrono::Utc;
     use serde_json::json;
@@ -182,10 +195,12 @@ mod tests {
         pulled.tags = vec![Uuid::from_u128(88)];
 
         let identity = store
-            .apply_synced_blocking(|_| vec![LibraryChange::Connection {
-                connection: pulled,
-                favorite: true,
-            }])
+            .apply_synced_blocking(|_| {
+                vec![LibraryChange::Connection {
+                    connection: Box::new(pulled),
+                    favorite: true,
+                }]
+            })
             .unwrap();
         let list = store.list_blocking().unwrap();
 
@@ -216,26 +231,30 @@ mod tests {
         .unwrap();
 
         store
-            .apply_synced_blocking(|_| vec![
-                LibraryChange::ConnectionGone(Uuid::from_u128(2)),
-                LibraryChange::Group(group.clone()),
-                LibraryChange::Tag(tag.clone()),
-                LibraryChange::SshProfile(profile.clone()),
-            ])
+            .apply_synced_blocking(|_| {
+                vec![
+                    LibraryChange::ConnectionGone(Uuid::from_u128(2)),
+                    LibraryChange::Group(group.clone()),
+                    LibraryChange::Tag(tag.clone()),
+                    LibraryChange::SshProfile(profile.clone()),
+                ]
+            })
             .unwrap();
         let list = store.list_blocking().unwrap();
         assert_eq!(list.connections.len(), 1);
         assert!(list.favorites.is_empty());
-        assert_eq!(list.groups.as_ref(), [group.clone()]);
-        assert_eq!(list.tags.as_ref(), [tag.clone()]);
-        assert_eq!(list.ssh_profiles.as_ref(), [profile.clone()]);
+        assert_eq!(list.groups.as_ref(), std::slice::from_ref(&group));
+        assert_eq!(list.tags.as_ref(), std::slice::from_ref(&tag));
+        assert_eq!(list.ssh_profiles.as_ref(), std::slice::from_ref(&profile));
 
         store
-            .apply_synced_blocking(|_| vec![
-                LibraryChange::GroupGone(group.id),
-                LibraryChange::TagGone(tag.id),
-                LibraryChange::SshProfileGone(profile.id),
-            ])
+            .apply_synced_blocking(|_| {
+                vec![
+                    LibraryChange::GroupGone(group.id),
+                    LibraryChange::TagGone(tag.id),
+                    LibraryChange::SshProfileGone(profile.id),
+                ]
+            })
             .unwrap();
         let list = store.list_blocking().unwrap();
         assert!(list.groups.is_empty() && list.tags.is_empty() && list.ssh_profiles.is_empty());
@@ -256,10 +275,12 @@ mod tests {
         assert_eq!(store.list_blocking().unwrap().unreadable.as_ref(), [Uuid::from_u128(3)]);
 
         store
-            .apply_synced_blocking(|_| vec![LibraryChange::Connection {
-                connection: saved(3, "future"),
-                favorite: false,
-            }])
+            .apply_synced_blocking(|_| {
+                vec![LibraryChange::Connection {
+                    connection: Box::new(saved(3, "future")),
+                    favorite: false,
+                }]
+            })
             .unwrap();
 
         let list = store.list_blocking().unwrap();
@@ -276,10 +297,12 @@ mod tests {
         let held = store.list_blocking().unwrap().connections[0].clone();
 
         let after = store
-            .apply_synced_blocking(|_| vec![LibraryChange::Connection {
-                connection: held,
-                favorite: false,
-            }])
+            .apply_synced_blocking(|_| {
+                vec![LibraryChange::Connection {
+                    connection: Box::new(held),
+                    favorite: false,
+                }]
+            })
             .unwrap();
 
         assert_eq!(after, before);

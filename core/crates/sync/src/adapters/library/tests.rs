@@ -47,10 +47,7 @@ fn a_tag_with_no_colour_reads_as_gray_as_the_mac_reads_it() {
     assert_eq!(tag.color, Some(ConnectionColor::Slate));
     assert!(tag.is_preset);
     assert_eq!(
-        groups::tag_to_wire(&ConnectionTag {
-            color: None,
-            ..tag
-        }),
+        groups::tag_to_wire(&ConnectionTag { color: None, ..tag }),
         json!({"name": "prod", "color": "None", "is_preset": true})
     );
 }
@@ -197,7 +194,10 @@ fn a_mac_connection_reads_into_the_store_and_goes_up_as_the_mac_wrote_it() {
     assert_eq!(saved.driver_id, "PostgreSQL");
     assert_eq!(saved.tls.mode, tablepro_core::TlsMode::VerifyFull);
     assert_eq!(saved.safe_mode, tablepro_core::SafeModeLevel::AlertFull);
-    assert_eq!(saved.device.origin, tablepro_storage::ConnectionOrigin::Known(tablepro_storage::KnownOrigin::Synced));
+    assert_eq!(
+        saved.device.origin,
+        tablepro_storage::ConnectionOrigin::Known(tablepro_storage::KnownOrigin::Synced)
+    );
     let home = std::env::home_dir().unwrap();
     assert_eq!(
         saved.ssh.as_ref().and_then(|ssh| match &ssh.auth {
@@ -490,7 +490,10 @@ fn a_store_that_names_drivers_by_the_core_s_ids_sends_the_mac_s_names_and_reads_
     assert_eq!(sent["type"], json!("PostgreSQL"));
     assert_eq!(pulled.driver_id, "postgres");
     assert_eq!(mac.driver_id, "PostgreSQL");
-    assert_eq!(connection::to_wire(&plugin, favorite, None, DriverNames::Core)["type"], json!("Oracle"));
+    assert_eq!(
+        connection::to_wire(&plugin, favorite, None, DriverNames::Core)["type"],
+        json!("Oracle")
+    );
 }
 
 #[test]

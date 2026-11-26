@@ -500,7 +500,10 @@ mod tests {
             ("connectTimeoutSeconds", "30"),
             ("connectTimeoutMilliseconds", "9000"),
             ("mongoParam_proxyPassword", "hunter2"),
-            ("mongoParam_authMechanismProperties", "SERVICE_NAME:mongodb,AWS_SESSION_TOKEN:abc"),
+            (
+                "mongoParam_authMechanismProperties",
+                "SERVICE_NAME:mongodb,AWS_SESSION_TOKEN:abc",
+            ),
         ]);
         let pulled = fields(&[
             ("connectTimeoutSeconds", "60"),
@@ -513,7 +516,10 @@ mod tests {
                 ("connectTimeoutSeconds", "60"),
                 ("connectTimeoutMilliseconds", "9000"),
                 ("mongoParam_proxyPassword", "hunter2"),
-                ("mongoParam_authMechanismProperties", "SERVICE_NAME:other,AWS_SESSION_TOKEN:abc"),
+                (
+                    "mongoParam_authMechanismProperties",
+                    "SERVICE_NAME:other,AWS_SESSION_TOKEN:abc"
+                ),
             ])
         );
         assert_eq!(

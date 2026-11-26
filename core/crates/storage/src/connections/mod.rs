@@ -38,12 +38,12 @@ pub use details::{
     SshRouteTarget, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
 };
 pub use library::{LibraryRead, LibraryWrite};
-pub use synced::{LibraryChange, SyncedLibrary};
 pub use profiles::{CredentialPassword, CredentialProfile, SshProfile};
 pub use ssh::{
     RemoteFileAccess, SavedSshAuth, SavedSshConfig, SshJumpAuth, SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm,
     SshTotpMode,
 };
+pub use synced::{LibraryChange, SyncedLibrary};
 use write_guard::WriteGuard;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -9,7 +9,9 @@ mod readable;
 mod sealed;
 mod team;
 
-pub use personal::{AI_POLICIES, COLORS, DRIVER_TYPES, EXTERNAL_ACCESS, SAFE_MODE_LEVELS, SSL_MODES, core_driver, wire_type};
+pub use personal::{
+    AI_POLICIES, COLORS, DRIVER_TYPES, EXTERNAL_ACCESS, SAFE_MODE_LEVELS, SSL_MODES, core_driver, wire_type,
+};
 pub use readable::readable;
 pub use sealed::HISTORY_ENTRY;
 

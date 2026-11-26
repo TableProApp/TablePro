@@ -53,12 +53,24 @@ mod tests {
 
     #[test]
     fn a_library_record_without_what_the_mac_requires_is_unreadable() {
-        assert!(readable(Kind::Connection, CONNECTION, &json!({"name": "Shop", "type": "MySQL"})));
+        assert!(readable(
+            Kind::Connection,
+            CONNECTION,
+            &json!({"name": "Shop", "type": "MySQL"})
+        ));
         assert!(!readable(Kind::Connection, CONNECTION, &json!({"name": "Shop"})));
         assert!(!readable(Kind::Group, FOLDER, &json!({"color": "Red"})));
-        assert!(readable(Kind::TableFolder, FOLDER, &json!({"connection_id": CONNECTION, "name": "Billing"})));
+        assert!(readable(
+            Kind::TableFolder,
+            FOLDER,
+            &json!({"connection_id": CONNECTION, "name": "Billing"})
+        ));
         assert!(!readable(Kind::TableFolder, FOLDER, &json!({"name": "Billing"})));
-        assert!(!readable(Kind::TableFolder, FOLDER, &json!({"connection_id": CONNECTION, "name": " "})));
+        assert!(!readable(
+            Kind::TableFolder,
+            FOLDER,
+            &json!({"connection_id": CONNECTION, "name": " "})
+        ));
         assert!(readable(Kind::SavedQuery, FOLDER, &json!({})));
     }
 

@@ -19,7 +19,8 @@ pub(super) fn boolean(fields: &Value, key: &str) -> Option<bool> {
 
 // As Swift's `UUID(uuidString:)` reads one: hyphenated, in either case.
 pub(super) fn uuid(raw: Option<&str>) -> Option<Uuid> {
-    raw.filter(|raw| raw.len() == 36).and_then(|raw| Uuid::try_parse(raw).ok())
+    raw.filter(|raw| raw.len() == 36)
+        .and_then(|raw| Uuid::try_parse(raw).ok())
 }
 
 pub(super) fn uuid_at(fields: &Value, key: &str) -> Option<Uuid> {

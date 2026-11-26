@@ -156,7 +156,10 @@ async fn a_mac_library_reads_into_the_stores_and_a_push_after_it_sends_nothing()
     assert_eq!(pushed.queued, 0, "{pushed:?}");
     assert_eq!(list.connections.len(), 1);
     assert_eq!(list.connections[0].name, "Shop");
-    assert_eq!(list.connections[0].ssh.as_ref().map(|ssh| ssh.host.as_str()), Some("bastion"));
+    assert_eq!(
+        list.connections[0].ssh.as_ref().map(|ssh| ssh.host.as_str()),
+        Some("bastion")
+    );
     assert!(list.is_favorite(list.connections[0].id));
     assert_eq!((list.groups.len(), list.tags.len()), (1, 1));
     assert_eq!((list.ssh_profiles.len(), list.credential_profiles.len()), (1, 1));
@@ -181,7 +184,10 @@ async fn a_copy_an_ios_build_wrote_reads_in_and_sends_nothing_back() {
 
     assert_eq!(shelf.store.list_blocking().unwrap().connections.len(), 1);
     assert_eq!(pushed.queued, 0, "{pushed:?}");
-    assert_eq!(shelf.rig.zone_fields(Kind::Connection, A).unwrap()["safe_mode_level"], json!("off"));
+    assert_eq!(
+        shelf.rig.zone_fields(Kind::Connection, A).unwrap()["safe_mode_level"],
+        json!("off")
+    );
 }
 
 #[tokio::test]
@@ -219,7 +225,16 @@ async fn a_folder_without_its_connection_is_held_by_id_and_the_zone_keeps_it() {
     shelf.fetch().await;
     let pushed = shelf.push().await;
 
-    assert!(shelf.history.table_folders().contents().await.unwrap().folders.is_empty());
+    assert!(
+        shelf
+            .history
+            .table_folders()
+            .contents()
+            .await
+            .unwrap()
+            .folders
+            .is_empty()
+    );
     assert_eq!(pushed.queued, 0, "{pushed:?}");
     assert!(shelf.rig.zone_fields(Kind::TableFolder, D).is_some());
 }

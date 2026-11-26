@@ -14,9 +14,9 @@ use tablepro_storage::{
     QueryHistory, SavedConnection, SshProfile, StoragePaths, TableRef, TableScope,
 };
 use tablepro_sync::adapters::library;
+use tablepro_sync::api::control::SyncControl;
 use tablepro_sync::api::ids::ScopeName;
 use tablepro_sync::api::{AdapterError, LocalChange, LocalRecords, RecordAdapter, StoreStamp};
-use tablepro_sync::api::control::SyncControl;
 use tablepro_sync_testing::FakeServer;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -47,7 +47,10 @@ impl Library {
     }
 
     async fn device(&self, server: &Arc<FakeServer>, row: &str) -> Device {
-        DeviceBuilder::new(server, row).core_stores(self.adapters()).build().await
+        DeviceBuilder::new(server, row)
+            .core_stores(self.adapters())
+            .build()
+            .await
     }
 }
 
@@ -221,7 +224,15 @@ async fn a_local_only_connection_and_its_folders_never_reach_the_server() {
 
     let id = uuid_id(Uuid::from_u128(CONNECTION));
     assert!(server.stored(personal(), "connection", &id).is_none());
-    assert!(server.stored(personal(), "group", &uuid_id(mac_library.store.list_blocking().unwrap().groups[0].id)).is_some());
+    assert!(
+        server
+            .stored(
+                personal(),
+                "group",
+                &uuid_id(mac_library.store.list_blocking().unwrap().groups[0].id)
+            )
+            .is_some()
+    );
     let folders = mac_library.history.table_folders().contents().await.unwrap();
     assert!(
         server
@@ -266,7 +277,10 @@ async fn a_copy_kept_local_only_takes_neither_a_pulled_edit_nor_a_pulled_deletio
     let (mac_library, mini_library) = (Library::new().await, Library::new().await);
     let mac = mac_library.device(&server, "dev_mac").await;
     let mini = mini_library.device(&server, "dev_mini").await;
-    mac_library.store.upsert_blocking(connection(CONNECTION, "Shop")).unwrap();
+    mac_library
+        .store
+        .upsert_blocking(connection(CONNECTION, "Shop"))
+        .unwrap();
     mac.sync().await;
     take_everything(&mini).await;
     let id = Uuid::from_u128(CONNECTION);
@@ -337,7 +351,10 @@ async fn a_pull_never_writes_over_an_edit_made_while_it_merged() {
     let server = FakeServer::new();
     let (mac_library, mini_library) = (Library::new().await, Library::new().await);
     let mac = mac_library.device(&server, "dev_mac").await;
-    mac_library.store.upsert_blocking(connection(CONNECTION, "Shop")).unwrap();
+    mac_library
+        .store
+        .upsert_blocking(connection(CONNECTION, "Shop"))
+        .unwrap();
     mac.sync().await;
     let racing = Arc::new(RenamedMidPull {
         inner: mini_library.adapters().remove(0),
@@ -347,12 +364,17 @@ async fn a_pull_never_writes_over_an_edit_made_while_it_merged() {
     });
     let mut adapters: Vec<Arc<dyn RecordAdapter>> = vec![Arc::clone(&racing) as Arc<dyn RecordAdapter>];
     adapters.extend(mini_library.adapters().into_iter().skip(1));
-    let mini = DeviceBuilder::new(&server, "dev_mini").core_stores(adapters).build().await;
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .core_stores(adapters)
+        .build()
+        .await;
     take_everything(&mini).await;
 
     mac_library
         .store
-        .update_blocking(Uuid::from_u128(CONNECTION), |saved| saved.color = Some(ConnectionColor::Red))
+        .update_blocking(Uuid::from_u128(CONNECTION), |saved| {
+            saved.color = Some(ConnectionColor::Red)
+        })
         .unwrap();
     mac.sync().await;
     racing.read.store(false, Ordering::SeqCst);
@@ -365,7 +387,10 @@ async fn a_pull_never_writes_over_an_edit_made_while_it_merged() {
     let theirs = mac_library.store.list_blocking().unwrap().connections[0].clone();
     assert!(raced.is_err());
     assert_eq!((mine.name.as_str(), mine.color), ("Mine", Some(ConnectionColor::Red)));
-    assert_eq!((theirs.name.as_str(), theirs.color), ("Mine", Some(ConnectionColor::Red)));
+    assert_eq!(
+        (theirs.name.as_str(), theirs.color),
+        ("Mine", Some(ConnectionColor::Red))
+    );
 }
 
 #[tokio::test]
@@ -380,7 +405,12 @@ async fn a_folder_no_store_can_hold_is_held_by_id_and_never_deleted() {
         .push_raw(
             ScopeName::Personal,
             vec![
-                write("table_folder", &folder, None, json!({"name": "Billing", "database": "shop"})),
+                write(
+                    "table_folder",
+                    &folder,
+                    None,
+                    json!({"name": "Billing", "database": "shop"}),
+                ),
                 write(
                     "table_folder_item",
                     &item,
@@ -397,6 +427,18 @@ async fn a_folder_no_store_can_hold_is_held_by_id_and_never_deleted() {
 
     let folders = mac_library.history.table_folders().contents().await.unwrap();
     assert!(folders.folders.is_empty() && folders.items.is_empty());
-    assert!(server.stored(personal(), "table_folder", &folder).unwrap().deleted.is_none());
-    assert!(server.stored(personal(), "table_folder_item", &item).unwrap().deleted.is_none());
+    assert!(
+        server
+            .stored(personal(), "table_folder", &folder)
+            .unwrap()
+            .deleted
+            .is_none()
+    );
+    assert!(
+        server
+            .stored(personal(), "table_folder_item", &item)
+            .unwrap()
+            .deleted
+            .is_none()
+    );
 }
