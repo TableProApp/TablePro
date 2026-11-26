@@ -439,7 +439,11 @@ class DetectChangedPathsTests(unittest.TestCase):
                 self.assertEqual(self.verdict_after(suite, catalog), "true")
         self.assertEqual(self.verdict_after("plugins", catalog), "false")
 
-    def test_the_mac_app_runs_on_the_core_it_links(self):
+    def test_the_apple_apps_run_on_the_core_they_link(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
         for path in [
             "core/crates/ffi/src/lib.rs",
             "core/crates/ffi/uniffi.toml",
@@ -452,11 +456,15 @@ class DetectChangedPathsTests(unittest.TestCase):
             "apple/scripts/build-core.sh",
             "apple/scripts/lib/system-sqlite.sh",
         ]:
-            for suite in ["macos", "release", "shipped"]:
+            for suite in ["macos", "ios", "release", "shipped"]:
                 with self.subTest(path=path, suite=suite):
                     self.assertEqual(self.verdict_after(suite, path), "true")
 
-    def test_the_mac_app_skips_the_core_it_does_not_link(self):
+    def test_the_apple_apps_skip_the_core_they_do_not_link(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
         for path in [
             "core/crates/drivers/sqlite/src/driver.rs",
             "core/crates/drivers/postgres/Cargo.toml",
@@ -469,7 +477,11 @@ class DetectChangedPathsTests(unittest.TestCase):
             "deny.toml",
             ".config/nextest.toml",
         ]:
-            for suite in ["macos", "release", "shipped"]:
+            # The iOS tests read the function names (test_ios_and_linux_run_on_the_function_names_both_apps_share).
+            suites = ["macos", "release", "shipped"]
+            if not path.endswith("state_changing_functions.json"):
+                suites.append("ios")
+            for suite in suites:
                 with self.subTest(path=path, suite=suite):
                     self.assertEqual(self.verdict_after(suite, path), "false")
 
@@ -483,16 +495,15 @@ class DetectChangedPathsTests(unittest.TestCase):
     def test_the_mac_tests_run_on_the_model_merge_cases_they_share(self):
         self.assertEqual(self.verdict_after("macos", "core/crates/ai/tests/model-merge-cases.json"), "true")
 
-    def test_the_mac_app_runs_on_the_shortcut_presets_it_bundles(self):
+    def test_the_apple_apps_run_on_the_shortcut_presets_the_core_they_link_bundles(self):
         spec = self.repo / "apple/TableProMobile/project.yml"
         spec.parent.mkdir(parents=True)
         spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
         self.seed = self.commit([])
         presets = "core/crates/core/keymaps.json"
-        for suite in ["macos", "release", "shipped", "linux", "core", "windows"]:
+        for suite in ["macos", "ios", "release", "shipped", "linux", "core", "windows"]:
             with self.subTest(suite=suite):
                 self.assertEqual(self.verdict_after(suite, presets), "true")
-        self.assertEqual(self.verdict_after("ios", presets), "false")
         self.assertEqual(self.verdict_after("plugins", presets), "false")
 
     def test_both_apple_apps_run_on_the_sample_database_the_core_holds(self):

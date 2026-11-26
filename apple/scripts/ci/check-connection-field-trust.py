@@ -3,7 +3,9 @@
 
 Import, export, share links and sync keep an additional field only by its class in
 ConnectionFieldTrust.swift, so a field missing there is dropped from every file and link. A field a
-plugin declares `.secure` must be classed `.secret`, and a key listed twice traps at launch.
+plugin declares `.secure` must be classed `.secret`, and a key listed twice traps at launch. The
+core's copy in core/crates/storage/src/connections/field_trust.rs must hold the same classes, with
+the same plain values, until the app reads the core's.
 
 Usage:
     check-connection-field-trust.py [path...]    # default: the plugin sources and the curated table
@@ -16,6 +18,7 @@ from pathlib import Path
 APPLE = Path(__file__).resolve().parents[2]
 
 CATALOG = APPLE / "Packages/TableProCore/Sources/TableProConnectionLibrary/ConnectionFieldTrust.swift"
+CORE_CATALOG = APPLE.parent / "core/crates/storage/src/connections/field_trust.rs"
 
 DEFAULT_PATHS = [
     APPLE / "Plugins",
@@ -35,6 +38,16 @@ NOT_A_TYPE = {"func", "var", "let", "case", "subscript", "init"}
 CONSTANT = re.compile(r"\b(?:let|var)\s+(\w+)\s*(?::\s*String\s*)?=\s*\"|\bcase\s+(\w+)\s*=\s*\"")
 EXPRESSION = re.compile(r"^(?:Self\.)?([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*?)(?:\.rawValue)?$")
 CATALOG_ENTRY = re.compile(r"^\s*\"([^\"]+)\":\s*\.(\w+)", re.MULTILINE)
+SWIFT_PLAIN = re.compile(r"^\s*\"([^\"]+)\":\s*\.localCredential\(plainValues:\s*([^)]*)\)", re.MULTILINE)
+CORE_ENTRY = re.compile(r"\(\s*\"([^\"]+)\",\s*(?:FieldTrust::(\w+)|local_credential\(([^)]*)\))\s*,?\s*\)")
+CORE_CLASS = {
+    "Setting": "setting",
+    "Destination": "destination",
+    "LocalFile": "localFile",
+    "Secret": "secret",
+    "OwnDevices": "ownDevices",
+    "HostInternal": "hostInternal",
+}
 
 
 def scan(source):
@@ -290,6 +303,53 @@ def catalog_entries(text):
     return None
 
 
+def plain_values(text, constants):
+    """A plain-values list, or the name of a constant that holds one, as a sorted tuple."""
+    text = text.strip().lstrip("&")
+    if text in constants:
+        return constants[text]
+    return tuple(sorted(re.findall(r'"([^"]*)"', text)))
+
+
+def swift_classes(text):
+    constants = {
+        name: tuple(sorted(re.findall(r'"([^"]*)"', values)))
+        for name, values in re.findall(r"static let (\w+PlainValues): Set<String> = \[([^\]]*)\]", text)
+    }
+    plain = {key: plain_values(values, constants) for key, values in SWIFT_PLAIN.findall(text)}
+    return {key: (trust, plain.get(key)) for key, trust in catalog_entries(text) or []}
+
+
+def core_classes(text):
+    start = text.find("const TRUST_BY_KEY")
+    if start == -1:
+        return None
+    constants = {
+        name: tuple(sorted(re.findall(r'"([^"]*)"', values)))
+        for name, values in re.findall(r"const (\w+_PLAIN_VALUES): &\[&str\] = &\[([^\]]*)\]", text)
+    }
+    classes = {}
+    for key, trust, plain in CORE_ENTRY.findall(text[start:]):
+        if trust:
+            classes[key] = (CORE_CLASS.get(trust, trust), None)
+        else:
+            classes[key] = ("localCredential", plain_values(plain, constants))
+    return classes
+
+
+def compare_core(swift, core):
+    """The keys whose class or plain values the two tables give differently."""
+    problems = []
+    for key in sorted(set(swift) | set(core)):
+        if key not in core:
+            problems.append(f"{CORE_CATALOG}: {key} is missing; ConnectionFieldTrust.swift classes it .{swift[key][0]}")
+        elif key not in swift:
+            problems.append(f"{CORE_CATALOG}: {key} is not in ConnectionFieldTrust.swift")
+        elif swift[key] != core[key]:
+            problems.append(f"{CORE_CATALOG}: {key} is {core[key]} here but {swift[key]} in ConnectionFieldTrust.swift")
+    return problems
+
+
 def main(argv):
     paths = [Path(arg) for arg in argv] or DEFAULT_PATHS
     missing = [path for path in paths + [CATALOG] if not path.exists()]
@@ -310,6 +370,15 @@ def main(argv):
             failures += 1
             print(f"{CATALOG}: {key} is listed twice; a duplicate dictionary key traps at launch")
         classes[key] = trust
+
+    if CORE_CATALOG.exists():
+        core = core_classes(CORE_CATALOG.read_text(encoding="utf-8"))
+        if core is None:
+            print(f"error: {CORE_CATALOG} has no TRUST_BY_KEY table", file=sys.stderr)
+            return 2
+        for problem in compare_core(swift_classes(CATALOG.read_text(encoding="utf-8")), core):
+            failures += 1
+            print(problem)
 
     resolver = Resolver([root for root in DECLARATION_ROOTS if root.exists()])
     for path in swift_files(paths):
