@@ -98,6 +98,12 @@ final class CoreLibraryStore {
         let legacyDigest = mirror.digest()
         flags = ConnectionDeviceFlags(defaults: defaults)
 
+        // The core reads a blank file as an empty library, and its own writes never leave one, so one is damage.
+        if let bytes = try? Data(contentsOf: coreFileURL), bytes.allSatisfy(Self.asciiWhitespace.contains) {
+            try setAsideDamagedCoreFile()
+            forgetCoreState()
+            return try importLegacy(legacy, into: library)
+        }
         let contents: LibraryContents
         do {
             contents = try Self.blocking { try await library.libraryContents() }
@@ -337,9 +343,9 @@ final class CoreLibraryStore {
 
     // The damaged file is kept beside the store, as the library files keep theirs; the next one replaces it.
     private func setAsideDamagedCoreFile() throws {
+        Self.logger.warning("Core/connections.json no longer parses; it is set aside and the library comes back from connections.json")
         try removeIfPresent(unreadableCopyURL)
         try FileManager.default.moveItem(at: coreFileURL, to: unreadableCopyURL)
-        Self.logger.warning("Set aside Core/connections.json, which no longer parses; the library comes back from connections.json")
     }
 
     private func removeIfPresent(_ url: URL) throws {
@@ -361,6 +367,9 @@ final class CoreLibraryStore {
         library = opened
         return opened
     }
+
+    // As Rust's `is_ascii_whitespace`, which the core's reader skips.
+    nonisolated private static let asciiWhitespace: Set<UInt8> = [0x09, 0x0A, 0x0C, 0x0D, 0x20]
 
     nonisolated static func isDamaged(_ error: any Error) -> Bool {
         guard case let CoreError.Failed(info) = error else { return false }

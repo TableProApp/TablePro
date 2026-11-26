@@ -240,6 +240,20 @@ struct CoreLibraryStoreTests {
         #expect(try Data(contentsOf: coreFile) != damaged)
     }
 
+    @Test("A core file cut to nothing is set aside, and the library comes back from the previous stable's files")
+    func blankCoreFileIsSetAside() throws {
+        let store = makeStore()
+        var library = try store.load()
+        library.connections = [DatabaseConnection(name: "Orders", type: .postgresql)]
+        try store.write(library, keepingPastedSSHKeys: [:])
+        try Data(" \n".utf8).write(to: coreFile)
+
+        let reopened = makeStore()
+        #expect(try reopened.load() == library)
+        #expect(try legacyConnections().map(\.name) == ["Orders"])
+        #expect(try Data(contentsOf: reopened.unreadableCopyURL) == Data(" \n".utf8))
+    }
+
     @Test("A newer build's core file is never written over")
     func newerCoreFileIsLeftAlone() throws {
         try FileManager.default.createDirectory(at: coreFile.deletingLastPathComponent(), withIntermediateDirectories: true)
