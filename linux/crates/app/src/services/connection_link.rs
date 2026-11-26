@@ -191,7 +191,7 @@ mod tests {
             database: database.to_owned(),
             username: username.to_owned(),
             tls: TlsConfig::disabled(),
-            safe_mode: SafeModeLevel::Off,
+            safe_mode: SafeModeLevel::Silent,
             external_access: ExternalAccess::default(),
             ai_policy: AiPolicy::default(),
             query_timeout_secs: None,

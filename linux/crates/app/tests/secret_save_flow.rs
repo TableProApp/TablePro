@@ -45,7 +45,7 @@ fn connection(id: Uuid, ssh: Option<SavedSshConfig>) -> SavedConnection {
         database: "shop".into(),
         username: "app".into(),
         tls: TlsConfig::verify_full(),
-        safe_mode: tablepro_core::SafeModeLevel::Off,
+        safe_mode: tablepro_core::SafeModeLevel::Silent,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
         query_timeout_secs: None,
@@ -75,6 +75,12 @@ fn keyed_ssh() -> SavedSshConfig {
             // The save records whether the passphrase actually landed.
             has_passphrase: true,
         },
+        enabled: true,
+        kept_key_path: None,
+        agent_socket: None,
+        totp: Default::default(),
+        remote_file: Default::default(),
+        unknown: Default::default(),
     }
 }
 

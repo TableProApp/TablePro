@@ -150,7 +150,7 @@ impl WorkspaceModel {
         let history = Some(self.history.clone());
         let connection = self.context.active.metadata();
         let tasks = self.context.tasks.clone();
-        let ask = (session.safe_mode() == SafeModeLevel::ConfirmWrites)
+        let ask = (session.safe_mode() == SafeModeLevel::Alert)
             .then(|| self.ask_before_import(&session.metadata().name, &import.table));
         let work = run_import(ImportRun {
             session,

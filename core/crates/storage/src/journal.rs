@@ -71,13 +71,71 @@ impl fmt::Display for RecordKind {
     }
 }
 
-/// What every store's write path tells once a write has landed (core ADR 0054, The engine).
-///
-/// It names the kinds the write changed and asks for a pass soon. The sync diff, not the journal,
-/// decides what goes up, so a missed call delays a push and loses nothing. A store calls it after the
-/// write, outside every lock it holds, from the thread that wrote; it must return at once.
+// Once per commit, outside the store's locks; the diff decides what goes up, so a missed call loses nothing (0060).
 pub trait ChangeJournal: Send + Sync {
-    fn changed(&self, kinds: &[RecordKind]);
+    fn changed(&self, entries: &[JournalEntry]);
+}
+
+// One kind a commit changed, by the store's own ids, each once, in the order the store lists them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JournalEntry {
+    pub kind: RecordKind,
+    pub written: Vec<RecordRef>,
+    pub deleted: Vec<RecordRef>,
+}
+
+impl JournalEntry {
+    pub fn new(kind: RecordKind) -> Self {
+        Self {
+            kind,
+            written: Vec::new(),
+            deleted: Vec::new(),
+        }
+    }
+
+    pub fn wrote(mut self, records: impl IntoIterator<Item = RecordRef>) -> Self {
+        push_unique(&mut self.written, records);
+        self
+    }
+
+    pub fn deleted(mut self, records: impl IntoIterator<Item = RecordRef>) -> Self {
+        push_unique(&mut self.deleted, records);
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.written.is_empty() && self.deleted.is_empty()
+    }
+}
+
+// A set beside the list, since a write such as clearing the history can name many thousands.
+fn push_unique(list: &mut Vec<RecordRef>, records: impl IntoIterator<Item = RecordRef>) {
+    let mut seen: std::collections::HashSet<RecordRef> = list.iter().cloned().collect();
+    for record in records {
+        if seen.insert(record.clone()) {
+            list.push(record);
+        }
+    }
+}
+
+// A record as its store names it. The record rules (tablepro-records) write the wire id from it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum RecordRef {
+    // A connection, group, tag, SSH or credential profile, table folder, saved query, folder or history entry.
+    Id(uuid::Uuid),
+    // A team library item, by its team and the client id the team stores.
+    TeamItem {
+        team_id: String,
+        id: String,
+    },
+    // A favourite table or a table folder item, by the table it names; an absent database or schema is empty.
+    Table(crate::TableRef),
+    // A favourite database.
+    Database {
+        connection_id: uuid::Uuid,
+        database: String,
+    },
 }
 
 // Shared by every handle of one store, so a journal set late reaches the handles made before it.
@@ -93,8 +151,8 @@ impl JournalSlot {
         *slot = journal;
     }
 
-    pub(crate) fn notify(&self, kinds: &[RecordKind]) {
-        if kinds.is_empty() {
+    pub(crate) fn notify(&self, entries: &[JournalEntry]) {
+        if entries.is_empty() {
             return;
         }
         let journal = match self.0.read() {
@@ -102,7 +160,7 @@ impl JournalSlot {
             Err(poisoned) => poisoned.into_inner().clone(),
         };
         if let Some(journal) = journal {
-            journal.changed(kinds);
+            journal.changed(entries);
         }
     }
 }
@@ -124,10 +182,10 @@ impl Signals {
         self.changes.subscribe()
     }
 
-    pub(crate) fn changed(&self, kinds: &[RecordKind]) {
+    pub(crate) fn changed(&self, entries: &[JournalEntry]) {
         self.changes
             .send_modify(|revision| *revision = revision.wrapping_add(1));
-        self.journal.notify(kinds);
+        self.journal.notify(entries);
     }
 }
 
@@ -141,17 +199,24 @@ impl fmt::Debug for JournalSlot {
 pub(crate) mod recording {
     use std::sync::Mutex;
 
-    use super::{ChangeJournal, RecordKind};
+    use super::{ChangeJournal, JournalEntry, RecordKind};
 
     #[derive(Default)]
-    pub(crate) struct Recording(Mutex<Vec<Vec<RecordKind>>>);
+    pub(crate) struct Recording(Mutex<Vec<Vec<JournalEntry>>>);
 
     impl Recording {
         pub(crate) fn calls(&self) -> Vec<Vec<RecordKind>> {
-            self.0.lock().map(|calls| calls.clone()).unwrap_or_default()
+            self.0
+                .lock()
+                .map(|calls| calls.iter().map(|call| kinds(call)).collect())
+                .unwrap_or_default()
         }
 
         pub(crate) fn take(&self) -> Vec<Vec<RecordKind>> {
+            self.take_entries().iter().map(|call| kinds(call)).collect()
+        }
+
+        pub(crate) fn take_entries(&self) -> Vec<Vec<JournalEntry>> {
             self.0
                 .lock()
                 .map(|mut calls| std::mem::take(&mut *calls))
@@ -159,10 +224,14 @@ pub(crate) mod recording {
         }
     }
 
+    fn kinds(call: &[JournalEntry]) -> Vec<RecordKind> {
+        call.iter().map(|entry| entry.kind).collect()
+    }
+
     impl ChangeJournal for Recording {
-        fn changed(&self, kinds: &[RecordKind]) {
+        fn changed(&self, entries: &[JournalEntry]) {
             if let Ok(mut calls) = self.0.lock() {
-                calls.push(kinds.to_vec());
+                calls.push(entries.to_vec());
             }
         }
     }
@@ -186,9 +255,9 @@ mod tests {
         let shared = slot.clone();
         let journal = Arc::new(recording::Recording::default());
 
-        shared.notify(&[RecordKind::Tag]);
+        shared.notify(&[JournalEntry::new(RecordKind::Tag)]);
         slot.set(Some(journal.clone()));
-        shared.notify(&[RecordKind::Connection]);
+        shared.notify(&[JournalEntry::new(RecordKind::Connection)]);
         shared.notify(&[]);
 
         assert_eq!(journal.calls(), vec![vec![RecordKind::Connection]]);

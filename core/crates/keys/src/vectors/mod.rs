@@ -1,6 +1,7 @@
 // The vectors in core/crates/keys/vectors (ADR 0056, Vectors): generated here from inputs drawn
 // from each case's name, so a run gives the same files; `scripts/update-vectors.sh` writes them.
 
+mod clauses;
 mod fixtures;
 mod gen_basic;
 mod gen_bodies;
@@ -16,7 +17,7 @@ use std::path::PathBuf;
 
 use crate::json::JsonValue;
 
-const FILES: [&str; 14] = [
+const FILES: [&str; 15] = [
     "encoding.json",
     "recovery.json",
     "certificates.json",
@@ -31,6 +32,7 @@ const FILES: [&str; 14] = [
     "dpop.json",
     "bodies.json",
     "flows.json",
+    "limits.json",
 ];
 
 fn dir() -> PathBuf {
@@ -67,11 +69,15 @@ fn generate() -> Vec<(&'static str, String)> {
         gen_basic::dpop_proofs(),
         gen_bodies::bodies(),
         gen_flows::flows(&cache),
+        gen_sealed::limits(&cache),
     ];
     FILES
         .iter()
         .zip(files)
-        .map(|(name, value)| (*name, out::pretty(&value)))
+        .map(|(name, mut value)| {
+            clauses::assign(name, &mut value);
+            (*name, out::pretty(&value))
+        })
         .collect()
 }
 
@@ -145,7 +151,7 @@ fn every_negative_row_of_adr_0056_has_a_case() {
     let adr = std::fs::read_to_string(adr_path).expect("ADR 0056");
     let start = adr.find("- **Negative.**").expect("the negative table");
     let end = adr[start..].find("- **Go side.**").expect("the end of the table") + start;
-    let rows: Vec<String> = adr[start..end]
+    let mut rows: Vec<String> = adr[start..end]
         .lines()
         .filter(|line| line.starts_with("| ") && !line.starts_with("| Case"))
         .filter_map(|line| {
@@ -156,21 +162,74 @@ fn every_negative_row_of_adr_0056_has_a_case() {
         })
         .collect();
     assert!(rows.len() > 80, "{} rows", rows.len());
+    // ADR 0064 adds three restart vectors in one line, each named before its colon.
+    let restart = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+        "../../docs/decisions/0064-a-team-restart-waits-for-a-word-comparison-and-the-sync-lanes-readings-are-settled.md",
+    ))
+    .expect("ADR 0064");
+    let line = restart
+        .lines()
+        .find_map(|line| line.strip_prefix("- **Vectors:** "))
+        .expect("0064's vectors");
+    let restart_row = line
+        .trim_end_matches('.')
+        .split("; ")
+        .map(|part| part.split(": ").next().unwrap_or(part))
+        .collect::<Vec<_>>()
+        .join("; ");
+    assert_eq!(
+        restart_row,
+        gen_flows::RESTART_HELD_ROW,
+        "0064's vectors as the scenarios name them"
+    );
+    rows.push(restart_row);
 
-    let mut named = Vec::new();
-    for (_, file) in committed() {
+    // Every clause of every row, by a case or a scenario step that names both; every such case or
+    // step says what the server answers.
+    let mut named: Vec<(String, String)> = Vec::new();
+    let text = |value: &JsonValue, name: &str| match value {
+        JsonValue::Object(members) => members
+            .iter()
+            .find(|(member, _)| member == name)
+            .and_then(|(_, value)| match value {
+                JsonValue::String(text) => Some(text.clone()),
+                _ => None,
+            }),
+        _ => None,
+    };
+    let has = |value: &JsonValue, name: &str| matches!(value, JsonValue::Object(members) if members.iter().any(|(member, _)| member == name));
+    for (file_name, file) in committed() {
         for case in cases(&file.expect("vectors")) {
+            let Some(row) = text(case, "row") else { continue };
             if let JsonValue::Object(members) = case
-                && let Some((_, JsonValue::String(row))) = members.iter().find(|(name, _)| name == "row")
+                && let Some((_, JsonValue::Array(steps))) = members.iter().find(|(name, _)| name == "steps")
             {
-                named.push(row.clone());
+                for step in steps {
+                    assert!(has(step, "server"), "{file_name}: a step of {row} has no server field");
+                    if let Some(clause) = text(step, "clause") {
+                        named.push((row.clone(), clause));
+                    }
+                }
+            } else {
+                assert!(has(case, "server"), "{file_name}: a case of {row} has no server field");
+                named.push((
+                    row.clone(),
+                    text(case, "clause").unwrap_or_else(|| panic!("{file_name}: a case of {row} has no clause")),
+                ));
             }
         }
     }
     for row in &rows {
-        assert!(named.contains(row), "no case for the row: {row}");
+        for clause in clauses::split(row) {
+            assert!(
+                named
+                    .iter()
+                    .any(|(named_row, named_clause)| named_row == row && named_clause == clause),
+                "no case for the clause {clause:?} of the row: {row}"
+            );
+        }
     }
-    for row in &named {
+    for (row, _) in &named {
         assert!(
             rows.contains(row) || row.starts_with("Errors table: "),
             "not a row of the table: {row}"

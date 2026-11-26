@@ -1,7 +1,9 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use rustls_pki_types::ServerName;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{ClientIdentity, ConfigError, ServerNameOverride, TlsCapabilities, TlsMode, TransportClass};
 
@@ -14,6 +16,9 @@ pub struct TlsConfig {
     pub client_identity: Option<ClientIdentity>,
     #[serde(default)]
     pub server_name: Option<String>,
+    // Keys a newer build wrote, kept and written back.
+    #[serde(flatten)]
+    pub unknown: BTreeMap<String, Value>,
 }
 
 impl TlsConfig {
@@ -31,11 +36,13 @@ impl TlsConfig {
             ca_file: None,
             client_identity: None,
             server_name: None,
+            unknown: BTreeMap::new(),
         }
     }
 
     pub fn validate(&self, caps: &TlsCapabilities, route: TransportClass) -> Result<(), ConfigError> {
-        if !caps.modes.contains(&self.mode) {
+        // No driver checks a chain without the server's name yet, so Verify CA is refused rather than run as another mode.
+        if self.mode == TlsMode::VerifyCa || !caps.modes.contains(&self.mode) {
             return Err(ConfigError::UnsupportedTlsMode);
         }
         let encrypted = self.mode.encrypts();
@@ -148,10 +155,8 @@ mod tests {
 
     fn with_ca_file(mode: TlsMode, path: &str) -> TlsConfig {
         TlsConfig {
-            mode,
             ca_file: Some(absolute(path)),
-            client_identity: None,
-            server_name: None,
+            ..TlsConfig::with_mode(mode)
         }
     }
 
@@ -363,6 +368,36 @@ mod tests {
     }
 
     #[test]
+    fn verify_ca_is_refused_even_by_an_engine_that_lists_it() {
+        const LISTS_VERIFY_CA: TlsCapabilities = TlsCapabilities {
+            modes: &[TlsMode::VerifyCa, TlsMode::VerifyFull],
+            ..POSTGRES
+        };
+        let config = TlsConfig {
+            mode: TlsMode::VerifyCa,
+            ..TlsConfig::disabled()
+        };
+
+        for caps in [POSTGRES, LISTS_VERIFY_CA] {
+            assert_eq!(
+                config.validate(&caps, TransportClass::DirectTcp),
+                Err(ConfigError::UnsupportedTlsMode)
+            );
+        }
+    }
+
+    #[test]
+    fn a_key_a_newer_build_wrote_is_kept() {
+        let config: TlsConfig = serde_json::from_str(r#"{"mode":"require","pinned":"sha256/abc"}"#).unwrap();
+
+        assert_eq!(config.unknown.get("pinned"), Some(&Value::from("sha256/abc")));
+        assert_eq!(
+            serde_json::to_value(&config).unwrap()["pinned"],
+            Value::from("sha256/abc")
+        );
+    }
+
+    #[test]
     fn invalid_server_name_is_config_error() {
         for name in ["", "has space.example.com", "double..dot.example.com"] {
             assert_eq!(
@@ -390,6 +425,7 @@ mod tests {
                 key: PathBuf::from("/etc/tls/client.key"),
             }),
             server_name: Some("db.internal".to_owned()),
+            unknown: BTreeMap::new(),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains(r#""mode":"verify_full""#), "{json}");
