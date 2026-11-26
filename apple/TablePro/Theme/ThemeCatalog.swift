@@ -496,6 +496,46 @@ internal extension ThemeCatalog {
         }
     }
 
+    // Every user theme as sync reads it. A file that no longer loads may hold a theme that syncs, so it fails the read
+    // instead of reading as a theme removed on every Mac; Settings lists it, to fix or move to the Trash. One a newer
+    // build wrote goes as its bytes, by its id. A built-in id or a second copy of an id hides no theme.
+    func syncPayloads() throws -> [String: Data] {
+        var payloads: [String: Data] = [:]
+        for category in syncCategories {
+            guard let payload = syncPayload(forCategory: category) else { throw ThemeSyncReadError.unencodable }
+            payloads[category] = payload
+        }
+        for record in rejected {
+            if let (id, data) = try Self.newerTheme(at: URL(fileURLWithPath: record.path)), userFiles[id] == nil {
+                payloads[Self.syncCategory(for: id)] = data
+            }
+        }
+        return payloads
+    }
+
+    // Nil for a file that loads, which only the catalog refused, or one gone since.
+    nonisolated private static func newerTheme(at url: URL) throws -> (id: String, data: Data)? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch CocoaError.fileReadNoSuchFile {
+            return nil
+        }
+        do {
+            _ = try ThemeFileFormat.decode(data, text: .repaired)
+            return nil
+        } catch ThemeLoadError.schemaTooNew {
+            guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let id = root["id"] as? String,
+                  ThemeIdentifier.isValid(id),
+                  !id.hasPrefix(ThemeDefinition.builtInPrefix)
+            else { throw ThemeSyncReadError.unreadable }
+            return (id, data)
+        } catch {
+            throw ThemeSyncReadError.unreadable
+        }
+    }
+
     // A synced theme is untrusted input from another device, so it is validated before anything
     // touches disk. A record that fails validation is skipped, since the same bytes would fail
     // again; only a disk failure is `.failed`, so the pull is not acknowledged and replays.
@@ -633,6 +673,11 @@ internal extension ThemeCatalog {
         guard theme.id == id else { throw ThemeSyncRejection.mismatchedIdentifier }
         return theme
     }
+}
+
+internal enum ThemeSyncReadError: Error {
+    case unreadable
+    case unencodable
 }
 
 private enum ThemeSyncRejection: Error {

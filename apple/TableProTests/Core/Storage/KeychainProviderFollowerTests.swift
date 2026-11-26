@@ -32,19 +32,22 @@ private final class CopyingKeychain: KeychainStoring, @unchecked Sendable {
 @MainActor
 struct KeychainProviderFollowerTests {
     private let suite: EphemeralDefaults
+    private let record: DefaultsKeychainProviderRecord
 
     init() throws {
-        suite = try EphemeralDefaults()
+        let suite = try EphemeralDefaults()
+        self.suite = suite
+        record = DefaultsKeychainProviderRecord { [defaults = suite.defaults] in defaults }
     }
 
     private var state: KeychainProviderState {
-        KeychainProviderState.stored(in: suite.defaults)
+        record.state
     }
 
     @Test("TablePro Sync adds the device-only copies and marks them added")
     func tableProSyncAddsCopies() async {
         let keychain = CopyingKeychain(answers: [true])
-        let follower = KeychainProviderFollower(keychain: keychain, defaults: suite.defaults)
+        let follower = KeychainProviderFollower(keychain: keychain, record: record)
 
         follower.follow(.tableproSync)
         #expect(state == KeychainProviderState(onTableProSync: true, deviceCopiesAdded: false))
@@ -57,7 +60,7 @@ struct KeychainProviderFollowerTests {
     @Test("Copies a locked Keychain refused are tried again on the next report, then marked")
     func unfinishedCopiesAreTriedAgain() async {
         let keychain = CopyingKeychain(answers: [false, true])
-        let follower = KeychainProviderFollower(keychain: keychain, defaults: suite.defaults)
+        let follower = KeychainProviderFollower(keychain: keychain, record: record)
 
         follower.follow(.tableproSync)
         await follower.copiesSettled()
@@ -72,7 +75,7 @@ struct KeychainProviderFollowerTests {
 
     @Test("Back on iCloud or off, the password sync switch decides again", arguments: [SyncProviderTag.icloud, .off])
     func leavingTableProSyncClearsTheState(provider: SyncProviderTag) async {
-        let follower = KeychainProviderFollower(keychain: CopyingKeychain(answers: [true]), defaults: suite.defaults)
+        let follower = KeychainProviderFollower(keychain: CopyingKeychain(answers: [true]), record: record)
         follower.follow(.tableproSync)
         await follower.copiesSettled()
 
@@ -84,7 +87,7 @@ struct KeychainProviderFollowerTests {
     @Test("Copies that finish after a move back mark nothing")
     func lateCopiesMarkNothing() async {
         let keychain = CopyingKeychain(answers: [true])
-        let follower = KeychainProviderFollower(keychain: keychain, defaults: suite.defaults)
+        let follower = KeychainProviderFollower(keychain: keychain, record: record)
 
         follower.follow(.tableproSync)
         follower.follow(.icloud)
@@ -95,9 +98,9 @@ struct KeychainProviderFollowerTests {
 
     @Test("Each status the engine reports is followed, and a launch finishes copies owed from the last one")
     func followsTheEngineAndResumesAtLaunch() async {
-        KeychainProviderState(onTableProSync: true, deviceCopiesAdded: false).store(in: suite.defaults)
+        record.store(KeychainProviderState(onTableProSync: true, deviceCopiesAdded: false))
         let keychain = CopyingKeychain(answers: [true])
-        let follower = KeychainProviderFollower(keychain: keychain, defaults: suite.defaults)
+        let follower = KeychainProviderFollower(keychain: keychain, record: record)
         let changes = PassthroughSubject<Void, Never>()
         var reported: SyncProviderTag?
 
@@ -113,8 +116,8 @@ struct KeychainProviderFollowerTests {
 
     @Test("A status with no provider changes nothing")
     func noProviderChangesNothing() {
-        KeychainProviderState(onTableProSync: true, deviceCopiesAdded: true).store(in: suite.defaults)
-        let follower = KeychainProviderFollower(keychain: CopyingKeychain(answers: []), defaults: suite.defaults)
+        record.store(KeychainProviderState(onTableProSync: true, deviceCopiesAdded: true))
+        let follower = KeychainProviderFollower(keychain: CopyingKeychain(answers: []), record: record)
         let changes = PassthroughSubject<Void, Never>()
 
         follower.start(changes: changes.eraseToAnyPublisher()) { nil }

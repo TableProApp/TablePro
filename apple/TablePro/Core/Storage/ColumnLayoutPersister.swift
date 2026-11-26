@@ -308,6 +308,68 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         writeEntries(entries, for: scope.connectionId)
     }
 
+    // MARK: - Sync
+
+    // Every layout the files hold, read from disk rather than the cache, which a failed load leaves empty. A file it
+    // cannot read fails the read, so a damaged file stops the pass instead of reading as layouts removed on every Mac.
+    func syncedLayouts() throws -> [String: Data] {
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(at: storageDirectory, includingPropertiesForKeys: nil)
+        } catch CocoaError.fileReadNoSuchFile {
+            return [:]
+        }
+        var layouts: [String: Data] = [:]
+        for file in files where file.pathExtension == "json" {
+            guard let connectionId = UUID(uuidString: file.deletingPathExtension().lastPathComponent) else { continue }
+            for (storageKey, entry) in try readEntries(for: connectionId) {
+                layouts[storageKey] = try encoder.encode(entry)
+            }
+        }
+        return layouts
+    }
+
+    func syncedLayout(storageKey: String) throws -> Data? {
+        guard let scope = TableScope(storageComponent: storageKey) else { return nil }
+        return try readEntries(for: scope.connectionId)[storageKey].map { try encoder.encode($0) }
+    }
+
+    // False when the document is no layout. A file this Mac cannot read is never written over, and the cache takes the
+    // layout only once it is on disk, so a failed write is tried again instead of read back as stored.
+    func applyPulled(storageKey: String, data: Data) throws -> Bool {
+        guard let scope = TableScope(storageComponent: storageKey),
+              let entry = try? decoder.decode(PersistedColumnLayout.self, from: data)
+        else { return false }
+        var entries = try readEntries(for: scope.connectionId)
+        entries[storageKey] = entry
+        try persist(entries, for: scope.connectionId)
+        cache[scope.connectionId] = entries
+        return true
+    }
+
+    func removePulled(storageKey: String) throws {
+        guard let scope = TableScope(storageComponent: storageKey) else { return }
+        var entries = try readEntries(for: scope.connectionId)
+        guard entries.removeValue(forKey: storageKey) != nil else { return }
+        if entries.isEmpty {
+            try deleteFile(for: scope.connectionId)
+        } else {
+            try persist(entries, for: scope.connectionId)
+        }
+        cache[scope.connectionId] = entries
+        removeLegacyHidden(storageKey: storageKey)
+    }
+
+    private func readEntries(for connectionId: UUID) throws -> [String: PersistedColumnLayout] {
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL(for: connectionId))
+        } catch CocoaError.fileReadNoSuchFile {
+            return [:]
+        }
+        return try decoder.decode([String: PersistedColumnLayout].self, from: data)
+    }
+
     func customizedStorageKeys() -> [String] {
         guard let files = try? FileManager.default.contentsOfDirectory(
             at: storageDirectory,
@@ -368,12 +430,22 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         }
     }
 
+    private func persist(_ entries: [String: PersistedColumnLayout], for connectionId: UUID) throws {
+        try encoder.encode(entries).write(to: fileURL(for: connectionId), options: .atomic)
+    }
+
+    private func deleteFile(for connectionId: UUID) throws {
+        do {
+            try FileManager.default.removeItem(at: fileURL(for: connectionId))
+        } catch CocoaError.fileNoSuchFile {
+            return
+        }
+    }
+
     @discardableResult
     private func writeEntries(_ entries: [String: PersistedColumnLayout], for connectionId: UUID) -> Bool {
-        let fileURL = fileURL(for: connectionId)
         do {
-            let data = try encoder.encode(entries)
-            try data.write(to: fileURL, options: .atomic)
+            try persist(entries, for: connectionId)
             return true
         } catch {
             Self.logger.error(

@@ -12,6 +12,12 @@ import os
 final class HostSettingsCatalog {
     private static let logger = Logger(subsystem: "com.TablePro", category: "HostSettings")
 
+    // A record is at most 1 MiB (core ADR 0051, Limits). What a server can make this Mac keep is bounded too: past it a
+    // pull fails rather than this Mac dropping a category, which would read as deleted.
+    static let maximumDocumentBytes = 1 << 20
+    static let maximumKeptCategories = 512
+    static let maximumKeptBytes = 4 << 20
+
     private let stores: any HostSettingsStores
     private let keptFile: JSONFileStore<HostSettingsKept>
     private let build: String
@@ -62,6 +68,10 @@ final class HostSettingsCatalog {
             try save(kept, ifChangedFrom: before)
             return
         }
+        guard document.count <= Self.maximumDocumentBytes,
+              kept.entries[category] != nil || kept.entries.count < Self.maximumKeptCategories,
+              kept.byteCount + 2 * document.count <= Self.maximumKeptBytes
+        else { throw HostSettingsStoreError.overBudget(category) }
         let sent = try SettingsJSON.parse(document)
         let kind = HostSettingsCategoryKind(category)
         let written = try stores.write(document, for: category)

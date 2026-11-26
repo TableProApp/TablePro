@@ -3,37 +3,30 @@ import Security
 @testable import TablePro
 import Testing
 
-private final class ProviderStateBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var state: KeychainProviderState
-
-    init(_ state: KeychainProviderState) {
-        self.state = state
-    }
-
-    var value: KeychainProviderState {
-        get { lock.withLock { state } }
-        set { lock.withLock { state = newValue } }
-    }
-}
-
 struct KeychainProviderTests {
     private let store = ScopedKeychainItemStore()
     private let key = "com.TablePro.password.provider"
-    private let provider = ProviderStateBox(.followsPasswordSync)
+    private let suite: EphemeralDefaults
+    private let record: DefaultsKeychainProviderRecord
+
+    init() throws {
+        let suite = try EphemeralDefaults()
+        self.suite = suite
+        record = DefaultsKeychainProviderRecord { [defaults = suite.defaults] in defaults }
+    }
 
     private func helper(passwordSync: Bool = false, followsPasswordSync: Bool = true) -> KeychainHelper {
         KeychainHelper(
             service: "com.TablePro.tests.provider",
             followsPasswordSync: followsPasswordSync,
             passwordSyncSetting: { passwordSync },
-            providerState: { [provider] in provider.value },
+            provider: record,
             items: store
         )
     }
 
     private func onTableProSync(copiesAdded: Bool) {
-        provider.value = KeychainProviderState(onTableProSync: true, deviceCopiesAdded: copiesAdded)
+        record.store(KeychainProviderState(onTableProSync: true, deviceCopiesAdded: copiesAdded))
     }
 
     @Test("On TablePro Sync a save goes to this Mac's own item and the iCloud item stays, even with password sync on")
@@ -93,7 +86,7 @@ struct KeychainProviderTests {
     @Test("Back on iCloud, password sync decides again and the iCloud item is read")
     func backOnICloudFollowsPasswordSync() {
         store.seed("synced", account: key, synchronizable: true)
-        provider.value = .followsPasswordSync
+        record.store(.followsPasswordSync)
 
         #expect(helper(passwordSync: true).readString(forKey: key) == "synced")
         #expect(helper(passwordSync: true).writeString("new", forKey: key))
@@ -123,6 +116,19 @@ struct KeychainProviderTests {
         #expect(store.value(account: "b", synchronizable: true) == "synced-b")
     }
 
+    @Test("After the copies, a build that knows no TablePro Sync reads the same secrets, iCloud off as the move left it")
+    func previousStableReadsTheCopies() {
+        store.seed("synced", account: key, synchronizable: true)
+        #expect(helper().addDeviceOnlyCopies())
+        onTableProSync(copiesAdded: true)
+        #expect(helper().writeString("edited-on-tablepro-sync", forKey: key))
+
+        record.store(.followsPasswordSync)
+
+        #expect(helper(passwordSync: false).readString(forKey: key) == "edited-on-tablepro-sync")
+        #expect(store.value(account: key, synchronizable: true) == "synced")
+    }
+
     @Test("A locked item or a locked listing leaves the copies unfinished, and the rest still get theirs")
     func lockedItemsLeaveCopiesUnfinished() {
         store.seed("synced-a", account: "a", synchronizable: true)
@@ -143,16 +149,54 @@ struct KeychainProviderTests {
         #expect(store.value(account: "a", synchronizable: false) == "synced-a")
     }
 
-    @Test("The provider state round-trips through defaults, and leaving TablePro Sync clears it")
-    func providerStateRoundTrips() throws {
-        let suite = try EphemeralDefaults()
-        let state = KeychainProviderState(onTableProSync: true, deviceCopiesAdded: true)
+    @Test("Before every copy is made, a secret removed here is neither read back from iCloud nor copied back")
+    func removalBeforeTheCopiesStays() {
+        store.seed("synced-a", account: "a", synchronizable: true)
+        store.seed("synced-b", account: "b", synchronizable: true)
+        store.lockItems(of: "b")
+        onTableProSync(copiesAdded: false)
+        let keychain = helper()
+        #expect(!keychain.addDeviceOnlyCopies())
 
-        state.store(in: suite.defaults)
-        #expect(KeychainProviderState.stored(in: suite.defaults) == state)
+        keychain.delete(forKey: "a")
+        store.unlockItems(of: "b")
 
-        KeychainProviderState.followsPasswordSync.store(in: suite.defaults)
-        #expect(KeychainProviderState.stored(in: suite.defaults) == .followsPasswordSync)
-        #expect(suite.defaults.object(forKey: KeychainProviderState.providerKey) == nil)
+        #expect(keychain.readStringResult(forKey: "a") == .notFound)
+        #expect(keychain.addDeviceOnlyCopies())
+        #expect(store.value(account: "a", synchronizable: false) == nil)
+        #expect(store.value(account: "a", synchronizable: true) == "synced-a")
+        #expect(store.value(account: "b", synchronizable: false) == "synced-b")
+    }
+
+    @Test("A secret saved again after its removal is read again")
+    func savedAgainAfterRemoval() {
+        store.seed("synced", account: key, synchronizable: true)
+        onTableProSync(copiesAdded: false)
+        let keychain = helper()
+
+        keychain.delete(forKey: key)
+        #expect(keychain.writeString("new", forKey: key))
+
+        #expect(!record.isRemovedHere(key))
+        #expect(keychain.readString(forKey: key) == "new")
+    }
+
+    @Test("The state round-trips through defaults, and finishing the copies or leaving TablePro Sync ends the removals")
+    func stateRoundTripsAndRemovalsEnd() {
+        let state = KeychainProviderState(onTableProSync: true, deviceCopiesAdded: false)
+        record.store(state)
+        record.noteRemovedHere(key)
+        #expect(record.state == state)
+        #expect(record.isRemovedHere(key))
+
+        record.store(KeychainProviderState(onTableProSync: true, deviceCopiesAdded: true))
+        #expect(!record.isRemovedHere(key))
+
+        record.noteRemovedHere(key)
+        record.store(.followsPasswordSync)
+
+        #expect(record.state == .followsPasswordSync)
+        #expect(!record.isRemovedHere(key))
+        #expect(suite.defaults.object(forKey: DefaultsKeychainProviderRecord.providerKey) == nil)
     }
 }

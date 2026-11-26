@@ -32,6 +32,7 @@ enum HostSettingsWrite: Equatable {
 enum HostSettingsStoreError: Error {
     case unreadable(String)
     case unwritable(String)
+    case overBudget(String)
 }
 
 enum HostSettingsCategoryKind: Equatable {
@@ -105,18 +106,10 @@ final class AppHostSettingsStores: HostSettingsStores {
         if slashCommands.holdsValue {
             documents[CustomSlashCommandStorage.syncCategory] = try encoder.encode(slashCommands.commands)
         }
-        for storageKey in columnLayouts.customizedStorageKeys() {
-            if let data = columnLayouts.rawData(forStorageKey: storageKey) {
-                documents[FileColumnLayoutPersister.syncCategory(for: storageKey)] = data
-            }
+        for (storageKey, data) in try columnLayouts.syncedLayouts() {
+            documents[FileColumnLayoutPersister.syncCategory(for: storageKey)] = data
         }
-        for category in themes.syncCategories {
-            // A theme the catalog lists but cannot encode would read as deleted on every Mac.
-            guard let data = themes.syncPayload(forCategory: category) else {
-                throw HostSettingsStoreError.unreadable(category)
-            }
-            documents[category] = data
-        }
+        documents.merge(try themes.syncPayloads()) { _, theme in theme }
         return documents
     }
 
@@ -127,9 +120,9 @@ final class AppHostSettingsStores: HostSettingsStores {
         case .slashCommands:
             return slashCommands.holdsValue ? try encoder.encode(slashCommands.commands) : nil
         case .columnLayout(let storageKey):
-            return columnLayouts.rawData(forStorageKey: storageKey)
+            return try columnLayouts.syncedLayout(storageKey: storageKey)
         case .theme:
-            return themes.syncPayload(forCategory: category)
+            return try themes.syncPayloads()[category]
         case .unknown:
             return nil
         }
@@ -153,8 +146,7 @@ final class AppHostSettingsStores: HostSettingsStores {
             slashCommands.applyRemote(CustomSlashCommandStorage.renamingCollisions(commands))
             return .written
         case .columnLayout(let storageKey):
-            columnLayouts.applyRemote(storageKey: storageKey, data: document)
-            return .written
+            return try columnLayouts.applyPulled(storageKey: storageKey, data: document) ? .written : .unreadable
         case .theme:
             guard themes.applyRemote(category: category, data: document, merge: .replace) != .failed else {
                 throw HostSettingsStoreError.unwritable(category)
@@ -166,17 +158,16 @@ final class AppHostSettingsStores: HostSettingsStores {
     }
 
     func remove(_ category: String) throws {
-        let removed: Bool
         switch HostSettingsCategoryKind(category) {
         case .columnLayout(let storageKey):
-            removed = columnLayouts.removeWithoutSync(storageKeys: [storageKey])
+            try columnLayouts.removePulled(storageKey: storageKey)
         case .theme:
-            guard let id = ThemeCatalog.themeId(forSyncCategory: category) else { return }
-            removed = themes.removeWithoutSync(ids: [id])
+            guard let id = ThemeCatalog.themeId(forSyncCategory: category),
+                  themes.removeWithoutSync(ids: [id])
+            else { throw HostSettingsStoreError.unwritable(category) }
         case .preferences, .slashCommands, .unknown:
             return
         }
-        guard removed else { throw HostSettingsStoreError.unwritable(category) }
     }
 
     private func preferences(_ category: String) throws -> Data {

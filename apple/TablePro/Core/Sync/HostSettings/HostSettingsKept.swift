@@ -23,6 +23,8 @@ nonisolated struct HostSettingsKept: Codable, Equatable, Sendable {
         var sent: Data
         // Nil when the store held nothing.
         var held: Data?
+
+        var byteCount: Int { sent.count + (held?.count ?? 0) }
     }
 
     enum Entry: Codable, Equatable, Sendable {
@@ -38,12 +40,25 @@ nonisolated struct HostSettingsKept: Codable, Equatable, Sendable {
 
     var categories: [String] { entries.keys.sorted() }
 
+    var byteCount: Int {
+        entries.values.reduce(0) { total, entry in
+            switch entry {
+            case .document(let value): total + value.byteCount
+            case .options(let values): total + values.reduce(0) { $0 + $1.key.utf8.count + $1.value.byteCount }
+            case .items(let items):
+                total + items.reduce(0) { sum, item in
+                    sum + item.key.utf8.count + item.value.reduce(0) { $0 + $1.key.utf8.count + $1.value.count }
+                }
+            }
+        }
+    }
+
     // After a pull wrote `sent` and the store held `held`.
     mutating func record(_ category: String, shape: Shape, sent: Any, held: Any?) throws {
         switch shape {
         case .options:
-            if let sentObject = sent as? [String: Any], held == nil || held is [String: Any] {
-                try recordOptions(category, sent: sentObject, held: held as? [String: Any] ?? [:])
+            if let sentObject = sent as? [String: Any], let heldObject = held as? [String: Any] {
+                try recordOptions(category, sent: sentObject, held: heldObject)
                 return
             }
         case .items:
@@ -91,19 +106,19 @@ nonisolated struct HostSettingsKept: Codable, Equatable, Sendable {
         entries[category] = kept.isEmpty ? nil : .options(kept)
     }
 
+    // Kept options ride on a document the store holds, so once it holds none, as a layout cleared here, they go with it.
     private mutating func reportOptions(_ category: String, kept: [String: Value], local: Any?) throws -> Any? {
-        if local != nil, !(local is [String: Any]) {
+        guard var document = local as? [String: Any] else {
             entries[category] = nil
             return local
         }
-        var document = local as? [String: Any] ?? [:]
         var still: [String: Value] = [:]
         for (key, value) in kept where try document[key].map(SettingsJSON.canonical) == value.held {
             document[key] = try SettingsJSON.parse(value.sent)
             still[key] = value
         }
         entries[category] = still.isEmpty ? nil : .options(still)
-        return local == nil && still.isEmpty ? nil : document
+        return document
     }
 
     private mutating func recordItems(_ category: String, sent: [Any], held: [Any]) throws {

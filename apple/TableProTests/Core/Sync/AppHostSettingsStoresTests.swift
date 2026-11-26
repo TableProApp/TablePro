@@ -198,4 +198,59 @@ struct AppHostSettingsStoresTests {
         #expect(reported["newerOption"] as? Int == 3)
         #expect(reported["enablePreviewTabs"] as? Bool == false)
     }
+
+    @Test("A damaged column layout file fails the read, and a pull never writes over it")
+    func damagedLayoutFileFailsTheRead() throws {
+        let harness = try Harness()
+        let connection = UUID()
+        let key = ColumnLayoutTableKey(connectionId: connection, databaseName: "db", schemaName: nil, tableName: "t")
+        try Data("not json".utf8).write(to: harness.root
+            .appendingPathComponent("ColumnLayout/\(connection.uuidString).json", isDirectory: false))
+
+        #expect(throws: (any Error).self) { try harness.stores.documents() }
+        #expect(throws: (any Error).self) {
+            try harness.stores.write(Data(#"{"columnWidths":{"id":40}}"#.utf8), for: FileColumnLayoutPersister.syncCategory(for: key.storageKey))
+        }
+        let left = try Data(contentsOf: harness.root.appendingPathComponent("ColumnLayout/\(connection.uuidString).json"))
+        #expect(left == Data("not json".utf8))
+    }
+
+    @Test("A pulled layout whose write fails is not taken as stored")
+    func failedLayoutWriteIsNotStored() throws {
+        let harness = try Harness()
+        let blocked = harness.root.appendingPathComponent("NotADirectory", isDirectory: false)
+        try Data().write(to: blocked)
+        let persister = FileColumnLayoutPersister(storageDirectory: blocked, defaults: try harness.pool.make().defaults)
+        let key = ColumnLayoutTableKey(connectionId: UUID(), databaseName: "db", schemaName: nil, tableName: "t")
+
+        #expect(throws: (any Error).self) {
+            try persister.applyPulled(storageKey: key.storageKey, data: Data(#"{"columnWidths":{"id":40}}"#.utf8))
+        }
+        #expect(persister.load(for: key) == nil)
+    }
+
+    @Test("A theme file that no longer loads fails the read, so its theme never reads as deleted")
+    func damagedThemeFileFailsTheRead() throws {
+        let harness = try Harness()
+        let themes = harness.root.appendingPathComponent("Themes", isDirectory: true)
+        try FileManager.default.createDirectory(at: themes, withIntermediateDirectories: true)
+        try Data(#"{"schema":4,"id":"user.broken""#.utf8).write(to: themes.appendingPathComponent("broken.json"))
+        harness.themes.reloadSynchronously()
+
+        #expect(throws: (any Error).self) { try harness.stores.documents() }
+    }
+
+    @Test("A theme file a newer build wrote goes by its id, as its bytes")
+    func newerThemeFileGoesAsItsBytes() throws {
+        let harness = try Harness()
+        let themes = harness.root.appendingPathComponent("Themes", isDirectory: true)
+        try FileManager.default.createDirectory(at: themes, withIntermediateDirectories: true)
+        let bytes = Data(#"{"appearance":"dark","id":"user.newer","name":"Newer","schema":99}"#.utf8)
+        try bytes.write(to: themes.appendingPathComponent("user.newer.json"))
+        harness.themes.reloadSynchronously()
+
+        let documents = try harness.stores.documents()
+
+        #expect(documents[ThemeCatalog.syncCategory(for: "user.newer")] == bytes)
+    }
 }

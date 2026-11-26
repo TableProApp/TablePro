@@ -42,6 +42,22 @@ struct HostSettingsKeptTests {
         #expect(kept.entries.isEmpty)
     }
 
+    @Test("A layout cleared here takes its kept options with it, so the engine sees the deletion")
+    func clearedLayoutDropsKeptOptions() throws {
+        var kept = HostSettingsKept()
+        let category = "columnLayout.A.db.public.users"
+        try kept.record(
+            category, shape: .options,
+            sent: try json(#"{"columnWidths":{"id":40},"newerOption":1}"#),
+            held: try json(#"{"columnWidths":{"id":40}}"#)
+        )
+
+        let reported = try kept.report(category, local: nil)
+
+        #expect(reported == nil)
+        #expect(kept.entries.isEmpty)
+    }
+
     @Test("A document the store took as sent keeps nothing")
     func takenDocumentKeepsNothing() throws {
         var kept = HostSettingsKept()

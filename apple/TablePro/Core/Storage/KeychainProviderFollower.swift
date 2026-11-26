@@ -19,7 +19,7 @@ final class KeychainProviderFollower {
     private static let logger = Logger(subsystem: "com.TablePro", category: "KeychainProviderFollower")
 
     private let keychain: any KeychainStoring
-    private let defaults: UserDefaults
+    private let record: any KeychainProviderRecord
     private var subscription: AnyCancellable?
     private var copying: Task<Void, Never>?
     // Each provider adopted, so copies that finish after a move back mark nothing.
@@ -27,10 +27,10 @@ final class KeychainProviderFollower {
 
     init(
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
-        defaults: UserDefaults = AppStorageEnvironment.shared.defaults
+        record: any KeychainProviderRecord = DefaultsKeychainProviderRecord()
     ) {
         self.keychain = keychain
-        self.defaults = defaults
+        self.record = record
     }
 
     // Only reads the engine once it is open: following it never opens it.
@@ -52,7 +52,7 @@ final class KeychainProviderFollower {
     }
 
     func follow(_ provider: SyncProviderTag) {
-        let current = KeychainProviderState.stored(in: defaults)
+        let current = record.state
         switch provider {
         case .tableproSync:
             guard !current.onTableProSync else {
@@ -60,12 +60,12 @@ final class KeychainProviderFollower {
                 return
             }
             generation += 1
-            KeychainProviderState(onTableProSync: true, deviceCopiesAdded: false).store(in: defaults)
+            record.store(KeychainProviderState(onTableProSync: true, deviceCopiesAdded: false))
             addCopiesIfOwed()
         case .icloud, .off:
             guard current != .followsPasswordSync else { return }
             generation += 1
-            KeychainProviderState.followsPasswordSync.store(in: defaults)
+            record.store(.followsPasswordSync)
         }
     }
 
@@ -76,7 +76,7 @@ final class KeychainProviderFollower {
 
     // Off the main thread: a Keychain call is a round trip to securityd per item.
     private func addCopiesIfOwed() {
-        let state = KeychainProviderState.stored(in: defaults)
+        let state = record.state
         guard state.onTableProSync, !state.deviceCopiesAdded, copying == nil else { return }
         let turn = generation
         copying = Task { [keychain] in
@@ -91,11 +91,11 @@ final class KeychainProviderFollower {
             addCopiesIfOwed()
             return
         }
-        guard KeychainProviderState.stored(in: defaults).onTableProSync else { return }
+        guard record.state.onTableProSync else { return }
         guard complete else {
             Self.logger.notice("Not every iCloud Keychain item has a copy on this Mac yet; trying again later")
             return
         }
-        KeychainProviderState(onTableProSync: true, deviceCopiesAdded: true).store(in: defaults)
+        record.store(KeychainProviderState(onTableProSync: true, deviceCopiesAdded: true))
     }
 }
