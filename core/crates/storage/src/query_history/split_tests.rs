@@ -332,8 +332,8 @@ async fn opening_again_moves_nothing() {
 // copy an upgrade kept or a backup brings back. `changed` is what an older release wrote to it meanwhile.
 async fn put_back(old: &Old, changed: Option<&str>) -> Uuid {
     let history_path = old.paths.history_database();
-    let copy = history_path.with_extension("put-back");
-    std::fs::copy(&history_path, &copy).expect("a copy of the old file");
+    let copy = old.paths.state.join("history.db.put-back");
+    std::fs::copy(history_before_move(&old.paths), &copy).expect("a copy of the old file");
     let saved = SavedQueryDatabase::open(&old.paths).await.expect("saved queries");
     let generation = saved.identity().await.expect("identity").generation;
     saved

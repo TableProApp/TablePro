@@ -1991,7 +1991,7 @@ mod tests {
     async fn a_copy_that_cannot_be_trimmed_is_removed() {
         let root = tempfile::tempdir().expect("tempdir");
         let history = QueryHistory::open(&paths(&root)).await.expect("open");
-        let damaged = root.path().join("state/tablepro/history.db.v1-100");
+        let damaged = root.path().join("state/tablepro/history/history.db.v1-100");
         std::fs::write(&damaged, b"not a database").expect("seed");
 
         history.clear_all().await.expect("clear");
