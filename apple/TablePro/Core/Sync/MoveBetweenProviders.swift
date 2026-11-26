@@ -189,8 +189,15 @@ internal final class ProviderMoves: ObservableObject {
 
     // The zone stays after a move until the person deletes it. Never while this Mac syncs with iCloud, and never once
     // the organization takes iCloud away: then no request reaches CloudKit.
+    nonisolated static func offersICloudDataDeletion(
+        _ provider: SyncProviderSetting,
+        under snapshot: ManagedPolicySnapshot
+    ) -> Bool {
+        provider != .iCloud && SyncProviderPolicy.choices(snapshot).providers.contains(.icloud)
+    }
+
     var offersICloudDataDeletion: Bool {
-        settings.value.provider != .iCloud && choices.providers.contains(.icloud)
+        Self.offersICloudDataDeletion(settings.value.provider, under: host.policy())
     }
 
     func deleteICloudData() async throws {

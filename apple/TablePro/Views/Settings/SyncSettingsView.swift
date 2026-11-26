@@ -34,7 +34,9 @@ struct SyncSettingsView: View {
             iCloudStatus: coordinator.syncStatus,
             engine: moves.engineStatus,
             serverLicense: featureAccess.state.serverLicense,
-            offersICloudDataDeletion: moves.offersICloudDataDeletion
+            // A Mac that never synced with iCloud has nothing of its own to delete there.
+            offersICloudDataDeletion: coordinator.lastSyncDate != nil
+                && ProviderMoves.offersICloudDataDeletion(settings.provider, under: policy.snapshot)
         ))
     }
 
