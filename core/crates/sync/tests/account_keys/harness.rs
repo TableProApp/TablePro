@@ -289,6 +289,7 @@ impl Device {
                     scope: ScopeName::Personal,
                     records: page.records,
                     order,
+                    in_force: (order == ArrivalOrder::InOrder).then_some(row.key_version).flatten(),
                 })
                 .await
                 .unwrap();
@@ -416,6 +417,7 @@ impl Device {
                 scope: ScopeName::Personal,
                 records,
                 order,
+                in_force: None,
             })
             .await
             .unwrap()

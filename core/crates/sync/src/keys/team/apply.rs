@@ -88,9 +88,10 @@ impl KeyService {
         let mut book = self.load_team(&mut *txn, team).await?;
         let before = book.row().cloned();
         // The replay position: the newest version record the server served at or before each place, which the
-        // honest server writes by, apart from the version this device verified. Only a pull moves it (0056, Rollback,
-        // In order; 0054, `scopes`).
-        let mut in_force = self.scope_row(&mut *txn, arrival.scope).await?.key_version;
+        // honest server writes by, apart from the version this device verified. Only a pull moves it, from where the
+        // engine says the page stands, never back from the one stored (0056, Rollback, In order; 0054, `scopes`).
+        let stored = self.scope_row(&mut *txn, arrival.scope).await?.key_version;
+        let mut in_force = arrival.in_force.max(stored);
         let mut own_member_av = self.own_member_av(&mut *txn, arrival.scope).await?;
         let mut served: BTreeMap<Version, KeyObject> = BTreeMap::new();
         let mut cache = FactsCache::default();

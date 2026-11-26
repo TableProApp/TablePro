@@ -591,6 +591,10 @@ pub struct KeyArrival {
     pub scope: ScopeName,
     pub records: Vec<PulledRecord>,
     pub order: ArrivalOrder,
+    // In order, the version in force at the first record as the engine has it for the page so far: a page can carry
+    // several runs of key objects, and the state file holds only the position its last commit left. None in a
+    // snapshot, which carries no order.
+    pub in_force: Option<Version>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

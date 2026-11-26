@@ -177,7 +177,7 @@ async fn a_member_not_yet_confirmed_keeps_the_team_s_envelopes_waiting_and_syncs
         && held.reason == HeldRecordReason::Held(HeldReason::AwaitingDeviceApproval)));
 }
 
-async fn push_envelope(owner: &Device, team: TeamId, secret: &str) -> EnvelopeId {
+pub(super) async fn push_envelope(owner: &Device, team: TeamId, secret: &str) -> EnvelopeId {
     let parent = tablepro_keys::encoding::uuid_to_wire(tablepro_keys::encoding::random_uuid().unwrap()).to_lowercase();
     let envelope = EnvelopeId::new(ParentKind::LibraryConnection, &parent, SecretKind::Password).unwrap();
     let sealed = owner
@@ -212,7 +212,7 @@ async fn push_envelope(owner: &Device, team: TeamId, secret: &str) -> EnvelopeId
     envelope
 }
 
-async fn waits(device: &Device, envelope: &EnvelopeId) -> bool {
+pub(super) async fn waits(device: &Device, envelope: &EnvelopeId) -> bool {
     device.sync.held_records().await.unwrap().iter().any(|held| {
         held.key.record_id == envelope.to_wire()
             && held.reason == HeldRecordReason::Held(HeldReason::AwaitingDeviceApproval)

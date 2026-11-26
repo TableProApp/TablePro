@@ -499,6 +499,7 @@ impl Device {
                 scope: ScopeName::Personal,
                 records: page.records.clone(),
                 order,
+                in_force: (order == ArrivalOrder::InOrder).then_some(row.key_version).flatten(),
             };
             let mut applied = self.service.apply_account_objects(arrival.clone()).await.unwrap();
             for more in [
@@ -689,6 +690,7 @@ pub fn arrival(records: Vec<tablepro_sync::api::transport::PulledRecord>) -> Key
         scope: ScopeName::Personal,
         records,
         order: ArrivalOrder::InOrder,
+        in_force: None,
     }
 }
 

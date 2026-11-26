@@ -333,9 +333,12 @@ impl ServiceSync {
             return Ok(());
         };
         self.stop.check()?;
-        let applied = self.arrive(pull.scope, family, records, ArrivalOrder::InOrder).await?;
-        // The flows judge a run from the position stored at the last commit, so a later run of the same page can
-        // answer an older version; the position only moves forward (0056, Rollback, In order).
+        // Each run starts from the position the page reached so far, which the state file holds only once the page
+        // commits, so a second run of versions goes on from the first's; the position only moves forward (0056,
+        // Rollback, In order).
+        let applied = self
+            .arrive(pull.scope, family, records, ArrivalOrder::InOrder, pull.in_force)
+            .await?;
         pull.in_force = pull.in_force.max(applied.in_force);
         Ok(())
     }

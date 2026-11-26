@@ -72,8 +72,14 @@ impl ServiceSync {
         family: Family,
         records: Vec<PulledRecord>,
         order: ArrivalOrder,
+        in_force: Option<Version>,
     ) -> Result<KeyApplied, SyncError> {
-        let arrival = KeyArrival { scope, records, order };
+        let arrival = KeyArrival {
+            scope,
+            records,
+            order,
+            in_force,
+        };
         match family {
             Family::Account => self.keys.apply_account_objects(arrival).await,
             Family::Session => self.keys.apply_session_objects(arrival).await,
@@ -99,7 +105,7 @@ impl ServiceSync {
                 continue;
             }
             self.stop.check()?;
-            let applied = self.arrive(scope, wanted, set, ArrivalOrder::Snapshot).await?;
+            let applied = self.arrive(scope, wanted, set, ArrivalOrder::Snapshot, None).await?;
             in_force = applied.in_force.or(in_force);
         }
         Ok(in_force)
