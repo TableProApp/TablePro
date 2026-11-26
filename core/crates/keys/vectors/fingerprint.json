@@ -1,0 +1,119 @@
+{
+  "area": "fingerprint",
+  "suite": "tp1",
+  "format": 1,
+  "about": "Fingerprint words, the word digits and the QR text (ADR 0056, Pins and Encoding)",
+  "word_list": {
+    "name": "EFF large word list",
+    "sha256": "addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e",
+    "count": 7776
+  },
+  "fingerprint": [
+    {
+      "name": "an account's fingerprint",
+      "op": "fingerprint",
+      "input": {
+        "origin": "https://sync.example.com",
+        "account": "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8",
+        "ik_hex": "ceae824778fd1247cdc18af467e7166f4e2a834c2c9614b0eca43aab47a42a69"
+      },
+      "output": {
+        "info_hex": "000000177461626c6570726f2f76312f66696e6765727072696e74000000037470310000001868747470733a2f2f73796e632e6578616d706c652e636f6d00000010019a6b2e8f3c7d41b2a56c0e9f14d7b8",
+        "f_hex": "511ed478ef951e17a9975f4b1cc81f25304f775a43a58b8baebdb73a74b0c8fc",
+        "word_indexes": [3036,3571,2674,5240,1179,1291],
+        "words": ["growing","kinswoman","footer","reliable","comic","copartner"],
+        "qr": "TPF1:A4FD8Y7FJMF1FACQBX5HSJ0Z4MR4YXTT8EJRQ2XEQPVKMX5GS3Y0"
+      }
+    }
+  ],
+  "words": [
+    {
+      "name": "every index 0",
+      "op": "words",
+      "input": {
+        "digest_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+        "count": 6
+      },
+      "output": {
+        "word_indexes": [0,0,0,0,0,0],
+        "words": ["abacus","abacus","abacus","abacus","abacus","abacus"]
+      }
+    },
+    {
+      "name": "index 7775 first",
+      "op": "words",
+      "input": {
+        "digest_hex": "0000000000000000000000000000000000000000000000000000000000001e5f",
+        "count": 6
+      },
+      "output": {
+        "word_indexes": [7775,0,0,0,0,0],
+        "words": ["zoom","abacus","abacus","abacus","abacus","abacus"]
+      }
+    },
+    {
+      "name": "all ones",
+      "op": "words",
+      "input": {
+        "digest_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "count": 6
+      },
+      "output": {
+        "word_indexes": [7359,1630,4359,4992,1950,4081],
+        "words": ["unwatched","defection","overhand","pushpin","dotted","nacho"]
+      }
+    }
+  ],
+  "qr": [
+    {
+      "name": "QR text, its last 4 bits zero",
+      "op": "parse_qr",
+      "input": {
+        "text": "TPF1:ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZG"
+      },
+      "output": {
+        "f_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    {
+      "name": "another prefix",
+      "op": "parse_qr",
+      "row": "Errors table: keys.encoding, QR text that does not parse",
+      "input": {
+        "text": "TPF2:A4FD8Y7FJMF1FACQBX5HSJ0Z4MR4YXTT8EJRQ2XEQPVKMX5GS3Y0"
+      },
+      "error": "keys.encoding",
+      "server": null
+    },
+    {
+      "name": "non-zero final bits",
+      "op": "parse_qr",
+      "row": "Errors table: keys.encoding, QR text that does not parse",
+      "input": {
+        "text": "TPF1:ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZH"
+      },
+      "error": "keys.encoding",
+      "server": null
+    },
+    {
+      "name": "lower case",
+      "op": "parse_qr",
+      "row": "Errors table: keys.encoding, QR text that does not parse",
+      "input": {
+        "text": "TPF1:a4fd8y7fjmf1facqbx5hsj0z4mr4yxtt8ejrq2xeqpvkmx5gs3y0"
+      },
+      "error": "keys.encoding",
+      "server": null
+    },
+    {
+      "name": "grouped",
+      "op": "parse_qr",
+      "row": "Errors table: keys.encoding, QR text that does not parse",
+      "input": {
+        "text": "TPF1:A4FD8Y7FJMF1FACQBX5HSJ0Z4-MR4YXTT8EJRQ2XEQPVKMX5GS3Y0"
+      },
+      "error": "keys.encoding",
+      "server": null
+    }
+  ]
+}

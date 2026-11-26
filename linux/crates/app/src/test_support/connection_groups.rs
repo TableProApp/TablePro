@@ -92,6 +92,9 @@ pub(crate) fn saved_connection(name: &str) -> SavedConnection {
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
+        details: Default::default(),
+        device: Default::default(),
+        unknown: Default::default(),
     }
 }
 

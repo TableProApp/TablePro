@@ -111,7 +111,6 @@ impl SqlEditor {
         keys.set_name(Some("tablepro-vim"));
         keys.set_propagation_phase(gtk4::PropagationPhase::Capture);
         let filter = context.clone();
-        let kept = crate::application::editor_kept_keys();
         let editor = self.downgrade();
         keys.connect_key_pressed(move |keys, keyval, _, state| {
             let Some(event) = keys.current_event() else {
@@ -125,8 +124,8 @@ impl SqlEditor {
             {
                 return glib::Propagation::Proceed;
             }
-            if kept
-                .as_ref()
+            // Read at each key, so a shortcut preset chosen while Vim is on reaches the editor.
+            if crate::application::editor_kept_keys()
                 .is_some_and(|kept| kept.trigger(&event, false) != gdk::KeyMatch::None)
             {
                 return glib::Propagation::Proceed;
@@ -153,7 +152,7 @@ impl SqlEditor {
         // Vim edits the buffer itself, which no other cursor could follow.
         view.set_carets_enabled(false);
         // Escape is Vim's now; the Stop button still stops a run.
-        imp.stop_button.reset_property(gtk4::AccessibleProperty::KeyShortcuts);
+        crate::ui::a11y::withdraw_key_shortcuts(&imp.stop_button.get());
         imp.vim.replace(Some(VimMode {
             context,
             keys,

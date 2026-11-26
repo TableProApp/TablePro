@@ -287,7 +287,9 @@ private final class RecordingLibraryStore: ImportLibraryStore {
         Set(written.map(\.planned.id))
     }
 
-    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) {}
+    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) -> CredentialWriteResult {
+        .allKept
+    }
 }
 
 private actor RecordingSavedQueryStore: SavedQueryImportStore {

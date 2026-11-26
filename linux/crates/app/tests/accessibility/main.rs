@@ -37,8 +37,10 @@ use world::{World, drain_main_context, wait_until};
 
 type Scenario = fn() -> Result<Vec<Finding>, String>;
 
-const SCENARIOS: [(&str, Scenario); 8] = [
+const SCENARIOS: [(&str, Scenario); 10] = [
     ("picker_page_controls_are_labelled", picker_page),
+    ("setup_guide_controls_are_labelled", setup_guide),
+    ("empty_library_controls_are_labelled", empty_library),
     ("manage_tags_dialog_controls_are_labelled", manage_tags_dialog),
     ("connecting_page_controls_are_labelled", connecting_page),
     ("connect_failed_page_controls_are_labelled", connect_failed_page),
@@ -114,6 +116,44 @@ fn picker_page() -> Result<Vec<Finding>, String> {
         .ok_or("the picker has no search")?;
     search.set_search_mode(true);
     drain_main_context();
+    Ok(audit(&window))
+}
+
+// Each step of the guide an empty library opens, audited while it is the one shown.
+fn setup_guide() -> Result<Vec<Finding>, String> {
+    let world = World::start_empty("SetupGuide", fake_driver(), FakeConnector::new([]))?;
+    let window = world.open(WindowLaunch::Picker)?;
+    wait_until("the setup guide", || shows(&window, "TableProSetupGuide"))?;
+    let navigation = descendants(window.upcast_ref())
+        .into_iter()
+        .find_map(|widget| widget.downcast::<adw::NavigationView>().ok())
+        .ok_or("the guide has no navigation view")?;
+    let mut findings = Vec::new();
+    for tag in [
+        "setup-origin",
+        "setup-import",
+        "setup-first-connection",
+        "setup-options",
+    ] {
+        navigation.replace_with_tags(&[tag]);
+        drain_main_context();
+        merge(&mut findings, audit(&window));
+    }
+    Ok(findings)
+}
+
+// The empty library the guide leaves after Skip, with its Add Connection and Set Up… buttons.
+fn empty_library() -> Result<Vec<Finding>, String> {
+    let world = World::start_empty("EmptyLibrary", fake_driver(), FakeConnector::new([]))?;
+    let window = world.open(WindowLaunch::Picker)?;
+    wait_until("the setup guide", || shows(&window, "TableProSetupGuide"))?;
+    let skip = descendants(window.upcast_ref())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
+        .find(|button| button.label().as_deref() == Some("_Skip") && button.is_mapped())
+        .ok_or("the guide has no Skip")?;
+    skip.emit_clicked();
+    wait_until("the empty picker", || shows(&window, "TableProPickerPage"))?;
     Ok(audit(&window))
 }
 

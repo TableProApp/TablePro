@@ -1,16 +1,7 @@
-//
-//  SystemHotkeyChecker.swift
-//  TablePro
-//
-//  Reports the user's live, enabled macOS system shortcuts so the recorder can
-//  refuse combos the system already owns. Reads the same data as
-//  System Settings > Keyboard > Shortcuts via CopySymbolicHotKeys, so it adapts
-//  to the user's configuration instead of relying on a hand-maintained list.
-//
-
 import AppKit
 import Carbon.HIToolbox
 
+// Reads the live data System Settings > Keyboard > Shortcuts shows, so it follows the user's own setup, not a fixed list.
 @MainActor
 final class SystemHotkeyChecker {
     static let shared = SystemHotkeyChecker()
@@ -31,6 +22,18 @@ final class SystemHotkeyChecker {
         reserved = Self.loadSystemHotkeys()
     }
 
+    // BoundKey has no Globe flag, so a Globe chord such as window tiling's Globe-Control-F would read as plain Control-F.
+    nonisolated static func boundKey(code: Int, modifiers: Int) -> BoundKey? {
+        guard code >= 0, code < Int(UInt16.max), modifiers & kEventKeyModifierFnMask == 0 else { return nil }
+        return BoundKey(
+            keyCode: UInt16(code),
+            command: modifiers & cmdKey != 0,
+            shift: modifiers & shiftKey != 0,
+            option: modifiers & optionKey != 0,
+            control: modifiers & controlKey != 0
+        )
+    }
+
     private static func loadSystemHotkeys() -> Set<BoundKey> {
         var hotkeysRef: Unmanaged<CFArray>?
         guard CopySymbolicHotKeys(&hotkeysRef) == noErr,
@@ -43,16 +46,10 @@ final class SystemHotkeyChecker {
             guard (entry[kHISymbolicHotKeyEnabled as String] as? Bool) == true,
                   let code = entry[kHISymbolicHotKeyCode as String] as? Int,
                   let modifiers = entry[kHISymbolicHotKeyModifiers as String] as? Int,
-                  code >= 0, code < Int(UInt16.max) else {
+                  let key = boundKey(code: code, modifiers: modifiers) else {
                 continue
             }
-            result.insert(BoundKey(
-                keyCode: UInt16(code),
-                command: modifiers & cmdKey != 0,
-                shift: modifiers & shiftKey != 0,
-                option: modifiers & optionKey != 0,
-                control: modifiers & controlKey != 0
-            ))
+            result.insert(key)
         }
         return result
     }

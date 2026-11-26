@@ -46,6 +46,7 @@ pub mod foreign_key_info;
 mod foreign_key_mode;
 pub mod hex;
 pub mod import;
+pub mod keymap;
 pub mod keyspace;
 mod link_watch;
 mod liveness_policy;

@@ -39,16 +39,16 @@ impl AppReader for Navicat {
         self.file.is_some()
     }
 
-    fn inventory(&self) -> Inventory {
-        let connections = self
-            .read()
-            .ok()
-            .and_then(|text| parse(&text).ok().map(|document| connection_elements(&document).count()))
-            .unwrap_or(0);
-        Inventory {
-            connections,
+    fn inventory(&self) -> Result<Inventory, ForeignImportError> {
+        let text = match self.read() {
+            Ok(text) => text,
+            Err(ForeignImportError::FileNotFound { .. }) => return Ok(Inventory::default()),
+            Err(error) => return Err(error),
+        };
+        Ok(Inventory {
+            connections: connection_elements(&parse(&text)?).count(),
             saved_queries: 0,
-        }
+        })
     }
 
     fn collect(

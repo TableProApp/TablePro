@@ -121,7 +121,6 @@ final class WelcomeViewModel: ObservableObject {
     // MARK: - Presentation
 
     @Published private(set) var hasImportableApp = false
-    @Published var presentsWelcomeSheet = false
     @Published var connectionsToDelete: [DatabaseConnection] = []
     @Published var showDeleteConfirmation = false
     @Published var connectionsToExcludeFromSync: [DatabaseConnection] = []
@@ -147,8 +146,8 @@ final class WelcomeViewModel: ObservableObject {
 
     @Published var showImportFilePanel = false
     @Published var importOutcome: ImportOutcome?
-    /// Shown from the sheet's `onDismiss`, so the alert waits for the sheet to finish closing.
-    @Published var pendingImportOutcome: ImportOutcome?
+    // Handed off from the sheet's `onDismiss`, so an alert or a new window waits for the sheet to finish closing.
+    @Published var finishedImport: FinishedImport?
 
     // MARK: - Observers
 
@@ -161,10 +160,10 @@ final class WelcomeViewModel: ObservableObject {
     private var connectionStatusCancellable: AnyCancellable?
     private var welcomeRouterTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
-    private let importableAppDetector: @MainActor () -> Bool
+    private var importableAppRefresh: Task<Void, Never>?
+    private let importableAppDetector: @MainActor () async -> Bool
     private let groupExpansionStore: WelcomeGroupExpansionStore
     private let hasStoredGroupExpansion: Bool
-    let isUITestSandbox: Bool
 
     // MARK: - Initialization
 
@@ -174,18 +173,16 @@ final class WelcomeViewModel: ObservableObject {
 
     init(
         services: AppServices,
-        importableAppDetector: @escaping @MainActor () -> Bool = WelcomeViewModel.detectImportableApp,
+        importableAppDetector: @escaping @MainActor () async -> Bool = { await !ForeignSourceScanner.probe().isEmpty },
         groupExpansionStore: WelcomeGroupExpansionStore = WelcomeGroupExpansionStore(),
         recentConnections: RecentConnectionsStore = .shared,
-        listPreferences: ConnectionListPreferences = .shared,
-        isUITestSandbox: Bool = AppStorageEnvironment.shared.isIsolated
+        listPreferences: ConnectionListPreferences = .shared
     ) {
         self.services = services
         self.importableAppDetector = importableAppDetector
         self.groupExpansionStore = groupExpansionStore
         self.recentConnections = recentConnections
         self.listPreferences = listPreferences
-        self.isUITestSandbox = isUITestSandbox
         self.sortMode = listPreferences.sortMode
         self.showsRecent = listPreferences.showsRecent
         let storedExpansion = groupExpansionStore.load()
@@ -193,15 +190,10 @@ final class WelcomeViewModel: ObservableObject {
         self.expandedGroupIds = storedExpansion ?? []
     }
 
-    static func detectImportableApp() -> Bool {
-        ForeignAppImporterRegistry.all.contains { importer in
-            importer.importFileTypes == nil && importer.isAvailable()
-        }
-    }
-
     deinit {
         welcomeRouterTask?.cancel()
         searchDebounceTask?.cancel()
+        importableAppRefresh?.cancel()
     }
 
     // MARK: - Derived State
@@ -438,8 +430,18 @@ final class WelcomeViewModel: ObservableObject {
 
     // MARK: - Setup
 
-    func refreshImportableApp() {
-        hasImportableApp = importableAppDetector()
+    // The probe runs off the main actor; an answer a newer refresh replaced is dropped.
+    @discardableResult
+    func refreshImportableApp() -> Task<Void, Never> {
+        importableAppRefresh?.cancel()
+        let detector = importableAppDetector
+        let refresh = Task { @MainActor [weak self] in
+            let found = await detector()
+            guard !Task.isCancelled, let self else { return }
+            hasImportableApp = found
+        }
+        importableAppRefresh = refresh
+        return refresh
     }
 
     func setUp() {
@@ -505,7 +507,6 @@ final class WelcomeViewModel: ObservableObject {
         teamLibraryConnections = Self.buildTeamLibraryConnections()
 
         consumePendingRouterActions()
-        presentWelcomeSheetIfFirstLaunch()
         startWelcomeRouterObservation()
     }
 
@@ -674,9 +675,100 @@ final class WelcomeViewModel: ObservableObject {
         showImportFilePanel = true
     }
 
-    func finishImport(_ outcome: ImportOutcome) {
-        pendingImportOutcome = outcome
+    func finishImport(_ outcome: ImportOutcome, from origin: ImportOrigin) {
+        finishedImport = FinishedImport(outcome: outcome, origin: origin)
         activeSheet = nil
+    }
+
+    internal struct FinishedImport: Equatable {
+        let outcome: ImportOutcome
+        let origin: ImportOrigin
+    }
+
+    internal enum ImportEnding: Equatable {
+        case open(UUID)
+        case select([UUID])
+        case report(ImportOutcome, selecting: [UUID])
+    }
+
+    // A clean import hands off like the setup guide; anything failed or not kept is reported, and nothing opens.
+    internal static func importEnding(for outcome: ImportOutcome, from origin: ImportOrigin) -> ImportEnding {
+        let notKept = outcome.failure != nil || outcome.passwordsNotKept > 0 || outcome.savedQueriesNotImported > 0
+        switch outcome.handoff(from: origin) {
+        case .open(let id) where !notKept:
+            return .open(id)
+        case .select(let ids) where !notKept:
+            return .select(ids)
+        default:
+            return .report(outcome, selecting: outcome.connectionIds)
+        }
+    }
+
+    // A presentation a routed request or a failed connect opened; the setup guide stays out of its way.
+    var hasRoutedPresentation: Bool {
+        activeSheet != nil
+            || databaseTypeChooser != nil
+            || urlImportPresented
+            || pendingInstallType != nil
+            || pluginInstallConnection != nil
+            || pluginDiagnostic != nil
+            || showConnectionError
+            || showImportFilePanel
+    }
+
+    // The setup guide's ending, run here so a failed connect reports on Welcome as a list open does.
+    func handOff(_ handoff: ImportHandoff) {
+        switch handoff {
+        case .open(let id):
+            loadConnections()
+            guard let connection = connectionsById[id] else { return }
+            connectToDatabase(connection)
+        case .select(let ids):
+            revealConnections(ids)
+        case .stay:
+            return
+        }
+    }
+
+    func importSheetDidDismiss() {
+        guard let finished = finishedImport else { return }
+        finishedImport = nil
+        let outcome = finished.outcome
+        switch Self.importEnding(for: outcome, from: finished.origin) {
+        case .open(let id):
+            loadConnections()
+            guard let connection = connectionsById[id] else {
+                importOutcome = outcome
+                return
+            }
+            connectToDatabase(connection)
+        case .select(let ids):
+            revealConnections(ids)
+        case .report(let reported, let ids):
+            revealConnections(ids)
+            importOutcome = reported
+        }
+    }
+
+    // A search, a tag filter or a collapsed group would hide the rows, and the outline drops a hidden row's selection.
+    private func revealConnections(_ ids: [UUID]) {
+        loadConnections()
+        let present = ids.filter { connectionsById[$0] != nil }
+        guard !present.isEmpty else { return }
+        if !searchText.isEmpty {
+            searchText = ""
+        }
+        if !tagFilterIds.isEmpty {
+            tagFilterIds = []
+        }
+        for id in present {
+            if let groupId = connectionsById[id]?.groupId {
+                expandedGroupIds.formUnion(groupGraph.pathIds(to: groupId))
+            }
+        }
+        rebuildOutline()
+        selection = present.map { .connection($0, section: .connections) }
+        focusList()
     }
 
     func connectionString(for connection: DatabaseConnection) -> String {

@@ -18,6 +18,7 @@ use crate::library::parse_id;
 use crate::runtime::on_runtime;
 use crate::saved_queries::SavedQueryStore;
 use crate::session::DatabaseSession;
+use crate::table_folders::TableFolderStore;
 
 #[derive(uniffi::Object)]
 pub struct QueryHistoryStore {
@@ -220,6 +221,10 @@ impl QueryHistoryStore {
 
     pub fn favourites(&self) -> Arc<FavouriteStore> {
         FavouriteStore::new(self.history.favourites(), self.tasks.clone())
+    }
+
+    pub fn table_folders(&self) -> Arc<TableFolderStore> {
+        TableFolderStore::new(self.history.table_folders(), self.tasks.clone())
     }
 }
 

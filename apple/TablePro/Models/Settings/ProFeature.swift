@@ -93,11 +93,3 @@ internal enum ProFeature: String, CaseIterable {
         String(format: String(localized: "%@ needs a paid plan"), displayName)
     }
 }
-
-internal enum ProFeatureAccess: Equatable {
-    case available
-    case signedOut
-    case notIncluded
-    case expired
-    case refreshFailed
-}

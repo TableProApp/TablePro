@@ -166,13 +166,14 @@ fn is_available_when_the_app_is_installed() {
     assert!(importer(empty.path(), host).is_available_blocking());
 }
 
+// Deleting the app leaves its favorites file, which is what an import reads.
 #[test]
-fn is_not_available_when_the_app_is_missing_even_with_a_favorites_file() {
+fn is_available_from_its_favorites_file_even_once_the_app_is_gone() {
     let host = Host {
         installed: Some(false),
         ..Host::default()
     };
-    assert!(!importer(&home("full"), host).is_available_blocking());
+    assert!(importer(&home("full"), host).is_available_blocking());
 }
 
 #[test]
@@ -186,7 +187,7 @@ fn the_favorites_file_decides_when_the_platform_cannot_tell_if_the_app_is_instal
 fn nothing_is_read_off_macos() {
     let linux = importer_on(ForeignPlatform::Linux, &home("full"), Host::default());
     assert!(!linux.is_available_blocking());
-    assert_eq!(linux.inventory_blocking(), Inventory::default());
+    assert_eq!(linux.inventory_blocking().expect("an inventory"), Inventory::default());
     let outcome = linux.collect_blocking(&request(false, true), &CancellationToken::new());
     assert!(matches!(
         outcome,
@@ -198,7 +199,9 @@ fn nothing_is_read_off_macos() {
 
 #[test]
 fn inventory_counts_connections_in_every_group_and_query_favorites_with_text() {
-    let inventory = importer(&home("full"), Host::default()).inventory_blocking();
+    let inventory = importer(&home("full"), Host::default())
+        .inventory_blocking()
+        .expect("an inventory");
     assert_eq!(
         inventory,
         Inventory {
@@ -212,7 +215,9 @@ fn inventory_counts_connections_in_every_group_and_query_favorites_with_text() {
 fn inventory_is_empty_when_the_files_are_missing() {
     let empty = tempfile::tempdir().expect("a temp dir");
     assert_eq!(
-        importer(empty.path(), Host::default()).inventory_blocking(),
+        importer(empty.path(), Host::default())
+            .inventory_blocking()
+            .expect("an inventory"),
         Inventory::default()
     );
 }

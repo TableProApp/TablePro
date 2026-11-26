@@ -35,8 +35,8 @@ enum HelpMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Getting Started"),
-                action: #selector(AppDelegate.showWelcomeSheet(_:))
+                String(localized: "Setup Guide"),
+                action: #selector(AppDelegate.showSetupGuide(_:))
             ),
             MenuItemFactory.item(
                 String(localized: "Open Sample Database"),
