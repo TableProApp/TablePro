@@ -109,9 +109,7 @@ final class SyncEngineHost {
         }
     }
 
-    // No settings host yet, and no device store, which holds the state file's MAC key and anchor (core ADR 0054,
-    // Integrity and freshness): until one lands, the core starts no iCloud engine and answers each call as unavailable.
-    // The account is optional, since iCloud needs none (Providers).
+    // No settings host yet. The account is optional, since iCloud needs none (core ADR 0054, Providers).
     private static func live() -> SyncEngineHost {
         let transport = CloudKitCoreTransport()
         let mirror = LegacySyncMetadataMirror(
@@ -119,6 +117,7 @@ final class SyncEngineHost {
             recordCache: SyncProviderCoordinator.makeRecordCache()
         )
         let defaults = AppStorageEnvironment.shared.defaults
+        let deviceStore = KeychainDeviceStore(accessGroup: KeychainHelper.resolveAccessGroup())
         return SyncEngineHost(
             transport: transport,
             keepICloudAccount: { account in
@@ -138,7 +137,7 @@ final class SyncEngineHost {
                     account: account,
                     cloudkit: transport,
                     settings: nil,
-                    deviceStore: nil,
+                    deviceStore: deviceStore,
                     legacyMirror: mirror,
                     listener: listener
                 )
