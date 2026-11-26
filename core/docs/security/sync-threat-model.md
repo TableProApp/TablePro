@@ -72,6 +72,7 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 | Substitute a key at first contact | Not prevented. The fingerprint words or QR code catch it. Every wrap names its recipient's public key under the wrapper's signature, so a teammate's later wrap that shows another key raises an alert | Pins; Signed objects and wraps |
 | Invent a member and wait for the team key | Nothing is wrapped automatically. An owner or admin confirms each member in the app, with the words shown | Teams |
 | Invent a member or admin that rotates the team key to one the server knows | A version counts only when a holder of the previous version signs it, and a made-up account holds none | Teams |
+| Restart a team with a key of its own, signed by an account it made up | A member's device that held the team holds a restart until the person compares the restarting owner's six fingerprint words and accepts, and a member that holds the current version refuses it (0064) | Teams |
 | Substitute keys during device approval | The words cover both devices' key device ids and keys and the account's IK, and each side pins the other's keys only from them, never from a certificate. The new device commits to its view before the approving device sends its random value, so the server gets one guess at 2^-64.6 per session. The account keys and pins the new device receives are signed by that DSK, so a stolen device holding the account keys cannot stand in for the approver | Approving a device |
 | Show a new device other teammates than its approver sees, or a teammate without the alert the approver holds | The approving device sends its pins, with their open alerts and replaced IKs, and its newest versions in a wrap signed by its DSK, which the words cover. First-use pins it leaves out for size are pinned on first use again | Approving a device; Pins |
 | Have a rotation send new account keys to a device that a stolen account key certified | A rotation keeps only the devices the rotating device compared with itself. Every other device joins again by approval | Account flows, Rotation |
@@ -111,7 +112,8 @@ iCloud sync and iCloud Keychain follow Apple's own model and are out of scope.
 
 - Team plaintext records, as far as the account's seat and role allow.
 - **Genesis** on an account with no keys yet is trust on first use. An attacker who gets there first owns that identity. The person's own genesis fails, and the account comes back through a reset.
-- **A reset.** An attacker who also passes the step-up, a passkey the server holds or on the SaaS a code it emails, can start one. Before a person's first passkey, a self-hosted step-up is only as strong as the IdP: an attacker with the IdP sign-in binds the first passkey, which then counts as the step-up. The honest server holds it 7 days, every device and the portal show it, the SaaS emails, and any certified device or the recovery key cancels it. If nobody cancels it in that time, its proposing device can activate it within the next 7 days, whether or not the person still has the recovery key. Once activated, the person's other devices are removed, and teammates see an alert. A kind 3 reset, which runs whatever device rows remain, also deletes the personal and history records.
+- **A reset.** An attacker who also passes the step-up, a passkey the server holds or on the SaaS a code it emails, can start one. Before a person's first passkey, a self-hosted step-up is only as strong as the IdP: an attacker with the IdP sign-in binds the first passkey, then steps up with it, since the binding alone stamps none (0065). The honest server holds it 7 days, every device and the portal show it, the SaaS emails, and any certified device or the recovery key cancels it. If nobody cancels it in that time, its proposing device can activate it within the next 7 days, whether or not the person still has the recovery key. Once activated, the person's other devices are removed, and teammates see an alert. A kind 3 reset, which runs whatever device rows remain, also deletes the personal and history records.
+- **A device row.** The machine id a device reports is self-reported and never a trust anchor. The attacker can register on the person's machine id and confuse or block that row's requests and resets. It cannot get the row approved or reach any key, and the same session already acts in the portal (0065).
 
 ## A lost or stolen device
 
@@ -162,6 +164,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 - **A snapshot,** a device's first or a refill a server can force, accepts every version up to the newest for a record the device does not hold, since old envelopes stay under old keys. A removed device with the server's help can plant such a record under a version it held. History entries are taken under any version for the same reason.
 - **A device recovered with the recovery key** pins teammates on first use and can be shown an older view of its teams.
 - **A restore of the state file together with its anchor,** such as a whole-machine image, cannot be told apart locally from the moment it came from (0054). Deleted history ids live in the file only.
+- **An anchor restored without its file,** such as a Linux keyring or Windows Credential Manager restore, is older than the file. The file opens stale and rebuilds on the older checkpoint (0066).
 - **Split views** last until devices or people compare.
 - **This is not key transparency.** draft-ietf-keytrans-protocol is still a draft.
 
@@ -193,7 +196,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 
 ## Residual risks
 
-On 2026-11-25 the maintainer accepted risks 2, 3, 5, 6 and 9, which the vault model leaves open as 1Password and Bitwarden do. No step waits for every member to acknowledge a removal; the honest server's `rotation_due` holds team envelopes only until the next team version. The same day he accepted, under risk 2, that a member a stolen admin device confirmed can still be shown to other teammates.
+On 2026-11-25 the maintainer accepted risks 2, 3, 5, 6 and 9, which the vault model leaves open as 1Password and Bitwarden do. No step waits for every member to acknowledge a removal; the honest server's `rotation_due` holds team envelopes only until the next team version. The same day he accepted, under risk 2, that a member a stolen admin device confirmed can still be shown to other teammates. 0065 accepts risks 14 and 15, which give no key and only deny service.
 
 1. **Trust on first use** at a genesis, for a team's creator, for each member an admin confirms without comparing, for teammates on a device recovered with the recovery key, and for a re-confirmation after a reset.
 2. **Withholding and split views** go undetected until devices or people compare. A server that withholds a member's rotation from a teammate gets the next team key wrapped to the member's old key, which a stolen device of that member opens. The member's app raises an alarm if that wrap reaches it, which does not stop the split. The same server can keep showing teammates a member that a stolen device confirmed and the person removed. Its own-account form: before any approval, a device of the person that the server keeps on the old account key version writes personal secrets and history under keys the removed device holds.
@@ -201,13 +204,15 @@ On 2026-11-25 the maintainer accepted risks 2, 3, 5, 6 and 9, which the vault mo
 4. **A stolen device before the recovery key is typed** can be given new data by a compromised server.
 5. **A confirmed member with the server's help** can replace a team secret's value.
 6. **Rollback within a version,** and records a removed device with the server's help plants under a version it held: in a snapshot, which the server can force, and in history.
-7. **Full rollback** for a state file restored with its anchor. A restored state file, with its anchor or without it, can also bring back history the person deleted, since deleted history ids live in the file and not in the anchor (0054). These are limits of local state, not among the risks accepted above.
+7. **Full rollback** for a state file restored with its anchor, and back to the anchor's checkpoint for an anchor restored without its file (0066). A restored state file, with its anchor or without it, can also bring back history the person deleted, since deleted history ids live in the file and not in the anchor (0054). These are limits of local state, not among the risks accepted above.
 8. **A reset** by someone who passes the person's sign-in and step-up can be activated by its proposing device if nobody cancels it for 7 days. On a self-hosted install, before the person's first passkey, the IdP sign-in alone is enough to bind one. Teammates see an alert.
 9. **An exposed recovery key after a replace.** With the server's help, its holder can keep a device or a teammate that never saw the replace on the old identity, a split view.
 10. **A person who confirms without reading** approves whatever is on the other screen.
 11. **Plaintext records and metadata** are readable by the operator.
 12. **The organization running a self-hosted install** controls its endpoints, which end-to-end encryption does not cover. As operator and IdP admin alone it is this model's malicious operator and compromised IdP.
 13. **X25519 is not post-quantum.** Someone who archives wraps today could open them on a future quantum computer, and with them every envelope and history entry under those versions. A later hybrid suite protects what is written after the move, not before.
+14. **A device row taken by machine id.** A phished IdP session can register on a person's self-reported machine id and confuse or block that row's requests and resets.
+15. **A team ended on a made-up record.** After a restore, a server can serve a different record at a version a device waits for, signed by an account it made up, and the team ends on that device (`keys.conflict`). Refusing the push-back already ends a team the same way.
 
 ## Out of scope
 

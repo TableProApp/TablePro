@@ -299,6 +299,24 @@ mod tests {
             forged.ik_change(&origin(), &ik.public().unwrap()),
             Err(KeysError::Unendorsed)
         );
+
+        // An endorsement no key could make: S at or above L, and R at y = p + 1.
+        let mut s_past_l = replace.replace_sig.unwrap();
+        s_past_l.0[63] = 0xff;
+        let mut r_not_canonical = replace.replace_sig.unwrap();
+        r_not_canonical.0[..32].copy_from_slice(&[0xff; 32]);
+        r_not_canonical.0[0] = 0xee;
+        r_not_canonical.0[31] = 0x7f;
+        for sig in [s_past_l, r_not_canonical] {
+            let malformed = AccountCertificate {
+                replace_sig: Some(sig),
+                ..replace.clone()
+            };
+            assert_eq!(
+                malformed.ik_change(&origin(), &ik.public().unwrap()),
+                Err(KeysError::Signature)
+            );
+        }
     }
 
     #[test]

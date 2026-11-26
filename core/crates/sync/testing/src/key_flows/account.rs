@@ -85,7 +85,11 @@ pub(crate) fn take_kv(
 }
 
 impl FakeKeyFlows {
-    fn identity(&self, model: &mut Model, account: AccountId) -> Result<tablepro_keys::keys::Ed25519Public, SyncError> {
+    pub(crate) fn identity(
+        &self,
+        model: &mut Model,
+        account: AccountId,
+    ) -> Result<tablepro_keys::keys::Ed25519Public, SyncError> {
         if let Some(ik) = model.identities.get(&account) {
             return Ok(*ik);
         }
@@ -101,6 +105,14 @@ impl FakeKeyFlows {
             words: fingerprint_words(&digest).into_iter().map(str::to_owned).collect(),
             qr: qr_text(&digest),
         })
+    }
+
+    // The personal scope's version in force, which every personal apply answers.
+    pub(crate) fn applied(&self) -> KeyApplied {
+        KeyApplied {
+            in_force: Version::new(self.lock().av).ok(),
+            ..KeyApplied::default()
+        }
     }
 
     pub(crate) fn approve(&self, model: &mut Model) -> Result<(), SyncError> {
@@ -161,10 +173,20 @@ impl AccountFlows for FakeKeyFlows {
         model.sessions.clear();
         model.key_device = KeyDeviceId(Uuid::new_v4());
         model.held_kv.clear();
+        model.reviews.clear();
         for team in model.teams.values_mut() {
             team.holder = false;
         }
-        supersede_reset(&mut model);
+        // The revoke ends a reset this row proposed; offline, nothing reaches the server, but this device erases R' and
+        // the reset's keys with the rest, so it can no longer activate it.
+        if !model.offline {
+            supersede_reset(&mut model);
+        }
+        model.drafts.clear();
+        model.reset_drafts.clear();
+        if let Some(reset) = &mut model.reset {
+            reset.mine = false;
+        }
         Ok(if model.offline {
             SignOutOutcome::ErasedOffline
         } else {
@@ -281,11 +303,7 @@ impl AccountFlows for FakeKeyFlows {
     // Parses nothing: the version in force comes back, so an engine test can carry it with the cursor.
     async fn apply_account_objects(&self, arrival: KeyArrival) -> Result<KeyApplied, SyncError> {
         let _ = arrival;
-        let av = self.lock().av;
-        Ok(KeyApplied {
-            in_force: Version::new(av).ok(),
-            ..KeyApplied::default()
-        })
+        Ok(self.applied())
     }
 
     async fn seal_personal_envelope(

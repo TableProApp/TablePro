@@ -16,6 +16,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 struct Stored {
     record_type: String,
+    created_ms: i64,
     fields: BTreeMap<String, CloudKitValue>,
     system_fields: Vec<u8>,
     change: u64,
@@ -116,6 +117,7 @@ impl FakeCloudKit {
         let zone = state.zones.entry(account.to_owned()).or_default();
         let mut stored = zone.records.get(name).cloned().unwrap_or_else(|| Stored {
             record_type: record_type.to_owned(),
+            created_ms: zone_now(zone),
             fields: BTreeMap::new(),
             system_fields: Vec::new(),
             change: 0,
@@ -166,6 +168,11 @@ impl FakeCloudKit {
     }
 }
 
+// A creation date that grows with each change of the zone, so a record made again reads as newer.
+fn zone_now(zone: &Zone) -> i64 {
+    1_767_225_600_000 + i64::try_from(zone.next_change).unwrap_or(i64::MAX - 1_767_225_600_000)
+}
+
 fn new_system_fields() -> Vec<u8> {
     Uuid::new_v4().as_bytes().to_vec()
 }
@@ -188,6 +195,7 @@ fn record(name: &str, stored: &Stored) -> CloudKitRecord {
         record_type: stored.record_type.clone(),
         name: name.to_owned(),
         system_fields: Some(stored.system_fields.clone()),
+        created_ms: Some(stored.created_ms),
         fields: stored
             .fields
             .iter()
@@ -260,8 +268,10 @@ fn save(zone: &mut Zone, save: CloudKitRecord) -> CloudKitOutcome {
         }
         (Some(_), None) => CloudKitOutcome::UnknownItem { name: save.name },
         (_, current) => {
+            let created_ms = zone_now(zone);
             let mut stored = current.unwrap_or_else(|| Stored {
                 record_type: save.record_type.clone(),
+                created_ms,
                 fields: BTreeMap::new(),
                 system_fields: Vec::new(),
                 change: 0,

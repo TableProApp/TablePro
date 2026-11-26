@@ -40,6 +40,9 @@ pub struct CloudKitRecord {
     // What `CKRecord.encodeSystemFields(with:)` writes; Swift rebuilds the record from it and saves with
     // `.ifServerRecordUnchanged`. A create sends none.
     pub system_fields: Option<Vec<u8>>,
+    // `CKRecord.creationDate` in milliseconds, on a record CloudKit returned; None on a save. Kept with the base, it
+    // tells a record made again after a zone was removed from the one the base came from.
+    pub created_ms: Option<i64>,
     pub fields: Vec<CloudKitField>,
 }
 

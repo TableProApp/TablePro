@@ -81,10 +81,13 @@ pub enum ResetKindTag {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+// Why a team stopped on this device (core ADR 0062): a catch-up an owner or admin confirms again, or a wait for a
+// version a restore lost, which clears by itself once its signer's device pushes it back.
 pub enum StopCauseTag {
     CatchUp,
-    AwaitingPushBack,
-    RotationDue,
+    RestoreWait,
+    // A team restart held until the person compares the restarting owner's words (core ADR 0064).
+    RestartHeld,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -92,6 +95,7 @@ pub enum KeyNoticeKindTag {
     RecoveryKeyReplaced { account: String },
     KeysChanged { account: String },
     TeamKeyRestarted { team: String },
+    RestartHeld { team: String, signer: String },
     ResetPending { reset: String },
     ResetEnded { reset: String, state: ResetStateTag },
     DeviceRemoved { device: String },
@@ -229,10 +233,20 @@ pub struct TeamKeysInfo {
     pub team: String,
     pub version: Option<u32>,
     pub state: KeyVersionStateTag,
+    pub stopped_cause: Option<StopCauseTag>,
     pub rotation_due: bool,
     pub holder: bool,
     pub members: Vec<MemberKeysInfo>,
     pub stopped: Vec<StoppedDeviceInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HeldRestartInfo {
+    pub team: String,
+    pub version: u32,
+    pub signer: String,
+    pub signer_ik: String,
+    pub words: FingerprintInfo,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -459,6 +473,18 @@ impl SyncService {
     pub async fn restart_team_key(&self, team: String, confirm: Vec<String>) -> Result<(), CoreError> {
         let _ = (team, confirm);
         unfilled("keys.restart_team")
+    }
+
+    // A restart this device holds until the person compares the restarting owner's words.
+    pub async fn held_team_restart(&self, team: String) -> Result<Option<HeldRestartInfo>, CoreError> {
+        let _ = team;
+        unfilled("keys.held_restart")
+    }
+
+    // `signer_ik` is the one `held_team_restart` showed, as base64url; there is no accept without comparing.
+    pub async fn accept_team_restart(&self, team: String, signer_ik: String) -> Result<(), CoreError> {
+        let _ = (team, signer_ik);
+        unfilled("keys.accept_restart")
     }
 
     // The envelope ids a removed party could read, for "Credentials to rotate".

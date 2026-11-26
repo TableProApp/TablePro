@@ -22,6 +22,7 @@ mod paths;
 pub mod query_history;
 pub mod saved_queries;
 pub mod store_identity;
+mod stored_id;
 pub mod table_folders;
 mod tag_name_error;
 pub mod team_library;
