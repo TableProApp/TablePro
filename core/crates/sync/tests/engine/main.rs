@@ -9,6 +9,7 @@
 mod epochs;
 mod fixtures;
 mod harness;
+mod history_db;
 mod keys;
 mod parts;
 mod pass;

@@ -21,5 +21,6 @@ mod pass;
 mod pending;
 mod pull;
 mod push;
+mod saved_queries;
 mod support;
 mod zone;

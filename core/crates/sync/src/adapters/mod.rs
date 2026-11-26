@@ -12,7 +12,10 @@ pub mod carry;
 pub mod categories;
 pub mod conflict;
 pub mod fields;
+pub mod history;
+pub mod saved_queries;
 pub mod settings;
+pub mod store_journal;
 pub mod team_library;
 
 use std::collections::BTreeSet;

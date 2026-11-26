@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 tablepro-account.workspace = true
 tablepro-cloud-api.workspace = true
+tablepro-core.workspace = true
 tablepro-keys.workspace = true
 tablepro-records.workspace = true
 tablepro-storage.workspace = true
