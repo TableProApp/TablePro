@@ -61,8 +61,8 @@ final class SuggestionViewModel: ObservableObject {
 
     private var lastDroppedMovePresents = false
 
-    private var refresh: (generation: Int, position: CursorPosition)?
-    private var isRefreshingItems: Bool { itemsRequestTask != nil && refresh?.generation == requestGeneration }
+    private var refreshGeneration: Int?
+    private var isRefreshingItems: Bool { itemsRequestTask != nil && refreshGeneration == requestGeneration }
 
     weak var delegate: CodeSuggestionDelegate?
 
@@ -290,9 +290,9 @@ final class SuggestionViewModel: ObservableObject {
             items = newItems
             resetSelection()
             notifySelection()
-            // A deletion arrives here as a plain move, so the delegate, not the trigger, decides.
-            let isRefreshingHere = isRefreshingItems && refresh?.position == position
-            if !isRefreshingHere, delegate.completionNeedsFreshItems(textView: textView, cursorPosition: position) {
+            // A deletion arrives here as a plain move, so the delegate, not the trigger, decides. One refresh runs at
+            // a time: when it lands it asks again for the caret as it is then, so typing never stacks requests.
+            if !isRefreshingItems, delegate.completionNeedsFreshItems(textView: textView, cursorPosition: position) {
                 refreshItems(textView: textView, delegate: delegate, cursorPosition: position)
             }
             return
@@ -316,7 +316,7 @@ final class SuggestionViewModel: ObservableObject {
         itemsRequestTask?.cancel()
         requestGeneration &+= 1
         let generation = requestGeneration
-        refresh = (generation, cursorPosition)
+        refreshGeneration = generation
         itemsRequestTask = Task {
             defer {
                 if self.requestGeneration == generation {
@@ -333,7 +333,14 @@ final class SuggestionViewModel: ObservableObject {
                   self.isPresented, self.activeTextView === textView else { return }
 
             guard let response else {
-                self.onRequestClose?()
+                // Nothing for the prefix it ran on; a key typed meanwhile may still have answers. Only the range says
+                // the caret moved: a typed key reports no line or column, and the editor's own position has both.
+                if let liveCursor = textView.cursorPositions.first, liveCursor.range != cursorPosition.range,
+                   delegate.completionNeedsFreshItems(textView: textView, cursorPosition: liveCursor) {
+                    self.refreshItems(textView: textView, delegate: delegate, cursorPosition: liveCursor)
+                } else {
+                    self.onRequestClose?()
+                }
                 return
             }
             guard let items = self.itemsForLiveEditor(response, textView: textView, delegate: delegate),
