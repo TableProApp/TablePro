@@ -19,7 +19,7 @@ internal struct TeamContinuityCameraButton: NSViewRepresentable {
     }
 
     func updateNSView(_ button: TeamContinuityCameraPopUp, context: Context) {
-        button.setTitle(title)
+        button.updateTitle(title)
         button.onImage = onImage
     }
 }
@@ -77,7 +77,7 @@ internal final class TeamContinuityCameraPopUp: NSPopUpButton, NSServicesMenuReq
         return true
     }
 
-    func setTitle(_ title: String) {
+    func updateTitle(_ title: String) {
         guard let item = menu?.items.first, item.title != title else { return }
         item.title = title
         setAccessibilityLabel(title)
