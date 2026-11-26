@@ -309,6 +309,51 @@ async fn a_copy_sealed_under_a_key_since_made_again_starts_over_on_the_anchor() 
     assert_eq!(get(&state, RowKey::Store("connections".to_owned())).await, None);
 }
 
+// After any integrity recovery the file waits for the person to choose Move my data or Start empty again before
+// anything personal goes up, in the recovery's own commit (orchestrator ruling on 0054): an older service copy, a copy
+// started over on the anchor, and an iCloud copy of a file that saw its zone.
+#[tokio::test]
+async fn a_recovered_file_waits_for_the_person_to_choose_again() {
+    let disk = Disk::new();
+    let wait = |row: Option<Row>| match row {
+        Some(Row::Scope(scope)) => scope.push_wait,
+        _ => None,
+    };
+    let asks = Some(PushWait::AccountChoice { unsent: 0 });
+    let state = disk.open().await;
+    put(&state, vec![store_row(1)]).await;
+    drop(state);
+    let older = disk.copy(&identity()).await;
+    let state = disk.open().await;
+    put(&state, vec![store_row(2)]).await;
+    drop(state);
+    disk.restore(&identity(), &older).await;
+    let restored = wait(get(&disk.open().await, RowKey::Scope(ScopeName::Personal)).await);
+    disk.files.delete(identity()).await.unwrap();
+    let state = disk.open().await;
+    put(&state, vec![store_row(3)]).await;
+    drop(state);
+    disk.restore(&identity(), &older).await;
+    let started_over = wait(get(&disk.open().await, RowKey::Scope(ScopeName::Personal)).await);
+    let state = disk.open_as(&icloud()).await;
+    put(&state, vec![Row::Scope(ScopeRow::new(ScopeName::Personal))]).await;
+    drop(state);
+    let icloud_older = disk.copy(&icloud()).await;
+    let state = disk.open_as(&icloud()).await;
+    put(&state, vec![store_row(4)]).await;
+    drop(state);
+    disk.restore(&icloud(), &icloud_older).await;
+    let icloud_restored = wait(get(&disk.open_as(&icloud()).await, RowKey::Scope(ScopeName::Personal)).await);
+
+    assert_eq!(restored, asks);
+    assert_eq!(started_over, asks);
+    assert_eq!(icloud_restored, asks);
+    assert_eq!(
+        wait(get(&disk.open().await, RowKey::Scope(ScopeName::Personal)).await),
+        asks
+    );
+}
+
 // The file the anchor names, with its MAC written over, is refused: only a file the anchor does not know starts over.
 #[tokio::test]
 async fn the_anchored_file_with_its_mac_zeroed_is_refused() {

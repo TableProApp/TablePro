@@ -35,7 +35,8 @@ use crate::api::device_store::{DeviceStoreError, HostDeviceStore};
 use crate::api::error::StateError;
 use crate::api::ids::{FileId, ScopeName, StateName};
 use crate::api::state::{
-    BindingRow, Checkpoint, Committed, KeyTrust, Opened, Provider, Row, RowKey, StateIdentity, SyncTrust, Table,
+    BindingRow, Checkpoint, Committed, KeyTrust, Opened, Provider, PushWait, Row, RowKey, ScopeRow, StateIdentity,
+    SyncTrust, Table,
 };
 
 // Whom the MAC binds the file to.
@@ -292,6 +293,33 @@ async fn refill(tx: &mut Transaction<'static, Sqlite>, provider: Provider) -> Re
     Ok(())
 }
 
+// After any integrity recovery the file is fresh for its account: what this device holds goes up only once the person
+// chose Move my data or Start empty again, whatever the host names, since what an earlier choice kept off the account
+// may be gone with the file (orchestrator ruling on 0054). Written in the recovery's own commit, so no crash before a
+// pass loses it; the engine counts the changes for the prompt. An iCloud file that never saw its zone asks nothing.
+async fn ask_again(
+    tx: &mut Transaction<'static, Sqlite>,
+    provider: Provider,
+    started_over: bool,
+) -> Result<(), StateError> {
+    let scope = match read(tx, &RowKey::Scope(ScopeName::Personal)).await? {
+        Some(Row::Scope(scope)) => scope,
+        _ if started_over || provider == Provider::Service => ScopeRow::new(ScopeName::Personal),
+        _ => return Ok(()),
+    };
+    if scope.push_wait.is_none() {
+        write(
+            tx,
+            &Row::Scope(ScopeRow {
+                push_wait: Some(PushWait::AccountChoice { unsent: 0 }),
+                ..scope
+            }),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 // The key tables of a stale file go, and the anchored checkpoint stands in for them: the pins, versions and envelopes
 // the rebuild accepts only at or above (0054, A stale file). The rest stays in the file alone and is lost with it.
 async fn install(tx: &mut Transaction<'static, Sqlite>, checkpoint: &Checkpoint) -> Result<(), StateError> {
@@ -380,6 +408,7 @@ pub(crate) async fn open(
     let mut found = checked.find(&mut tx, key.as_ref(), &root).await?;
     if matches!(found, Found::Foreign) {
         binding = start_over(&mut tx, &binding).await?;
+        ask_again(&mut tx, party.provider(), true).await?;
         new_file = true;
         key_digest = digest::key_digest_in(&mut tx, party.provider()).await?;
         let checked = Checked {
@@ -542,6 +571,7 @@ async fn repair(
     keys: Owed,
 ) -> Result<(), StateError> {
     refill(&mut tx, seal.provider()).await?;
+    ask_again(&mut tx, seal.provider(), false).await?;
     let mut anchor = seal.anchor.lock().await;
     let mut root = anchor.root.clone().unwrap_or_else(|| Root::new(binding.file_id));
     root.file_id = binding.file_id;

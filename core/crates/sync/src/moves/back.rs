@@ -36,7 +36,7 @@ impl MoveBack {
 
     // CloudKit deletes without a change tag, so an edit saved between the fetch and this call is lost, as for any
     // iCloud deletion; the fetch keeps that window to one round trip.
-    pub(super) async fn delete(&self, allowed: &super::Allowed) -> Result<(), SyncError> {
+    pub(super) async fn delete(&self, fence: &super::MoveFence<'_>) -> Result<(), SyncError> {
         let (Some(transport), Some(state)) = (&self.transport, &self.state) else {
             return Ok(());
         };
@@ -44,7 +44,7 @@ impl MoveBack {
             return Ok(());
         }
         let names: Vec<String> = self.deletions.iter().map(|(name, _)| name.clone()).collect();
-        super::fence(allowed, Provider::ICloud)?;
+        fence.check()?;
         let outcomes = transport.modify(self.account.clone(), Vec::new(), names).await?;
         let keys: HashMap<&str, &RecordKey> = self.deletions.iter().map(|(name, key)| (name.as_str(), key)).collect();
         let mut txn = state.begin().await?;
@@ -60,7 +60,7 @@ impl MoveBack {
                 CloudKitOutcome::Saved { .. } | CloudKitOutcome::ServerChanged { .. } => {}
             }
         }
-        super::fence(allowed, Provider::ICloud)?;
+        let _held = fence.hold().await?;
         txn.commit().await?;
         // What did go is settled above; the rest is the person's to try again.
         match failed {
@@ -87,7 +87,7 @@ impl MoveBack {
     // Nothing but what the person confirmed may go from the zone: any other CloudKit base the device's stores lack,
     // whatever the service did meanwhile, loses its base, so the iCloud engine sends no deletion for it, and the next
     // fetch reads the zone whole and brings the record back.
-    pub(super) async fn keep_the_rest(&self, allowed: &super::Allowed) -> Result<(), SyncError> {
+    pub(super) async fn keep_the_rest(&self, fence: &super::MoveFence<'_>) -> Result<(), SyncError> {
         let Some(state) = &self.state else {
             return Ok(());
         };
@@ -105,7 +105,7 @@ impl MoveBack {
             scope.cursor = None;
             txn.put(Row::Scope(scope)).await?;
         }
-        super::fence(allowed, Provider::ICloud)?;
+        let _held = fence.hold().await?;
         txn.commit().await?;
         Ok(())
     }

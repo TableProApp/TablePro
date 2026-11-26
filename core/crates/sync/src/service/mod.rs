@@ -33,14 +33,14 @@ use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
-    ApprovalDecision, KeyVersionState, MovePhase, MoveRow, Provider, Row, RowKey, RowRange, Standing, StateIdentity,
-    StateStore, StateTxn, StoppedCause, StoreRow, StoresKindRow, Table,
+    ApprovalDecision, KeyVersionState, MovePhase, MoveRow, Provider, PushWait, Row, RowKey, RowRange, ScopeRow,
+    Standing, StateIdentity, StateStore, StateTxn, StoppedCause, StoreRow, StoresKindRow, Table,
 };
 use crate::api::transport::{ServiceTransport, TransportError};
 use crate::engine::{
     Adapters, Clock, EngineEvents, EngineHooks, Fence, Journal, JournalEntry, JournalIds, Pass, StopSignal,
 };
-use crate::moves::Arrival;
+use crate::moves::{Arrival, MoveFence};
 
 // What the service carries for this device (0054, Providers). Team scopes always use it, and so do the key objects in
 // the personal scope, since team secrets need the account keys; personal data only while it is the personal provider.
@@ -439,7 +439,7 @@ impl ServiceSync {
     // `moves` row holds the arrival open from the commit that lets go until the commit that ends it, so a move called
     // again after it stopped short, in this process or after a restart, goes on from the bases its first try committed
     // and a record merged then never meets the marker again.
-    pub(crate) async fn run_arrival(&self, arrival: Arrival, fence: &dyn Fence) -> Result<PassReport, SyncError> {
+    pub(crate) async fn run_arrival(&self, arrival: Arrival, fence: &MoveFence<'_>) -> Result<PassReport, SyncError> {
         let mut session = self.session.lock().await;
         self.check_stop()?;
         if self.policy_rests() {
@@ -482,7 +482,7 @@ impl ServiceSync {
     // The personal scope was pulled to the end and nothing personal is left to send, so no record goes up later without
     // the rules of the move. The row then says done until the app keeps TablePro Sync as its provider, so a move that
     // went through while the app was not watching still tells it.
-    async fn arrived(&self, report: PassReport, fence: &dyn Fence) -> Result<PassReport, SyncError> {
+    async fn arrived(&self, report: PassReport, fence: &MoveFence<'_>) -> Result<PassReport, SyncError> {
         let personal = ScopeName::Personal;
         let reached = report.reached.contains(&personal)
             && !report.pull_only
@@ -499,7 +499,7 @@ impl ServiceSync {
             phase: MovePhase::Done,
         }))
         .await?;
-        fence.check()?;
+        let _held = fence.hold().await?;
         self.check_stop()?;
         txn.commit().await?;
         Ok(report)
@@ -532,7 +532,7 @@ impl ServiceSync {
     }
 
     // A move back to iCloud starts: until it ends, personal data rests here as on iCloud, after a restart too.
-    pub(crate) async fn leave_for_icloud(&self, fence: &dyn Fence) -> Result<(), SyncError> {
+    pub(crate) async fn leave_for_icloud(&self, fence: &MoveFence<'_>) -> Result<(), SyncError> {
         let mut txn = begin(&self.state).await?;
         txn.put(Row::Move(MoveRow {
             from: Some(Provider::Service),
@@ -540,7 +540,7 @@ impl ServiceSync {
             phase: MovePhase::Open,
         }))
         .await?;
-        fence.check()?;
+        let _held = fence.hold().await?;
         self.check_stop()?;
         txn.commit().await?;
         Ok(())
@@ -548,7 +548,7 @@ impl ServiceSync {
 
     // The move back went through: iCloud holds the personal data, which stays resting here; the row says done until the
     // app keeps iCloud as its provider.
-    pub(crate) async fn left_for_icloud(&self, fence: &dyn Fence) -> Result<(), SyncError> {
+    pub(crate) async fn left_for_icloud(&self, fence: &MoveFence<'_>) -> Result<(), SyncError> {
         self.set_mode(ServiceMode::TeamsOnly).await;
         let mut txn = begin(&self.state).await?;
         txn.put(Row::Move(MoveRow {
@@ -557,7 +557,7 @@ impl ServiceSync {
             phase: MovePhase::Done,
         }))
         .await?;
-        fence.check()?;
+        let _held = fence.hold().await?;
         self.check_stop()?;
         txn.commit().await?;
         Ok(())
@@ -632,7 +632,7 @@ impl ServiceSync {
         &self,
         refills: bool,
         from: Option<Provider>,
-        fence: &dyn Fence,
+        fence: &MoveFence<'_>,
     ) -> Result<(), SyncError> {
         let scope = ScopeName::Personal;
         let mut txn = begin(&self.state).await?;
@@ -682,7 +682,7 @@ impl ServiceSync {
             row.read_kinds.clear();
             txn.put(Row::Scope(row)).await?;
         }
-        fence.check()?;
+        let _held = fence.hold().await?;
         self.check_stop()?;
         txn.commit().await?;
         Ok(())
@@ -1075,12 +1075,23 @@ impl ServiceSync {
             return Ok(());
         }
         if self.state.opened().sync_tables == crate::api::state::SyncTrust::Refill {
+            let unsent = identity::unsent_changes(&self.state, &self.adapters).await?;
             self.check_stop()?;
             let mut txn = begin(&self.state).await?;
             for row in txn.scan(&RowRange::Table(Table::Stores)).await? {
                 txn.delete(&row.key()).await?;
             }
             txn.delete(&RowKey::Move).await?;
+            // The prompt the recovery asks with counts what this device would send (`integrity::ask_again`).
+            if let Some(Row::Scope(row)) = txn.get(&RowKey::Scope(ScopeName::Personal)).await?
+                && matches!(row.push_wait, Some(PushWait::AccountChoice { .. }))
+            {
+                txn.put(Row::Scope(ScopeRow {
+                    push_wait: Some(PushWait::AccountChoice { unsent }),
+                    ..row
+                }))
+                .await?;
+            }
             self.check_stop()?;
             txn.commit().await?;
         }

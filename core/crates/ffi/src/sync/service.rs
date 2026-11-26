@@ -129,6 +129,8 @@ pub struct SyncService {
     pub(crate) _forward: AbortOnDropHandle<()>,
     // Leaves a provider as soon as the values the host passes again no longer allow it (core ADR 0055).
     pub(crate) _policy: std::sync::Mutex<Option<AbortOnDropHandle<()>>>,
+    // Held for reading by each move commit and for writing as a policy change applies (`tablepro_sync::moves::MoveFence`).
+    pub(crate) policy_gate: Arc<tokio::sync::RwLock<()>>,
 }
 
 impl std::fmt::Debug for SyncService {

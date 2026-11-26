@@ -1450,6 +1450,54 @@ async fn start_empty_keeps_settings_the_new_account_s_copy_wins_and_an_edit_send
     assert_eq!(mini.sync.status().phase, SyncPhase::Idle);
 }
 
+// A state file lost under its anchor opens fresh for its account: nothing personal goes up until the person chooses
+// Move my data or Start empty again, whatever the app names, since what an earlier choice kept off the account may be
+// gone with it (orchestrator ruling on 0054).
+#[tokio::test]
+async fn a_recovered_state_file_asks_again_before_anything_personal_goes_up() {
+    let server = FakeServer::new();
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(tablepro_sync_testing::FakeDeviceStore::new());
+    let file = StoreFile::new();
+    let connections = MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file));
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .state(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await)
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .build()
+        .await;
+    mini.sync().await;
+    let seed = Arc::clone(&mini.seed);
+    drop(mini);
+    let path = super::harness::files_at(dir.path(), &device_store).path(&super::harness::identity("dev_mini"));
+    for suffix in ["", "-wal", "-shm"] {
+        let mut name = path.clone().into_os_string();
+        name.push(suffix);
+        let _ = std::fs::remove_file(name);
+    }
+    connections.put(&id(1), json!({"name": "Made while the file was gone"}));
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .state(super::harness::open_on_disk(dir.path(), "dev_mini", &device_store).await)
+        .connections(Arc::clone(&connections), Arc::clone(&file))
+        .seed(seed)
+        .build()
+        .await;
+
+    let waited = mini.sync().await;
+    let sent_unasked = stored(&server, "connection", &id(1));
+    let plan = mini.sync.plan_new_identity().await.unwrap();
+    mini.sync
+        .choose_for_new_identity(NewIdentityChoice::MoveMyData, plan.account)
+        .await
+        .unwrap();
+
+    assert_eq!(waited.push_wait, Some(PushWait::AccountChoice { unsent: 1 }));
+    assert_eq!(sent_unasked, None);
+    assert_eq!(
+        stored(&server, "connection", &id(1)),
+        Some(json!({"name": "Made while the file was gone"}))
+    );
+}
+
 // The count the prompt shows: the changes the last account's file holds that never went up, a new record and an edit.
 #[tokio::test]
 async fn unsent_changes_counts_what_the_last_account_never_received() {

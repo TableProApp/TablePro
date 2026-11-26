@@ -14,8 +14,8 @@ use crate::api::control::{MoveBackPlan, MovePlan};
 use crate::api::error::SyncError;
 use crate::api::state::{MovePhase, MoveRow, Provider, Row, RowKey, StateFiles, StateIdentity};
 use crate::cloudkit::modify::{CloudKitSync, IcloudCopy, copy_rows};
-use crate::engine::Fence;
 use crate::service::ServiceSync;
+use tokio::sync::{RwLock, RwLockReadGuard};
 
 pub struct MoveParts {
     pub service: Arc<ServiceSync>,
@@ -29,6 +29,8 @@ pub struct MoveParts {
     // Whether the managed values allow the provider now (0055); checked right before each commit a move makes, so a
     // revocation between two steps commits nothing more.
     pub allowed: Allowed,
+    // What applies a policy change holds for writing while it does (`MoveFence`).
+    pub gate: Arc<RwLock<()>>,
 }
 
 pub type Allowed = Arc<dyn Fn(Provider) -> bool + Send + Sync>;
@@ -43,15 +45,25 @@ fn fence(allowed: &Allowed, provider: Provider) -> Result<(), SyncError> {
     }
 }
 
-// The policy's word on the move's target, which each engine asks right before it commits a move row.
-struct PolicyFence<'a> {
+// The policy's word on the move's target. A commit holds the gate's read side from its check until it lands, and a
+// policy change takes the write side, so the change lands before the commit (which is refused) or after it (and the
+// next step is) (orchestrator ruling on 0055).
+pub(crate) struct MoveFence<'a> {
     allowed: &'a Allowed,
+    gate: &'a RwLock<()>,
     provider: Provider,
 }
 
-impl Fence for PolicyFence<'_> {
-    fn check(&self) -> Result<(), SyncError> {
+impl<'a> MoveFence<'a> {
+    pub(crate) fn check(&self) -> Result<(), SyncError> {
         fence(self.allowed, self.provider)
+    }
+
+    // Held until the commit after it lands.
+    pub(crate) async fn hold(&self) -> Result<RwLockReadGuard<'a, ()>, SyncError> {
+        let held = self.gate.read().await;
+        self.check()?;
+        Ok(held)
     }
 }
 
@@ -70,9 +82,10 @@ impl Mover {
         Self { parts }
     }
 
-    const fn policy(&self, provider: Provider) -> PolicyFence<'_> {
-        PolicyFence {
+    fn policy(&self, provider: Provider) -> MoveFence<'_> {
+        MoveFence {
             allowed: &self.parts.allowed,
+            gate: &self.parts.gate,
             provider,
         }
     }
@@ -156,7 +169,7 @@ impl Mover {
         if held.is_none() {
             let mut txn = state.begin().await?;
             txn.put(moving(MovePhase::Open)).await?;
-            policy.check()?;
+            let _held = policy.hold().await?;
             txn.commit().await?;
         }
         let (bases, kept_off) = copy_rows(state.as_ref()).await?;
@@ -172,7 +185,7 @@ impl Mover {
             .await?;
         let mut txn = state.begin().await?;
         txn.put(moving(MovePhase::Done)).await?;
-        policy.check()?;
+        let _held = policy.hold().await?;
         txn.commit().await?;
         Ok(())
     }
@@ -225,8 +238,8 @@ impl Mover {
             .set_mode(crate::service::ServiceMode::TeamsOnly)
             .await;
         back.held_now(&self.parts.service).await?;
-        back.delete(&self.parts.allowed).await?;
-        back.keep_the_rest(&self.parts.allowed).await?;
+        back.delete(&policy).await?;
+        back.keep_the_rest(&policy).await?;
         drop(back);
         self.parts.service.left_for_icloud(&policy).await
     }
