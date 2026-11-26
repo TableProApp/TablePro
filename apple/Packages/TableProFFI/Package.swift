@@ -18,6 +18,10 @@ let package = Package(
         .target(
             name: "TableProFFI",
             dependencies: ["TableProFFIC"],
+            // UniFFI 0.31's Swift for an async foreign trait starts a Task over non-Sendable closures, which Swift 6
+            // refuses (mozilla/uniffi-rs#2929). The fix ships in 0.32, which uniffi-bindgen-cs does not support yet, so
+            // the generated code alone is checked in Swift 5 mode; the apps stay in Swift 6.
+            swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [
                 .linkedFramework("CoreFoundation"),
                 .linkedFramework("Security"),
