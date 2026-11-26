@@ -64,4 +64,8 @@ pub use saved_queries::{SavedQueries, SavedQueriesSnapshot, SavedQueryFolder, Sa
 pub use store_identity::{StoreContinuity, StoreIdentity};
 pub use table_folders::{TableFolder, TableFolderItem, TableFolders, TableRef, TableScope};
 pub use tag_name_error::TagNameError;
-pub use team_library::{TeamLibraryItem, TeamLibraryKind, TeamLibraryOwner, TeamLibraryStore, TeamLibraryTeam};
+pub use team_library::{
+    TeamLibraryCopy, TeamLibraryImported, TeamLibraryItem, TeamLibraryKind, TeamLibraryLocal, TeamLibraryOwner,
+    TeamLibraryRef, TeamLibraryStore, TeamLibraryTeam, TeamLibraryWriter,
+    delete_other_owners_blocking as delete_other_team_library_owners_blocking,
+};

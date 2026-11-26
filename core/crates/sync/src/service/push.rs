@@ -70,7 +70,7 @@ fn request_digest(epoch: EpochId, changes: &[Change]) -> [u8; 32] {
 
 // What a store's copy sends: with the members the store cannot hold from the base, and at the base's value each
 // member the device keeps to itself or that waits for the person (0054, Dirty state is a diff).
-fn going_up(
+pub(super) fn going_up(
     kind: Kind,
     scope: ScopeName,
     mut local: LocalRecords,
@@ -91,7 +91,7 @@ fn going_up(
     local
 }
 
-fn fingerprint(change: &Change) -> [u8; 32] {
+pub(super) fn fingerprint(change: &Change) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hash_change(&mut hasher, change);
     hasher.finalize().into()
@@ -310,7 +310,7 @@ impl ServiceSync {
             && !self.hooks.holds_secrets(scope)
     }
 
-    async fn skipped(&self, scope: ScopeName) -> Result<HashMap<KindName, HashSet<String>>, SyncError> {
+    pub(super) async fn skipped(&self, scope: ScopeName) -> Result<HashMap<KindName, HashSet<String>>, SyncError> {
         let mut txn = begin(&self.state).await?;
         let mut skip: HashMap<KindName, HashSet<String>> = HashMap::new();
         for table in [Table::Held, Table::Conflicts] {
@@ -326,7 +326,7 @@ impl ServiceSync {
         Ok(skip)
     }
 
-    async fn bases_in(&self, scope: ScopeName, kind: Kind) -> Result<Vec<BaseRow>, SyncError> {
+    pub(super) async fn bases_in(&self, scope: ScopeName, kind: Kind) -> Result<Vec<BaseRow>, SyncError> {
         let mut txn = begin(&self.state).await?;
         let rows = txn
             .scan(&RowRange::ScopeKind(Table::Bases, scope, KindName::of(kind)))
@@ -367,6 +367,10 @@ impl ServiceSync {
         for fresh in [false, true] {
             let key = self.outbox_key(scope, digest, retention_ms, fresh).await?;
             self.check_stop()?;
+            // A team's edits go out only under the sign-in they were made in.
+            if matches!(scope, ScopeName::Team(_)) && !self.team_sign_in_holds() {
+                return Err(crate::api::team_library::TeamLibraryError::SignedInChanged.into());
+            }
             let request = PushBatch {
                 scope,
                 epoch: Some(epoch),

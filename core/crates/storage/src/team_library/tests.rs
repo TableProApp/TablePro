@@ -214,3 +214,139 @@ fn signing_out_deletes_the_accounts_file() {
     assert!(!store.path().exists());
     assert!(store.teams_blocking().expect("teams").is_empty());
 }
+
+#[test]
+fn what_only_this_device_knows_of_a_team_outlives_its_items_and_tells_the_journal_nothing() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let store = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
+    let journal = Arc::new(Recording::default());
+    store.set_journal(Some(journal.clone()));
+
+    store
+        .update_local_blocking("team_a", |local| {
+            local.name = Some("Acme".to_owned());
+            local.published.push(TeamLibraryRef {
+                kind: TeamLibraryKind::Query,
+                id: "Q1".to_owned(),
+            });
+        })
+        .expect("local");
+    let held = store.local_blocking("team_a").expect("read");
+    let unknown = store.local_blocking("team_b").expect("read");
+    store
+        .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q1", "a")])
+        .expect("put");
+    store.remove_team_blocking("team_a").expect("left the team");
+
+    assert_eq!(held.name.as_deref(), Some("Acme"));
+    assert!(held.published[0].names(TeamLibraryKind::Query, "q1"));
+    assert!(!held.published[0].names(TeamLibraryKind::Folder, "q1"));
+    assert_eq!(unknown.team_id, "team_b");
+    assert!(unknown.published.is_empty());
+    assert!(store.locals_blocking().expect("read").is_empty());
+    assert_eq!(
+        journal.take(),
+        vec![vec![RecordKind::LibraryQuery], vec![RecordKind::LibraryQuery]]
+    );
+}
+
+#[test]
+fn a_delete_cut_off_after_its_mark_keeps_the_owner_s_file_unread_until_the_mark_clears() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let store = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
+    store
+        .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q1", "a")])
+        .expect("put");
+
+    store.mark_deleting_blocking().expect("marked");
+    let reopened = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
+    let while_marked = reopened.teams_blocking();
+    let write_while_marked = reopened.put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q2", "b")]);
+    reopened.delete_blocking().expect("deleted");
+    reopened.clear_deleting_blocking().expect("cleared");
+
+    assert!(matches!(while_marked, Err(StorageError::DeletePending { .. })));
+    assert!(matches!(write_while_marked, Err(StorageError::DeletePending { .. })));
+    assert!(!reopened.delete_pending_blocking());
+    assert!(!reopened.path().exists());
+    assert!(reopened.teams_blocking().expect("teams").is_empty());
+}
+
+#[test]
+fn a_delete_takes_the_copies_a_cut_off_write_left_beside_the_file() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let store = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
+    store
+        .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q1", "a")])
+        .expect("put");
+    let name = store.path().file_name().expect("name").to_string_lossy().into_owned();
+    let left = store.path().with_file_name(format!(".{name}.x1y2.tmp"));
+    let other = store.path().with_file_name(".someone-else.json.x1y2.tmp");
+    std::fs::write(&left, b"{\"teams\": []}").expect("left");
+    std::fs::write(&other, b"{}").expect("other");
+
+    store.delete_blocking().expect("deleted");
+
+    assert!(!store.path().exists());
+    assert!(!left.exists());
+    assert!(other.exists());
+}
+
+#[test]
+fn another_owner_s_file_goes_and_stays_unread_while_the_kept_owner_s_stays() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let kept = owner("https://api.tablepro.app/v2", "acct_1");
+    let mine = TeamLibraryStore::new(&paths(&root), kept.clone());
+    let theirs = TeamLibraryStore::new(&paths(&root), owner("https://sync.example.com/v2", "acct_2"));
+    for store in [&mine, &theirs] {
+        store
+            .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q1", "a")])
+            .expect("put");
+    }
+    std::fs::write(paths(&root).state.join("team-library").join("notes.txt"), b"x").expect("a stray file");
+
+    delete_other_owners_blocking(&paths(&root), Some(&kept)).expect("deleted");
+
+    assert_eq!(mine.teams_blocking().expect("teams").len(), 1);
+    assert!(!theirs.path().exists());
+    assert!(theirs.delete_pending_blocking());
+    assert!(matches!(
+        theirs.teams_blocking(),
+        Err(StorageError::DeletePending { .. })
+    ));
+    assert!(paths(&root).state.join("team-library").join("notes.txt").exists());
+
+    delete_other_owners_blocking(&paths(&root), None).expect("deleted");
+
+    assert!(!mine.path().exists());
+    assert!(mine.delete_pending_blocking());
+}
+
+#[test]
+fn an_item_s_writer_is_replaced_by_the_next_pull_and_goes_with_the_item() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let store = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
+    let writer = |name: &str, at_ms| TeamLibraryWriter {
+        kind: TeamLibraryKind::Query,
+        id: "q1".to_owned(),
+        name: Some(name.to_owned()),
+        at_ms,
+    };
+    store
+        .put_items_blocking("team_a", vec![item(TeamLibraryKind::Query, "q1", "a")])
+        .expect("put");
+
+    store
+        .record_writers_blocking("team_a", vec![writer("Ada", 1)])
+        .expect("writers");
+    store
+        .record_writers_blocking("team_a", vec![writer("Grace", 2)])
+        .expect("writers");
+    let held = store.local_blocking("team_a").expect("read").writers;
+    store
+        .remove_items_blocking("team_a", &[(TeamLibraryKind::Query, "q1".to_owned())])
+        .expect("remove");
+
+    assert_eq!(held, [writer("Grace", 2)]);
+    assert!(store.local_blocking("team_a").expect("read").writers.is_empty());
+}

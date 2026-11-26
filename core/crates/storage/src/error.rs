@@ -104,6 +104,10 @@ pub enum StorageError {
     #[error("{} belongs to another account", .path.display())]
     StoreOwnerMismatch { path: std::path::PathBuf },
 
+    // A delete of the account's data was cut off: nothing reads it until a delete finishes.
+    #[error("{} waits for its delete", .path.display())]
+    DeletePending { path: std::path::PathBuf },
+
     #[error("the library names {id} twice")]
     RepeatedId { id: uuid::Uuid },
 }
@@ -143,6 +147,7 @@ impl StorageError {
             Self::GroupCycle { .. } => "storage.group_cycle",
             Self::GroupTooDeep { .. } => "storage.group_too_deep",
             Self::StoreOwnerMismatch { .. } => "storage.store_owner_mismatch",
+            Self::DeletePending { .. } => "storage.delete_pending",
             Self::RepeatedId { .. } => "storage.repeated_id",
         }
     }

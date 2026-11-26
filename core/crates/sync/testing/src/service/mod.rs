@@ -163,6 +163,8 @@ pub(crate) struct State {
     pub(crate) rows: HashMap<DeviceRowId, AccountId>,
     pub(crate) fail_next: Vec<TransportError>,
     pub(crate) clock_us: i64,
+    // The name a team record's writer goes by, by the writer's account id on the wire.
+    pub(crate) writer_names: HashMap<String, String>,
 }
 
 impl State {
@@ -223,6 +225,7 @@ impl FakeServer {
             rows: HashMap::new(),
             fail_next: Vec::new(),
             clock_us: 1_767_225_600_000_000,
+            writer_names: HashMap::new(),
         };
         state.lineage.push(EpochRow {
             id: EpochId(Uuid::new_v4()),
@@ -343,6 +346,11 @@ impl FakeServer {
         } else {
             state.stepped_up.remove(device_row);
         }
+    }
+
+    // The name the server gives a team record's writer.
+    pub fn name_writer(&self, account: AccountId, name: &str) {
+        self.lock().writer_names.insert(account.to_wire(), name.to_owned());
     }
 
     pub fn set_lapsed(&self, lapsed: bool) {

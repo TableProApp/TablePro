@@ -9,6 +9,7 @@ use tablepro_records::Kind;
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
 use tablepro_sync::adapters::settings::SettingsAdapter;
+use tablepro_sync::adapters::team_library::TeamLibraryAdapter;
 use tablepro_sync::api::control::{SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
@@ -27,6 +28,7 @@ use tablepro_sync::http::{Binding, HttpTransport};
 use tablepro_sync::keys::{KeyService, KeyServiceParts};
 use tablepro_sync::service::{ServiceMode, ServiceParts, ServiceSync};
 
+use super::team_library::TeamLibraryHost;
 use crate::account::AccountService;
 
 // What the service engine runs over for one sign-in: who it is, and the `/v2/sync` transport that signs its calls.
@@ -71,6 +73,8 @@ pub(crate) struct Hosts {
     pub(crate) device_store: Arc<dyn HostDeviceStore>,
     pub(crate) settings: Option<Arc<dyn HostSettings>>,
     pub(crate) events: Arc<dyn EngineEvents>,
+    // Team Library's store and sign-in, which only the service engine syncs.
+    pub(crate) team_library: Option<TeamLibraryHost>,
 }
 
 impl Hosts {
@@ -192,10 +196,16 @@ impl ServiceEngine {
             hooks: Arc::clone(&hooks) as _,
             clock: Arc::new(tablepro_sync::keys::SystemClock),
         }));
+        let team_library = hosts
+            .team_library
+            .as_ref()
+            .map(|host| host.store(&link.origin, link.account, &journal));
+        let mut adapters = hosts.adapters();
+        adapters.extend(team_library.iter().flat_map(TeamLibraryAdapter::all));
         let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: link.transport,
             state,
-            adapters: Adapters::new(hosts.adapters()),
+            adapters: Adapters::new(adapters),
             keys: Arc::clone(&keys) as Arc<dyn KeyFlows>,
             hooks,
             clock: Arc::new(SystemClock),
@@ -205,6 +215,10 @@ impl ServiceEngine {
             categories,
             mode,
         }));
+        if let (Some(host), Some(store)) = (&hosts.team_library, team_library) {
+            host.attach(&sync, store, binding.as_ref().and_then(|binding| binding.session_id().map(str::to_owned)))
+                .await;
+        }
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,
             wake,

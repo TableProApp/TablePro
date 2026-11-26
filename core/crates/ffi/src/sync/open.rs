@@ -17,6 +17,7 @@ use super::events::{Signals, forward};
 use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSettingsBridge};
 use super::legacy::{HostLegacyMirror, LegacyMirrorBridge};
 use super::service::{SyncConfig, SyncListener, SyncPlatformTag, SyncService};
+use super::team_library::TeamLibraryHost;
 use super::service_records::categories_arg;
 use crate::account::{AccountService, SyncProviderTag};
 use crate::core_handle::Core;
@@ -39,6 +40,7 @@ pub(crate) struct OpenParts {
     // The sign-in's session as sync opened, read before the link, which a later start must still be.
     pub(crate) session: Option<String>,
     pub(crate) listener: Arc<dyn SyncListener>,
+    pub(crate) team_library: Option<TeamLibraryHost>,
 }
 
 #[uniffi::export]
@@ -84,6 +86,11 @@ impl Core {
             }
             _ => None,
         };
+        let team_library = self
+            .paths
+            .clone()
+            .zip(account.clone())
+            .map(|(paths, account)| TeamLibraryHost { paths, account });
         let mut parts = OpenParts {
             config,
             account,
@@ -101,6 +108,7 @@ impl Core {
             link: Err(TransportError::SignedOut.into()),
             session: None,
             listener: Arc::from(listener),
+            team_library,
         };
         let opener = tasks.clone();
         on_runtime(&opener, async move {
@@ -136,6 +144,7 @@ impl SyncService {
                 device_store,
                 settings: parts.settings,
                 events: signals,
+                team_library: parts.team_library,
             }),
             (None, _) => Err(SyncError::NotAllowed {
                 what: "sync on a Core opened without storage",

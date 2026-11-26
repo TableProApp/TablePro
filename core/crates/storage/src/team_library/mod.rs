@@ -14,7 +14,7 @@ use crate::store_identity::StoreIdentity;
 #[cfg(test)]
 mod tests;
 
-/// The account a Team Library store belongs to: the server's API origin and the account id on it.
+// The account a Team Library store belongs to: the server's API origin and the account id on it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TeamLibraryOwner {
     pub origin: String,
@@ -39,9 +39,8 @@ impl TeamLibraryKind {
     }
 }
 
-/// One shared item as this device holds it. `id` is the client id the team stores, byte for byte
-/// and in its case (core ADR 0052, Team scope), and `fields` the item's JSON object in the bundle's
-/// schema, which this store does not read.
+// One shared item as this device holds it. `id` is the client id the team stores, byte for byte and in its case (core
+// ADR 0052, Team scope), and `fields` the item's JSON object in the bundle's schema, which this store does not read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamLibraryItem {
     pub kind: TeamLibraryKind,
@@ -56,6 +55,88 @@ pub struct TeamLibraryTeam {
     pub items: Vec<TeamLibraryItem>,
 }
 
+// An item by its kind and the id the team stores. Shipped Macs match ids without case, so a ref does too.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TeamLibraryRef {
+    pub kind: TeamLibraryKind,
+    pub id: String,
+}
+
+impl TeamLibraryRef {
+    pub fn names(&self, kind: TeamLibraryKind, id: &str) -> bool {
+        self.kind == kind && self.id.to_lowercase() == id.to_lowercase()
+    }
+}
+
+// An item's fields as this device wrote or turned them down.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamLibraryCopy {
+    pub kind: TeamLibraryKind,
+    pub id: String,
+    pub fields: Value,
+}
+
+// An edit the library 0.88 kept, against the facade's version it was made on, until the team's first pull.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamLibraryImported {
+    pub kind: TeamLibraryKind,
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_version: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_fields: Option<Value>,
+    // None deletes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Value>,
+    #[serde(default)]
+    pub moved: bool,
+    // Why the team cannot take it, listed until it is discarded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refused: Option<String>,
+}
+
+// Who last wrote an item the team holds and when, as the server named them to this account.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamLibraryWriter {
+    pub kind: TeamLibraryKind,
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub at_ms: i64,
+}
+
+// What only this device knows of a team, never synced: the team's name for an offline launch, its last pull, the items
+// this device put there (so a later publish removes only those), the copies a publish wrote that the team has not
+// taken yet, the copies Keep Theirs turned down, 0.88's edits still to apply, and who last wrote each item.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamLibraryLocal {
+    pub team_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub synced_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub published: Vec<TeamLibraryRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub claims: Vec<TeamLibraryCopy>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub declined: Vec<TeamLibraryCopy>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub imports: Vec<TeamLibraryImported>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub writers: Vec<TeamLibraryWriter>,
+}
+
+impl TeamLibraryLocal {
+    fn holds_nothing(&self) -> bool {
+        *self
+            == Self {
+                team_id: self.team_id.clone(),
+                ..Self::default()
+            }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct TeamLibraryDocument {
     owner: TeamLibraryOwner,
@@ -63,6 +144,8 @@ struct TeamLibraryDocument {
     store: Option<StoreIdentity>,
     #[serde(default)]
     teams: Vec<TeamLibraryTeam>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    local: Vec<TeamLibraryLocal>,
 }
 
 impl VersionedDocument for TeamLibraryDocument {
@@ -70,12 +153,11 @@ impl VersionedDocument for TeamLibraryDocument {
     const VERSION: u32 = 1;
 }
 
-/// The Team Library items one account holds on this device, one file per (origin, account), so no
-/// item of one account is ever read for another (core ADR 0054, The state file, for the same rule).
-///
-/// The file's name is a digest of the owner, so an id a server chose never names a path, and the
-/// owner is kept inside it: a file bound to another owner is refused. A write holds a lock file
-/// from its re-read to its rename, as the connection list does.
+// The Team Library items one account holds on this device, one file per (origin, account), so no item of one account
+// is ever read for another (core ADR 0054, The state file, for the same rule). The file's name is a digest of the
+// owner, so an id a server chose never names a path, and the owner is kept inside it: a file bound to another owner is
+// refused. A write holds a lock file from its re-read to its rename, as the connection list does. A delete marks the
+// owner first, and nothing reads the owner's file while the mark stands, so a delete cut off fails closed.
 #[derive(Clone)]
 pub struct TeamLibraryStore {
     inner: Arc<Inner>,
@@ -124,9 +206,73 @@ impl TeamLibraryStore {
         &self.inner.owner
     }
 
-    /// The journal every later write tells, or none.
     pub fn set_journal(&self, journal: Option<Arc<dyn ChangeJournal>>) {
         self.inner.journal.set(journal);
+    }
+
+    // Beside the file and named after it, so it outlives the file it marks.
+    fn marker(&self) -> PathBuf {
+        marker_for(&self.inner.path)
+    }
+
+    // A marker that cannot be checked counts as standing.
+    pub fn delete_pending_blocking(&self) -> bool {
+        !matches!(std::fs::symlink_metadata(self.marker()), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
+    }
+
+    pub fn mark_deleting_blocking(&self) -> Result<(), StorageError> {
+        crate::fs::write_private_blocking(&self.marker(), b"")
+    }
+
+    // Only once whatever else holds the owner's data is gone too.
+    pub fn clear_deleting_blocking(&self) -> Result<(), StorageError> {
+        remove_verified(&self.marker())
+    }
+
+    pub fn locals_blocking(&self) -> Result<Vec<TeamLibraryLocal>, StorageError> {
+        let _held = self.lock();
+        Ok(self.read()?.local)
+    }
+
+    pub fn local_blocking(&self, team_id: &str) -> Result<TeamLibraryLocal, StorageError> {
+        let _held = self.lock();
+        Ok(local_of(self.read()?.local, team_id))
+    }
+
+    // Device-local state changes no item, so the journal hears nothing of it.
+    pub fn update_local_blocking<T>(
+        &self,
+        team_id: &str,
+        change: impl FnOnce(&mut TeamLibraryLocal) -> T,
+    ) -> Result<T, StorageError> {
+        let mut out = None;
+        self.write(|document| {
+            let index = match document.local.iter().position(|local| local.team_id == team_id) {
+                Some(index) => index,
+                None => {
+                    document.local.push(TeamLibraryLocal {
+                        team_id: team_id.to_owned(),
+                        ..TeamLibraryLocal::default()
+                    });
+                    document.local.len() - 1
+                }
+            };
+            out = Some(change(&mut document.local[index]));
+            Vec::new()
+        })?;
+        out.ok_or(StorageError::NotFound)
+    }
+
+    // What a pull said of each item's last writer, which replaces what this device held of it.
+    pub fn record_writers_blocking(&self, team_id: &str, writers: Vec<TeamLibraryWriter>) -> Result<(), StorageError> {
+        self.update_local_blocking(team_id, |local| {
+            for writer in writers {
+                local
+                    .writers
+                    .retain(|held| !(held.kind == writer.kind && held.id == writer.id));
+                local.writers.push(writer);
+            }
+        })
     }
 
     pub fn teams_blocking(&self) -> Result<Vec<TeamLibraryTeam>, StorageError> {
@@ -139,13 +285,12 @@ impl TeamLibraryStore {
         Ok(self.read()?.teams.into_iter().find(|team| team.team_id == team_id))
     }
 
-    /// `None` until the first write.
+    // None until the first write.
     pub fn identity_blocking(&self) -> Result<Option<StoreIdentity>, StorageError> {
         let _held = self.lock();
         Ok(self.read()?.store)
     }
 
-    /// Adds each item, or replaces the one of its kind with exactly its id.
     pub fn put_items_blocking(&self, team_id: &str, items: Vec<TeamLibraryItem>) -> Result<(), StorageError> {
         if let Some(item) = items.iter().find(|item| !matches!(item.fields, Value::Object(_))) {
             return Err(StorageError::Schema(format!(
@@ -173,13 +318,17 @@ impl TeamLibraryStore {
         })
     }
 
-    /// Removes each (kind, id) the team holds; ids match exactly.
+    // Ids match exactly.
     pub fn remove_items_blocking(
         &self,
         team_id: &str,
         items: &[(TeamLibraryKind, String)],
     ) -> Result<(), StorageError> {
         self.write(|document| {
+            let named = |kind: TeamLibraryKind, id: &str| items.iter().any(|(held, held_id)| *held == kind && held_id == id);
+            if let Some(local) = document.local.iter_mut().find(|local| local.team_id == team_id) {
+                local.writers.retain(|writer| !named(writer.kind, &writer.id));
+            }
             let Some(team) = document.teams.iter_mut().find(|team| team.team_id == team_id) else {
                 return Vec::new();
             };
@@ -195,9 +344,10 @@ impl TeamLibraryStore {
         })
     }
 
-    /// Drops a team the account left or lost, with every item of it.
+    // A team the account left or lost goes with every item and everything this device knew of it.
     pub fn remove_team_blocking(&self, team_id: &str) -> Result<(), StorageError> {
         self.write(|document| {
+            document.local.retain(|local| local.team_id != team_id);
             let mut deleted = Vec::new();
             document.teams.retain(|team| {
                 if team.team_id != team_id {
@@ -214,8 +364,8 @@ impl TeamLibraryStore {
         })
     }
 
-    /// For a host that restored the file from a backup of its own: a new generation tells sync the
-    /// file is not the one it last saw.
+    // For a host that restored the file from a backup of its own: a new generation tells sync the file is not the one
+    // it last saw.
     pub fn start_new_generation_blocking(&self) -> Result<StoreIdentity, StorageError> {
         self.write(|document| {
             document.store = Some(StoreIdentity::fresh());
@@ -224,19 +374,12 @@ impl TeamLibraryStore {
         self.identity_blocking()?.ok_or(StorageError::NotFound)
     }
 
-    /// Deletes the account's file, as signing out of the account does.
+    // The account's file and any write a crash left beside it, verified gone.
     pub fn delete_blocking(&self) -> Result<(), StorageError> {
         let _held = self.lock();
         // Another process's write in flight would otherwise put the file back after this returns.
         let _file = crate::fs::lock_beside_blocking(&self.inner.path);
-        match std::fs::remove_file(&self.inner.path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(source) => Err(StorageError::Io {
-                path: self.inner.path.clone(),
-                source,
-            }),
-        }
+        delete_file_blocking(&self.inner.path)
     }
 
     fn lock(&self) -> MutexGuard<'_, ()> {
@@ -246,9 +389,13 @@ impl TeamLibraryStore {
         }
     }
 
-    // A missing file is an empty store of this owner; one bound to another owner is refused.
+    // A missing file is an empty store of this owner; one bound to another owner, or of an owner whose delete has not
+    // finished, is refused.
     fn read(&self) -> Result<TeamLibraryDocument, StorageError> {
         let path = &self.inner.path;
+        if self.delete_pending_blocking() {
+            return Err(StorageError::DeletePending { path: path.clone() });
+        }
         let bytes = match std::fs::read(path) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -256,6 +403,7 @@ impl TeamLibraryStore {
                     owner: self.inner.owner.clone(),
                     store: None,
                     teams: Vec::new(),
+                    local: Vec::new(),
                 });
             }
             Err(source) => {
@@ -285,6 +433,7 @@ impl TeamLibraryStore {
             let mut document = before.clone();
             let entries = change(&mut document);
             document.teams.retain(|team| !team.items.is_empty());
+            document.local.retain(|local| !local.holds_nothing());
             if document == before {
                 return Ok(());
             }
@@ -295,6 +444,99 @@ impl TeamLibraryStore {
         self.inner.journal.notify(&entries);
         Ok(())
     }
+}
+
+fn local_of(locals: Vec<TeamLibraryLocal>, team_id: &str) -> TeamLibraryLocal {
+    locals
+        .into_iter()
+        .find(|local| local.team_id == team_id)
+        .unwrap_or_else(|| TeamLibraryLocal {
+            team_id: team_id.to_owned(),
+            ..TeamLibraryLocal::default()
+        })
+}
+
+fn marker_for(path: &Path) -> PathBuf {
+    path.with_extension("deleting")
+}
+
+fn remove_verified(path: &Path) -> Result<(), StorageError> {
+    let io = |source| StorageError::Io {
+        path: path.to_owned(),
+        source,
+    };
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(source) => return Err(io(source)),
+    }
+    if let Some(parent) = path.parent() {
+        tablepro_core::sync_directory(parent).map_err(io)?;
+    }
+    match std::fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(io(source)),
+        Ok(_) => Err(io(std::io::Error::other("the file is still there after its delete"))),
+    }
+}
+
+// The file and the temporary copies `write_private_blocking` leaves beside it when a write is cut off.
+fn delete_file_blocking(path: &Path) -> Result<(), StorageError> {
+    if let (Some(parent), Some(name)) = (path.parent(), path.file_name()) {
+        let prefix = format!(".{}.", name.to_string_lossy());
+        let entries = match std::fs::read_dir(parent) {
+            Ok(entries) => entries
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|source| StorageError::Io {
+                    path: parent.to_owned(),
+                    source,
+                })?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(source) => {
+                return Err(StorageError::Io {
+                    path: parent.to_owned(),
+                    source,
+                });
+            }
+        };
+        for entry in entries {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with(&prefix) && name.ends_with(".tmp") {
+                remove_verified(&entry.path())?;
+            }
+        }
+    }
+    remove_verified(path)
+}
+
+// Every owner's file but `keep`'s, each marked before it goes: its marker stays until that owner's sync state lets
+// go of the same data, so nothing of it is read meanwhile. A file that cannot be read is deleted too, since its owner
+// cannot be shown to be `keep`.
+pub fn delete_other_owners_blocking(paths: &StoragePaths, keep: Option<&TeamLibraryOwner>) -> Result<(), StorageError> {
+    let folder = paths.state.join("team-library");
+    let kept = keep.map(|owner| TeamLibraryStore::path_for(paths, owner));
+    let entries = match std::fs::read_dir(&folder) {
+        Ok(entries) => entries
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| StorageError::Io {
+                path: folder.clone(),
+                source,
+            })?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(source) => return Err(StorageError::Io { path: folder, source }),
+    };
+    for entry in entries {
+        let path = entry.path();
+        let named = path.extension().is_some_and(|extension| extension == "json")
+            && path.file_stem().is_some_and(|stem| stem.len() == 64);
+        if !named || kept.as_deref() == Some(path.as_path()) {
+            continue;
+        }
+        crate::fs::write_private_blocking(&marker_for(&path), b"")?;
+        let _file = crate::fs::lock_beside_blocking(&path);
+        delete_file_blocking(&path)?;
+    }
+    Ok(())
 }
 
 fn item_record(team_id: &str, id: &str) -> RecordRef {

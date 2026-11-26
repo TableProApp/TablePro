@@ -6,6 +6,7 @@ mod pull;
 mod push;
 mod refill;
 mod scopes;
+mod team_library;
 
 use push::AfterPush;
 
@@ -96,6 +97,7 @@ pub struct ServiceSync {
     history_window: Mutex<Option<u32>>,
     // The scopes as the last body served them, which the app reads while a pass holds the session.
     scopes_seen: Mutex<Vec<ScopeInfo>>,
+    team_library: team_library::TeamLibrarySlot,
 }
 
 #[derive(Debug, Default)]
@@ -230,6 +232,7 @@ impl ServiceSync {
             categories: Mutex::new(DeviceCategories::from(&parts.categories)),
             history_window: Mutex::new(None),
             scopes_seen: Mutex::new(Vec::new()),
+            team_library: team_library::TeamLibrarySlot::default(),
         }
     }
 
@@ -541,10 +544,12 @@ impl ServiceSync {
     ) -> Result<PassReport, SyncError> {
         tracing::debug!(?why, "sync pass");
         self.set_phase(SyncPhase::Syncing);
+        self.before_team_pass().await;
         let taken = self.journal.take();
         let named = (why == PassReason::Journal).then(|| taken.clone());
         let journal_only = named.is_some();
         let outcome = self.run(session, named, arrival).await;
+        self.after_team_pass(session, &outcome).await;
         if outcome.is_err() {
             self.journal.give_back(taken);
         }
@@ -711,7 +716,7 @@ impl ServiceSync {
             .scopes
             .iter()
             .filter(|info| match info.scope {
-                ScopeName::Team(_) => true,
+                ScopeName::Team(_) => !self.team_library_off(),
                 ScopeName::Personal => ctx.keyed && !locked,
                 ScopeName::History => {
                     ctx.mode == ServiceMode::Personal && ctx.keyed && !locked && info.approved == Some(true)
@@ -1038,7 +1043,11 @@ impl SyncControl for ServiceSync {
                 what: "decide on personal data while TablePro Sync is not the personal provider",
             });
         }
+        let mine = self.team_conflict_side(&key).await?;
         self.conflict_table().resolve(&key, seen, keep).await?;
+        if let Some(mine) = mine {
+            self.team_resolved(&key, keep, mine).await?;
+        }
         drop(session);
         self.refresh_counts().await;
         self.decided(&key);
@@ -1077,6 +1086,3 @@ impl SyncControl for ServiceSync {
         Ok(held)
     }
 }
-
-// Team Library's calls reach the engine; each answers `sync.unimplemented` until its body lands.
-impl crate::api::team_library::TeamLibraryControl for ServiceSync {}

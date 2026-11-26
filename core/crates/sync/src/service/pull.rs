@@ -16,7 +16,7 @@ use super::{PassCtx, ServiceSync, begin};
 use crate::adapters::approval::{self, Split};
 use crate::adapters::categories::DeviceCategories;
 use crate::adapters::{conflict, local_view};
-use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
+use crate::api::adapter::{LocalChange, LocalRecord, PulledWriter, RecordAdapter};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{ArrivalOrder, CaughtUp};
@@ -477,6 +477,7 @@ impl ServiceSync {
             .collect();
         let inputs = self.settle_inputs(&keys).await?;
         let locals = local_indexes(pull.scope, adapters, &records).await?;
+        let writers = writers_of(adapters, &records);
         for (key, record) in keys.into_iter().zip(records) {
             let adapter = record
                 .kind
@@ -545,7 +546,8 @@ impl ServiceSync {
             self.check_stop()?;
             txn.commit().await?;
         }
-        self.write_store(pull.scope, adapters, writes).await
+        self.write_store(pull.scope, adapters, writes).await?;
+        tell_writers(pull.scope, adapters, writers).await
     }
 
     // What a kind turned off takes from a refill without touching its store: a base the restore lost, which the
@@ -1076,4 +1078,36 @@ async fn local_indexes(
         );
     }
     Ok(indexes)
+}
+
+// Each adapter's live records of the page, by who last wrote them and when.
+fn writers_of(adapters: &[Arc<dyn RecordAdapter>], records: &[PulledRecord]) -> HashMap<usize, Vec<PulledWriter>> {
+    let mut writers: HashMap<usize, Vec<PulledWriter>> = HashMap::new();
+    for record in records.iter().filter(|record| record.deleted.is_none()) {
+        let (Some(kind), Some(meta)) = (record.kind.known(), record.service.as_ref()) else {
+            continue;
+        };
+        let Some(index) = adapters.iter().position(|adapter| adapter.kind() == kind) else {
+            continue;
+        };
+        writers.entry(index).or_default().push(PulledWriter {
+            record_id: record.record_id.clone(),
+            name: meta.updated_by_name.clone(),
+            at_ms: meta.updated_at_us / 1_000,
+        });
+    }
+    writers
+}
+
+async fn tell_writers(
+    scope: ScopeName,
+    adapters: &[Arc<dyn RecordAdapter>],
+    writers: HashMap<usize, Vec<PulledWriter>>,
+) -> Result<(), SyncError> {
+    for (index, writers) in writers {
+        if let Some(adapter) = adapters.get(index) {
+            adapter.pulled_writers(scope, writers).await?;
+        }
+    }
+    Ok(())
 }

@@ -80,6 +80,7 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         link: Err(tablepro_sync::api::TransportError::SignedOut.into()),
         session: None,
         listener: Arc::new(Listener::default()),
+        team_library: None,
     });
     let opener = tasks.clone();
     let service = tasks
