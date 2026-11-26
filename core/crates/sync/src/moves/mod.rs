@@ -202,10 +202,12 @@ impl Mover {
             });
         }
         let policy = self.policy(Provider::Service);
-        policy.check().await?;
+        // The old file goes only under the values that let the upload start.
+        let held = policy.hold().await?;
         if let Some(account) = &self.parts.icloud_account {
             self.parts.files.delete(icloud_file(account)).await?;
         }
+        drop(held);
         self.parts
             .service
             .run_arrival(Arrival::FirstUpload, &policy)

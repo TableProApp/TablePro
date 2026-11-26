@@ -690,19 +690,7 @@ impl CloudKitSync {
             }
             session.stale_handled = true;
         }
-        // The wait an integrity recovery wrote counts what this device would send (`integrity::ask_again`).
-        if zone::push_wait(state).await?
-            == Some(PushWait::AccountChoice {
-                unsent: PushWait::UNCOUNTED,
-            })
-        {
-            let categories = lock(&self.categories).clone();
-            let fetcher = Fetcher::new(self.transport.as_ref(), state, &self.adapters, categories)?;
-            let unsent = Pusher::new(&fetcher, &self.stop, self.clock.now_ms()).unsent().await?;
-            drop(fetcher);
-            self.stop.check()?;
-            zone::wait(state, Some(PushWait::AccountChoice { unsent })).await?;
-        }
+        self.count_recovery_wait(state).await?;
         // Taken together under the lock `set_categories` holds as it sets the flag, so a kind turned on is read whole by
         // the pass that has it on.
         let (categories, read_again) = {
@@ -731,6 +719,23 @@ impl CloudKitSync {
         report.push = pusher.push(&mut session.waits, named).await?;
         report.waiting_ms = session.waits.next_in(self.clock.now_ms());
         Ok(())
+    }
+
+    // The wait an integrity recovery wrote counts what this device would send before a host reads it
+    // (`integrity::ask_again`).
+    async fn count_recovery_wait(&self, state: &dyn StateStore) -> Result<(), SyncError> {
+        let uncounted = Some(PushWait::AccountChoice {
+            unsent: PushWait::UNCOUNTED,
+        });
+        if zone::push_wait(state).await? != uncounted {
+            return Ok(());
+        }
+        let categories = lock(&self.categories).clone();
+        let fetcher = Fetcher::new(self.transport.as_ref(), state, &self.adapters, categories)?;
+        let unsent = Pusher::new(&fetcher, &self.stop, self.clock.now_ms()).unsent().await?;
+        drop(fetcher);
+        self.stop.check()?;
+        zone::wait(state, Some(PushWait::AccountChoice { unsent })).await
     }
 
     // The changes the last account's file holds that never went up, counted before it goes. A file that never saw its
@@ -945,6 +950,8 @@ impl SyncControl for CloudKitSync {
 
     async fn plan_new_identity(&self) -> Result<NewIdentityPlan, SyncError> {
         let session = self.session.lock().await;
+        let (state, _, _) = self.account_choice(&session).await?;
+        self.count_recovery_wait(state.as_ref()).await?;
         let (_, unsent, account) = self.account_choice(&session).await?;
         Ok(NewIdentityPlan { unsent, account })
     }

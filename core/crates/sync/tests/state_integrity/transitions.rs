@@ -326,8 +326,8 @@ async fn a_copy_sealed_under_a_key_since_made_again_starts_over_on_the_anchor() 
 
 // After any integrity recovery the file waits for the person to choose Move my data or Start empty again before
 // anything personal goes up, in the recovery's own commit, uncounted until an engine reads it (orchestrator ruling on
-// 0054): an older service copy, a copy started over on the anchor, an iCloud copy that held an Upload Again wait, and
-// an iCloud file lost under its anchor, whose missing row proves nothing.
+// 0054): an older service copy whose earlier choice counted another file, a copy started over on the anchor, an iCloud
+// copy that held an Upload Again wait, and an iCloud file lost under its anchor, whose missing row proves nothing.
 #[tokio::test]
 async fn a_recovered_file_waits_for_the_person_to_choose_again() {
     let disk = Disk::new();
@@ -340,7 +340,17 @@ async fn a_recovered_file_waits_for_the_person_to_choose_again() {
     });
     let personal = || RowKey::Scope(ScopeName::Personal);
     let state = disk.open().await;
-    put(&state, vec![store_row(1)]).await;
+    put(
+        &state,
+        vec![
+            store_row(1),
+            Row::Scope(ScopeRow {
+                push_wait: Some(PushWait::AccountChoice { unsent: 3 }),
+                ..ScopeRow::new(ScopeName::Personal)
+            }),
+        ],
+    )
+    .await;
     drop(state);
     let older = disk.copy(&identity()).await;
     let state = disk.open().await;

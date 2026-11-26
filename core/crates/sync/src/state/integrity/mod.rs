@@ -296,26 +296,24 @@ async fn refill(tx: &mut Transaction<'static, Sqlite>, provider: Provider) -> Re
 // After any integrity recovery the file is fresh for its account: what this device holds goes up only once the person
 // chose Move my data or Start empty again, whatever the host names, since what an earlier choice kept off the account
 // may be gone with the file (orchestrator ruling on 0054). Written in the recovery's own commit, so no crash before a
-// pass loses it, and over an Upload Again wait, which the next fetch finds again if the zone is still gone. No row does
-// not prove the device never synced. The engine counts what the device would send.
+// pass loses it, over an Upload Again wait, which the next fetch finds again if the zone is still gone, and over an
+// earlier choice's count, which told of another file. No row does not prove the device never synced. The engine
+// counts what the device would send.
 async fn ask_again(tx: &mut Transaction<'static, Sqlite>) -> Result<(), StateError> {
     let scope = match read(tx, &RowKey::Scope(ScopeName::Personal)).await? {
         Some(Row::Scope(scope)) => scope,
         _ => ScopeRow::new(ScopeName::Personal),
     };
-    if !matches!(scope.push_wait, Some(PushWait::AccountChoice { .. })) {
-        write(
-            tx,
-            &Row::Scope(ScopeRow {
-                push_wait: Some(PushWait::AccountChoice {
-                    unsent: PushWait::UNCOUNTED,
-                }),
-                ..scope
+    write(
+        tx,
+        &Row::Scope(ScopeRow {
+            push_wait: Some(PushWait::AccountChoice {
+                unsent: PushWait::UNCOUNTED,
             }),
-        )
-        .await?;
-    }
-    Ok(())
+            ..scope
+        }),
+    )
+    .await
 }
 
 // The key tables of a stale file go, and the anchored checkpoint stands in for them: the pins, versions and envelopes
