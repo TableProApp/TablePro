@@ -168,6 +168,40 @@ async fn a_decision_on_a_record_the_store_cannot_read_keeps_the_approval_waiting
     assert_eq!(mini.sync.approvals().await.unwrap().len(), 1);
 }
 
+// A connection new to the device waits whole while a copy the store cannot read takes its id, as a restored file
+// can: approving it writes nothing over that copy, and a decision a crash left unapplied is not replayed over it.
+#[tokio::test]
+async fn a_held_record_never_goes_in_over_a_copy_the_store_cannot_read() {
+    use tablepro_sync::api::state::{ApprovalDecision, StateStore as _, StateTxn as _};
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "host": "db.example.com"}));
+    mac.sync().await;
+    mini.sync().await;
+    mini.connections.make_unreadable(&id(1));
+
+    let approved = mini.sync.decide_approval(key(&id(1)), "/host".to_owned(), true).await;
+    let Some(Row::Approval(mut row)) = mini.row(RowKey::Approval(key(&id(1)), "/host".to_owned())).await else {
+        panic!("the approval row went");
+    };
+    row.decision = ApprovalDecision::Approved;
+    let mut txn = mini.state.begin().await.unwrap();
+    txn.put(Row::Approval(row)).await.unwrap();
+    txn.commit().await.unwrap();
+    mini.sync().await;
+
+    assert_eq!(approved.unwrap_err().code(), "sync.adapter.unreadable");
+    assert_eq!(mini.connections.get(&id(1)), None);
+    assert!(mini.row(RowKey::Held(key(&id(1)))).await.is_some());
+    assert!(
+        mini.row(RowKey::Approval(key(&id(1)), "/host".to_owned()))
+            .await
+            .is_some()
+    );
+}
+
 #[tokio::test]
 async fn a_value_the_device_already_holds_asks_nothing_on_its_first_pass() {
     let server = FakeServer::new();

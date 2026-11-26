@@ -255,6 +255,19 @@ impl Queue<'_> {
         })
     }
 
+    // The store's copy a decision lands on, None when it holds none. One it holds but cannot read is still the
+    // device's: no decision lands on it, and the rows wait until it reads again.
+    async fn decided_copy(&self, key: &RecordKey) -> Result<Option<Value>, SyncError> {
+        match self.copy(key).await? {
+            StoreCopy::Held(fields) => Ok(Some(fields)),
+            StoreCopy::Unreadable => Err(AdapterError::Unreadable {
+                detail: "the record an approval waits on".to_owned(),
+            }
+            .into()),
+            StoreCopy::Gone => Ok(None),
+        }
+    }
+
     async fn copy(&self, key: &RecordKey) -> Result<StoreCopy, SyncError> {
         let Some(adapter) = self.adapter(key) else {
             return Ok(StoreCopy::Gone);
@@ -309,20 +322,10 @@ impl Queue<'_> {
             _ => None,
         };
         drop(txn);
+        let stored = self.decided_copy(key).await?;
         if let Some(held) = held {
             return self.decide_held(row, held.record.fields, approve).await;
         }
-        let stored = match self.copy(key).await? {
-            StoreCopy::Held(fields) => Some(fields),
-            // A copy the store holds but cannot read is still the device's: the row waits until it reads again.
-            StoreCopy::Unreadable => {
-                return Err(AdapterError::Unreadable {
-                    detail: "the record an approval waits on".to_owned(),
-                }
-                .into());
-            }
-            StoreCopy::Gone => None,
-        };
         let adapter = self.adapter(key);
         let mut txn = self.state.begin().await?;
         match (stored, adapter) {
@@ -382,6 +385,11 @@ impl Queue<'_> {
         let (Some(pulled), Some(adapter), Some(kind)) = (pulled, self.adapter(&key), key.kind.known()) else {
             return Ok(());
         };
+        // A copy the store cannot read took the id meanwhile, as a restored file can: the record stays held with its
+        // decisions, and goes in once the copy reads again.
+        if matches!(self.copy(&key).await?, StoreCopy::Unreadable) {
+            return Ok(());
+        }
         let split = split(kind, &key, None, &pulled, &rows);
         if split.hold {
             let mut txn = self.state.begin().await?;
