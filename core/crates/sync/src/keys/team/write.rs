@@ -125,11 +125,10 @@ impl KeyService {
             .collect();
         let first = in_team.first().copied();
         let mut certificates: Vec<AccountCertificate> = self
-            .held_objects(&mut *txn, ScopeName::Personal, KeyKind::Account)
+            .applied_objects(&mut *txn, ScopeName::Personal, KeyKind::Account)
             .await?
             .into_iter()
-            .filter(|held| held.applied)
-            .filter_map(|held| match (held.object.id, held.object.body) {
+            .filter_map(|object| match (object.id, object.body) {
                 (KeyRecordId::Account { account, av }, KeyBody::Account(body)) if account == me => {
                     Some(body.certificate(account, av))
                 }

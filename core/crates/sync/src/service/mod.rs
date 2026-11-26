@@ -38,12 +38,17 @@ pub trait ProofSource: Send + Sync {
 }
 
 // The device keys are made on the first call, since a device proves even its first pull and its genesis or first
-// request certifies them (0056, Approving a device, step 1). With no device store there is no key to prove with, and
-// only team plaintext syncs.
+// request certifies them (0056, Approving a device, step 1). A Sign Out a crash cut off finishes first, as before any
+// other read of the keys. With no device store there is no key to prove with, and only team plaintext syncs.
 #[async_trait]
 impl ProofSource for KeyService {
     async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
-        match self.ensure_device_keys().await {
+        let _serial = self.serialized().await;
+        let made = match self.finish_cut_off_sign_out().await {
+            Ok(()) => self.ensure_device_keys().await,
+            Err(error) => Err(error),
+        };
+        match made {
             Ok(device) => Ok(Some(DpopKey(Arc::new(device.dsk)))),
             Err(SyncError::DeviceStore(DeviceStoreError::Unavailable { .. })) => Ok(None),
             Err(error) => Err(error),
