@@ -55,9 +55,8 @@ struct ExportState {
     // False for an export that writes no rows, which then reports its progress in objects.
     var readsRows = true
 
-    // Set when the row total came from statistics, or when some tables could not be counted.
+    // Set when the row total came from the catalog's statistics.
     var rowTotalIsEstimate = false
-    var estimateNote: String?
 
     /// What the export wrote, as opposed to what went wrong with it. Kept apart from `warnings`
     /// because the success alert reads a non-empty `warnings` as a problem: it retitles itself,
@@ -225,12 +224,9 @@ final class ExportService: ObservableObject {
         )
 
         state.readsRows = !rowObjects.isEmpty
-        state.totalRows = await fetchTotalRowCount(
+        state.totalRows = await estimateTotalRows(
             for: rowObjects.filter { $0.kind.carriesRows },
-            driver: driver,
-            databaseType: databaseType,
-            dataSource: dataSource,
-            context: driver.readOnlyRunContext(safeModeIsReadOnly: safeModeIsReadOnly)
+            dataSource: dataSource
         )
         try throwIfStopped()
 
@@ -517,118 +513,69 @@ final class ExportService: ObservableObject {
         )
     }
 
-    // MARK: - Row Count Fetching
+    // MARK: - Row Total
 
-    private func qualifiedTableRef(
-        for table: ExportObjectItem,
-        driver: DatabaseDriver,
-        databaseType: DatabaseType
-    ) -> String {
-        SchemaQualifiedName.render(
-            name: table.name,
-            schema: table.databaseName,
-            databaseType: databaseType,
-            quote: driver.quoteIdentifier
-        )
-    }
-
-    // The non-SQL count asks the data source: the driver answers for whichever database it is leased to.
-    private func fetchTotalRowCount(
+    // The total only sizes the progress bar, so it comes from the catalog's estimate. An exact COUNT(*) is a full
+    // scan on PostgreSQL and InnoDB, and the export would read every table twice before its first row.
+    private func estimateTotalRows(
         for tables: [ExportObjectItem],
-        driver: DatabaseDriver,
-        databaseType: DatabaseType,
-        dataSource: ExportDataSourceAdapter,
-        context: PluginStatementContext?
+        dataSource: ExportDataSourceAdapter
     ) async -> Int {
         guard !tables.isEmpty else { return 0 }
-        // At Read-Only a count runs read-only too: a view's COUNT(*) runs the view.
-        let runCount: (String) async throws -> QueryResult = { query in
-            guard let context else { return try await driver.execute(query: query) }
-            return try await driver.execute(query: query, context: context)
-        }
+        // A filter can keep any share of the rows, so no estimate bounds it, and a partial sum would park the bar.
+        guard !tables.contains(where: { ExportRowTotal.isUnknowable($0.rowScope) }) else { return 0 }
 
-        var total = 0
-        var failedCount = 0
-
-        if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
-            state.rowTotalIsEstimate = true
-            for table in tables {
-                guard !isStopRequested else { return total }
+        var estimates: [Int: Int] = [:]
+        let groups = Dictionary(grouping: tables.indices) { tables[$0].databaseName }
+        for (databaseName, indices) in groups.sorted(by: { $0.key < $1.key }) {
+            guard !isStopRequested else { return 0 }
+            if indices.count > 1, let bulk = await bulkEstimates(databaseName: databaseName, dataSource: dataSource) {
+                for index in indices {
+                    if let estimate = bulk[tables[index].name] { estimates[index] = estimate }
+                }
+                continue
+            }
+            for index in indices {
+                guard !isStopRequested else { return 0 }
+                let table = tables[index]
                 do {
-                    let count = try await dataSource.fetchApproximateRowCount(
+                    if let estimate = try await dataSource.fetchApproximateRowCount(
                         table: table.name, databaseName: table.databaseName
-                    )
-                    if let count {
-                        total = Self.saturatingSum(total, count)
+                    ) {
+                        estimates[index] = estimate
                     }
                 } catch {
-                    failedCount += 1
-                    Self.logger.warning("Failed to get approximate row count for \(table.qualifiedName): \(error.localizedDescription)")
-                }
-            }
-            if failedCount > 0 {
-                Self.logger.warning("\(failedCount) tables failed row count, the progress indicator may be inaccurate")
-                state.estimateNote = Self.estimatedProgressMessage(uncountedTables: failedCount)
-            }
-            return total
-        }
-
-        let chunkSize = 50
-
-        for chunkStart in stride(from: 0, to: tables.count, by: chunkSize) {
-            guard !isStopRequested else { return total }
-            let end = min(chunkStart + chunkSize, tables.count)
-            let batch = tables[chunkStart ..< end]
-
-            let unionParts = batch.map { table -> String in
-                let tableRef = qualifiedTableRef(for: table, driver: driver, databaseType: databaseType)
-                return "SELECT COUNT(*) AS c FROM \(tableRef)"
-            }
-            let batchQuery = unionParts.joined(separator: " UNION ALL ")
-
-            do {
-                let result = try await runCount(batchQuery)
-                for row in result.rows {
-                    if let cell = row.first, let count = Int(cell.asText ?? "0") {
-                        total = Self.saturatingSum(total, count)
-                    }
-                }
-            } catch {
-                for table in batch {
-                    guard !isStopRequested else { return total }
-                    do {
-                        let tableRef = qualifiedTableRef(for: table, driver: driver, databaseType: databaseType)
-                        let result = try await runCount("SELECT COUNT(*) FROM \(tableRef)")
-                        if let cell = result.rows.first?.first, let count = Int(cell.asText ?? "0") {
-                            total = Self.saturatingSum(total, count)
-                        }
-                    } catch {
-                        failedCount += 1
-                        Self.logger.warning("Failed to get row count for \(table.qualifiedName): \(error.localizedDescription)")
-                    }
+                    Self.logger.warning(
+                        "Failed to read the row estimate for \(table.qualifiedName): \(error.localizedDescription)"
+                    )
                 }
             }
         }
 
-        if failedCount > 0 {
-            Self.logger.warning("\(failedCount) tables failed row count, the progress indicator may be inaccurate")
-            state.rowTotalIsEstimate = true
-            state.estimateNote = Self.estimatedProgressMessage(uncountedTables: failedCount)
+        // A table with no estimate still reports its rows, so leaving it out would park the bar at its ceiling.
+        var total = 0
+        for index in tables.indices {
+            guard let rows = ExportRowTotal.rows(estimate: estimates[index], scope: tables[index].rowScope) else {
+                return 0
+            }
+            total = Self.saturatingSum(total, rows)
         }
+        state.rowTotalIsEstimate = total > 0
         return total
+    }
+
+    // One catalog statement for the whole schema. A failed read falls back to one estimate per table.
+    private func bulkEstimates(databaseName: String, dataSource: ExportDataSourceAdapter) async -> [String: Int]? {
+        do {
+            return try await dataSource.fetchBulkApproximateRowCounts(databaseName: databaseName)
+        } catch {
+            Self.logger.warning("Failed to read the schema's row estimates: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     private static func saturatingSum(_ total: Int, _ count: Int) -> Int {
         let (sum, overflow) = total.addingReportingOverflow(count)
         return overflow ? (count < 0 ? .min : .max) : sum
-    }
-
-    /// Counts pick between an explicit singular and plural key. Automatic grammar agreement is a
-    /// SwiftUI `Text` facility: `String(localized:)` returns the markup verbatim.
-    private static func estimatedProgressMessage(uncountedTables: Int) -> String {
-        let template = uncountedTables == 1
-            ? String(localized: "Progress estimated (%lld table could not be counted)")
-            : String(localized: "Progress estimated (%lld tables could not be counted)")
-        return String(format: template, Int64(uncountedTables))
     }
 }

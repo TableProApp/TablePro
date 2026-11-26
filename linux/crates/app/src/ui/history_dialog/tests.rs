@@ -74,6 +74,7 @@ impl Harness {
         block_on(
             &self.runtime,
             self.store.record(NewEntry {
+                record_id: uuid::Uuid::new_v4(),
                 query: query.to_owned(),
                 driver_id: "postgres".to_owned(),
                 connection_id: connection,
@@ -102,7 +103,7 @@ impl Harness {
                 database: "app".to_owned(),
                 username: "postgres".to_owned(),
                 tls: tablepro_core::TlsConfig::verify_full(),
-                safe_mode: tablepro_core::SafeModeLevel::Off,
+                safe_mode: tablepro_core::SafeModeLevel::Silent,
                 external_access: tablepro_core::ExternalAccess::ReadOnly,
                 ai_policy: tablepro_core::AiPolicy::Ask,
                 query_timeout_secs: None,
@@ -611,6 +612,7 @@ fn every_row_menu_item_has_an_access_key_of_its_own() {
     let entry = |pinned: bool| {
         HistoryEntryObject::new(tablepro_storage::query_history::Entry {
             id: 1,
+            record_id: Uuid::new_v4(),
             query: "SELECT 1".to_owned(),
             driver_id: "sqlite".to_owned(),
             connection_id: Uuid::new_v4(),
@@ -768,7 +770,7 @@ fn clear_all_says_saved_queries_are_kept_and_keeps_them() {
         saved.save(NewSavedQuery {
             name: "daily".to_owned(),
             query: "SELECT 1".to_owned(),
-            connection_id: Uuid::new_v4(),
+            connection_id: Some(Uuid::new_v4()),
             connection_name: "local".to_owned(),
         }),
     )

@@ -223,10 +223,13 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             ]
         }
         "base64url" => {
-            let bytes = b64::decode(input.str("text"))?;
-            if bytes.len() as u64 != input.u64("len") {
-                return Err(KeysError::encoding("wrong byte length"));
-            }
+            let text = input.str("text");
+            let bytes = match input.u64("len") {
+                1 => b64::decode_exact::<1>(text)?.to_vec(),
+                2 => b64::decode_exact::<2>(text)?.to_vec(),
+                32 => b64::decode_exact::<32>(text)?.to_vec(),
+                other => panic!("no field of {other} bytes"),
+            };
             vec![("bytes_hex", h(&bytes))]
         }
         "base32" => vec![("text", s(&base32::encode(&input.hex("bytes_hex"))))],
@@ -451,6 +454,22 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                 ok()
             }
         }
+        "verify_under_certificate" => {
+            let origin = input.origin();
+            let certificate = record_object(input.value("certificate"))?;
+            let (KeyRecordId::Account { account, av }, KeyBody::Account(body)) = (&certificate.id, &certificate.body)
+            else {
+                panic!("an account record");
+            };
+            let certificate = body.certificate(*account, *av);
+            certificate.verify(&origin)?;
+            let record = record_object(input.value("record"))?
+                .version_record()
+                .expect("version record");
+            assert_eq!(record.signer_av, certificate.av, "signed under that certificate's av");
+            record.verify(&origin, &certificate.ask)?;
+            ok()
+        }
         "check_step" => {
             let held = input.has("held").then(|| input.version("held"));
             check_step(held, input.version("offered"))?;
@@ -458,7 +477,18 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
         }
         "ed25519_verify" => {
             let sig = Signature(input.hex("sig_hex").try_into().expect("signature"));
-            Ed25519Public(input.hex32("public_hex")).verify(&input.hex("message_hex"), &sig)?;
+            let public = input.hex32("public_hex");
+            let message = input.hex("message_hex");
+            // A forgery case says whether the library alone takes it, so a verifier that drops the
+            // pre-checks fails it.
+            if let Some(JsonValue::Bool(takes)) = input.optional("aws_lc_rs_takes_it") {
+                assert_eq!(
+                    crypto::forgery::library_accepts(&public, &message, &sig.0),
+                    *takes,
+                    "aws_lc_rs_takes_it"
+                );
+            }
+            Ed25519Public(public).verify(&message, &sig)?;
             ok()
         }
         "kid" => {
@@ -557,8 +587,13 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                 .iter()
                 .map(|object| object.version_record().expect("version record"))
                 .collect();
+            let signer = Ed25519Public(input.hex32("signer_ask_hex"));
+            for record in &records {
+                record.verify(&origin, &signer)?;
+            }
             records.last().expect("newest").check_key(&current)?;
             let mut keys = vec![h(current.expose())];
+            let mut frames = Vec::new();
             for ring_object in rings.iter().rev() {
                 let (KeyRecordId::Ring(key_ref), KeyBody::Ring(ring)) = (&ring_object.id, &ring_object.body) else {
                     panic!("a ring");
@@ -567,10 +602,20 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                     .iter()
                     .find(|record| Some(record.key.version) == key_ref.version.previous())
                     .expect("below");
+                let newer = current.clone();
                 current = ring.open(&origin, *key_ref, &current, below)?;
+                frames.push(super::gen_objects::ring_frame(*key_ref, &newer, &current));
                 keys.push(h(current.expose()));
             }
-            vec![("keys_hex", arr(keys))]
+            let messages = records
+                .iter()
+                .map(|record| record.message(&origin).map(|message| h(&message)))
+                .collect::<Result<_, _>>()?;
+            vec![
+                ("keys_hex", arr(keys)),
+                ("version_messages_hex", arr(messages)),
+                ("ring_frames", arr(frames)),
+            ]
         }
         "open_ring" => {
             let origin = input.origin();
@@ -759,7 +804,12 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             let nonce: [u8; 12] = input.hex("nonce_hex").try_into().expect("nonce");
             let sealed =
                 crate::envelope::seal_history_plaintext(&key, &origin, account, id, kv, plaintext.as_bytes(), nonce)?;
-            open_history(&key, &origin, account, id, &sealed)?;
+            let opened = open_history(&key, &origin, account, id, &sealed)?;
+            let sent = crate::envelope::parse_history_plaintext(plaintext.as_bytes())?;
+            assert!(
+                opened.expose().same_as(sent.expose()),
+                "the opened entry is the one sealed"
+            );
             let mut info = Frame::new(Label::HistoryKey);
             info.origin(&origin)
                 .scope(Scope::History(account))
@@ -795,7 +845,7 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                 ("pins", n(trust.pins.len() as u64)),
                 ("versions", n(trust.versions.len() as u64)),
             ];
-            if trust.encode() == text {
+            if trust.encode().as_str() == text {
                 outputs.push(("padded_hex", h(&padding::pad(text.as_bytes())?)));
             }
             outputs
@@ -825,14 +875,45 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                 None => vec![("record_len", n(record_len as u64)), ("fits", b(false))],
             }
         }
+        "trust_wrap_record" => {
+            let origin = input.origin();
+            let generated = super::gen_sealed::generated_trust(input.value("generated"));
+            let wrapper_av = input.version("wrapper_av");
+            let limit = usize::try_from(input.u64("record_limit")).expect("limit");
+            let fields_len = input.sub("record").value("fields").to_json().len();
+            assert_eq!(
+                crate::trust::trust_wrap_record_len(generated.encode().len(), wrapper_av)?,
+                fields_len,
+                "the predicted length"
+            );
+            // A reader refuses a record past the limit before it parses it.
+            let read = match record_object(input.value("record")) {
+                Ok(object) => {
+                    let wrap = object.wrap().expect("a wrap");
+                    assert_eq!(wrap.wrapper.av, wrapper_av, "wrapper_av");
+                    let secret = X25519Secret::from_bytes(input.hex32("recipient_secret_hex"));
+                    let dsk = Ed25519Public(input.hex32("dsk_hex"));
+                    let trust = wrap.open_trust(&origin, &secret, &secret.public()?, &dsk)?;
+                    assert_eq!(trust, generated, "the wrap holds the generated plaintext");
+                    s("ok")
+                }
+                Err(error) => s(error.code()),
+            };
+            vec![
+                ("fields_len", n(fields_len as u64)),
+                ("within_limit", b(fields_len <= limit)),
+                ("fits", b(generated.fit_record(limit, wrapper_av)?.is_some())),
+                ("read", read),
+            ]
+        }
         "sas" => {
             let view = sas_view(&mut input);
             let commit = view.transcript.commitment(&view.n, &view.r_n)?;
             let digest = view.transcript.digest(&view.n, &view.r_n, &view.a, &view.r_a)?;
             // A's side, from the request it read and its own keys, after the reveal.
-            let mut approver = Comparison::approver(view.transcript.clone(), view.n, commit, view.a, view.r_a);
+            let mut approver = Comparison::approver_with(view.transcript.clone(), view.n, commit, view.a, view.r_a);
             approver.receive_reveal(view.r_n)?;
-            let mut new_device = Comparison::new_device(view.transcript.clone(), view.n, view.r_n)?;
+            let mut new_device = Comparison::new_device_with(view.transcript.clone(), view.n, view.r_n)?;
             new_device.receive_nonce(view.a, view.r_a)?;
             new_device.reveal()?;
             assert_eq!(approver.words()?, new_device.words()?);
@@ -865,10 +946,23 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             let other = sas_view(&mut other);
             let base_words = base.transcript.words(&base.n, &base.r_n, &base.a, &base.r_a)?;
             let other_words = other.transcript.words(&other.n, &other.r_n, &other.a, &other.r_a)?;
+            let JsonValue::Array(listed) = input.value("other_words") else {
+                panic!("other_words")
+            };
+            let listed: Vec<&str> = listed
+                .iter()
+                .map(|word| crate::json::as_str(word).expect("word"))
+                .collect();
+            assert_eq!(other_words, listed, "the other view's words");
+            // This side's session reaches its words, and the person says they differ.
+            let commit = base.transcript.commitment(&base.n, &base.r_n)?;
+            let mut session = Comparison::approver_with(base.transcript.clone(), base.n, commit, base.a, base.r_a);
+            session.receive_reveal(base.r_n)?;
+            assert_eq!(session.words()?, base_words, "the session's words");
             if base_words == other_words {
                 ok()
             } else {
-                return Err(KeysError::SasMismatch);
+                return Err(session.words_differ());
             }
         }
         "sas_session" => {
@@ -876,9 +970,9 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
             let view = sas_view(&mut view_input);
             let commit = view.transcript.commitment(&view.n, &view.r_n)?;
             let mut session = if input.str("role") == "new_device" {
-                Comparison::new_device(view.transcript.clone(), view.n, view.r_n)?
+                Comparison::new_device_with(view.transcript.clone(), view.n, view.r_n)?
             } else {
-                Comparison::approver(view.transcript.clone(), view.n, commit, view.a, view.r_a)
+                Comparison::approver_with(view.transcript.clone(), view.n, commit, view.a, view.r_a)
             };
             let steps: Vec<String> = match input.value("steps") {
                 JsonValue::Array(items) => items
@@ -896,6 +990,23 @@ pub(super) fn run(op: &str, input: &JsonValue) -> Result<Outputs, KeysError> {
                     }
                     "receive_reveal" => session.receive_reveal(view.r_n)?,
                     "words" => shown = session.words()?,
+                    "words_differ" => {
+                        let error = session.words_differ();
+                        assert_eq!(session.state(), crate::sas::SessionState::Cancelled, "the session ends");
+                        if input.has("cancel_record") {
+                            let cancel = record_object(input.value("cancel_record"))?;
+                            assert!(
+                                matches!(
+                                    cancel.body,
+                                    KeyBody::Sas(crate::body::SasBody::Cancel {
+                                        reason: crate::body::CancelReason::Mismatch
+                                    })
+                                ),
+                                "a mismatch cancel"
+                            );
+                        }
+                        return Err(error);
+                    }
                     "confirm" => session.confirm()?,
                     "receive_cancel" => session.receive_cancel()?,
                     "expire" => {

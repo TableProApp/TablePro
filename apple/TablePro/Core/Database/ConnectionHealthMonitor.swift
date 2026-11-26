@@ -75,13 +75,15 @@ actor ConnectionHealthMonitor {
             try? await clock.sleep(for: .seconds(initialDelay))
             guard !Task.isCancelled else { return }
 
+            // Read once per pass, after the sleep, so turning checks off stops the next ping and the answer also sets
+            // the sleep that follows it.
+            guard var interval = await intervalForPass() else { return }
             while !Task.isCancelled {
-                guard let interval = await intervalForPass() else { break }
                 // The tolerance lets the system coalesce every open connection's ping into one wake.
                 try? await clock.sleep(for: interval, tolerance: interval / 4)
                 guard !Task.isCancelled else { break }
-                // Asked again after the sleep, so turning checks off stops the next one.
-                guard await intervalForPass() != nil else { break }
+                guard let next = await intervalForPass() else { break }
+                interval = next
                 await self.performHealthCheck()
                 guard await !self.hasHandedOff else { break }
             }

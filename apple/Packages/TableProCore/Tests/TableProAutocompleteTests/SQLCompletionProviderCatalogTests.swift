@@ -15,6 +15,8 @@ struct StubCatalog: SQLCompletionCatalog {
     var qualifiesInScope = false
     // Like the iOS catalog, which quotes a mixed-case name itself because nothing spells it later.
     var writesNames = false
+    // Runs where the provider reads the table list, which is where the request runs.
+    var onTableRead: (@Sendable () -> Void)?
     let keyReads = KeyReads()
 
     final class KeyReads: @unchecked Sendable {
@@ -61,7 +63,8 @@ struct StubCatalog: SQLCompletionCatalog {
     }
 
     func tableCompletionItems() -> [SQLCompletionItem] {
-        tables.map { SQLCompletionItem.table($0) }
+        onTableRead?()
+        return tables.map { SQLCompletionItem.table($0) }
     }
 
     func tableCompletionItems(inSchema schema: String) -> [SQLCompletionItem] {
@@ -504,6 +507,34 @@ struct SQLCompletionProviderIsolationTests {
 
         #expect(session.items.first?.label == "orders")
         #expect(executor.enqueuedJobs > 0)
+    }
+
+    // An editor asks on the main actor; analysis and the catalog reads must not run there, or each read re-enters
+    // the main queue behind the keystroke's own layout and drawing.
+    @Test("a request made on the main actor reads the catalog off the main thread")
+    func catalogReadsLeaveTheMainThread() async {
+        let reads = StubCatalog.KeyReads()
+        var catalog = StubCatalog(tables: ["orders"], columns: [:])
+        catalog.onTableRead = { reads.record(Thread.isMainThread ? "main" : "background") }
+        let provider = SQLCompletionProvider(catalog: catalog, grammar: .ansi, vocabulary: .generic)
+
+        let session = await provider.completionSession(text: "SELECT * FROM o", cursorPosition: 15)
+
+        #expect(session.items.contains { $0.label == "orders" })
+        #expect(reads.all == ["background"])
+    }
+
+    @Test("a cancelled request stops before it ranks")
+    func cancelledRequestStops() async {
+        let provider = SQLCompletionProvider(
+            catalog: StubCatalog(tables: ["orders"], columns: [:]), grammar: .ansi, vocabulary: .generic
+        )
+        let request = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await provider.completionSession(text: "SELECT * FROM o", cursorPosition: 15)
+        }
+
+        #expect(await request.value.items.isEmpty)
     }
 }
 

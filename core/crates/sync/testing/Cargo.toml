@@ -1,0 +1,25 @@
+[package]
+name = "tablepro-sync-testing"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Dev-only: the fakes every sync lane tests against (core/ARCHITECTURE.md, Dependency graph).
+[dependencies]
+tablepro-keys.workspace = true
+tablepro-records.workspace = true
+tablepro-sync.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+secrecy.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

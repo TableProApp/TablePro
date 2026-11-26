@@ -71,11 +71,6 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
         let queue: DispatchQueue
     }
 
-    private enum ConnectAttempt {
-        case connected(Int32)
-        case failed(String)
-    }
-
     // The listening socket is absent: nothing between binding it and the hand-over can throw.
     private struct Resources {
         var sessionQueue: DispatchQueue
@@ -392,63 +387,27 @@ nonisolated final class LibSSH2TunnelStages: SSHTunnelStages, @unchecked Sendabl
         }
         defer { freeaddrinfo(result) }
 
-        var lastError = "No address found"
-        var candidate: UnsafeMutablePointer<addrinfo>? = firstAddress
-
-        while let address = candidate {
-            candidate = address.pointee.ai_next
-            switch connectOne(address, host: host, port: port) {
-            case .connected(let fd):
-                return fd
-            case .failed(let reason):
-                lastError = reason
+        // Every address races under the one timeout (RFC 8305), so a black-holed IPv6 address costs one attempt
+        // delay rather than the whole timeout before the IPv4 one is tried.
+        let outcome = SSHTransportDial.connect(
+            SSHSocketAddress.list(from: firstAddress),
+            deadline: .now.advanced(by: .seconds(Int(connectTimeoutSeconds))),
+            interrupt: SSHDialInterrupt()
+        )
+        switch outcome {
+        case .connected(let fd):
+            for refusal in SSHTransportSocketOptions.enable(on: fd) {
+                logger.warning("Failed to set \(refusal, privacy: .public)")
             }
+            return fd
+        case .timedOut, .interrupted:
+            throw SSHTunnelError.connectionFailed("Connection timed out")
+        case .failed(let lastErrno):
+            let reason = lastErrno.map {
+                "Connection to \(host):\(port) failed: \(String(cString: strerror($0)))"
+            } ?? "No address found"
+            throw SSHTunnelError.connectionFailed(reason)
         }
-
-        throw SSHTunnelError.connectionFailed(lastError)
-    }
-
-    private static func connectOne(
-        _ address: UnsafeMutablePointer<addrinfo>,
-        host: String,
-        port: Int
-    ) -> ConnectAttempt {
-        let fd = socket(address.pointee.ai_family, address.pointee.ai_socktype, address.pointee.ai_protocol)
-        guard fd >= 0 else { return .failed("No socket available") }
-
-        let flags = fcntl(fd, F_GETFL, 0)
-        _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
-
-        let connectResult = Darwin.connect(fd, address.pointee.ai_addr, address.pointee.ai_addrlen)
-        if connectResult != 0, errno != EINPROGRESS {
-            Darwin.close(fd)
-            return .failed("Connection to \(host):\(port) failed")
-        }
-
-        if connectResult != 0, let reason = waitForConnect(fd, host: host, port: port) {
-            Darwin.close(fd)
-            return .failed(reason)
-        }
-
-        _ = fcntl(fd, F_SETFL, flags)
-        for refusal in SSHTransportKeepAlive.enable(on: fd) {
-            logger.warning("Failed to set \(refusal, privacy: .public)")
-        }
-        return .connected(fd)
-    }
-
-    private static func waitForConnect(_ fd: Int32, host: String, port: Int) -> String? {
-        var writePollFD = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
-        guard poll(&writePollFD, 1, connectTimeoutSeconds * 1_000) > 0 else {
-            return "Connection timed out"
-        }
-
-        var socketError: Int32 = 0
-        var errorLength = socklen_t(MemoryLayout<Int32>.size)
-        getsockopt(fd, SOL_SOCKET, SO_ERROR, &socketError, &errorLength)
-        guard socketError != 0 else { return nil }
-
-        return "Connection to \(host):\(port) failed: \(String(cString: strerror(socketError)))"
     }
 
     private static func bindLocalSocket() throws -> (fd: Int32, port: Int) {
