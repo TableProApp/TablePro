@@ -100,6 +100,8 @@ pub struct KeyService {
     // Other devices' resets as pulls served them this session: the times the server serves beside each `key.reset`,
     // which `key_objects` does not keep, and how each ended (0064).
     served_resets: Mutex<HashMap<ResetId, PendingReset>>,
+    // Teams whose rotation on a roster read the server refused, which this session backs off from.
+    refused_rotations: Mutex<HashMap<TeamId, team::RefusedRotation>>,
 }
 
 impl KeyService {
@@ -122,6 +124,7 @@ impl KeyService {
             rosters: Rosters::default(),
             rebuilding: AtomicBool::new(rebuilding),
             served_resets: Mutex::new(HashMap::new()),
+            refused_rotations: Mutex::new(HashMap::new()),
         }
     }
 
@@ -131,6 +134,10 @@ impl KeyService {
 
     pub(crate) fn served_resets(&self) -> MutexGuard<'_, HashMap<ResetId, PendingReset>> {
         lock(&self.served_resets)
+    }
+
+    pub(crate) fn refused_rotations(&self) -> MutexGuard<'_, HashMap<TeamId, team::RefusedRotation>> {
+        lock(&self.refused_rotations)
     }
 
     pub fn account(&self) -> AccountId {

@@ -16,6 +16,7 @@ use crate::api::ids::{EpochId, ScopeName};
 use crate::api::key_flows::{ArrivalOrder, KeyApplied, KeyArrival, KeyNoticeKind, RefusedObject, Roster};
 use crate::api::state::{KeyVersionState, PendingFlow, Row, RowRange, StateTxn, StoppedCause, Table};
 use crate::api::transport::{PulledRecord, RejectedCode};
+use crate::engine::Backoff;
 use crate::keys::KeyService;
 
 // What the commit of one call changed, told to the engine and the app once it landed.
@@ -25,6 +26,15 @@ struct Outcome {
     conflict: bool,
     superseded: bool,
     epoch: Option<EpochId>,
+}
+
+// A rotation a roster read made that the server refused: the version in force then, and the back-off before a roster
+// read tries again at that version.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RefusedRotation {
+    version: Option<Version>,
+    backoff: Backoff,
+    until_us: i64,
 }
 
 // What judging a team again inside another flow's commit changed.
@@ -470,15 +480,71 @@ impl KeyService {
             self.publish_certificates(team, false).await?;
         }
         if roster.rotation_due && self.may_rotate_unprompted(team, &roster).await? {
+            let version = self.team_version(team).await?;
+            if self.rotation_backs_off(team, version) {
+                return Ok(());
+            }
             match self.rotate(team, &[]).await {
                 // Another holder's rotation landed first and met the mark.
-                Err(SyncError::Rejected {
+                Ok(())
+                | Err(SyncError::Rejected {
                     code: RejectedCode::CreateOnly,
-                }) => {}
-                other => other?,
+                }) => {
+                    self.refused_rotations().remove(&team);
+                }
+                Err(error @ SyncError::Rejected { .. }) => {
+                    self.refuse_rotation(team, version);
+                    return Err(error);
+                }
+                Err(other) => return Err(other),
             }
         }
         Ok(())
+    }
+
+    async fn team_version(&self, team: TeamId) -> Result<Option<Version>, SyncError> {
+        let mut txn = self.begin().await?;
+        let book = self.load_team(&mut *txn, team).await?;
+        Ok(book.row().map(|row| row.version))
+    }
+
+    // A refusal at this version waits out its back-off; a version that moved since is a new try.
+    fn rotation_backs_off(&self, team: TeamId, version: Option<Version>) -> bool {
+        let now = self.now_us();
+        let mut refused = self.refused_rotations();
+        match refused.get(&team) {
+            Some(held) if held.version == version => now < held.until_us,
+            Some(_) => {
+                refused.remove(&team);
+                false
+            }
+            None => false,
+        }
+    }
+
+    fn refuse_rotation(&self, team: TeamId, version: Option<Version>) {
+        let now = self.now_us();
+        let mut refused = self.refused_rotations();
+        let held = refused
+            .entry(team)
+            .and_modify(|held| {
+                if held.version != version {
+                    *held = RefusedRotation {
+                        version,
+                        backoff: Backoff::STANDARD,
+                        until_us: now,
+                    };
+                }
+            })
+            .or_insert(RefusedRotation {
+                version,
+                backoff: Backoff::STANDARD,
+                until_us: now,
+            });
+        let wait_us = i64::try_from(held.backoff.failed(None))
+            .unwrap_or(i64::MAX)
+            .saturating_mul(1_000);
+        held.until_us = now.saturating_add(wait_us);
     }
 
     // A stopped team whose version no owner or admin on the roster held ends on the device, which withdraws its report
@@ -533,7 +599,8 @@ impl KeyService {
     }
 
     // Any holder rotates while the team is due, unless a removal review still has to choose whom the rotation leaves
-    // out: this device's own account rotation not yet written, or another member's, which that member's app writes.
+    // out: this device's own account rotation that has not written this team yet, or another member's, which that
+    // member's app writes. A team the flow already wrote waits for nothing, whatever other team keeps the flow open.
     async fn may_rotate_unprompted(&self, team: TeamId, roster: &Roster) -> Result<bool, SyncError> {
         let mut txn = self.begin().await?;
         let pending = txn.scan(&RowRange::Table(Table::KeyPending)).await?;
@@ -541,6 +608,7 @@ impl KeyService {
             matches!(
                 row,
                 Row::KeyPending(pending) if matches!(pending.flow, PendingFlow::AccountRotation { .. })
+                    && crate::keys::rotation::rotation_still_rotates(&pending.state, team)
             )
         }) {
             return Ok(false);

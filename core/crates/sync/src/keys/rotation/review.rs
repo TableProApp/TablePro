@@ -97,6 +97,12 @@ impl TeamSteps {
         })
     }
 
+    // The flow's team steps still have to rotate `team`: it has not been written yet. One it wrote holds nothing
+    // back, whatever other team keeps the flow open.
+    pub fn still_rotates(&self, team: TeamId) -> bool {
+        !self.done.contains(&team)
+    }
+
     pub fn removals_for(&self, team: TeamId) -> Vec<AccountId> {
         self.remove
             .iter()
@@ -321,6 +327,21 @@ mod tests {
             },
             sig: Signature([0; 64]),
         }
+    }
+
+    #[test]
+    fn a_team_the_flow_wrote_is_no_longer_one_it_still_rotates() {
+        let (done, stuck) = (TeamId(Uuid::from_u128(1)), TeamId(Uuid::from_u128(2)));
+        let steps = TeamSteps {
+            done: vec![done],
+            stuck: vec![stuck],
+            ..TeamSteps::default()
+        };
+
+        let decoded = TeamSteps::decode(&steps.encode()).unwrap();
+
+        assert!(!decoded.still_rotates(done));
+        assert!(decoded.still_rotates(stuck));
     }
 
     #[test]

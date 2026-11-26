@@ -27,7 +27,7 @@ use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::scope_key::KeyRef;
 
-pub(crate) use self::apply::TeamJudged;
+pub(crate) use self::apply::{RefusedRotation, TeamJudged};
 use self::book::TeamBook;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;

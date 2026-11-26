@@ -16,8 +16,8 @@ use tablepro_sync::api::key_flows::{
 };
 use tablepro_sync::api::scopes::{Role, ScopesAnswer};
 use tablepro_sync::api::state::{
-    Checkpoint, KeyTrust, Opened, Row, RowKey, RowRange, ScopeRow, StateIdentity, StateStore, StateTxn, SyncTrust,
-    Table,
+    Checkpoint, KeyPendingRow, KeyTrust, Opened, PendingFlow, Row, RowKey, RowRange, ScopeRow, StateIdentity,
+    StateStore, StateTxn, SyncTrust, Table,
 };
 use tablepro_sync::api::transport::{Proof, PullRequest, RejectedCode, ServiceTransport, Transport};
 use tablepro_sync_testing::FakeServer;
@@ -40,6 +40,13 @@ pub(super) fn v(value: u32) -> Version {
 // The engine's part of a pass for one team: its pages pulled and their key objects applied in order, then the roster
 // read once the pull caught up.
 pub(super) async fn team_pass(device: &Device, team: TeamId) -> KeyApplied {
+    let (applied, read) = team_pass_read(device, team).await;
+    read.unwrap();
+    applied
+}
+
+// The same, with what the roster read answered.
+async fn team_pass_read(device: &Device, team: TeamId) -> (KeyApplied, Result<(), SyncError>) {
     let scope = ScopeName::Team(team);
     let proof = Proof::Dpop(device.proof().await);
     let mut row = match device.get(RowKey::Scope(scope)).await {
@@ -47,7 +54,7 @@ pub(super) async fn team_pass(device: &Device, team: TeamId) -> KeyApplied {
         _ => ScopeRow::new(scope),
     };
     let ScopesAnswer::Body { body, .. } = device.transport.scopes(None, proof.clone()).await.unwrap() else {
-        return KeyApplied::default();
+        return (KeyApplied::default(), Ok(()));
     };
     let mut last = KeyApplied::default();
     let caught_up = loop {
@@ -98,12 +105,8 @@ pub(super) async fn team_pass(device: &Device, team: TeamId) -> KeyApplied {
     row.role = info.role;
     row.rotation_due = info.rotation_due;
     device.put(vec![Row::Scope(row)]).await;
-    device
-        .service
-        .roster_read(team, Roster::of(info, caught_up))
-        .await
-        .unwrap();
-    last
+    let read = device.service.roster_read(team, Roster::of(info, caught_up)).await;
+    (last, read)
 }
 
 pub(super) struct Team {
@@ -341,4 +344,67 @@ async fn a_member_rebuilding_its_key_tables_takes_no_wrap_until_the_rebuild_ends
     assert!(!member.service.is_rebuilding());
     let after = member.service.team_keys(t.team).await.unwrap();
     assert_eq!((after.version, after.holder), (Some(v(2)), true));
+}
+
+// A rotation the roster read makes while the team is due, which the server refuses, is not sent again on every read:
+// the device backs off at that version, and a new session tries again.
+#[tokio::test]
+async fn a_refused_rotation_on_a_roster_read_backs_off_instead_of_going_up_on_every_read() {
+    let editor_id = new_account();
+    let t = created(&[(editor_id, Role::Editor)]).await;
+    t.confirmed(editor_id, "editor-row").await;
+    team_pass(&t.owner, t.team).await;
+    t.server.set_rotation_due(t.team, true);
+    t.owner.transport.refuse_next_push(RejectedCode::TeamFull);
+
+    let (_, refused) = team_pass_read(&t.owner, t.team).await;
+    let (_, again) = team_pass_read(&t.owner, t.team).await;
+    let held = t.owner.service.team_keys(t.team).await.unwrap().version;
+    let restarted = t.owner.restarted();
+    team_pass(&restarted, t.team).await;
+
+    assert_eq!(
+        refused,
+        Err(SyncError::Rejected {
+            code: RejectedCode::TeamFull
+        })
+    );
+    assert_eq!(again, Ok(()));
+    assert_eq!(held, Some(v(1)));
+    assert_eq!(restarted.service.team_keys(t.team).await.unwrap().version, Some(v(2)));
+}
+
+// An account rotation's flow row that already wrote this team holds its rotation back no longer, though another team
+// keeps the row open; one that has not written it yet does.
+#[tokio::test]
+async fn a_due_team_waits_only_for_an_account_rotation_that_has_not_rotated_it_yet() {
+    let editor_id = new_account();
+    let t = created(&[(editor_id, Role::Editor)]).await;
+    t.confirmed(editor_id, "editor-row").await;
+    team_pass(&t.owner, t.team).await;
+    t.server.set_rotation_due(t.team, true);
+    // Format 1 of the flow's state: no removals, then the teams done.
+    let state = |done: &[TeamId]| {
+        let mut state = vec![1, 0, 0, 0, 0];
+        state.extend_from_slice(&u32::try_from(done.len()).unwrap().to_be_bytes());
+        for team in done {
+            state.extend_from_slice(team.0.as_bytes());
+        }
+        state
+    };
+    let flow = |done: &[TeamId]| {
+        Row::KeyPending(KeyPendingRow {
+            flow: PendingFlow::AccountRotation { av: v(2) },
+            state: state(done),
+        })
+    };
+    t.owner.put(vec![flow(&[])]).await;
+
+    team_pass(&t.owner, t.team).await;
+    let waited = t.owner.service.team_keys(t.team).await.unwrap().version;
+    t.owner.put(vec![flow(&[t.team, new_team()])]).await;
+    team_pass(&t.owner, t.team).await;
+
+    assert_eq!(waited, Some(v(1)));
+    assert_eq!(t.owner.service.team_keys(t.team).await.unwrap().version, Some(v(2)));
 }

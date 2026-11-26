@@ -31,6 +31,14 @@ use crate::api::state::{
 };
 use crate::api::transport::{RejectedCode, TransportError};
 
+// Whether the account rotation whose `key_pending` state this is still has to rotate `team`. A state this build cannot
+// read holds the team back, as the flow would.
+pub(crate) fn rotation_still_rotates(state: &[u8], team: TeamId) -> bool {
+    TeamSteps::decode(state)
+        .ok()
+        .is_none_or(|steps| steps.still_rotates(team))
+}
+
 // What a removal holds between the review and the rotation: R, the lost devices and the members it listed.
 struct RemovalDraft {
     recovery: RecoveryKey,
