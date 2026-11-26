@@ -299,6 +299,11 @@ impl Settle<'_, '_> {
             self.counts.written = self.counts.written.saturating_sub(1);
         }
         self.counts.refused = self.counts.refused.saturating_add(1);
+        self.fetcher
+            .refused
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(key.clone());
         match undo.base {
             Some(base) => self.txn.put(Row::Base(base)).await?,
             None => self.txn.delete(&RowKey::Base(key.clone())).await?,

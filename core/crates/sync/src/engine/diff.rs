@@ -216,6 +216,10 @@ fn written(kind: Kind, base: Option<&BaseRow>, record: &LocalRecord) -> Option<P
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_types,
+    reason = "the records here are built with `json!`, and only their members are read"
+)]
 mod tests {
     use serde_json::json;
     use tablepro_records::record_id::column_layout_category;

@@ -119,6 +119,8 @@ pub struct Fetcher<'a> {
     stop: Option<StopSignal>,
     // Records CloudKit asked to wait for that are still waiting: their changes stay held and are not asked for.
     waiting: BTreeSet<RecordKey>,
+    // Records whose store refused their change in this fetch: its recovery does not ask for them again.
+    pub(in crate::cloudkit) refused: std::sync::Mutex<BTreeSet<RecordKey>>,
 }
 
 // Records CloudKit could not return and asked to wait for, which the fetch does not ask for again. A wait past the
@@ -256,6 +258,7 @@ impl<'a> Fetcher<'a> {
             categories,
             stop: None,
             waiting: BTreeSet::new(),
+            refused: std::sync::Mutex::default(),
         })
     }
 
