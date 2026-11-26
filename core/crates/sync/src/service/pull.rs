@@ -162,7 +162,7 @@ impl ServiceSync {
     async fn scope_proof(&self, scope: ScopeName) -> Result<Proof, SyncError> {
         Ok(match scope {
             ScopeName::Team(_) => Proof::None,
-            ScopeName::Personal | ScopeName::History => self.proofs.dpop_key().await?.map_or(Proof::None, Proof::Dpop),
+            ScopeName::Personal | ScopeName::History => self.keys.dpop_key().await?.map_or(Proof::None, Proof::Dpop),
         })
     }
 
@@ -186,7 +186,7 @@ impl ServiceSync {
             .map(|adapter| adapter.kind())
             .collect();
         let can_open = ctx.keys_ready;
-        let rebuilding = self.proofs.rebuilding();
+        let rebuilding = self.keys.rebuilding();
         // Envelopes kept while the device could not check them are read again in a snapshot once it can, which
         // serves each one's current copy after the key objects (0051, Pull). Once a snapshot judged them, only a change
         // of the keys reads them again, so one under a key this account was never given refills nothing.

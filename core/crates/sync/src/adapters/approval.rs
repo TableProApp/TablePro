@@ -16,7 +16,7 @@ use tablepro_records::merge::Merged;
 use super::carry::holds;
 use super::fields::{Rule, get, members, set};
 use crate::api::adapter::{LocalChange, RecordAdapter};
-use crate::api::control::PendingApproval;
+use crate::api::control::{PendingApproval, approval_digest};
 use crate::api::error::SyncError;
 use crate::api::ids::{KindName, RecordKey, ScopeName};
 use crate::api::state::{
@@ -275,6 +275,7 @@ impl Queue<'_> {
             out.push(PendingApproval {
                 key: row.key,
                 field: row.field,
+                digest: approval_digest(&row.pulled),
                 pulled: row.pulled,
                 current,
             });
@@ -282,7 +283,8 @@ impl Queue<'_> {
         Ok(out)
     }
 
-    pub async fn decide(&self, key: &RecordKey, field: &str, approve: bool) -> Result<(), SyncError> {
+    pub async fn decide(&self, key: &RecordKey, field: &str, seen: [u8; 32], approve: bool) -> Result<(), SyncError> {
+        let _ = seen;
         let mut txn = self.state.begin().await?;
         let Some(Row::Approval(mut row)) = txn.get(&RowKey::Approval(key.clone(), field.to_owned())).await? else {
             return Err(SyncError::Unknown { what: "approval" });

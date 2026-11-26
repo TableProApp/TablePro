@@ -12,7 +12,7 @@ use tablepro_sync::api::state::{Row, RowKey, ScopeRow, StateFiles, StateIdentity
 use tablepro_sync::api::transport::ServiceTransport;
 use tablepro_sync::engine::{Adapters, EngineHooks, Journal, StopSignal, SystemClock, Wake};
 use tablepro_sync::keys::{Clock, KeyService, KeyServiceParts};
-use tablepro_sync::service::{PassReport, ProofSource, ServiceParts, ServiceSync};
+use tablepro_sync::service::{PassReport, ServiceParts, ServiceSync};
 use tablepro_sync_testing::{FakeDeviceStore, FakeServer, MemoryStateFiles};
 
 use super::harness::{origin, typed_back};
@@ -65,7 +65,6 @@ impl Device {
             adapters: Adapters::default(),
             keys: Arc::clone(&keys) as Arc<dyn KeyFlows>,
             hooks: Arc::clone(&hooks),
-            proofs: Arc::clone(&keys) as Arc<dyn ProofSource>,
             clock: Arc::new(SystemClock),
             stop: StopSignal::new(),
             journal: Journal::new(wake),

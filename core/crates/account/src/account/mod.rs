@@ -93,6 +93,8 @@ pub struct AccessToken {
     // None until the device is registered.
     pub device_id: Option<String>,
     pub session_id: Option<String>,
+    // The sign-in key (`SignInKey`), which names the server and the account file, as a sync state file is named.
+    pub sign_in: String,
 }
 
 struct Inner {

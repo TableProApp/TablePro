@@ -41,6 +41,10 @@ pub enum SyncError {
     // The call needs an approved device, a device store or keys this device does not hold.
     #[error("this device cannot {what} now")]
     NotAllowed { what: &'static str },
+    // An approval or a conflict a pull changed since the person was shown it: nothing is decided, and the app shows
+    // it again (0066, Rules).
+    #[error("the {what} changed since it was shown")]
+    Changed { what: &'static str },
     #[error("the call was cancelled")]
     Cancelled,
 }
@@ -65,6 +69,7 @@ impl SyncError {
             Self::TypedBackWrong => "sync.typed_back_wrong",
             Self::Unknown { .. } => "sync.unknown",
             Self::NotAllowed { .. } => "sync.not_allowed",
+            Self::Changed { .. } => "sync.changed",
             Self::Cancelled => "sync.cancelled",
         }
     }
