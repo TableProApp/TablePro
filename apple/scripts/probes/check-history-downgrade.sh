@@ -9,8 +9,9 @@ set -euo pipefail
 
 NEW_APP="$(cd "${1:?the TablePro.app of this build}" && pwd)"
 OLD_APP="$(cd "${2:?the TablePro.app of the previous stable}" && pwd)"
-if pgrep -x TablePro >/dev/null; then
-    echo "Quit every TablePro first: a run here must be the only one" >&2
+# Another TablePro, such as the installed one, keeps its own storage; only these two builds must not be running.
+if pgrep -f "^($NEW_APP|$OLD_APP)/Contents/MacOS/TablePro" >/dev/null; then
+    echo "Quit this build and the previous stable first: a run here must be the only one of them" >&2
     exit 2
 fi
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/tablepro-history-downgrade.XXXXXX")"
@@ -77,13 +78,28 @@ run "$OLD_APP" '[ -f "$HISTORY" ]'
 [ -f "$HISTORY" ] || fail "the previous stable made no query history"
 
 # What it holds before this build ever ran: two saved queries of one name in one connection and a folder, two runs,
-# a favourite table and database, and a table folder with a table in it.
+# a favourite table and database, and a table folder with a table in it. The saved queries' schema and full-text
+# index are the ones the app keeps, so a row written here is one the app can update.
 sqlite3 "$FAVORITES" <<SQL
 CREATE TABLE IF NOT EXISTS favorites (id TEXT PRIMARY KEY, name TEXT NOT NULL, query TEXT NOT NULL, keyword TEXT,
     folder_id TEXT, connection_id TEXT, sort_order INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL,
     updated_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, name TEXT NOT NULL, parent_id TEXT, connection_id TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL, updated_at REAL NOT NULL);
+CREATE VIRTUAL TABLE IF NOT EXISTS favorites_fts USING fts5(name, query, keyword, content='favorites',
+    content_rowid='rowid');
+CREATE TRIGGER IF NOT EXISTS favorites_ai AFTER INSERT ON favorites BEGIN
+    INSERT INTO favorites_fts(rowid, name, query, keyword) VALUES (new.rowid, new.name, new.query, new.keyword);
+END;
+CREATE TRIGGER IF NOT EXISTS favorites_ad AFTER DELETE ON favorites BEGIN
+    INSERT INTO favorites_fts(favorites_fts, rowid, name, query, keyword)
+        VALUES('delete', old.rowid, old.name, old.query, old.keyword);
+END;
+CREATE TRIGGER IF NOT EXISTS favorites_au AFTER UPDATE ON favorites BEGIN
+    INSERT INTO favorites_fts(favorites_fts, rowid, name, query, keyword)
+        VALUES('delete', old.rowid, old.name, old.query, old.keyword);
+    INSERT INTO favorites_fts(rowid, name, query, keyword) VALUES (new.rowid, new.name, new.query, new.keyword);
+END;
 PRAGMA user_version = 2;
 INSERT INTO folders VALUES ('$FOLDER', 'Reports', NULL, '$CONNECTION', 0, 1700000000.5, 1700000000.5);
 INSERT INTO favorites VALUES ('$OLDER', 'Report', 'SELECT 1', 'rep', '$FOLDER', '$CONNECTION', 0, 1700000001.25,
@@ -98,13 +114,26 @@ INSERT INTO history (id, query, connection_id, database_name, database_type, exe
     was_successful, error_message) VALUES ('$SECOND_RUN', 'SELECT broken', '$CONNECTION', 'shop', 'PostgreSQL',
     $((NOW - 200)), 0.1, 0, 0, 'syntax error');
 SQL
-json() {
-    python3 -I -c 'import sys; print(sys.argv[1].encode().hex())' "$1"
+# Each defaults value as the store encodes it: JSON, and a Date as Foundation's default, seconds since 2001.
+defaults_json() {
+    python3 -I - "$CONNECTION" "$TABLE_FOLDER" "$1" <<'PY'
+import json, sys
+connection, folder, which = sys.argv[1:]
+scope = {"connectionId": connection, "database": "shop", "schema": "public"}
+values = {
+    "tables": [{"connectionId": connection, "database": "shop", "schema": "public", "name": "orders"}],
+    "databases": [{"connectionId": connection, "database": "shop", "environment": "production"}],
+    "folders": {"folders": [{"id": folder, "scope": scope, "name": "Billing", "createdAt": 721692800,
+                             "updatedAt": 721692800}],
+                "items": [{"scope": scope, "name": "invoices", "folderId": folder}]},
+    "none": [],
 }
-defaults write "$SUITE" com.TablePro.favoriteTables -data "$(json "[{\"connectionId\":\"$CONNECTION\",\"database\":\"shop\",\"schema\":\"public\",\"name\":\"orders\"}]")"
-defaults write "$SUITE" com.TablePro.favoriteDatabases -data "$(json "[{\"connectionId\":\"$CONNECTION\",\"database\":\"shop\",\"environment\":\"production\"}]")"
-# A Date in Foundation's default JSON is seconds since 2001.
-defaults write "$SUITE" "com.TablePro.tableFolders.$CONNECTION" -data "$(json "{\"folders\":[{\"id\":\"$TABLE_FOLDER\",\"scope\":{\"connectionId\":\"$CONNECTION\",\"database\":\"shop\",\"schema\":\"public\"},\"name\":\"Billing\",\"createdAt\":721692800,\"updatedAt\":721692800}],\"items\":[{\"scope\":{\"connectionId\":\"$CONNECTION\",\"database\":\"shop\",\"schema\":\"public\"},\"name\":\"invoices\",\"folderId\":\"$TABLE_FOLDER\"}]}")"
+print(json.dumps(values[which]).encode().hex())
+PY
+}
+defaults write "$SUITE" com.TablePro.favoriteTables -data "$(defaults_json tables)"
+defaults write "$SUITE" com.TablePro.favoriteDatabases -data "$(defaults_json databases)"
+defaults write "$SUITE" "com.TablePro.tableFolders.$CONNECTION" -data "$(defaults_json folders)"
 
 MOVED='[ "$(core "SELECT count(*) FROM saved_queries")" = 2 ] && [ "$(core "SELECT count(*) FROM history")" = 2 ] && [ "$(core "SELECT count(*) FROM table_folder_items")" = 1 ] && [ "$(core "SELECT count(*) FROM favourite_databases")" = 1 ]'
 run "$NEW_APP" "$MOVED"
@@ -125,7 +154,7 @@ run "$OLD_APP" 'false'
 sqlite3 "$FAVORITES" "UPDATE favorites SET name = 'Report, edited on the previous stable', updated_at = 1700000300 WHERE id = '$OLDER';"
 sqlite3 "$HISTORY" "DELETE FROM history WHERE id = '$FIRST_RUN';"
 sqlite3 "$HISTORY" "INSERT INTO history (id, query, connection_id, database_name, database_type, executed_at, execution_time, row_count, was_successful) VALUES ('CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC', 'SELECT 3', '$CONNECTION', 'shop', 'PostgreSQL', $((NOW - 100)), 0.2, 1, 1);"
-defaults write "$SUITE" com.TablePro.favoriteTables -data "$(json "[]")"
+defaults write "$SUITE" com.TablePro.favoriteTables -data "$(defaults_json none)"
 
 TAKEN='[ "$(core "SELECT name FROM saved_queries WHERE upper(record_id) = '"'"'$OLDER'"'"'")" = "Report, edited on the previous stable" ] && [ "$(core "SELECT upper(record_id) FROM history ORDER BY executed_at")" = "$SECOND_RUN|CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC" ] && [ "$(core "SELECT count(*) FROM favourite_tables")" = 0 ]'
 run "$NEW_APP" "$TAKEN"
