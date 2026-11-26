@@ -112,6 +112,7 @@ public final class SuggestionController: NSWindowController {
         isManualTrigger: Bool = false,
         asPopover: Bool = false
     ) {
+        delegate.completionRequestDidBegin(textView: textView)
         model.showCompletions(
             textView: textView,
             delegate: delegate,
