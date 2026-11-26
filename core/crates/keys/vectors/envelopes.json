@@ -808,7 +808,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "another scope",
@@ -830,7 +831,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "another parent kind",
@@ -852,7 +854,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "another record id",
@@ -874,7 +877,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "another secret kind",
@@ -896,7 +900,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "another kv",
@@ -918,7 +923,8 @@
         }
       },
       "error": "keys.open",
-      "server": null
+      "server": null,
+      "clause": "A wrong label, or each AAD or `info` field changed"
     },
     {
       "name": "a duplicate member",
@@ -940,7 +946,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "a duplicate member inside dest",
@@ -962,7 +969,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "a missing member",
@@ -984,7 +992,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "a wrongly typed member",
@@ -1006,7 +1015,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "dest not an object",
@@ -1028,7 +1038,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "an unknown v",
@@ -1050,7 +1061,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "v as text",
@@ -1072,7 +1084,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "not JSON",
@@ -1094,7 +1107,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "a plaintext with a duplicate, missing or wrongly typed member"
     },
     {
       "name": "a member the reader does not know is ignored",
@@ -1120,7 +1134,9 @@
         "dest": {
           "host": "db"
         }
-      }
+      },
+      "server": null,
+      "clause": "A plaintext with a member the reader does not know"
     },
     {
       "name": "padding with no 0x80",
@@ -1142,7 +1158,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "Padding with no 0x80, a non-zero byte after it, or a length off the scale"
     },
     {
       "name": "a non-zero byte after 0x80",
@@ -1164,7 +1181,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "Padding with no 0x80, a non-zero byte after it, or a length off the scale"
     },
     {
       "name": "a padded length off the scale",
@@ -1186,7 +1204,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "Padding with no 0x80, a non-zero byte after it, or a length off the scale"
     }
   ],
   "sealed_fields": [
@@ -1203,7 +1222,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes"
     },
     {
       "name": "a truncated ct",
@@ -1218,7 +1238,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes"
     },
     {
       "name": "a ct with no tag",
@@ -1233,7 +1254,8 @@
         }
       },
       "error": "keys.encoding",
-      "server": null
+      "server": null,
+      "clause": "A truncated nonce, tag or `ct`, a ring `ct` other than 52 bytes"
     },
     {
       "name": "a suite not listed",
@@ -1248,7 +1270,8 @@
         }
       },
       "error": "keys.suite",
-      "server": "bad_statement"
+      "server": "bad_statement",
+      "clause": "A suite not listed"
     }
   ],
   "destination": [
@@ -1332,7 +1355,8 @@
         }
       },
       "error": "keys.destination",
-      "server": null
+      "server": null,
+      "clause": "A sealed destination that differs from the record's"
     },
     {
       "name": "an SSH hop added",
@@ -1354,7 +1378,8 @@
         }
       },
       "error": "keys.destination",
-      "server": null
+      "server": null,
+      "clause": "A sealed destination that differs from the record's"
     }
   ],
   "order": [
@@ -1367,7 +1392,8 @@
         "offered": 3
       },
       "error": "keys.stale",
-      "server": "key_version_stale"
+      "server": "key_version_stale",
+      "clause": "An envelope below the version in force at its place in the order, or below the copy held"
     },
     {
       "name": "the same envelope at the version held",

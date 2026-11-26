@@ -76,7 +76,7 @@ impl TableProApplication {
                 None => return,
             },
         };
-        let dialog = saved_link_dialog(&saved.name);
+        let dialog = saved_link_dialog(&tablepro_storage::shown_name(&saved.name));
         let answer = crate::workspace::respond(&dialog, parent.upcast_ref()).await;
         if answer != OPEN {
             return;

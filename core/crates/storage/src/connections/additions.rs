@@ -83,7 +83,7 @@ impl SavedConnection {
     // Marks and settings only this app sets, which the other app never had.
     fn keep_marks_from(&mut self, existing: &SavedConnection) {
         self.tags.clone_from(&existing.tags);
-        self.icon = existing.icon;
+        self.icon.clone_from(&existing.icon);
         self.last_opened_at = existing.last_opened_at;
         self.details.clone_from(&existing.details);
         self.device.clone_from(&existing.device);
@@ -142,7 +142,7 @@ mod tests {
             database: "app".to_owned(),
             username: "admin".to_owned(),
             tls: TlsConfig::disabled(),
-            safe_mode: SafeModeLevel::Off,
+            safe_mode: SafeModeLevel::Silent,
             external_access: Default::default(),
             ai_policy: Default::default(),
             query_timeout_secs: None,

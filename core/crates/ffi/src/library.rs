@@ -1,8 +1,10 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use secrecy::SecretString;
+use serde_json::Value;
 use tablepro_core::credentials::{SecretKind, SecretLookup, SecretVault};
 use tablepro_core::{
     AiPolicy, AuthMode, ClientIdentity, ConfigError, DriverError, ExternalAccess, NetworkOptions, SafeModeLevel,
@@ -10,8 +12,10 @@ use tablepro_core::{
 };
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
-    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, ConnectionTag, ConnectionTagName,
-    SavedConnection, SavedSshAuth, SavedSshConfig, StorageError, english_secret_label,
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionIcon, ConnectionStore, ConnectionTag,
+    ConnectionTagName, LibraryIcon, RemoteFileAccess, SavedConnection, SavedSshAuth, SavedSshConfig, SshJumpAuth,
+    SshJumpHost, SshRemoteFile, SshTotp, SshTotpAlgorithm, SshTotpMode, StorageError, SymbolName, english_secret_label,
+    shown_name,
 };
 use uuid::Uuid;
 
@@ -24,6 +28,8 @@ pub enum TlsModeTag {
     Disable,
     Prefer,
     Require,
+    // Stored for a library that holds it; no engine connects with it yet.
+    VerifyCa,
     VerifyFull,
     Strict,
 }
@@ -34,6 +40,7 @@ impl From<TlsMode> for TlsModeTag {
             TlsMode::Disable => Self::Disable,
             TlsMode::Prefer => Self::Prefer,
             TlsMode::Require => Self::Require,
+            TlsMode::VerifyCa => Self::VerifyCa,
             TlsMode::VerifyFull => Self::VerifyFull,
             TlsMode::Strict => Self::Strict,
         }
@@ -46,27 +53,54 @@ impl From<TlsModeTag> for TlsMode {
             TlsModeTag::Disable => Self::Disable,
             TlsModeTag::Prefer => Self::Prefer,
             TlsModeTag::Require => Self::Require,
+            TlsModeTag::VerifyCa => Self::VerifyCa,
             TlsModeTag::VerifyFull => Self::VerifyFull,
             TlsModeTag::Strict => Self::Strict,
         }
     }
 }
 
+// The macOS levels, weakest first; an app that offers fewer shows the one `safe_mode_enforced` gives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum SafeModeTag {
-    Off,
-    ConfirmWrites,
+    Silent,
+    Alert,
+    AlertFull,
+    SafeMode,
+    SafeModeFull,
     ReadOnly,
 }
 
 impl From<SafeModeTag> for SafeModeLevel {
     fn from(tag: SafeModeTag) -> Self {
         match tag {
-            SafeModeTag::Off => Self::Off,
-            SafeModeTag::ConfirmWrites => Self::ConfirmWrites,
+            SafeModeTag::Silent => Self::Silent,
+            SafeModeTag::Alert => Self::Alert,
+            SafeModeTag::AlertFull => Self::AlertFull,
+            SafeModeTag::SafeMode => Self::SafeMode,
+            SafeModeTag::SafeModeFull => Self::SafeModeFull,
             SafeModeTag::ReadOnly => Self::ReadOnly,
         }
     }
+}
+
+impl From<SafeModeLevel> for SafeModeTag {
+    fn from(level: SafeModeLevel) -> Self {
+        match level {
+            SafeModeLevel::Silent => Self::Silent,
+            SafeModeLevel::Alert => Self::Alert,
+            SafeModeLevel::AlertFull => Self::AlertFull,
+            SafeModeLevel::SafeMode => Self::SafeMode,
+            SafeModeLevel::SafeModeFull => Self::SafeModeFull,
+            SafeModeLevel::ReadOnly => Self::ReadOnly,
+        }
+    }
+}
+
+// The level a session runs for one stored: rounded up, never down, to Silent, Alert or Read-Only.
+#[uniffi::export]
+pub fn safe_mode_enforced(level: SafeModeTag) -> SafeModeTag {
+    SafeModeLevel::from(level).enforced().into()
 }
 
 // What the AI assistant may send from the connection (core AiPolicy).
@@ -75,6 +109,8 @@ pub enum AiPolicyTag {
     Ask,
     Allow,
     Never,
+    // The app's own default decides; an app without one asks.
+    AppDefault,
 }
 
 impl From<AiPolicyTag> for AiPolicy {
@@ -83,6 +119,7 @@ impl From<AiPolicyTag> for AiPolicy {
             AiPolicyTag::Ask => Self::Ask,
             AiPolicyTag::Allow => Self::Allow,
             AiPolicyTag::Never => Self::Never,
+            AiPolicyTag::AppDefault => Self::AppDefault,
         }
     }
 }
@@ -93,6 +130,7 @@ impl From<AiPolicy> for AiPolicyTag {
             AiPolicy::Ask => Self::Ask,
             AiPolicy::Allow => Self::Allow,
             AiPolicy::Never => Self::Never,
+            AiPolicy::AppDefault => Self::AppDefault,
         }
     }
 }
@@ -140,6 +178,7 @@ pub enum SshAuthTag {
     PrivateKey { path: Option<String>, has_passphrase: bool },
     Password,
     KeyboardInteractive,
+    None,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -147,8 +186,81 @@ pub struct SshSettings {
     pub host: String,
     pub port: Option<u16>,
     pub username: Option<String>,
-    pub jump_hosts: Vec<String>,
+    pub jump_hosts: Vec<SshJumpHostRecord>,
     pub auth: SshAuthTag,
+    // Always set on a record read back. Off keeps the settings. A save that leaves it out turns the tunnel on.
+    #[uniffi(default = None)]
+    pub enabled: Option<bool>,
+    // Always set on a record read back; a save that leaves it out keeps the stored ones.
+    #[uniffi(default = None)]
+    pub options: Option<SshOptionsRecord>,
+}
+
+// A hop typed as text has no id, auth or key; a save keeps those of a stored hop that goes to the same place.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SshJumpHostRecord {
+    pub id: Option<String>,
+    pub host: String,
+    pub port: Option<u16>,
+    pub username: Option<String>,
+    // None tries what OpenSSH's own configuration says.
+    pub auth: Option<SshJumpAuthTag>,
+    pub key_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SshJumpAuthTag {
+    Agent,
+    PrivateKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SshOptionsRecord {
+    // A key file kept while auth is not a key; a key auth carries its own path.
+    pub kept_key_path: Option<String>,
+    // None is the agent SSH_AUTH_SOCK names.
+    pub agent_socket: Option<String>,
+    pub totp: SshTotpRecord,
+    // A database file on the SSH host, as typed; None forwards a port.
+    pub remote_file_path: Option<String>,
+    pub remote_file_access: RemoteFileAccessTag,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct SshTotpRecord {
+    pub mode: SshTotpModeTag,
+    pub algorithm: SshTotpAlgorithmTag,
+    pub digits: u32,
+    pub period: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SshTotpModeTag {
+    Off,
+    AutoGenerate,
+    PromptAtConnect,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SshTotpAlgorithmTag {
+    Sha1,
+    Sha256,
+    Sha512,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum RemoteFileAccessTag {
+    ReadOnlyCopy,
+    OnServer,
+}
+
+// The icon a group or a connection shows in place of its default one. Only the Apple apps draw a symbol.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum LibraryIconRecord {
+    // One of the ids ConnectionIcon names.
+    Named { id: String },
+    // An SF Symbol name.
+    Symbol { name: String },
 }
 
 // A saved connection as the form edits it. Fields the form does not show keep their stored values on save.
@@ -171,7 +283,7 @@ pub struct ConnectionRecord {
     pub color: Option<String>,
     pub group_id: Option<String>,
     pub last_opened_ms: Option<i64>,
-    // Read only: a save keeps the stored tags, which change through tag_connections.
+    // A save keeps the stored tags, which change through tag_connections; a library write stores these.
     pub tags: Vec<String>,
     // Always set on a record read back; None on a save keeps the stored policy, Ask for a new connection.
     #[uniffi(default = None)]
@@ -179,6 +291,12 @@ pub struct ConnectionRecord {
     // Always set on a record read back; None on a save keeps the stored level, Read Only for a new connection.
     #[uniffi(default = None)]
     pub external_access: Option<ExternalAccessTag>,
+    // None on a save keeps the stored icon.
+    #[uniffi(default = None)]
+    pub icon: Option<LibraryIconRecord>,
+    // The place among its group's connections. A save keeps the stored place; a library write stores this one.
+    #[uniffi(default = 0)]
+    pub order: u32,
 }
 
 // Each secret as the form holds it: None keeps what is stored, an empty string is stored as one.
@@ -228,6 +346,8 @@ pub struct GroupRecord {
     pub parent_id: Option<String>,
     pub order: u32,
     pub color: Option<String>,
+    #[uniffi(default = None)]
+    pub icon: Option<LibraryIconRecord>,
 }
 
 // A label several connections share; they name it by id, so a rename or a new colour reaches all of them.
@@ -235,7 +355,11 @@ pub struct GroupRecord {
 pub struct TagRecord {
     pub id: String,
     pub name: String,
-    pub color: String,
+    // None for a tag with no colour.
+    pub color: Option<String>,
+    // One of the tags macOS starts every library with.
+    #[uniffi(default = false)]
+    pub is_preset: bool,
 }
 
 // Every list is in the library's own order: connections and groups by position, tags as they were made.
@@ -489,21 +613,27 @@ impl ConnectionLibrary {
         self.blocking(|store| {
             let list = store.list_blocking()?;
             let tree = list.group_tree();
+            // As the tree files them: a parent or a group the list lacks reads as the top level.
             let mut groups = Vec::new();
             for group in tree.walk() {
-                groups.push(GroupRecord::from(group));
+                groups.push(GroupRecord {
+                    name: group.name.shown(),
+                    parent_id: tree.parent(group.id).map(|id| id.to_string()),
+                    ..GroupRecord::from(group)
+                });
             }
-            let mut connections: Vec<ConnectionRecord> = list
-                .connections_in(None)
-                .into_iter()
-                .map(ConnectionRecord::from)
-                .collect();
+            // As the list shows them: names cleaned, and a group the list lacks read as the top.
+            let known: std::collections::HashSet<Uuid> = list.groups.iter().map(|group| group.id).collect();
+            let listed = |saved: &SavedConnection| ConnectionRecord {
+                name: shown_name(&saved.name),
+                group_id: saved.group_id.filter(|id| known.contains(id)).map(|id| id.to_string()),
+                ..ConnectionRecord::from(saved)
+            };
+            let by_group = list.connections_by_group();
+            let place = |group: Option<Uuid>| by_group.get(&group).into_iter().flatten().copied();
+            let mut connections: Vec<ConnectionRecord> = place(None).map(listed).collect();
             for group in tree.walk() {
-                connections.extend(
-                    list.connections_in(Some(group.id))
-                        .into_iter()
-                        .map(ConnectionRecord::from),
-                );
+                connections.extend(place(Some(group.id)).map(listed));
             }
             Ok(LibrarySnapshot {
                 connections,
@@ -514,7 +644,14 @@ impl ConnectionLibrary {
                     .into_iter()
                     .map(|saved| saved.id.to_string())
                     .collect(),
-                tags: list.tags.iter().map(TagRecord::from).collect(),
+                tags: list
+                    .tags
+                    .iter()
+                    .map(|tag| TagRecord {
+                        name: tag.name.shown(),
+                        ..TagRecord::from(tag)
+                    })
+                    .collect(),
             })
         })
         .await
@@ -526,7 +663,7 @@ impl ConnectionLibrary {
         record: ConnectionRecord,
         secrets: ConnectionSecrets,
     ) -> Result<ConnectionRecord, CoreError> {
-        let name = record.name.trim().to_owned();
+        let name = shown_name(&record.name);
         if name.is_empty() {
             return Err(CoreError::failed("library.name_required", "a connection needs a name"));
         }
@@ -536,6 +673,7 @@ impl ConnectionLibrary {
             id => Some(parse_id(id)?),
         };
         let tls = tls_config(&record.tls)?;
+        let icon = record.icon.as_ref().map(library_icon).transpose()?;
         let typed = secrets.into_typed();
         let kinds = typed.iter().map(|(kind, _)| *kind).collect();
         let _held = self.hold_writes().await;
@@ -546,11 +684,17 @@ impl ConnectionLibrary {
         };
         let (saved, before) = self
             .blocking(move |store| {
+                // A snapshot files a connection whose group has not arrived at the top; saving that keeps its group.
+                let list = store.list_blocking()?;
+                let group_id = match id.and_then(|id| list.connections.iter().find(|saved| saved.id == id)) {
+                    Some(stored) if list.group_of(stored) == group_id => stored.group_id,
+                    _ => group_id,
+                };
                 if let Some(id) = id {
                     let mut before = None;
                     let updated = store.update_blocking(id, |saved| {
                         before = Some(saved.clone());
-                        apply(&record, &tls, name.clone(), group_id, saved);
+                        apply(&record, &tls, icon.clone(), name.clone(), group_id, saved);
                     })?;
                     if let Some(updated) = updated {
                         return Ok((updated, before));
@@ -560,7 +704,7 @@ impl ConnectionLibrary {
                 let unreadable = store.list_blocking()?.unreadable;
                 let fresh = id.filter(|id| !unreadable.contains(id));
                 let mut created = blank(fresh.unwrap_or_else(Uuid::new_v4));
-                apply(&record, &tls, name, group_id, &mut created);
+                apply(&record, &tls, icon, name, group_id, &mut created);
                 store.upsert_blocking(created.clone())?;
                 let listed = store
                     .list_blocking()?
@@ -624,7 +768,7 @@ impl ConnectionLibrary {
 
     pub async fn rename_connection(&self, id: String, name: String) -> Result<(), CoreError> {
         let id = parse_id(&id)?;
-        let name = name.trim().to_owned();
+        let name = shown_name(&name);
         if name.is_empty() {
             return Err(CoreError::failed("library.name_required", "a connection needs a name"));
         }
@@ -644,12 +788,21 @@ impl ConnectionLibrary {
             .await
     }
 
-    pub async fn update_tag(&self, id: String, name: String, color: String) -> Result<(), CoreError> {
+    // None leaves the tag with no colour, as macOS can hold one.
+    pub async fn update_tag(&self, id: String, name: String, color: Option<String>) -> Result<(), CoreError> {
         let id = parse_id(&id)?;
         let name = tag_name(&name)?;
-        let color = tag_color(&color)?;
-        self.blocking(move |store| Ok(store.update_tag_blocking(ConnectionTag { id, name, color })?))
-            .await
+        let color = color.as_deref().map(tag_color).transpose()?;
+        self.blocking(move |store| {
+            let is_preset = store.tags_blocking()?.iter().any(|tag| tag.id == id && tag.is_preset);
+            Ok(store.update_tag_blocking(ConnectionTag {
+                id,
+                name,
+                color,
+                is_preset,
+            })?)
+        })
+        .await
     }
 
     // Takes the tag off every connection too.
@@ -755,7 +908,7 @@ impl ConnectionLibrary {
     // connects alone. It has never been opened and is no favourite.
     pub async fn duplicate(&self, id: String, name: String) -> Result<ConnectionRecord, CoreError> {
         let id = parse_id(&id)?;
-        let name = name.trim().to_owned();
+        let name = shown_name(&name);
         if name.is_empty() {
             return Err(CoreError::failed("library.name_required", "a connection needs a name"));
         }
@@ -865,7 +1018,7 @@ pub(crate) fn parse_id(id: &str) -> Result<Uuid, CoreError> {
     Uuid::parse_str(id.trim()).map_err(|_| CoreError::failed("library.invalid_id", format!("{id} is not an id")))
 }
 
-fn parse_ids(ids: &[String]) -> Result<Vec<Uuid>, CoreError> {
+pub(crate) fn parse_ids(ids: &[String]) -> Result<Vec<Uuid>, CoreError> {
     ids.iter().map(|id| parse_id(id)).collect()
 }
 
@@ -873,12 +1026,12 @@ fn tag_name(name: &str) -> Result<ConnectionTagName, CoreError> {
     ConnectionTagName::new(name).map_err(|error| CoreError::failed(error.code(), error.to_string()))
 }
 
-fn tag_color(color: &str) -> Result<ConnectionColor, CoreError> {
+pub(crate) fn tag_color(color: &str) -> Result<ConnectionColor, CoreError> {
     ConnectionColor::from_id(color.trim())
         .ok_or_else(|| CoreError::failed("library.unknown_color", format!("{color} is not a colour")))
 }
 
-fn optional_id(id: Option<&str>) -> Result<Option<Uuid>, CoreError> {
+pub(crate) fn optional_id(id: Option<&str>) -> Result<Option<Uuid>, CoreError> {
     id.filter(|id| !id.trim().is_empty()).map(parse_id).transpose()
 }
 
@@ -915,15 +1068,27 @@ pub(crate) fn blank(id: Uuid) -> SavedConnection {
     }
 }
 
-// `tls` is `tls_config` of the record's settings, read before any write so a refused pair writes nothing.
+fn offered_tls_modes(driver_id: &str) -> &'static [TlsMode] {
+    crate::drivers::registry()
+        .get(driver_id)
+        .and_then(|driver| driver.capabilities().tls)
+        .map_or(&[], |tls| tls.modes)
+}
+
+// `tls` and `icon` are the record's, read before any write so a refused value writes nothing.
 pub(crate) fn apply(
     record: &ConnectionRecord,
     tls: &TlsConfig,
+    icon: Option<LibraryIcon>,
     name: String,
     group_id: Option<Uuid>,
     saved: &mut SavedConnection,
 ) {
-    saved.name = name;
+    let mode = match saved.driver_id == record.driver_id {
+        true => TlsMode::edited(saved.tls.mode, tls.mode, offered_tls_modes(&record.driver_id)),
+        false => tls.mode,
+    };
+    saved.name = shown_name(&name);
     saved.driver_id.clone_from(&record.driver_id);
     saved.host = record.host.trim().to_owned();
     saved.port = record.port;
@@ -933,9 +1098,21 @@ pub(crate) fn apply(
         true => AuthMode::Kerberos,
         false => AuthMode::Password,
     };
-    saved.tls = tls.clone();
-    saved.ssh = record.ssh.as_ref().map(saved_ssh);
-    saved.safe_mode = record.safe_mode.into();
+    let unknown = std::mem::take(&mut saved.tls.unknown);
+    saved.tls = TlsConfig {
+        mode,
+        unknown,
+        ..tls.clone()
+    };
+    saved.ssh = match &record.ssh {
+        Some(settings) => Some(edited_ssh(settings, saved.ssh.as_ref())),
+        // A form shows no tunnel to a database file on the SSH host, which only the Mac opens, so it stays as it is.
+        None => saved.ssh.take().map(|ssh| match ssh.opens_remote_file() {
+            true => ssh,
+            false => SavedSshConfig { enabled: false, ..ssh },
+        }),
+    };
+    saved.safe_mode = SafeModeLevel::edited(saved.safe_mode, record.safe_mode.into());
     saved.query_timeout_secs = record.query_timeout_secs;
     saved.color = record.color.as_deref().and_then(ConnectionColor::from_id);
     saved.group_id = group_id;
@@ -943,7 +1120,10 @@ pub(crate) fn apply(
         saved.external_access = access.into();
     }
     if let Some(policy) = record.ai_policy {
-        saved.ai_policy = policy.into();
+        saved.ai_policy = AiPolicy::edited(saved.ai_policy, policy.into(), AiPolicy::Ask);
+    }
+    if icon.is_some() {
+        saved.icon = icon;
     }
 }
 
@@ -974,6 +1154,22 @@ pub(crate) fn tls_config(settings: &TlsSettings) -> Result<TlsConfig, CoreError>
     Ok(config)
 }
 
+// As the library holds them: half a client identity keeps its empty side, which a connect refuses.
+pub(crate) fn stored_tls(settings: &TlsSettings, unknown: BTreeMap<String, Value>) -> TlsConfig {
+    let certificate = settings.client_certificate.clone().unwrap_or_default();
+    let key = settings.client_key.clone().unwrap_or_default();
+    TlsConfig {
+        mode: settings.mode.into(),
+        ca_file: settings.ca_file.as_ref().map(PathBuf::from),
+        client_identity: (!certificate.is_empty() || !key.is_empty()).then(|| ClientIdentity {
+            certificate: PathBuf::from(certificate),
+            key: PathBuf::from(key),
+        }),
+        server_name: settings.server_name.clone(),
+        unknown,
+    }
+}
+
 // The form's jump hosts as OpenSSH's -J takes them, checked as a connect would read them; the list is saved as typed.
 #[uniffi::export]
 pub fn check_jump_hosts(list: String) -> Result<(), CoreError> {
@@ -982,9 +1178,30 @@ pub fn check_jump_hosts(list: String) -> Result<(), CoreError> {
         .map_err(|problem| DriverError::from(tablepro_core::TransportError::Ssh(problem.into())).into())
 }
 
-pub(crate) fn saved_ssh(settings: &SshSettings) -> SavedSshConfig {
-    SavedSshConfig {
-        host: settings.host.trim().to_owned(),
+// A typed -J list as the hops a save takes, after the check a connect makes.
+#[uniffi::export]
+pub fn parse_jump_hosts(list: String) -> Result<Vec<SshJumpHostRecord>, CoreError> {
+    check_jump_hosts(list.clone())?;
+    Ok(SshJumpHost::parse_list(&list)
+        .iter()
+        .map(SshJumpHostRecord::from)
+        .collect())
+}
+
+// The hops as a form shows them, the way -J takes them.
+#[uniffi::export]
+pub fn jump_hosts_text(hops: Vec<SshJumpHostRecord>) -> String {
+    hops.iter()
+        .map(|hop| SshJumpHost::new(hop.host.clone(), hop.port, hop.username.clone()).destination())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+// A form's settings over the stored tunnel: what the form leaves out keeps its stored value.
+pub(crate) fn edited_ssh(settings: &SshSettings, stored: Option<&SavedSshConfig>) -> SavedSshConfig {
+    let mut ssh = SavedSshConfig {
+        // A save that carries the tunnel means it is on, unless it says otherwise: a form with no switch sends none.
+        enabled: settings.enabled.unwrap_or(true),
         port: settings.port,
         username: settings
             .username
@@ -994,22 +1211,117 @@ pub(crate) fn saved_ssh(settings: &SshSettings) -> SavedSshConfig {
         jump_hosts: settings
             .jump_hosts
             .iter()
-            .map(|host| host.trim().to_owned())
-            .filter(|host| !host.is_empty())
+            .filter(|hop| !hop.host.trim().is_empty())
+            .map(|hop| SshJumpHost {
+                host: hop.host.trim().to_owned(),
+                ..jump_host(hop)
+            })
             .collect(),
-        auth: match &settings.auth {
-            SshAuthTag::Agent => SavedSshAuth::Agent,
-            SshAuthTag::PrivateKey {
-                path: key,
-                has_passphrase,
-            } => SavedSshAuth::PrivateKey {
-                path: path(key.as_ref()),
-                has_passphrase: *has_passphrase,
-            },
-            SshAuthTag::Password => SavedSshAuth::Password,
-            SshAuthTag::KeyboardInteractive => SavedSshAuth::KeyboardInteractive,
-        },
+        ..SavedSshConfig::new(settings.host.trim(), saved_auth(&settings.auth, false))
     }
+    .kept_over(stored);
+    if let Some(options) = &settings.options {
+        apply_options(options, &mut ssh);
+    }
+    if matches!(ssh.auth, SavedSshAuth::PrivateKey { .. }) {
+        ssh.kept_key_path = None;
+    }
+    ssh
+}
+
+// As a library holds them, nothing trimmed; a key a newer build wrote stays from `unknown`.
+pub(crate) fn stored_ssh(
+    settings: &SshSettings,
+    unknown: BTreeMap<String, Value>,
+) -> Result<SavedSshConfig, CoreError> {
+    let mut ssh = SavedSshConfig {
+        enabled: settings.enabled.unwrap_or(true),
+        host: settings.host.clone(),
+        port: settings.port,
+        username: settings.username.clone(),
+        // A hop id that does not read is refused, not dropped: the store would write the hop back without it.
+        jump_hosts: settings
+            .jump_hosts
+            .iter()
+            .map(|hop| {
+                Ok(SshJumpHost {
+                    id: optional_id(hop.id.as_deref())?,
+                    ..jump_host(hop)
+                })
+            })
+            .collect::<Result<_, CoreError>>()?,
+        auth: saved_auth(&settings.auth, true),
+        unknown,
+        ..SavedSshConfig::new("", SavedSshAuth::Agent)
+    };
+    if let Some(options) = &settings.options {
+        apply_options(options, &mut ssh);
+    }
+    Ok(ssh)
+}
+
+// A save of a profile is an edit; a profile keeps the keys a newer build stored in it.
+pub(crate) fn saved_ssh(settings: &SshSettings) -> SavedSshConfig {
+    edited_ssh(settings, None)
+}
+
+fn saved_auth(auth: &SshAuthTag, as_stored: bool) -> SavedSshAuth {
+    match auth {
+        SshAuthTag::Agent => SavedSshAuth::Agent,
+        SshAuthTag::PrivateKey {
+            path: key,
+            has_passphrase,
+        } => SavedSshAuth::PrivateKey {
+            path: match as_stored {
+                true => key.as_ref().map(PathBuf::from),
+                false => path(key.as_ref()),
+            },
+            has_passphrase: *has_passphrase,
+        },
+        SshAuthTag::Password => SavedSshAuth::Password,
+        SshAuthTag::KeyboardInteractive => SavedSshAuth::KeyboardInteractive,
+        SshAuthTag::None => SavedSshAuth::None,
+    }
+}
+
+fn jump_host(hop: &SshJumpHostRecord) -> SshJumpHost {
+    SshJumpHost {
+        id: hop.id.as_deref().and_then(|id| Uuid::parse_str(id.trim()).ok()),
+        host: hop.host.clone(),
+        port: hop.port,
+        username: hop.username.clone(),
+        auth: hop.auth.map(|auth| match auth {
+            SshJumpAuthTag::Agent => SshJumpAuth::Agent,
+            SshJumpAuthTag::PrivateKey => SshJumpAuth::PrivateKey,
+        }),
+        key_path: hop.key_path.as_ref().map(PathBuf::from),
+    }
+}
+
+fn apply_options(options: &SshOptionsRecord, ssh: &mut SavedSshConfig) {
+    ssh.kept_key_path = options.kept_key_path.as_ref().map(PathBuf::from);
+    ssh.agent_socket = options.agent_socket.as_ref().map(PathBuf::from);
+    ssh.totp = SshTotp {
+        mode: match options.totp.mode {
+            SshTotpModeTag::Off => SshTotpMode::Off,
+            SshTotpModeTag::AutoGenerate => SshTotpMode::AutoGenerate,
+            SshTotpModeTag::PromptAtConnect => SshTotpMode::PromptAtConnect,
+        },
+        algorithm: match options.totp.algorithm {
+            SshTotpAlgorithmTag::Sha1 => SshTotpAlgorithm::Sha1,
+            SshTotpAlgorithmTag::Sha256 => SshTotpAlgorithm::Sha256,
+            SshTotpAlgorithmTag::Sha512 => SshTotpAlgorithm::Sha512,
+        },
+        digits: options.totp.digits,
+        period: options.totp.period,
+    };
+    ssh.remote_file = SshRemoteFile {
+        path: options.remote_file_path.clone(),
+        access: match options.remote_file_access {
+            RemoteFileAccessTag::ReadOnlyCopy => RemoteFileAccess::ReadOnlyCopy,
+            RemoteFileAccessTag::OnServer => RemoteFileAccess::OnServer,
+        },
+    };
 }
 
 pub(crate) fn ssh_settings(ssh: &SavedSshConfig) -> SshSettings {
@@ -1017,7 +1329,7 @@ pub(crate) fn ssh_settings(ssh: &SavedSshConfig) -> SshSettings {
         host: ssh.host.clone(),
         port: ssh.port,
         username: ssh.username.clone(),
-        jump_hosts: ssh.jump_hosts.clone(),
+        jump_hosts: ssh.jump_hosts.iter().map(SshJumpHostRecord::from).collect(),
         auth: match &ssh.auth {
             SavedSshAuth::Agent => SshAuthTag::Agent,
             SavedSshAuth::PrivateKey { path, has_passphrase } => SshAuthTag::PrivateKey {
@@ -1026,7 +1338,72 @@ pub(crate) fn ssh_settings(ssh: &SavedSshConfig) -> SshSettings {
             },
             SavedSshAuth::Password => SshAuthTag::Password,
             SavedSshAuth::KeyboardInteractive => SshAuthTag::KeyboardInteractive,
+            SavedSshAuth::None => SshAuthTag::None,
         },
+        enabled: Some(ssh.enabled),
+        options: Some(SshOptionsRecord {
+            kept_key_path: ssh.kept_key_path.as_deref().map(shown),
+            agent_socket: ssh.agent_socket.as_deref().map(shown),
+            totp: SshTotpRecord {
+                mode: match ssh.totp.mode {
+                    SshTotpMode::Off => SshTotpModeTag::Off,
+                    SshTotpMode::AutoGenerate => SshTotpModeTag::AutoGenerate,
+                    SshTotpMode::PromptAtConnect => SshTotpModeTag::PromptAtConnect,
+                },
+                algorithm: match ssh.totp.algorithm {
+                    SshTotpAlgorithm::Sha1 => SshTotpAlgorithmTag::Sha1,
+                    SshTotpAlgorithm::Sha256 => SshTotpAlgorithmTag::Sha256,
+                    SshTotpAlgorithm::Sha512 => SshTotpAlgorithmTag::Sha512,
+                },
+                digits: ssh.totp.digits,
+                period: ssh.totp.period,
+            },
+            remote_file_path: ssh.remote_file.path.clone(),
+            remote_file_access: match ssh.remote_file.access {
+                RemoteFileAccess::ReadOnlyCopy => RemoteFileAccessTag::ReadOnlyCopy,
+                RemoteFileAccess::OnServer => RemoteFileAccessTag::OnServer,
+            },
+        }),
+    }
+}
+
+impl From<&SshJumpHost> for SshJumpHostRecord {
+    fn from(hop: &SshJumpHost) -> Self {
+        Self {
+            id: hop.id.map(|id| id.to_string()),
+            host: hop.host.clone(),
+            port: hop.port,
+            username: hop.username.clone(),
+            auth: hop.auth.map(|auth| match auth {
+                SshJumpAuth::Agent => SshJumpAuthTag::Agent,
+                SshJumpAuth::PrivateKey => SshJumpAuthTag::PrivateKey,
+            }),
+            key_path: hop.key_path.as_deref().map(shown),
+        }
+    }
+}
+
+pub(crate) fn library_icon(record: &LibraryIconRecord) -> Result<LibraryIcon, CoreError> {
+    match record {
+        LibraryIconRecord::Named { id } => ConnectionIcon::from_id(id)
+            .map(LibraryIcon::Named)
+            .ok_or_else(|| CoreError::failed("library.unknown_icon", format!("{id} is not an icon"))),
+        LibraryIconRecord::Symbol { name } => SymbolName::new(name)
+            .map(LibraryIcon::Symbol)
+            .ok_or_else(|| CoreError::failed("library.invalid_icon", format!("{name} is not a symbol name"))),
+    }
+}
+
+impl From<&LibraryIcon> for LibraryIconRecord {
+    fn from(icon: &LibraryIcon) -> Self {
+        match icon {
+            LibraryIcon::Named(named) => Self::Named {
+                id: named.id().to_owned(),
+            },
+            LibraryIcon::Symbol(symbol) => Self::Symbol {
+                name: symbol.as_str().to_owned(),
+            },
+        }
     }
 }
 
@@ -1048,20 +1425,23 @@ impl From<&SavedConnection> for ConnectionRecord {
             tls: TlsSettings {
                 mode: saved.tls.mode.into(),
                 ca_file: saved.tls.ca_file.as_deref().map(shown),
+                // Half an identity, which a library can hold, reads back with its empty side as none.
                 client_certificate: saved
                     .tls
                     .client_identity
                     .as_ref()
-                    .map(|identity| shown(&identity.certificate)),
-                client_key: saved.tls.client_identity.as_ref().map(|identity| shown(&identity.key)),
+                    .map(|identity| shown(&identity.certificate))
+                    .filter(|path| !path.is_empty()),
+                client_key: saved
+                    .tls
+                    .client_identity
+                    .as_ref()
+                    .map(|identity| shown(&identity.key))
+                    .filter(|path| !path.is_empty()),
                 server_name: saved.tls.server_name.clone(),
             },
             ssh: saved.ssh.as_ref().map(ssh_settings),
-            safe_mode: match saved.safe_mode {
-                SafeModeLevel::Off => SafeModeTag::Off,
-                SafeModeLevel::ConfirmWrites => SafeModeTag::ConfirmWrites,
-                SafeModeLevel::ReadOnly => SafeModeTag::ReadOnly,
-            },
+            safe_mode: saved.safe_mode.into(),
             query_timeout_secs: saved.query_timeout_secs,
             color: saved.color.map(|color| color.id().to_owned()),
             group_id: saved.group_id.map(|id| id.to_string()),
@@ -1069,6 +1449,8 @@ impl From<&SavedConnection> for ConnectionRecord {
             tags: saved.tags.iter().map(Uuid::to_string).collect(),
             ai_policy: Some(saved.ai_policy.into()),
             external_access: Some(saved.external_access.into()),
+            icon: saved.icon.as_ref().map(LibraryIconRecord::from),
+            order: saved.order,
         }
     }
 }
@@ -1081,6 +1463,7 @@ impl From<&ConnectionGroup> for GroupRecord {
             parent_id: group.parent_id.map(|id| id.to_string()),
             order: group.order,
             color: group.color.map(|color| color.id().to_owned()),
+            icon: group.icon.as_ref().map(LibraryIconRecord::from),
         }
     }
 }
@@ -1090,7 +1473,8 @@ impl From<&ConnectionTag> for TagRecord {
         Self {
             id: tag.id.to_string(),
             name: tag.name.as_str().to_owned(),
-            color: tag.color.id().to_owned(),
+            color: tag.color.map(|color| color.id().to_owned()),
+            is_preset: tag.is_preset,
         }
     }
 }

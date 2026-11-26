@@ -12,11 +12,32 @@ import os
 final class SuggestionViewModel: ObservableObject {
     private static let logger = Logger(subsystem: "com.TableProEditorKit", category: "SuggestionVM")
     /// The items to be displayed in the window
-    @Published var items: [CodeSuggestionEntry] = []
+    @Published var items: [CodeSuggestionEntry] = [] {
+        didSet {
+            rowIDs = SuggestionRowID.ids(for: items)
+            // Keyed by row, so it is stale the moment the rows change, before the panel measures a preview.
+            syntaxHighlightedCache = [:]
+            onContentChange?()
+        }
+    }
     // A row the user picked, by arrow key or click, rather than the first row a new list starts on.
     @Published var selectedIndex: Int = 0 {
-        didSet { selectionIsChosen = !isResettingSelection }
+        didSet {
+            selectionIsChosen = !isResettingSelection
+            if selectedIndex != oldValue { onContentChange?() }
+        }
     }
+    // A re-rank moves rows rather than rewriting each position, so a row that stays keeps its view.
+    private(set) var rowIDs: [SuggestionRowID] = []
+
+    var rows: [SuggestionRow] {
+        zip(rowIDs, items).enumerated().map { index, pair in
+            SuggestionRow(id: pair.0, index: index, item: pair.1)
+        }
+    }
+
+    // Called in the same turn as the change, so the panel is sized before anything orders it front.
+    var onContentChange: (() -> Void)?
     private var selectionIsChosen = false
     private var isResettingSelection = false
 
@@ -173,7 +194,6 @@ final class SuggestionViewModel: ObservableObject {
 
                     self.items = items
                     self.resetSelection()
-                    self.syntaxHighlightedCache = [:]
                     self.notifySelection()
 
                     guard self.requestGeneration == generation, self.activeTextView === textView else {
@@ -240,7 +260,6 @@ final class SuggestionViewModel: ObservableObject {
         lastDroppedMovePresents = false
         items.removeAll()
         resetSelection()
-        syntaxHighlightedCache = [:]
         activeTextView = nil
         if let delegate {
             self.delegate = nil
@@ -270,7 +289,6 @@ final class SuggestionViewModel: ObservableObject {
         ), !newItems.isEmpty {
             items = newItems
             resetSelection()
-            syntaxHighlightedCache = [:]
             notifySelection()
             // A deletion arrives here as a plain move, so the delegate, not the trigger, decides.
             let isRefreshingHere = isRefreshingItems && refresh?.position == position
@@ -330,15 +348,14 @@ final class SuggestionViewModel: ObservableObject {
                 return
             }
 
-            let chosen = self.selectionIsChosen ? self.selectedItem : nil
+            let chosen = self.selectionIsChosen && self.rowIDs.indices.contains(self.selectedIndex)
+                ? self.rowIDs[self.selectedIndex] : nil
             self.items = items
-            // Entries carry no identity, so a chosen row is found again by what it shows.
-            if let chosen, let index = items.firstIndex(where: { $0.label == chosen.label && $0.detail == chosen.detail }) {
+            if let chosen, let index = self.rowIDs.firstIndex(of: chosen) {
                 self.selectedIndex = index
             } else {
                 self.resetSelection()
             }
-            self.syntaxHighlightedCache = [:]
             self.notifySelection()
             delegate.completionWindowDidShow(textView: textView, itemCount: items.count)
             self.refreshIfOvertaken(response, textView: textView, delegate: delegate)

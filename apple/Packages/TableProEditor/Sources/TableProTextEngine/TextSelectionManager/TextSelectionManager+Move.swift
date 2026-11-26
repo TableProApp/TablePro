@@ -30,7 +30,7 @@ extension TextSelectionManager {
             )
         }
         updateSelectionViews()
-        delegate?.setNeedsDisplay()
+        setNeedsDisplayForSelections()
         notifySelectionChanged()
     }
 

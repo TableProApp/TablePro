@@ -10,8 +10,12 @@ struct GroupPersistence {
         file = LibraryFile(directory: directory, name: "groups.json")
     }
 
-    func save(_ groups: [ConnectionGroup], removingUnreadable removedIds: Set<UUID> = []) throws {
-        try file.save(groups, removingUnreadable: removedIds)
+    func save(
+        _ groups: [ConnectionGroup],
+        removingUnreadable removedIds: Set<UUID> = [],
+        willWrite: (Data) -> Void = { _ in }
+    ) throws {
+        try file.save(groups, removingUnreadable: removedIds, willWrite: willWrite)
     }
 
     func load() throws -> [ConnectionGroup] {

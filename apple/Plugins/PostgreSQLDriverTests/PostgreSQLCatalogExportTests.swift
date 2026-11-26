@@ -119,6 +119,56 @@ struct PostgreSQLCatalogExportTests {
             """)
     }
 
+    @Test("The schema's table DDL takes two reads and gives each table the text of its own read")
+    func schemaTableDDLMatchesEachTablesRead() async throws {
+        let bulkColumns = PostgreSQLSchemaQueries.allTablesDDLColumnsQuery(schema: "app", capabilities: Self.modern)
+        let bulkConstraints = PostgreSQLSchemaQueries.allTablesDDLConstraintsQuery(schema: "app", capabilities: Self.modern)
+        let tables: [(name: String, columns: [String], persistence: String, constraints: [String])] = [
+            ("orders", [#""id" integer NOT NULL"#, #""note" text"#], "p", [#"CONSTRAINT "orders_pkey" PRIMARY KEY ("id")"#]),
+            ("scratch", [#""v" jsonb"#], "u", []),
+            ("lines", [#""order_id" integer"#, #""qty" integer DEFAULT 1"#], "p",
+             [#"CONSTRAINT "lines_qty_check" CHECK (qty > 0)"#, #"CONSTRAINT "lines_u" UNIQUE (order_id)"#])
+        ]
+        let recorder = CatalogReadRecorder { statement in
+            switch statement {
+            case bulkColumns:
+                return tables.flatMap { table in table.columns.map { ([$0, table.persistence, table.name] as [String?]).cells } }
+            case bulkConstraints:
+                return tables.flatMap { table in table.constraints.map { ([$0, table.name] as [String?]).cells } }
+            default:
+                for table in tables {
+                    let columns = PostgreSQLSchemaQueries.tableDDLColumnsQuery(
+                        schema: "app", table: table.name, capabilities: Self.modern
+                    )
+                    let constraints = PostgreSQLSchemaQueries.tableDDLConstraintsQuery(schema: "app", table: table.name)
+                    let shape = PostgreSQLTableDDL.shapeQuery(schema: "app", table: table.name, capabilities: Self.modern)
+                    if statement == columns { return table.columns.map { ([$0, "r"] as [String?]).cells } }
+                    if statement == constraints { return table.constraints.map { ([$0] as [String?]).cells } }
+                    if statement == shape { return [([table.persistence, nil, nil, nil] as [String?]).cells] }
+                }
+                return []
+            }
+        }
+        let catalog = Self.catalog(recorder)
+
+        let bulk = try await catalog.fetchAllTableDDL(schema: nil)
+        #expect(recorder.statements == [bulkColumns, bulkConstraints] || recorder.statements == [bulkConstraints, bulkColumns])
+        #expect(Set(bulk.keys) == ["orders", "scratch", "lines"])
+        for table in tables {
+            let alone = try await catalog.fetchTableDDL(table: table.name, schema: nil)
+            #expect(bulk[table.name] == alone, "\(table.name)")
+        }
+        #expect(bulk["scratch"]?.hasPrefix(#"CREATE UNLOGGED TABLE "app"."scratch""#) == true)
+    }
+
+    @Test("The schema's table DDL reads only plain tables that are not partitions")
+    func schemaTableDDLLeavesOutPartitions() {
+        let modern = PostgreSQLSchemaQueries.allTablesDDLColumnsQuery(schema: "app", capabilities: Self.modern)
+        let legacy = PostgreSQLSchemaQueries.allTablesDDLColumnsQuery(schema: "app", capabilities: Self.legacy)
+        #expect(modern.contains("c.relkind = 'r' AND NOT c.relispartition"))
+        #expect(legacy.contains("c.relkind = 'r'") && !legacy.contains("relispartition"))
+    }
+
     @Test("A view reached as a table answers with its own definition")
     func tableDDLOfAViewIsTheView() async throws {
         let columns = PostgreSQLSchemaQueries.tableDDLColumnsQuery(schema: "app", table: "v", capabilities: Self.modern)

@@ -11,7 +11,9 @@ import TableProGrammars
 
 extension TreeSitterClient {
     func queryHighlightsForRange(range: NSRange) -> [HighlightRange] {
-        guard let state = self.state else { return [] }
+        let (state, text) = pipeline.withValue { ($0.state, $0.stateText) }
+        guard let state, let text else { return [] }
+        let readCallback = text.readCallback
 
         var highlights: [HighlightRange] = []
         var injectedSet = IndexSet(integersIn: range)
@@ -22,7 +24,8 @@ extension TreeSitterClient {
                 if let rangeIntersection = range.intersection(layerRange) {
                     let queryResult = queryLayerHighlights(
                         layer: layer,
-                        range: rangeIntersection
+                        range: rangeIntersection,
+                        readCallback: readCallback
                     )
 
                     highlights.append(contentsOf: queryResult)
@@ -35,7 +38,8 @@ extension TreeSitterClient {
         for range in injectedSet.rangeView {
             let queryResult = queryLayerHighlights(
                 layer: state.layers[0],
-                range: NSRange(range)
+                range: NSRange(range),
+                readCallback: readCallback
             )
             highlights.append(contentsOf: queryResult)
         }
@@ -50,35 +54,34 @@ extension TreeSitterClient {
     /// - Returns: Any ranges to highlight.
     internal func queryLayerHighlights(
         layer: LanguageLayer,
-        range: NSRange
+        range: NSRange,
+        readCallback: @escaping SwiftTreeSitter.Predicate.TextProvider
     ) -> [HighlightRange] {
         guard let tree = layer.tree,
               let rootNode = tree.rootNode else {
             return []
         }
 
-        // This needs to be on the main thread since we're going to use the `textProvider` in
-        // the `highlightsFromCursor` method, which uses the textView's text storage.
         guard let queryCursor = layer.languageQuery?.execute(node: rootNode, in: tree) else {
             return []
         }
         queryCursor.setRange(range)
         queryCursor.matchLimit = Constants.matchLimit
 
-        return highlightsFromCursor(cursor: queryCursor, includedRange: range)
+        return highlightsFromCursor(cursor: queryCursor, includedRange: range, readCallback: readCallback)
     }
 
     /// Resolves a query cursor to the highlight ranges it contains.
-    /// **Must be called on the main thread**
     /// - Parameters:
     ///     - cursor: The cursor to resolve.
     ///     - includedRange: The range to include highlights from.
+    ///     - readCallback: Reads the text the cursor's tree was parsed from, for the query's predicates.
     /// - Returns: Any highlight ranges contained in the cursor.
     internal func highlightsFromCursor(
         cursor: QueryCursor,
-        includedRange: NSRange
+        includedRange: NSRange,
+        readCallback: @escaping SwiftTreeSitter.Predicate.TextProvider
     ) -> [HighlightRange] {
-        guard let readCallback else { return [] }
         var ranges: [NSRange: Int] = [:]
         return cursor
             .resolve(with: .init(textProvider: readCallback)) // Resolve our cursor against the query

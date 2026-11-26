@@ -59,6 +59,7 @@ final class SchemaService: ObservableObject {
     let triggersDedup = OnceTask<LoadKey, [TriggerInfo]>()
     let typesDedup = OnceTask<LoadKey, [UserDefinedTypeInfo]>()
     let schemasDedup = OnceTask<LoadKey, [String]>()
+    let sideObjectsDedup = OnceTask<LoadKey, CatalogSideObjects>()
     private let perSchemaDedup = OnceTask<SchemaFetchKey, [TableInfo]>()
     private let perSchemaRoutinesDedup = OnceTask<SchemaFetchKey, [RoutineInfo]>()
     private let perSchemaTriggersDedup = OnceTask<SchemaFetchKey, [TriggerInfo]>()
@@ -915,6 +916,7 @@ final class SchemaService: ObservableObject {
         await typesDedup.cancel { $0.connectionId == connectionId }
         await serverObjectsDedup.cancel { $0.load.connectionId == connectionId }
         await schemasDedup.cancel { $0.connectionId == connectionId }
+        await sideObjectsDedup.cancel { $0.connectionId == connectionId }
         await cancelSchemaLoads { $0.schemaKey.connectionId == connectionId }
     }
 
