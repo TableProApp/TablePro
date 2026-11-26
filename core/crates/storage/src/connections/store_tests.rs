@@ -1261,6 +1261,49 @@ fn a_library_write_over_a_file_that_changed_since_is_refused() {
 }
 
 #[test]
+fn a_library_write_over_a_file_swapped_for_one_that_does_not_read_is_refused_as_changed() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let vouched = replace(&store, library_as_another_app_holds_it()).expect("write");
+    std::fs::write(paths(&root).connections_file(), b"{ half an edit").expect("a swap");
+
+    let refused = store.replace_library_blocking(vouched.as_deref(), |_| {
+        Ok::<_, StorageError>(library_as_another_app_holds_it())
+    });
+
+    assert!(matches!(refused, Err(StorageError::LibraryChanged)), "{refused:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_rebuild_sets_aside_a_file_the_system_will_not_let_it_read() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    replace(&store, library_as_another_app_holds_it()).expect("write");
+    let path = paths(&root).connections_file();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).expect("locked out");
+    if std::fs::read(&path).is_ok() {
+        // Root reads whatever the mode says, so there is nothing to test.
+        return;
+    }
+    let kept = plain("kept");
+
+    let rebuilt = store
+        .rebuild_library_blocking(
+            LibraryWrite {
+                connections: vec![kept.clone()],
+                ..LibraryWrite::default()
+            },
+            SystemTime::now(),
+        )
+        .expect("rebuild");
+
+    assert!(rebuilt.set_aside.is_some());
+    assert_eq!(store.list_blocking().expect("list").connections.to_vec(), [kept]);
+}
+
+#[test]
 fn a_library_write_refuses_what_the_store_would_drop() {
     let root = TempDir::new().expect("tempdir");
     let store = store(&root);

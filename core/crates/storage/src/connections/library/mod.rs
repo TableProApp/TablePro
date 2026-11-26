@@ -56,7 +56,14 @@ impl ConnectionStore {
         build: impl FnOnce(&ConnectionList) -> Result<LibraryWrite, E>,
     ) -> Result<Option<String>, E> {
         let mut state = self.lock_to_write();
-        let before = self.ensure_current(&mut state)?;
+        let before = match self.ensure_current(&mut state) {
+            Ok(before) => before,
+            // A file swapped for one that does not read is a change too, and says so first.
+            Err(StorageError::DocumentUnavailable(_)) if bytes_digest(&state).as_deref() != over => {
+                return Err(StorageError::LibraryChanged.into());
+            }
+            Err(error) => return Err(error.into()),
+        };
         if digest_of(&state).as_deref() != over {
             return Err(StorageError::LibraryChanged.into());
         }
@@ -86,6 +93,9 @@ impl ConnectionStore {
         document.tidy();
         if document != before {
             self.commit(&mut state, document)?;
+        } else if self.digest_on_disk().as_deref() != over {
+            // Nothing written, so the file must still be the one it answers for.
+            return Err(StorageError::LibraryChanged.into());
         }
         Ok(digest_of(&state))
     }
@@ -100,9 +110,12 @@ impl ConnectionStore {
             favorites,
         } = write;
         let mut state = self.lock_to_write();
+        // A file that will not read, for its contents or for the system, goes aside whatever the store held before.
         let set_aside = match self.ensure_current(&mut state) {
             Ok(_) => None,
-            Err(StorageError::DocumentUnavailable(_)) => Some(crate::fs::move_aside_blocking(&self.inner.path, now)?),
+            Err(StorageError::DocumentUnavailable(_) | StorageError::Io { .. }) => {
+                Some(crate::fs::move_aside_blocking(&self.inner.path, now)?)
+            }
             Err(error) => return Err(error),
         };
         // Told against nothing, so no id from the file it replaces is journaled as a deletion to send.
@@ -429,10 +442,28 @@ impl LibraryWrite {
 }
 
 fn digest_of(state: &StoreState) -> Option<String> {
-    use sha2::{Digest, Sha256};
     match state {
-        StoreState::Ready(_, Some(bytes)) => Some(hex::encode(Sha256::digest(bytes))),
+        StoreState::Ready(_, Some(bytes)) => Some(sha256_hex(bytes)),
         StoreState::Ready(_, None) | StoreState::Unloaded | StoreState::Unavailable(..) => None,
+    }
+}
+
+// Of the bytes the store last read, whether they decoded or not.
+fn bytes_digest(state: &StoreState) -> Option<String> {
+    match state {
+        StoreState::Ready(_, Some(bytes)) | StoreState::Unavailable(_, Some(Some(bytes))) => Some(sha256_hex(bytes)),
+        StoreState::Ready(_, None) | StoreState::Unloaded | StoreState::Unavailable(..) => None,
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(bytes))
+}
+
+impl ConnectionStore {
+    fn digest_on_disk(&self) -> Option<String> {
+        std::fs::read(&self.inner.path).ok().map(|bytes| sha256_hex(&bytes))
     }
 }
 
