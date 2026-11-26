@@ -2,7 +2,7 @@
 # TABLEPRO_TEST_LIVE_<ENGINE>_PORT, _USER and _PASSWORD. How each one runs: docs/decisions/0016-live-server-tests.md.
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('MySql', 'SqlServer', 'MongoDb', 'Redis', 'Cassandra', 'Wsl', 'ClickHouse')]
+    [ValidateSet('MySql', 'SqlServer', 'MongoDb', 'Redis', 'Cassandra', 'Wsl', 'ClickHouse', 'Postgres')]
     [string]$Server
 )
 
@@ -71,6 +71,28 @@ switch ($Server) {
         mysql --user=root --host=127.0.0.1 --execute="CREATE DATABASE tablepro; CREATE USER 'tablepro'@'%' IDENTIFIED BY '$password'; GRANT ALL ON tablepro.* TO 'tablepro'@'%'"
         if ($LASTEXITCODE -ne 0) { throw 'Creating the MySQL test user failed.' }
         Set-Live MYSQL 3306 tablepro $password
+    }
+    # The image ships PostgreSQL in PGBIN as a stopped service, with superuser postgres and password root.
+    'Postgres' {
+        if (-not $env:PGBIN -or -not (Test-Path (Join-Path $env:PGBIN 'psql.exe'))) {
+            throw 'The runner must provide PostgreSQL in PGBIN.'
+        }
+        $service = Get-Service 'postgresql-x64-*' | Select-Object -First 1
+        Set-Service $service.Name -StartupType Manual
+        Start-Service $service.Name
+        $psql = Join-Path $env:PGBIN 'psql.exe'
+        $password = New-Password
+        $env:PGPASSWORD = 'root'
+        & $psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 `
+            -c "CREATE ROLE tablepro LOGIN PASSWORD '$password'" `
+            -c 'CREATE DATABASE tablepro OWNER tablepro' `
+            -c "ALTER DATABASE tablepro SET timezone TO 'UTC'"
+        if ($LASTEXITCODE -ne 0) { throw 'Creating the PostgreSQL test database failed.' }
+        # The public schema's CREATE is not the database owner's on PostgreSQL 15 and later.
+        & $psql -h 127.0.0.1 -U postgres -d tablepro -v ON_ERROR_STOP=1 -c 'GRANT ALL ON SCHEMA public TO tablepro'
+        if ($LASTEXITCODE -ne 0) { throw 'Granting the PostgreSQL test schema failed.' }
+        Remove-Item Env:PGPASSWORD
+        Set-Live POSTGRES 5432 tablepro $password
     }
     'SqlServer' {
         $password = New-Password
