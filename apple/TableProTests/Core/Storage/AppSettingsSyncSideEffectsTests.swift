@@ -9,6 +9,7 @@ import Testing
 @MainActor
 private final class SyncSwitchRecorder {
     var calls: [Bool] = []
+    var categoryChanges = 0
 }
 
 @MainActor
@@ -20,20 +21,21 @@ struct AppSettingsSyncSideEffectsTests {
         recorder: SyncSwitchRecorder,
         root: URL
     ) throws -> AppSettingsManager {
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: try pool.make().defaults))
+        let tracker = SyncJournalRecorder()
         let catalog = ThemeCatalog(
             userDirectory: root.appendingPathComponent("Themes", isDirectory: true),
             bundleDirectory: nil,
             fileTrash: .folder(root.appendingPathComponent("Trash", isDirectory: true)),
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
         return AppSettingsManager(
             storage: AppSettingsStorage(userDefaults: try pool.make().defaults),
             themeEngine: ThemeEngine(catalog: catalog),
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             appEvents: AppEvents(),
             passwordSyncDefaults: flagDefaults,
-            switchSync: { recorder.calls.append($0) }
+            switchSync: { recorder.calls.append($0) },
+            changeSyncCategories: { recorder.categoryChanges += 1 }
         )
     }
 
@@ -62,8 +64,8 @@ struct AppSettingsSyncSideEffectsTests {
         #expect(recorder.calls == [true, false])
     }
 
-    @Test("A change that leaves sync on or off as it was does not touch the coordinator")
-    func categoryChangeLeavesTheCoordinatorAlone() throws {
+    @Test("A change that leaves sync on or off as it was tells the coordinator the categories, not the switch")
+    func categoryChangeTellsTheCategories() throws {
         let flagDefaults = try pool.make().defaults
         let recorder = SyncSwitchRecorder()
         let root = Self.makeRoot()
@@ -74,6 +76,7 @@ struct AppSettingsSyncSideEffectsTests {
         manager.sync.syncTableFavorites = false
 
         #expect(recorder.calls.isEmpty)
+        #expect(recorder.categoryChanges == 2)
         #expect(!flagDefaults.bool(forKey: KeychainHelper.passwordSyncEnabledKey))
     }
 
@@ -90,6 +93,7 @@ struct AppSettingsSyncSideEffectsTests {
         manager.sync = current
 
         #expect(recorder.calls.isEmpty)
+        #expect(recorder.categoryChanges == 0)
         #expect(flagDefaults.bool(forKey: KeychainHelper.passwordSyncEnabledKey))
     }
 

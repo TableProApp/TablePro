@@ -17,19 +17,19 @@ final class SSHProfileStorage {
     private let decoder = JSONDecoder()
     private let keychain: any KeychainStoring
     private let connectionStorageProvider: () -> ConnectionStorage
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private(set) var lastLoadFailed = false
 
     // The Keychain comes from AppStorageEnvironment, so a sandboxed run keeps profile secrets inside the sandbox.
     init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared
     ) {
         self.defaults = userDefaults
         self.keychain = keychain
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.connectionStorageProvider = connectionStorage
     }
 
@@ -50,12 +50,12 @@ final class SSHProfileStorage {
         }
     }
 
-    // False when nothing reached disk, so a caller that also writes Keychain items or tombstones can stop.
+    // False when nothing reached disk, so a caller that also writes Keychain items or journals a deletion can stop.
     @discardableResult
     func saveProfiles(_ profiles: [SSHProfile]) -> Bool {
         let previous = loadProfiles()
         guard saveProfilesWithoutSync(profiles) else { return false }
-        syncTracker.markDirty(.sshProfile, ids: SyncRecordChanges.changedIds(from: previous, to: profiles))
+        syncJournal.recorded(.sshProfile, written: SyncRecordChanges.changedIds(from: previous, to: profiles))
         return true
     }
 
@@ -111,7 +111,7 @@ final class SSHProfileStorage {
         profiles.removeAll { $0.id == profile.id }
         guard unlinkConnections(fromProfile: current, byUser: true) else { return false }
         guard saveProfiles(profiles) else { return false }
-        syncTracker.markDeleted(.sshProfile, id: profile.id.uuidString)
+        syncJournal.recorded(.sshProfile, deleted: [profile.id.uuidString])
 
         deleteSecrets(for: profile.id)
         return true

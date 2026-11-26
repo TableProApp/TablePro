@@ -18,7 +18,6 @@ struct TableScopedSettingsRegistryTests {
         }
 
         private(set) var purgedConnectionIds: [Set<UUID>] = []
-        private(set) var purgedTombstoneFlags: [Bool] = []
         private(set) var droppedTables: [TableScope] = []
         private(set) var droppedContainers: [DroppedContainer] = []
 
@@ -40,9 +39,8 @@ struct TableScopedSettingsRegistryTests {
             droppedContainers.append(DroppedContainer(connectionId: connectionId, database: database, schema: schema))
         }
 
-        func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
+        func purgeConnections(_ connectionIds: Set<UUID>) {
             purgedConnectionIds.append(connectionIds)
-            purgedTombstoneFlags.append(leavesTombstones)
         }
     }
 
@@ -54,7 +52,6 @@ struct TableScopedSettingsRegistryTests {
 
         ConnectionLocalState.purge(
             connectionIds: deleted,
-            origin: .remote,
             tableScopedStores: [first, second],
             queryHistory: Self.isolatedQueryHistory()
         )
@@ -63,43 +60,12 @@ struct TableScopedSettingsRegistryTests {
         #expect(second.purgedConnectionIds == [deleted])
     }
 
-    /// A synced store must not tombstone what another device already deleted, or it sends that
-    /// device's own deletion back at it.
-    @Test("A remote delete purges every store without leaving tombstones")
-    func remotePurgeLeavesNoTombstones() {
-        let store = RecordingStore()
-
-        ConnectionLocalState.purge(
-            connectionIds: [UUID()],
-            origin: .remote,
-            tableScopedStores: [store],
-            queryHistory: Self.isolatedQueryHistory()
-        )
-
-        #expect(store.purgedTombstoneFlags == [false])
-    }
-
-    @Test("A local delete purges every store and leaves tombstones")
-    func localPurgeLeavesTombstones() {
-        let store = RecordingStore()
-
-        ConnectionLocalState.purge(
-            connectionIds: [UUID()],
-            origin: .local,
-            tableScopedStores: [store],
-            queryHistory: Self.isolatedQueryHistory()
-        )
-
-        #expect(store.purgedTombstoneFlags == [true])
-    }
-
     @Test("An empty delete purges nothing")
     func emptyPurgeReachesNoStore() {
         let store = RecordingStore()
 
         ConnectionLocalState.purge(
             connectionIds: [],
-            origin: .remote,
             tableScopedStores: [store],
             queryHistory: Self.isolatedQueryHistory()
         )

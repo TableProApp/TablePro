@@ -29,13 +29,13 @@ final class CustomSlashCommandStorage: ObservableObject {
 
     private static let defaultsKey = JSONDefaultsKey<[CustomSlashCommand]>("ai.customSlashCommands.v1")
     private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
 
     @Published private(set) var commands: [CustomSlashCommand] = []
 
-    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncTracker: SyncChangeTracker = .shared) {
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncJournal: SyncHostJournal = .shared) {
         self.defaults = defaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.commands = Self.load(from: defaults)
     }
 
@@ -99,7 +99,7 @@ final class CustomSlashCommandStorage: ObservableObject {
             return
         }
         if markDirty {
-            syncTracker.markDirty(.settings, id: Self.syncCategory)
+            syncJournal.recorded(.settings, written: [Self.syncCategory])
         }
     }
 

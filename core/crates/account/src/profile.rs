@@ -20,6 +20,26 @@ pub struct Membership {
     pub has_seat: bool,
 }
 
+// A team's member as its owners and admins see it. The ids are TypeIDs, `acct_...`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TeamMember {
+    pub account_id: String,
+    pub email: String,
+    pub name: Option<String>,
+    pub role: String,
+}
+
+impl From<types::Member> for TeamMember {
+    fn from(member: types::Member) -> Self {
+        Self {
+            account_id: member.account_id,
+            email: member.email,
+            name: member.name.filter(|name| !name.trim().is_empty()),
+            role: member.role,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Device {
     pub id: String,

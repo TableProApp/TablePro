@@ -55,7 +55,7 @@ final class CredentialProfileStorage {
 
     private let file: IntegrityStampedFileStore<CredentialProfile>
     private let keychain: any KeychainStoring
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let connectionStorageProvider: () -> ConnectionStorage
 
     // Every mutation refuses while this is true, or a save would write an empty list over the file.
@@ -66,7 +66,7 @@ final class CredentialProfileStorage {
     init(
         fileURL: URL = CredentialProfileStorage.defaultFileURL(),
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
         integrity: ConnectionStoreIntegrity = .shared
     ) {
@@ -78,7 +78,7 @@ final class CredentialProfileStorage {
             integrity: integrity
         )
         self.keychain = keychain
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.connectionStorageProvider = connectionStorage
     }
 
@@ -115,7 +115,7 @@ final class CredentialProfileStorage {
     func saveProfiles(_ profiles: [CredentialProfile]) -> Bool {
         let previous = loadProfiles()
         guard saveProfilesWithoutSync(profiles) else { return false }
-        syncTracker.markDirty(.credentialProfile, ids: SyncRecordChanges.changedIds(from: previous, to: profiles))
+        syncJournal.recorded(.credentialProfile, written: SyncRecordChanges.changedIds(from: previous, to: profiles))
         return true
     }
 
@@ -202,7 +202,7 @@ final class CredentialProfileStorage {
         profiles.removeAll { $0.id == profile.id }
         guard unlinkConnections(from: current, byUser: true) else { return false }
         guard saveProfiles(profiles) else { return false }
-        syncTracker.markDeleted(.credentialProfile, id: profile.id.uuidString)
+        syncJournal.recorded(.credentialProfile, deleted: [profile.id.uuidString])
 
         deleteSecrets(for: current)
         return true

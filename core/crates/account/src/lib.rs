@@ -40,7 +40,7 @@ pub use license_keys::LicenseKeys;
 pub use machine_id::MachineId;
 pub use offline_file::{OfflineFileError, read_offline_file_blocking};
 pub use policy::{ManagedPolicy, PolicyValues, SyncChoices, SyncProvider};
-pub use profile::{Device, Membership, Profile};
+pub use profile::{Device, Membership, Profile, TeamMember};
 pub use server::{FixedServer, ServerError, ServerInfo, ServerPolicy, ServerSettings};
 pub use share::{
     CreatedShare, MAX_SHARE_COLUMNS, MAX_SHARE_SQL_BYTES, Share, ShareExpiry, ShareKind, ShareLimits, SharePage,

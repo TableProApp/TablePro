@@ -34,7 +34,6 @@ struct RoutineDebugOptionStoreTests {
 
         ConnectionLocalState.purge(
             connectionIds: [deleted],
-            origin: .remote,
             tableScopedStores: [],
             queryHistory: Self.isolatedQueryHistory(),
             defaults: defaults
