@@ -23,6 +23,19 @@ pub trait StateStore: Send + Sync {
     fn opened(&self) -> &Opened;
 
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError>;
+
+    // A key flow settled what the open found of the key tables. Until then every open reports the same distrust, so a
+    // restart does not launder it; the anchor records the settle with the next commit after it.
+    fn settle_keys(&self, _settled: KeysSettled) {}
+}
+
+// What ends the distrust an open found of the key tables (0054, A stale file).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeysSettled {
+    // A stale file's rebuild saw every anchored pin and version on the server.
+    Rebuilt,
+    // An approval or a recovery gave a file with no anchor keys it can trust.
+    Reapproved,
 }
 
 // Rows read and written in one commit. Dropping it uncommitted writes nothing.

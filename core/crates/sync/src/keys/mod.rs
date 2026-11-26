@@ -36,9 +36,10 @@ use crate::api::device_store::HostDeviceStore;
 use crate::api::error::SyncError;
 use crate::api::ids::{DeviceRowId, IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{DraftId, KeyHooks, KeyNotice, KeyNoticeKind, NoticeId, Roster};
-use crate::api::state::{KeyObjectRow, KeyTrust, Row, RowKey, RowRange, StateStore, StateTxn, Table};
+use crate::api::state::{KeyObjectRow, KeyTrust, KeysSettled, Row, RowKey, RowRange, StateStore, StateTxn, Table};
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PushBatch, ServiceTransport};
 use crate::engine::key_base;
+use crate::state::integrity::rebuild_shown;
 
 pub use account::{AccountObjectsPlan, HeldDeviceKeys, KeptDevice, OwnAccount, ResetKeys};
 pub use personal::{CurrentPersonal, ScopeKeyPlan};
@@ -168,11 +169,13 @@ impl KeyService {
         self.unanchored.load(Ordering::SeqCst)
     }
 
-    // An approval or a recovery applied, so the device holds keys again under what it verified since.
+    // An approval or a recovery applied, so the device holds keys again under what it verified since. The anchor
+    // keeps owing it until then, so a restart before it does not trust the file.
     // The lock notices raised before then, as a pull of this device's own activation or recovery that came before its
     // adoption raises, no longer hold, so they go and the app reads the notices again.
     pub fn clear_unanchored(&self) {
         self.unanchored.store(false, Ordering::SeqCst);
+        self.state.settle_keys(KeysSettled::Reapproved);
         let withdrawn = {
             let mut notices = lock(&self.notices);
             let before = notices.len();
@@ -191,6 +194,26 @@ impl KeyService {
     // The rebuild of a stale file's key tables has seen every anchored pin and version.
     pub fn rebuilt(&self) {
         self.rebuilding.store(false, Ordering::SeqCst);
+        self.state.settle_keys(KeysSettled::Rebuilt);
+    }
+
+    // Ends a stale file's rebuild once the server shows every pin and version its anchor holds (0054, A stale file).
+    // The caller holds the serial lock.
+    pub(crate) async fn check_rebuild(&self) -> Result<(), SyncError> {
+        if !self.is_rebuilding() {
+            return Ok(());
+        }
+        let KeyTrust::Rebuild { checkpoint } = &self.state.opened().key_tables else {
+            return Ok(());
+        };
+        let mut txn = self.begin().await?;
+        if !rebuild_shown(txn.as_mut(), &self.origin, self.account, checkpoint).await? {
+            return Ok(());
+        }
+        self.rebuilt();
+        // The anchor stores the settle with this commit, so a restart does not rebuild again.
+        txn.commit().await?;
+        Ok(())
     }
 
     // Records a notice for `notices` and tells the app. Every lane raises its notices here.

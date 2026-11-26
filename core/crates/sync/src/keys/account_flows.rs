@@ -19,6 +19,7 @@ impl AccountFlows for KeyService {
     async fn key_state(&self) -> Result<KeyState, SyncError> {
         let _serial = self.serialized().await;
         self.finish_cut_off_sign_out().await?;
+        self.check_rebuild().await?;
         let mut txn = self.begin().await?;
         self.state_of_keys(txn.as_mut()).await
     }
@@ -84,7 +85,10 @@ impl AccountFlows for KeyService {
     }
 
     async fn apply_account_objects(&self, arrival: KeyArrival) -> Result<KeyApplied, SyncError> {
-        self.apply_personal_arrival(&arrival).await
+        let applied = self.apply_personal_arrival(&arrival).await?;
+        let _serial = self.serialized().await;
+        self.check_rebuild().await?;
+        Ok(applied)
     }
 
     async fn seal_personal_envelope(

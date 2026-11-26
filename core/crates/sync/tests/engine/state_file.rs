@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde_json::json;
 use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, RequestId, TeamId, Version};
 use tablepro_keys::keys::{Ed25519Public, X25519Public};
@@ -16,10 +18,10 @@ use tablepro_sync::api::state::{
     StateFiles, StoppedCause, StoreRow, Table,
 };
 use tablepro_sync::api::transport::{DeletedReason, PulledRecord, ServiceMeta};
-use tablepro_sync::state::SqliteStateFiles;
+use tablepro_sync_testing::FakeDeviceStore;
 use uuid::Uuid;
 
-use super::harness::{account, id, identity};
+use super::harness::{account, files_at, id, identity};
 
 fn key(kind: Kind, record: &str) -> RecordKey {
     RecordKey::new(ScopeName::Personal, kind, record)
@@ -220,7 +222,7 @@ fn key_rows() -> Vec<Row> {
 #[tokio::test]
 async fn every_row_reads_back_as_it_was_written() {
     let dir = tempfile::tempdir().unwrap();
-    let files = SqliteStateFiles::at(dir.path().to_path_buf());
+    let files = files_at(dir.path(), &Arc::new(FakeDeviceStore::new()));
     let state = files.open(identity("dev_mac")).await.unwrap();
     let rows: Vec<Row> = sync_rows().into_iter().chain(key_rows()).collect();
 
@@ -241,7 +243,7 @@ async fn every_row_reads_back_as_it_was_written() {
 #[tokio::test]
 async fn a_scan_reads_its_range_in_key_order() {
     let dir = tempfile::tempdir().unwrap();
-    let state = SqliteStateFiles::at(dir.path().to_path_buf())
+    let state = files_at(dir.path(), &Arc::new(FakeDeviceStore::new()))
         .open(identity("dev_mac"))
         .await
         .unwrap();
@@ -297,7 +299,7 @@ async fn a_scan_reads_its_range_in_key_order() {
 #[tokio::test]
 async fn a_commit_raises_the_counter_and_an_unfinished_one_writes_nothing() {
     let dir = tempfile::tempdir().unwrap();
-    let state = SqliteStateFiles::at(dir.path().to_path_buf())
+    let state = files_at(dir.path(), &Arc::new(FakeDeviceStore::new()))
         .open(identity("dev_mac"))
         .await
         .unwrap();
@@ -317,10 +319,11 @@ async fn a_commit_raises_the_counter_and_an_unfinished_one_writes_nothing() {
     assert_eq!(state.begin().await.unwrap().get(&row.key()).await.unwrap(), Some(row));
 }
 
+// The binding row is the store's, its MAC included: the commit seals the file whatever a put said.
 #[tokio::test]
-async fn a_binding_put_changes_only_the_state_mac() {
+async fn a_binding_put_changes_nothing() {
     let dir = tempfile::tempdir().unwrap();
-    let state = SqliteStateFiles::at(dir.path().to_path_buf())
+    let state = files_at(dir.path(), &Arc::new(FakeDeviceStore::new()))
         .open(identity("dev_mac"))
         .await
         .unwrap();
@@ -344,13 +347,14 @@ async fn a_binding_put_changes_only_the_state_mac() {
     assert_eq!(now.device, held.device);
     assert_eq!(now.file_id, held.file_id);
     assert_eq!(now.counter, held.counter + 1);
-    assert_eq!(now.state_mac, [9; 32]);
+    assert_ne!(now.state_mac, [9; 32]);
+    assert_ne!(now.state_mac, held.state_mac);
 }
 
 #[tokio::test]
 async fn a_file_made_for_another_device_is_refused() {
     let dir = tempfile::tempdir().unwrap();
-    let files = SqliteStateFiles::at(dir.path().to_path_buf());
+    let files = files_at(dir.path(), &Arc::new(FakeDeviceStore::new()));
     drop(files.open(identity("dev_mac")).await.unwrap());
     // The same sign-in and account name the same file; the device row bound into it differs.
     let other = identity("dev_other");
@@ -364,7 +368,7 @@ async fn a_file_made_for_another_device_is_refused() {
 #[tokio::test]
 async fn one_process_holds_a_state_file_until_it_lets_go() {
     let dir = tempfile::tempdir().unwrap();
-    let files = SqliteStateFiles::at(dir.path().to_path_buf());
+    let files = files_at(dir.path(), &Arc::new(FakeDeviceStore::new()));
     let held = files.open(identity("dev_mac")).await.unwrap();
 
     let second = files.open(identity("dev_mac")).await.err();
@@ -380,7 +384,7 @@ async fn one_process_holds_a_state_file_until_it_lets_go() {
 #[tokio::test]
 async fn a_deleted_file_starts_again_empty() {
     let dir = tempfile::tempdir().unwrap();
-    let files = SqliteStateFiles::at(dir.path().to_path_buf());
+    let files = files_at(dir.path(), &Arc::new(FakeDeviceStore::new()));
     let state = files.open(identity("dev_mac")).await.unwrap();
     let row = sync_rows().remove(1);
     let mut txn = state.begin().await.unwrap();
@@ -399,7 +403,7 @@ async fn a_deleted_file_starts_again_empty() {
 #[tokio::test]
 async fn clearing_the_key_tables_keeps_the_sync_tables() {
     let dir = tempfile::tempdir().unwrap();
-    let state = SqliteStateFiles::at(dir.path().to_path_buf())
+    let state = files_at(dir.path(), &Arc::new(FakeDeviceStore::new()))
         .open(identity("dev_mac"))
         .await
         .unwrap();
@@ -429,7 +433,7 @@ async fn the_file_is_private_and_in_wal_mode() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = tempfile::tempdir().unwrap();
-    let files = SqliteStateFiles::at(dir.path().to_path_buf());
+    let files = files_at(dir.path(), &Arc::new(FakeDeviceStore::new()));
     let state = files.open(identity("dev_mac")).await.unwrap();
     let mut txn = state.begin().await.unwrap();
     txn.put(sync_rows().remove(1)).await.unwrap();

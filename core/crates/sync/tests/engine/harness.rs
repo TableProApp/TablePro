@@ -12,6 +12,7 @@ use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Seed;
 use tablepro_records::Kind;
 use tablepro_sync::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
+use tablepro_sync::api::device_store::HostDeviceStore;
 use tablepro_sync::api::error::{AdapterError, StateError, SyncError};
 use tablepro_sync::api::ids::{ChangeTag, DeviceRowId, IdempotencyKey, KindName, ScopeName};
 use tablepro_sync::api::key_flows::{
@@ -30,7 +31,7 @@ use tablepro_sync::engine::{Adapters, Clock, EngineHooks, Journal, StopSignal, W
 use tablepro_sync::service::{PassReport, ProofSource, ServiceParts, ServiceSync};
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
-use tablepro_sync_testing::{FakeClient, FakeServer, MemoryStateFiles};
+use tablepro_sync_testing::{FakeClient, FakeDeviceStore, FakeServer, MemoryStateFiles};
 use uuid::Uuid;
 
 pub const ACCOUNT: &str = "019A6B2E-8F3C-7D41-B2A5-6C0E9F14D7B8";
@@ -877,9 +878,11 @@ pub fn connection(name: &str) -> Value {
     json!({"name": name, "host": "db.example.com", "sort_order": 1})
 }
 
-pub async fn open_on_disk(dir: &Path, row: &str) -> Arc<dyn StateStore> {
-    SqliteStateFiles::at(dir.to_path_buf())
-        .open(identity(row))
-        .await
-        .unwrap()
+// The state files in `dir`, anchored in `store`, which a restart keeps as the device does.
+pub fn files_at(dir: &Path, store: &Arc<FakeDeviceStore>) -> SqliteStateFiles {
+    SqliteStateFiles::at(dir.to_path_buf(), Arc::clone(store) as Arc<dyn HostDeviceStore>)
+}
+
+pub async fn open_on_disk(dir: &Path, row: &str, store: &Arc<FakeDeviceStore>) -> Arc<dyn StateStore> {
+    files_at(dir, store).open(identity(row)).await.unwrap()
 }

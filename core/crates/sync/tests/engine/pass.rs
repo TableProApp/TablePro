@@ -10,7 +10,7 @@ use tablepro_sync::api::key_flows::LockCause;
 use tablepro_sync::api::state::{Opened, Row, RowKey, RowRange, StateFiles, SyncTrust, Table};
 use tablepro_sync::api::transport::{DeletedReason, TransportError};
 use tablepro_sync_testing::service::{Policies, ScopeOwner};
-use tablepro_sync_testing::{FakeServer, MemoryStateFiles};
+use tablepro_sync_testing::{FakeDeviceStore, FakeServer, MemoryStateFiles};
 
 use super::harness::{
     ACCOUNT, Crashing, Device, DeviceBuilder, MemoryAdapter, StoreFile, account, connection, id, identity,
@@ -195,11 +195,12 @@ async fn a_batch_sent_again_keeps_its_key_until_the_server_forgets_it() {
 #[tokio::test]
 async fn the_queue_survives_a_restart() {
     let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(FakeDeviceStore::new());
     let server = FakeServer::new();
     let file = StoreFile::new();
     let connections = MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file));
     let mac = DeviceBuilder::new(&server, "dev_mac")
-        .state(open_on_disk(dir.path(), "dev_mac").await)
+        .state(open_on_disk(dir.path(), "dev_mac", &device_store).await)
         .connections(Arc::clone(&connections), Arc::clone(&file))
         .build()
         .await;
@@ -212,7 +213,7 @@ async fn the_queue_survives_a_restart() {
     drop(mac);
 
     let restarted = DeviceBuilder::new(&server, "dev_mac")
-        .state(open_on_disk(dir.path(), "dev_mac").await)
+        .state(open_on_disk(dir.path(), "dev_mac", &device_store).await)
         .connections(Arc::clone(&connections), file)
         .seed(seed)
         .build()

@@ -121,6 +121,9 @@ impl KeyService {
             None if device.current.is_none() => Ok(KeyState::NeedsApproval {
                 request: pending_request(txn).await?,
             }),
+            // A stale file's rebuild starts from the anchored pins with none of the key objects, which its pulls bring
+            // back (0054, A stale file).
+            None if self.is_rebuilding() => Ok(KeyState::Unknown),
             None => Ok(locked(LockCause::LeftOutOfRotation)),
         }
     }
