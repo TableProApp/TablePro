@@ -28,7 +28,7 @@ use crate::api::cloudkit::{CloudKitFailure, CloudKitField, CloudKitRecord, Cloud
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, KindName, RecordKey};
 use crate::api::state::{BaseRow, Row, RowRange, Standing, Table};
-use crate::engine::{Backoff, JournalIds, Pending, PendingOp, StopSignal, diff};
+use crate::engine::{Backoff, JournalIds, KeptOff, Pending, PendingOp, StopSignal, diff, hold_kept_off};
 
 // A pass sends again what a refusal merged, at most this many times; what is left waits for the next pass.
 const ROUNDS: usize = 3;
@@ -356,6 +356,12 @@ impl<'p> Pusher<'p> {
     async fn pending(&self, report: &mut PushReport, leave: &Leave<'_>) -> Result<Vec<Item>, SyncError> {
         let held = self.held().await?;
         let waiting = approval::held_members(self.fetcher.state.begin().await?.as_mut(), SCOPE).await?;
+        // The connections that keep their records on the device; a store that cannot be read keeps all.
+        let connections = match self.fetcher.adapters.get(&Kind::Connection) {
+            Some(adapter) => adapter.records(SCOPE).await.ok(),
+            None => None,
+        };
+        let kept_off = KeptOff::of(connections.as_ref());
         let mut items = Vec::new();
         for (kind, adapter) in &self.fetcher.adapters {
             let kind = *kind;
@@ -391,7 +397,8 @@ impl<'p> Pusher<'p> {
             for (id, code) in unwritten {
                 report.refuse(RecordKey::new(SCOPE, kind, id), code);
             }
-            let diffed = diff(SCOPE, kind, &local, &bases, &skip);
+            let mut diffed = diff(SCOPE, kind, &local, &bases, &skip);
+            hold_kept_off(&mut diffed, kind, &kept_off);
             for (key, code) in diffed.refused {
                 report.refuse(key, code);
             }

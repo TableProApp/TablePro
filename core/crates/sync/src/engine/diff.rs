@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
-use tablepro_records::{Kind, limits, merge_patch};
+use tablepro_records::schema::{Type, schema};
+use tablepro_records::{Kind, limits, merge_patch, settings};
+use uuid::Uuid;
 
 use crate::api::adapter::{LocalRecord, LocalRecords};
 use crate::api::ids::{KindName, RecordKey, ScopeName};
@@ -114,6 +116,81 @@ pub fn diff(scope: ScopeName, kind: Kind, local: &LocalRecords, bases: &[BaseRow
     diffed
 }
 
+// The connections whose records stay on the device: the ones the connection store keeps off sync or cannot read, or
+// every one when the store could not be read at all (0054, Rules for both providers: Local only and sample connections
+// never leave the device).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KeptOff {
+    ids: HashSet<Uuid>,
+    unknown: bool,
+}
+
+impl KeptOff {
+    // None when the connection store could not be read.
+    pub fn of(connections: Option<&LocalRecords>) -> Self {
+        let Some(local) = connections else {
+            return Self {
+                ids: HashSet::new(),
+                unknown: true,
+            };
+        };
+        let ids = local
+            .records
+            .iter()
+            .filter(|record| record.standing != Standing::Syncs)
+            .map(|record| record.record_id.as_str())
+            .chain(local.unreadable.iter().map(String::as_str))
+            .filter_map(|id| Uuid::parse_str(id).ok())
+            .collect();
+        Self { ids, unknown: false }
+    }
+
+    fn holds(&self, owner: Uuid) -> bool {
+        self.unknown || self.ids.contains(&owner)
+    }
+}
+
+// The connection a record of `kind` belongs to: the one a saved query, a folder, a favourite or a table folder names, or
+// the one a settings category such as a column layout is about.
+fn owner(kind: Kind, fields: &Value) -> Option<Uuid> {
+    if kind.is_settings() {
+        return fields.get("category").and_then(Value::as_str).and_then(settings::owner);
+    }
+    if !matches!(
+        kind,
+        Kind::SavedQuery
+            | Kind::SavedQueryFolder
+            | Kind::FavouriteTable
+            | Kind::FavouriteDatabase
+            | Kind::TableFolder
+            | Kind::TableFolderItem
+    ) {
+        return None;
+    }
+    let field = schema(kind)
+        .fields
+        .iter()
+        .find(|field| field.ty == Type::Reference(Kind::Connection))?;
+    fields
+        .get(field.key)
+        .and_then(Value::as_str)
+        .and_then(|id| Uuid::parse_str(id).ok())
+}
+
+// Each change of a record whose connection stays on the device waits, a deletion by the owner its base names, since the
+// store no longer holds it. It stays dirty against its base, so it goes once the connection syncs again.
+pub fn hold_kept_off(diffed: &mut Diffed, kind: Kind, kept_off: &KeptOff) {
+    diffed.pending.retain(|pending| {
+        let fields = match &pending.op {
+            PendingOp::Write { fields, .. } => Some(fields),
+            PendingOp::Delete => pending.base.as_ref().and_then(|base| base.fields.as_ref()),
+        };
+        !fields
+            .and_then(|fields| owner(kind, fields))
+            .is_some_and(|owner| kept_off.holds(owner))
+    });
+}
+
 fn written(kind: Kind, base: Option<&BaseRow>, record: &LocalRecord) -> Option<PendingOp> {
     let whole = || PendingOp::Write {
         fields: record.fields.clone(),
@@ -135,5 +212,123 @@ fn written(kind: Kind, base: Option<&BaseRow>, record: &LocalRecord) -> Option<P
                 patch,
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use tablepro_records::record_id::column_layout_category;
+
+    use super::*;
+
+    fn base(kind: Kind, id: &str, fields: Value) -> BaseRow {
+        BaseRow {
+            key: RecordKey::new(ScopeName::Personal, KindName::of(kind), id),
+            tag: crate::api::ids::ChangeTag::Service("t".to_owned()),
+            version: None,
+            revision: None,
+            epoch: None,
+            deleted: None,
+            fields: Some(fields),
+            created_ms: None,
+        }
+    }
+
+    fn connections(kept: Uuid) -> LocalRecords {
+        LocalRecords {
+            records: vec![LocalRecord {
+                record_id: kept.to_string().to_uppercase(),
+                fields: json!({"name": "Local"}),
+                standing: Standing::LocalOnly,
+            }],
+            ..LocalRecords::default()
+        }
+    }
+
+    #[test]
+    fn every_kind_that_names_a_connection_waits_while_that_connection_stays_on_the_device() {
+        let kept = Uuid::new_v4();
+        let synced = Uuid::new_v4();
+        let layout = |connection| column_layout_category(connection, Some("shop"), Some("public"), "orders");
+        let owned = [
+            (
+                Kind::SavedQuery,
+                json!({"name": "q", "connection_id": kept.to_string()}),
+            ),
+            (
+                Kind::SavedQueryFolder,
+                json!({"name": "f", "connection_id": kept.to_string()}),
+            ),
+            (
+                Kind::FavouriteTable,
+                json!({"connection_id": kept.to_string(), "name": "t"}),
+            ),
+            (
+                Kind::FavouriteDatabase,
+                json!({"connection_id": kept.to_string(), "database": "d"}),
+            ),
+            (
+                Kind::TableFolder,
+                json!({"connection_id": kept.to_string(), "name": "tf"}),
+            ),
+            (
+                Kind::TableFolderItem,
+                json!({"connection_id": kept.to_string(), "name": "ti"}),
+            ),
+            (Kind::MacosSettings, json!({"category": layout(kept), "options": {}})),
+        ];
+        let kept_off = KeptOff::of(Some(&connections(kept)));
+        for (kind, fields) in owned {
+            let mut held = diff(
+                ScopeName::Personal,
+                kind,
+                &LocalRecords::default(),
+                &[base(kind, "gone", fields.clone())],
+                &HashSet::new(),
+            );
+            hold_kept_off(&mut held, kind, &kept_off);
+            assert!(held.pending.is_empty(), "{kind:?}");
+
+            let mut moved = fields.clone();
+            match moved.get_mut("connection_id") {
+                Some(owner) => *owner = json!(synced.to_string()),
+                None => moved["category"] = json!(layout(synced)),
+            }
+            let mut sent = diff(
+                ScopeName::Personal,
+                kind,
+                &LocalRecords::default(),
+                &[base(kind, "gone", moved)],
+                &HashSet::new(),
+            );
+            hold_kept_off(&mut sent, kind, &kept_off);
+            assert_eq!(sent.pending.len(), 1, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn a_connection_store_that_cannot_be_read_holds_owned_records_and_sends_the_rest() {
+        let owner = Uuid::new_v4();
+        let bases = [
+            base(
+                Kind::SavedQuery,
+                "owned",
+                json!({"name": "q", "connection_id": owner.to_string()}),
+            ),
+            base(Kind::SavedQuery, "global", json!({"name": "everywhere"})),
+        ];
+        let mut diffed = diff(
+            ScopeName::Personal,
+            Kind::SavedQuery,
+            &LocalRecords::default(),
+            &bases,
+            &HashSet::new(),
+        );
+
+        hold_kept_off(&mut diffed, Kind::SavedQuery, &KeptOff::of(None));
+
+        assert_eq!(diffed.pending.len(), 1);
+        assert_eq!(diffed.pending[0].key.record_id, "global");
     }
 }

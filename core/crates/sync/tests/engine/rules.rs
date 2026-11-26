@@ -240,6 +240,36 @@ async fn a_value_the_store_refuses_is_held_and_the_pass_goes_on() {
     assert_eq!(mini.sync.status().problem, None);
 }
 
+// A saved query of a connection that stays on the device: its deletion waits while the connection is Local only, and
+// goes up once the connection syncs again (0054, Rules for both providers).
+#[tokio::test]
+async fn a_saved_query_deletion_waits_while_its_connection_stays_on_the_device() {
+    let server = FakeServer::new();
+    let queries = MemoryAdapter::new(Kind::SavedQuery, "queries", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&queries))
+        .build()
+        .await;
+    let connection = id(9);
+    mac.connections.put(&connection, json!({"name": "Prod"}));
+    queries.put(
+        &id(1),
+        json!({"name": "Revenue", "query": "SELECT 1", "connection_id": connection}),
+    );
+    mac.sync().await;
+    let pushed = stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_some();
+    mac.connections.put_local_only(&connection, json!({"name": "Prod"}));
+    queries.remove(&id(1));
+    mac.sync().await;
+    let held = stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_some();
+    mac.connections.put(&connection, json!({"name": "Prod"}));
+    mac.sync().await;
+
+    assert!(pushed);
+    assert!(held);
+    assert!(stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_none());
+}
+
 #[tokio::test]
 async fn a_value_the_device_already_holds_asks_nothing_on_its_first_pass() {
     let server = FakeServer::new();
