@@ -6,10 +6,9 @@ use tablepro_sync::SyncError;
 use tablepro_sync::api::control::SyncControl;
 use tablepro_sync::api::{CloudKitFailure, KindName, TransportError};
 use tablepro_sync::engine::Journal;
-use tablepro_sync::keys::KeyService;
 use tokio_util::task::AbortOnDropHandle;
 
-use super::engines::{IcloudEngine, ServiceEngine, icloud_categories, journal};
+use super::engines::{IcloudEngine, ServiceSlot, icloud_categories, journal};
 use super::keys::LockCauseTag;
 use super::service_records::{categories_arg, digest_arg, record_arg};
 use crate::account::{AccountService, SyncProviderTag};
@@ -111,7 +110,7 @@ pub struct SyncService {
     pub(crate) account: Option<Arc<AccountService>>,
     pub(crate) config: SyncConfig,
     pub(crate) icloud: Result<IcloudEngine, SyncError>,
-    pub(crate) service: Result<ServiceEngine, SyncError>,
+    pub(crate) service: Arc<ServiceSlot>,
     #[expect(dead_code, reason = "no engine pass writes the downgrade mirror yet")]
     pub(crate) legacy_mirror: Option<Arc<dyn tablepro_sync::api::LegacyMirror>>,
     pub(crate) _forward: AbortOnDropHandle<()>,
@@ -233,44 +232,70 @@ pub struct HeldRecordInfo {
     pub reason: HeldReasonTag,
 }
 
+// The engine that holds the personal provider's data, as a call reaches it on the runtime.
+enum Personal {
+    ICloud(Result<Arc<dyn SyncControl>, SyncError>),
+    Service(Arc<ServiceSlot>),
+    Off,
+}
+
+impl Personal {
+    async fn control(self) -> Result<Arc<dyn SyncControl>, SyncError> {
+        match self {
+            Self::ICloud(control) => control,
+            Self::Service(slot) => slot
+                .engine()
+                .await
+                .map(|engine| Arc::clone(&engine.sync) as Arc<dyn SyncControl>),
+            Self::Off => Err(SyncError::NotAllowed {
+                what: "sync personal data while sync is off",
+            }),
+        }
+    }
+}
+
 impl SyncService {
-    // The engine that holds the personal provider's data, which answers the provider's status and queues.
-    fn control(&self) -> Result<Arc<dyn SyncControl>, SyncError> {
+    fn personal(&self) -> Personal {
         match self.config.provider {
-            SyncProviderTag::Icloud => self
-                .icloud
-                .as_ref()
-                .map(|engine| Arc::clone(&engine.sync) as Arc<dyn SyncControl>)
-                .map_err(Clone::clone),
-            SyncProviderTag::TableproSync => self.service_control(),
-            SyncProviderTag::Off => Err(SyncError::NotAllowed {
+            SyncProviderTag::Icloud => Personal::ICloud(
+                self.icloud
+                    .as_ref()
+                    .map(|engine| Arc::clone(&engine.sync) as Arc<dyn SyncControl>)
+                    .map_err(Clone::clone),
+            ),
+            SyncProviderTag::TableproSync => Personal::Service(Arc::clone(&self.service)),
+            SyncProviderTag::Off => Personal::Off,
+        }
+    }
+
+    // The engine as it stands, for the calls that answer at once.
+    fn control_now(&self) -> Result<Arc<dyn SyncControl>, SyncError> {
+        match self.personal() {
+            Personal::ICloud(control) => control,
+            Personal::Service(slot) => slot
+                .now()
+                .map(|engine| Arc::clone(&engine.sync) as Arc<dyn SyncControl>),
+            Personal::Off => Err(SyncError::NotAllowed {
                 what: "sync personal data while sync is off",
             }),
         }
     }
 
-    fn service_control(&self) -> Result<Arc<dyn SyncControl>, SyncError> {
-        self.service
-            .as_ref()
-            .map(|engine| Arc::clone(&engine.sync) as Arc<dyn SyncControl>)
-            .map_err(Clone::clone)
-    }
-
-    pub(crate) fn key_service(&self) -> Result<Arc<KeyService>, SyncError> {
-        self.service
-            .as_ref()
-            .map(|engine| Arc::clone(&engine.keys))
-            .map_err(Clone::clone)
-    }
-
     // Runs `work` over the personal provider's engine on the runtime.
-    async fn on_control<T, F>(&self, work: impl FnOnce(Arc<dyn SyncControl>) -> F + Send) -> Result<T, CoreError>
+    async fn on_control<T, F>(
+        &self,
+        work: impl FnOnce(Arc<dyn SyncControl>) -> F + Send + 'static,
+    ) -> Result<T, CoreError>
     where
         T: Send + 'static,
         F: Future<Output = Result<T, SyncError>> + Send + 'static,
     {
-        let future = work(self.control()?);
-        on_runtime(&self.tasks, async move { future.await.map_err(CoreError::from) }).await
+        let personal = self.personal();
+        on_runtime(&self.tasks, async move {
+            let control = personal.control().await?;
+            work(control).await.map_err(CoreError::from)
+        })
+        .await
     }
 }
 
@@ -289,7 +314,7 @@ impl SyncService {
                 queued_changes: 0,
             };
         }
-        match self.control() {
+        match self.control_now() {
             Ok(control) => control.status().into(),
             Err(error) => SyncStatusInfo {
                 provider: Some(self.config.provider),
@@ -315,10 +340,11 @@ impl SyncService {
         if let Ok(engine) = &self.icloud {
             engine.sync.set_categories(icloud_categories(&categories));
         }
-        let service = self.service_control().ok();
+        self.service.keep_categories(categories.clone());
+        let service = self.service.now().ok();
         on_runtime(&self.tasks, async move {
-            if let Some(service) = service {
-                service.set_categories(categories).await?;
+            if let Some(engine) = service {
+                engine.sync.set_categories(categories).await?;
             }
             Ok(())
         })
@@ -335,11 +361,12 @@ impl SyncService {
         let kind = KindName::parse(&kind)?
             .known()
             .ok_or(SyncError::Unknown { what: "kind" })?;
+        let service = self.service.now().ok();
         let journals: Vec<&Journal> = self
             .icloud
             .iter()
             .map(|engine| &engine.journal)
-            .chain(self.service.iter().map(|engine| &engine.journal))
+            .chain(service.iter().map(|engine| &engine.journal))
             .collect();
         journal(&journals, kind, written, deleted);
         Ok(())
@@ -445,9 +472,7 @@ impl SyncService {
     // The history entries this device keeps, its retention setting: a snapshot of the history scope takes that many,
     // newest first, and `load_older_history` pages back. None keeps every entry.
     pub fn set_history_window(&self, entries: Option<u32>) {
-        if let Ok(engine) = &self.service {
-            engine.sync.set_history_window(entries);
-        }
+        self.service.set_history_window(entries);
     }
 
     // The iCloud account whose state file the device uses now, for the app to keep and pass back as

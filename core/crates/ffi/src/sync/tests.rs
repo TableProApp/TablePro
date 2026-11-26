@@ -14,7 +14,7 @@ use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::{FakeCloudKit, FakeDeviceStore, FakeServer};
 use uuid::Uuid;
 
-use super::engines::ServiceLink;
+use super::engines::{ServiceLink, ServiceSlot};
 use super::keys::{GenesisOutcomeTag, KeyStateInfo, reviewed_member_info, team_keys_info};
 use super::names::{Names, Person};
 use super::open::OpenParts;
@@ -25,20 +25,24 @@ use crate::account::SyncProviderTag;
 use crate::error::CoreError;
 use crate::runtime;
 
-// Counts the signals, and can hold the thread that calls it until the test lets go.
+// Counts the signals, and can hold the thread of its first call until the test lets go, saying when it is held.
 #[derive(Default)]
 struct Listener {
     status: AtomicUsize,
     keys: AtomicUsize,
-    held: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+    returned: AtomicUsize,
+    held: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
 }
 
 impl SyncListener for Listener {
     fn status_changed(&self) {
         self.status.fetch_add(1, Ordering::SeqCst);
-        if let Some(release) = self.held.lock().unwrap().take() {
+        let held = self.held.lock().unwrap().take();
+        if let Some((entered, release)) = held {
+            let _ = entered.send(());
             let _ = release.recv();
         }
+        self.returned.fetch_add(1, Ordering::SeqCst);
     }
 
     fn keys_changed(&self) {
@@ -91,6 +95,7 @@ fn link(server: &Arc<FakeServer>, account: AccountId) -> ServiceLink {
         account,
         device_row: device_row.clone(),
         transport: Arc::new(server.client(account, device_row)),
+        binding: None,
     }
 }
 
@@ -180,9 +185,10 @@ async fn icloud_without_its_transport_is_unavailable_and_keeps_the_account_the_a
 #[tokio::test]
 async fn a_pass_finishes_while_the_listener_is_still_running() {
     let tasks = runtime::tasks().unwrap();
-    let (release, held) = std::sync::mpsc::channel();
+    let (entered_tx, entered) = std::sync::mpsc::channel();
+    let (release, release_rx) = std::sync::mpsc::channel();
     let listener = Arc::new(Listener {
-        held: Mutex::new(Some(held)),
+        held: Mutex::new(Some((entered_tx, release_rx))),
         ..Listener::default()
     });
     let opened = open(&tasks, |parts| OpenParts {
@@ -192,12 +198,19 @@ async fn a_pass_finishes_while_the_listener_is_still_running() {
         ..parts
     })
     .await;
+    let service = Arc::clone(&opened.service);
+    let pass = tokio::spawn(async move { service.sync_now(PassReasonTag::Person).await });
 
-    let pass = tokio::time::timeout(Duration::from_secs(30), opened.service.sync_now(PassReasonTag::Person)).await;
+    let held = tokio::task::spawn_blocking(move || entered.recv_timeout(Duration::from_secs(30)))
+        .await
+        .unwrap();
+    let passed = tokio::time::timeout(Duration::from_secs(30), pass).await;
+    let returned_meanwhile = listener.returned.load(Ordering::SeqCst);
     release.send(()).unwrap();
 
-    assert!(matches!(pass, Ok(Ok(()))), "{pass:?}");
-    assert!(listener.status.load(Ordering::SeqCst) >= 1);
+    assert!(held.is_ok(), "the listener was never called");
+    assert!(matches!(passed, Ok(Ok(Ok(())))), "{passed:?}");
+    assert_eq!(returned_meanwhile, 0, "the pass ended only once the listener returned");
 }
 
 #[tokio::test]
@@ -365,4 +378,19 @@ fn a_reviewed_member_names_its_team_and_reads_back_as_the_engine_s() {
         }),
         Err(SyncError::Malformed { what: "version" })
     );
+}
+
+#[tokio::test]
+async fn a_start_that_failed_for_a_reason_that_stays_is_not_tried_again() {
+    let slot = ServiceSlot::new(
+        Err(tablepro_sync::api::TransportError::SignedOut.into()),
+        None,
+        tablepro_sync::api::control::SyncCategories::default(),
+    );
+
+    let first = slot.engine().await.err().map(|error| error.code());
+    let again = slot.engine().await.err().map(|error| error.code());
+
+    assert_eq!(first, Some("sync.signed_out"));
+    assert_eq!(again, Some("sync.signed_out"));
 }

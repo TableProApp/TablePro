@@ -6,11 +6,10 @@ use tablepro_records::Kind;
 use tablepro_session::runtime::Tasks;
 use tablepro_sync::SyncError;
 use tablepro_sync::api::{self as sync, StateFiles, TransportError};
-use tablepro_sync::http::HttpTransport;
 use tablepro_sync::state::SqliteStateFiles;
 
 use super::cloudkit::{CloudKitBridge, CloudKitTransport};
-use super::engines::{Hosts, IcloudEngine, ServiceEngine, ServiceLink};
+use super::engines::{Hosts, IcloudEngine, Restart, ServiceEngine, ServiceLink, ServiceSlot, service_link};
 use super::events::{Signals, forward};
 use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSettingsBridge};
 use super::legacy::{HostLegacyMirror, LegacyMirrorBridge};
@@ -118,23 +117,6 @@ fn own_device_store(_: &Tasks) -> Option<Arc<dyn sync::HostDeviceStore>> {
     None
 }
 
-// The sign-in the account holds now, which the service engine stays bound to for its life.
-async fn service_link(account: Option<&AccountService>) -> Result<ServiceLink, SyncError> {
-    let Some(service) = account else {
-        return Err(TransportError::SignedOut.into());
-    };
-    let http = service.account.http_client();
-    let transport = HttpTransport::open(Arc::new(service.account.clone()), http).await?;
-    let binding = transport.binding().clone();
-    Ok(ServiceLink {
-        origin: binding.origin,
-        sign_in: binding.sign_in,
-        account: binding.account,
-        device_row: binding.device_row,
-        transport: Arc::new(transport),
-    })
-}
-
 impl SyncService {
     // On the runtime. An engine that cannot start keeps why, which its calls answer; the others run.
     pub(crate) async fn open(tasks: Tasks, parts: OpenParts) -> Arc<Self> {
@@ -172,7 +154,15 @@ impl SyncService {
                 what: "sync with iCloud while it is not the chosen provider",
             }),
         };
-        let service = match (parts.config.provider, parts.link, &hosts, categories) {
+        let kept = categories.clone().unwrap_or_default();
+        let restart = match (parts.config.provider, &parts.account, &hosts) {
+            (SyncProviderTag::TableproSync, Some(account), Ok(hosts)) => Some(Restart {
+                hosts: hosts.clone(),
+                account: Arc::clone(account),
+            }),
+            _ => None,
+        };
+        let first = match (parts.config.provider, parts.link, &hosts, categories) {
             (SyncProviderTag::TableproSync, Ok(link), Ok(hosts), Ok(categories)) => {
                 ServiceEngine::start(hosts, link, categories).await
             }
@@ -191,7 +181,7 @@ impl SyncService {
             account: parts.account,
             config: parts.config,
             icloud,
-            service,
+            service: Arc::new(ServiceSlot::new(first, restart, kept)),
             legacy_mirror: parts.legacy_mirror,
             _forward: forwarding,
         })

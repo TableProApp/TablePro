@@ -486,3 +486,28 @@ async fn a_step_up_challenge_and_the_whole_request_refusals_read_as_their_errors
     assert_eq!(too_old, Err(TransportError::ServerTooOld));
     assert_eq!(refused_path, Err(TransportError::ValidationFailed));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_bearer_and_the_proof_never_show_in_a_request_s_debug_text() {
+    let (transport, _) = transport("http://127.0.0.1:1/v2").await;
+    let dsk = key();
+    let call = Call {
+        method: Method::GET,
+        path: "/sync/scopes".to_owned(),
+        query: Vec::new(),
+        headers: Vec::new(),
+        body: None,
+        proof: Some(&dsk),
+    };
+
+    let request = transport
+        .request(&call, &SecretString::from(TOKEN))
+        .unwrap()
+        .build()
+        .unwrap();
+    let text = format!("{request:?} {:?}", request.headers());
+
+    assert!(request.headers().contains_key("dpop"));
+    assert!(!text.contains(TOKEN), "{text}");
+    assert!(!text.contains("eyJ"), "{text}");
+}

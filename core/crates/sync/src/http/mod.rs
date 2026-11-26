@@ -9,11 +9,11 @@ mod wire;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use async_trait::async_trait;
-use reqwest::header::{AUTHORIZATION, ETAG, HeaderMap};
+use reqwest::header::{AUTHORIZATION, ETAG, HeaderMap, HeaderValue};
 use reqwest::{Method, RequestBuilder, Response, StatusCode};
 use secrecy::{ExposeSecret as _, SecretString};
 use tablepro_cloud_api::v2::types;
-use tablepro_cloud_api::{StepUpChallenge, dpop_nonce, dpop_nonce_challenge, read_capped};
+use tablepro_cloud_api::{ApiError, StepUpChallenge, dpop_nonce, dpop_nonce_challenge, read_capped};
 use tablepro_keys::dpop::{DpopRequest, proof as dpop_proof};
 use tablepro_keys::encoding::{AccountId, Origin, TeamId, Version};
 
@@ -23,9 +23,11 @@ use crate::api::transport::{
     DpopKey, Proof, PullRequest, PulledPage, PushAnswer, PushBatch, ServiceTransport, Transport, TransportError,
 };
 
-// A page holds 4 MiB of records and one past it, up to 1 MiB (0051, Limits); the rest of a body is small.
-const PAGE_BYTES: usize = 6 << 20;
-const ANSWER_BYTES: usize = 1 << 20;
+// A page stops at 4 MiB of records but never inside a change set, which can itself take a 4 MiB push and its 10,000
+// records' columns (0051, Limits; Pull), so a page is bounded well above both. A push's answer holds one outcome per
+// change, up to 10,000, and a scopes body one member row per seat of every team.
+const PAGE_BYTES: usize = 32 << 20;
+const ANSWER_BYTES: usize = 8 << 20;
 const DPOP: &str = "DPoP";
 const IDEMPOTENCY_KEY: &str = "Idempotency-Key";
 
@@ -85,7 +87,8 @@ impl Binding {
         }
     }
 
-    fn holds(&self, signed_in: &SignedIn) -> bool {
+    // The same sign-in as the one the transport opened for: server, account, device row and session.
+    pub fn holds(&self, signed_in: &SignedIn) -> bool {
         Self::of(signed_in).is_ok_and(|now| now == *self)
     }
 }
@@ -149,7 +152,7 @@ impl HttpTransport {
         let mut request = self
             .http
             .request(call.method.clone(), &url)
-            .header(AUTHORIZATION, format!("Bearer {}", token.expose_secret()));
+            .header(AUTHORIZATION, sensitive(&format!("Bearer {}", token.expose_secret()))?);
         if !call.query.is_empty() {
             request = request.query(&call.query);
         }
@@ -176,7 +179,7 @@ impl HttpTransport {
                 code: error.code().to_owned(),
                 retry_after_ms: None,
             })?;
-            request = request.header(DPOP, signed);
+            request = request.header(DPOP, sensitive(&signed)?);
         }
         if let Some(body) = &call.body {
             request = request
@@ -225,11 +228,15 @@ impl HttpTransport {
 
     async fn body(answer: Response, limit: usize) -> Result<(StatusCode, HeaderMap, Vec<u8>), TransportError> {
         let (status, headers) = (answer.status(), answer.headers().clone());
-        let body = read_capped(answer, limit)
-            .await
-            .map_err(|error| TransportError::Network {
-                detail: error.to_string(),
-            })?;
+        let body = read_capped(answer, limit).await.map_err(|error| match error {
+            ApiError::Unreachable(detail) => TransportError::Network { detail },
+            // Past the cap: a retry reads the same answer.
+            _ => TransportError::Server {
+                status: status.as_u16(),
+                code: "answer_too_large".to_owned(),
+                retry_after_ms: None,
+            },
+        })?;
         Ok((status, headers, body))
     }
 
@@ -249,6 +256,17 @@ impl HttpTransport {
             Proof::Dpop(key) => Some(key),
         }
     }
+}
+
+// A credential in a header, which a request's Debug never prints.
+fn sensitive(value: &str) -> Result<HeaderValue, TransportError> {
+    let mut header = HeaderValue::from_str(value).map_err(|_| TransportError::Server {
+        status: 0,
+        code: "bad_credential".to_owned(),
+        retry_after_ms: None,
+    })?;
+    header.set_sensitive(true);
+    Ok(header)
 }
 
 fn stopped_path(team: TeamId) -> String {

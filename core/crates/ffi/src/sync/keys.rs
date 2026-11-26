@@ -17,6 +17,7 @@ use tablepro_sync::api::key_flows::{
 };
 use tablepro_sync::keys::KeyService;
 
+use super::engines::ServiceEngine;
 use super::key_records::{
     account_arg, draft_arg, ik_arg, key_device_arg, notice_arg, request_arg, reset_arg, team_arg, team_text, typed_arg,
 };
@@ -301,14 +302,27 @@ pub struct KeyChangeInfo {
 }
 
 impl SyncService {
-    // Runs `work` over this sign-in's key flows on the runtime.
-    async fn on_keys<T, F>(&self, work: impl FnOnce(Arc<KeyService>) -> F + Send) -> Result<T, CoreError>
+    // Runs `work` over this sign-in's TablePro Sync engine on the runtime, which starts it again first after a start
+    // that failed for a reason that passes.
+    async fn on_engine<T, F>(&self, work: impl FnOnce(Arc<ServiceEngine>) -> F + Send + 'static) -> Result<T, CoreError>
     where
         T: Send + 'static,
         F: Future<Output = Result<T, SyncError>> + Send + 'static,
     {
-        let future = work(self.key_service()?);
-        on_runtime(&self.tasks, async move { future.await.map_err(CoreError::from) }).await
+        let slot = Arc::clone(&self.service);
+        on_runtime(&self.tasks, async move {
+            let engine = slot.engine().await?;
+            work(engine).await.map_err(CoreError::from)
+        })
+        .await
+    }
+
+    async fn on_keys<T, F>(&self, work: impl FnOnce(Arc<KeyService>) -> F + Send + 'static) -> Result<T, CoreError>
+    where
+        T: Send + 'static,
+        F: Future<Output = Result<T, SyncError>> + Send + 'static,
+    {
+        self.on_engine(|engine| work(Arc::clone(&engine.keys))).await
     }
 
     fn names_account(&self) -> Option<tablepro_account::Account> {
@@ -569,10 +583,10 @@ impl SyncService {
     ) -> Result<RemovalReviewInfo, CoreError> {
         let lost = ids(&lost, key_device_arg)?;
         let account = self.names_account();
-        self.on_keys(|keys| async move {
-            let review = keys.begin_removal(recovery_key, lost).await?;
+        self.on_engine(|engine| async move {
+            let review = engine.keys.begin_removal(recovery_key, lost).await?;
             let teams: Vec<TeamId> = review.members.iter().map(|member| member.team).collect();
-            let names = Names::read(account.as_ref(), &teams).await;
+            let names = Names::read(account.as_ref(), engine.binding.as_ref(), &teams).await;
             Ok(removal_review_info(review, &names))
         })
         .await
@@ -636,9 +650,9 @@ impl SyncService {
     pub async fn team_keys(&self, team: String) -> Result<TeamKeysInfo, CoreError> {
         let team = team_arg(&team)?;
         let account = self.names_account();
-        self.on_keys(|keys| async move {
-            let team_keys = keys.team_keys(team).await?;
-            let names = Names::read(account.as_ref(), &[team]).await;
+        self.on_engine(|engine| async move {
+            let team_keys = engine.keys.team_keys(team).await?;
+            let names = Names::read(account.as_ref(), engine.binding.as_ref(), &[team]).await;
             Ok(team_keys_info(team_keys, &names))
         })
         .await

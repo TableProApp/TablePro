@@ -6,11 +6,18 @@ use tablepro_account::Account;
 use tablepro_keys::encoding::{AccountId, TeamId};
 use tablepro_sync::api::ScopeName;
 use tablepro_sync::api::ids::parse_typeid;
+use tablepro_sync::http::{Binding, SignIn};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Person {
     pub(crate) name: Option<String>,
     pub(crate) email: Option<String>,
+}
+
+async fn still_bound(account: &Account, binding: &Binding) -> bool {
+    SignIn::signed_in(account)
+        .await
+        .is_ok_and(|signed_in| binding.holds(&signed_in))
 }
 
 #[derive(Debug, Default)]
@@ -21,12 +28,25 @@ pub(crate) struct Names {
 
 impl Names {
     // A read that fails leaves its names out, as a member list the server keeps from anyone but the team's owners
-    // and admins, or a profile read offline.
-    pub(crate) async fn read(account: Option<&Account>, teams: &[TeamId]) -> Self {
-        let mut names = Self::default();
-        let Some(account) = account else {
-            return names;
+    // and admins, or a profile read offline. Names are read only while the account holds the sign-in the engine is
+    // bound to, and are dropped when it changed during the reads, so another server never names this one's members.
+    pub(crate) async fn read(account: Option<&Account>, binding: Option<&Binding>, teams: &[TeamId]) -> Self {
+        let (Some(account), Some(binding)) = (account, binding) else {
+            return Self::default();
         };
+        if !still_bound(account, binding).await {
+            return Self::default();
+        }
+        let names = Self::read_unchecked(account, teams).await;
+        if still_bound(account, binding).await {
+            names
+        } else {
+            Self::default()
+        }
+    }
+
+    async fn read_unchecked(account: &Account, teams: &[TeamId]) -> Self {
+        let mut names = Self::default();
         match account.profile().await {
             Ok(profile) => {
                 for membership in profile.teams {
