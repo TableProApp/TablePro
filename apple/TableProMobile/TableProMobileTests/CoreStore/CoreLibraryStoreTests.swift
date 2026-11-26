@@ -320,13 +320,17 @@ struct CoreLibraryStoreTests {
         var contents = try await direct.libraryContents()
         contents.connections[0].details.startupSql = "SET search_path = app"
         contents.connections[0].connection.safeMode = .safeModeFull
-        _ = try await direct.replaceLibrary(library: LibraryWriteRecord(
-            connections: contents.connections,
-            groups: contents.groups,
-            tags: contents.tags,
-            favorites: contents.favorites,
-            projects: contents.projects
-        ))
+        _ = try await direct.replaceLibrary(
+            library: LibraryWriteRecord(
+                connections: contents.connections,
+                groups: contents.groups,
+                tags: contents.tags,
+                favorites: contents.favorites,
+                projects: contents.projects,
+                removing: []
+            ),
+            over: contents.digest
+        )
 
         let reopened = makeStore()
         var edited = try reopened.load()
@@ -338,6 +342,43 @@ struct CoreLibraryStoreTests {
         #expect(after.connection.name == "Renamed")
         #expect(after.connection.safeMode == .safeModeFull)
         #expect(after.details.startupSql == "SET search_path = app")
+    }
+
+    @Test("A write that drops a connection the core holds unread lands over the file the deletion left")
+    func writeAfterDroppingAHeldConnectionLands() throws {
+        let store = makeStore()
+        var library = try store.load()
+        let held = DatabaseConnection(name: "Held", type: .postgresql)
+        library.connections = [held, DatabaseConnection(name: "Orders", type: .postgresql)]
+        try store.write(library, keepingPastedSSHKeys: [:])
+        var document = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: coreFile)) as? [String: Any])
+        var entries = try #require(document["connections"] as? [[String: Any]])
+        let index = try #require(entries.firstIndex { ($0["id"] as? String)?.lowercased() == held.id.uuidString.lowercased() })
+        entries[index]["auth_mode"] = "from_the_future"
+        document["connections"] = entries
+        try JSONSerialization.data(withJSONObject: document).write(to: coreFile)
+
+        let reopened = makeStore()
+        var current = try reopened.load()
+        current.connections[0].name = "Renamed"
+        try reopened.write(current, keepingPastedSSHKeys: [:], removingUnreadable: UnreadableCopies(connections: [held.id]))
+
+        #expect(reopened.unreadable.connections.isEmpty)
+        #expect(try makeStore().load().connections.map(\.name) == ["Renamed"])
+    }
+
+    @Test("A write over a core file another process changed since the store read it is refused")
+    func writeOverAChangedCoreFileIsRefused() throws {
+        let store = makeStore()
+        var library = try store.load()
+        library.connections = [DatabaseConnection(name: "Orders", type: .postgresql)]
+        try store.write(library, keepingPastedSSHKeys: [:])
+        let swapped = try String(contentsOf: coreFile, encoding: .utf8).replacingOccurrences(of: "Orders", with: "Planted")
+        try Data(swapped.utf8).write(to: coreFile)
+
+        library.connections[0].name = "Renamed"
+        #expect(throws: (any Error).self) { try store.write(library, keepingPastedSSHKeys: [:]) }
+        #expect(try String(contentsOf: coreFile, encoding: .utf8) == swapped)
     }
 
     @Test("A write that names one id twice, or a record this build cannot read, is refused")

@@ -51,6 +51,8 @@ final class CoreLibraryStore {
     private var storedProjects: [UUID: ProjectRecord] = [:]
     private var storedFavorites: [UUID] = []
     private var heldByCore: Set<UUID> = []
+    // The digest of the core's file as this store last read or wrote it; a write over another file is refused.
+    private var fileDigest: String?
     // The previous stable's copies of connections the core holds unread, which every mirror write keeps.
     private var legacyCopiesOfHeld: [DatabaseConnection] = []
     private var flags = ConnectionDeviceFlags()
@@ -204,13 +206,21 @@ final class CoreLibraryStore {
         if removingSecrets || secretCopiesPending {
             try removeSecretCopies()
         }
-        for id in removed.connections.intersection(heldByCore) {
-            try Self.blocking { try await library.delete(id: id.uuidString) }
-            heldByCore.remove(id)
-            legacyCopiesOfHeld.removeAll { $0.id == id }
+        // Taken out by the same write, under its check of the file, rather than by deletes that would not check it.
+        let unread = removed.connections.intersection(heldByCore)
+        let staying = heldByCore.subtracting(unread)
+        let previousFlags = flags
+        flags = ConnectionDeviceFlags(of: next.connections).keeping(staying, from: flags)
+        let digest: String?
+        do {
+            digest = try replace(with: next, favoritesOrder: favoritesOrder, removing: unread, keepingHeld: staying, in: library)
+        } catch {
+            // A write that did not land keeps the flags of the entries it was taking out.
+            flags = previousFlags
+            throw error
         }
-        flags = ConnectionDeviceFlags(of: next.connections).keeping(heldByCore, from: flags)
-        let digest = try replace(with: next, favoritesOrder: favoritesOrder, in: library)
+        heldByCore.subtract(unread)
+        legacyCopiesOfHeld.removeAll { unread.contains($0.id) }
         pastedSSHKeys = pasted
         do {
             try mirrorWrite(next, coreDigest: digest ?? "", removingSecrets: removingSecrets, removingUnreadable: removed)
@@ -225,19 +235,31 @@ final class CoreLibraryStore {
         }
     }
 
-    private func replace(with next: Library, favoritesOrder: [UUID], in library: ConnectionLibrary) throws -> String? {
+    private func replace(
+        with next: Library,
+        favoritesOrder: [UUID],
+        removing unread: Set<UUID> = [],
+        keepingHeld held: Set<UUID>? = nil,
+        in library: ConnectionLibrary
+    ) throws -> String? {
         let write = LibraryWriteRecord(
             connections: next.connections.map { LibraryRecordMapping.record($0, keeping: stored[$0.id]) },
             groups: next.groups.map { LibraryRecordMapping.record($0, keeping: storedGroups[$0.id]) },
             tags: next.tags.map { LibraryRecordMapping.record($0, keeping: storedTags[$0.id]) },
-            favorites: favorites(of: next.connections, order: favoritesOrder).map(\.uuidString),
-            projects: next.projects.map { LibraryRecordMapping.record($0, keeping: storedProjects[$0.id]) }
+            favorites: favorites(of: next.connections, order: favoritesOrder, held: held ?? heldByCore).map(\.uuidString),
+            projects: next.projects.map { LibraryRecordMapping.record($0, keeping: storedProjects[$0.id]) },
+            removing: unread.map(\.uuidString)
         )
         do {
             try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
-            let written = try Self.blocking { try await library.replaceLibrary(library: write) }
+            let over = fileDigest
+            let written = try Self.blocking { try await library.replaceLibrary(library: write, over: over) }
+            fileDigest = written.digest
             let contents = try Self.blocking { try await library.libraryContents() }
-            remember(contents)
+            // Another writer's file in between is not this write's to take in; the next write is refused over it.
+            if contents.digest == written.digest {
+                remember(contents)
+            }
             flags.save(to: defaults)
             return written.digest
         } catch {
@@ -248,12 +270,12 @@ final class CoreLibraryStore {
 
     // The order this device shows its favourites in, then the rest as listed; favourites this build cannot read keep
     // their place in the core's list after them.
-    private func favorites(of connections: [DatabaseConnection], order: [UUID]) -> [UUID] {
+    private func favorites(of connections: [DatabaseConnection], order: [UUID], held: Set<UUID>) -> [UUID] {
         let favoriteIds = Set(connections.filter(\.isFavorite).map(\.id))
         var seen: Set<UUID> = []
         var list = order.filter { favoriteIds.contains($0) && seen.insert($0).inserted }
         list += connections.map(\.id).filter { favoriteIds.contains($0) && seen.insert($0).inserted }
-        list += storedFavorites.filter { heldByCore.contains($0) && seen.insert($0).inserted }
+        list += storedFavorites.filter { held.contains($0) && seen.insert($0).inserted }
         return list
     }
 
@@ -332,6 +354,7 @@ final class CoreLibraryStore {
         )
         storedFavorites = contents.favorites.compactMap(UUID.init(uuidString:))
         heldByCore = Set(contents.unreadable.compactMap(UUID.init(uuidString:)))
+        fileDigest = contents.digest
     }
 
     // Until every copy is gone each later write tries again.
@@ -351,6 +374,7 @@ final class CoreLibraryStore {
         storedFavorites = []
         heldByCore = []
         legacyCopiesOfHeld = []
+        fileDigest = nil
     }
 
     // The damaged file is kept beside the store, as the library files keep theirs; the next one replaces it.

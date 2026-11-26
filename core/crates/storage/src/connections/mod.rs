@@ -37,7 +37,7 @@ pub use details::{
     CredentialReference, DeviceOnly, KnownOrigin, LocalPasswordSource, SocksProxy, SshRoute, SshRouteHop,
     SshRouteTarget, TunnelCommand, TunnelCommandMethod, VaultAuth, VaultDatabaseRole,
 };
-pub use library::{LibraryRead, LibraryWrite};
+pub use library::{LibraryRead, LibraryWrite, Rebuilt};
 pub use profiles::{CredentialPassword, CredentialProfile, SshProfile};
 pub use projects::ProjectMembership;
 pub use ssh::{

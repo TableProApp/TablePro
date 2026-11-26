@@ -121,6 +121,9 @@ pub enum StorageError {
 
     #[error("the library names {id} twice")]
     RepeatedId { id: uuid::Uuid },
+
+    #[error("the connections file changed since the host last checked it")]
+    LibraryChanged,
 }
 
 impl StorageError {
@@ -164,6 +167,7 @@ impl StorageError {
             Self::GroupNotTopLevel { .. } => "storage.group_not_top_level",
             Self::StoreOwnerMismatch { .. } => "storage.store_owner_mismatch",
             Self::RepeatedId { .. } => "storage.repeated_id",
+            Self::LibraryChanged => "storage.library_changed",
         }
     }
 }
@@ -204,6 +208,7 @@ mod tests {
             StorageError::ConnectionGrouped { id }.code(),
             StorageError::GroupNotTopLevel { id }.code(),
             StorageError::RepeatedId { id }.code(),
+            StorageError::LibraryChanged.code(),
         ];
 
         assert_eq!(
@@ -221,6 +226,7 @@ mod tests {
                 "storage.connection_grouped",
                 "storage.group_not_top_level",
                 "storage.repeated_id",
+                "storage.library_changed",
             ]
         );
     }
