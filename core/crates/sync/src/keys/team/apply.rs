@@ -27,6 +27,12 @@ struct Outcome {
     epoch: Option<EpochId>,
 }
 
+// What judging a team again inside another flow's commit changed.
+pub(crate) struct TeamJudged {
+    team: TeamId,
+    events: Vec<TeamEvent>,
+}
+
 fn parse(record: &PulledRecord) -> Result<KeyObject, KeysError> {
     let fields = record.fields_json.as_deref().ok_or(KeysError::Encoding {
         what: "a key object with no fields",
@@ -202,6 +208,36 @@ impl KeyService {
                 _ => None,
             })
             .max())
+    }
+
+    // A restore wait that cleared in `txn`: the versions held above the one the team waited at are judged now, as a
+    // pull judges them, so a restart that passed during the wait is held for the person's words and a next version
+    // that passed is taken, instead of the row reading as current under the older key until another key object
+    // arrives (0062, 0064). The events are told once `txn` committed.
+    pub(crate) async fn judge_resumed_team(
+        &self,
+        txn: &mut dyn StateTxn,
+        team: TeamId,
+    ) -> Result<TeamJudged, SyncError> {
+        let mut book = self.load_team(txn, team).await?;
+        let before = book.row().cloned();
+        let mut cache = FactsCache::default();
+        let progress = self.advance_team(txn, &mut book, &mut cache).await?;
+        if let Some(row) = book.into_row() {
+            self.put_team_row(txn, before.as_ref(), &row).await?;
+        }
+        Ok(TeamJudged {
+            team,
+            events: progress.events,
+        })
+    }
+
+    pub(crate) async fn tell_judged(&self, judged: &TeamJudged) -> Result<(), SyncError> {
+        let outcome = Outcome {
+            events: judged.events.clone(),
+            ..Outcome::default()
+        };
+        self.tell(judged.team, &outcome).await
     }
 
     async fn advance_team(

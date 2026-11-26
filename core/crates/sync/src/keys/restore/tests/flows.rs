@@ -431,7 +431,7 @@ async fn apply(rig: &Rig, team: TeamId, row: KeyVersionRow, verdict: TeamVerdict
         .await
         .unwrap();
     txn.commit().await.unwrap();
-    rig.service.announce(&effects).unwrap();
+    rig.service.announce(&effects).await.unwrap();
     version_row(rig, ScopeName::Team(team), KeyPurpose::Team).await
 }
 
@@ -479,6 +479,47 @@ async fn a_wait_stops_an_ok_team_as_restore_wait_and_its_end_clears_only_that() 
     assert_eq!(
         rig.hooks.without_notices(),
         [Hook::Stop(team, StoppedCause::RestoreWait), Hook::Resume(team)]
+    );
+}
+
+// M's restart of version 8 passed its checks while P's team waited at 7 for a version the restore lost. Once the wait
+// clears, the restart is judged as a pull would judge it and held for the person's words (0064), so P never seals
+// under the older key with a restart pending.
+#[tokio::test]
+async fn a_restart_that_passed_during_a_restore_wait_is_held_once_the_wait_clears() {
+    let world = World::load();
+    let team = ScopeName::Team(world.team);
+    let rig = Rig::new(&world.origin, world.account("P"));
+    rig.put([
+        Row::KeyPin(crate::api::state::KeyPinRow {
+            account: world.account("M"),
+            ik: world.ik("M").public().unwrap(),
+            av: v(2),
+            how: tablepro_keys::trust::PinHow::FirstUse,
+            alert: false,
+            replaced: Vec::new(),
+        }),
+        held_row(team, &world.member("M", 2)),
+        held_row(team, &world.team_version(8, "M", 2, Start::Over)),
+        held_row(team, &world.team_wrap(8, ("M", 2), ("P", 2))),
+    ])
+    .await;
+
+    let after = apply(
+        &rig,
+        world.team,
+        team_version_row(team, Some(StoppedCause::RestoreWait)),
+        TeamVerdict::Done,
+    )
+    .await;
+
+    assert_eq!(
+        (after.version, after.state, after.stopped_cause),
+        (v(7), KeyVersionState::Stopped, Some(StoppedCause::RestartHeld))
+    );
+    assert_eq!(
+        rig.hooks.without_notices(),
+        [Hook::Resume(team), Hook::Stop(team, StoppedCause::RestartHeld)]
     );
 }
 

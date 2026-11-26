@@ -15,6 +15,7 @@ use tablepro_keys::encoding::{KeyPurpose, TeamId};
 
 use self::plan::{Inputs, Plan, TeamInputs, TeamVerdict};
 use self::server::BaseView;
+use super::team::TeamJudged;
 use super::{HeldObject, KeyService};
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, KindName, ScopeName};
@@ -71,7 +72,7 @@ impl RestoreFlows for KeyService {
         });
         let effects = self.apply_verdicts(&mut *txn, &gathered, &plan, epoch).await?;
         txn.commit().await?;
-        self.announce(&effects)?;
+        self.announce(&effects).await?;
         // An account certificate this device never held leaves nothing of its own to push back: another device of the
         // account puts that set back. Each team's wait or end above still stands.
         if plan.blind {
@@ -179,6 +180,7 @@ pub(crate) struct Gathered {
 struct Effects {
     stopped: Vec<TeamId>,
     resumed: Vec<TeamId>,
+    judged: Vec<TeamJudged>,
     ended: Vec<TeamId>,
     epoch: Option<EpochId>,
 }
@@ -369,6 +371,7 @@ impl KeyService {
                 {
                     txn.put(Row::KeyVersion(stop::resumed(row))).await?;
                     effects.resumed.push(*team);
+                    effects.judged.push(self.judge_resumed_team(txn, *team).await?);
                 }
                 TeamVerdict::Ends => {
                     self.end_team(txn, *team, Some(epoch)).await?;
@@ -380,7 +383,7 @@ impl KeyService {
         Ok(effects)
     }
 
-    fn announce(&self, effects: &Effects) -> Result<(), SyncError> {
+    async fn announce(&self, effects: &Effects) -> Result<(), SyncError> {
         for team in &effects.stopped {
             let scope = ScopeName::Team(*team);
             self.hooks().stop_scope(scope, StoppedCause::RestoreWait);
@@ -392,6 +395,9 @@ impl KeyService {
         for team in &effects.resumed {
             self.hooks().resume_scope(ScopeName::Team(*team));
             self.hooks().pass_soon();
+        }
+        for judged in &effects.judged {
+            self.tell_judged(judged).await?;
         }
         for team in &effects.ended {
             self.team_ended(*team, effects.epoch)?;

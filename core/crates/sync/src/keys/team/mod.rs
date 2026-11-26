@@ -25,6 +25,7 @@ use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::record_id::KeyKind;
 
+pub(crate) use self::apply::TeamJudged;
 use self::book::TeamBook;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
