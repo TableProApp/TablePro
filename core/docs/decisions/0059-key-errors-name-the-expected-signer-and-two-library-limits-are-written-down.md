@@ -1,6 +1,6 @@
 # 0059: Key errors name the expected signer, and two library limits are written down
 
-- **Status**: Accepted; amends 0056
+- **Status**: Accepted; amends 0056; a replace with no endorsement amended by 0064
 - **Date**: 2026-11-26
 
 ## Context
