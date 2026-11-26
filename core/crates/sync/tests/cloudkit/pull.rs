@@ -116,8 +116,8 @@ async fn a_value_the_store_refuses_is_held_and_the_fetch_goes_on() {
     rig.store(Kind::Connection).refuse_value(A, false);
     rig.fetch().await.unwrap();
 
-    assert_eq!(report.counts.refused, 1);
-    assert_eq!(report.counts.written, 1);
+    assert_eq!(report.counts.refused, 1, "{report:?}");
+    assert_eq!(report.counts.written, 1, "{report:?}");
     assert_eq!(held.reason, HeldReason::Unreadable);
     assert!(held.record.fields.is_some());
     assert!(base.is_none());
@@ -128,6 +128,31 @@ async fn a_value_the_store_refuses_is_held_and_the_fetch_goes_on() {
         Some(projected(Kind::Connection, A, &json!({"name": "prod"})))
     );
     assert!(rig.held(Kind::Connection, A).await.is_none());
+}
+
+// A deletion the store refuses leaves the record as the device held it: its base, and the pulled value it waits on
+// for the person, are what they were, and the deletion is held by id.
+#[tokio::test]
+async fn a_deletion_the_store_refuses_keeps_the_value_that_waits_for_the_person() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "db.a"}));
+    rig.fetch().await.unwrap();
+    rig.approve_everything().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "db.b"}));
+    rig.fetch().await.unwrap();
+    let waiting = rig.waiting().await;
+    let base = rig.base(Kind::Connection, A).await;
+    rig.store(Kind::Connection).refuse_value(A, true);
+    rig.delete_elsewhere(Kind::Connection, A);
+
+    let report = rig.fetch().await.unwrap();
+
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(report.counts.refused, 1, "{report:?}");
+    assert_eq!(rig.waiting().await, waiting);
+    assert_eq!(rig.base(Kind::Connection, A).await, base);
+    assert!(rig.store(Kind::Connection).holds(A));
+    assert!(rig.held(Kind::Connection, A).await.unwrap().record.deleted.is_some());
 }
 
 // The crash window between the store write and the state commit after it, the second of the batch's commits: the

@@ -151,7 +151,7 @@ pub struct MemoryAdapter {
     held: Mutex<Held>,
     elsewhere: Mutex<std::collections::HashMap<ScopeName, Held>>,
     on_apply: Mutex<Option<Box<dyn Fn() + Send>>>,
-    // Ids whose pulled value the store cannot keep: a write that puts one fails whole.
+    // Ids whose pulled change the store cannot take: a write that touches one fails whole.
     refused_values: Mutex<std::collections::HashSet<String>>,
 }
 
@@ -266,10 +266,9 @@ impl RecordAdapter for MemoryAdapter {
             run();
         }
         let refused = lock(&self.refused_values);
-        if changes
-            .iter()
-            .any(|change| matches!(change, LocalChange::Put { record_id, .. } if refused.contains(record_id)))
-        {
+        if changes.iter().any(|change| match change {
+            LocalChange::Put { record_id, .. } | LocalChange::Delete { record_id } => refused.contains(record_id),
+        }) {
             return Err(AdapterError::Unreadable {
                 detail: "a value this store cannot keep".to_owned(),
             });

@@ -55,6 +55,8 @@ struct Pull {
     older_read: bool,
     // The categories as the pass began, so one pass never reads a kind it then skips.
     categories: DeviceCategories,
+    // The sealed copy of each history entry this pull opened, which a hold keeps instead of the plaintext.
+    sealed: HashMap<RecordKey, PulledRecord>,
 }
 
 // A server that never lets a pull catch up, or a snapshot too large to keep, ends the pass instead of the device.
@@ -141,9 +143,9 @@ impl PageWrites {
         self.approvals.retain(|(approved, _)| *approved != key);
         self.undeferred.retain(|undeferred| *undeferred != key);
         self.held.retain(|held| held.key != key);
-        // A history entry reached the store opened: the row keeps only its id, so no plaintext rests in the state file,
-        // and the server serves the sealed copy again.
-        let record = if key.kind.known() == Some(Kind::HistoryEntry) {
+        // A history entry is held sealed. One whose sealed copy is gone keeps only its id, so no plaintext rests in the
+        // state file, and the server serves the sealed copy again.
+        let record = if key.kind.known() == Some(Kind::HistoryEntry) && record.fields_json.is_none() {
             PulledRecord {
                 fields: None,
                 fields_json: None,
@@ -256,6 +258,7 @@ impl ServiceSync {
             older: scope == ScopeName::History && snapshot,
             older_read: false,
             categories,
+            sealed: HashMap::new(),
         };
         refresh(&mut row, info);
         if row.epoch.is_none() {
@@ -265,6 +268,9 @@ impl ServiceSync {
         // A refill is kept before the first page, so a crash goes on refilling.
         if stored.as_ref() != Some(&row) {
             self.commit_page(PageWrites::default(), Some(&row)).await?;
+        }
+        if !pull.snapshot {
+            self.retry_held(ctx, &mut pull, &adapters).await?;
         }
         let caught_up = self.pull_pages(ctx, &mut pull, &adapters, &mut row).await?;
         if pull.snapshot {
@@ -345,6 +351,53 @@ impl ServiceSync {
         Err(SyncError::Malformed {
             what: "pull that never catches up",
         })
+    }
+
+    // Records held because their store refused the value or its copy did not read go through the pull again from the
+    // copy each row keeps, so a store or a build that now takes them does, with no change on the server and after a
+    // restart too (0054, Rules for both providers). The rows are the newest copy the server served, and their bases
+    // never moved past what the store holds. A record held again as it was writes nothing.
+    async fn retry_held(
+        &self,
+        ctx: &mut PassCtx,
+        pull: &mut Pull,
+        adapters: &[Arc<dyn RecordAdapter>],
+    ) -> Result<(), SyncError> {
+        let rows = begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::Held, pull.scope))
+            .await?;
+        let held: Vec<HeldRow> = rows
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Held(row)
+                    if row.reason == HeldReason::Unreadable
+                        && (row.record.fields_json.is_some()
+                            || row.record.fields.is_some()
+                            || row.record.deleted.is_some())
+                        && row
+                            .record
+                            .kind
+                            .known()
+                            .is_some_and(|kind| adapters.iter().any(|adapter| adapter.kind() == kind)) =>
+                {
+                    Some(row)
+                }
+                _ => None,
+            })
+            .collect();
+        if held.is_empty() {
+            return Ok(());
+        }
+        let records = held.iter().map(|row| row.record.clone()).collect();
+        let mut writes = self.take_page(pull, adapters, records).await?;
+        ctx.report.store_refused.extend(writes.refused.iter().cloned());
+        writes.held.retain(|row| !held.contains(row));
+        writes.refused.clear();
+        if !writes.is_empty() {
+            self.commit_page(writes, None).await?;
+        }
+        Ok(())
     }
 
     // In revision order on a delta page: runs of key objects go to their flow, each envelope is checked under the
@@ -432,6 +485,7 @@ impl ServiceSync {
                 }
                 match self.history_opens(&record).await? {
                     HistoryOpens::Plain(fields) => {
+                        pull.sealed.insert(key.clone(), record.clone());
                         record.fields = Some(fields);
                         record.fields_json = None;
                     }
@@ -541,7 +595,7 @@ impl ServiceSync {
             }
             txn.commit().await?;
         }
-        self.write_store(pull.scope, adapters, writes).await
+        self.write_store(pull, adapters, writes).await
     }
 
     // What a kind turned off takes from a refill without touching its store: a base the restore lost, which the
@@ -745,10 +799,11 @@ impl ServiceSync {
     // One store write per adapter, each after a stop check (P1-M4).
     async fn write_store(
         &self,
-        scope: ScopeName,
+        pull: &Pull,
         adapters: &[Arc<dyn RecordAdapter>],
         writes: &mut PageWrites,
     ) -> Result<(), SyncError> {
+        let scope = pull.scope;
         let mut grouped: Vec<(usize, Vec<(PulledRecord, LocalChange)>)> = Vec::new();
         for (index, record, change) in writes.store.drain(..) {
             match grouped.iter_mut().find(|(held, _)| *held == index) {
@@ -761,6 +816,7 @@ impl ServiceSync {
                 let applied = apply_keeping(adapter.as_ref(), scope, changes, || self.stop.check()).await?;
                 for record in applied.refused {
                     let key = RecordKey::new(scope, record.kind.clone(), record.record_id.clone());
+                    let record = pull.sealed.get(&key).cloned().unwrap_or(record);
                     writes.refuse(key, record);
                 }
             }
@@ -949,6 +1005,7 @@ impl ServiceSync {
             older: false,
             older_read: false,
             categories: self.categories(),
+            sealed: HashMap::new(),
         };
         row.older_cursor = page.cursor.clone().filter(|_| !page.records.is_empty());
         let writes = self.take_page(&mut pull, &adapters, page.records).await?;

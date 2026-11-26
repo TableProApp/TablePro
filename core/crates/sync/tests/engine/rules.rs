@@ -203,7 +203,8 @@ async fn a_held_record_never_goes_in_over_a_copy_the_store_cannot_read() {
 }
 
 // The store cannot keep one pulled value: that record is held by id with the server's copy, the pass goes on and says
-// so, a later change of another record still lands, and the held one goes in once the store takes it.
+// so on every pass it stays held, a later change of another record still lands, and the held one goes in once the
+// store takes it, with no change on the server.
 #[tokio::test]
 async fn a_value_the_store_refuses_is_held_and_the_pass_goes_on() {
     let server = FakeServer::new();
@@ -221,9 +222,8 @@ async fn a_value_the_store_refuses_is_held_and_the_pass_goes_on() {
     mac.sync().await;
     mini.sync().await;
     let later = mini.connections.get(&id(2));
+    let still = mini.sync.status().problem;
     mini.connections.refuse_value(&id(1), false);
-    mac.connections.put(&id(1), json!({"name": "Prod 2"}));
-    mac.sync().await;
     mini.sync().await;
 
     assert_eq!(report.store_refused, vec![key(&id(1))]);
@@ -234,7 +234,8 @@ async fn a_value_the_store_refuses_is_held_and_the_pass_goes_on() {
     assert_eq!(held.reason, HeldReason::Unreadable);
     assert_eq!(held.record.fields, Some(json!({"name": "Prod"})));
     assert_eq!(later, Some(json!({"name": "Stage 2"})));
-    assert_eq!(mini.connections.get(&id(1)), Some(json!({"name": "Prod 2"})));
+    assert_eq!(still, Some("sync.adapter.unreadable"));
+    assert_eq!(mini.connections.get(&id(1)), Some(json!({"name": "Prod"})));
     assert!(mini.row(RowKey::Held(key(&id(1)))).await.is_none());
     assert_eq!(mini.sync.status().problem, None);
 }

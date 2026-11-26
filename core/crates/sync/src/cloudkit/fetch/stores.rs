@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use super::settle::{Settle, View};
 use super::{SCOPE, identity_row};
-use crate::adapters::apply_keeping;
+use crate::adapters::{apply_keeping, approval};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{KindName, RecordKey};
@@ -284,25 +284,33 @@ impl Settle<'_, '_> {
         Ok(Some(()))
     }
 
-    // The store refused the record's value: it is held by id with the pulled copy and keeps the base the batch found,
-    // so the store's copy stays what the device holds against it (0054, Rules for both providers). The pending base
-    // the batch staged for it no longer matches the store, so a restart before the commit drops it too.
+    // The store refused the record's value: it is held by id with the pulled copy and keeps the base and the approval
+    // rows the batch found, so the store's copy stays what the device holds against them (0054, Rules for both
+    // providers). The pending base the batch staged for it no longer matches the store, so a restart before the commit
+    // drops it too.
     async fn refused(&mut self, kind: Kind, wire: String) -> Result<(), SyncError> {
         let key = RecordKey::new(SCOPE, KindName::of(kind), wire);
-        let Some((base, record)) = self.undo.remove(&key) else {
+        let Some(undo) = self.undo.remove(&key) else {
             return Ok(());
         };
-        if record.deleted.is_some() {
+        if undo.record.deleted.is_some() {
             self.counts.removed = self.counts.removed.saturating_sub(1);
         } else {
             self.counts.written = self.counts.written.saturating_sub(1);
         }
         self.counts.refused = self.counts.refused.saturating_add(1);
-        match base {
+        match undo.base {
             Some(base) => self.txn.put(Row::Base(base)).await?,
             None => self.txn.delete(&RowKey::Base(key.clone())).await?,
         }
-        self.hold(&key, HeldReason::Unreadable, record).await
+        // The approval queue's rows go back to what the record waited on before the change the store refused.
+        for row in approval::rows_of(&mut self.txn, &key).await? {
+            self.txn.delete(&RowKey::Approval(row.key, row.field)).await?;
+        }
+        for row in undo.approvals {
+            self.txn.put(Row::Approval(row)).await?;
+        }
+        self.hold(&key, HeldReason::Unreadable, undo.record).await
     }
 
     // Each identity of a store this fetch sees moves the rows of the kinds it keeps, so a later rollback of the file

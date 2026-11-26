@@ -18,7 +18,9 @@ use crate::adapters::approval::{self, Gated};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
-use crate::api::state::{BaseRow, DeferredRow, HeldReason, HeldRow, Row, RowKey, ScopeRow, Standing, StateTxn};
+use crate::api::state::{
+    ApprovalRow, BaseRow, DeferredRow, HeldReason, HeldRow, Row, RowKey, ScopeRow, Standing, StateTxn,
+};
 use crate::api::transport::{DeletedReason, PulledRecord};
 
 // A store written this many times in a row while its batch merged is left to the next pass.
@@ -76,9 +78,22 @@ pub(super) struct Settle<'s, 'f> {
     pub loaded: BTreeMap<String, StoreStamp>,
     pub moved: Option<String>,
     pub started: BTreeMap<String, StoreStamp>,
-    // For each record the batch plans a store change for: its base before the batch and the pulled copy, which the
-    // record is held with if its store refuses the change.
-    pub undo: BTreeMap<RecordKey, (Option<BaseRow>, PulledRecord)>,
+    // For each record the batch plans a store change for, what holds it if its store refuses the change.
+    pub(super) undo: BTreeMap<RecordKey, Undo>,
+}
+
+// A record's rows as the batch found them, and the pulled copy or deletion it is held with if its store refuses it.
+#[derive(Debug, Clone)]
+pub(super) struct Undo {
+    pub base: Option<BaseRow>,
+    pub approvals: Vec<ApprovalRow>,
+    pub record: PulledRecord,
+}
+
+// The rows a refused store change puts back, read before the approval queue moves them.
+pub(super) struct Found {
+    base: Option<BaseRow>,
+    approvals: Vec<ApprovalRow>,
 }
 
 // What the store's copy becomes: the merge's record, or a deletion of the copy it holds.
@@ -224,10 +239,11 @@ impl<'s, 'f> Settle<'s, 'f> {
             .merged(copy.kind, &key, record.as_ref(), Some(&copy.fields), pull_wins)
             .await?;
         let stored = record.as_ref().map(|record| &record.fields);
+        let found = self.found(&key).await?;
         match approval::gate(&mut self.txn, &key, copy.kind, stored, merged).await? {
             Gated::Apply(merged) => {
                 if let Some(planned) = local_change(record.as_ref(), merged) {
-                    self.plan_held(copy.kind, &key, planned, held_change(&copy)).await?;
+                    self.plan_held(copy.kind, &key, planned, held_change(&copy), found);
                 }
             }
             // Its base, the copy and its creation date, lands only with this held row (`Staged::split`), so nothing
@@ -286,23 +302,27 @@ impl<'s, 'f> Settle<'s, 'f> {
         })
     }
 
-    // A planned store change, with what holds the record if its store refuses it: the base the batch found, and the
-    // pulled copy or deletion.
-    async fn plan_held(
-        &mut self,
-        kind: Kind,
-        key: &RecordKey,
-        planned: Planned,
-        record: PulledRecord,
-    ) -> Result<(), SyncError> {
+    async fn found(&mut self, key: &RecordKey) -> Result<Found, SyncError> {
         let base = match self.txn.get(&RowKey::Base(key.clone())).await? {
             Some(Row::Base(base)) => Some(base),
             _ => None,
         };
-        let undo = self.undo.entry(key.clone()).or_insert((base, record.clone()));
-        undo.1 = record;
+        let approvals = approval::rows_of(&mut self.txn, key).await?;
+        Ok(Found { base, approvals })
+    }
+
+    // A planned store change, with what holds the record if its store refuses it: the rows the first change of it in
+    // the batch found, and the latest pulled copy or deletion.
+    fn plan_held(&mut self, kind: Kind, key: &RecordKey, planned: Planned, record: PulledRecord, found: Found) {
+        self.undo
+            .entry(key.clone())
+            .and_modify(|undo| undo.record = record.clone())
+            .or_insert(Undo {
+                base: found.base,
+                approvals: found.approvals,
+                record,
+            });
         self.plan(kind, key, planned);
-        Ok(())
     }
 
     pub(super) async fn deleted(&mut self, key: &RecordKey) -> Result<(), SyncError> {
@@ -332,12 +352,13 @@ impl<'s, 'f> Settle<'s, 'f> {
         let pull_wins = self.pull_wins.contains(&kind);
         let merged = self.merged(kind, key, record.as_ref(), None, pull_wins).await?;
         let stored = record.as_ref().map(|record| &record.fields);
+        let found = self.found(key).await?;
         let goes = matches!(
             approval::gate(&mut self.txn, key, kind, stored, merged).await?,
             Gated::Apply(Merged::Deleted)
         );
         if record.is_some() && goes {
-            self.plan_held(kind, key, Planned::Delete, held_deletion(key)).await?;
+            self.plan_held(kind, key, Planned::Delete, held_deletion(key), found);
         }
         self.forget(key).await
     }
@@ -354,7 +375,8 @@ impl<'s, 'f> Settle<'s, 'f> {
         let standing = standing.or_else(|| (kind != Kind::Connection).then_some(Standing::Syncs));
         match standing {
             Some(Standing::Syncs) if !PROFILES.contains(&kind) => {
-                self.plan_held(kind, key, Planned::Delete, held_deletion(key)).await?;
+                let found = self.found(key).await?;
+                self.plan_held(kind, key, Planned::Delete, held_deletion(key), found);
                 approval::gate(&mut self.txn, key, kind, None, Merged::Deleted).await?;
                 self.forget(key).await
             }

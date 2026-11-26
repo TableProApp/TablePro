@@ -328,7 +328,7 @@ async fn a_state_file_the_open_found_restored_refills_once() {
     );
 }
 
-// A record the store refused is held, and the pass that held it says so in the status.
+// A record the store refused is held, and each pass that tries it again and holds it again says so in the status.
 #[tokio::test]
 async fn a_pass_that_holds_a_value_the_store_refused_says_so() {
     let rig = Rig::new().await;
@@ -339,11 +339,14 @@ async fn a_pass_that_holds_a_value_the_store_refused_says_so() {
     sync.run_pass(PassReason::Launch).await.unwrap();
     let problem = sync.status().problem;
     let held = sync.status().held;
+    sync.run_pass(PassReason::Poll).await.unwrap();
+    let still = sync.status().problem;
     rig.store(Kind::Connection).refuse_value(A, false);
     sync.run_pass(PassReason::Poll).await.unwrap();
 
     assert_eq!(problem, Some("sync.adapter.unreadable"));
     assert_eq!(held, 1);
+    assert_eq!(still, Some("sync.adapter.unreadable"));
     assert_eq!(sync.status().problem, None);
     assert!(rig.store(Kind::Connection).holds(A));
 }

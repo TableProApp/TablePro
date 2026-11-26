@@ -71,7 +71,7 @@ struct Held {
     records: BTreeMap<String, LocalRecord>,
     unreadable: BTreeSet<String>,
     refuse_next: bool,
-    // Ids whose pulled value the store cannot keep: a write that puts one fails whole.
+    // Ids whose pulled change the store cannot take: a write that touches one fails whole.
     refused_values: BTreeSet<String>,
     writes: usize,
     // A write the person makes right after the next read, while the pull merges.
@@ -270,9 +270,11 @@ impl RecordAdapter for MemoryStore {
                 detail: "refused".to_owned(),
             });
         }
-        if changes.iter().any(
-            |change| matches!(change, LocalChange::Put { record_id, .. } if held.refused_values.contains(record_id)),
-        ) {
+        if changes.iter().any(|change| match change {
+            LocalChange::Put { record_id, .. } | LocalChange::Delete { record_id } => {
+                held.refused_values.contains(record_id)
+            }
+        }) {
             return Err(AdapterError::Unreadable {
                 detail: "a value this store cannot keep".to_owned(),
             });
