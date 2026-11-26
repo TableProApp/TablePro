@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProFFI
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -16,18 +17,8 @@ struct AccountRemovalFlowTests {
 
     private static let lost = FakeAccountKeyFlows.device("key-lost", row: nil, name: "Old MacBook")
 
-    private static func member(_ team: String, _ account: String, teamID: String?, teamName: String, name: String) -> AccountRemovalReview.Member {
-        AccountRemovalReview.Member(
-            record: ReviewedMemberInfo(team: team, account: account, confirmedUnderAv: 2),
-            teamID: teamID,
-            teamName: teamName,
-            name: name,
-            email: "\(name.lowercased())@example.com"
-        )
-    }
-
-    private static func review() -> AccountRemovalReview {
-        AccountRemovalReview(
+    private static func review() -> RemovalReviewInfo {
+        RemovalReviewInfo(
             review: "review-1",
             devices: [
                 ReviewedDeviceInfo(device: FakeAccountKeyFlows.device("key-this", thisDevice: true), keepByDefault: false),
@@ -36,9 +27,9 @@ struct AccountRemovalFlowTests {
                 ReviewedDeviceInfo(device: FakeAccountKeyFlows.device("key-tablet"), keepByDefault: false),
             ],
             members: [
-                member("team_a", "ACCT-1", teamID: "TEAM-A", teamName: "Acme", name: "Ana"),
-                member("team_b", "ACCT-2", teamID: "TEAM-B", teamName: "Beta", name: "Bao"),
-                member("team_a", "ACCT-3", teamID: "TEAM-A", teamName: "Acme", name: "Chi"),
+                FakeAccountKeyFlows.member("team_a", "ACCT-1", teamName: "Acme", name: "Ana"),
+                FakeAccountKeyFlows.member("team_b", "ACCT-2", teamName: "Beta", name: "Bao"),
+                FakeAccountKeyFlows.member("team_a", "ACCT-3", teamName: "Acme", name: "Chi"),
             ]
         )
     }
@@ -64,12 +55,27 @@ struct AccountRemovalFlowTests {
 
         #expect(flow.step == .review)
         #expect(flow.recoveryKey.isEmpty)
-        #expect(flows.calls(named: "reviewDeviceRemoval") == [
-            FakeAccountKeyFlows.Call("reviewDeviceRemoval", [FakeAccountKeyFlows.recoveryKey, "key-lost"])
+        #expect(flows.calls(named: "beginDeviceRemoval") == [
+            FakeAccountKeyFlows.Call("beginDeviceRemoval", [FakeAccountKeyFlows.recoveryKey, "key-lost"])
         ])
         #expect(flow.keep == ["key-phone"])
         #expect(flow.memberGroups.map(\.team.name) == ["Acme", "Beta"])
         #expect(flow.memberGroups.first?.members.map(\.name) == ["Ana", "Chi"])
+    }
+
+    @Test("This account's own row is listed but never marked for removal")
+    func ownRowStays() async {
+        let flows = FakeAccountKeyFlows()
+        let me = FakeAccountKeyFlows.member("team_a", "ACCT-ME", teamName: "Acme", name: "Dat", isSelf: true)
+        flows.review = RemovalReviewInfo(review: "review-1", devices: [], members: [me])
+        let flow = Self.flow(flows, opened: Opened())
+        flow.recoveryKey = "key"
+        await flow.advance()
+
+        flow.setRemoving(AccountRemovalReview.Member(record: me), true)
+
+        #expect(flow.removing.isEmpty)
+        #expect(flow.memberGroups.first?.members.first?.isSelf == true)
     }
 
     @Test("Only compared devices can be kept, never the lost one or this Mac")
@@ -100,7 +106,7 @@ struct AccountRemovalFlowTests {
         let flow = Self.flow(flows, opened: opened)
         flow.recoveryKey = "key"
         await flow.advance()
-        flow.setRemoving(review.members[1], true)
+        flow.setRemoving(AccountRemovalReview.Member(record: review.members[1]), true)
 
         await flow.advance()
 
@@ -108,8 +114,8 @@ struct AccountRemovalFlowTests {
         #expect(flows.calls(named: "finishDeviceRemoval").isEmpty)
         #expect(flow.teamsToVisit.map(\.name) == ["Beta"])
         flow.openTeam(try #require(flow.teamsToVisit.first))
-        #expect(opened.urls == [AccountPortal(server: .production).portalTeam("TEAM-B")])
-        flow.setRemoving(review.members[0], true)
+        #expect(opened.urls == [AccountPortal(server: .production).portalTeam("team_b")])
+        flow.setRemoving(AccountRemovalReview.Member(record: review.members[0]), true)
         #expect(flow.removing.count == 1)
 
         await flow.advance()
@@ -128,15 +134,43 @@ struct AccountRemovalFlowTests {
         let flow = Self.flow(flows, opened: Opened())
         flow.recoveryKey = "key"
         await flow.advance()
-        flow.setRemoving(review.members[1], true)
+        flow.setRemoving(AccountRemovalReview.Member(record: review.members[1]), true)
         await flow.advance()
 
         flow.backToReview()
-        flow.setRemoving(review.members[1], false)
+        flow.setRemoving(AccountRemovalReview.Member(record: review.members[1]), false)
         await flow.advance()
 
         #expect(flow.step == .done)
         #expect(flows.calls(named: "finishDeviceRemoval").first?.arguments == ["review-1", "key-phone"])
+    }
+
+    @Test("A rotation that failed asks for the recovery key again and keeps the choices made")
+    func failedRotationStartsAgainFromTheKey() async {
+        let flows = FakeAccountKeyFlows()
+        let review = Self.review()
+        flows.review = review
+        flows.fail("finishDeviceRemoval", with: FakeAccountKeyFlows.failure("sync.network"))
+        let flow = Self.flow(flows, opened: Opened())
+        flow.recoveryKey = "key"
+        await flow.advance()
+        flow.setKeep(review.devices[2], false)
+        flow.setRemoving(AccountRemovalReview.Member(record: review.members[1]), true)
+        await flow.advance()
+
+        await flow.advance()
+
+        #expect(flow.step == .enterKey)
+        #expect(flow.failure != nil)
+        flow.recoveryKey = "key"
+        await flow.advance()
+        #expect(flow.step == .review)
+        #expect(flow.keep.isEmpty)
+        #expect(flow.removing == ["team_b/ACCT-2"])
+        await flow.advance()
+        await flow.advance()
+        #expect(flow.step == .done)
+        #expect(flows.calls(named: "finishDeviceRemoval").last?.arguments == ["review-1", "team_b/ACCT-2"])
     }
 
     @Test("With every teammate kept, the removal ends without the portal")
@@ -156,7 +190,7 @@ struct AccountRemovalFlowTests {
     @Test("A wrong recovery key stays on its field with the reason")
     func wrongKey() async {
         let flows = FakeAccountKeyFlows()
-        flows.fail("reviewDeviceRemoval", with: FakeAccountKeyFlows.failure("keys.recovery_key"))
+        flows.fail("beginDeviceRemoval", with: FakeAccountKeyFlows.failure("keys.recovery_key"))
         let flow = Self.flow(flows, opened: Opened())
         flow.recoveryKey = "WRONG"
 
@@ -164,6 +198,20 @@ struct AccountRemovalFlowTests {
 
         #expect(flow.step == .enterKey)
         #expect(flow.failure != nil)
+    }
+
+    @Test("Closing the review before the rotation drops the core's review")
+    func closingDropsTheReview() async throws {
+        let flows = FakeAccountKeyFlows()
+        flows.review = Self.review()
+        let flow = Self.flow(flows, opened: Opened())
+        flow.recoveryKey = "key"
+        await flow.advance()
+
+        flow.discard()
+
+        try await waitUntil { !flows.calls(named: "discardKeyDraft").isEmpty }
+        #expect(flows.calls(named: "discardKeyDraft") == [FakeAccountKeyFlows.Call("discardKeyDraft", ["review-1"])])
     }
 
     @Test("Recovery with the key approves this Mac and drops the key")

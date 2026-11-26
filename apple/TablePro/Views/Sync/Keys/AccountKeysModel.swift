@@ -146,14 +146,18 @@ internal final class AccountKeysModel: ObservableObject {
     // device whose row is already gone goes straight to the recovery key.
     func remove(_ device: AccountDeviceInfo) async {
         pendingRemoval = nil
+        let started = generation
         if let row = device.device {
             removing = device.keyDevice
             defer { removing = nil }
             do {
                 try await environment.stepUp.run {
+                    guard started == self.generation else { throw CancellationError() }
                     try await self.environment.flows().removeDeviceRow(device: row)
                 }
             } catch {
+                // The account changed while the row was going: nothing of the old one is shown.
+                guard started == generation else { return }
                 switch StepUpRetry.failure(error) {
                 case .canceled?:
                     return
@@ -166,6 +170,7 @@ internal final class AccountKeysModel: ObservableObject {
                 }
             }
         }
+        guard started == generation else { return }
         sheet = .removal(AccountRemovalFlow(
             lost: device,
             flows: environment.flows,

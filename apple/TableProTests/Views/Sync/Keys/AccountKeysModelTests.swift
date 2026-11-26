@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 @testable import TablePro
 import TableProFFI
@@ -154,6 +155,26 @@ struct AccountKeysModelTests {
         #expect(model.sheet == nil)
         #expect(model.actionFailure?.title.contains("Mac mini") == true)
         #expect(fixture.stepUps.isEmpty)
+    }
+
+    @Test("A removal that ends after the account changed shows nothing of the old account")
+    func removalAfterAccountChangeLandsNowhere() async throws {
+        let fixture = AccountKeysFixture()
+        Self.approved(fixture)
+        let gate = AsyncGate()
+        fixture.flows.removeRowGate = gate
+        let model = fixture.model()
+        await model.reload()
+
+        let removal = Task { await model.remove(fixture.flows.devices[0]) }
+        await gate.arrived(1)
+        fixture.accountChanges.send()
+        try await waitUntil { model.state.value == nil || model.state.isLoading }
+        await gate.open()
+        await removal.value
+
+        #expect(model.sheet == nil)
+        #expect(model.actionFailure == nil)
     }
 
     @Test("A device whose row is already gone goes straight to the recovery key")

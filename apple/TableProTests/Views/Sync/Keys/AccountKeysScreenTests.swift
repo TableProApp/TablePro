@@ -110,7 +110,7 @@ struct AccountKeysScreenTests {
             )
             return sheet(.approval(flow), model)
         case .removalKey, .removalReview, .removalSeats:
-            flows.review = AccountRemovalReview(
+            flows.review = RemovalReviewInfo(
                 review: "review-1",
                 devices: [
                     ReviewedDeviceInfo(device: FakeAccountKeyFlows.device("key-this", name: "MacBook Air", thisDevice: true), keepByDefault: false),
@@ -118,8 +118,8 @@ struct AccountKeysScreenTests {
                     ReviewedDeviceInfo(device: FakeAccountKeyFlows.device("key-old", name: "Old MacBook Pro"), keepByDefault: false),
                 ],
                 members: [
-                    .init(record: ReviewedMemberInfo(team: "team_a", account: "A", confirmedUnderAv: 2), teamID: "TEAM-A", teamName: "Data Platform", name: "Ana Silva", email: "ana@example.com"),
-                    .init(record: ReviewedMemberInfo(team: "team_a", account: "B", confirmedUnderAv: 2), teamID: "TEAM-A", teamName: "Data Platform", name: "Bao Tran", email: "bao@example.com"),
+                    FakeAccountKeyFlows.member("team_a", "A", teamName: "Data Platform", name: "Ana Silva"),
+                    FakeAccountKeyFlows.member("team_a", "B", teamName: "Data Platform", name: "Bao Tran"),
                 ]
             )
             let flow = AccountRemovalFlow(

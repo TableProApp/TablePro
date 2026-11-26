@@ -20,9 +20,8 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     }
 
     struct Team: Identifiable, Equatable {
-        // The team's scope as the wire names it.
+        // The `team_` id, which the portal's team page takes too.
         let id: String
-        let teamID: String?
         let name: String?
     }
 
@@ -90,7 +89,7 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     }
 
     func setRemoving(_ member: AccountRemovalReview.Member, _ removes: Bool) {
-        guard step == .review, !isWorking else { return }
+        guard step == .review, !isWorking, !member.isSelf else { return }
         if removes {
             removing.insert(member.id)
         } else {
@@ -111,7 +110,7 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
         }
         return order.compactMap { team in
             guard let members = grouped[team], let first = members.first else { return nil }
-            return MemberGroup(team: Team(id: team, teamID: first.teamID, name: first.teamName), members: members)
+            return MemberGroup(team: Team(id: team, name: first.teamName), members: members)
         }
     }
 
@@ -150,24 +149,41 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     }
 
     func openTeam(_ team: Team) {
-        let portal = portal()
-        openURL(team.teamID.map(portal.portalTeam) ?? portal.accountURL)
+        openURL(portal().portalTeam(team.id))
     }
 
+    // The sheet closed: a review the rotation never took is dropped in the core too.
     func discard() {
         closed = true
         recoveryKey = ""
+        if let review, step != .done {
+            release(review.review)
+        }
+    }
+
+    private func release(_ draft: String) {
+        let flows = flows
+        Task {
+            try? await flows().discardKeyDraft(draft: draft)
+        }
     }
 
     private func beginReview() async {
         let recoveryKey = recoveryKey
         await working {
-            let review = try await self.flows().reviewDeviceRemoval(recoveryKey: recoveryKey, lost: [self.lost.keyDevice])
-            guard !self.closed else { return }
+            let review = AccountRemovalReview(
+                try await self.flows().beginDeviceRemoval(recoveryKey: recoveryKey, lost: [self.lost.keyDevice])
+            )
+            guard !self.closed else {
+                self.release(review.review)
+                return
+            }
             self.recoveryKey = ""
+            let again = self.review != nil
             self.review = review
-            self.keep = Set(review.devices.filter { $0.keepByDefault && self.canKeep($0) }.map(\.device.keyDevice))
-            self.removing = []
+            let kept = again ? self.keep : Set(review.devices.filter(\.keepByDefault).map(\.device.keyDevice))
+            self.keep = kept.intersection(review.devices.filter { self.canKeep($0) }.map(\.device.keyDevice))
+            self.removing = again ? self.removing.intersection(review.members.map(\.id)) : []
             self.step = .review
         }
     }
@@ -176,9 +192,17 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
         guard let review else { return }
         let keep = review.devices.map(\.device.keyDevice).filter { self.keep.contains($0) }
         let remove = review.members.filter { submitted.contains($0.id) }.map(\.record)
-        await working {
-            try await self.flows().finishDeviceRemoval(review: review.review, keep: keep, remove: remove)
-            self.step = .done
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await flows().finishDeviceRemoval(review: review.review, keep: keep, remove: remove)
+            step = .done
+        } catch {
+            guard !closed else { return }
+            // The core takes the review as the rotation starts, so another try needs a new one: the recovery key
+            // again, with the choices made kept where the new review lists them.
+            failure = String(format: String(localized: "%@ Enter your recovery key to try again."), AccountKeysText.message(for: error))
+            step = .enterKey
         }
     }
 

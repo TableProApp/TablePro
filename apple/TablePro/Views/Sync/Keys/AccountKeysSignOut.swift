@@ -44,16 +44,13 @@ internal struct AccountKeysSignOut {
             signOut: {
                 while true {
                     do {
-                        let flows = try await flows()
-                        // An account with no keys, or a Mac that cannot hold them, has no key device to revoke.
-                        switch try? await flows.keyState() {
-                        case .noKeys?, .noDeviceStore?:
-                            return true
-                        default:
-                            break
-                        }
-                        let outcome = try await flows.signOutKeys()
+                        // The core decides whether anything is there to erase, whatever the key state reads.
+                        let outcome = try await flows().signOutKeys()
                         logger.notice("Signed out of the keys: \(String(describing: outcome), privacy: .public)")
+                        return true
+                    } catch where isUnfilled(error) {
+                        // No key engine runs on this service, so it never made a key device here to erase.
+                        logger.notice("No key engine to sign out of on this service")
                         return true
                     } catch {
                         logger.warning(
@@ -68,6 +65,11 @@ internal struct AccountKeysSignOut {
                 }
             }
         )
+    }
+
+    private static func isUnfilled(_ error: any Error) -> Bool {
+        guard case .Failed(let info)? = error as? CoreError else { return false }
+        return info.code == "sync.unimplemented"
     }
 }
 

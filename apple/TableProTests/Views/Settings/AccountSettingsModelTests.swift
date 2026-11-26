@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProFFI
 import TableProTestSupport
 import Testing
 
@@ -108,7 +109,7 @@ struct AccountSettingsModelTests {
         #expect(fixture.services.isSignedIn)
     }
 
-    @Test("Sign Out Anyway signs out with the keys left, and an account with no keys revokes nothing")
+    @Test("Sign Out Anyway signs out with the keys left, and the core decides what an account with no keys erases")
     func signOutAnywayAndNoKeys() async throws {
         let fixture = try AccountFixture()
         try await fixture.signIn()
@@ -135,7 +136,29 @@ struct AccountSettingsModelTests {
         await second.signOut()
 
         #expect(prompt.asked.first?.erasesKeys == false)
-        #expect(empty.calls(named: "signOutKeys").isEmpty)
+        #expect(empty.calls(named: "signOutKeys").count == 1)
+        #expect(!fixture.services.isSignedIn)
+    }
+
+    @Test("A service with no key engine has nothing to erase, so Sign Out asks nothing more")
+    func noKeyEngineSignsOut() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        let flows = FakeAccountKeyFlows()
+        flows.fail("signOutKeys", with: FakeAccountKeyFlows.failure("sync.unimplemented"))
+        var asked = 0
+        let model = AccountSettingsModel(
+            services: fixture.services, teamLibrary: { Self.idleTeamLibrary(fixture) },
+            keys: .over({ flows }) { _ in
+                asked += 1
+                return .cancel
+            },
+            askSignOut: ScriptedSignOutPrompt([.discard]).ask
+        )
+
+        await model.signOut()
+
+        #expect(asked == 0)
         #expect(!fixture.services.isSignedIn)
     }
 
