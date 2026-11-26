@@ -790,28 +790,144 @@ async fn an_approval_refused_create_only_is_not_sealed_again() {
     );
 }
 
+// A recovery whose change set never went up still needs the device keys it drew: the device asks for no approval
+// until it settles.
 #[tokio::test]
 async fn a_device_whose_rotation_still_settles_does_not_ask_for_approval() {
     let server = FakeServer::new();
     let account = new_account();
     let a = Device::new(&server, account, "dev_a").await;
-    a.genesis().await;
+    let r = a.genesis().await;
     let n = Device::new(&server, account, "dev_n").await;
     n.pull().await;
-    crate::harness::put_rows(
-        &n,
-        vec![tablepro_sync::api::state::Row::KeyPending(
-            tablepro_sync::api::state::KeyPendingRow {
-                flow: tablepro_sync::api::state::PendingFlow::AccountRotation {
-                    av: tablepro_keys::encoding::Version::new(2).unwrap(),
-                },
-                state: Vec::new(),
-            },
-        )],
-    )
-    .await;
+    n.wire
+        .fail_next_push(tablepro_sync::api::transport::TransportError::Network {
+            detail: "offline".to_owned(),
+        });
+    tablepro_sync::api::key_flows::DeviceFlows::recover(&n.service, r)
+        .await
+        .unwrap_err();
 
     let error = n.service.request_approval().await.unwrap_err();
 
     assert_eq!(error.code(), "sync.not_allowed");
+}
+
+// A and N compared words; then an approval for N's key device arrives with its `account` and `trust` wraps signed by
+// a DSK of the server's own, which N never compared. Returns N, the request and the DSK N's request drew.
+async fn approval_under_an_uncompared_dsk(
+    server: &std::sync::Arc<FakeServer>,
+    account: tablepro_keys::encoding::AccountId,
+) -> (Device, tablepro_keys::encoding::RequestId, [u8; 32]) {
+    let a = Device::new(server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    assert_eq!(
+        n.service.confirm_session(request).await.unwrap().phase,
+        SessionPhase::Confirmed
+    );
+    let pending = n.service.device_keys().await.unwrap().pending.unwrap();
+    let mut txn = a.txn().await;
+    let own = a.service.own_account(txn.as_mut()).await.unwrap().unwrap();
+    drop(txn);
+    let certificate = tablepro_keys::cert::DeviceCertificate::sign(
+        &crate::harness::origin(),
+        account,
+        own.av,
+        pending.key_device,
+        pending.dek.public().unwrap(),
+        pending.dsk.public().unwrap(),
+        &own.keys.ask,
+    )
+    .unwrap();
+    let server_key = DeviceKeys::generate().unwrap();
+    let wrapper = Wrapper {
+        account,
+        av: own.av,
+        key_device: own.device.key_device,
+    };
+    let account_wrap = Wrap::seal_account(
+        &crate::harness::origin(),
+        device_target(account, WrapPurpose::Account, own.av, pending.key_device),
+        &pending.dek.public().unwrap(),
+        &own.keys,
+        wrapper,
+        &server_key.dsk,
+    )
+    .unwrap();
+    let trust_wrap = Wrap::seal_trust(
+        &crate::harness::origin(),
+        device_target(account, WrapPurpose::Trust, own.av, pending.key_device),
+        &pending.dek.public().unwrap(),
+        &TrustPlaintext::default(),
+        wrapper,
+        &server_key.dsk,
+    )
+    .unwrap();
+    let objects = [
+        KeyObject {
+            id: KeyRecordId::Device {
+                account,
+                key_device: pending.key_device,
+                av: own.av,
+            },
+            body: KeyBody::Device(tablepro_keys::body::DeviceBody::of(&certificate)),
+        },
+        KeyObject {
+            id: KeyRecordId::Wrap(account_wrap.target),
+            body: KeyBody::Wrap(WrapBody::of(&account_wrap)),
+        },
+        KeyObject {
+            id: KeyRecordId::Wrap(trust_wrap.target),
+            body: KeyBody::Wrap(WrapBody::of(&trust_wrap)),
+        },
+    ];
+    n.service
+        .apply_account_objects(arrival(objects.iter().map(pulled).collect()))
+        .await
+        .unwrap();
+    let dsk = pending.dsk.public().unwrap().0;
+    (n, request, dsk)
+}
+
+// N refuses an approval the server applied: it ends the session with no cancel step and revokes the key device the
+// server bound to its row, so the row holds none (0064).
+#[tokio::test]
+async fn n_refusing_an_approval_the_server_applied_revokes_the_key_device() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let (n, request, dsk) = approval_under_an_uncompared_dsk(&server, account).await;
+    server.approve(&n.row, dsk);
+    let pushes = n.wire.pushed.lock().unwrap().len();
+
+    let error = n.service.resume_approval(request).await.unwrap_err();
+
+    assert_eq!(error.code(), "keys.not_compared");
+    assert!(!server.is_approved(&n.row));
+    assert_eq!(n.wire.pushed.lock().unwrap().len(), pushes);
+    assert!(n.service.device_keys().await.unwrap().pending.is_none());
+}
+
+// The row the refused key device was bound to is gone already: the revoke is met and the device may ask again.
+#[tokio::test]
+async fn a_revoke_answered_device_removed_is_met() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let (n, request, dsk) = approval_under_an_uncompared_dsk(&server, account).await;
+    server.approve(&n.row, dsk);
+    n.wire
+        .fail_next_revoke(tablepro_sync::api::transport::TransportError::DeviceRemoved);
+
+    n.service.resume_approval(request).await.unwrap_err();
+
+    assert!(n.service.device_keys().await.unwrap().pending.is_none());
+    n.service.request_approval().await.unwrap();
 }

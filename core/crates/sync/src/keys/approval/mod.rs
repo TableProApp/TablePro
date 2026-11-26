@@ -39,9 +39,12 @@ impl ApprovalFlows for KeyService {
                 what: "ask for approval",
             });
         }
-        // Its own rotation or an earlier approval's key switch settles first: new device keys must not stand in for
-        // the ones either still needs.
-        if self.rotation_pending(txn.as_mut()).await? || self.switch_owed(txn.as_mut()).await? {
+        // Its own rotation, an earlier approval's key switch or a refused approval's revoke settles first: new device
+        // keys must not stand in for the ones any of them still needs.
+        if self.rotation_pending(txn.as_mut()).await?
+            || self.switch_owed(txn.as_mut()).await?
+            || self.revoke_owed(txn.as_mut()).await?
+        {
             self.hooks().pass_soon();
             return Err(SyncError::NotAllowed {
                 what: "ask for approval while an earlier rotation or approval settles",
@@ -205,6 +208,9 @@ impl KeyService {
     // Sends whatever step this side owes, once: N's request and reveal, A's `nonce` and approval change set, a
     // `cancel` this side decided; and N merges an approval that arrived after its person confirmed.
     async fn drive(&self, record: &mut SessionRecord) -> Result<(), SyncError> {
+        if record.sent.revoke_owed {
+            return self.revoke_refused(record).await;
+        }
         if let Some(self::session::Ended::Cancelled(end)) = record.end {
             if !record.sent.cancel {
                 self.send_cancel(record, end).await?;

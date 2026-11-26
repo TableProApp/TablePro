@@ -2,7 +2,7 @@
 // then the own account followed up its certificates one `av` at a time. At each `av` the personal and history keys move
 // to the versions signed under it, so the current version is always the one signed under the account's current `av`.
 // A certificate whose change set has not all arrived waits; one that leaves this device out locks it; an IK nothing
-// endorsed locks it as a reset elsewhere does. Nothing here erases a key.
+// endorsed locks it as a reset elsewhere does. Nothing here erases a key, and an object refused is never in force.
 
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{KeyBody, KeyObject};
@@ -15,10 +15,11 @@ use tablepro_keys::wrap::{Recipient, Wrap, device_target};
 
 use super::KeyService;
 use crate::api::error::SyncError;
-use crate::api::ids::ScopeName;
+use crate::api::ids::{KindName, ScopeName};
 use crate::api::key_flows::{KeyApplied, KeyArrival, KeyNoticeKind, LockCause, RefusedObject};
 use crate::api::state::{
-    KeyPinRow, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn, StoppedCause, Table,
+    KeyObjectRow, KeyPinRow, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateTxn,
+    StoppedCause, Table,
 };
 use crate::api::transport::PulledRecord;
 
@@ -43,6 +44,12 @@ enum Followed {
     LeftOut,
 }
 
+// An object a pull brought, with the row its id held before, which comes back if the object is refused.
+struct Arrived {
+    object: KeyObject,
+    before: Option<KeyObjectRow>,
+}
+
 impl KeyService {
     pub(crate) async fn apply_personal_arrival(&self, arrival: &KeyArrival) -> Result<KeyApplied, SyncError> {
         if arrival.scope != ScopeName::Personal {
@@ -62,7 +69,7 @@ impl KeyService {
                 continue;
             }
             match self.take_record(txn.as_mut(), record).await {
-                Ok((object, candidate)) => {
+                Ok((object, candidate, before)) => {
                     if candidate && let KeyRecordId::Account { av, .. } = object.id {
                         if av == Version::FIRST {
                             own_genesis = true;
@@ -70,7 +77,7 @@ impl KeyService {
                             own_rotation = Some(av);
                         }
                     }
-                    fresh.push(object);
+                    fresh.push(Arrived { object, before });
                 }
                 Err(SyncError::Keys(error)) => {
                     if error == KeysError::Conflict {
@@ -86,35 +93,25 @@ impl KeyService {
                 Err(other) => return Err(other),
             }
         }
+        let mut in_force = match txn.get(&RowKey::Scope(ScopeName::Personal)).await? {
+            Some(Row::Scope(row)) => row.key_version,
+            _ => None,
+        };
+        // Judged before anything below reads them, so what follows sees only objects in force.
+        let pinned = self.pin(txn.as_mut(), self.account).await?.is_some();
+        if pinned {
+            in_force = in_force.max(self.judge_arrived(txn.as_mut(), &fresh, &mut applied).await?);
+        }
         if own_genesis && !self.is_unanchored() && !self.is_rebuilding() {
             self.adopt_own_genesis(txn.as_mut()).await?;
+        }
+        if !pinned && self.pin(txn.as_mut(), self.account).await?.is_some() {
+            in_force = in_force.max(self.judge_arrived(txn.as_mut(), &fresh, &mut applied).await?);
         }
         self.forget_lost_rotation(txn.as_mut()).await?;
         self.settle_account(txn.as_mut()).await?;
         if let Some(av) = own_rotation {
             self.forget_pins_rotation_left_out(txn.as_mut(), av).await?;
-        }
-        let mut in_force = match txn.get(&RowKey::Scope(ScopeName::Personal)).await? {
-            Some(Row::Scope(row)) => row.key_version,
-            _ => None,
-        };
-        if self.pin(txn.as_mut(), self.account).await?.is_some() {
-            for object in &fresh {
-                match self.check_personal_object(txn.as_mut(), object).await? {
-                    Checked::Verified => {
-                        if let Some(record) = object.version_record()
-                            && record.key.purpose == KeyPurpose::Personal
-                        {
-                            in_force = in_force.max(Some(record.key.version));
-                        }
-                    }
-                    Checked::Held => applied.held.push(object.id.to_wire()),
-                    Checked::Refused(error) => applied.refused.push(RefusedObject {
-                        record_id: object.id.to_wire(),
-                        error,
-                    }),
-                }
-            }
         }
         applied.in_force = in_force;
         txn.commit().await?;
@@ -122,12 +119,20 @@ impl KeyService {
     }
 
     // Parses a served record as the key object its kind and id name, from its exact text, and keeps it. Says whether
-    // it is this device's own candidate that the server now serves back.
-    async fn take_record(&self, txn: &mut dyn StateTxn, record: &PulledRecord) -> Result<(KeyObject, bool), SyncError> {
+    // it is this device's own candidate that the server now serves back, and what the id held before.
+    async fn take_record(
+        &self,
+        txn: &mut dyn StateTxn,
+        record: &PulledRecord,
+    ) -> Result<(KeyObject, bool, Option<KeyObjectRow>), SyncError> {
         let text = record.fields_json.as_deref().ok_or(KeysError::Encoding {
             what: "a key object served without its text",
         })?;
         let object = KeyObject::parse(record.kind.as_str(), &record.record_id, text.as_bytes())?;
+        // A certificate its own IK did not sign never displaces anything, even on a device with no pin to judge by.
+        if let (KeyRecordId::Account { av, .. }, KeyBody::Account(body)) = (&object.id, &object.body) {
+            body.certificate(self.account, *av).verify(&self.origin)?;
+        }
         let own = object.id.bound_account() == Some(self.account.0);
         let personal = match &object.id {
             KeyRecordId::Version(key) | KeyRecordId::Ring(key) => key.purpose != KeyPurpose::Team,
@@ -144,8 +149,188 @@ impl KeyService {
             .held_object(txn, ScopeName::Personal, object.id.kind(), &object.id.to_wire())
             .await?
             .is_some_and(|held| !held.applied && held.object == object);
+        let before = match txn.get(&object_key(&object)?).await? {
+            Some(Row::KeyObject(row)) => Some(row),
+            _ => None,
+        };
         self.hold_object(txn, ScopeName::Personal, &object, true).await?;
-        Ok((object, candidate))
+        Ok((object, candidate, before))
+    }
+
+    // Judges each object this pull brought, then the held objects a certificate in it lets be judged now. A refused
+    // object gives its id back to what it held before, with two exceptions that only ever lock the device. An IK
+    // change nothing endorsed locks it as a reset elsewhere does, and the approval from the resetting device reads it
+    // (0056, Pins). A bad `account` or `trust` wrap to this device leaves it out of its rotation, which the walk up
+    // the certificates finds from the wrap itself (0056, Rotation).
+    async fn judge_arrived(
+        &self,
+        txn: &mut dyn StateTxn,
+        fresh: &[Arrived],
+        applied: &mut KeyApplied,
+    ) -> Result<Option<Version>, SyncError> {
+        let mut in_force = None;
+        for arrived in fresh {
+            let object = &arrived.object;
+            match self.check_personal_object(txn, object).await? {
+                Checked::Verified => {
+                    if let Some(record) = object.version_record()
+                        && record.key.purpose == KeyPurpose::Personal
+                    {
+                        in_force = in_force.max(Some(record.key.version));
+                    }
+                }
+                Checked::Held => applied.held.push(object.id.to_wire()),
+                Checked::Refused(error) => {
+                    if !self.stays_refused(txn, object, &error).await? {
+                        put_back(txn, object, arrived.before.clone()).await?;
+                    }
+                    applied.refused.push(RefusedObject {
+                        record_id: object.id.to_wire(),
+                        error,
+                    });
+                }
+            }
+        }
+        let Some(lowest) = fresh
+            .iter()
+            .filter_map(|arrived| match arrived.object.id {
+                KeyRecordId::Account { av, .. } => Some(av),
+                _ => None,
+            })
+            .min()
+        else {
+            return Ok(in_force);
+        };
+        for kind in [
+            KeyKind::Account,
+            KeyKind::Device,
+            KeyKind::Recovery,
+            KeyKind::Version,
+            KeyKind::Wrap,
+        ] {
+            for object in self.applied_objects(txn, ScopeName::Personal, kind).await? {
+                if fresh.iter().any(|arrived| arrived.object.id == object.id)
+                    || !object_avs(&object).iter().any(|av| *av >= lowest)
+                {
+                    continue;
+                }
+                if let Checked::Refused(error) = self.check_personal_object(txn, &object).await?
+                    && !self.stays_refused(txn, &object, &error).await?
+                {
+                    put_back(txn, &object, None).await?;
+                    applied.refused.push(RefusedObject {
+                        record_id: object.id.to_wire(),
+                        error,
+                    });
+                }
+            }
+        }
+        Ok(in_force)
+    }
+
+    // A refused object that stays held, never in force for any decision: the unendorsed certificate itself, what it
+    // signs that verifies under its own keys, and an `account` or `trust` wrap to this device.
+    async fn stays_refused(
+        &self,
+        txn: &mut dyn StateTxn,
+        object: &KeyObject,
+        error: &KeysError,
+    ) -> Result<bool, SyncError> {
+        if let Some(wrap) = object.wrap()
+            && matches!(wrap.target.purpose, WrapPurpose::Account | WrapPurpose::Trust)
+        {
+            let own = self.device_keys().await?.current.map(|keys| keys.key_device);
+            if Some(wrap.target.recipient) == own.map(Recipient::Device) {
+                return Ok(true);
+            }
+        }
+        if *error != KeysError::Unendorsed {
+            return Ok(false);
+        }
+        if matches!(object.id, KeyRecordId::Account { .. }) {
+            return Ok(true);
+        }
+        self.signed_under_own_keys(txn, object).await
+    }
+
+    // An object at an unendorsed certificate's `av` that verifies under the keys that certificate names, as a reset
+    // elsewhere writes them. One that does not is refused like any other.
+    async fn signed_under_own_keys(&self, txn: &mut dyn StateTxn, object: &KeyObject) -> Result<bool, SyncError> {
+        Ok(match (&object.id, &object.body) {
+            (KeyRecordId::Device { key_device, av, .. }, KeyBody::Device(body)) => {
+                self.unendorsed_at(txn, *av).await?.is_some_and(|certificate| {
+                    body.certificate(self.account, *key_device, *av)
+                        .verify(&self.origin, &certificate.ask)
+                        .is_ok()
+                })
+            }
+            (KeyRecordId::Recovery { av, .. }, _) => self.unendorsed_at(txn, *av).await?.is_some(),
+            (KeyRecordId::Version(_), _) => match object.version_record() {
+                Some(record) if record.signer == self.account && record.key.owner == self.account.0 => self
+                    .unendorsed_at(txn, record.signer_av)
+                    .await?
+                    .is_some_and(|certificate| record.verify(&self.origin, &certificate.ask).is_ok()),
+                _ => false,
+            },
+            (KeyRecordId::Wrap(target), _) => match (object.wrap(), target.recipient) {
+                (Some(wrap), Recipient::Account(account)) if account == self.account => {
+                    let recipient = self.unendorsed_at(txn, target.recipient_version).await?;
+                    let wrapper = self.unendorsed_at(txn, wrap.wrapper.av).await?;
+                    match (recipient, wrapper) {
+                        (Some(recipient), Some(wrapper)) => {
+                            wrap.verify(&self.origin, &recipient.aek, &wrapper.ask).is_ok()
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            },
+            _ => false,
+        })
+    }
+
+    // The own certificate at `av` as held, its self-signature checked: what an object under it is judged by while
+    // nothing endorses its IK.
+    async fn unendorsed_at(
+        &self,
+        txn: &mut dyn StateTxn,
+        av: Version,
+    ) -> Result<Option<AccountCertificate>, SyncError> {
+        Ok(self
+            .own_certificate(txn, av)
+            .await?
+            .filter(|certificate| certificate.verify(&self.origin).is_ok()))
+    }
+
+    // The key devices the account certifies at `av`: each device certificate there under the ASK of the verified
+    // certificate at that `av`. Never one a served object alone names.
+    pub(crate) async fn certified_devices(
+        &self,
+        txn: &mut dyn StateTxn,
+        av: Version,
+    ) -> Result<Vec<KeyDeviceId>, SyncError> {
+        let certificate = match self.certificate_at(txn, ScopeName::Personal, self.account, av).await {
+            Ok(Some(certificate)) => certificate,
+            Ok(None) | Err(SyncError::Keys(_) | SyncError::NotAllowed { .. }) => return Ok(Vec::new()),
+            Err(other) => return Err(other),
+        };
+        Ok(self
+            .applied_objects(txn, ScopeName::Personal, KeyKind::Device)
+            .await?
+            .iter()
+            .filter_map(|object| match (&object.id, &object.body) {
+                (KeyRecordId::Device { key_device, av: at, .. }, KeyBody::Device(body))
+                    if *at == av
+                        && body
+                            .certificate(self.account, *key_device, av)
+                            .verify(&self.origin, &certificate.ask)
+                            .is_ok() =>
+                {
+                    Some(*key_device)
+                }
+                _ => None,
+            })
+            .collect())
     }
 
     // Moves the own pin and the personal and history keys as far as the held objects allow.
@@ -272,15 +457,7 @@ impl KeyService {
         if self.pin(txn, self.account).await?.is_none_or(|pin| pin.av < av) {
             return Ok(());
         }
-        let keep: Vec<KeyDeviceId> = self
-            .applied_objects(txn, ScopeName::Personal, KeyKind::Device)
-            .await?
-            .iter()
-            .filter_map(|object| match object.id {
-                KeyRecordId::Device { key_device, av: at, .. } if at == av => Some(key_device),
-                _ => None,
-            })
-            .collect();
+        let keep = self.certified_devices(txn, av).await?;
         self.forget_pins_left_out(txn, &keep).await
     }
 
@@ -586,6 +763,46 @@ impl KeyService {
                 what: "wrap recipient does not fit its purpose",
             })),
         }
+    }
+}
+
+fn object_key(object: &KeyObject) -> Result<RowKey, SyncError> {
+    Ok(RowKey::KeyObject(
+        ScopeName::Personal,
+        KindName::parse(object.id.kind().name())?,
+        object.id.to_wire(),
+    ))
+}
+
+async fn put_back(txn: &mut dyn StateTxn, object: &KeyObject, before: Option<KeyObjectRow>) -> Result<(), SyncError> {
+    match before {
+        Some(row) => txn.put(Row::KeyObject(row)).await?,
+        None => txn.delete(&object_key(object)?).await?,
+    }
+    Ok(())
+}
+
+// The account versions an object's check reads a certificate at: one that arrives late lets it be judged.
+fn object_avs(object: &KeyObject) -> Vec<Version> {
+    match &object.id {
+        KeyRecordId::Account { av, .. } | KeyRecordId::Device { av, .. } | KeyRecordId::Recovery { av, .. } => {
+            vec![*av]
+        }
+        KeyRecordId::Version(_) => object
+            .version_record()
+            .map(|record| record.signer_av)
+            .into_iter()
+            .collect(),
+        KeyRecordId::Wrap(target) => {
+            let mut avs = vec![target.recipient_version];
+            // A key wrap's own version numbers the scope key, not the account.
+            if !matches!(target.purpose, WrapPurpose::Key(_)) {
+                avs.push(target.version);
+            }
+            avs.extend(object.wrap().map(|wrap| wrap.wrapper.av));
+            avs
+        }
+        _ => Vec::new(),
     }
 }
 

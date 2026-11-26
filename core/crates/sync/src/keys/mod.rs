@@ -28,14 +28,14 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use serde_json::Value;
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{KeyObject, check_same_object};
-use tablepro_keys::encoding::{AccountId, Origin, TeamId, random_uuid};
+use tablepro_keys::encoding::{AccountId, Origin, ResetId, TeamId, random_uuid};
 use tablepro_keys::record_id::KeyKind;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::api::device_store::HostDeviceStore;
 use crate::api::error::SyncError;
 use crate::api::ids::{DeviceRowId, IdempotencyKey, KindName, ScopeName};
-use crate::api::key_flows::{DraftId, KeyHooks, KeyNotice, KeyNoticeKind, NoticeId, Roster};
+use crate::api::key_flows::{DraftId, KeyHooks, KeyNotice, KeyNoticeKind, NoticeId, PendingReset, Roster};
 use crate::api::state::{KeyObjectRow, KeyTrust, Row, RowKey, RowRange, ScopeRow, StateStore, StateTxn, Table};
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PushBatch, ServiceTransport};
 use crate::engine::key_base;
@@ -94,6 +94,9 @@ pub struct KeyService {
     rebuilding: AtomicBool,
     // A file opened with no anchor handles no secret until an approval or a recovery applies (0054, A stale file).
     unanchored: AtomicBool,
+    // Other devices' resets as pulls served them this session: the times the server serves beside each `key.reset`,
+    // which `key_objects` does not keep, and how each ended (0064).
+    served_resets: Mutex<HashMap<ResetId, PendingReset>>,
 }
 
 impl KeyService {
@@ -115,11 +118,16 @@ impl KeyService {
             unanchored: AtomicBool::new(unanchored),
             rosters: Rosters::default(),
             rebuilding: AtomicBool::new(rebuilding),
+            served_resets: Mutex::new(HashMap::new()),
         }
     }
 
     pub fn origin(&self) -> &Origin {
         &self.origin
+    }
+
+    pub(crate) fn served_resets(&self) -> MutexGuard<'_, HashMap<ResetId, PendingReset>> {
+        lock(&self.served_resets)
     }
 
     pub fn account(&self) -> AccountId {
