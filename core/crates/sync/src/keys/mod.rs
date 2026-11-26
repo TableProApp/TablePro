@@ -234,6 +234,37 @@ impl KeyService {
             .collect()
     }
 
+    // A key object in force at its id: served by the server, or written by this device and applied. A candidate that
+    // never applied counts for nothing, since it gives way to what the server serves (0054, `key_objects`).
+    pub async fn applied_object(
+        &self,
+        txn: &mut dyn StateTxn,
+        scope: ScopeName,
+        kind: KeyKind,
+        record_id: &str,
+    ) -> Result<Option<KeyObject>, SyncError> {
+        Ok(self
+            .held_object(txn, scope, kind, record_id)
+            .await?
+            .filter(|held| held.applied)
+            .map(|held| held.object))
+    }
+
+    pub async fn applied_objects(
+        &self,
+        txn: &mut dyn StateTxn,
+        scope: ScopeName,
+        kind: KeyKind,
+    ) -> Result<Vec<KeyObject>, SyncError> {
+        Ok(self
+            .held_objects(txn, scope, kind)
+            .await?
+            .into_iter()
+            .filter(|held| held.applied)
+            .map(|held| held.object)
+            .collect())
+    }
+
     // Keeps a key object served or written. Every key kind is create-only: another object at the id of an applied one
     // is `keys.conflict`, while this device's own candidate gives way to what the server serves (0054, `key_objects`).
     pub async fn hold_object(

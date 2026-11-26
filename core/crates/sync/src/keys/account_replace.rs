@@ -1,15 +1,17 @@
 // Replace Recovery Key (0056, Account flows): with the current R, a rotation to a new R' and IK' that the old IK
-// endorses. It keeps this device and the own-device pins the person ticks; every other device joins again by approval.
+// endorses. It keeps this device and the own-device pins the person ticks among those the account still certifies;
+// every other device joins again by approval.
 // The team steps run from `key_pending` at the next pass (0056, Rotation, step 3).
 
 use std::sync::Arc;
 
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_keys::KeysError;
-use tablepro_keys::body::KeyObject;
+use tablepro_keys::body::{KeyBody, KeyObject};
 use tablepro_keys::cert::CertKind;
 use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, Version};
-use tablepro_keys::keys::{AccountKeys, ScopeKey};
+use tablepro_keys::keys::{AccountKeys, Ed25519Public, ScopeKey};
+use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::recovery::RecoveryKey;
 use tablepro_keys::scope_key::Start;
 
@@ -17,19 +19,22 @@ use super::account_genesis::{ShownKey, refusal};
 use super::{AccountObjectsPlan, KeptDevice, KeyService, OwnAccount, ScopeKeyPlan, create_change};
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
-use crate::api::key_flows::{AccountDevice, DraftId, ReviewedDevice, RotationDraft, TypedBack};
+use crate::api::key_flows::{
+    AccountDevice, DraftId, KeyState, RecoveryKeyDraft, ReviewedDevice, RotationDraft, TypedBack,
+};
 use crate::api::state::{KeyPendingRow, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
-use crate::api::transport::{DpopKey, RejectedCode};
+use crate::api::transport::DpopKey;
 
 struct ReplaceDraft {
-    current: RecoveryKey,
-    next: ShownKey,
+    // R and R', wiped once the change set is built (0056, Rotation, step 4).
+    secrets: Option<(RecoveryKey, ShownKey)>,
     built: Option<BuiltReplace>,
 }
 
 #[derive(Clone)]
 struct BuiltReplace {
     av: Version,
+    ik: Ed25519Public,
     keep: Vec<KeyDeviceId>,
     objects: Vec<KeyObject>,
     keys: AccountKeys,
@@ -39,27 +44,25 @@ impl KeyService {
     pub(crate) async fn start_replace(&self, recovery_key: &SecretString) -> Result<RotationDraft, SyncError> {
         let _serial = self.serialized().await;
         let mut txn = self.begin().await?;
-        let own = self.approved_account(txn.as_mut()).await?;
+        let own = self.rotating_account(txn.as_mut()).await?;
         let current = RecoveryKey::parse(recovery_key.expose_secret())?;
         if current.identity_seed(self.origin(), self.account())?.public()? != own.ik {
             return Err(KeysError::Signature.into());
         }
         let mut devices = vec![reviewed(own.device.key_device, true)];
-        for key_device in compared_devices(txn.as_mut()).await? {
-            if key_device != own.device.key_device {
-                devices.push(reviewed(key_device, false));
-            }
+        for kept in self.certified_pins(txn.as_mut(), &own).await? {
+            devices.push(reviewed(kept.key_device, false));
         }
         let next = ShownKey::new()?;
+        let recovery = next.draft(DraftId(uuid::Uuid::nil()))?;
         let draft = self.drafts().put(ReplaceDraft {
-            current,
-            next,
+            secrets: Some((current, next)),
             built: None,
         })?;
-        let recovery = self
-            .drafts()
-            .with(draft, |held: &mut ReplaceDraft| held.next.draft(draft))??;
-        Ok(RotationDraft { recovery, devices })
+        Ok(RotationDraft {
+            recovery: RecoveryKeyDraft { draft, ..recovery },
+            devices,
+        })
     }
 
     pub(crate) async fn complete_replace(
@@ -69,49 +72,51 @@ impl KeyService {
         keep: &[KeyDeviceId],
     ) -> Result<(), SyncError> {
         let _serial = self.serialized().await;
-        self.drafts()
-            .with(draft, |held: &mut ReplaceDraft| held.next.check_typed_back(typed))??;
+        let held = self
+            .drafts()
+            .with(draft, |held: &mut ReplaceDraft| held.built.clone())?;
+        if held.is_none() {
+            self.drafts().with(draft, |held: &mut ReplaceDraft| {
+                held.secrets
+                    .as_ref()
+                    .ok_or(SyncError::Unknown { what: "draft" })
+                    .and_then(|(_, next)| next.check_typed_back(typed))
+            })??;
+        }
         let mut txn = self.begin().await?;
-        let own = self.approved_account(txn.as_mut()).await?;
-        let mut kept = vec![KeptDevice::of(&own.device)?];
+        let own = self.rotating_account(txn.as_mut()).await?;
         let mut keep_ids: Vec<KeyDeviceId> = Vec::new();
         for key_device in keep {
-            if *key_device == own.device.key_device || keep_ids.contains(key_device) {
-                continue;
+            if *key_device != own.device.key_device && !keep_ids.contains(key_device) {
+                keep_ids.push(*key_device);
             }
-            match txn.get(&RowKey::KeyDevicePin(*key_device)).await? {
-                Some(Row::KeyDevicePin(pin)) => kept.push(KeptDevice {
-                    key_device: pin.key_device,
-                    dek: pin.dek,
-                    dsk: pin.dsk,
-                }),
-                _ => return Err(KeysError::NotCompared.into()),
-            }
-            keep_ids.push(*key_device);
+        }
+        // A retry after an answer that never came, when a pull since showed the replace applied.
+        if let Some(built) = &held
+            && own.av == built.av
+            && own.ik == built.ik
+        {
+            self.forget_pins_left_out(txn.as_mut(), &built.keep).await?;
+            txn.commit().await?;
+            self.drafts().remove(draft);
+            return Ok(());
         }
         let av = own.av.next()?;
-        let reuse = self.drafts().with(draft, |held: &mut ReplaceDraft| {
-            held.built
-                .clone()
-                .filter(|built| built.av == av && built.keep == keep_ids)
-        })?;
-        let built = match reuse {
-            Some(built) => built,
-            None => {
-                let previous = self.previous_personal_keys(txn.as_mut()).await?;
-                let built = self.drafts().with(draft, |held: &mut ReplaceDraft| {
-                    self.replace_objects(held, &own, &kept, av, &previous)
-                        .map(|(objects, keys)| BuiltReplace {
-                            av,
-                            keep: keep_ids.clone(),
-                            objects,
-                            keys,
-                        })
-                })??;
-                self.drafts()
-                    .with(draft, |held: &mut ReplaceDraft| held.built = Some(built.clone()))?;
-                built
+        let built = match held {
+            Some(built) if built.av == av && built.keep == keep_ids => built,
+            Some(_) => {
+                self.drafts().remove(draft);
+                return Err(SyncError::NotAllowed {
+                    what: "finish a replace the account moved past; start it again",
+                });
             }
+            None => match self.build_replace(txn.as_mut(), draft, &own, &keep_ids, av).await {
+                Ok(built) => built,
+                Err(error) => {
+                    self.drafts().remove(draft);
+                    return Err(error);
+                }
+            },
         };
         drop(txn);
         self.store_account_keys(av, &built.keys).await?;
@@ -132,12 +137,13 @@ impl KeyService {
         let outcomes = self
             .push_change_set(ScopeName::Personal, changes, DpopKey(Arc::new(own.device.dsk.clone())))
             .await?;
+        self.drafts().remove(draft);
         match refusal(&outcomes) {
             None => {
                 let mut txn = self.begin().await?;
                 self.adopt_account_change_set(txn.as_mut(), &built.objects).await?;
+                self.forget_pins_left_out(txn.as_mut(), &built.keep).await?;
                 txn.commit().await?;
-                self.drafts().remove(draft);
                 self.hooks().pass_soon();
                 Ok(())
             }
@@ -148,15 +154,121 @@ impl KeyService {
                 txn.delete(&pending).await?;
                 txn.commit().await?;
                 self.erase_account_keys(av).await?;
-                if code == RejectedCode::CreateOnly {
-                    self.drafts().remove(draft);
-                    self.hooks().pass_soon();
-                } else {
-                    self.drafts().with(draft, |held: &mut ReplaceDraft| held.built = None)?;
-                }
+                self.hooks().pass_soon();
                 Err(SyncError::Rejected { code })
             }
         }
+    }
+
+    // The replace's change set, from the draft's R and R', which go once it is built. Only devices the account still
+    // certifies at its current `av` can be kept.
+    async fn build_replace(
+        &self,
+        txn: &mut dyn StateTxn,
+        draft: DraftId,
+        own: &OwnAccount,
+        keep: &[KeyDeviceId],
+        av: Version,
+    ) -> Result<BuiltReplace, SyncError> {
+        let mut kept = vec![KeptDevice::of(&own.device)?];
+        let certified = self.certified_pins(txn, own).await?;
+        for key_device in keep {
+            match certified.iter().find(|kept| kept.key_device == *key_device) {
+                Some(device) => kept.push(*device),
+                None if txn.get(&RowKey::KeyDevicePin(*key_device)).await?.is_some() => {
+                    return Err(SyncError::NotAllowed {
+                        what: "keep a device the account no longer certifies",
+                    });
+                }
+                None => return Err(KeysError::NotCompared.into()),
+            }
+        }
+        let previous = self.previous_personal_keys(txn).await?;
+        self.drafts().with(draft, |held: &mut ReplaceDraft| {
+            let (current, next) = held.secrets.take().ok_or(SyncError::Unknown { what: "draft" })?;
+            // The account may have moved on since the draft began: R must still be its recovery key.
+            if current.identity_seed(self.origin(), self.account())?.public()? != own.ik {
+                return Err(KeysError::Signature.into());
+            }
+            let (objects, keys) = self.replace_objects(&current, &next, own, &kept, av, &previous)?;
+            let built = BuiltReplace {
+                av,
+                ik: next.key.identity_seed(self.origin(), self.account())?.public()?,
+                keep: keep.to_vec(),
+                objects,
+                keys,
+            };
+            held.built = Some(built.clone());
+            Ok(built)
+        })?
+    }
+
+    // A replace runs only on an approved device whose file it can trust, never over a stopped or ended key.
+    async fn rotating_account(&self, txn: &mut dyn StateTxn) -> Result<OwnAccount, SyncError> {
+        if self.is_rebuilding() {
+            return Err(SyncError::NotAllowed {
+                what: "rotate the account keys before the key tables are rebuilt",
+            });
+        }
+        match self.state_of_keys(txn).await? {
+            KeyState::Approved { .. } => self.approved_account(txn).await,
+            KeyState::Locked { cause } => Err(SyncError::Locked { cause }),
+            _ => Err(SyncError::NotAllowed {
+                what: "rotate the account keys on a device that holds none",
+            }),
+        }
+    }
+
+    // The own-device pins the account still certifies at its current `av`, under the keys the comparison fixed. A pin
+    // a rotation left out names a device that is no longer approved, and a replace never brings it back.
+    async fn certified_pins(&self, txn: &mut dyn StateTxn, own: &OwnAccount) -> Result<Vec<KeptDevice>, SyncError> {
+        let mut certified = Vec::new();
+        for row in txn.scan(&RowRange::Table(Table::KeyDevicePins)).await? {
+            let Row::KeyDevicePin(pin) = row else {
+                continue;
+            };
+            if pin.key_device == own.device.key_device {
+                continue;
+            }
+            let id = KeyRecordId::Device {
+                account: self.account(),
+                key_device: pin.key_device,
+                av: own.av,
+            };
+            let Some(object) = self
+                .applied_object(txn, ScopeName::Personal, KeyKind::Device, &id.to_wire())
+                .await?
+            else {
+                continue;
+            };
+            let KeyBody::Device(body) = object.body else {
+                continue;
+            };
+            let certificate = body.certificate(self.account(), pin.key_device, own.av);
+            if certificate.verify(self.origin(), &own.public.ask).is_ok()
+                && certificate.dek == pin.dek
+                && certificate.dsk == pin.dsk
+            {
+                certified.push(KeptDevice {
+                    key_device: pin.key_device,
+                    dek: pin.dek,
+                    dsk: pin.dsk,
+                });
+            }
+        }
+        Ok(certified)
+    }
+
+    // After the rotation, the own-device pins it left out name devices that join again only by approval.
+    async fn forget_pins_left_out(&self, txn: &mut dyn StateTxn, keep: &[KeyDeviceId]) -> Result<(), SyncError> {
+        for row in txn.scan(&RowRange::Table(Table::KeyDevicePins)).await? {
+            if let Row::KeyDevicePin(pin) = row
+                && !keep.contains(&pin.key_device)
+            {
+                txn.delete(&RowKey::KeyDevicePin(pin.key_device)).await?;
+            }
+        }
+        Ok(())
     }
 
     async fn approved_account(&self, txn: &mut dyn StateTxn) -> Result<OwnAccount, SyncError> {
@@ -186,21 +298,22 @@ impl KeyService {
 
     fn replace_objects(
         &self,
-        held: &ReplaceDraft,
+        current: &RecoveryKey,
+        next: &ShownKey,
         own: &OwnAccount,
         kept: &[KeptDevice],
         av: Version,
         previous: &[(Version, ScopeKey); 2],
     ) -> Result<(Vec<KeyObject>, AccountKeys), SyncError> {
         let keys = AccountKeys::generate()?;
-        let ik = held.next.key.identity_seed(self.origin(), self.account())?;
-        let endorsing = held.current.identity_seed(self.origin(), self.account())?;
+        let ik = next.key.identity_seed(self.origin(), self.account())?;
+        let endorsing = current.identity_seed(self.origin(), self.account())?;
         let mut objects = self.account_objects(&AccountObjectsPlan {
             av,
             kind: CertKind::Replace,
             ik: &ik,
             endorsing_ik: Some(&endorsing),
-            recovery: &held.next.key,
+            recovery: &next.key,
             keys: &keys,
             devices: kept,
             wrapper: Some(&own.device),
@@ -222,18 +335,6 @@ impl KeyService {
         }
         Ok((objects, keys))
     }
-}
-
-async fn compared_devices(txn: &mut dyn StateTxn) -> Result<Vec<KeyDeviceId>, SyncError> {
-    Ok(txn
-        .scan(&RowRange::Table(Table::KeyDevicePins))
-        .await?
-        .iter()
-        .filter_map(|row| match row {
-            Row::KeyDevicePin(pin) => Some(pin.key_device),
-            _ => None,
-        })
-        .collect())
 }
 
 fn reviewed(key_device: KeyDeviceId, this_device: bool) -> ReviewedDevice {

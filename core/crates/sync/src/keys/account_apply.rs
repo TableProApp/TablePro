@@ -203,7 +203,7 @@ impl KeyService {
     // A genesis this device pushed and never heard applied, its own candidate served back: only this device holds the
     // account keys its certificate names, beside a device certificate for its own key device. Never in a file it
     // cannot trust, and an approval in flight finishes its own way.
-    async fn adopt_own_genesis(&self, txn: &mut dyn StateTxn) -> Result<(), SyncError> {
+    pub(crate) async fn adopt_own_genesis(&self, txn: &mut dyn StateTxn) -> Result<(), SyncError> {
         if self.pin(txn, self.account).await?.is_some() {
             return Ok(());
         }
@@ -218,14 +218,13 @@ impl KeyService {
             account: self.account,
             av: Version::FIRST,
         };
-        let Some(held) = self
-            .held_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
+        let Some(object) = self
+            .applied_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
             .await?
-            .filter(|held| held.applied)
         else {
             return Ok(());
         };
-        let KeyBody::Account(body) = &held.object.body else {
+        let KeyBody::Account(body) = &object.body else {
             return Ok(());
         };
         let certificate = body.certificate(self.account, Version::FIRST);
@@ -241,15 +240,20 @@ impl KeyService {
         {
             return Ok(());
         }
-        let mut objects = vec![held.object];
-        for version in self.held_objects(txn, ScopeName::Personal, KeyKind::Version).await? {
-            if version.applied
-                && version
-                    .object
-                    .version_record()
-                    .is_some_and(|record| record.signer_av == Version::FIRST && record.key.purpose != KeyPurpose::Team)
-            {
-                objects.push(version.object);
+        // Only a first version this account signed under the genesis certificate's ASK becomes current; anything else
+        // the server put at those ids stays where it is and counts for nothing.
+        let mut objects = vec![object.clone()];
+        for version in self.applied_objects(txn, ScopeName::Personal, KeyKind::Version).await? {
+            let genesis = version.version_record().is_some_and(|record| {
+                record.key.version == Version::FIRST
+                    && record.key.owner == self.account.0
+                    && record.key.purpose != KeyPurpose::Team
+                    && record.signer == self.account
+                    && record.signer_av == Version::FIRST
+                    && record.verify(&self.origin, &certificate.ask).is_ok()
+            });
+            if genesis {
+                objects.push(version);
             }
         }
         self.adopt_account_change_set(txn, &objects).await
@@ -269,23 +273,23 @@ impl KeyService {
             av,
         };
         if self
-            .held_object(txn, ScopeName::Personal, KeyKind::Recovery, &recovery.to_wire())
+            .applied_object(txn, ScopeName::Personal, KeyKind::Recovery, &recovery.to_wire())
             .await?
             .is_none()
         {
             return Ok(false);
         }
-        let devices = self.held_objects(txn, ScopeName::Personal, KeyKind::Device).await?;
+        let devices = self.applied_objects(txn, ScopeName::Personal, KeyKind::Device).await?;
         if !devices
             .iter()
-            .any(|held| matches!(held.object.id, KeyRecordId::Device { av: at, .. } if at == av))
+            .any(|object| matches!(object.id, KeyRecordId::Device { av: at, .. } if at == av))
         {
             return Ok(false);
         }
-        let versions = self.held_objects(txn, ScopeName::Personal, KeyKind::Version).await?;
+        let versions = self.applied_objects(txn, ScopeName::Personal, KeyKind::Version).await?;
         for purpose in [KeyPurpose::Personal, KeyPurpose::History] {
-            let signed = versions.iter().any(|held| {
-                held.object
+            let signed = versions.iter().any(|object| {
+                object
                     .version_record()
                     .is_some_and(|record| record.key.purpose == purpose && record.signer_av == av)
             });
@@ -317,14 +321,14 @@ impl KeyService {
         }
         let target = device_target(self.account, WrapPurpose::Account, certificate.av, device.key_device);
         let Some(wrap) = self
-            .held_object(
+            .applied_object(
                 txn,
                 ScopeName::Personal,
                 KeyKind::Wrap,
                 &KeyRecordId::Wrap(target).to_wire(),
             )
             .await?
-            .and_then(|held| held.object.wrap())
+            .and_then(|object| object.wrap())
         else {
             return Ok(Followed::Waits);
         };

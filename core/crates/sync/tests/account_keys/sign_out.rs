@@ -190,3 +190,49 @@ async fn sign_out_erases_the_account_keys_of_every_version_it_held() {
 
     assert!(device.store.is_empty());
 }
+
+#[tokio::test]
+async fn sign_out_also_proves_with_the_dsk_an_approval_in_flight_brings() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let current = device.service.device_keys().await.unwrap().current.unwrap();
+    let pending = DeviceKeys::generate().unwrap();
+    device
+        .service
+        .store_device_keys(&tablepro_sync::keys::HeldDeviceKeys {
+            current: Some(current.clone()),
+            pending: Some(pending.clone()),
+        })
+        .await
+        .unwrap();
+
+    device.service.sign_out().await.unwrap();
+
+    assert_eq!(
+        *device.transport.revokes.lock().unwrap(),
+        vec![current.dsk.public().unwrap(), pending.dsk.public().unwrap()]
+    );
+}
+
+#[tokio::test]
+async fn a_sign_out_cut_off_partway_finishes_at_the_next_call() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let device = Device::new(&server, account, "dev_b").await;
+    device.genesis().await;
+    let cut_off = device.restarted_over(std::sync::Arc::new(crate::harness::CutOff {
+        store: device.store.clone(),
+        armed: std::sync::Mutex::new(true),
+    }));
+
+    let stopped = cut_off.service.sign_out().await.unwrap_err();
+
+    assert_eq!(stopped.code(), "sync.device_store.failed");
+    let restarted = device.restarted();
+    // Finished, the device holds no keys and reads the key kinds again before it offers anything.
+    assert_eq!(restarted.key_state().await, KeyState::Unknown);
+    assert_eq!(key_rows(&restarted).await, 0);
+    assert!(restarted.store.is_empty());
+}
