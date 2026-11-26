@@ -84,7 +84,10 @@ internal final class AccountRecoveryKeyFlow: ObservableObject, Identifiable {
         guard purpose == .setUp, draft == nil, !isWorking, !closed else { return }
         await working {
             let made = try await self.flows().beginGenesis()
-            guard !self.closed else { return }
+            guard !self.closed else {
+                self.release(made.draft)
+                return
+            }
             self.adopt(made)
         }
     }
@@ -114,10 +117,20 @@ internal final class AccountRecoveryKeyFlow: ObservableObject, Identifiable {
         step = .showKey
     }
 
-    // The sheet closed: what it held goes with it, and a call still out lands nowhere.
+    // The sheet closed: what it held goes with it, in the core too, and a call still out lands nowhere.
     func discard() {
         closed = true
+        if let draft {
+            release(draft)
+        }
         clearSecrets()
+    }
+
+    private func release(_ draft: String) {
+        let flows = flows
+        Task {
+            try? await flows().discardKeyDraft(draft: draft)
+        }
     }
 
     private func clearSecrets() {
@@ -136,7 +149,10 @@ internal final class AccountRecoveryKeyFlow: ObservableObject, Identifiable {
         let recoveryKey = currentKey
         await working {
             let rotation = try await self.flows().beginReplaceRecoveryKey(recoveryKey: recoveryKey)
-            guard !self.closed else { return }
+            guard !self.closed else {
+                self.release(rotation.recovery.draft)
+                return
+            }
             self.currentKey = ""
             self.devices = rotation.devices
             self.keep = Set(rotation.devices.filter { $0.keepByDefault && self.canKeep($0) }.map(\.device.keyDevice))

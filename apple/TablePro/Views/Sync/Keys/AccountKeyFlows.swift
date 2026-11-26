@@ -13,18 +13,24 @@ import TableProHTTP
 nonisolated internal struct AccountRemovalReview: Sendable {
     struct Member: Identifiable, Sendable {
         let record: ReviewedMemberInfo
-        let teamID: String?
-        let teamName: String?
-        let name: String?
-        let email: String?
 
         var id: String { record.team + "/" + record.account }
+        // The same `team_` id the profile's memberships and the portal's team pages use.
         var team: String { record.team }
+        var teamName: String? { record.teamName }
+        var name: String? { record.name }
+        var email: String? { record.email }
     }
 
     let review: String
     let devices: [ReviewedDeviceInfo]
     let members: [Member]
+
+    init(_ info: RemovalReviewInfo) {
+        review = info.review
+        devices = info.devices
+        members = info.members.map(Member.init)
+    }
 }
 
 // The key-flow calls the account's end-to-end screens make (core ADR 0056, Approving a device and Account flows), so
@@ -37,6 +43,8 @@ nonisolated internal protocol AccountKeyFlows: AnyObject, Sendable {
     func beginReplaceRecoveryKey(recoveryKey: String) async throws -> RotationDraftInfo
     func finishReplaceRecoveryKey(draft: String, typed: [String], keep: [String]) async throws
     func recoverWithRecoveryKey(recoveryKey: String) async throws
+    // A Set Up, Replace or Remove draft the person left: the core drops it and the recovery key a replace held.
+    func discardKeyDraft(draft: String) throws
 
     func requestApproval() async throws -> String
     func approvalRequests() async throws -> [ApprovalRequestInfo]
@@ -48,23 +56,11 @@ nonisolated internal protocol AccountKeyFlows: AnyObject, Sendable {
 
     func accountDevices() async throws -> [AccountDeviceInfo]
     func removeDeviceRow(device: String) async throws
-    func reviewDeviceRemoval(recoveryKey: String, lost: [String]) async throws -> AccountRemovalReview
+    func beginDeviceRemoval(recoveryKey: String, lost: [String]) async throws -> RemovalReviewInfo
     func finishDeviceRemoval(review: String, keep: [String], remove: [ReviewedMemberInfo]) async throws
 }
 
-extension SyncService: AccountKeyFlows {
-    // K8 adds the team's id and name and the member's name and email to `ReviewedMemberInfo`.
-    func reviewDeviceRemoval(recoveryKey: String, lost: [String]) async throws -> AccountRemovalReview {
-        let review = try await beginDeviceRemoval(recoveryKey: recoveryKey, lost: lost)
-        return AccountRemovalReview(
-            review: review.review,
-            devices: review.devices,
-            members: review.members.map {
-                AccountRemovalReview.Member(record: $0, teamID: nil, teamName: nil, name: nil, email: nil)
-            }
-        )
-    }
-}
+extension SyncService: AccountKeyFlows {}
 
 // Where the end-to-end screens reach the core and the account.
 @MainActor
@@ -81,9 +77,10 @@ internal struct AccountKeysEnvironment {
     var clock: any Clock<Duration>
     var now: @MainActor () -> Date
 
-    // The app's one sync service, opened on first use.
+    // The app's one sync service, whichever provider it was opened for: the key flows answer on TablePro Sync's, and
+    // the others say why they cannot.
     static func liveFlows() async throws -> any AccountKeyFlows {
-        guard let flows = try await SyncEngineHost.shared.engine() as? any AccountKeyFlows else {
+        guard let flows = try await SyncEngineHost.shared.engine(for: .off) as? any AccountKeyFlows else {
             throw AccountError.invalidResponse
         }
         return flows

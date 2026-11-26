@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProFFI
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -142,8 +143,8 @@ struct AccountRecoveryKeyFlowTests {
         #expect(flow.currentKey == "WRONG")
     }
 
-    @Test("Closing the sheet drops the key it showed")
-    func discardDropsTheKey() async {
+    @Test("Closing the sheet drops the key it showed, and the core drops its draft")
+    func discardDropsTheKey() async throws {
         let flows = FakeAccountKeyFlows()
         let flow = Self.flow(.setUp, flows)
         await flow.start()
@@ -153,5 +154,22 @@ struct AccountRecoveryKeyFlowTests {
         #expect(!flow.hasKey)
         #expect(flow.groups.isEmpty)
         #expect(flow.keyText.isEmpty)
+        try await waitUntil { !flows.calls(named: "discardKeyDraft").isEmpty }
+        #expect(flows.calls(named: "discardKeyDraft") == [FakeAccountKeyFlows.Call("discardKeyDraft", ["genesis-1"])])
+    }
+
+    @Test("A finished setup leaves no draft to discard")
+    func finishedSetupDiscardsNothing() async {
+        let flows = FakeAccountKeyFlows()
+        let flow = Self.flow(.setUp, flows)
+        await flow.start()
+        await flow.advance()
+        flow.typed = Self.groups([2, 10])
+        await flow.advance()
+
+        flow.discard()
+
+        #expect(!flow.hasKey)
+        #expect(flows.calls(named: "discardKeyDraft").isEmpty)
     }
 }

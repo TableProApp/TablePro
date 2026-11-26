@@ -20,9 +20,8 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     }
 
     struct Team: Identifiable, Equatable {
-        // The team's scope as the wire names it.
+        // The `team_` id, which the portal's team page takes too.
         let id: String
-        let teamID: String?
         let name: String?
     }
 
@@ -111,7 +110,7 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
         }
         return order.compactMap { team in
             guard let members = grouped[team], let first = members.first else { return nil }
-            return MemberGroup(team: Team(id: team, teamID: first.teamID, name: first.teamName), members: members)
+            return MemberGroup(team: Team(id: team, name: first.teamName), members: members)
         }
     }
 
@@ -150,20 +149,35 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     }
 
     func openTeam(_ team: Team) {
-        let portal = portal()
-        openURL(team.teamID.map(portal.portalTeam) ?? portal.accountURL)
+        openURL(portal().portalTeam(team.id))
     }
 
+    // The sheet closed: a review the rotation never took is dropped in the core too.
     func discard() {
         closed = true
         recoveryKey = ""
+        if let review, step != .done {
+            release(review.review)
+        }
+    }
+
+    private func release(_ draft: String) {
+        let flows = flows
+        Task {
+            try? await flows().discardKeyDraft(draft: draft)
+        }
     }
 
     private func beginReview() async {
         let recoveryKey = recoveryKey
         await working {
-            let review = try await self.flows().reviewDeviceRemoval(recoveryKey: recoveryKey, lost: [self.lost.keyDevice])
-            guard !self.closed else { return }
+            let review = AccountRemovalReview(
+                try await self.flows().beginDeviceRemoval(recoveryKey: recoveryKey, lost: [self.lost.keyDevice])
+            )
+            guard !self.closed else {
+                self.release(review.review)
+                return
+            }
             self.recoveryKey = ""
             self.review = review
             self.keep = Set(review.devices.filter { $0.keepByDefault && self.canKeep($0) }.map(\.device.keyDevice))

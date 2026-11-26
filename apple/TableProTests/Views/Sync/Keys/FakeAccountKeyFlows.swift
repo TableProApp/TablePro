@@ -34,7 +34,7 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
     var sessionPhases: [SessionPhaseTag] = [.open]
     var genesisOutcome = GenesisOutcomeTag.created
     var rotationDevices: [ReviewedDeviceInfo] = []
-    var review = AccountRemovalReview(review: "review-1", devices: [], members: [])
+    var review = RemovalReviewInfo(review: "review-1", devices: [], members: [])
     var newRequest = "request-new"
     var expiresAt = Date(timeIntervalSince1970: 2_000_000_000)
 
@@ -86,6 +86,17 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
         )
     }
 
+    static func member(_ team: String, _ account: String, teamName: String, name: String) -> ReviewedMemberInfo {
+        ReviewedMemberInfo(
+            team: team,
+            teamName: teamName,
+            account: account,
+            name: name,
+            email: "\(name.split(separator: " ").first.map { $0.lowercased() } ?? "someone")@example.com",
+            confirmedUnderAv: 2
+        )
+    }
+
     static func request(_ id: String, name: String = "MacBook Pro") -> ApprovalRequestInfo {
         ApprovalRequestInfo(request: id, device: "row-\(id)", deviceName: name, platform: "macos", requestedAtUs: 1_700_000_000_000_000)
     }
@@ -126,6 +137,10 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
 
     func recoverWithRecoveryKey(recoveryKey: String) async throws {
         try record("recover", [recoveryKey])
+    }
+
+    func discardKeyDraft(draft: String) throws {
+        try record("discardKeyDraft", [draft])
     }
 
     func requestApproval() async throws -> String {
@@ -170,8 +185,8 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
         try record("removeDeviceRow", [device])
     }
 
-    func reviewDeviceRemoval(recoveryKey: String, lost: [String]) async throws -> AccountRemovalReview {
-        try record("reviewDeviceRemoval", [recoveryKey] + lost)
+    func beginDeviceRemoval(recoveryKey: String, lost: [String]) async throws -> RemovalReviewInfo {
+        try record("beginDeviceRemoval", [recoveryKey] + lost)
         return locked { review }
     }
 
