@@ -109,6 +109,35 @@ fn code(error: &CoreError) -> &str {
     error.code()
 }
 
+// A sync step-up carries its challenge where an account step-up does, so a host reads it from one place; the sync
+// field keeps it too (#4616).
+#[test]
+fn a_sync_step_up_carries_its_challenge_where_an_account_step_up_does() {
+    use tablepro_sync::api::transport::{StepUpChallenge, TransportError};
+
+    let error = CoreError::from(SyncError::Transport(TransportError::StepUpRequired(StepUpChallenge {
+        acr_values: vec!["urn:tablepro:acr:passkey".to_owned()],
+        max_age_secs: 300,
+    })));
+    let other = CoreError::from(SyncError::Transport(TransportError::SignedOut));
+
+    let CoreError::Failed { info } = error else {
+        panic!("a step-up is a failure");
+    };
+    let CoreError::Failed { info: other } = other else {
+        panic!("a sign-out is a failure");
+    };
+    assert_eq!(info.code, "sync.step_up_required");
+    let carried = info.step_up.expect("the challenge");
+    assert_eq!(carried.acr_values, ["urn:tablepro:acr:passkey"]);
+    assert_eq!(carried.max_age_secs, Some(300));
+    assert!(matches!(
+        info.sync,
+        Some(super::service::SyncFailureInfo::StepUp { .. })
+    ));
+    assert_eq!(other.step_up, None);
+}
+
 #[tokio::test]
 async fn without_an_account_tablepro_sync_reports_unavailable_and_its_calls_say_signed_out() {
     let tasks = runtime::tasks().unwrap();

@@ -53,9 +53,20 @@ impl From<SyncError> for CoreError {
             return Self::Cancelled;
         }
         let sync = failure_info(&error);
+        // The challenge goes where an account step-up carries its own, so a host reads it from one place.
+        let step_up = match &error {
+            SyncError::Transport(TransportError::StepUpRequired(challenge)) => {
+                Some(crate::account::StepUpChallengeInfo {
+                    acr_values: challenge.acr_values.clone(),
+                    max_age_secs: Some(challenge.max_age_secs),
+                })
+            }
+            _ => None,
+        };
         match Self::failed(error.code(), error.to_string()) {
             Self::Failed { mut info } => {
                 info.sync = sync;
+                info.step_up = step_up;
                 Self::Failed { info }
             }
             cancelled @ Self::Cancelled => cancelled,
