@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-public enum SidebarNameMatchTier: Int, Comparable {
+public enum SidebarNameMatchTier: Int, Comparable, Sendable {
     case exact
     case prefix
     case substring
