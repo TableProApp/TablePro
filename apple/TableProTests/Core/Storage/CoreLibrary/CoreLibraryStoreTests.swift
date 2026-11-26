@@ -364,6 +364,33 @@ struct CoreLibraryStoreTests {
         #expect(try setAsideCopies().count == 1)
     }
 
+    @Test("A write over a core file changed since the store read it is refused, and the next read goes back to the mirror")
+    func aWriteOverAChangedFileIsRefused() throws {
+        let storage = fixture.launch()
+        #expect(storage.addConnection(connection("alpha")))
+        try plantReadableCoreConnection(named: "planted")
+
+        #expect(!storage.saveConnections(storage.loadConnections(), byUser: false))
+
+        #expect(storage.loadConnections().map(\.name) == ["alpha"])
+        #expect(try setAsideCopies().count == 1)
+    }
+
+    @Test("A connection save over a core file changed since the store read it rebuilds the file from this Mac's library")
+    func aSaveOverAChangedFileRebuilds() throws {
+        let storage = fixture.launch()
+        #expect(storage.addConnection(connection("alpha")))
+        try plantReadableCoreConnection(named: "planted")
+
+        #expect(storage.addConnection(connection("beta")))
+
+        #expect(storage.storeIsTrusted)
+        #expect(try setAsideCopies().count == 1)
+        let reopened = try fixture.launchFromCoreOnly()
+        #expect(reopened.loadConnections().map(\.name) == ["alpha", "beta"])
+        #expect(reopened.storeIsTrusted)
+    }
+
     @Test("A connections.json changed outside TablePro hands its doubt to the core")
     func anEditedLegacyFileStaysUntrusted() throws {
         let storage = fixture.launch()
