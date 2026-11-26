@@ -169,6 +169,28 @@ struct AppStateSyncWiringTests {
         #expect(rows.first?["name"] as? Int == 7)
     }
 
+    @Test("A save of one part also removes the unread groups and tags another device deleted")
+    func oneSaveRemovesEveryPendingUnreadCopy() throws {
+        let group = UUID()
+        let tag = UUID()
+        let groupsFile = fixture.libraryDirectory.appendingPathComponent("groups.json")
+        let tagsFile = fixture.libraryDirectory.appendingPathComponent("tags.json")
+        try Data(#"[{"id":"\#(group.uuidString)","name":7}]"#.utf8).write(to: groupsFile)
+        try Data(#"[{"id":"\#(tag.uuidString)","name":8}]"#.utf8).write(to: tagsFile)
+        let state = makeSyncedState(transport: RecordingSyncTransport())
+        #expect(state.unreadableCopies == UnreadableCopies(groups: [group], tags: [tag]))
+        fixture.metadata.removalsPendingForUnreadableCopies = UnreadableCopies(groups: [group], tags: [tag]).recordNames
+
+        #expect(state.applySyncedConnections([DatabaseConnection(name: "Pulled", type: .postgresql)]))
+
+        #expect(state.unreadableCopies.isEmpty)
+        #expect(fixture.metadata.removalsPendingForUnreadableCopies.isEmpty)
+        for file in [groupsFile, tagsFile] {
+            let rows = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [NSDictionary])
+            #expect(rows.isEmpty)
+        }
+    }
+
     @Test("A saved query made on the Mac reaches the saved queries and the file through the app's sync wiring")
     func pulledSavedQueryReachesTheLibrary() async {
         let folder = SavedQueryFolder(name: "Reports")

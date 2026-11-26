@@ -134,6 +134,12 @@ struct LibraryRecordMappingTests {
         #expect(settings.mode == .require)
         #expect(LibraryRecordMapping.sslConfiguration(settings, legacyRequire: true) == legacy)
 
+        var switchedOn = DatabaseConnection(name: "Orders", type: .mssql, sslEnabled: true)
+        switchedOn.sslConfiguration = nil
+        let required = LibraryRecordMapping.record(switchedOn, keeping: nil).connection.tls
+        #expect(required.mode == .require)
+        #expect(LibraryRecordMapping.record(switchedOn, keeping: LibraryRecordMapping.record(switchedOn, keeping: nil)).connection.tls == required)
+
         let none = LibraryRecordMapping.tlsSettings(nil, keeping: nil)
         #expect(none.mode == .disable)
         #expect(LibraryRecordMapping.sslConfiguration(none, legacyRequire: false) == nil)

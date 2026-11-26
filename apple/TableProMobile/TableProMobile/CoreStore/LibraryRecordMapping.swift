@@ -74,7 +74,7 @@ nonisolated enum LibraryRecordMapping {
             database: connection.database,
             username: connection.username,
             integratedAuth: kept?.integratedAuth ?? false,
-            tls: tlsSettings(connection.sslConfiguration, keeping: kept?.tls),
+            tls: tlsSettings(shownSSL(connection), keeping: kept?.tls),
             ssh: sshSettings(connection, keeping: kept),
             safeMode: safeModeTag(connection.safeModeLevel, keeping: kept?.safeMode),
             queryTimeoutSecs: connection.queryTimeoutSeconds.map { UInt32(clamping: $0) },
@@ -231,6 +231,12 @@ nonisolated enum LibraryRecordMapping {
             isMacPreferred: tls.mode == .prefer,
             isLegacyRequire: legacyRequire
         )
+    }
+
+    // SSL switched on with no configuration, as an older build could store it, opens as Required (`DriverSSLConfiguration`).
+    static func shownSSL(_ connection: DatabaseConnection) -> SSLConfiguration? {
+        guard connection.sslConfiguration == nil, connection.sslEnabled else { return connection.sslConfiguration }
+        return SSLConfiguration(mode: .require)
     }
 
     static func tlsSettings(_ ssl: SSLConfiguration?, keeping stored: TlsSettings?) -> TlsSettings {

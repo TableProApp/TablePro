@@ -52,8 +52,8 @@ struct CoreLibraryStoreTests {
         #expect(loaded.connections.map(\.id) == [connection.id])
         #expect(loaded.tags == ConnectionTag.presets)
         let contents = try await coreContents()
-        #expect(contents.connections.map(\.connection.id) == [connection.id.uuidString])
-        #expect(contents.favorites == [connection.id.uuidString])
+        #expect(contents.connections.compactMap { UUID(uuidString: $0.connection.id) } == [connection.id])
+        #expect(contents.favorites.compactMap(UUID.init(uuidString:)) == [connection.id])
         #expect(try Data(contentsOf: legacyConnectionsFile) == before)
     }
 
@@ -138,6 +138,28 @@ struct CoreLibraryStoreTests {
         #expect(groups.map(\.name) == ["Team"])
     }
 
+    @Test("A stop after a file landed and before the record moved on still reads as this build's write")
+    func stopBeforeTheRecordMovedIsFinished() throws {
+        let store = makeStore()
+        var library = try store.load()
+        library.connections = [DatabaseConnection(name: "Orders", type: .postgresql)]
+        try store.write(library, keepingPastedSSHKeys: [:])
+        let before = store.mirror.digest()
+        let groupsFile = directory.appendingPathComponent("groups.json")
+        let groupsBefore = try Data(contentsOf: groupsFile)
+        library.groups = [ConnectionGroup(name: "Team")]
+        library.connections[0].name = "Renamed"
+        try store.write(library, keepingPastedSSHKeys: [:])
+        try groupsBefore.write(to: groupsFile)
+        var record = try #require(store.mirror.record)
+        record.legacy = before
+        record.legacyPending = store.mirror.digest()
+        record.legacyBehind = true
+        store.mirror.record = record
+
+        #expect(try makeStore().load() == library)
+    }
+
     @Test("The previous stable's copy of a connection the core holds unread stays in its file")
     func legacyCopyOfHeldConnectionStays() throws {
         let store = makeStore()
@@ -165,22 +187,21 @@ struct CoreLibraryStoreTests {
     @Test("A removal the previous stable's files did not take fails the write, so it is tried again")
     func untakenRemovalFailsTheWrite() throws {
         let held = UUID()
-        let kept = DatabaseConnection(name: "Kept", type: .postgresql)
-        let keptJSON = try String(decoding: JSONEncoder().encode(kept), as: UTF8.self)
-        try Data(#"[\#(keptJSON),{"id":"\#(held.uuidString)","name":5}]"#.utf8).write(to: legacyConnectionsFile)
+        let groupsFile = directory.appendingPathComponent("groups.json")
+        try Data(#"[{"id":"\#(held.uuidString)","name":7}]"#.utf8).write(to: groupsFile)
         let store = makeStore()
         let library = try store.load()
-        #expect(store.unreadable.connections == [held])
-        let tagsFile = directory.appendingPathComponent("tags.json")
-        try? FileManager.default.removeItem(at: tagsFile)
-        try FileManager.default.createDirectory(at: tagsFile, withIntermediateDirectories: false)
+        #expect(store.unreadable.groups == [held])
+        try FileManager.default.removeItem(at: groupsFile)
+        try FileManager.default.createDirectory(at: groupsFile, withIntermediateDirectories: false)
 
         #expect(throws: (any Error).self) {
-            try store.write(library, keepingPastedSSHKeys: [:], removingUnreadable: UnreadableCopies(connections: [held]))
+            try store.write(library, keepingPastedSSHKeys: [:], removingUnreadable: UnreadableCopies(groups: [held]))
         }
-        try FileManager.default.removeItem(at: tagsFile)
-        try store.write(library, keepingPastedSSHKeys: [:], removingUnreadable: UnreadableCopies(connections: [held]))
-        #expect(store.unreadable.connections.isEmpty)
+        #expect(store.unreadable.groups == [held])
+        try FileManager.default.removeItem(at: groupsFile)
+        try store.write(library, keepingPastedSSHKeys: [:], removingUnreadable: UnreadableCopies(groups: [held]))
+        #expect(store.unreadable.groups.isEmpty)
     }
 
     @Test("A core file that no longer parses is set aside and the library comes back from the previous stable's files")

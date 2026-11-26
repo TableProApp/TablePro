@@ -21,6 +21,9 @@ final class LegacyLibraryMirror {
         var core: String
         // The core's store took a write these files did not, so the next launch writes them again.
         var legacyBehind: Bool
+        // The files as they will read once the file being written lands, so a stop between that write and the next
+        // record still reads as this build's.
+        var legacyPending: String?
     }
 
     static let recordKey = "com.TablePro.library.mirrorRecord"
@@ -74,11 +77,13 @@ final class LegacyLibraryMirror {
         )
     }
 
-    // `wroteFile` runs after each file lands, so a record can name the files a write left half done.
+    // `willWrite` sees each file's name and bytes before they land and `wroteFile` runs after, so a record can name the
+    // files a write left half done.
     func write(
         _ contents: Contents,
         removingSecrets: Bool,
         removingUnreadable removed: UnreadableCopies,
+        willWrite: (String, Data) -> Void,
         wroteFile: () -> Void
     ) throws {
         let held = unreadable
@@ -86,12 +91,21 @@ final class LegacyLibraryMirror {
             contents.connections,
             keepingPastedSSHKeys: contents.pastedSSHKeys,
             removingSecrets: removingSecrets,
-            removingUnreadable: removed.connections.intersection(held.connections)
+            removingUnreadable: removed.connections.intersection(held.connections),
+            willWrite: { willWrite("connections.json", $0) }
         )
         wroteFile()
-        try groupFile.save(contents.groups, removingUnreadable: removed.groups.intersection(held.groups))
+        try groupFile.save(
+            contents.groups,
+            removingUnreadable: removed.groups.intersection(held.groups),
+            willWrite: { willWrite("groups.json", $0) }
+        )
         wroteFile()
-        try tagFile.save(contents.tags, removingUnreadable: removed.tags.intersection(held.tags))
+        try tagFile.save(
+            contents.tags,
+            removingUnreadable: removed.tags.intersection(held.tags),
+            willWrite: { willWrite("tags.json", $0) }
+        )
     }
 
     // The copies a write that takes secrets out must not leave: the last save and the damaged file set aside.
@@ -105,11 +119,13 @@ final class LegacyLibraryMirror {
         }
     }
 
-    // Of the files as they are now. A file that is absent reads differently from an empty one.
-    func digest() -> String {
+    // Of the files as they are now, or with one replaced by the bytes about to land. A file that is absent reads
+    // differently from an empty one.
+    func digest(replacing replaced: String? = nil, with replacement: Data? = nil) -> String {
         var hasher = SHA256()
         for name in Self.fileNames {
-            guard let data = try? Data(contentsOf: directory.appendingPathComponent(name)) else {
+            let current = name == replaced ? replacement : try? Data(contentsOf: directory.appendingPathComponent(name))
+            guard let data = current else {
                 hasher.update(data: Data([0]))
                 continue
             }

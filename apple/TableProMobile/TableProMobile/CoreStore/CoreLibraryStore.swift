@@ -51,6 +51,7 @@ final class CoreLibraryStore {
     // The previous stable's copies of connections the core holds unread, which every mirror write keeps.
     private var legacyCopiesOfHeld: [DatabaseConnection] = []
     private var flags = ConnectionDeviceFlags()
+    private var secretCopiesPending = false
 
     // Pasted SSH keys an older build left in connections.json that the Keychain has not taken yet.
     private(set) var pastedSSHKeys: [UUID: String] = [:]
@@ -117,7 +118,8 @@ final class CoreLibraryStore {
         legacyCopiesOfHeld = legacy.connections.filter { heldByCore.contains($0.id) }
         // The previous stable writes only its own files. A change there the core's store did not see since this build
         // last wrote them, a file at a time, is that build's, so the library comes back from them.
-        if let record = mirror.record, record.core == coreDigest, record.legacy != legacyDigest {
+        if let record = mirror.record, record.core == coreDigest, record.legacy != legacyDigest,
+           record.legacyPending != legacyDigest {
             return try importLegacy(legacy, into: library)
         }
         let image = image(of: contents)
@@ -176,10 +178,15 @@ final class CoreLibraryStore {
             Self.logger.error("Refused a write over a record this build cannot read: \(taken, privacy: .public)")
             throw Failure.heldByUnreadableRecord(taken)
         }
-        // Before anything is written, so a write that takes secrets out leaves no older copy holding them.
+        // Before anything is written, so a write that takes secrets out leaves no older copy holding them. Until the
+        // copies are gone every later write tries again.
         if removingSecrets {
+            secretCopiesPending = true
+        }
+        if secretCopiesPending {
             try removeIfPresent(unreadableCopyURL)
             try mirror.removeSecretCopies()
+            secretCopiesPending = false
         }
         for id in removed.connections.intersection(heldByCore) {
             try Self.blocking { try await library.delete(id: id.uuidString) }
@@ -243,7 +250,7 @@ final class CoreLibraryStore {
         removingSecrets: Bool,
         removingUnreadable removed: UnreadableCopies
     ) throws {
-        // Recorded first and after each file, so a launch after a crash here tells the files this build left half
+        // Recorded before and after each file, so a launch after a stop here tells the files this build left half
         // written from ones the previous stable changed.
         let behind = { [mirror] in
             mirror.record = LegacyLibraryMirror.Record(legacy: mirror.digest(), core: coreDigest, legacyBehind: true)
@@ -258,6 +265,14 @@ final class CoreLibraryStore {
             ),
             removingSecrets: removingSecrets,
             removingUnreadable: removed,
+            willWrite: { [mirror] name, data in
+                mirror.record = LegacyLibraryMirror.Record(
+                    legacy: mirror.digest(),
+                    core: coreDigest,
+                    legacyBehind: true,
+                    legacyPending: mirror.digest(replacing: name, with: data)
+                )
+            },
             wroteFile: behind
         )
         mirror.record = LegacyLibraryMirror.Record(legacy: mirror.digest(), core: coreDigest, legacyBehind: false)
