@@ -48,9 +48,9 @@ private struct ResetKeysRows: View {
                 .accessibilityElement(children: .combine)
             }
 
-            ForEach(model.endedNotices) { notice in
+            ForEach(model.notices) { notice in
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    NoticeLabel(notice.text, severity: notice.state == .active ? .success : .info)
+                    NoticeLabel(notice.text, severity: notice.severity)
                     Spacer(minLength: 12)
                     Button(String(localized: "Dismiss")) { Task { await model.dismiss(notice) } }
                         .fixedSize()

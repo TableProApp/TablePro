@@ -12,6 +12,8 @@ nonisolated internal protocol ResetKeysService: AnyObject, Sendable {
     func pendingReset() async throws -> PendingResetInfo?
     func beginReset(kind: ResetKindTag) async throws -> RecoveryKeyDraftInfo
     func finishResetProposal(draft: String, typed: [String]) async throws -> PendingResetInfo
+    // A sheet closed before its proposal went up: the draft goes, and the recovery key it held with it.
+    func discardKeyDraft(draft: String) async throws
     func cancelReset(reset: String, recoveryKey: String?) async throws
     func activateReset(reset: String) async throws
     func keyNotices() async throws -> [KeyNoticeInfo]
@@ -41,6 +43,10 @@ internal final class ResetKeysLiveService: ResetKeysService {
 
     func finishResetProposal(draft: String, typed: [String]) async throws -> PendingResetInfo {
         try await service().finishResetProposal(draft: draft, typed: typed)
+    }
+
+    func discardKeyDraft(draft: String) async throws {
+        try await service().discardKeyDraft(draft: draft)
     }
 
     func cancelReset(reset: String, recoveryKey: String?) async throws {

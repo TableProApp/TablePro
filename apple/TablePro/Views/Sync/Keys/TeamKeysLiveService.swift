@@ -78,7 +78,7 @@ internal final class TeamKeysLiveService: TeamKeysService {
 
     func credentialsToRotate(team: String) async throws -> [TeamCredentialToRotate] {
         let envelopes = try await service().credentialsToRotate(scope: team)
-        return envelopes.map { TeamCredentialToRotate(envelope: $0, connectionName: nil, secret: nil) }
+        return envelopes.map { TeamCredentialToRotate(envelope: $0, connectionName: nil, secret: Self.secret(ofEnvelope: $0)) }
     }
 
     func keyNotices() async throws -> [KeyNoticeInfo] {
@@ -89,7 +89,23 @@ internal final class TeamKeysLiveService: TeamKeysService {
         try await service().dismissKeyNotice(notice: notice)
     }
 
-    // The core names no person yet: lane K8 adds names, emails and this account's own row to these records.
+    // An envelope id is `<parent kind>/<parent id>/<secret kind>` (core ADR 0052), so its secret kind is the part after
+    // the last `/`. The connection's name is not in the id, so it stays unnamed here.
+    static func secret(ofEnvelope envelope: String) -> TeamCredentialSecret? {
+        guard let slash = envelope.lastIndex(of: "/") else { return nil }
+        let kind = envelope[envelope.index(after: slash)...]
+        switch kind {
+        case "password": return .password
+        case "ssl_key_passphrase": return .sslKeyPassphrase
+        case "ssh_password": return .sshPassword
+        case "ssh_key_passphrase": return .sshKeyPassphrase
+        case "ssh_totp_secret": return .sshTotpSecret
+        default: return kind.hasPrefix("plugin.") ? .driverField(label: nil) : nil
+        }
+    }
+
+    // The server lists names and emails to owners and admins only, so another member reads none. The record does not
+    // say which row is this account's own.
     static func snapshot(_ info: TeamKeysInfo) -> TeamKeysSnapshot {
         TeamKeysSnapshot(
             version: info.version,
@@ -98,13 +114,13 @@ internal final class TeamKeysLiveService: TeamKeysService {
             rotationDue: info.rotationDue,
             holder: info.holder,
             members: info.members.map {
-                TeamMemberKeys(account: $0.account, name: nil, email: nil, isYou: false, role: $0.role, status: $0.status)
+                TeamMemberKeys(account: $0.account, name: $0.name, email: $0.email, isYou: false, role: $0.role, status: $0.status)
             },
             stoppedDevices: info.stopped.map {
                 TeamStoppedDevice(
                     account: $0.account,
                     device: $0.device,
-                    ownerName: nil,
+                    ownerName: $0.name ?? $0.email,
                     deviceName: nil,
                     version: $0.version,
                     canReconfirm: $0.canReconfirm

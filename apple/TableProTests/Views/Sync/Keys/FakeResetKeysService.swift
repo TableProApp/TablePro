@@ -39,6 +39,7 @@ final class FakeResetKeysService: ResetKeysService, @unchecked Sendable {
     enum Call: Equatable {
         case begin(ResetKindTag)
         case finish(draft: String, typed: [String])
+        case discard(draft: String)
         case cancel(reset: String, recoveryKey: String?)
         case activate(reset: String)
         case dismiss(notice: String)
@@ -96,6 +97,10 @@ final class FakeResetKeysService: ResetKeysService, @unchecked Sendable {
             state.pending = pending
             return pending
         }
+    }
+
+    func discardKeyDraft(draft: String) async throws {
+        try answer("discardKeyDraft", call: .discard(draft: draft)) { _ in }
     }
 
     func cancelReset(reset: String, recoveryKey: String?) async throws {

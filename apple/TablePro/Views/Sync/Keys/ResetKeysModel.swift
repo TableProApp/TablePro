@@ -25,16 +25,31 @@ internal struct ResetCancelRequest: Identifiable, Equatable {
     var id: String { reset.reset }
 }
 
-internal struct ResetEndedNotice: Identifiable, Equatable {
+internal struct ResetNotice: Identifiable, Equatable {
+    enum Kind: Equatable {
+        case ended(ResetStateTag)
+        // A kind 3 reset a server restore lost, which goes up again only after a fresh step-up (core ADR 0065).
+        case waitsForStepUp
+    }
+
     let id: String
-    let state: ResetStateTag
+    let kind: Kind
 
     var text: String {
-        switch state {
-        case .cancelled: String(localized: "The key reset was cancelled.")
-        case .superseded: String(localized: "The key reset ended without changing your keys.")
-        case .active: String(localized: "Your keys were reset.")
-        case .pending: String(localized: "A key reset is waiting.")
+        switch kind {
+        case .ended(.cancelled): String(localized: "The key reset was cancelled.")
+        case .ended(.superseded): String(localized: "The key reset ended without changing your keys.")
+        case .ended(.active): String(localized: "Your keys were reset.")
+        case .ended(.pending): String(localized: "A key reset is waiting.")
+        case .waitsForStepUp: String(localized: "A server restore lost your key reset. It is asked for again once you confirm it's you.")
+        }
+    }
+
+    var severity: NoticeSeverity {
+        switch kind {
+        case .ended(.active): .success
+        case .ended: .info
+        case .waitsForStepUp: .warning
         }
     }
 }
@@ -53,7 +68,7 @@ internal final class ResetKeysModel: ObservableObject {
 
     @Published private(set) var keyState: KeyStateInfo?
     @Published private(set) var pending: PendingResetInfo?
-    @Published private(set) var endedNotices: [ResetEndedNotice] = []
+    @Published private(set) var notices: [ResetNotice] = []
     @Published private(set) var isLoading = false
     @Published private(set) var loadFailure: String?
     @Published private(set) var work: Work?
@@ -137,9 +152,12 @@ internal final class ResetKeysModel: ObservableObject {
         do {
             let notices = try await service.keyNotices()
             guard current == generation else { return }
-            endedNotices = notices.compactMap { notice -> ResetEndedNotice? in
-                guard case .resetEnded(_, let state) = notice.kind else { return nil }
-                return ResetEndedNotice(id: notice.id, state: state)
+            self.notices = notices.compactMap { notice -> ResetNotice? in
+                switch notice.kind {
+                case .resetEnded(_, let state): ResetNotice(id: notice.id, kind: .ended(state))
+                case .resetWaitsForStepUp: ResetNotice(id: notice.id, kind: .waitsForStepUp)
+                default: nil
+                }
             }
         } catch {
             Self.logger.error("Could not read the key notices: \(error.publicLogShape, privacy: .public)")
@@ -165,7 +183,7 @@ internal final class ResetKeysModel: ObservableObject {
         }
     }
 
-    func dismiss(_ notice: ResetEndedNotice) async {
+    func dismiss(_ notice: ResetNotice) async {
         await perform(.dismissing(notice.id), failureTitle: String(localized: "Couldn't Dismiss the Notice")) { [service] in
             try await service.dismissKeyNotice(notice: notice.id)
         }
@@ -194,6 +212,8 @@ internal final class ResetKeysModel: ObservableObject {
 // A kind 3 proposal needs a fresh step-up, which the account runs once when the server asks for it.
 @MainActor
 internal final class ResetProposalModel: ObservableObject {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ResetKeys")
+
     enum Phase: Equatable {
         case explain
         case preparing
@@ -257,6 +277,18 @@ internal final class ResetProposalModel: ObservableObject {
     func showKeyAgain() {
         guard phase == .typeBack else { return }
         phase = .showKey
+    }
+
+    // The sheet closed before the proposal went up, so the core drops the draft and the recovery key it holds.
+    func discard() async {
+        guard let draft, phase != .submitting else { return }
+        self.draft = nil
+        typed = ["", ""]
+        do {
+            try await service.discardKeyDraft(draft: draft.draft)
+        } catch {
+            Self.logger.error("Could not discard the reset draft: \(error.publicLogShape, privacy: .public)")
+        }
     }
 
     func submit() async {

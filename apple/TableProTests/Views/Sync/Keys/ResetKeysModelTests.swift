@@ -65,13 +65,14 @@ struct ResetKeysModelTests {
         #expect(model.offeredKind == nil)
     }
 
-    @Test("Only a pending reset shows as pending, and ended resets come from their notices")
-    func loadsPendingAndEnded() async {
+    @Test("Only a pending reset shows as pending, and the reset notices come from the key notices")
+    func loadsPendingAndNotices() async {
         service.update { state in
             state.pending = R.pending(state: .cancelled)
             state.notices = [
                 F.notice("n1", .resetEnded(reset: "reset-0", state: .superseded)),
                 F.notice("n2", .keysChanged(account: F.ana)),
+                F.notice("n3", .resetWaitsForStepUp(reset: "reset-1")),
             ]
         }
         let model = model()
@@ -79,7 +80,10 @@ struct ResetKeysModelTests {
         await model.load()
 
         #expect(model.pending == nil)
-        #expect(model.endedNotices == [ResetEndedNotice(id: "n1", state: .superseded)])
+        #expect(model.notices == [
+            ResetNotice(id: "n1", kind: .ended(.superseded)),
+            ResetNotice(id: "n3", kind: .waitsForStepUp),
+        ])
     }
 
     @Test("Only the proposing Mac finishes, and only once the wait has passed")
@@ -177,6 +181,26 @@ struct ResetKeysModelTests {
         #expect(stepUps.challenges == [StepUpChallenge(acrValues: ["urn:tablepro:acr:passkey"], maxAgeSecs: 300)])
         #expect(proposal.phase == .done)
         #expect(service.calls.filter { if case .finish = $0 { true } else { false } }.count == 2)
+    }
+
+    @Test("A sheet closed before the proposal went up discards its draft once, and one that finished discards nothing")
+    func closingDiscardsTheDraft() async {
+        let closed = proposal(.keepScopeKeys)
+        await closed.begin()
+        await closed.discard()
+        await closed.discard()
+
+        let finished = proposal(.keepScopeKeys)
+        await finished.begin()
+        finished.continueToTypeBack()
+        finished.typed = ["89AB", "MNPQ"]
+        await finished.submit()
+        await finished.discard()
+
+        let discards = service.calls.filter { if case .discard = $0 { true } else { false } }
+        #expect(discards == [.discard(draft: "draft-1")])
+        #expect(closed.draft == nil)
+        #expect(closed.groups.isEmpty)
     }
 
     @Test("Closing the passkey page leaves the proposal on its step with no error")
