@@ -154,7 +154,7 @@ impl KeyService {
             Some(Row::KeyObject(row)) => Some(row),
             _ => None,
         };
-        self.hold_object(txn, ScopeName::Personal, &object, true).await?;
+        self.hold_served(txn, ScopeName::Personal, &object, record).await?;
         Ok((object, candidate, before))
     }
 

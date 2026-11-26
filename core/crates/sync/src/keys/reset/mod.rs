@@ -29,7 +29,7 @@ use crate::api::key_flows::{
     ResetState, TeamFlows, TypedBack,
 };
 use crate::api::state::{Row, RowKey, RowRange, StateTxn, Table};
-use crate::api::transport::{DpopKey, RejectedCode};
+use crate::api::transport::{DpopKey, RejectedCode, TransportError};
 
 // R' as shown, with the two of its 14 groups the person types back before anything is pushed.
 struct ResetDraft {
@@ -221,7 +221,16 @@ impl ResetFlows for KeyService {
                 // back, so the device proposes it again under its checks, and the 7 days start again (0064).
                 ResetState::Pending => {
                     if self.restored_since(&record).await? {
-                        self.resend_proposal(&mut record).await?;
+                        match self.resend_proposal(&mut record).await {
+                            // A kind 3 reset goes up again only after a fresh step-up: the person is told, and the
+                            // next pass after it proposes again (0065, A kind 3 reset proposed again).
+                            Err(SyncError::Transport(TransportError::StepUpRequired(_)))
+                                if record.kind == ResetKind::StartEmpty =>
+                            {
+                                self.awaits_step_up(reset)?;
+                            }
+                            other => other?,
+                        }
                     }
                     return Ok(());
                 }
@@ -538,6 +547,15 @@ impl KeyService {
     }
 
     // The scope's epoch moved since the server took the proposal: a restore that may have lost it.
+    // Once per wait: the notice stays until the person dismisses it or the proposal goes up.
+    fn awaits_step_up(&self, reset: ResetId) -> Result<(), SyncError> {
+        let kind = KeyNoticeKind::ResetWaitsForStepUp { reset };
+        if !self.held_notices().iter().any(|notice| notice.kind == kind) {
+            self.raise_notice(kind)?;
+        }
+        Ok(())
+    }
+
     async fn restored_since(&self, record: &ResetRecord) -> Result<bool, SyncError> {
         let mut txn = self.begin().await?;
         let current = personal_epoch(txn.as_mut()).await?;

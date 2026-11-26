@@ -139,7 +139,11 @@ async fn a_replace_the_pinned_ik_endorsed_is_followed_with_a_notice_and_the_old_
     let pin = device.pin(member.account).await.unwrap();
     assert_eq!(
         (pin.ik, pin.how, pin.replaced.clone()),
-        (next.public().unwrap(), PinHow::Replaced, vec![Replaced { ik: old, av: av(2) }])
+        (
+            next.public().unwrap(),
+            PinHow::Replaced,
+            vec![Replaced { ik: old, av: av(2) }]
+        )
     );
     assert!(device.service.notices().await.unwrap().iter().any(|notice| notice.kind
         == KeyNoticeKind::RecoveryKeyReplaced {
@@ -505,4 +509,48 @@ async fn a_replace_point_holds_whatever_certificates_the_server_serves_around_it
 
     assert_eq!(forged.unwrap_err().code(), "keys.retired_ik");
     assert_eq!(history.unwrap(), IkStanding::Replaced);
+}
+
+// An accepted alert has no replace certificate: the old IK's point is the `av` after the one this device pinned under
+// it, so a certificate the old IK signed later never verifies, however far the accepted one stands (orchestrator
+// ruling on 0066, Replace points).
+#[tokio::test]
+async fn an_accepted_alert_retires_the_old_ik_just_past_what_the_device_pinned() {
+    let device = device().await;
+    let scope = team();
+    let member = Member::new();
+    offer(&device, scope, &member.certificate(1)).await.unwrap();
+    let reset = Member {
+        account: member.account,
+        ik: Ed25519Seed::generate().unwrap(),
+    };
+    device.put(vec![member_row(scope, &reset.certificate(2))]).await;
+    assert_eq!(offer(&device, scope, &reset.certificate(3)).await, Ok(PinChange::Alert));
+
+    device
+        .service
+        .accept_key_change(member.account, reset.ik.public().unwrap(), Acceptance::Compared)
+        .await
+        .unwrap();
+    let pin = device.pin(member.account).await.unwrap();
+    let mut txn = device.txn().await;
+    let later = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(2))
+        .await;
+    let pinned = device
+        .service
+        .verify_certificate(txn.as_mut(), scope, &member.certificate(1))
+        .await;
+
+    assert_eq!((pin.ik, pin.av), (reset.ik.public().unwrap(), av(3)));
+    assert_eq!(
+        pin.replaced,
+        vec![Replaced {
+            ik: member.ik.public().unwrap(),
+            av: av(2)
+        }]
+    );
+    assert_eq!(later.unwrap_err().code(), "keys.retired_ik");
+    assert_eq!(pinned.unwrap(), IkStanding::Replaced);
 }
