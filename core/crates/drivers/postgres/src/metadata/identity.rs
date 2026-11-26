@@ -3,6 +3,7 @@ use tablepro_core::meta::{EngineRowId, RowIdentity};
 use tokio_postgres::Client;
 
 use super::{decode_error, text_rows};
+use crate::catalog_release::CatalogRelease;
 use crate::codec::TextArray;
 
 /// The relation's kind, its primary key, and the first unique index that
@@ -17,7 +18,7 @@ SELECT c.relkind::text,
               WHERE p.conrelid = c.oid AND p.contype = 'p'
               ORDER BY k.ord),
        ARRAY(SELECT a.attname::text
-               FROM (SELECT i.indrelid, i.indkey, i.indnkeyatts
+               FROM (SELECT i.indrelid, i.indkey, {i.indnkeyatts} AS indnkeyatts
                        FROM pg_catalog.pg_index i
                        JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
                       WHERE i.indrelid = c.oid
@@ -30,7 +31,7 @@ SELECT c.relkind::text,
                               FROM pg_catalog.unnest(i.indkey::int2[]) WITH ORDINALITY AS u(attnum, ord)
                               JOIN pg_catalog.pg_attribute ua
                                 ON ua.attrelid = i.indrelid AND ua.attnum = u.attnum
-                             WHERE u.ord <= i.indnkeyatts AND NOT ua.attnotnull)
+                             WHERE u.ord <= {i.indnkeyatts} AND NOT ua.attnotnull)
                       ORDER BY ic.relname
                       LIMIT 1) best
                CROSS JOIN LATERAL pg_catalog.unnest(best.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
@@ -40,9 +41,13 @@ SELECT c.relkind::text,
 FROM pg_catalog.pg_class c
 WHERE c.oid = $1::text::oid";
 
-pub(crate) async fn row_identity(client: &Client, relation: &str) -> Result<RowIdentity, DriverError> {
+pub(crate) async fn row_identity(
+    client: &Client,
+    release: CatalogRelease,
+    relation: &str,
+) -> Result<RowIdentity, DriverError> {
     let field = decode_error("pg_class");
-    let rows = text_rows(client, IDENTITY_SQL, &[relation]).await?;
+    let rows = text_rows(client, &release.render(IDENTITY_SQL), &[relation]).await?;
     let Some(row) = rows.first() else {
         return Ok(RowIdentity::Unordered);
     };
