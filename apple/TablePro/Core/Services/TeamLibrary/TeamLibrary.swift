@@ -189,7 +189,7 @@ internal final class TeamLibrary: ObservableObject {
         }
     }
 
-    nonisolated static func connectionArguments(
+    static func connectionArguments(
         _ connections: [DatabaseConnection],
         exporter: ConnectionBundleExporter
     ) throws -> [TeamConnectionArg] {
