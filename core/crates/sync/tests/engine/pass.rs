@@ -34,8 +34,8 @@ async fn history_key(device: &Device) {
         .await;
 }
 
-fn named(name: &str, host: &str) -> Value {
-    json!({"name": name, "host": host, "sort_order": 1})
+fn named(name: &str, icon: &str) -> Value {
+    json!({"name": name, "icon_name": icon, "sort_order": 1})
 }
 
 #[tokio::test]
@@ -105,7 +105,7 @@ async fn a_content_edit_revives_a_deletion_and_a_placement_edit_does_not() {
     mac.sync().await;
     mini.connections.put(&id(1), named("Edited", "changed"));
     mini.connections
-        .put(&id(2), json!({"name": "Moved", "host": "a", "sort_order": 9}));
+        .put(&id(2), json!({"name": "Moved", "icon_name": "a", "sort_order": 9}));
     mini.sync().await;
     mac.sync().await;
 
@@ -331,30 +331,33 @@ async fn a_restored_store_refills_every_kind_it_holds() {
         .adapter(ScopeName::Personal, Arc::clone(&mini_folders))
         .build()
         .await;
-    mac_queries.put(&id(1), json!({"name": "Q", "sql": "select 1"}));
+    mac_queries.put(&id(1), json!({"name": "Q", "query": "select 1"}));
     mac_folders.put(&id(2), json!({"name": "F"}));
     mac.sync().await;
     mini.sync().await;
-    mac_queries.put(&id(1), json!({"name": "Q", "sql": "select 2"}));
+    mac_queries.put(&id(1), json!({"name": "Q", "query": "select 2"}));
     mac_folders.put(&id(2), json!({"name": "F2"}));
     mac.sync().await;
 
     // The backup holds an older copy, which would read as edits, and a query the provider never saw.
-    mini_queries.put(&id(1), json!({"name": "Q", "sql": "select 0"}));
+    mini_queries.put(&id(1), json!({"name": "Q", "query": "select 0"}));
     mini_folders.put(&id(2), json!({"name": "F0"}));
-    mini_queries.put(&id(3), json!({"name": "New", "sql": "select 3"}));
+    mini_queries.put(&id(3), json!({"name": "New", "query": "select 3"}));
     history.restored();
     mini.sync().await;
 
-    assert_eq!(mini_queries.get(&id(1)), Some(json!({"name": "Q", "sql": "select 2"})));
+    assert_eq!(
+        mini_queries.get(&id(1)),
+        Some(json!({"name": "Q", "query": "select 2"}))
+    );
     assert_eq!(mini_folders.get(&id(2)), Some(json!({"name": "F2"})));
     let query = |record: &str| {
         server
             .stored(personal(), "saved_query", record)
             .and_then(|record| record.fields)
     };
-    assert_eq!(query(&id(1)), Some(json!({"name": "Q", "sql": "select 2"})));
-    assert_eq!(query(&id(3)), Some(json!({"name": "New", "sql": "select 3"})));
+    assert_eq!(query(&id(1)), Some(json!({"name": "Q", "query": "select 2"})));
+    assert_eq!(query(&id(3)), Some(json!({"name": "New", "query": "select 3"})));
 }
 
 #[tokio::test]

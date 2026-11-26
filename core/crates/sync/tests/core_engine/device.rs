@@ -70,6 +70,10 @@ impl Device {
             stop: StopSignal::new(),
             journal: Journal::new(wake),
             events: None,
+            categories: tablepro_sync::api::control::SyncCategories {
+                off: Vec::new(),
+                passwords: true,
+            },
         });
         Self {
             keys,

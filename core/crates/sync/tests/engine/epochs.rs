@@ -6,7 +6,7 @@ use tablepro_sync_testing::FakeServer;
 use super::harness::{Device, id, personal};
 
 fn named(name: &str, version: &str) -> Value {
-    json!({"name": name, "host": version, "sort_order": 1})
+    json!({"name": name, "icon_name": version, "sort_order": 1})
 }
 
 fn stored(server: &FakeServer, record: &str) -> Option<Value> {

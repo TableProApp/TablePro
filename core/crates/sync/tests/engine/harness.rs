@@ -559,6 +559,29 @@ impl AccountFlows for KeyLog {
     ) -> Result<OpenedEnvelope, SyncError> {
         self.open(ScopeName::Personal, &envelope, &fields, in_force)
     }
+
+    // Sealed under history version 1, the plaintext carried as text so a pull reads it back.
+    async fn seal_history_entry(
+        &self,
+        _entry: tablepro_keys::encoding::HistoryId,
+        plaintext: Value,
+    ) -> Result<Value, SyncError> {
+        Ok(json!({"suite": "tp1", "kv": 1, "ct": plaintext.to_string()}))
+    }
+
+    async fn open_history_entry(
+        &self,
+        _entry: tablepro_keys::encoding::HistoryId,
+        fields: Value,
+    ) -> Result<Value, SyncError> {
+        fields
+            .get("ct")
+            .and_then(Value::as_str)
+            .and_then(|text| serde_json::from_str(text).ok())
+            .ok_or(SyncError::Malformed {
+                what: "sealed history entry",
+            })
+    }
 }
 
 #[async_trait]
@@ -722,6 +745,7 @@ pub struct DeviceBuilder {
     state: Option<Arc<dyn StateStore>>,
     connections: Option<(Arc<MemoryAdapter>, Arc<StoreFile>)>,
     extra: Vec<(ScopeName, Arc<MemoryAdapter>)>,
+    others: Vec<Arc<dyn RecordAdapter>>,
     keys: Option<Arc<KeyLog>>,
     seed: Option<Arc<Ed25519Seed>>,
 }
@@ -735,9 +759,16 @@ impl DeviceBuilder {
             state: None,
             connections: None,
             extra: Vec::new(),
+            others: Vec::new(),
             keys: None,
             seed: None,
         }
+    }
+
+    // An adapter of the test's own, over a store that behaves as a core store does.
+    pub fn extra_adapter(mut self, adapter: Arc<dyn RecordAdapter>) -> Self {
+        self.others.push(adapter);
+        self
     }
 
     pub fn unapproved(mut self) -> Self {
@@ -793,6 +824,7 @@ impl DeviceBuilder {
             adapter.register(*scope);
             adapters.push(Arc::clone(adapter) as Arc<dyn RecordAdapter>);
         }
+        adapters.extend(self.others);
         let keys = self.keys.unwrap_or_default();
         let wake = Wake::new();
         let hooks = Arc::new(EngineHooks::new(wake.clone(), None));
@@ -809,6 +841,10 @@ impl DeviceBuilder {
             stop: stop.clone(),
             journal: Journal::new(wake),
             events: None,
+            categories: tablepro_sync::api::control::SyncCategories {
+                off: Vec::new(),
+                passwords: true,
+            },
         });
         Device {
             server: self.server,
@@ -879,7 +915,7 @@ pub fn write(kind: &str, id: &str, base: Option<ChangeTag>, fields: Value) -> Ch
 }
 
 pub fn connection(name: &str) -> Value {
-    json!({"name": name, "host": "db.example.com", "sort_order": 1})
+    json!({"name": name, "icon_name": "database", "sort_order": 1})
 }
 
 // The state files in `dir`, anchored in `store`, which a restart keeps as the device does.

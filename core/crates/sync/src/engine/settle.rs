@@ -23,6 +23,9 @@ pub struct Settled {
     pub store: Option<LocalChange>,
     pub base: Option<BaseRow>,
     pub conflict: Option<ConflictRow>,
+    // The record the store should hold after the merge, whatever it holds now; None when the merge leaves the store
+    // as it is or deletes the record. A caller that merged a view of the store's copy decides its write from this.
+    pub kept: Option<Value>,
 }
 
 impl Settled {
@@ -30,6 +33,7 @@ impl Settled {
         store: None,
         base: None,
         conflict: None,
+        kept: None,
     };
 }
 
@@ -138,6 +142,7 @@ pub fn settle(
             },
             base: next,
             conflict: None,
+            kept: server.cloned(),
         },
         Judgement::Merge => merged(key, kind, base, local, pulled, server),
     }
@@ -180,22 +185,26 @@ fn merged(
             store: put_if_changed(local, id, &record),
             base: next,
             conflict: None,
+            kept: Some(record),
         },
         Merged::Deleted => Settled {
             store: delete_if_held(local, id),
             base: next,
             conflict: None,
+            kept: None,
         },
         Merged::Contested { record, .. } => Settled {
             store: put_if_changed(local, id, &record),
             base: next,
             conflict: Some(conflict()),
+            kept: Some(record),
         },
         // The device's side stays as it is until the person picks Keep Mine or Keep Theirs.
         Merged::DeletionContested { .. } => Settled {
             store: None,
             base: next,
             conflict: Some(conflict()),
+            kept: None,
         },
         // Ciphertext does not merge: the device's envelope goes up again on the stored tag.
         Merged::Reseal => Settled {

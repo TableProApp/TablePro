@@ -6,16 +6,17 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
-use tablepro_keys::encoding::{KeyPurpose, Version};
+use tablepro_keys::encoding::{HistoryId, KeyPurpose, Version};
 use tablepro_keys::envelope::EnvelopeId;
 use tablepro_records::Kind;
+use tablepro_records::record_id::parse_uuid;
 use uuid::Uuid;
 
 use super::{PassCtx, ServiceSync, begin, scope_refusal};
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{
-    ArrivalOrder, CaughtUp, KeyApplied, KeyArrival, KeyHooks, LockCause, PushBackVerdict, Roster, StopAction,
+    ArrivalOrder, CaughtUp, KeyApplied, KeyArrival, KeyHooks, KeyState, LockCause, PushBackVerdict, Roster, StopAction,
 };
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{KeyVersionState, PendingFlow, Row, RowKey, RowRange, StateStore, StoppedCause, Table};
@@ -76,6 +77,14 @@ pub(super) async fn key_mark(
         pins: txn.scan(&RowRange::Table(Table::KeyPins)).await?,
         can_open,
     })
+}
+
+// What the keys made of a pulled history entry: its plaintext, or why the device holds it by id.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum HistoryOpens {
+    Plain(serde_json::Value),
+    Refused,
+    Waits,
 }
 
 // Which flow reads a key kind: the account's own objects, an approval session's, a reset's, or a team's.
@@ -186,6 +195,33 @@ impl ServiceSync {
             }
             Err(error) => Err(error),
         }
+    }
+
+    // A history entry is sealed under the history key, so the store takes its plaintext (0056, Envelopes and history).
+    // One the keys refuse is held by id; one they cannot open yet waits, as an envelope does.
+    pub(super) async fn history_opens(&self, record: &PulledRecord) -> Result<HistoryOpens, SyncError> {
+        let (Some(fields), Some(id)) = (record.fields.clone(), parse_uuid(&record.record_id)) else {
+            return Ok(HistoryOpens::Refused);
+        };
+        self.stop.check()?;
+        match self.keys.open_history_entry(HistoryId(id), fields).await {
+            Ok(plain) if plain.is_object() => Ok(HistoryOpens::Plain(plain)),
+            Ok(_) => Ok(HistoryOpens::Refused),
+            Err(SyncError::Keys(error)) => {
+                tracing::debug!(code = error.code(), "a history entry was not taken");
+                Ok(HistoryOpens::Refused)
+            }
+            Err(error @ (SyncError::NotAllowed { .. } | SyncError::Locked { .. })) => {
+                tracing::debug!(code = error.code(), "a history entry waits until the keys can open it");
+                Ok(HistoryOpens::Waits)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    // Whether history entries can be opened now: only on an unlocked device whose keys are approved.
+    pub(super) async fn history_opens_now(&self) -> bool {
+        self.hooks.locked().is_none() && matches!(self.keys.key_state().await, Ok(KeyState::Approved { .. }))
     }
 
     // Whether this device holds the scope's key in force, so envelopes kept waiting can be read again.
