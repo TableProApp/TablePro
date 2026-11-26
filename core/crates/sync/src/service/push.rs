@@ -92,8 +92,8 @@ impl ServiceSync {
             ctx.report.pull_only = true;
             return Ok(AfterPush::Done);
         }
-        // Personal and history data go up only from an approved device.
-        if !matches!(scope, ScopeName::Team(_)) && info.approved != Some(true) {
+        // Personal and history data go up only from an approved device, and not once a key flow locked it in this pass.
+        if !matches!(scope, ScopeName::Team(_)) && (info.approved != Some(true) || self.hooks.locked().is_some()) {
             return Ok(AfterPush::Done);
         }
         let pending = self.pending(ctx, session, &row).await?;
@@ -187,7 +187,12 @@ impl ServiceSync {
     fn seals(&self, ctx: &PassCtx, row: &ScopeRow) -> bool {
         let scope = row.scope;
         let rotation_due = matches!(scope, ScopeName::Team(_)) && row.rotation_due;
-        !ctx.locked && ctx.approved && ctx.keys_ready && !rotation_due && !self.hooks.holds_secrets(scope)
+        !ctx.locked
+            && self.hooks.locked().is_none()
+            && ctx.approved
+            && ctx.keys_ready
+            && !rotation_due
+            && !self.hooks.holds_secrets(scope)
     }
 
     async fn skipped(&self, scope: ScopeName) -> Result<HashMap<KindName, HashSet<String>>, SyncError> {

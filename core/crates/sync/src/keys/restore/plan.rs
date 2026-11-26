@@ -18,6 +18,12 @@ use crate::keys::HeldObject;
 // one the server holds again answers `applied` (0051, Push).
 pub(crate) trait ServerView {
     fn holds(&self, scope: ScopeName, id: &KeyRecordId) -> bool;
+
+    // The server holds another record than this device's at the id.
+    fn holds_another(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
+        let _ = (scope, id);
+        false
+    }
 }
 
 pub(crate) struct Inputs<'a> {
@@ -373,6 +379,10 @@ fn version_step(team: &Team<'_>, roster: Option<&[TeamMember]>, version: Version
     let mut sets = Vec::new();
     let mut rotated: HashSet<String> = HashSet::new();
     if !team.server_holds(&KeyRecordId::Version(key)) {
+        // A different record the server takes at that version ends the team on the device (`keys.conflict`).
+        if team.server.holds_another(team.scope(), &KeyRecordId::Version(key)) {
+            return Step::Stop(TeamVerdict::Ends);
+        }
         let Some((record_held, record)) = team
             .objects
             .version(key)

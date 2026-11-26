@@ -16,7 +16,7 @@ use crate::api::device_store::DeviceStoreError;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::SignOutOutcome;
-use crate::api::state::{PendingFlow, Row, RowKey, RowRange, ScopeRow, Table};
+use crate::api::state::{PendingFlow, Row, RowRange, ScopeRow, Table};
 use crate::api::transport::{DpopKey, TransportError};
 
 impl KeyService {
@@ -135,9 +135,10 @@ impl KeyService {
     async fn clear_key_state(&self) -> Result<(), SyncError> {
         let mut txn = self.begin().await?;
         txn.clear_key_tables().await?;
-        // The device joins again as a new one does, so its next pull of the key kinds starts from a snapshot.
-        for scope in [ScopeName::Personal, ScopeName::History] {
-            if let Some(Row::Scope(row)) = txn.get(&RowKey::Scope(scope)).await? {
+        // The device joins again as a new one does, so the next pull of every scope, a team's included, starts from
+        // a snapshot that serves the key objects the tables no longer hold.
+        for row in txn.scan(&RowRange::Table(Table::Scopes)).await? {
+            if let Row::Scope(row) = row {
                 txn.put(Row::Scope(ScopeRow {
                     cursor: None,
                     key_version: None,

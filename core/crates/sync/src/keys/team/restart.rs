@@ -4,8 +4,10 @@
 
 use std::collections::BTreeSet;
 
+use tablepro_keys::KeysError;
 use tablepro_keys::body::{KeyBody, KeyObject};
 use tablepro_keys::cert::AccountCertificate;
+use tablepro_keys::check::check_signed_under_newest;
 use tablepro_keys::encoding::TeamId;
 use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
@@ -13,6 +15,8 @@ use tablepro_keys::scope_key::{Start, VersionRecord};
 use tablepro_keys::trust::PinHow;
 use tablepro_keys::wrap::Recipient;
 
+use super::facts::{Certificate, TeamFacts, known_pin};
+use super::service_facts::{FactsCache, ServiceFacts};
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::HeldRestart;
@@ -138,6 +142,28 @@ impl KeyService {
         let certificate = body.certificate(record.signer, record.signer_av);
         certificate.verify(self.origin())?;
         record.verify(self.origin(), &certificate.ask)?;
+        // Judged again as advancing judges a version: the person's words vouch for the IK, never for an old ASK the
+        // account rotated away from since (0056, Rollback, Advancing).
+        let mut cache = FactsCache::default();
+        let mut facts = ServiceFacts {
+            service: self,
+            txn,
+            scope,
+            cache: &mut cache,
+        };
+        if !matches!(
+            facts.certificate(record.signer, record.signer_av).await?,
+            Some(Certificate::Usable(_))
+        ) {
+            return Err(KeysError::NotHolder.into());
+        }
+        let pin = known_pin(&mut facts, record.signer)
+            .await?
+            .filter(|pin| !pin.alert)
+            .ok_or(SyncError::NotAllowed {
+                what: "accept a restart while its signer's key change is open",
+            })?;
+        check_signed_under_newest(record.signer_av, pin.av)?;
         Ok(Some((record, certificate)))
     }
 }

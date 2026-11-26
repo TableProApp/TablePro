@@ -6,6 +6,8 @@
 
 use std::collections::HashMap;
 
+use serde_json::Value;
+
 use tablepro_keys::record_id::KeyRecordId;
 
 use super::plan::ServerView;
@@ -13,6 +15,7 @@ use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::scopes::{LineageEpoch, ScopesBody};
 use crate::api::state::{BaseRow, Row, RowRange, StateTxn, Table};
+use crate::keys::HeldObject;
 
 #[derive(Debug, Default)]
 pub(crate) struct Bases {
@@ -46,25 +49,57 @@ impl Bases {
 pub(crate) struct BaseView<'a> {
     lineages: HashMap<ScopeName, &'a [LineageEpoch]>,
     bases: &'a Bases,
+    // The fields of each key object this device holds, by scope and wire id.
+    held: HashMap<(ScopeName, String), Value>,
 }
 
 impl<'a> BaseView<'a> {
-    pub(crate) fn new(body: &'a ScopesBody, bases: &'a Bases) -> Self {
+    pub(crate) fn new(body: &'a ScopesBody, bases: &'a Bases, held: &[(ScopeName, &HeldObject)]) -> Self {
         let lineages = body
             .scopes
             .iter()
             .map(|info| (info.scope, info.epochs.as_slice()))
             .collect();
-        Self { lineages, bases }
+        let held = held
+            .iter()
+            .filter_map(|(scope, object)| {
+                let fields = serde_json::from_str(&object.fields).ok()?;
+                Some(((*scope, wire(&object.object.id)), fields))
+            })
+            .collect();
+        Self { lineages, bases, held }
+    }
+
+    // The base the server holds now at the id, the lost-write rule applied.
+    fn surviving(&self, scope: ScopeName, id: &KeyRecordId) -> Option<&BaseRow> {
+        let (base, lineage) = (self.bases.get(scope, id)?, self.lineages.get(&scope)?);
+        survives(base, lineage).then_some(base)
+    }
+
+    // Whether the server's copy is another record than the one this device holds at the id.
+    fn other_record(&self, scope: ScopeName, id: &KeyRecordId, base: &BaseRow) -> bool {
+        match (&base.fields, self.held.get(&(scope, wire(id)))) {
+            (Some(served), Some(held)) => served != held,
+            _ => false,
+        }
     }
 }
 
+fn wire(id: &KeyRecordId) -> String {
+    format!("{}\u{0}{}", id.kind().name(), id.to_wire())
+}
+
 impl ServerView for BaseView<'_> {
+    // Held only as the same record this device holds: another one at the id is no copy of it (0051, What cannot go
+    // back).
     fn holds(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
-        let (Some(base), Some(lineage)) = (self.bases.get(scope, id), self.lineages.get(&scope)) else {
-            return false;
-        };
-        survives(base, lineage)
+        self.surviving(scope, id)
+            .is_some_and(|base| !self.other_record(scope, id, base))
+    }
+
+    fn holds_another(&self, scope: ScopeName, id: &KeyRecordId) -> bool {
+        self.surviving(scope, id)
+            .is_some_and(|base| self.other_record(scope, id, base))
     }
 }
 

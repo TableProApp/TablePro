@@ -433,8 +433,12 @@ impl TeamBook {
             self.stop(&item.record_id, error, progress);
             return Ok(false);
         }
+        if !take {
+            return Ok(false);
+        }
         // A device that held a version never takes another account's restart on first use: a server could withhold its
-        // wrap and serve a version of an account it made up. It waits for the person to compare words (0064).
+        // wrap and serve a version of an account it made up. It waits for the person to compare words (0064). A
+        // restore wait meets the restart only once it cleared, so the push-back it waits for is not dropped.
         if record.start == Start::Over && record.signer != self.me {
             if let Some(row) = &mut self.row {
                 row.stop(StoppedCause::RestartHeld);
@@ -444,9 +448,6 @@ impl TeamBook {
                 version: next,
                 signer: record.signer,
             });
-            return Ok(false);
-        }
-        if !take {
             return Ok(false);
         }
         let event = match record.start {
@@ -567,6 +568,12 @@ impl TeamBook {
             // the stopped version (0056, Teams, No holder left).
             if record.start == Start::Over && account_holds(&self.origin, facts, &row.holders, self.me).await? {
                 progress.refuse(&item, KeysError::NotHolder);
+                continue;
+            }
+            // Another account's restart is taken only after the person compares its signer's words, never as a
+            // re-confirmation (0064).
+            if record.start == Start::Over && record.signer != self.me {
+                progress.hold(&item);
                 continue;
             }
             let own_wraps: Vec<Item<Wrap>> = self

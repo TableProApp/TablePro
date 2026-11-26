@@ -50,7 +50,10 @@ pub fn key_base(scope: ScopeName, epoch: EpochId, change: &Change, outcome: &Cha
     else {
         return None;
     };
-    if !change.kind.is_key() || !matches!(change.op, ChangeOp::Write { .. }) {
+    let ChangeOp::Write { fields, .. } = &change.op else {
+        return None;
+    };
+    if !change.kind.is_key() {
         return None;
     }
     Some(BaseRow {
@@ -60,7 +63,7 @@ pub fn key_base(scope: ScopeName, epoch: EpochId, change: &Change, outcome: &Cha
         revision: service.map(|stamp| stamp.revision),
         epoch: Some(epoch),
         deleted: None,
-        fields: None,
+        fields: Some(fields.clone()),
         created_ms: None,
     })
 }

@@ -40,7 +40,17 @@ impl RestoreFlows for KeyService {
             return Ok(Vec::new());
         };
         let gathered = self.gather(&mut *txn, &body).await?;
-        let view = BaseView::new(&body, &gathered.bases);
+        let held: Vec<(ScopeName, &HeldObject)> = gathered
+            .personal
+            .iter()
+            .map(|object| (ScopeName::Personal, object))
+            .chain(gathered.teams.iter().flat_map(|team| {
+                team.objects
+                    .iter()
+                    .map(move |object| (ScopeName::Team(team.team), object))
+            }))
+            .collect();
+        let view = BaseView::new(&body, &gathered.bases, &held);
         let plan = plan::plan(&Inputs {
             account: self.account(),
             key_device: own.device.key_device,
@@ -127,6 +137,26 @@ impl RestoreFlows for KeyService {
                     scope: ScopeName::Team(team),
                 })
             }
+            Refusal::TeamWaits(team) => {
+                let scope = ScopeName::Team(team);
+                let stopped = match version_row(&mut *txn, scope, KeyPurpose::Team).await? {
+                    Some(mut row) if row.state == KeyVersionState::Ok => {
+                        row.stop(StoppedCause::RestoreWait);
+                        txn.put(Row::KeyVersion(row)).await?;
+                        true
+                    }
+                    _ => false,
+                };
+                txn.commit().await?;
+                if stopped {
+                    self.hooks().stop_scope(scope, StoppedCause::RestoreWait);
+                    self.raise_notice(KeyNoticeKind::ScopeStopped {
+                        scope,
+                        cause: StoppedCause::RestoreWait,
+                    })?;
+                }
+                Ok(PushBackVerdict::Wait { scope })
+            }
             Refusal::Nothing => Ok(PushBackVerdict::Continue),
         }
     }
@@ -161,6 +191,7 @@ struct Effects {
 enum Refusal {
     AccountEnds,
     TeamEnds(TeamId),
+    TeamWaits(TeamId),
     Nothing,
 }
 
@@ -173,10 +204,9 @@ fn refusal(set: &KeyChangeSet, outcomes: &[ChangeOutcome]) -> Refusal {
             _ => None,
         })
         .collect();
-    if !causes.is_empty() && causes.iter().all(|code| **code == RejectedCode::KeyDependency) {
-        return Refusal::Nothing;
-    }
+    let only_dependency = !causes.is_empty() && causes.iter().all(|code| **code == RejectedCode::KeyDependency);
     match set.scope {
+        ScopeName::Personal | ScopeName::History if only_dependency => Refusal::Nothing,
         ScopeName::Personal | ScopeName::History => Refusal::AccountEnds,
         ScopeName::Team(team) => {
             let alone = matches!(
@@ -185,6 +215,9 @@ fn refusal(set: &KeyChangeSet, outcomes: &[ChangeOutcome]) -> Refusal {
             );
             if alone {
                 Refusal::Nothing
+            } else if only_dependency {
+                // The versions above it need this one, so the team's push-back waits for what it depends on.
+                Refusal::TeamWaits(team)
             } else {
                 Refusal::TeamEnds(team)
             }
@@ -317,7 +350,12 @@ impl KeyService {
                     txn.put(Row::KeyVersion(row)).await?;
                     effects.stopped.push(*team);
                 }
-                TeamVerdict::Done if stop::kind(&row) == Some(StoppedCause::RestoreWait) => {
+                // The wait ends once nothing of the team is left to push back: the engine runs the push-back again
+                // while the row waits, so a set cut short here goes on the next pass before anything is sealed.
+                TeamVerdict::Done
+                    if stop::kind(&row) == Some(StoppedCause::RestoreWait)
+                        && !plan.sets.iter().any(|set| set.scope == ScopeName::Team(*team)) =>
+                {
                     txn.put(Row::KeyVersion(stop::resumed(row))).await?;
                     effects.resumed.push(*team);
                 }

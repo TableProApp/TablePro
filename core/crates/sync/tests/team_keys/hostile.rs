@@ -314,6 +314,17 @@ async fn a_restart_another_account_signed_waits_for_the_person_to_compare_its_si
     assert_eq!((shown.version, shown.signer), (v(3), s.m.account));
     assert_eq!(shown.words.words.len(), 6);
 
+    // The restart came because no holder is left among the owners and admins; a roster read saying so ends nothing.
+    for account in [s.t.owner.account, s.a_before.account] {
+        s.t.server.set_role(s.t.team, account, Some(Role::Member));
+    }
+    s.t.server.set_role(s.t.team, s.m.account, Some(Role::Owner));
+    team_pass(&s.p, s.t.team).await;
+    assert_eq!(
+        s.p.service.team_keys(s.t.team).await.unwrap().stopped_cause,
+        Some(StoppedCause::RestartHeld)
+    );
+
     let other = tablepro_keys::keys::Ed25519Seed::generate().unwrap().public().unwrap();
     let wrong = s.p.service.accept_restart(s.t.team, other).await;
     assert_eq!(wrong.unwrap_err().code(), "sync.not_allowed");

@@ -1,12 +1,17 @@
 // After a restore the engine pushes back what the device's own account signed before anything else goes up, judged by
 // the bases its pulls and pushes kept (0051, After a restore; 0054, A pass).
 
+use secrecy::SecretString;
+use serde_json::json;
 use tablepro_keys::encoding::{KeyPurpose, TeamId, Version};
+use tablepro_keys::envelope::{EnvelopeId, ParentKind, SecretKind};
 use tablepro_keys::record_id::KeyRecordId;
-use tablepro_sync::api::ids::ScopeName;
+use tablepro_sync::api::control::{HeldRecordReason, PassReason, SyncControl};
+use tablepro_sync::api::ids::{IdempotencyKey, KindName, ScopeName};
 use tablepro_sync::api::key_flows::{KeyState, TeamFlows};
 use tablepro_sync::api::scopes::Role;
-use tablepro_sync::api::state::{KeyVersionRow, KeyVersionState, Row, RowKey, StoppedCause};
+use tablepro_sync::api::state::{HeldReason, KeyVersionRow, KeyVersionState, Row, RowKey, StoppedCause};
+use tablepro_sync::api::transport::{Change, ChangeOp, ChangeOutcome, Proof, PushBatch, Transport};
 use tablepro_sync_testing::FakeServer;
 use tablepro_sync_testing::service::ScopeOwner;
 
@@ -117,4 +122,57 @@ async fn a_member_waits_for_the_owner_s_lost_version_and_resumes_once_the_owner_
     })
     .to_wire();
     assert!(server.stored(ScopeOwner::Team(team), "key.version", &version).is_some());
+}
+
+// A member the owner has not confirmed yet holds no team key: the team's envelopes wait for it, and the pass, with
+// every other scope, goes on.
+#[tokio::test]
+async fn a_member_not_yet_confirmed_keeps_the_team_s_envelopes_waiting_and_syncs_on() {
+    let server = FakeServer::new();
+    let (owner_id, member_id) = (new_account(), new_account());
+    let team = TeamId(tablepro_keys::encoding::random_uuid().unwrap());
+    server.add_team(team, &[(owner_id, Role::Owner), (member_id, Role::Member)]);
+    let owner = Device::new(&server, owner_id, "dev_owner").await;
+    owner.genesis().await;
+    owner.pass().await;
+    owner.keys.create_team_keys(team).await.unwrap();
+    let parent = tablepro_keys::encoding::uuid_to_wire(tablepro_keys::encoding::random_uuid().unwrap()).to_lowercase();
+    let envelope = EnvelopeId::new(ParentKind::LibraryConnection, &parent, SecretKind::Password).unwrap();
+    let sealed = owner
+        .keys
+        .seal_team_envelope(team, envelope.clone(), SecretString::from("s3cret"), json!({}))
+        .await
+        .unwrap();
+    let pushed = server
+        .client(owner_id, owner.row.clone())
+        .push(PushBatch {
+            scope: ScopeName::Team(team),
+            epoch: Some(server.epoch()),
+            idempotency_key: Some(IdempotencyKey(uuid::Uuid::new_v4().to_string())),
+            changes: vec![Change {
+                kind: KindName::parse("secret_envelope").unwrap(),
+                record_id: envelope.to_wire(),
+                base: None,
+                op: ChangeOp::Write {
+                    fields: sealed.clone(),
+                    patch: sealed,
+                },
+            }],
+            proof: Proof::Dpop(owner.keys.dpop_key().await.unwrap()),
+        })
+        .await
+        .unwrap();
+    let member = Device::new(&server, member_id, "dev_member").await;
+    member.genesis().await;
+
+    let pass = member.sync.run_pass(PassReason::Person).await;
+
+    assert!(
+        matches!(pushed.outcomes[0], ChangeOutcome::Applied { .. }),
+        "{pushed:?}"
+    );
+    assert!(pass.is_ok(), "{pass:?}");
+    let held = member.sync.held_records().await.unwrap();
+    assert!(held.iter().any(|held| held.key.record_id == envelope.to_wire()
+        && held.reason == HeldRecordReason::Held(HeldReason::AwaitingDeviceApproval)));
 }

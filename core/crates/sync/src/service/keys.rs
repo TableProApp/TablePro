@@ -4,21 +4,29 @@
 
 use std::collections::HashSet;
 
-use tablepro_keys::encoding::Version;
+use tablepro_keys::encoding::{KeyPurpose, Version};
 use tablepro_keys::envelope::EnvelopeId;
 use tablepro_records::Kind;
 use uuid::Uuid;
 
-use super::{PassCtx, ServiceSync, begin};
+use super::{PassCtx, ServiceSync, begin, scope_refusal};
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{
     ArrivalOrder, CaughtUp, KeyApplied, KeyArrival, KeyHooks, LockCause, PushBackVerdict, Roster, StopAction,
 };
 use crate::api::scopes::ScopeInfo;
-use crate::api::state::{PendingFlow, Row, RowKey, RowRange, StoppedCause, Table};
+use crate::api::state::{KeyVersionState, PendingFlow, Row, RowKey, RowRange, StoppedCause, Table};
 use crate::api::transport::{Change, ChangeOutcome, Proof, PulledRecord, PushBatch};
 use crate::engine::key_base;
+
+// What the keys made of a pulled envelope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Opens {
+    Taken,
+    Refused,
+    Waits,
+}
 
 // Which flow reads a key kind: the account's own objects, an approval session's, a reset's, or a team's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,19 +95,21 @@ impl ServiceSync {
     }
 
     // An envelope is taken only under the version in force at its place in the order, and never below the copy held
-    // (0056, Rollback). One the keys refuse is held by id, and nothing takes it later under a looser order; any other
-    // failure, as a locked device store, ends the pass before its page commits, so the page is read again.
+    // (0056, Rollback). One the keys refuse is held by id, and nothing takes it later under a looser order. One they
+    // cannot judge yet, as a team this device holds no key of or key tables still being rebuilt, waits for a snapshot
+    // once they can. Any other failure, as a locked device store, ends the pass before its page commits, so the page
+    // is read again.
     pub(super) async fn envelope_opens(
         &self,
         scope: ScopeName,
         record: &PulledRecord,
         in_force: Option<Version>,
-    ) -> Result<bool, SyncError> {
+    ) -> Result<Opens, SyncError> {
         let Some(fields) = record.fields.clone().filter(|_| record.deleted.is_none()) else {
-            return Ok(true);
+            return Ok(Opens::Taken);
         };
         let Ok(envelope) = EnvelopeId::parse(&record.record_id) else {
-            return Ok(false);
+            return Ok(Opens::Refused);
         };
         self.stop.check()?;
         let opened = match scope {
@@ -109,13 +119,31 @@ impl ServiceSync {
             }
         };
         match opened {
-            Ok(_) => Ok(true),
+            Ok(_) => Ok(Opens::Taken),
             Err(SyncError::Keys(error)) => {
                 tracing::debug!(code = error.code(), "an envelope was not taken");
-                Ok(false)
+                Ok(Opens::Refused)
+            }
+            Err(error @ (SyncError::NotAllowed { .. } | SyncError::Locked { .. })) => {
+                tracing::debug!(code = error.code(), "an envelope waits until the keys can judge it");
+                Ok(Opens::Waits)
             }
             Err(error) => Err(error),
         }
+    }
+
+    // Whether this device holds the scope's key in force, so envelopes kept waiting can be read again.
+    pub(super) async fn holds_scope_key(&self, scope: ScopeName) -> Result<bool, SyncError> {
+        let purpose = match scope {
+            ScopeName::Team(_) => KeyPurpose::Team,
+            ScopeName::Personal => KeyPurpose::Personal,
+            ScopeName::History => return Ok(true),
+        };
+        let row = begin(&self.state)
+            .await?
+            .get(&RowKey::KeyVersion(scope, purpose))
+            .await?;
+        Ok(matches!(row, Some(Row::KeyVersion(row)) if row.state == KeyVersionState::Ok))
     }
 
     // On a new epoch, before any other record: the key objects this account signed that the server lacks, one change
@@ -129,8 +157,18 @@ impl ServiceSync {
         if !due {
             return self.adopt_epoch(ctx).await;
         }
+        // What the key flows cannot judge, as an account certificate this device never held, goes back from another
+        // device of the account; the rest of the pass goes on.
+        let sets = match self.keys.push_back(epoch).await {
+            Ok(sets) => sets,
+            Err(SyncError::NotAllowed { what }) => {
+                tracing::debug!(what, "nothing goes back from this device");
+                Vec::new()
+            }
+            Err(error) => return Err(error),
+        };
         let mut closed: HashSet<ScopeName> = HashSet::new();
-        for set in self.keys.push_back(epoch).await? {
+        for set in sets {
             if closed.contains(&set.scope) {
                 continue;
             }
@@ -274,13 +312,19 @@ impl ServiceSync {
             let Some(key) = self.proofs.dpop_key().await? else {
                 return Ok(());
             };
-            match action {
-                StopAction::Report { team, version } => {
-                    self.transport.report_stopped(team, version, key).await?;
+            let sent = match action {
+                StopAction::Report { team, version } => self.transport.report_stopped(team, version, key).await,
+                StopAction::Withdraw { team } => self.transport.withdraw_stopped(team, key).await,
+            };
+            match sent {
+                Ok(()) => self.keys.stop_action_sent(action).await?,
+                // A team this device left, or a call its row may not make now, refuses the action alone; it stays
+                // queued and the rest of the pass goes on.
+                Err(error) if scope_refusal(&SyncError::Transport(error.clone())).is_some() => {
+                    tracing::debug!(code = error.code(), "a stop action waits");
                 }
-                StopAction::Withdraw { team } => self.transport.withdraw_stopped(team, key).await?,
+                Err(error) => return Err(error.into()),
             }
-            self.keys.stop_action_sent(action).await?;
         }
         Ok(())
     }

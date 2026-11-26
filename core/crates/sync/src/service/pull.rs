@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tablepro_keys::encoding::Version;
 use tablepro_records::Kind;
 
-use super::keys::{Family, family};
+use super::keys::{Family, Opens, family};
 use super::refill::Cut;
 use super::scopes::refresh;
 use super::{PassCtx, ServiceSync, begin};
@@ -139,7 +139,8 @@ impl ServiceSync {
         let can_open = ctx.keys_ready;
         // Envelopes kept while the device could not check them are read again in a snapshot once it can, which
         // serves each one's current copy after the key objects (0051, Pull).
-        let waiting = can_open && !self.waiting_envelopes(scope).await?.is_empty();
+        let waiting =
+            can_open && self.holds_scope_key(scope).await? && !self.waiting_envelopes(scope).await?.is_empty();
         // A build that reads a kind the last pull did not fetches again what it held for it (0054, Rules).
         let mut reading: Vec<KindName> = adapters.iter().map(|adapter| KindName::of(adapter.kind())).collect();
         reading.sort();
@@ -258,7 +259,8 @@ impl ServiceSync {
             }
             if let Some(next) = family(pull.scope, &record.kind) {
                 // What the server holds now, which a push-back after a restore judges by (0051, After a restore).
-                writes.bases.push(base_of(&key, true, &record));
+                // With its fields, so a different record at the id never reads as this device's copy.
+                writes.bases.push(base_of(&key, false, &record));
                 if pull.snapshot {
                     pull.keep(record)?;
                 } else {
@@ -283,13 +285,21 @@ impl ServiceSync {
                     continue;
                 }
                 // In revision order an envelope is only ever checked under a version, never under a snapshot's rule.
-                let taken = match pull.in_force {
+                let opens = match pull.in_force {
                     Some(in_force) => self.envelope_opens(pull.scope, &record, Some(in_force)).await?,
-                    None => record.deleted.is_some(),
+                    None if record.deleted.is_some() => Opens::Taken,
+                    None => Opens::Refused,
                 };
-                if !taken {
-                    writes.held.push(held(HeldReason::Unreadable, key, record));
-                    continue;
+                match opens {
+                    Opens::Taken => {}
+                    Opens::Refused => {
+                        writes.held.push(held(HeldReason::Unreadable, key, record));
+                        continue;
+                    }
+                    Opens::Waits => {
+                        writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
+                        continue;
+                    }
                 }
             }
             to_settle.push(record);
@@ -305,9 +315,9 @@ impl ServiceSync {
         };
         self.stop.check()?;
         let applied = self.arrive(pull.scope, family, records, ArrivalOrder::InOrder).await?;
-        if applied.in_force.is_some() {
-            pull.in_force = applied.in_force;
-        }
+        // The flows judge a run from the position stored at the last commit, so a later run of the same page can
+        // answer an older version; the position only moves forward (0056, Rollback, In order).
+        pull.in_force = pull.in_force.max(applied.in_force);
         Ok(())
     }
 
@@ -435,16 +445,18 @@ impl ServiceSync {
             pull.in_force = self.arrive_set(pull.scope, keys).await?;
         }
         // Versions only move forward: a snapshot that served no key object leaves the one in force as it was.
-        pull.in_force = pull.in_force.or(row.key_version);
+        pull.in_force = pull.in_force.max(row.key_version);
         let mut opened = Vec::new();
         for record in std::mem::take(&mut pull.held_envelopes) {
             let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
             if !pull.can_open {
                 writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
-            } else if self.envelope_opens(pull.scope, &record, None).await? {
-                opened.push(record);
-            } else {
-                writes.held.push(held(HeldReason::Unreadable, key, record));
+                continue;
+            }
+            match self.envelope_opens(pull.scope, &record, None).await? {
+                Opens::Taken => opened.push(record),
+                Opens::Refused => writes.held.push(held(HeldReason::Unreadable, key, record)),
+                Opens::Waits => writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record)),
             }
         }
         self.settle_all(pull, adapters, opened, &mut writes).await?;

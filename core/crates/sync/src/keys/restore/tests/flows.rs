@@ -12,7 +12,7 @@ use crate::api::ids::ScopeName;
 use crate::api::key_flows::{KeyChangeSet, KeyNoticeKind, LockCause, PushBackVerdict, RestoreFlows};
 use crate::api::state::{KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, ScopeRow, StoppedCause};
 use crate::api::transport::{AppliedStamp, ChangeOp, ChangeOutcome, RejectedCode};
-use crate::keys::restore::plan::{Plan, TeamVerdict};
+use crate::keys::restore::plan::{Plan, ServerView, TeamVerdict};
 use crate::keys::restore::push_back_change;
 use crate::keys::{HeldObject, create_change};
 
@@ -186,9 +186,10 @@ async fn a_refused_key_member_alone_ends_nothing() {
     );
 }
 
-// 0064: a wrap or version naming a recipient whose `key.member` the server lacks can still go back once it is there.
+// 0064: a version naming a recipient whose `key.member` the server lacks can still go back once it is there, so the
+// team waits rather than ends, and the versions above it wait with it.
 #[tokio::test]
-async fn a_set_refused_only_for_a_missing_certificate_ends_nothing() {
+async fn a_version_set_refused_only_for_a_missing_certificate_waits_and_ends_nothing() {
     let world = World::load();
     let team = ScopeName::Team(world.team);
     let rig = Rig::new(&world.origin, world.account("A"));
@@ -205,10 +206,11 @@ async fn a_set_refused_only_for_a_missing_certificate_ends_nothing() {
         .await
         .unwrap();
 
-    assert_eq!(verdict, PushBackVerdict::Continue);
+    assert_eq!(verdict, PushBackVerdict::Wait { scope: team });
+    let waiting = version_row(&rig, team, KeyPurpose::Team).await;
     assert_eq!(
-        version_row(&rig, team, KeyPurpose::Team).await.state,
-        KeyVersionState::Ok
+        (waiting.state, waiting.stopped_cause),
+        (KeyVersionState::Stopped, Some(StoppedCause::RestoreWait))
     );
 }
 
@@ -539,4 +541,53 @@ async fn the_roster_counts_only_once_the_team_s_pull_is_caught_up() {
     assert_eq!(flag_only.teams[0].roster, None);
     assert_eq!(read_behind.teams[0].roster, None);
     assert_eq!(caught_up.teams[0].roster.as_ref().map(Vec::len), Some(1));
+}
+
+// A different record at an id is no copy of this device's: the push-back does not count it as held, and a version the
+// server holds as another record ends the team (0051, What cannot go back).
+#[tokio::test]
+async fn another_record_at_an_id_is_not_this_device_s_copy() {
+    let world = World::load();
+    let team = ScopeName::Team(world.team);
+    let rig = Rig::new(&world.origin, world.account("A"));
+    let ours = world.team_version(7, "O", 2, Start::Next);
+    let theirs = world.team_version(7, "M", 2, Start::Next);
+    let base = |held: &HeldObject| {
+        Row::Base(crate::api::state::BaseRow {
+            key: crate::api::ids::RecordKey::new(
+                team,
+                crate::api::ids::KindName::parse(held.object.id.kind().name()).unwrap(),
+                held.object.id.to_wire(),
+            ),
+            tag: crate::api::ids::ChangeTag::Service("tag".to_owned()),
+            version: Some(1),
+            revision: Some(1),
+            epoch: Some(epoch(2)),
+            deleted: None,
+            fields: serde_json::from_str(&held.fields).ok(),
+            created_ms: None,
+        })
+    };
+    let body = super::fakes::scopes(epoch(2), vec![info(team)]);
+    let view = |rows: Row| {
+        let rig = &rig;
+        async move {
+            rig.put([rows]).await;
+            let mut bases = crate::keys::restore::server::Bases::default();
+            let mut txn = rig.service.begin().await.unwrap();
+            bases.load(&mut *txn, team).await.unwrap();
+            bases
+        }
+    };
+    let id = ours.object.id;
+
+    let same = view(base(&ours)).await;
+    let same_view = crate::keys::restore::server::BaseView::new(&body, &same, &[(team, &ours)]);
+    let held_same = (same_view.holds(team, &id), same_view.holds_another(team, &id));
+    let other = view(base(&theirs)).await;
+    let other_view = crate::keys::restore::server::BaseView::new(&body, &other, &[(team, &ours)]);
+
+    assert_eq!(held_same, (true, false));
+    assert!(!other_view.holds(team, &id));
+    assert!(other_view.holds_another(team, &id));
 }

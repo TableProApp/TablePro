@@ -396,7 +396,9 @@ impl KeyService {
         let mut txn = self.begin().await?;
         let book = self.load_team(&mut *txn, team).await?;
         let Some(row) = book.row().cloned() else { return Ok(()) };
-        if row.state != KeyVersionState::Stopped {
+        // Only a catch-up stop waits on an owner's or admin's re-confirmation; a restore wait or a held restart
+        // clears by its own event, whoever is on the roster (0062, 0064).
+        if row.state != KeyVersionState::Stopped || row.stopped_cause != Some(StoppedCause::CatchUp) {
             return Ok(());
         }
         let mut cache = FactsCache::default();
@@ -407,9 +409,6 @@ impl KeyService {
             cache: &mut cache,
         };
         if roster::someone_can_reconfirm(self.origin(), &mut facts, roster, &row.holders).await? {
-            return Ok(());
-        }
-        if row.stopped_cause == Some(StoppedCause::RestoreWait) {
             return Ok(());
         }
         let mut ended = row.clone();
