@@ -356,7 +356,9 @@ impl ServiceSync {
     // Records held because their store refused the value or its copy did not read go through the pull again from the
     // copy each row keeps, so a store or a build that now takes them does, with no change on the server and after a
     // restart too (0054, Rules for both providers). The rows are the newest copy the server served, and their bases
-    // never moved past what the store holds. A record held again as it was writes nothing.
+    // never moved past what the store holds. A record held again as it was writes nothing. Envelopes and history
+    // entries are judged at their place in the server's order, which a row does not keep, so they wait for the server
+    // to serve them again.
     async fn retry_held(
         &self,
         ctx: &mut PassCtx,
@@ -375,11 +377,10 @@ impl ServiceSync {
                         && (row.record.fields_json.is_some()
                             || row.record.fields.is_some()
                             || row.record.deleted.is_some())
-                        && row
-                            .record
-                            .kind
-                            .known()
-                            .is_some_and(|kind| adapters.iter().any(|adapter| adapter.kind() == kind)) =>
+                        && row.record.kind.known().is_some_and(|kind| {
+                            !matches!(kind, Kind::SecretEnvelope | Kind::HistoryEntry)
+                                && adapters.iter().any(|adapter| adapter.kind() == kind)
+                        }) =>
                 {
                     Some(row)
                 }
@@ -816,7 +817,11 @@ impl ServiceSync {
                 let applied = apply_keeping(adapter.as_ref(), scope, changes, || self.stop.check()).await?;
                 for record in applied.refused {
                     let key = RecordKey::new(scope, record.kind.clone(), record.record_id.clone());
-                    let record = pull.sealed.get(&key).cloned().unwrap_or(record);
+                    // Only the sealed copy of this very record stands in for it; a tombstone carries no plaintext.
+                    let record = match pull.sealed.get(&key) {
+                        Some(sealed) if record.deleted.is_none() && sealed.tag == record.tag => sealed.clone(),
+                        _ => record,
+                    };
                     writes.refuse(key, record);
                 }
             }
