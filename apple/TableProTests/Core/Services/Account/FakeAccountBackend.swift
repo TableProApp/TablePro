@@ -55,6 +55,7 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
     private var bearerFailure: AccountError?
     private var allowsTableProRequestsValue = true
     private var policies: [ManagedPolicyArg] = []
+    private var stepUps: [[String]] = []
     // Runs as the core is told its token was refused, as if the person changed server at that moment.
     var onTokenRejected: (@Sendable (FakeAccountBackend) -> Void)?
 
@@ -208,6 +209,23 @@ final class FakeAccountBackend: AccountBackend, @unchecked Sendable {
             .queryItems?.contains(where: { $0.name == "code" }) == true
         else { throw .invalidResponse }
         try await adopt(await fakeServer.entitlementAnswer(), refreshing: false)
+    }
+
+    // As the core: the sign-in page with the challenge's values, and the same account's session after it.
+    func stepUp(acrValues: [String], maxAgeSecs: UInt64?, using authenticator: any WebAuthenticating) async throws(AccountError) {
+        guard status().state == .signedIn else { throw .signedOut }
+        var query = URLComponents(string: "\(server().accountOrigin.absoluteString)/oauth/authorize")!
+        query.queryItems = [URLQueryItem(name: "acr_values", value: acrValues.joined(separator: " "))]
+            + (maxAgeSecs.map { [URLQueryItem(name: "max_age", value: String($0))] } ?? [])
+        let callback = try await authenticator.authenticate(url: query.url!, callbackScheme: "app.tablepro")
+        guard URLComponents(url: callback, resolvingAgainstBaseURL: false)?
+            .queryItems?.contains(where: { $0.name == "code" }) == true
+        else { throw .invalidResponse }
+        locked { stepUps.append(acrValues) }
+    }
+
+    var stepUpChallenges: [[String]] {
+        locked { stepUps }
     }
 
     func signOut() async throws(AccountError) {
