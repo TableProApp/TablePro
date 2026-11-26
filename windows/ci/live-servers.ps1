@@ -84,10 +84,12 @@ switch ($Server) {
         $password = New-Password
         $env:PGPASSWORD = 'root'
         # template0 with UTF8: the cluster's own encoding on this image is not UTF8, and the value corpus is.
+        # lc_monetary C: the image's locale prints a negative money value in accounting parentheses, the corpus with a sign.
         & $psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 `
             -c "CREATE ROLE tablepro LOGIN PASSWORD '$password'" `
             -c 'CREATE DATABASE tablepro OWNER tablepro TEMPLATE template0 ENCODING ''UTF8'' LC_COLLATE ''C'' LC_CTYPE ''C''' `
-            -c "ALTER DATABASE tablepro SET timezone TO 'UTC'"
+            -c "ALTER DATABASE tablepro SET timezone TO 'UTC'" `
+            -c "ALTER DATABASE tablepro SET lc_monetary TO 'C'"
         if ($LASTEXITCODE -ne 0) { throw 'Creating the PostgreSQL test database failed.' }
         # The public schema's CREATE is not the database owner's on PostgreSQL 15 and later.
         & $psql -h 127.0.0.1 -U postgres -d tablepro -v ON_ERROR_STOP=1 -c 'GRANT ALL ON SCHEMA public TO tablepro'
