@@ -193,6 +193,13 @@ impl MemoryAdapter {
         self.file.advance();
     }
 
+    // A copy the store still holds and can no longer read, as one a newer build rewrote.
+    pub fn make_unreadable(&self, id: &str) {
+        let mut held = lock(&self.held);
+        held.records.remove(id);
+        held.unreadable.push(id.to_owned());
+    }
+
     // A create-once entry the person deleted: a tombstone the store keeps until it is pushed.
     pub fn delete_entry(&self, id: &str) {
         let mut held = lock(&self.held);

@@ -1317,3 +1317,123 @@ async fn a_pinned_device_whose_recovery_lost_drops_what_r_opened_on_its_next_pul
     assert!(!b.store.inner.holds(&opened));
     assert!(b.get(rotation_row(3)).await.is_none());
 }
+
+// After `create_only` the server serves a wrap of the version in force to the account's new key, its target right
+// and its signature made up. Only a wrap that verifies ends the step: the team is rotated again.
+#[tokio::test]
+async fn a_wrap_to_the_new_account_key_that_does_not_verify_leaves_the_team_rotation_due() {
+    use tablepro_keys::body::{KeyBody, KeyObject, WrapBody};
+    use tablepro_keys::keys::{AccountKeys, ScopeKey};
+    use tablepro_keys::wrap::{Wrap, Wrapper, scope_key_target};
+    use tablepro_sync::api::ids::ScopeName;
+    use tablepro_sync::api::key_flows::{ArrivalOrder, KeyArrival};
+    use tablepro_sync::api::scopes::Role;
+    let server = FakeServer::new();
+    let (account, admin) = (new_account(), new_account());
+    let team = tablepro_keys::encoding::TeamId(tablepro_keys::encoding::random_uuid().unwrap());
+    server.add_team(team, &[(account, Role::Owner), (admin, Role::Admin)]);
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    crate::harness::team_pass(&a, team).await;
+    a.service.create_team_keys(team).await.unwrap();
+    let c = Device::new(&server, admin, "dev_c").await;
+    c.genesis().await;
+    crate::harness::team_pass(&c, team).await;
+    crate::harness::team_pass(&a, team).await;
+    a.service.confirm_member(team, admin).await.unwrap();
+    crate::harness::team_pass(&c, team).await;
+    c.service.rotate_team(team, Vec::new()).await.unwrap();
+    rotate_keeping_only_self(&a, &r).await;
+    server.set_rotation_due(team, false);
+    crate::harness::team_pass(&a, team).await;
+    let target = scope_key_target(
+        KeyRef {
+            owner: team.0,
+            purpose: KeyPurpose::Team,
+            version: crate::harness::v(2),
+        },
+        account,
+        crate::harness::v(2),
+    );
+    let made_up = AccountKeys::generate().unwrap();
+    let wrap = Wrap::seal_scope_key(
+        &crate::harness::origin(),
+        target,
+        &made_up.public().unwrap().aek,
+        &ScopeKey::generate().unwrap(),
+        Wrapper {
+            account: admin,
+            av: crate::harness::v(1),
+            key_device: key_device(&c).await,
+        },
+        &made_up.ask,
+    )
+    .unwrap();
+    let forged = KeyObject {
+        id: KeyRecordId::Wrap(target),
+        body: KeyBody::Wrap(WrapBody::of(&wrap)),
+    };
+    a.service
+        .apply_team_objects(KeyArrival {
+            scope: ScopeName::Team(team),
+            records: vec![crate::harness::served(&forged)],
+            order: ArrivalOrder::InOrder,
+            in_force: None,
+        })
+        .await
+        .unwrap();
+
+    a.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(stored_in_team(&server, team, "key.version", &team_version(team, 3)));
+}
+
+// Two resumes of one flow run at once, as the engine's pass and the app's call can, taking turns at the serial lock
+// from their first step: the team rotates once.
+#[tokio::test]
+async fn two_resumes_at_once_rotate_a_team_once() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let team = owned_team(&a).await;
+    a.wire
+        .refuse_push_after(2, tablepro_sync::api::transport::RejectedCode::BadStatement);
+    rotate_keeping_only_self(&a, &r).await;
+    assert!(!stored_in_team(&server, team, "key.version", &team_version(team, 2)));
+    a.yield_next_begin();
+
+    let (first, second) = tokio::join!(
+        a.service.resume_rotation(crate::harness::v(2)),
+        a.service.resume_rotation(crate::harness::v(2))
+    );
+
+    first.unwrap();
+    second.unwrap();
+    assert!(stored_in_team(&server, team, "key.version", &team_version(team, 2)));
+    assert!(!stored_in_team(&server, team, "key.version", &team_version(team, 3)));
+}
+
+// A removal cut off at any commit before its candidates land: the resume finds the flow that named its new account
+// keys and erases them, so none outlives the rotation.
+#[tokio::test]
+async fn a_removal_cut_off_before_its_candidates_leaves_no_account_keys_on_resume() {
+    for landing in [0, 1] {
+        let server = FakeServer::new();
+        let account = new_account();
+        let a = Device::new(&server, account, "dev_a").await;
+        let r = a.genesis().await;
+        let review = a.service.begin_removal(r.clone(), Vec::new()).await.unwrap();
+        a.fail_commit_after(landing);
+
+        a.service
+            .finish_removal(review.review, Vec::new(), Vec::new())
+            .await
+            .unwrap_err();
+        a.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+        assert!(!a.store.inner.holds(&account_keys(account, 2)), "landing {landing}");
+        assert!(a.get(rotation_row(2)).await.is_none(), "landing {landing}");
+        assert_eq!(a.av().await, 1, "landing {landing}");
+    }
+}

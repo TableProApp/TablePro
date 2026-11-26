@@ -269,6 +269,45 @@ impl TeamBook {
         version: Version,
         facts: &mut dyn TeamFacts,
     ) -> Result<Option<BTreeSet<AccountId>>, SyncError> {
+        Ok(self
+            .holder_set(version, facts)
+            .await?
+            .map(|holders| holders.into_iter().map(|holder| holder.account).collect()))
+    }
+
+    // The holders of `version`, and whether one of them wrapped it to `recipient` at `av` or later. Each such wrap is
+    // checked in full: a recipient already counted under an older `av` lets its other wraps count unchecked, so the
+    // fields of a wrap the server made up would pass.
+    pub(crate) async fn holders_with_wrap_since(
+        &self,
+        version: Version,
+        recipient: AccountId,
+        av: Version,
+        facts: &mut dyn TeamFacts,
+    ) -> Result<Option<(BTreeSet<AccountId>, bool)>, SyncError> {
+        let Some(holders) = self.holder_set(version, facts).await? else {
+            return Ok(None);
+        };
+        let mut wrapped = false;
+        for wrap in self.wraps_of(version).filter(|wrap| {
+            wrap.target.recipient == Recipient::Account(recipient) && wrap.target.recipient_version >= av
+        }) {
+            if let WrapCheck::Holder(_) = wrap_check(&self.origin, facts, &holders, wrap, false).await? {
+                wrapped = true;
+                break;
+            }
+        }
+        Ok(Some((
+            holders.into_iter().map(|holder| holder.account).collect(),
+            wrapped,
+        )))
+    }
+
+    async fn holder_set(
+        &self,
+        version: Version,
+        facts: &mut dyn TeamFacts,
+    ) -> Result<Option<BTreeSet<Holder>>, SyncError> {
         let Some(item) = self.versions.get(&version) else {
             return Ok(None);
         };
@@ -300,7 +339,7 @@ impl TeamBook {
                 break;
             }
         }
-        Ok(Some(holders.into_iter().map(|holder| holder.account).collect()))
+        Ok(Some(holders))
     }
 
     // A held restart is judged again on every call, as any version on the way is: once its signer's newer `av` or

@@ -17,7 +17,7 @@ use super::carry::holds;
 use super::fields::{Rule, get, members, set};
 use crate::api::adapter::{LocalChange, RecordAdapter};
 use crate::api::control::PendingApproval;
-use crate::api::error::SyncError;
+use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{KindName, RecordKey, ScopeName};
 use crate::api::state::{
     ApprovalDecision, ApprovalRow, HeldReason, Row, RowKey, RowRange, StateStore, StateTxn, Table,
@@ -226,6 +226,13 @@ pub async fn held_members(
     Ok(held)
 }
 
+// The store's copy of a record an approval waits on.
+enum StoreCopy {
+    Held(Value),
+    Unreadable,
+    Gone,
+}
+
 // The person's side of the queue, over one state file and its stores.
 pub struct Queue<'a> {
     pub state: &'a Arc<dyn StateStore>,
@@ -242,15 +249,25 @@ impl Queue<'_> {
     }
 
     async fn stored(&self, key: &RecordKey) -> Result<Option<Value>, SyncError> {
+        Ok(match self.copy(key).await? {
+            StoreCopy::Held(fields) => Some(fields),
+            StoreCopy::Unreadable | StoreCopy::Gone => None,
+        })
+    }
+
+    async fn copy(&self, key: &RecordKey) -> Result<StoreCopy, SyncError> {
         let Some(adapter) = self.adapter(key) else {
-            return Ok(None);
+            return Ok(StoreCopy::Gone);
         };
         let records = adapter.records(key.scope).await?;
+        if records.unreadable.contains(&key.record_id) {
+            return Ok(StoreCopy::Unreadable);
+        }
         Ok(records
             .records
             .into_iter()
             .find(|record| record.record_id == key.record_id)
-            .map(|record| record.fields))
+            .map_or(StoreCopy::Gone, |record| StoreCopy::Held(record.fields)))
     }
 
     pub async fn waiting(&self) -> Result<Vec<PendingApproval>, SyncError> {
@@ -295,7 +312,17 @@ impl Queue<'_> {
         if let Some(held) = held {
             return self.decide_held(row, held.record.fields, approve).await;
         }
-        let stored = self.stored(key).await?;
+        let stored = match self.copy(key).await? {
+            StoreCopy::Held(fields) => Some(fields),
+            // A copy the store holds but cannot read is still the device's: the row waits until it reads again.
+            StoreCopy::Unreadable => {
+                return Err(AdapterError::Unreadable {
+                    detail: "the record an approval waits on".to_owned(),
+                }
+                .into());
+            }
+            StoreCopy::Gone => None,
+        };
         let adapter = self.adapter(key);
         let mut txn = self.state.begin().await?;
         match (stored, adapter) {

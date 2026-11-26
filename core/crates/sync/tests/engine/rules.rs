@@ -134,6 +134,40 @@ async fn a_rejection_keeps_the_device_s_value_and_a_newer_pulled_value_asks_agai
     assert_eq!(waiting[0].pulled, json!("SET b = 2"));
 }
 
+// The device's copy turns unreadable while a pulled value waits: no decision lands, and the row waits for the person.
+#[tokio::test]
+async fn a_decision_on_a_record_the_store_cannot_read_keeps_the_approval_waiting() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mini.connections
+        .put(&id(1), json!({"name": "Prod", "startup_commands": "SET a = 1"}));
+    mini.sync().await;
+    mac.sync().await;
+    mac.sync
+        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), true)
+        .await
+        .unwrap();
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "startup_commands": "DROP TABLE users"}));
+    mac.sync().await;
+    mini.sync().await;
+    mini.connections.make_unreadable(&id(1));
+
+    let rejected = mini
+        .sync
+        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), false)
+        .await;
+    let approved = mini
+        .sync
+        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), true)
+        .await;
+
+    assert_eq!(rejected.unwrap_err().code(), "sync.adapter.unreadable");
+    assert_eq!(approved.unwrap_err().code(), "sync.adapter.unreadable");
+    assert_eq!(mini.sync.approvals().await.unwrap().len(), 1);
+}
+
 #[tokio::test]
 async fn a_value_the_device_already_holds_asks_nothing_on_its_first_pass() {
     let server = FakeServer::new();
