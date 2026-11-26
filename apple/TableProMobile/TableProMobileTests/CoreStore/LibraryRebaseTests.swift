@@ -33,6 +33,7 @@ private struct Fragile: Identifiable, Equatable, Codable {
 }
 
 // A write made from a copy a pass has since moved goes on top of what the pass wrote.
+@MainActor
 struct LibraryRebaseTests {
     private let base = [Item(id: 1, name: "a"), Item(id: 2, name: "b"), Item(id: 3, name: "c")]
 
