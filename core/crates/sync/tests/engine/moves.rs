@@ -280,6 +280,26 @@ async fn a_move_with_icloud_forbidden_merges_the_unsent_icloud_edit_without_an_i
     assert!(cloud.account_status().await.is_err(), "the move called CloudKit");
 }
 
+// The forced move with no iCloud call still reads this device's own deletion: a record its CloudKit base names that
+// its store no longer holds is deleted on the service, unless its content changed there since the first mover.
+#[tokio::test]
+async fn a_move_with_icloud_forbidden_takes_the_device_s_own_deletion_from_its_bases() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    let phone = Apple::on_icloud(&server, &cloud, "dev_phone").await;
+    mac.put(1, carried(1, "Prod", 1));
+    mac.icloud_pass().await;
+    phone.icloud_pass().await;
+    mac.mover(true).move_to_service().await.unwrap();
+    phone.device.connections.remove(&id(1));
+
+    phone.mover(true).move_to_service_without_icloud().await.unwrap();
+
+    assert_eq!(phone.get(1), None);
+    assert_eq!(live(&server, 1), None);
+}
+
 #[tokio::test]
 async fn local_only_records_stay_behind_and_the_plan_counts_them() {
     let server = FakeServer::new();

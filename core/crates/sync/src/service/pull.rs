@@ -747,8 +747,15 @@ impl ServiceSync {
         let mut settled = match (marker, stored) {
             (Some(marker), Some(_)) => settle_moved(&key, kind, &marker, mine.as_ref(), &record),
             // Gone from the zone since another device moved it: deleted on iCloud, unless its content changed here
-            // since (0054, Deletions made on a device still on iCloud).
-            (Some(marker), None) if !awaiting && pull.arrival.as_deref().is_some_and(|arrival| arrival.gone(&key)) => {
+            // since (0054, Deletions made on a device still on iCloud). One this device's CloudKit base names that its
+            // store no longer holds is this device's own deletion, which a move with no zone listing still reads.
+            (Some(marker), None)
+                if !awaiting
+                    && pull
+                        .arrival
+                        .as_deref()
+                        .is_some_and(|arrival| arrival.gone(&key) || arrival.deleted_here(&key)) =>
+            {
                 settle_moved(&key, kind, &marker, None, &record)
             }
             (Some(_), None) => settle(&key, kind, judgement, None, None, &record),

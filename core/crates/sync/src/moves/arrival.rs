@@ -113,6 +113,13 @@ impl Arrival {
         }
     }
 
+    // This device's CloudKit base names the record: its store held it, so its absence there is this device's deletion.
+    pub(crate) fn deleted_here(&self, key: &RecordKey) -> bool {
+        self.icloud()
+            .zip(in_zone(key))
+            .is_some_and(|(icloud, named)| icloud.bases.contains_key(&named))
+    }
+
     // The first device that moves a record creates it on the service with the marker of the CloudKit base it moved
     // from, in the patch only, so the base this device keeps never holds it. A copy the service already holds keeps the
     // marker it has, or none, so no later mover replaces the first one's.
