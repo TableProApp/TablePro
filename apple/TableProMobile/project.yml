@@ -91,6 +91,11 @@ targets:
       - ../TablePro/Core/Services/Telemetry/PostHogTelemetryClient.swift
       # The account's adapter over the core, its Keychain host secrets and its sign-in sheet, the same in both apps.
       - ../TablePro/Core/Services/Account/Shared
+      # What the core sync engine's status and pass reasons mean, the same in both apps.
+      - ../TablePro/Core/Sync/Coordinator/SyncEngineRules.swift
+      # The core engine's CloudKit transport and the Swift engine's metadata it imports and mirrors, the same in both apps.
+      - ../TablePro/Core/Sync/Transport
+      - ../TablePro/Core/Sync/LegacyMirror
       # The ClickHouse plugin driver runs whole behind PluginBackedDriver, so every file of the plugin is compiled in.
       - path: ../Plugins/ClickHouseDriverPlugin
         excludes:
@@ -288,7 +293,6 @@ targets:
           - TableProSQLQuoting
           - TableProSQLVocabulary
           - TableProSSHTransport
-          - TableProSync
           - TableProSyncTransport
           - TableProTabularIO
           - TableProTLSClientIdentity

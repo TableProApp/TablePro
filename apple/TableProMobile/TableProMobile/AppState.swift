@@ -79,11 +79,16 @@ final class AppState {
         localDatabaseFiles.container.recordCurrentContainer()
         onboarding = OnboardingPreferences(defaults: defaults)
         libraryPreferences = ConnectionLibraryPreferences(defaults: defaults)
-        syncCoordinator = injectedSyncCoordinator ?? IOSSyncCoordinator()
-        account = injectedAccount ?? .live(configuration: onboarding.managed)
-        library = CoreLibraryStore(directory: libraryDirectory, defaults: defaults, secureStore: secureStore)
+        let account = injectedAccount ?? .live(configuration: onboarding.managed)
+        self.account = account
+        let library = CoreLibraryStore(directory: libraryDirectory, defaults: defaults, secureStore: secureStore)
+        self.library = library
+        syncCoordinator = injectedSyncCoordinator ?? Self.liveSyncCoordinator(core: library.host, account: account)
         queryHistory = QueryHistoryStorage(directory: libraryDirectory)
-        savedQueries = SavedQueryLibrary(directory: libraryDirectory, syncCoordinator: syncCoordinator)
+        savedQueries = SavedQueryLibrary(
+            directory: libraryDirectory,
+            store: CoreSavedQueryStore(host: library.host, directory: libraryDirectory, defaults: defaults)
+        )
         let driverFactory: any DriverFactory = injectedDriverFactory
             ?? IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles, secureStore: secureStore)
         self.secureStore = secureStore
@@ -111,9 +116,6 @@ final class AppState {
             }
         }
         loadPersistedData()
-        savedQueries.syncsOwner = { [weak self] id in
-            self?.syncsConnection(id) ?? true
-        }
 
         guard !TestRuntime.isActive else { return }
 
@@ -147,42 +149,46 @@ final class AppState {
 
     // Separate from init, which skips it under tests, so a test can run the wiring the app runs.
     func connectSync() {
-        syncCoordinator.onConnectionsChanged = { [weak self] merged in
-            self?.applySyncedConnections(merged) ?? false
+        syncCoordinator.onPassFinished = { [weak self] in
+            self?.reloadAfterSync()
         }
+        syncCoordinator.start()
+    }
 
-        syncCoordinator.onGroupsChanged = { [weak self] merged in
-            guard let self else { return false }
-            guard merged != self.groups || self.unsavedLibraryParts.contains(.groups) else { return true }
-            return self.persist(groups: merged, onlyIfSaved: true)
-        }
+    private static func liveSyncCoordinator(core: MobileCoreHost, account: AccountModel) -> IOSSyncCoordinator {
+        let metadata = SyncMetadataStorage(userDefaults: .standard)
+        let host = IOSSyncEngineHost.live(
+            core: core,
+            account: account,
+            metadata: metadata,
+            recordCache: SyncRecordCache(directory: IOSSyncEngineHost.recordCacheDirectory, defaults: .standard),
+            defaults: .standard,
+            isEnabled: { AppPreferences.isCloudSyncEnabled }
+        )
+        return IOSSyncCoordinator(host: host, metadata: metadata)
+    }
 
-        syncCoordinator.onTagsChanged = { [weak self] merged in
-            guard let self else { return false }
-            guard merged != self.tags || self.unsavedLibraryParts.contains(.tags) else { return true }
-            return self.persist(tags: merged, onlyIfSaved: true)
+    // A pass the engine finished may have written the stores, so each is read again when it moved. A part this device
+    // could not save waits: its next write saves it, and a reload would put back what the person changed.
+    private func reloadAfterSync() {
+        savedQueries.reloadAfterSync()
+        guard loadStatus == .ready, unsavedLibraryParts.isEmpty else { return }
+        let loaded: CoreLibraryStore.Library
+        do {
+            guard try library.changedSinceRead() else { return }
+            loaded = try library.load()
+        } catch {
+            Self.logger.error("The library did not reload after a sync pass: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            return
         }
-
-        syncCoordinator.getCurrentState = { [weak self] in
-            guard let self, self.loadStatus == .ready else { return nil }
-            return (self.connections, self.groups, self.tags)
-        }
-
-        syncCoordinator.unreadableCopies = { [weak self] in
-            self?.unreadableCopies ?? UnreadableCopies()
-        }
-
-        syncCoordinator.onUnreadableCopiesSettled = { [weak self] deleted, listed in
-            self?.removeWithNextSave(deleted, keeping: listed)
-        }
-
-        syncCoordinator.getSavedQueries = { [weak self] in
-            self?.savedQueries.syncContents
-        }
-
-        syncCoordinator.onSavedQueriesChanged = { [weak self] merged in
-            self?.savedQueries.applySynced(merged) ?? false
-        }
+        let removedIds = Set(connections.map(\.id))
+            .subtracting(loaded.connections.map(\.id))
+            .subtracting(library.unreadable.connections)
+        adopt(loaded)
+        localState.purge(removedIds)
+        sessionModels.purge(removedIds)
+        savedQueries.removeRecords(ofConnections: removedIds, tombstoning: false)
+        publishLibrary()
     }
 
     // MARK: - Sessions
@@ -287,19 +293,23 @@ final class AppState {
 
     private func loadPersistedData() {
         do {
-            let loaded = try library.load()
-            connectionsState = .loaded(loaded.connections)
-            groupsState = .loaded(loaded.groups)
-            tagsState = .loaded(loaded.tags)
-            recordConnectionStanding()
-            movePastedSSHKeysToKeychain()
-            moveMongoURISecretsToKeychain(from: loaded.connections)
+            adopt(try library.load())
         } catch {
             connectionsState = .failed(error)
             groupsState = .failed(error)
             tagsState = .failed(error)
             Self.logger.error("Library load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
+    }
+
+    // Connection-string secrets another device synced move to the Keychain here too, as a pull brings them.
+    private func adopt(_ loaded: CoreLibraryStore.Library) {
+        connectionsState = .loaded(loaded.connections)
+        groupsState = .loaded(loaded.groups)
+        tagsState = .loaded(loaded.tags)
+        recordConnectionStanding()
+        movePastedSSHKeysToKeychain()
+        moveMongoURISecretsToKeychain(from: loaded.connections)
     }
 
     private func moveMongoURISecretsToKeychain(from loaded: [DatabaseConnection]) {
@@ -569,10 +579,6 @@ final class AppState {
         savedQueries.removeRecords(ofConnections: syncedIds, tombstoning: true)
         savedQueries.removeRecords(ofConnections: Set(removed.map(\.id)).subtracting(syncedIds), tombstoning: false)
         publishLibrary()
-        for connection in removed where connection.participatesInSync {
-            syncCoordinator.markDeleted(connection.id)
-        }
-        syncCoordinator.scheduleSyncAfterChange()
     }
 
     @discardableResult
@@ -585,11 +591,6 @@ final class AppState {
         }
         persist(connections: change.connections)
         publishLibrary()
-        let syncedIds = Set(change.connections.filter(\.participatesInSync).map(\.id))
-        for id in change.changedConnectionIds where syncedIds.contains(id) {
-            syncCoordinator.markDirty(id)
-        }
-        syncCoordinator.scheduleSyncAfterChange()
         return true
     }
 
@@ -612,8 +613,6 @@ final class AppState {
         }
         guard let updated = ConnectionLibraryEditing.addingGroup(group, to: groups) else { return .invalidPlacement }
         persist(groups: updated)
-        syncCoordinator.markDirtyGroup(group.id)
-        syncCoordinator.scheduleSyncAfterChange()
         return .applied
     }
 
@@ -626,8 +625,6 @@ final class AppState {
         }
         guard result.changed else { return .unchanged }
         persist(groups: result.groups)
-        syncCoordinator.markDirtyGroup(id)
-        syncCoordinator.scheduleSyncAfterChange()
         return .applied
     }
 
@@ -636,10 +633,6 @@ final class AppState {
         let result = ConnectionLibraryEditing.reorderingGroups(orderedIds, in: groups)
         guard !result.changed.isEmpty else { return }
         persist(groups: result.groups)
-        for id in result.changed {
-            syncCoordinator.markDirtyGroup(id)
-        }
-        syncCoordinator.scheduleSyncAfterChange()
     }
 
     func deleteGroup(_ groupId: UUID) {
@@ -650,13 +643,6 @@ final class AppState {
         persist(connections: change.connections)
         publishLibrary()
 
-        for id in change.changedConnectionIds where syncsConnection(id) {
-            syncCoordinator.markDirty(id)
-        }
-        for id in change.removedGroupIds {
-            syncCoordinator.markDeletedGroup(id)
-        }
-        syncCoordinator.scheduleSyncAfterChange()
     }
 
     // MARK: - Tags
@@ -671,8 +657,6 @@ final class AppState {
         var updated = tags
         updated.append(tag)
         persist(tags: updated)
-        syncCoordinator.markDirtyTag(tag.id)
-        syncCoordinator.scheduleSyncAfterChange()
         return .applied
     }
 
@@ -682,8 +666,6 @@ final class AppState {
         guard let result = ConnectionLibraryEditing.mutatingTag(id, in: tags, mutate) else { return .missing }
         guard result.changed else { return .unchanged }
         persist(tags: result.tags)
-        syncCoordinator.markDirtyTag(id)
-        syncCoordinator.scheduleSyncAfterChange()
         return .applied
     }
 
@@ -697,11 +679,6 @@ final class AppState {
         persist(tags: change.tags)
         publishLibrary()
 
-        for id in change.changedConnectionIds where syncsConnection(id) {
-            syncCoordinator.markDirty(id)
-        }
-        syncCoordinator.markDeletedTag(change.removedTagId)
-        syncCoordinator.scheduleSyncAfterChange()
         return true
     }
 

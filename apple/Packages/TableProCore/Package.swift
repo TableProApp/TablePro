@@ -25,7 +25,6 @@ let package = Package(
         .library(name: "TableProDatabase", targets: ["TableProDatabase"]),
         .library(name: "TableProQuery", targets: ["TableProQuery"]),
         .library(name: "TableProSyncTransport", targets: ["TableProSyncTransport"]),
-        .library(name: "TableProSync", targets: ["TableProSync"]),
         .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"]),
         .library(name: "TableProKerberos", targets: ["TableProKerberos"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
@@ -148,11 +147,6 @@ let package = Package(
             name: "TableProSyncTransport",
             dependencies: [],
             path: "Sources/TableProSyncTransport"
-        ),
-        .target(
-            name: "TableProSync",
-            dependencies: ["TableProSyncTransport", "TableProModels", "TableProCoreTypes", "TableProConnectionLibrary"],
-            path: "Sources/TableProSync"
         ),
         .target(
             name: "TableProMSSQLCore",
@@ -597,7 +591,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProSyncTests",
-            dependencies: ["TableProSync", "TableProSyncTransport", "TableProModels", "TableProSSHTransport"],
+            dependencies: ["TableProSyncTransport", "TableProModels", "TableProSSHTransport"],
             path: "Tests/TableProSyncTests"
         ),
         .testTarget(

@@ -1,9 +1,7 @@
-import CloudKit
 import Foundation
 import TableProImport
 @testable import TableProMobile
 import TableProModels
-import TableProSync
 import TableProSyncTransport
 import Testing
 
@@ -193,13 +191,9 @@ struct IOSConnectionExportServiceTests {
 
     @Test("A connection synced from a Mac exports its SSL, which the Mac keeps only in its SSL settings")
     func macSyncedSSLExports() throws {
-        let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
-        let record = SyncRecordMapper.toRecord(DatabaseConnection(name: "Secure", type: .postgresql), zoneID: zoneID)
-        let fields = record.fields(ConnectionSyncField.self)
-        fields[.sslEnabled] = nil
         let macBlob = #"{"mode":"Verify Identity","caCertificatePath":"","clientCertificatePath":"","clientKeyPath":""}"#
-        fields[.sslConfigJson] = Data(macBlob.utf8) as CKRecordValue
-        let connection = try #require(SyncRecordMapper.toConnection(record))
+        let ssl = try JSONDecoder().decode(SSLConfiguration.self, from: Data(macBlob.utf8))
+        let connection = DatabaseConnection(name: "Secure", type: .postgresql, sslEnabled: false, sslConfiguration: ssl)
 
         #expect(IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: true).sslConfig?.mode == "Verify Identity")
     }

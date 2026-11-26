@@ -1,8 +1,8 @@
 import Foundation
 import TableProDatabase
+import TableProFFI
 @testable import TableProMobile
 import TableProModels
-import TableProSync
 import TableProSyncTransport
 import Testing
 
@@ -54,15 +54,21 @@ struct AppStateFixture {
         syncEnabled: Bool,
         secureStore: any SecureStore = MockSecureStore(),
         libraryPublisher: ConnectionLibraryPublisher? = nil,
-        transport: any IOSSyncTransport = UnreachableSyncTransport(),
+        engine: FakeIOSSyncEngine? = nil,
         driverFactory: (any DriverFactory)? = nil
     ) -> AppState {
+        let database = HeldCloudKitDatabase()
+        let host = IOSSyncEngineHost(transport: CloudKitCoreTransport(database: database)) { _ in
+            guard let engine else { throw CocoaError(.featureUnsupported) }
+            return engine
+        }
         let coordinator = IOSSyncCoordinator(
+            host: host,
             metadata: metadata,
-            recordCache: SyncRecordCache(directory: root.appendingPathComponent("Cache"), defaults: nil),
-            makeTransport: { transport },
             isEnabled: { syncEnabled },
+            database: database,
             notificationCenter: NotificationCenter(),
+            makeNetworkMonitor: { nil },
             pushRegistrar: .inert
         )
         return AppState(

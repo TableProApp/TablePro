@@ -2,7 +2,6 @@ import Foundation
 import TableProDatabase
 @testable import TableProMobile
 import TableProModels
-import TableProSync
 import TableProSyncTransport
 import Testing
 
