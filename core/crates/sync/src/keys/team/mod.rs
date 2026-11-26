@@ -20,10 +20,10 @@ mod write;
 use async_trait::async_trait;
 use secrecy::SecretString;
 use serde_json::Value;
+use tablepro_keys::body::KeyObject;
 use tablepro_keys::encoding::{AccountId, KeyPurpose, TeamId, Version};
 use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Public;
-use tablepro_keys::body::KeyObject;
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::scope_key::KeyRef;
 

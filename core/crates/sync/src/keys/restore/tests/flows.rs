@@ -586,7 +586,10 @@ async fn the_roster_counts_only_once_the_team_s_pull_is_caught_up() {
 
     assert_eq!(flag_only.teams[0].roster, None);
     assert_eq!(read_behind.teams[0].roster, None);
-    assert_eq!(earlier_epoch.teams[0].roster, None, "a roster of the epoch before the restore");
+    assert_eq!(
+        earlier_epoch.teams[0].roster, None,
+        "a roster of the epoch before the restore"
+    );
     assert_eq!(caught_up.teams[0].roster.as_ref().map(Vec::len), Some(1));
 }
 
