@@ -13,6 +13,7 @@ use tablepro_storage::{
 };
 use tablepro_sync::adapters::library;
 use tablepro_sync::api::RecordAdapter;
+use tablepro_sync::api::ids::ScopeName;
 use tablepro_sync::api::control::SyncControl;
 use tablepro_sync_testing::FakeServer;
 use tempfile::TempDir;
@@ -88,13 +89,6 @@ async fn take_everything(device: &Device) {
     }
 }
 
-// A connection as both devices hold it, without what each device holds for itself.
-fn shared(mut saved: SavedConnection) -> SavedConnection {
-    saved.device = Default::default();
-    saved.last_opened_at = None;
-    saved
-}
-
 async fn seed(library: &Library) -> (Uuid, Uuid) {
     let store = &library.store;
     let group = store
@@ -157,24 +151,26 @@ async fn two_devices_converge_on_every_kind_of_the_library_and_only_its_own_stat
 
     mac.sync().await;
     take_everything(&mini).await;
-    let mac_list = mac_library.store.list_blocking().unwrap();
     let mini_list = mini_library.store.list_blocking().unwrap();
-    let folders = |library: &Library| {
-        let folders = library.history.table_folders();
-        async move { folders.contents().await.unwrap() }
-    };
-    let (mac_folders, mini_folders) = (folders(&mac_library).await, folders(&mini_library).await);
 
-    assert_eq!(
-        mini_list.connections.iter().cloned().map(shared).collect::<Vec<_>>(),
-        mac_list.connections.iter().cloned().map(shared).collect::<Vec<_>>()
-    );
-    assert_eq!(mini_list.groups, mac_list.groups);
-    assert_eq!(mini_list.tags, mac_list.tags);
-    assert_eq!(mini_list.ssh_profiles, mac_list.ssh_profiles);
-    assert_eq!(mini_list.credential_profiles, mac_list.credential_profiles);
-    assert_eq!(mini_folders.folders, mac_folders.folders);
-    assert_eq!(mini_folders.items, mac_folders.items);
+    // The devices agree on every record as it goes up; a hop the store names no id or sign-in for reads back with
+    // the id and the agent the Mac gives it, which writes the same record.
+    for (mine, theirs) in mac_library.adapters().iter().zip(mini_library.adapters()) {
+        let read = |adapter: &Arc<dyn RecordAdapter>| {
+            let adapter = Arc::clone(adapter);
+            async move {
+                let mut records = adapter.records(ScopeName::Personal).await.unwrap().records;
+                records.sort_by(|left, right| left.record_id.cmp(&right.record_id));
+                records
+                    .into_iter()
+                    .map(|record| (record.record_id, record.fields))
+                    .collect::<Vec<_>>()
+            }
+        };
+        let (held, pulled) = (read(mine).await, read(&theirs).await);
+        assert!(!held.is_empty(), "{}", mine.kind().as_str());
+        assert_eq!(pulled, held, "{}", mine.kind().as_str());
+    }
     assert_eq!(
         mini_list.connections[0].device.origin,
         tablepro_storage::ConnectionOrigin::Known(tablepro_storage::KnownOrigin::Synced)
