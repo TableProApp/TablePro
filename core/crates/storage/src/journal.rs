@@ -122,15 +122,13 @@ fn push_unique(list: &mut Vec<RecordRef>, records: impl IntoIterator<Item = Reco
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum RecordRef {
-    // A connection, group, tag, SSH or credential profile, or table folder.
+    // A connection, group, tag, SSH or credential profile, table folder, saved query, folder or history entry.
     Id(uuid::Uuid),
     // A team library item, by its team and the client id the team stores.
     TeamItem {
         team_id: String,
         id: String,
     },
-    // A saved query, saved query folder or history entry, by its row until it carries a record id (0052).
-    Row(i64),
     // A favourite table or a table folder item, by the table it names; an absent database or schema is empty.
     Table(crate::TableRef),
     // A favourite database.
