@@ -209,7 +209,7 @@ extension WelcomeViewModel {
         let targets = ids.filter { connectionsById[$0] != nil }
         guard !targets.isEmpty else { return }
         let displayed = LibraryOutlineBuilder.favoriteIds(outlineRequest(query: LibraryQuery()))
-        guard storage.mutateConnections(ids: Set(targets), { $0.isFavorite = isFavorite }) else {
+        guard storage.mutateConnections(ids: Set(targets), byUser: false, { $0.isFavorite = isFavorite }) else {
             reportLibraryWriteFailure()
             return
         }

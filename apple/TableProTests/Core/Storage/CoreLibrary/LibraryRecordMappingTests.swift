@@ -181,15 +181,22 @@ struct LibraryRecordMappingTests {
 }
 
 struct ConnectionKeychainSecretsTests {
-    @Test("Until the library first reads, every connection's secrets stay on this Mac")
-    func localOnlyFailsClosed() {
+    @Test("Until the library first reads, the core gets no connection secret, since no scope is known")
+    func noScopeBeforeTheFirstRead() throws {
         let localOnly = LocalOnlyConnections()
-        let synced = UUID()
-        #expect(localOnly.contains(synced))
+        let keychain = ScopeRecordingKeychain()
+        let secrets = ConnectionKeychainSecrets(keychain: keychain) { localOnly.isLocalOnly($0) }
+        let id = UUID()
 
-        localOnly.set([])
+        #expect(throws: HostSecretError.self) {
+            try secrets.store(connectionId: id.uuidString, kind: .databasePassword, secret: "p1", label: "")
+        }
+        #expect(keychain.localValue(forKey: "com.TablePro.password.\(id.uuidString)") == nil)
 
-        #expect(!localOnly.contains(synced))
+        localOnly.set([id])
+        try secrets.store(connectionId: id.uuidString, kind: .databasePassword, secret: "p1", label: "")
+
+        #expect(keychain.localValue(forKey: "com.TablePro.password.\(id.uuidString)") == "p1")
     }
 
     @Test("The core's secrets use the keys and scope earlier builds read")

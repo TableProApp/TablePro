@@ -107,7 +107,7 @@ final class ConnectionStorage {
 
         let connections = image.connections
         let migrated = Self.numberingUnrankedGroups(connections)
-        guard migrated != connections, storeIsTrusted, persist(migrated) else { return connections }
+        guard migrated != connections, storeIsTrusted, persist(migrated, byUser: false) else { return connections }
         return migrated
     }
 

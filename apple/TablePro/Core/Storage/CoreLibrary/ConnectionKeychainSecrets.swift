@@ -10,16 +10,17 @@ import TableProFFI
 // The items earlier builds read, under the same keys and scope, so the previous stable keeps every password.
 nonisolated internal final class ConnectionKeychainSecrets: HostSecrets, @unchecked Sendable {
     private let keychain: any KeychainStoring
-    private let keepsOnDevice: @Sendable (UUID) -> Bool
+    // Nil while no scope is known, which refuses the call rather than guess one.
+    private let keepsOnDevice: @Sendable (UUID) -> Bool?
 
-    init(keychain: any KeychainStoring, keepsOnDevice: @escaping @Sendable (UUID) -> Bool) {
+    init(keychain: any KeychainStoring, keepsOnDevice: @escaping @Sendable (UUID) -> Bool?) {
         self.keychain = keychain
         self.keepsOnDevice = keepsOnDevice
     }
 
     func load(connectionId: String, kind: SecretKindTag) throws -> String? {
         let id = try Self.id(connectionId)
-        switch keychain.readStringResult(forKey: Self.key(kind, id), deviceOnly: keepsOnDevice(id)) {
+        switch keychain.readStringResult(forKey: Self.key(kind, id), deviceOnly: try scope(of: id)) {
         case .found(let value):
             return value
         case .notFound:
@@ -37,7 +38,7 @@ nonisolated internal final class ConnectionKeychainSecrets: HostSecrets, @unchec
 
     func store(connectionId: String, kind: SecretKindTag, secret: String, label: String) throws {
         let id = try Self.id(connectionId)
-        guard keychain.writeString(secret, forKey: Self.key(kind, id), deviceOnly: keepsOnDevice(id)) else {
+        guard keychain.writeString(secret, forKey: Self.key(kind, id), deviceOnly: try scope(of: id)) else {
             throw HostSecretError.Failed(detail: "the keychain refused the write")
         }
     }
@@ -47,7 +48,7 @@ nonisolated internal final class ConnectionKeychainSecrets: HostSecrets, @unchec
 
     func delete(connectionId: String, kind: SecretKindTag) throws {
         let id = try Self.id(connectionId)
-        keychain.delete(forKey: Self.key(kind, id), deviceOnly: keepsOnDevice(id))
+        keychain.delete(forKey: Self.key(kind, id), deviceOnly: try scope(of: id))
     }
 
     // The core deletes a connection for a deletion another device made, which leaves the iCloud Keychain items to it.
@@ -74,6 +75,13 @@ nonisolated internal final class ConnectionKeychainSecrets: HostSecrets, @unchec
     }
 
     private static let notHere = HostSecretError.Unavailable(detail: "the account's core keeps this item")
+
+    private func scope(of id: UUID) throws -> Bool {
+        guard let local = keepsOnDevice(id) else {
+            throw HostSecretError.Unavailable(detail: "the library has not been read yet")
+        }
+        return local
+    }
 
     static func key(_ kind: SecretKindTag, _ id: UUID) -> String {
         switch kind {

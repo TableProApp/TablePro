@@ -20,7 +20,7 @@ nonisolated final class CoreStoreHost: @unchecked Sendable {
             CoreStoreSecrets(
                 items: KeychainHostSecrets(keychain: AccountKeychain(keychain: AppStorageEnvironment.shared.deviceOnlyKeychain)),
                 connections: ConnectionKeychainSecrets(keychain: AppStorageEnvironment.shared.keychain) { id in
-                    LocalOnlyConnections.shared.contains(id)
+                    LocalOnlyConnections.shared.isLocalOnly(id)
                 }
             )
         }

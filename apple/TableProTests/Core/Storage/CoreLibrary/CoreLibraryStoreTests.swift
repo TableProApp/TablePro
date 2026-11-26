@@ -452,8 +452,10 @@ struct CoreLibraryStoreTests {
 
     @Test("A library with no file yet is trusted, and its first write is tagged")
     func anEmptyLibraryStartsTrusted() throws {
+        fixture.defaults.set(try JSONEncoder().encode([ConnectionTag]()), forKey: LegacyLibraryMirror.tagsKey)
         let storage = fixture.launch()
         #expect(storage.loadConnections().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: fixture.coreURL.path))
         #expect(storage.storeIsTrusted)
 
         try fixture.groups(storage).addGroup(ConnectionGroup(name: "Staging"))

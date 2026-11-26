@@ -71,7 +71,7 @@ final class CoreLibraryStore {
         let host = CoreStoreHost(folder: folder) {
             CoreStoreSecrets(
                 items: nil,
-                connections: ConnectionKeychainSecrets(keychain: keychain) { id in localOnly.contains(id) }
+                connections: ConnectionKeychainSecrets(keychain: keychain) { id in localOnly.isLocalOnly(id) }
             )
         }
         return (host, localOnly)
@@ -108,7 +108,11 @@ final class CoreLibraryStore {
         }
         guard let digest = contents.digest, digest != seenDigest else { return false }
         readCount += 1
+        let before = image?.connections ?? []
         let loaded = adopt(contents, verdict: integrityKeyAnswered ? .modified : .unavailable)
+        // One a pull made unreadable here keeps the copy the previous stable last had.
+        let keptIds = Set(legacyHeld.map(\.id))
+        legacyHeld += before.filter { heldByCore.contains($0.id) && !keptIds.contains($0.id) }
         mirrorWrite(loaded, coreDigest: digest, byUser: false, removingSecrets: false, removingUnreadable: [])
         return true
     }
@@ -217,6 +221,9 @@ final class CoreLibraryStore {
         } else {
             forgetCoreState()
         }
+        // The held connections the rebuild drops leave the favourites order too.
+        var next = next
+        next.favoritesOrder = next.favorites(keeping: unreadableIds)
         let write = records(for: next, removing: [])
         let written: LibraryWritten
         do {
@@ -244,6 +251,10 @@ final class CoreLibraryStore {
         // newer than the mirror, which the next launch writes again.
         settleTag(written.digest, stamping: stamping)
         mirror.record = mirrorRecord(legacy: mirror.digest(), core: written.digest, legacyBehind: true)
+        // The core keeps a copy of a file it upgrades as it writes, which still holds what this write moved out.
+        if change.removingSecrets {
+            _ = removeSetAsideCopies()
+        }
         image = next
         updateLocalOnly(next)
         mirrorWrite(
@@ -302,8 +313,12 @@ final class CoreLibraryStore {
                 keepingCopyAs: mirror.isTrusted ? nil : "replaced"
             )
         }
-        let loaded = adopt(contents, verdict: verdict)
+        var loaded = adopt(contents, verdict: verdict)
         legacyHeld = legacy?.connections.filter { heldByCore.contains($0.id) } ?? []
+        if let legacy {
+            loaded.favoritesOrder = keepingUnreadFavorites(of: loaded.favoritesOrder, from: legacy.favoritesOrder)
+            image = loaded
+        }
         remirrorIfBehind(loaded, legacyDigest: legacyDigest, legacyReads: legacy != nil, coreDigest: coreDigest)
         return loaded
     }
@@ -419,6 +434,22 @@ final class CoreLibraryStore {
         return loaded
     }
 
+    // The core holds only the favourites it reads; the ones connections.json holds unread keep their place after the
+    // favourite named before them, as the previous stable's order has them.
+    private func keepingUnreadFavorites(of order: [UUID], from legacyOrder: [UUID]) -> [UUID] {
+        let unread = mirror.unreadableIds
+        var merged = order
+        var previous: UUID?
+        for id in legacyOrder {
+            if unread.contains(id), !merged.contains(id) {
+                let at = previous.flatMap { merged.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
+                merged.insert(id, at: at)
+            }
+            previous = id
+        }
+        return merged
+    }
+
     // Tags the file a write left when asked. Any other write leaves no tag beside it, since an older one could still
     // match these bytes and vouch for what this write did not.
     private func settleTag(_ digest: String?, stamping: Bool) {
@@ -511,8 +542,11 @@ final class CoreLibraryStore {
             let copies = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
                 .filter { url in
                     let name = url.lastPathComponent
-                    guard name != kept?.lastPathComponent, name.hasPrefix(prefix) else { return false }
-                    return Self.keptCopy(String(name.dropFirst(prefix.count)))
+                    guard name != kept?.lastPathComponent else { return false }
+                    if name.hasPrefix(".\(prefix)v"), name.hasSuffix(".partial") {
+                        return true
+                    }
+                    return name.hasPrefix(prefix) && Self.keptCopy(String(name.dropFirst(prefix.count)))
                 }
             for copy in copies {
                 try FileManager.default.removeItem(at: copy)
