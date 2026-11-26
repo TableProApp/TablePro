@@ -8,8 +8,8 @@ use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::filter::{Combinator, FilterOp};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
-    CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
-    TypeSyntaxError, classify_for_history, parse_expression,
+    ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar, TypeSyntaxError,
+    parse_expression,
 };
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
@@ -288,7 +288,7 @@ impl SqlDialect for CqlDialect {
     }
 
     fn history_recording(&self, sql: &str) -> HistoryRecording {
-        classify_for_history(SqlGrammar::Cql, &CREDENTIAL_RULES, sql)
+        SqlGrammar::Cql.history_recording(sql)
     }
 
     fn ddl(&self) -> Option<&dyn DdlDialect> {
@@ -463,19 +463,6 @@ fn scalar_literal(value: &Value) -> Result<String, LiteralError> {
         _ => return Err(unrepresentable()),
     })
 }
-
-/// Statements whose text can hold a password. `CREATE ROLE` and
-/// `ALTER ROLE` carry one only with PASSWORD or HASHED PASSWORD; the
-/// older `CREATE USER` and `ALTER USER` exist to set one.
-const CREDENTIAL_RULES: CredentialRules = CredentialRules {
-    statement_prefixes: &[&["CREATE", "USER"], &["ALTER", "USER"]],
-    conditional_prefixes: &[
-        (&["CREATE", "ROLE"], &["PASSWORD", "HASHED"]),
-        (&["ALTER", "ROLE"], &["PASSWORD", "HASHED"]),
-    ],
-    carriers: &[],
-    secret_parameters: &[],
-};
 
 #[cfg(test)]
 mod tests {

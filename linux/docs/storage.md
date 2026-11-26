@@ -358,7 +358,8 @@ dialect's `history_recording` decides, reading the SQL with the editor's own
 script lexer:
 
 - A statement that can carry a credential withholds the whole entry. Each
-  engine lists its own in a `CredentialRules`: logins, roles, keys and links
+  engine lists its own in a `CredentialRules`, all of them in the core's
+  `sql_syntax/engine_credentials.rs`: logins, roles, keys and links
   to other servers (`CREATE USER`, `CHANGE MASTER`), statements that do so
   only with a given word (`GRANT ... IDENTIFIED`), and functions or engines
   that take a password (`dblink`, `OPENROWSET`, `s3`). A routine body is
