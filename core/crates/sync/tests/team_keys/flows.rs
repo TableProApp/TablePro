@@ -101,12 +101,28 @@ async fn team_pass_read(device: &Device, team: TeamId) -> (KeyApplied, Result<()
             break mark;
         }
     };
+    let read = read_roster_from(device, team, &body, caught_up).await;
+    (last, read)
+}
+
+// The roster as the engine reads it from `body` once the team's pull caught up: the scope row refreshed from the body,
+// then the read.
+async fn read_roster_from(
+    device: &Device,
+    team: TeamId,
+    body: &tablepro_sync::api::scopes::ScopesBody,
+    caught_up: Option<CaughtUp>,
+) -> Result<(), SyncError> {
+    let scope = ScopeName::Team(team);
+    let Some(Row::Scope(mut row)) = device.get(RowKey::Scope(scope)).await else {
+        panic!("no scope row");
+    };
     let info = body.scopes.iter().find(|info| info.scope == scope).unwrap();
     row.role = info.role;
+    row.horizon = Some(info.horizon);
     row.rotation_due = info.rotation_due;
     device.put(vec![Row::Scope(row)]).await;
-    let read = device.service.roster_read(team, Roster::of(info, caught_up)).await;
-    (last, read)
+    device.service.roster_read(team, Roster::of(info, caught_up)).await
 }
 
 pub(super) struct Team {
@@ -372,6 +388,50 @@ async fn a_refused_rotation_on_a_roster_read_backs_off_instead_of_going_up_on_ev
     assert_eq!(again, Ok(()));
     assert_eq!(held, Some(v(1)));
     assert_eq!(restarted.service.team_keys(t.team).await.unwrap().version, Some(v(2)));
+}
+
+// A push conflict pulls the team again and reads its roster from the scopes body the pass started with, which still
+// says the team is due though this device's rotation met the mark since: the team rotates once.
+#[tokio::test]
+async fn a_roster_read_again_from_the_pass_s_first_body_rotates_the_team_once() {
+    let editor_id = new_account();
+    let t = created(&[(editor_id, Role::Editor)]).await;
+    t.confirmed(editor_id, "editor-row").await;
+    team_pass(&t.owner, t.team).await;
+    t.server.set_rotation_due(t.team, true);
+    let proof = Proof::Dpop(t.owner.proof().await);
+    let ScopesAnswer::Body { body, .. } = t.owner.transport.scopes(None, proof.clone()).await.unwrap() else {
+        panic!("no scopes body");
+    };
+    team_pass(&t.owner, t.team).await;
+    let rotated = t.owner.service.team_keys(t.team).await.unwrap().version;
+    let Some(Row::Scope(row)) = t.owner.get(RowKey::Scope(ScopeName::Team(t.team))).await else {
+        panic!("no scope row");
+    };
+    let page = t
+        .owner
+        .transport
+        .pull(PullRequest {
+            scope: ScopeName::Team(t.team),
+            cursor: row.cursor,
+            limit: None,
+            proof,
+        })
+        .await
+        .unwrap();
+
+    read_roster_from(
+        &t.owner,
+        t.team,
+        &body,
+        CaughtUp::from_page(ScopeName::Team(t.team), &page),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(rotated, Some(v(2)));
+    assert_eq!(t.owner.service.team_keys(t.team).await.unwrap().version, Some(v(2)));
+    assert!(!t.owner.service.team_keys(t.team).await.unwrap().rotation_due);
 }
 
 // An account rotation's flow row that already wrote this team holds its rotation back no longer, though another team

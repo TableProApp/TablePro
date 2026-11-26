@@ -106,6 +106,8 @@ pub struct KeyService {
     // Each approval session's comparison until its reveal. Only memory holds r_N before it is revealed, so a restart
     // ends a session that has not reached it (0056, Approving a device).
     comparisons: Mutex<HashMap<RequestId, Comparison>>,
+    // The revision each team's last rotation from this device applied at, which met the team's `rotation_due` mark.
+    met_rotations: Mutex<HashMap<TeamId, u64>>,
 }
 
 impl KeyService {
@@ -130,6 +132,7 @@ impl KeyService {
             served_resets: Mutex::new(HashMap::new()),
             refused_rotations: Mutex::new(HashMap::new()),
             comparisons: Mutex::new(HashMap::new()),
+            met_rotations: Mutex::new(HashMap::new()),
         }
     }
 
@@ -147,6 +150,10 @@ impl KeyService {
 
     pub(crate) fn comparisons(&self) -> MutexGuard<'_, HashMap<RequestId, Comparison>> {
         lock(&self.comparisons)
+    }
+
+    pub(crate) fn met_rotations(&self) -> MutexGuard<'_, HashMap<TeamId, u64>> {
+        lock(&self.met_rotations)
     }
 
     pub fn account(&self) -> AccountId {

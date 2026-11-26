@@ -470,16 +470,28 @@ impl KeyService {
         Ok(())
     }
 
-    pub(super) async fn decide_on_roster(&self, team: TeamId, roster: Roster) -> Result<(), SyncError> {
+    pub(super) async fn decide_on_roster(&self, team: TeamId, mut roster: Roster) -> Result<(), SyncError> {
         // A roster read before the team's pull caught up is no evidence of anything (0051, `members`).
         if !roster.caught_up() {
             return Ok(());
         }
+        let mut txn = self.begin().await?;
+        let mut scope = self.scope_row(&mut *txn, ScopeName::Team(team)).await?;
+        // The engine reads a team's roster again from the body the pass started with, as after a push conflict. A body
+        // whose horizon is below this device's own rotation was read before that rotation met the mark, so its mark
+        // no longer stands.
+        let met = self.met_rotations().get(&team).copied();
+        if roster.rotation_due && met.is_some_and(|met| scope.horizon.is_some_and(|horizon| horizon < met)) {
+            roster.rotation_due = false;
+            if scope.rotation_due {
+                scope.rotation_due = false;
+                txn.put(Row::Scope(scope.clone())).await?;
+                txn.commit().await?;
+            }
+        } else {
+            drop(txn);
+        }
         self.rosters().put(team, roster.clone());
-        let scope = {
-            let mut txn = self.begin().await?;
-            self.scope_row(&mut *txn, ScopeName::Team(team)).await?
-        };
         if !crate::keys::roster_in_epoch(&roster, &scope) {
             return Ok(());
         }

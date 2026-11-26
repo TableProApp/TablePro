@@ -90,15 +90,33 @@ impl KeyService {
     // Nothing is held before the server applied the whole set, so a refused or lost push leaves no candidate behind; a
     // lost answer heals on the next pull, which serves the objects this device wrote.
     async fn push_team_set(&self, team: TeamId, objects: &[KeyObject]) -> Result<Box<dyn StateTxn>, SyncError> {
+        Ok(self.push_team_set_at(team, objects).await?.0)
+    }
+
+    // With the highest revision the set applied at.
+    async fn push_team_set_at(
+        &self,
+        team: TeamId,
+        objects: &[KeyObject],
+    ) -> Result<(Box<dyn StateTxn>, Option<u64>), SyncError> {
         let scope = ScopeName::Team(team);
         let changes = objects.iter().map(create_change).collect::<Result<Vec<_>, _>>()?;
         let outcomes = self.push_change_set(scope, changes, self.dpop_key().await?).await?;
         settle(&outcomes)?;
+        let revision = outcomes
+            .iter()
+            .filter_map(|outcome| match outcome {
+                ChangeOutcome::Applied {
+                    service: Some(stamp), ..
+                } => Some(stamp.revision),
+                _ => None,
+            })
+            .max();
         let mut txn = self.begin().await?;
         for object in objects {
             self.hold_object(&mut *txn, scope, object, true).await?;
         }
-        Ok(txn)
+        Ok((txn, revision))
     }
 
     // This account's certificates the team lacks: the current one, every replace it made, and every `av` from its
@@ -413,7 +431,7 @@ impl KeyService {
         own: &OwnAccount,
     ) -> Result<(), SyncError> {
         let (record, objects) = build::version_objects(self.origin(), plan, &self.signer(own))?;
-        let mut txn = self.push_team_set(team, &objects).await?;
+        let (mut txn, revision) = self.push_team_set_at(team, &objects).await?;
         let after = team_row(
             team,
             plan.version,
@@ -432,6 +450,9 @@ impl KeyService {
         if let Some(mut roster) = self.rosters().get(team) {
             roster.rotation_due = false;
             self.rosters().put(team, roster);
+        }
+        if let Some(revision) = revision {
+            self.met_rotations().insert(team, revision);
         }
         Ok(())
     }
