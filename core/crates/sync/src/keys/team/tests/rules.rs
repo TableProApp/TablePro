@@ -293,19 +293,35 @@ async fn a_confirmation_by_a_member_the_rotation_made_a_holder_counts_whatever_o
     assert!(!holders.contains(&t.me.holder(1)));
 }
 
+// 0064: a device that held a version holds another account's restart until the person compares words, rather than
+// taking it on first use.
 #[tokio::test]
-async fn a_restart_is_taken_by_a_member_that_holds_nothing_and_signed_under_an_older_av_is_stale() {
+async fn a_restart_is_held_by_a_member_that_held_a_version_and_signed_under_an_older_av_is_stale() {
     let mut t = five();
     let owner = Account::generated(5, 2);
     t.facts.know(&owner, 2);
     let objects = version(6, Start::Over, &key(), None, (&owner, 2), &[(&owner, 2), (&t.me, 1)]);
-    let mut taken = book(&t.me, Some(row(5, &[t.a.holder(1)], KeyVersionState::Ok)));
-    insert_all(&mut taken, &objects);
+    let mut held = book(&t.me, Some(row(5, &[t.a.holder(1)], KeyVersionState::Ok)));
+    insert_all(&mut held, &objects);
 
-    let progress = taken.advance(&mut t.facts).await.unwrap();
+    let progress = held.advance(&mut t.facts).await.unwrap();
 
-    assert_eq!(progress.events, [TeamEvent::Restarted { version: v(6) }]);
-    assert!(taken.row().unwrap().holders.contains(&t.me.holder(1)));
+    assert_eq!(
+        progress.events,
+        [TeamEvent::RestartHeld {
+            version: v(6),
+            signer: owner.id
+        }]
+    );
+    let after = held.row().unwrap();
+    assert_eq!(
+        (after.version, after.state, after.stopped_cause),
+        (v(5), KeyVersionState::Stopped, Some(StoppedCause::RestartHeld))
+    );
+    assert!(progress.refused.is_empty());
+    assert!(progress.held.contains(&objects[0].id.to_wire()));
+    let again = held.advance(&mut t.facts).await.unwrap();
+    assert!(again.events.is_empty());
 
     let stale = version(6, Start::Over, &key(), None, (&owner, 1), &[(&t.me, 1)]);
     let mut refused = book(&t.me, Some(row(5, &[t.a.holder(1)], KeyVersionState::Ok)));

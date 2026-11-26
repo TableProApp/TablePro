@@ -8,6 +8,7 @@ mod build;
 mod chain;
 mod envelopes;
 mod facts;
+mod restart;
 mod roster;
 mod secrets;
 mod service_facts;
@@ -21,12 +22,13 @@ use secrecy::SecretString;
 use serde_json::Value;
 use tablepro_keys::encoding::{AccountId, KeyPurpose, TeamId, Version};
 use tablepro_keys::envelope::EnvelopeId;
+use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::record_id::KeyKind;
 
 use self::book::TeamBook;
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
-use crate::api::key_flows::{KeyApplied, KeyArrival, OpenedEnvelope, Roster, TeamFlows, TeamKeys};
+use crate::api::key_flows::{HeldRestart, KeyApplied, KeyArrival, OpenedEnvelope, Roster, TeamFlows, TeamKeys};
 use crate::api::state::{
     KeyPendingRow, KeyTrust, KeyVersionRow, KeyVersionState, PendingFlow, Row, RowKey, ScopeRow, StateTxn, StoppedCause,
 };
@@ -62,6 +64,16 @@ impl TeamFlows for KeyService {
     async fn restart_team(&self, team: TeamId, confirm: Vec<AccountId>) -> Result<(), SyncError> {
         let _serial = self.serialized().await;
         self.restart(team, &confirm).await
+    }
+
+    async fn held_restart(&self, team: TeamId) -> Result<Option<HeldRestart>, SyncError> {
+        let _serial = self.serialized().await;
+        self.held_team_restart(team).await
+    }
+
+    async fn accept_restart(&self, team: TeamId, signer_ik: Ed25519Public) -> Result<(), SyncError> {
+        let _serial = self.serialized().await;
+        self.accept_held_restart(team, signer_ik).await
     }
 
     async fn credentials_to_rotate(&self, scope: ScopeName) -> Result<Vec<EnvelopeId>, SyncError> {

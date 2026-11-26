@@ -349,6 +349,10 @@ impl KeyService {
                 TeamEvent::Restarted { .. } => {
                     self.raise_notice(KeyNoticeKind::TeamKeyRestarted { team })?;
                 }
+                TeamEvent::RestartHeld { signer, .. } => {
+                    self.hooks().stop_scope(scope, StoppedCause::RestartHeld);
+                    self.raise_notice(KeyNoticeKind::RestartHeld { team, signer: *signer })?;
+                }
                 TeamEvent::Joined { .. } | TeamEvent::Advanced { .. } => {}
             }
         }

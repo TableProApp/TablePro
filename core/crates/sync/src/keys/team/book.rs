@@ -34,8 +34,11 @@ pub(crate) enum TeamEvent {
     // The version this account was confirmed with, taken on first use (0056, Teams, Joining).
     Joined { version: Version },
     Advanced { version: Version },
-    // A version with `start` 1 taken on first use, with a notice that the team key started over.
+    // A version with `start` 1 this device's own account signed, taken, with a notice that the team key started over.
     Restarted { version: Version },
+    // Another account's restart of a team this device held a version of: held until the person compares the
+    // restarting owner's words and accepts it (0064).
+    RestartHeld { version: Version, signer: AccountId },
     // A catch-up it could not verify: it keeps `at` and that version's holders, and writes nothing under the key.
     Stopped { at: Version },
     // An owner or admin that held the stopped version confirmed this device again (0056, Teams, A stopped device).
@@ -239,6 +242,8 @@ impl TeamBook {
                     self.step(facts, &mut progress, false, true).await?;
                     false
                 }
+                // Only the person's comparison clears a held restart (0064).
+                (KeyVersionState::Stopped, Some(StoppedCause::RestartHeld)) => false,
                 (KeyVersionState::Stopped, _) => self.clear_stop(facts, &mut progress).await?,
                 (KeyVersionState::Ok, _) => {
                     let waiting = self.grow(facts, &mut progress).await?;
@@ -414,8 +419,7 @@ impl TeamBook {
                         Some(KeysError::NotHolder)
                     }
                 }
-                // A restart replaces a key a member holds, so a holder never takes one; any other member takes it on
-                // first use (0056, Teams, No holder left).
+                // A restart replaces a key a member holds, so a holder never takes one (0056, Teams, No holder left).
                 Start::Over => {
                     if account_holds(&self.origin, facts, &row.holders, self.me).await? {
                         Some(KeysError::NotHolder)
@@ -427,6 +431,19 @@ impl TeamBook {
         };
         if let Some(error) = refusal {
             self.stop(&item.record_id, error, progress);
+            return Ok(false);
+        }
+        // A device that held a version never takes another account's restart on first use: a server could withhold its
+        // wrap and serve a version of an account it made up. It waits for the person to compare words (0064).
+        if record.start == Start::Over && record.signer != self.me {
+            if let Some(row) = &mut self.row {
+                row.stop(StoppedCause::RestartHeld);
+            }
+            progress.hold(&item);
+            progress.events.push(TeamEvent::RestartHeld {
+                version: next,
+                signer: record.signer,
+            });
             return Ok(false);
         }
         if !take {

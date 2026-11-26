@@ -259,3 +259,80 @@ async fn a_stopped_member_takes_a_holding_owners_re_confirmation_and_withdraws_i
         });
     assert!(s.p.txn().await.get(&withdrawal).await.unwrap().is_some());
 }
+
+fn restart_object(team: TeamId, number: u32, key: &ScopeKey, by: &Signer) -> KeyObject {
+    let record = VersionRecord::sign(
+        &super::harness::origin(),
+        team_key(team, number),
+        Start::Over,
+        key,
+        by.account,
+        by.av,
+        &by.keys.ask,
+    )
+    .unwrap();
+    KeyObject {
+        id: KeyRecordId::Version(record.key),
+        body: KeyBody::Version(VersionBody::of(&record)),
+    }
+}
+
+// 0064's vectors: a restart shown to a member that held an earlier version is held and nothing is taken under it; words
+// of another key are no acceptance; the person compares the signer's words and accepts, and the restart applies with
+// its signer a holder. P was left out of version 2, so its account holds nothing current and only the comparison
+// stands between it and a key the server's own account M made.
+#[tokio::test]
+async fn a_restart_another_account_signed_waits_for_the_person_to_compare_its_signers_words() {
+    let s = staged().await;
+    let p_signer = signer(&s.p).await;
+    team_pass(&s.t.owner, s.t.team).await;
+    s.t.owner
+        .service
+        .rotate_team(s.t.team, vec![s.p.account])
+        .await
+        .unwrap();
+    team_pass(&s.p, s.t.team).await;
+    let left_out = s.p.service.team_keys(s.t.team).await.unwrap();
+    let restart = ScopeKey::generate().unwrap();
+
+    let applied = served(
+        &s.p,
+        s.t.team,
+        &[
+            restart_object(s.t.team, 3, &restart, &s.m),
+            wrap_object(s.t.team, 3, &restart, &s.m, &p_signer),
+        ],
+    )
+    .await;
+
+    assert_eq!((left_out.version, left_out.holder), (Some(v(2)), false));
+    assert!(refused_codes(&applied).is_empty(), "{applied:?}");
+    let held = s.p.service.team_keys(s.t.team).await.unwrap();
+    assert_eq!((held.version, held.state), (Some(v(2)), KeyVersionState::Stopped));
+    assert_eq!(held.stopped_cause, Some(StoppedCause::RestartHeld));
+    let shown = s.p.service.held_restart(s.t.team).await.unwrap().unwrap();
+    assert_eq!((shown.version, shown.signer), (v(3), s.m.account));
+    assert_eq!(shown.words.words.len(), 6);
+
+    let other = tablepro_keys::keys::Ed25519Seed::generate().unwrap().public().unwrap();
+    let wrong = s.p.service.accept_restart(s.t.team, other).await;
+    assert_eq!(wrong.unwrap_err().code(), "sync.not_allowed");
+    assert_eq!(
+        s.p.service.team_keys(s.t.team).await.unwrap().stopped_cause,
+        Some(StoppedCause::RestartHeld)
+    );
+
+    s.p.service.accept_restart(s.t.team, shown.signer_ik).await.unwrap();
+
+    let taken = s.p.service.team_keys(s.t.team).await.unwrap();
+    assert_eq!(
+        (taken.version, taken.state, taken.stopped_cause),
+        (Some(v(3)), KeyVersionState::Ok, None)
+    );
+    assert!(taken.holder);
+    let pin = s.p.pin(s.m.account).await.unwrap();
+    assert_eq!(
+        (pin.ik, pin.how),
+        (shown.signer_ik, tablepro_keys::trust::PinHow::Compared)
+    );
+}
