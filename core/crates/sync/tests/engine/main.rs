@@ -11,5 +11,6 @@ mod harness;
 mod keys;
 mod parts;
 mod pass;
+mod rules;
 mod state_file;
 mod stop;

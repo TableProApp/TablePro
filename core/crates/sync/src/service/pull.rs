@@ -230,10 +230,15 @@ impl ServiceSync {
     ) -> Result<Option<CaughtUp>, SyncError> {
         for _ in 0..MAX_PAGES {
             self.stop.check()?;
+            // A history snapshot asks for no more than its window still takes.
+            let limit = pull
+                .window
+                .filter(|_| pull.older)
+                .map(|left| u32::try_from(left.max(1)).unwrap_or(u32::MAX));
             let request = PullRequest {
                 scope: pull.scope,
                 cursor: pull.cursor.clone(),
-                limit: None,
+                limit,
                 proof: self.scope_proof(pull.scope).await?,
             };
             let page = match self.transport.pull(request).await {

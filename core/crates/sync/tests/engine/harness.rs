@@ -740,6 +740,7 @@ pub struct DeviceBuilder {
     state: Option<Arc<dyn StateStore>>,
     connections: Option<(Arc<MemoryAdapter>, Arc<StoreFile>)>,
     extra: Vec<(ScopeName, Arc<MemoryAdapter>)>,
+    others: Vec<Arc<dyn RecordAdapter>>,
     keys: Option<Arc<KeyLog>>,
     seed: Option<Arc<Ed25519Seed>>,
 }
@@ -753,9 +754,16 @@ impl DeviceBuilder {
             state: None,
             connections: None,
             extra: Vec::new(),
+            others: Vec::new(),
             keys: None,
             seed: None,
         }
+    }
+
+    // An adapter of the test's own, over a store that behaves as a core store does.
+    pub fn extra_adapter(mut self, adapter: Arc<dyn RecordAdapter>) -> Self {
+        self.others.push(adapter);
+        self
     }
 
     pub fn unapproved(mut self) -> Self {
@@ -811,6 +819,7 @@ impl DeviceBuilder {
             adapter.register(*scope);
             adapters.push(Arc::clone(adapter) as Arc<dyn RecordAdapter>);
         }
+        adapters.extend(self.others);
         let keys = self.keys.unwrap_or_default();
         let wake = Wake::new();
         let hooks = Arc::new(EngineHooks::new(wake.clone(), None));
