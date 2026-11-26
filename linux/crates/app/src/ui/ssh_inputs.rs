@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::SshDestinationProblem;
 use tablepro_ssh::{SshAuth, SshConfig, SshDestination};
-use tablepro_storage::{SavedSshAuth, SavedSshConfig};
+use tablepro_storage::{SavedSshAuth, SavedSshConfig, SshJumpHost};
 
 pub use crate::services::ssh_environment::SshEnvironment;
 use crate::ui::error_text::ssh_destination_problem_text;
@@ -61,9 +61,10 @@ impl SshAuthChoice {
         }
     }
 
+    // The form has no None choice: both transports try the none method before the agent, and a save keeps None.
     fn of_saved(auth: &SavedSshAuth) -> Self {
         match auth {
-            SavedSshAuth::Agent => Self::Agent,
+            SavedSshAuth::Agent | SavedSshAuth::None => Self::Agent,
             SavedSshAuth::PrivateKey { .. } => Self::PrivateKey,
             SavedSshAuth::Password => Self::Password,
             SavedSshAuth::KeyboardInteractive => Self::KeyboardInteractive,
@@ -114,7 +115,12 @@ impl SshFormState {
             host: saved.host.clone(),
             port: saved.port.map(|port| port.to_string()).unwrap_or_default(),
             user: saved.username.clone().unwrap_or_default(),
-            jump_hosts: saved.jump_hosts.join(", "),
+            jump_hosts: saved
+                .jump_hosts
+                .iter()
+                .map(SshJumpHost::destination)
+                .collect::<Vec<_>>()
+                .join(", "),
             auth: SshAuthChoice::of_saved(&saved.auth),
             key_path: key_path.into_owned(),
             password: SecretString::from(String::new()),
@@ -150,7 +156,7 @@ impl SshFormState {
             "" => Vec::new(),
             list => {
                 SshDestination::parse_jump_list(list).map_err(SshInputError::JumpHostsInvalid)?;
-                vec![list.to_owned()]
+                SshJumpHost::parse_list(list)
             }
         };
         let auth = match self.auth {
@@ -169,11 +175,10 @@ impl SshFormState {
             }
         };
         Ok(SavedSshConfig {
-            host: host.to_owned(),
             port,
             username: user,
             jump_hosts,
-            auth,
+            ..SavedSshConfig::new(host, auth)
         })
     }
 

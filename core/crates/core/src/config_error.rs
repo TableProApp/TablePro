@@ -80,6 +80,10 @@ pub enum ConfigError {
 
     #[error("TLS is not used over a local socket")]
     TlsOverLocalSocket,
+
+    // The macOS app opens a database file on the SSH host through an agent it runs there; no other app has one.
+    #[error("a database file on the SSH host cannot be opened from this app")]
+    RemoteFileOverSsh,
 }
 
 impl ConfigError {
@@ -109,6 +113,7 @@ impl ConfigError {
             Self::LocalSocketUnsupported => "config.local_socket_unsupported",
             Self::LocalSocketOverSsh => "config.local_socket_over_ssh",
             Self::TlsOverLocalSocket => "config.tls_over_local_socket",
+            Self::RemoteFileOverSsh => "config.remote_file_over_ssh",
         }
     }
 }

@@ -24,7 +24,7 @@ pub struct Model {
     pub members: &'static [(&'static str, Target)],
 }
 
-// `tablepro_storage::SavedConnection`. `ssh` present is `ssh_config.enabled`.
+// `tablepro_storage::SavedConnection`. A tunnel switched off keeps its settings in `ssh_config`.
 const SAVED_CONNECTION: &[(&str, Target)] = &[
     ("id", Id),
     ("name", Wire("name")),
@@ -41,19 +41,38 @@ const SAVED_CONNECTION: &[(&str, Target)] = &[
     ),
     ("tls.client_identity.key", Wire("ssl_config.client_key_path")),
     ("tls.server_name", Wire("ssl_config.server_name")),
+    ("tls.unknown", Kept),
     ("safe_mode", Wire("safe_mode_level")),
     ("external_access", Wire("external_access")),
     ("ai_policy", Wire("ai_policy")),
     ("query_timeout_secs", Wire("query_timeout_seconds")),
     ("auth_mode", Wire("auth_mode")),
-    ("ssh", Wire("ssh_config.enabled")),
+    ("ssh", Wire("ssh_config")),
+    ("ssh.enabled", Wire("ssh_config.enabled")),
     ("ssh.host", Wire("ssh_config.host")),
     ("ssh.port", Wire("ssh_config.port")),
     ("ssh.username", Wire("ssh_config.username")),
-    ("ssh.jump_hosts", Wire("ssh_config.jump_hosts")),
+    ("ssh.jump_hosts.id", Wire("ssh_config.jump_hosts.id")),
+    ("ssh.jump_hosts.host", Wire("ssh_config.jump_hosts.host")),
+    ("ssh.jump_hosts.port", Wire("ssh_config.jump_hosts.port")),
+    ("ssh.jump_hosts.username", Wire("ssh_config.jump_hosts.username")),
+    ("ssh.jump_hosts.auth", Wire("ssh_config.jump_hosts.auth_method")),
+    (
+        "ssh.jump_hosts.key_path",
+        Wire("ssh_config.jump_hosts.private_key_path"),
+    ),
     ("ssh.auth.kind", Wire("ssh_config.auth_method")),
     ("ssh.auth.path", Wire("ssh_config.private_key_path")),
     ("ssh.auth.has_passphrase", Wire("ssh_config.passphrase_stored")),
+    ("ssh.kept_key_path", Wire("ssh_config.private_key_path")),
+    ("ssh.agent_socket", Wire("ssh_config.agent_socket_path")),
+    ("ssh.totp.mode", Wire("ssh_config.totp_mode")),
+    ("ssh.totp.algorithm", Wire("ssh_config.totp_algorithm")),
+    ("ssh.totp.digits", Wire("ssh_config.totp_digits")),
+    ("ssh.totp.period", Wire("ssh_config.totp_period")),
+    ("ssh.remote_file.path", Wire("ssh_config.remote_file_path")),
+    ("ssh.remote_file.access", Wire("ssh_config.remote_file_access")),
+    ("ssh.unknown", Kept),
     ("last_opened_at", DeviceOnly),
     ("color", Wire("color")),
     ("group_id", Wire("group_id")),
@@ -85,18 +104,32 @@ const SAVED_CONNECTION: &[(&str, Target)] = &[
     ("unknown", Kept),
 ];
 
-// `tablepro_storage::SshProfile`. Whether a key's passphrase is kept is this device's to know.
+// `tablepro_storage::SshProfile`. A kept passphrase is this device's to know; a profile is never off and opens no file.
 const SSH_PROFILE: &[(&str, Target)] = &[
     ("id", Id),
     ("name", Wire("name")),
+    ("ssh.enabled", DeviceOnly),
     ("ssh.host", Wire("host")),
     ("ssh.port", Wire("port")),
     ("ssh.username", Wire("username")),
-    ("ssh.jump_hosts", Wire("jump_hosts")),
+    ("ssh.jump_hosts.id", Wire("jump_hosts.id")),
+    ("ssh.jump_hosts.host", Wire("jump_hosts.host")),
+    ("ssh.jump_hosts.port", Wire("jump_hosts.port")),
+    ("ssh.jump_hosts.username", Wire("jump_hosts.username")),
+    ("ssh.jump_hosts.auth", Wire("jump_hosts.auth_method")),
+    ("ssh.jump_hosts.key_path", Wire("jump_hosts.private_key_path")),
     ("ssh.auth.kind", Wire("auth_method")),
     ("ssh.auth.path", Wire("private_key_path")),
     ("ssh.auth.has_passphrase", DeviceOnly),
-    ("unknown", Kept),
+    ("ssh.kept_key_path", Wire("private_key_path")),
+    ("ssh.agent_socket", Wire("agent_socket_path")),
+    ("ssh.totp.mode", Wire("totp_mode")),
+    ("ssh.totp.algorithm", Wire("totp_algorithm")),
+    ("ssh.totp.digits", Wire("totp_digits")),
+    ("ssh.totp.period", Wire("totp_period")),
+    ("ssh.remote_file.path", DeviceOnly),
+    ("ssh.remote_file.access", DeviceOnly),
+    ("ssh.unknown", Kept),
 ];
 
 // `tablepro_storage::CredentialProfile`. A password source, a reference included, never leaves the device, as on
@@ -141,7 +174,12 @@ const CONNECTION_GROUP: &[(&str, Target)] = &[
     ("icon", Wire("icon_name")),
 ];
 
-const CONNECTION_TAG: &[(&str, Target)] = &[("id", Id), ("name", Wire("name")), ("color", Wire("color"))];
+const CONNECTION_TAG: &[(&str, Target)] = &[
+    ("id", Id),
+    ("name", Wire("name")),
+    ("color", Wire("color")),
+    ("is_preset", Wire("is_preset")),
+];
 
 const FAVOURITE_TABLE: &[(&str, Target)] = &[
     ("connection_id", Wire("connection_id")),
