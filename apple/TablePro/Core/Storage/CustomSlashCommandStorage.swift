@@ -59,6 +59,11 @@ final class CustomSlashCommandStorage: ObservableObject {
         return kept
     }
 
+    // An empty list once saved is a choice, unlike a list never saved.
+    var holdsValue: Bool {
+        defaults.object(forKey: Self.defaultsKey.name) != nil
+    }
+
     func isDuplicate(_ name: String, excluding id: UUID? = nil) -> Bool {
         commands.contains { existing in
             if let id, existing.id == id { return false }

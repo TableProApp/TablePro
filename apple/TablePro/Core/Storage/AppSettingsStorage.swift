@@ -255,6 +255,26 @@ final class AppSettingsStorage: Sendable {
         defaults.string(forKey: "com.TablePro.lastSelectedSchema.\(connectionId)")
     }
 
+    private static let syncedCategoryKeys: [String: String] = [
+        AppSettingsCategory.general: Keys.general,
+        AppSettingsCategory.appearance: Keys.appearance,
+        AppSettingsCategory.editor: Keys.editor,
+        AppSettingsCategory.dataGrid: Keys.dataGrid,
+        AppSettingsCategory.history: Keys.history,
+        AppSettingsCategory.tabs: Keys.tabs,
+        AppSettingsCategory.keyboard: Keys.keyboard,
+        AppSettingsCategory.ai: Keys.ai,
+        AppSettingsCategory.notifications: Keys.notifications,
+        AppSettingsCategory.formatter: Keys.formatter,
+        AppSettingsCategory.valueColors: Keys.valueColors,
+    ]
+
+    // A category never saved here reads as its defaults, which this Mac never chose.
+    func holdsValue(forCategory category: String) -> Bool {
+        guard let key = Self.syncedCategoryKeys[category] else { return false }
+        return defaults.data(forKey: key) != nil
+    }
+
     func hasSeenSetupGuide() -> Bool {
         defaults.bool(forKey: Keys.setupGuideSeen)
     }

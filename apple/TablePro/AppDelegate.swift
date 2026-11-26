@@ -155,6 +155,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         AccountServices.shared.start()
         // Before sync starts, so a profile's provider is the switch's first state.
         SyncProviderPolicy.shared.start()
+        KeychainProviderFollower.shared.start(host: .shared)
         SyncProviderCoordinator.shared.start()
         // Its gate reads the sign-in the core restores after launch.
         Task {

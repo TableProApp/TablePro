@@ -42,6 +42,9 @@ protocol KeychainStoring: Sendable {
     func removeSyncedCopy(forKey key: String) -> Bool
     // This Mac's own items whose key ends with the suffix, such as everything one connection id owns.
     func deviceOnlyKeys(endingWith suffix: String) -> [String]
+    // Gives each iCloud Keychain item an item of this Mac's own where it has none, and leaves the iCloud item in place.
+    // False when an item could not be read or written, so the caller tries again.
+    func addDeviceOnlyCopies() -> Bool
 }
 
 extension KeychainStoring {
@@ -67,6 +70,10 @@ extension KeychainStoring {
     func deviceOnlyKeys(endingWith suffix: String) -> [String] {
         []
     }
+
+    func addDeviceOnlyCopies() -> Bool {
+        true
+    }
 }
 
 struct KeychainCopiedItem: Sendable {
@@ -82,11 +89,22 @@ protocol KeychainItemStore: Sendable {
     func copyItem(_ query: [String: Any]) -> KeychainCopiedItem
     func delete(_ query: [String: Any]) -> OSStatus
     func accounts(_ query: [String: Any]) -> [String]
+    // With the status, so a locked keychain is not read as one holding nothing.
+    func accountList(_ query: [String: Any]) -> KeychainAccountList
+}
+
+struct KeychainAccountList: Sendable {
+    let status: OSStatus
+    let accounts: [String]
 }
 
 extension KeychainItemStore {
     func accounts(_ query: [String: Any]) -> [String] {
-        []
+        accountList(query).accounts
+    }
+
+    func accountList(_ query: [String: Any]) -> KeychainAccountList {
+        KeychainAccountList(status: errSecSuccess, accounts: [])
     }
 }
 
@@ -118,14 +136,20 @@ struct SystemKeychainItemStore: KeychainItemStore {
         SecItemDelete(query as CFDictionary)
     }
 
-    func accounts(_ query: [String: Any]) -> [String] {
+    func accountList(_ query: [String: Any]) -> KeychainAccountList {
         var query = query
         query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitAll
         var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let items = result as? [[String: Any]] else { return [] }
-        return items.compactMap { $0[kSecAttrAccount as String] as? String }
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess else {
+            return KeychainAccountList(status: status == errSecItemNotFound ? errSecSuccess : status, accounts: [])
+        }
+        let items = result as? [[String: Any]] ?? []
+        return KeychainAccountList(
+            status: status,
+            accounts: items.compactMap { $0[kSecAttrAccount as String] as? String }
+        )
     }
 }
 
@@ -154,10 +178,15 @@ final class KeychainHelper: KeychainStoring {
     // Off for a credential bound to this Mac, which another Mac must never receive through iCloud.
     private let followsPasswordSync: Bool
     private let passwordSyncSetting: @Sendable () -> Bool
+    private let providerState: @Sendable () -> KeychainProviderState
     private let items: any KeychainItemStore
 
+    private var onTableProSync: Bool {
+        followsPasswordSync && providerState().onTableProSync
+    }
+
     private var isPasswordSyncEnabled: Bool {
-        followsPasswordSync && passwordSyncSetting()
+        followsPasswordSync && passwordSyncSetting() && !providerState().onTableProSync
     }
 
     // A profile that leaves iCloud out, ICloudSyncAllowed=false included, writes every item device-only from then on;
@@ -171,11 +200,15 @@ final class KeychainHelper: KeychainStoring {
         service: String = "com.TablePro",
         followsPasswordSync: Bool = true,
         passwordSyncSetting: @escaping @Sendable () -> Bool = { KeychainHelper.storedPasswordSyncSetting() },
+        providerState: @escaping @Sendable () -> KeychainProviderState = {
+            KeychainProviderState.stored(in: AppStorageEnvironment.shared.defaults)
+        },
         items: any KeychainItemStore = SystemKeychainItemStore()
     ) {
         self.service = service
         self.followsPasswordSync = followsPasswordSync
         self.passwordSyncSetting = passwordSyncSetting
+        self.providerState = providerState
         self.items = items
     }
 
@@ -224,6 +257,7 @@ final class KeychainHelper: KeychainStoring {
     }
 
     // With sync on, a newer local item is a save made while sync was off; with sync off, this Mac's own item always wins.
+    // On TablePro Sync, once every iCloud item has a copy here, a missing item was removed here and stays removed.
     func read(forKey key: String, deviceOnly: Bool) -> KeychainResult {
         let prefersSynced = !deviceOnly && isPasswordSyncEnabled
         let first = items.copyItem(itemQuery(forKey: key, synchronizable: prefersSynced))
@@ -233,6 +267,9 @@ final class KeychainHelper: KeychainStoring {
             }
             let other = items.copyItem(itemQuery(forKey: key, synchronizable: !prefersSynced))
             return result(for: Self.isNewer(other, than: first) ? other : first, key: key)
+        }
+        if onTableProSync, providerState().deviceCopiesAdded {
+            return .notFound
         }
 
         var fallback = baseQuery(forKey: key)
@@ -280,9 +317,10 @@ final class KeychainHelper: KeychainStoring {
         return items.accounts(query).filter { $0.hasSuffix(suffix) }
     }
 
+    // On TablePro Sync only this Mac's own item goes: the iCloud one belongs to the devices still on iCloud.
     func delete(forKey key: String, deviceOnly: Bool) {
         var query = baseQuery(forKey: key)
-        if !deviceOnly {
+        if !deviceOnly, !onTableProSync {
             query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
         }
 
@@ -294,6 +332,9 @@ final class KeychainHelper: KeychainStoring {
 
     @discardableResult
     func removeSyncedCopy(forKey key: String) -> Bool {
+        if onTableProSync {
+            return true
+        }
         let own = items.copyItem(itemQuery(forKey: key, synchronizable: false))
         guard own.status == errSecSuccess, own.data != nil else {
             log(status: own.status, operation: "find the local copy before removing the synced one", key: key)
@@ -302,6 +343,42 @@ final class KeychainHelper: KeychainStoring {
         let status = items.delete(itemQuery(forKey: key, synchronizable: true))
         guard status == errSecSuccess || status == errSecItemNotFound else {
             log(status: status, operation: "remove the synced copy", key: key)
+            return false
+        }
+        return true
+    }
+
+    func addDeviceOnlyCopies() -> Bool {
+        var query = baseQuery(forKey: "")
+        query.removeValue(forKey: kSecAttrAccount as String)
+        query[kSecAttrSynchronizable as String] = true
+        let listed = items.accountList(query)
+        guard listed.status == errSecSuccess else {
+            log(status: listed.status, operation: "list the iCloud Keychain items", key: "")
+            return false
+        }
+        var complete = true
+        for key in Set(listed.accounts).sorted() where !addDeviceOnlyCopy(forKey: key) {
+            complete = false
+        }
+        return complete
+    }
+
+    private func addDeviceOnlyCopy(forKey key: String) -> Bool {
+        let own = items.copyItem(itemQuery(forKey: key, synchronizable: false))
+        guard own.status == errSecItemNotFound else {
+            return own.status == errSecSuccess
+        }
+        let synced = items.copyItem(itemQuery(forKey: key, synchronizable: true))
+        guard synced.status == errSecSuccess, let data = synced.data else {
+            return synced.status == errSecItemNotFound
+        }
+        var attributes = itemQuery(forKey: key, synchronizable: false)
+        attributes[kSecValueData as String] = data
+        attributes[kSecAttrAccessible as String] = accessibility(forSync: false)
+        let status = items.add(attributes)
+        guard status == errSecSuccess || status == errSecDuplicateItem else {
+            log(status: status, operation: "copy an iCloud Keychain item to this Mac", key: key)
             return false
         }
         return true
