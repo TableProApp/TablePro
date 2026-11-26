@@ -16,6 +16,8 @@ internal enum ProviderMoveError: Error, Equatable {
     case engineUnavailable
     // The person or a profile chose a provider again while the move waited.
     case superseded
+    // The engine never reported iCloud stopping, so the move did not start.
+    case iCloudDidNotStop
 }
 
 internal enum MoveToServiceOutcome: Equatable {
@@ -62,13 +64,19 @@ internal final class ProviderMoves: ObservableObject {
     // Each provider choice the moves did not write themselves, so a move that waited on one gives way to it.
     private var choice = 0
     private var writesProvider = false
+    private let iCloudStopLimit: Duration
+    private let clock: any Clock<Duration>
 
     init(
         host: @escaping @autoclosure () -> ProviderMoveHost = .live,
-        settings: SettingsSlice<SyncSettings> = AppSettingsManager.shared.syncSlice
+        settings: SettingsSlice<SyncSettings> = AppSettingsManager.shared.syncSlice,
+        iCloudStopLimit: Duration = .seconds(30),
+        clock: any Clock<Duration> = ContinuousClock()
     ) {
         makeHost = host
         self.settings = settings
+        self.iCloudStopLimit = iCloudStopLimit
+        self.clock = clock
         // Settings are written on the main thread, and the count has to move before the write returns.
         providerWatch = settings.publisher
             .map(\.provider)
@@ -120,9 +128,10 @@ internal final class ProviderMoves: ObservableObject {
     }
 
     // The last iCloud push and pull run through the coordinator, then iCloud stops on this Mac before the engine moves,
-    // so nothing more reaches CloudKit and no iCloud pass runs beside the move. The coordinator stops iCloud without
-    // telling the engine a provider while the stored one is TablePro Sync, since the move sets it. A move that fails
-    // leaves the Mac on TablePro Sync waiting for it, so Try Again picks up where it stopped.
+    // so nothing more reaches CloudKit and no iCloud pass runs beside the move. Stopping iCloud has the coordinator
+    // tell the engine Off from a task of its own, so the move waits for the engine to report it: that Off then never
+    // lands after the move. A move that fails leaves the Mac on TablePro Sync waiting for it, so Try Again picks up
+    // where it stopped.
     func moveToService() async throws -> MoveToServiceOutcome {
         guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
         let asked = choice
@@ -132,12 +141,17 @@ internal final class ProviderMoves: ObservableObject {
             try ensureCurrent(asked)
             guard case .approved = keys else { return .needsKeys(keys) }
             if settings.value.provider != .tableproSync {
-                if host.iCloudRuns() {
+                let stopsICloud = host.iCloudRuns()
+                if stopsICloud {
                     await host.iCloudPass()
                     try ensureCurrent(asked)
                 }
                 guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
                 setProvider(.tableproSync)
+                if stopsICloud {
+                    try await waitUntilOffICloud(engine)
+                    try ensureCurrent(asked)
+                }
             }
             await host.passesFinished()
             try ensureCurrent(asked)
@@ -280,6 +294,24 @@ internal final class ProviderMoves: ObservableObject {
         settings.update { $0.provider = provider }
     }
 
+    private func waitUntilOffICloud(_ engine: any SyncMoveEngine) async throws {
+        let reports = host.engineChanges
+        let waiter = Task { @MainActor in
+            // The first value checks at once, after the subscription, so a report already in is not missed.
+            for await _ in reports.prepend(()).values where engine.status().provider != .icloud {
+                return true
+            }
+            return false
+        }
+        let limit = iCloudStopLimit
+        let timer = Task { [clock] in
+            try await clock.sleep(for: limit)
+            waiter.cancel()
+        }
+        defer { timer.cancel() }
+        guard await waiter.value else { throw ProviderMoveError.iCloudDidNotStop }
+    }
+
     private func ensureCurrent(_ asked: Int) throws {
         guard choice == asked else { throw ProviderMoveError.superseded }
     }
@@ -313,6 +345,8 @@ extension ProviderMoves {
                 return String(localized: "Your organization does not allow this on this Mac.")
             case .inProgress:
                 return String(localized: "Another change to how this Mac syncs is still running.")
+            case .iCloudDidNotStop:
+                return String(localized: "iCloud did not stop on this Mac in time, so nothing moved. Try again.")
             case .superseded:
                 return String(localized: "How this Mac syncs changed while this ran, so it stopped.")
             case .engineUnavailable:

@@ -120,9 +120,11 @@ private final class Fixture {
     var snapshot = ManagedPolicySnapshot()
     var iCloudPassGate: AsyncGate?
     var passesGate: AsyncGate?
+    // As the coordinator does when iCloud stops: it tells the engine Off from a task of its own, then the engine reports.
+    var coordinatorTellsOff = true
     private(set) var moves: ProviderMoves!
 
-    init(provider: SyncProviderSetting, engineProvider: SyncProviderTag?) {
+    init(provider: SyncProviderSetting, engineProvider: SyncProviderTag?, iCloudStopLimit: Duration = .seconds(30)) {
         engine = FakeMoveEngine(log: log)
         engine.update { $0.info.provider = engineProvider }
         var settings = SyncSettings.default
@@ -130,9 +132,14 @@ private final class Fixture {
         slice = SettingsSlice(settings)
         iCloudRuns = provider == .iCloud
         // As AppSettingsManager's commit does: iCloud follows the provider at once.
-        slice.attach { [unowned self] _, new in
+        slice.attach { [unowned self] old, new in
             log.append("provider \(new.provider.rawValue)")
             iCloudRuns = new.provider == .iCloud
+            guard old.provider == .iCloud, new.provider != .iCloud, coordinatorTellsOff else { return }
+            Task { @MainActor [engine, engineChanges] in
+                try? await engine.chooseProvider(provider: .off)
+                engineChanges.send()
+            }
         }
         let host = ProviderMoveHost(
             engine: { [unowned self] in engine },
@@ -160,7 +167,7 @@ private final class Fixture {
             ),
             policy: { [unowned self] in snapshot }
         )
-        moves = ProviderMoves(host: host, settings: slice)
+        moves = ProviderMoves(host: host, settings: slice, iCloudStopLimit: iCloudStopLimit)
     }
 
     var provider: SyncProviderSetting {
@@ -180,10 +187,24 @@ struct ProviderMovesTests {
 
         #expect(outcome == .moved)
         #expect(fixture.log.all == [
-            "keyState", "iCloudPass", "provider tablepro-sync", "passesFinished", "moveToService", "syncNow"
+            "keyState", "iCloudPass", "provider tablepro-sync", "chooseProvider off", "passesFinished", "moveToService",
+            "syncNow"
         ])
+        #expect(fixture.engine.status().provider == .tableproSync)
         #expect(fixture.provider == .tableproSync)
         #expect(!fixture.moves.awaitsMove)
+    }
+
+    @Test("An engine that never reports iCloud stopping keeps the move from starting")
+    func iCloudThatDoesNotStop() async {
+        let fixture = Fixture(provider: .iCloud, engineProvider: .icloud, iCloudStopLimit: .milliseconds(50))
+        fixture.coordinatorTellsOff = false
+
+        await #expect(throws: ProviderMoveError.iCloudDidNotStop) {
+            try await fixture.moves.moveToService()
+        }
+        #expect(!fixture.log.all.contains("moveToService"))
+        #expect(fixture.moves.awaitsMove)
     }
 
     @Test("From Off there is no iCloud pass to run first")
@@ -366,6 +387,7 @@ struct ProviderMovesTests {
     @Test("Off from iCloud is the coordinator's to tell the engine")
     func offFromICloud() async {
         let fixture = Fixture(provider: .iCloud, engineProvider: .icloud)
+        fixture.coordinatorTellsOff = false
 
         await fixture.moves.turnOff()
 
@@ -483,5 +505,138 @@ struct ProviderMovesTests {
         let message = ProviderMoves.message(forCode: code)
         #expect(!message.isEmpty)
         #expect(!message.contains(code))
+    }
+}
+
+// The core engine as both the iCloud coordinator and the moves drive it, so the handoff runs through the real coordinator.
+private final class CoordinatedEngine: SyncEngine, SyncMoveEngine, @unchecked Sendable {
+    private let state = OSAllocatedUnfairLock(uncheckedState: (provider: SyncProviderTag?.none, chosen: [String]()))
+    private let listener = OSAllocatedUnfairLock<(any SyncListener)?>(uncheckedState: nil)
+
+    func attach(_ listener: any SyncListener) {
+        self.listener.withLockUnchecked { $0 = listener }
+    }
+
+    var chosen: [String] {
+        state.withLockUnchecked { $0.chosen }
+    }
+
+    private func set(_ provider: SyncProviderTag, as event: String) {
+        state.withLockUnchecked {
+            $0.provider = provider
+            $0.chosen.append(event)
+        }
+        listener.withLockUnchecked { $0 }?.statusChanged()
+    }
+
+    func status() -> SyncStatusInfo {
+        SyncStatusInfo(
+            provider: state.withLockUnchecked { $0.provider },
+            phase: .idle,
+            lastPassMs: nil,
+            problem: nil,
+            waitingApprovals: 0,
+            conflicts: 0,
+            held: 0,
+            queuedChanges: 0
+        )
+    }
+
+    func syncNow(why: PassReasonTag) async throws {}
+
+    func chooseProvider(provider: SyncProviderTag) async throws {
+        set(provider, as: "choose \(provider)")
+    }
+
+    func uploadAgain() async throws {}
+
+    func keyState() async throws -> KeyStateInfo {
+        .approved(av: 1, keyDevice: "DEVICE")
+    }
+
+    func planMoveToService() async throws -> MovePlanInfo {
+        MovePlanInfo(records: 1, stayingBehind: 0, secretsToSeal: 0)
+    }
+
+    func moveToService() async throws {
+        set(.tableproSync, as: "move to service")
+    }
+
+    func planMoveToIcloud() async throws -> MoveBackPlanInfo {
+        MoveBackPlanInfo(icloudDeletions: 0)
+    }
+
+    func moveToIcloud(confirmedDeletions: UInt64) async throws {
+        set(.icloud, as: "move to iCloud")
+    }
+
+    func chooseForNewIdentity(choice: NewIdentityChoiceTag) async throws {}
+
+    func deleteIcloudZone() async throws {}
+}
+
+@MainActor
+struct ProviderMovesCoordinatorTests {
+    @Test("From a running iCloud the coordinator's Off reaches the engine before the move, and nothing follows it")
+    func moveFromICloudThroughTheCoordinator() async throws {
+        let suite = try EphemeralDefaults("ProviderMovesCoordinatorTests")
+        let engine = CoordinatedEngine()
+        let transport = CloudKitCoreTransport(database: FakeCloudKitDatabase())
+        let host = SyncEngineHost(transport: transport) { listener in
+            engine.attach(listener)
+            return engine
+        }
+        var initial = SyncSettings.default
+        initial.provider = .iCloud
+        let slice = SettingsSlice(initial)
+        let coordinator = SyncProviderCoordinator(
+            host: host,
+            loadSettings: { slice.value },
+            licenseGate: { nil },
+            policyGate: { nil },
+            policyChanges: Empty().eraseToAnyPublisher(),
+            licenseChanges: Empty().eraseToAnyPublisher(),
+            makeNetworkMonitor: { nil },
+            metadata: SyncMetadataStorage(userDefaults: suite.defaults),
+            pushRegistrar: .inert,
+            activationClock: ManualClock(),
+            notificationCenter: NotificationCenter()
+        )
+        // As AppSettingsManager's commit does.
+        slice.attach { old, new in
+            guard old.enabled != new.enabled else { return }
+            if new.enabled {
+                coordinator.enableSync()
+            } else {
+                coordinator.disableSync()
+            }
+        }
+        let moves = ProviderMoves(
+            host: ProviderMoveHost(
+                engine: { engine },
+                openedEngine: { host.openedEngine == nil ? nil : engine },
+                engineChanges: host.statusChanges.eraseToAnyPublisher(),
+                iCloudRuns: { coordinator.syncStatus.isEnabled },
+                iCloudPass: { await coordinator.syncNow() },
+                passesFinished: { await coordinator.passesFinished() },
+                cloudKit: CloudKitReach(
+                    isClosed: { transport.isClosed },
+                    open: { transport.open() },
+                    close: { transport.close() }
+                ),
+                policy: { ManagedPolicySnapshot() }
+            ),
+            settings: slice
+        )
+        coordinator.start()
+        await coordinator.passesFinished()
+
+        #expect(try await moves.moveToService() == .moved)
+        await coordinator.passesFinished()
+
+        #expect(engine.chosen == ["choose icloud", "choose off", "move to service"])
+        #expect(engine.status().provider == .tableproSync)
+        #expect(transport.isClosed)
+        #expect(slice.value.provider == .tableproSync)
     }
 }
