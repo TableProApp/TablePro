@@ -14,6 +14,8 @@ final class TagStorageTests: XCTestCase {
     private var defaults: UserDefaults!
     private var tracker: SyncJournalRecorder!
     private var appEvents: AppEvents!
+    private var directory: URL!
+    private var connectionStorage: ConnectionStorage!
     private var storage: TagStorage!
     private var changeCount = 0
     private var changeSubscription: AnyCancellable?
@@ -28,13 +30,18 @@ final class TagStorageTests: XCTestCase {
         changeSubscription = appEvents.connectionUpdated.sink { [weak self] _ in
             self?.changeCount += 1
         }
-        storage = TagStorage(userDefaults: defaults, syncJournal: tracker.journal, appEvents: appEvents)
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        connectionStorage = makeConnectionStorage()
+        storage = TagStorage(syncJournal: tracker.journal, connectionStorage: self.connectionStorage, appEvents: appEvents)
         changeCount = 0
     }
 
     override func tearDown() {
         changeSubscription = nil
         storage = nil
+        connectionStorage = nil
+        try? FileManager.default.removeItem(at: directory)
+        directory = nil
         appEvents = nil
         tracker = nil
         defaults = nil
@@ -46,11 +53,22 @@ final class TagStorageTests: XCTestCase {
         ConnectionTag(name: "staging", color: .orange)
     }
 
-    /// A store already on disk when the app starts. `init` seeds the presets through `loadTags`,
-    /// so an instance built first has a warm cache and never reads what a test writes after it.
+    private func makeConnectionStorage() -> ConnectionStorage {
+        ConnectionStorage(
+            fileURL: directory.appendingPathComponent("connections.json"),
+            userDefaults: defaults,
+            syncJournal: tracker.journal,
+            keychain: InMemoryKeychain(),
+            appEvents: self.appEvents
+        )
+    }
+
+    /// A store an earlier build left when the app starts. The library already read holds what it
+    /// read, so a launch reads the stores again.
     private func makeStorage(seeding payload: Data) -> TagStorage {
         defaults.set(payload, forKey: "com.TablePro.tags")
-        return TagStorage(userDefaults: defaults, syncJournal: tracker.journal, appEvents: appEvents)
+        connectionStorage = makeConnectionStorage()
+        return TagStorage(syncJournal: tracker.journal, connectionStorage: self.connectionStorage, appEvents: appEvents)
     }
 
     // MARK: - Add

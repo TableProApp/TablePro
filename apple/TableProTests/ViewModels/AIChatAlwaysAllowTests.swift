@@ -29,7 +29,8 @@ struct AIChatAlwaysAllowTests {
     init() throws {
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("always-allow-\(UUID().uuidString).json")
+            .appendingPathComponent("always-allow-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true

@@ -14,7 +14,7 @@ extension Notification.Name {
 // A folder only records which objects it holds, so nothing here ever reaches the database.
 @MainActor
 internal final class TableFolderStorage: TableScopedSettingsStore {
-    static let shared = TableFolderStorage()
+    static let shared = TableFolderStorage(core: .shared)
     nonisolated static let connectionIdUserInfoKey = "connectionId"
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "TableFolderStorage")
@@ -43,15 +43,22 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
     private var documents: [UUID: Document] = [:]
     // Read as empty and never written, so a damaged or newer document is not replaced by the next edit.
     private var unreadableConnectionIds: Set<UUID> = []
+    // Nil keeps the folders out of the core, for a store nothing else reads.
+    private(set) var coreMirror: CoreMirror<TableFolderCoreAdapter>?
 
     init(
         defaults: KeyValueStore = AppStorageEnvironment.shared.defaults,
         syncJournal: SyncHostJournal = .shared,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        core: CoreHistoryDatabase? = nil,
+        mirrorDefaults: UserDefaults = AppStorageEnvironment.shared.defaults
     ) {
         self.store = defaults
         self.syncJournal = syncJournal
         self.notificationCenter = notificationCenter
+        if let core {
+            coreMirror = CoreMirror(adapter: TableFolderCoreAdapter(store: self, database: core), defaults: mirrorDefaults)
+        }
     }
 
     // MARK: - Reading
@@ -250,6 +257,47 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
         return TableFolderRevision(connectionId: revision.connectionId, folders: current.folders, items: inverseItems)
     }
 
+    private func commitRemote(_ touched: [UUID: Document]) {
+        let written = touched.filter { $0.value != document(for: $0.key) && persist($0.value, for: $0.key) }
+        guard !written.isEmpty else { return }
+        postChange(for: Set(written.keys))
+    }
+
+    // MARK: - The core's copy
+
+    var hasUnreadableDocumentsAfterReadingAll: Bool {
+        _ = storedConnectionIds().map(document(for:))
+        return hasUnreadableDocuments
+    }
+
+    // The core's copy written back, marking nothing: it came from this Mac or a pull, never a new edit here.
+    func applyCoreRecords(
+        folders: [TableFolder],
+        items: [TableFolderItem],
+        removedFolderIds: Set<UUID>,
+        removedItemKeys: Set<TableFolderItemKey>
+    ) {
+        let connections = Set(folders.map(\.scope.connectionId))
+            .union(items.map(\.scope.connectionId))
+            .union(storedConnectionIds())
+        var touched: [UUID: Document] = [:]
+        for connectionId in connections {
+            var document = document(for: connectionId)
+            let before = document
+            let incomingFolders = folders.filter { $0.scope.connectionId == connectionId }
+            let incomingItems = items.filter { $0.scope.connectionId == connectionId }
+            let replacedFolders = Set(incomingFolders.map(\.id)).union(removedFolderIds)
+            let replacedItems = Set(incomingItems.map(\.key)).union(removedItemKeys)
+            document.folders.removeAll { replacedFolders.contains($0.id) }
+            document.folders += incomingFolders
+            document.items.removeAll { replacedItems.contains($0.key) }
+            document.items += incomingItems
+            if document != before {
+                touched[connectionId] = document
+            }
+        }
+        commitRemote(touched)
+    }
     // MARK: - TableScopedSettingsStore
 
     func renameTable(from oldScope: TableScope, to newScope: TableScope) {
@@ -333,6 +381,9 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
             syncJournal.recorded(.tableFolderItem, deleted: itemIds)
             purged.insert(connectionId)
         }
+        if !purged.isEmpty {
+            coreMirror?.schedulePush()
+        }
         postChange(for: purged)
     }
 
@@ -347,6 +398,7 @@ internal final class TableFolderStorage: TableScopedSettingsStore {
     @discardableResult
     private func commit(_ document: Document, for connectionId: UUID, marks: SyncMarks) -> Bool {
         guard persist(document, for: connectionId) else { return false }
+        coreMirror?.schedulePush()
         syncJournal.recorded(.tableFolder, written: marks.dirtyFolders, deleted: marks.deletedFolders)
         syncJournal.recorded(.tableFolderItem, written: marks.dirtyItems, deleted: marks.deletedItems)
         postChange(for: [connectionId])

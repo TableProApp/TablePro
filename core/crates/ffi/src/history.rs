@@ -22,8 +22,8 @@ use crate::table_folders::TableFolderStore;
 
 #[derive(uniffi::Object)]
 pub struct QueryHistoryStore {
-    history: QueryHistory,
-    tasks: Tasks,
+    pub(crate) history: QueryHistory,
+    pub(crate) tasks: Tasks,
 }
 
 // A run as the editor saw it end. Times are milliseconds from the Unix epoch; the store keeps whole seconds.
@@ -320,7 +320,7 @@ impl From<HistoryOutcomeTag> for Outcome {
 }
 
 // A time past what the clock holds lands on the epoch rather than panicking.
-fn from_millis(millis: i64) -> SystemTime {
+pub(crate) fn from_millis(millis: i64) -> SystemTime {
     from_epoch(Duration::from_millis(millis.unsigned_abs()), millis < 0)
 }
 

@@ -195734,6 +195734,10 @@
         }
       }
     },
+    "Sorted within the keys loaded so far" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Sorting" : {
       "localizations" : {
         "fr" : {

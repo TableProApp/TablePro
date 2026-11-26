@@ -25,7 +25,8 @@ struct CatalogEditFavoriteAdoptionTests {
         let connectionStorage = ConnectionStorage(
             fileURL: FileManager.default.temporaryDirectory
                 .appendingPathComponent("tablepro-tests")
-                .appendingPathComponent("catalog-edit-favorites-\(unique).json"),
+                .appendingPathComponent("catalog-edit-favorites-\(unique)", isDirectory: true)
+                .appendingPathComponent("connections.json"),
             userDefaults: defaults,
             syncJournal: tracker.journal,
             keychain: InMemoryKeychain()
