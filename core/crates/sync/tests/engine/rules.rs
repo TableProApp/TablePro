@@ -599,3 +599,31 @@ async fn the_approval_gate_holds_a_new_record_and_splits_a_known_one_in_the_call
     assert_eq!(deleted, Gated::Apply(Merged::Deleted));
     assert!(matches!(&rows[..], [Row::Approval(row)] if row.key == key(&id(1))));
 }
+
+#[tokio::test]
+async fn a_record_the_person_deletes_here_leaves_nothing_to_approve() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mini.connections.put(&id(1), json!({"name": "Prod", "host": "a"}));
+    mini.sync().await;
+    mac.sync().await;
+    mac.sync
+        .decide_approval(key(&id(1)), "/host".to_owned(), true)
+        .await
+        .unwrap();
+    mac.connections.put(&id(1), json!({"name": "Prod", "host": "b"}));
+    mac.sync().await;
+    mini.sync().await;
+    let waiting = mini.sync.approvals().await.unwrap().len();
+
+    mini.connections.remove(&id(1));
+    mini.sync().await;
+
+    assert_eq!(waiting, 1);
+    assert!(mini.rows(RowRange::Table(Table::Approvals)).await.is_empty());
+    assert_eq!(
+        server.stored(personal(), "connection", &id(1)).unwrap().deleted,
+        Some(DeletedReason::User)
+    );
+}

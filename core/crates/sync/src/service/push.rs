@@ -421,6 +421,10 @@ impl ServiceSync {
         let mut drops = Vec::new();
         let mut conflicts = false;
         let mut tombstones: HashMap<Kind, Vec<String>> = HashMap::new();
+        let applied: Vec<bool> = outcomes
+            .iter()
+            .map(|outcome| matches!(outcome, ChangeOutcome::Applied { .. }))
+            .collect();
         for (pending, outcome) in batch.iter().zip(outcomes) {
             let kind = pending.key.kind.known();
             match outcome {
@@ -478,7 +482,13 @@ impl ServiceSync {
             }
         }
         let deleted_history = tombstones.get(&Kind::HistoryEntry).cloned().unwrap_or_default();
-        self.commit_answer(scope, puts, drops, deleted_history).await?;
+        let gone: Vec<RecordKey> = batch
+            .iter()
+            .zip(&applied)
+            .filter(|(pending, applied)| **applied && pending.op == PendingOp::Delete)
+            .map(|(pending, _)| pending.key.clone())
+            .collect();
+        self.commit_answer(scope, puts, drops, deleted_history, gone).await?;
         self.tombstones_pushed(scope, tombstones).await?;
         Ok(Sent::Answered { conflicts })
     }
@@ -489,9 +499,16 @@ impl ServiceSync {
         puts: Vec<BaseRow>,
         drops: Vec<RecordKey>,
         deleted_history: Vec<String>,
+        gone: Vec<RecordKey>,
     ) -> Result<(), SyncError> {
         self.stop.check()?;
         let mut txn = begin(&self.state).await?;
+        // A record the person deleted here has nothing left to approve.
+        for key in &gone {
+            for row in approval::rows_of(txn.as_mut(), key).await? {
+                txn.delete(&RowKey::Approval(row.key, row.field)).await?;
+            }
+        }
         for base in puts {
             txn.put(Row::Base(base)).await?;
         }
