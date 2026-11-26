@@ -121,6 +121,8 @@ pub(super) struct Parts {
     known: RefCell<HashSet<Uuid>>,
     search: RefCell<ConnectionSearch>,
     focus: Cell<Option<Uuid>>,
+    // Connections an import wrote, whose groups open once their rows arrive.
+    reveal: RefCell<Vec<Uuid>>,
     menu: gtk::PopoverMenu,
     state_changed: RefCell<Option<StateObserverId>>,
 }
@@ -165,6 +167,7 @@ impl Parts {
             known: RefCell::new(HashSet::new()),
             search: RefCell::default(),
             focus: Cell::new(None),
+            reveal: RefCell::new(Vec::new()),
             menu,
             state_changed: RefCell::new(None),
         }
@@ -408,6 +411,40 @@ impl WelcomeView {
         self.take_focus();
     }
 
+    // The list selects one row, so several imported connections are shown in their open groups, the first focused.
+    pub(crate) fn focus_connections(&self, ids: &[Uuid]) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        // A search would hide them, and its flat list has no groups to open.
+        self.set_search("");
+        parts.reveal.replace(ids.to_vec());
+        self.reveal_imported();
+        if let Some(first) = ids.first() {
+            self.focus_connection(*first);
+        }
+    }
+
+    fn reveal_imported(&self) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        let waiting = parts.reveal.take();
+        let mut still = Vec::new();
+        for id in waiting {
+            let listed = parts
+                .nodes
+                .borrow()
+                .contains_key(&(LibrarySection::Tree, LibraryItem::Connection(id)));
+            if listed {
+                self.reveal(id);
+            } else {
+                still.push(id);
+            }
+        }
+        parts.reveal.replace(still);
+    }
+
     fn attach(&self) {
         let imp = self.imp();
         let Some(parts) = imp.parts.get() else {
@@ -588,6 +625,7 @@ impl WelcomeView {
         parts.found_filter.changed(gtk::FilterChange::Different);
         self.refresh_page();
         self.restore_focus(held);
+        self.reveal_imported();
         self.take_focus();
         if at_top {
             self.go_home();
@@ -736,6 +774,8 @@ impl WelcomeView {
         };
         parts.focus.set(None);
         list_view.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+        // GtkListBase moves the keyboard to the row only from inside the list, and the search or a menu may hold it.
+        list_view.grab_focus();
     }
 
     // Open the groups the connection `id` sits in, outermost first.
@@ -993,6 +1033,10 @@ impl WelcomeView {
             .iter()
             .find(|((held, _), node)| *held == section && node.title() == title)
             .map(|(_, node)| node.clone())
+    }
+
+    pub(crate) fn focused_title(&self) -> Option<String> {
+        self.focused_node().map(|(node, _)| node.title())
     }
 
     pub(crate) fn found_node(&self, title: &str) -> Option<LibraryNode> {

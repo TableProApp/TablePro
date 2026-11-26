@@ -21,7 +21,7 @@ enum DBeaverScriptReader {
                 content: content,
                 keyword: nil,
                 folderPath: entry.folderPath,
-                sourceConnectionId: bindings[resourcePath],
+                sourceConnectionId: bindings[resourcePath].map { DBeaverImporter.sourceId($0, projectURL: projectURL) },
                 isAutoNamed: isAutoNamed(name)
             ))
         }

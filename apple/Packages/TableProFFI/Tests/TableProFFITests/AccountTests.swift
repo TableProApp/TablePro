@@ -91,7 +91,8 @@ private func config(
     managedServerUrl: String? = nil,
     allowOtherServers: Bool? = nil,
     machineId: String = macMachineId,
-    accountUrl: String? = nil
+    accountUrl: String? = nil,
+    client: AppClientTag = .macos
 ) -> AccountConfig {
     AccountConfig(
         accountUrl: accountUrl,
@@ -104,7 +105,7 @@ private func config(
         callbackFinished: "",
         callbackUnknown: "",
         machineGuid: nil,
-        client: .macos,
+        client: client,
         machineId: machineId,
         policy: .read(values: ManagedPolicyValues(
             accountServerUrl: managedServerUrl,
@@ -142,6 +143,22 @@ private func code(of error: any Error) -> String? {
     let server = account.server()
     #expect(server.isProduction && !server.isManaged && server.othersAllowed)
     #expect(server.apiOrigin == "https://api.tablepro.app")
+    #expect(account.status().state == .signedOut)
+}
+
+@Test func anIPhoneSignsInAsTheIOSClientThroughTheSameScheme() async throws {
+    let core = try Core(config: HostConfig(clientVersion: "test", storageDir: nil), secrets: KeychainItems())
+    let session = ClosedSession()
+    let account = try await core.openAccount(
+        config: config(in: try folder(), client: .ios), browser: NoBrowser(), webAuthenticator: session, listener: Quiet()
+    )
+
+    await #expect(throws: CoreError.Cancelled) { try await account.signIn(cancel: nil) }
+
+    let page = try #require(session.asked.first)
+    #expect(page.scheme == "app.tablepro")
+    #expect(page.url.contains("client_id=tablepro-ios"))
+    #expect(page.url.contains("redirect_uri=app.tablepro%3A%2Foauth%2Fcallback"))
     #expect(account.status().state == .signedOut)
 }
 

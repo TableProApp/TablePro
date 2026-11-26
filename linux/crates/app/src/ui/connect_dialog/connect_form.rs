@@ -550,6 +550,10 @@ impl ConnectForm {
             tags: self.tags.clone(),
             icon: self.icon,
             options,
+            // The form shows none of these, so an edit keeps what another device or app set.
+            details: existing.map(|saved| saved.details.clone()).unwrap_or_default(),
+            device: existing.map(|saved| saved.device.clone()).unwrap_or_default(),
+            unknown: existing.map(|saved| saved.unknown.clone()).unwrap_or_default(),
         }
     }
 

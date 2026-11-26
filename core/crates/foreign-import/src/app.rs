@@ -123,8 +123,9 @@ pub(crate) trait AppReader {
     // Whether the app's files are where this platform keeps them.
     fn has_data(&self) -> bool;
 
-    // Reads files only, never a keychain.
-    fn inventory(&self) -> Inventory;
+    // Reads files only, never a keychain. Missing data is an empty inventory; data that is there but cannot be read or
+    // parsed is the error collect would give, so a list never shows it as empty.
+    fn inventory(&self) -> Result<Inventory, ForeignImportError>;
 
     fn collect(
         &self,
@@ -173,15 +174,14 @@ impl ForeignImporter {
         }
         match self.host.installed(self.app) {
             Some(true) => true,
-            // The macOS app looks past a missing bundle only for these two, whose data outlives it.
-            Some(false) => matches!(self.app, ForeignApp::DBeaver | ForeignApp::DataGrip) && self.reader().has_data(),
-            None => self.reader().has_data(),
+            // Deleting an app leaves its data behind, and that data is what an import reads.
+            Some(false) | None => self.reader().has_data(),
         }
     }
 
-    pub fn inventory_blocking(&self) -> Inventory {
+    pub fn inventory_blocking(&self) -> Result<Inventory, ForeignImportError> {
         if !self.app.runs_on(self.dirs.platform) {
-            return Inventory::default();
+            return Ok(Inventory::default());
         }
         self.reader().inventory()
     }

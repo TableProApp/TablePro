@@ -116,7 +116,10 @@ public sealed class ConnectionLibrary : IDisposable
     {
         ArgumentNullException.ThrowIfNull(path);
         var summary = await CoreCall.RunAsync(() => _library.ImportFile(path)).ConfigureAwait(false);
-        return new ImportSummary(checked((int)summary.Added), checked((int)summary.Updated));
+        return new ImportSummary(
+            checked((int)summary.Added),
+            checked((int)summary.Updated),
+            [.. summary.ConnectionIds.Select(Guid.Parse)]);
     }
 
     // A copy under a new id right after the original, with every secret the original keeps; it is no favourite.

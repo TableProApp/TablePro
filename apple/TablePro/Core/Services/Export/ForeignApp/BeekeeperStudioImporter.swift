@@ -22,18 +22,39 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
     var dataDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/beekeeper-studio")
 
+    var resolveAppURL: @Sendable (_ bundleIdentifier: String) -> URL? = {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
+    }
+
     private var appDatabaseURL: URL { dataDirectoryURL.appendingPathComponent("app.db") }
     private var keyFileURL: URL { dataDirectoryURL.appendingPathComponent(".key") }
 
     var savedQuerySupport: ForeignSavedQuerySupport { .globalFolder(named: displayName) }
 
-    func inventory() -> ForeignAppInventory {
-        guard let db = try? openDatabase() else {
-            return ForeignAppInventory(connections: 0, savedQueries: 0)
+    func installedAppURL() -> URL? {
+        resolveAppURL(appBundleIdentifier)
+    }
+
+    func hasDataAtDefaultLocation() -> Bool {
+        FileManager.default.fileExists(atPath: appDatabaseURL.path)
+    }
+
+    func inventory() throws -> ForeignAppInventory {
+        guard hasDataAtDefaultLocation() else { return .empty }
+        let db: OpaquePointer?
+        do {
+            db = try openDatabase()
+        } catch {
+            throw ForeignAppImportError.unreadableFile(appDatabaseURL)
         }
         defer { sqlite3_close(db) }
+        let rows: [SavedConnectionRow]
+        do {
+            rows = try readSavedConnections(db: db)
+        } catch {
+            throw ForeignAppImportError.unreadableFile(appDatabaseURL)
+        }
         // Only the rows collect imports: one with no connection type is skipped there.
-        let rows = (try? readSavedConnections(db: db)) ?? []
         return ForeignAppInventory(
             connections: rows.count { Self.mapDriver($0.connectionType) != nil },
             savedQueries: BeekeeperSavedQueryReader.count(db: db)

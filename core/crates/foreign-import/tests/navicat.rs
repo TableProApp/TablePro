@@ -134,13 +134,19 @@ fn reads_the_same_export_on_every_platform() {
 #[test]
 fn inventory_is_empty_without_a_file() {
     let (importer, _home) = bare_importer(ForeignPlatform::current(), Arc::new(PlainHost));
-    assert_eq!(importer.inventory_blocking(), Inventory::default());
+    assert_eq!(
+        importer.inventory_blocking().expect("an inventory"),
+        Inventory::default()
+    );
 }
 
 #[test]
 fn inventory_counts_the_files_connections_and_never_any_saved_queries() {
     let (importer, _home) = bare_importer(ForeignPlatform::current(), Arc::new(PlainHost));
-    let inventory = importer.with_file(fixture("connections.ncx")).inventory_blocking();
+    let inventory = importer
+        .with_file(fixture("connections.ncx"))
+        .inventory_blocking()
+        .expect("an inventory");
     assert_eq!(
         inventory,
         Inventory {

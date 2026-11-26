@@ -11,6 +11,7 @@ mod app_services;
 mod app_window_host;
 mod debug_info;
 mod imp;
+pub(crate) mod keymap;
 mod launch_notice;
 mod legal_section;
 mod license_ask_prompt;
@@ -51,6 +52,7 @@ pub use accelerators::{
 pub use app_actions::install_app_actions;
 pub use app_services::{AppServices, AppServicesParts};
 pub use app_window_host::AppWindowHost;
+pub(crate) use keymap::bind_preset_row;
 pub use open_files::Placement;
 pub use quit_sequence::QuitSequence;
 pub use shortcut_listing::ShortcutListing;

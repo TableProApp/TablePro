@@ -176,13 +176,14 @@ struct AppStateLibraryTests {
         #expect(metadata.dirtyIds(for: .connection).contains(connection.id.uuidString))
     }
 
+    // Changed on purpose: the origin page replaces the welcome page and has its own seen key.
     @Test("Closing the first run without answering records every question as declined")
     func dismissedFirstRunDeclines() {
         let state = makeState(syncEnabled: false)
 
-        state.finishFirstRun(pages: [.welcome, .iCloud, .usageData])
+        state.finishFirstRun(pages: [.origin, .iCloud, .usageData])
 
-        #expect(state.onboarding.hasSeenWelcome)
+        #expect(state.onboarding.hasSeenOrigin)
         #expect(state.onboarding.syncChoice == false)
         #expect(state.onboarding.usageDataChoice == false)
     }
@@ -192,9 +193,61 @@ struct AppStateLibraryTests {
         let state = makeState(syncEnabled: false)
         state.setUsageDataEnabled(true)
 
-        state.finishFirstRun(pages: [.welcome, .usageData])
+        state.finishFirstRun(pages: [.origin, .usageData])
 
         #expect(state.onboarding.usageDataChoice == true)
+    }
+
+    @Test("A first run without the origin page leaves it unseen")
+    func firstRunWithoutOriginLeavesItUnseen() {
+        let state = makeState(syncEnabled: false)
+
+        state.finishFirstRun(pages: [.iCloud, .usageData])
+
+        #expect(state.onboarding.hasSeenOrigin == false)
+    }
+
+    @Test("A library with connections leaves the origin out and marks it seen at once")
+    func connectionsGateOutOrigin() {
+        let state = makeState(syncEnabled: false)
+        #expect(state.addConnection(DatabaseConnection(name: "Prod", type: .postgresql)))
+
+        let presentation = state.planLaunch(version: "1.0")
+
+        #expect(presentation == .firstRun([.iCloud, .usageData]))
+        #expect(state.onboarding.hasSeenOrigin)
+    }
+
+    @Test("The sample database counts as a connection")
+    func sampleGatesOutOrigin() throws {
+        let state = makeState(syncEnabled: false)
+        _ = try state.openSampleDatabase()
+
+        let presentation = state.planLaunch(version: "1.0")
+
+        #expect(presentation == .firstRun([.iCloud, .usageData]))
+        #expect(state.onboarding.hasSeenOrigin)
+    }
+
+    @Test("An empty library shows the origin, and only closing the sheet marks it seen")
+    func emptyLibraryShowsOrigin() {
+        let state = makeState(syncEnabled: false)
+
+        let presentation = state.planLaunch(version: "1.0")
+
+        #expect(presentation == .firstRun([.origin, .iCloud, .usageData]))
+        #expect(state.onboarding.hasSeenOrigin == false)
+    }
+
+    @Test("A library that failed to load shows no origin and leaves it unseen")
+    func failedLibraryLeavesOriginUnseen() throws {
+        try Data("{ not json".utf8).write(to: fixture.connectionsFile)
+        let state = makeState(syncEnabled: false)
+
+        let presentation = state.planLaunch(version: "1.0")
+
+        #expect(presentation == .firstRun([.iCloud, .usageData]))
+        #expect(state.onboarding.hasSeenOrigin == false)
     }
 
     // MARK: - Spotlight, tags and Handoff

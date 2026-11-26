@@ -43,7 +43,7 @@ impl ConnectionsDocument {
             |connection| (connection.group_id, connection.order),
             |connection, order| connection.order = order,
         );
-        let saved: HashSet<Uuid> = self.connections.iter().map(|connection| connection.id).collect();
+        let saved = self.connection_ids();
         let mut listed = HashSet::with_capacity(self.favorites.len());
         self.favorites.retain(|id| saved.contains(id) && listed.insert(*id));
     }
@@ -106,7 +106,7 @@ pub(super) fn unique(ids: &[Uuid]) -> Vec<Uuid> {
     ids.iter().copied().filter(|id| seen.insert(*id)).collect()
 }
 
-pub(crate) fn cyclic(groups: &[ConnectionGroup]) -> HashSet<Uuid> {
+fn cyclic(groups: &[ConnectionGroup]) -> HashSet<Uuid> {
     let parents: HashMap<Uuid, Option<Uuid>> = groups.iter().map(|group| (group.id, group.parent_id)).collect();
     let mut cyclic = HashSet::new();
     let mut settled = HashSet::new();
