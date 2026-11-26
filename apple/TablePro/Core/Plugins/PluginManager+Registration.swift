@@ -467,6 +467,10 @@ extension PluginManager {
         paginationCapability(for: databaseType).allowsSeeking && !exactRowCountIsFullScan(for: databaseType)
     }
 
+    func seeksKeyedPages(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.seeksKeyedPages ?? false
+    }
+
     func supportsColumnSort(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.supportsColumnSort ?? true
     }

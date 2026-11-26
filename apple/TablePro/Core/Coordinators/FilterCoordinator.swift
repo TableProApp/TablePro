@@ -249,11 +249,13 @@ final class FilterCoordinator: ObservableObject {
             tableName: tableName,
             limit: tab.pagination.pageSize,
             offset: tab.pagination.currentOffset,
-            columns: schema.map { parent.tableQueryColumns(for: tab, builtOn: $0) } ?? parent.tableQueryColumns(for: tab)
+            columns: schema.map { parent.tableQueryColumns(for: tab, builtOn: $0) } ?? parent.tableQueryColumns(for: tab),
+            seeks: true
         )
 
         parent.tabManager.mutate(at: tabIndex) {
             $0.content.query = built.query
+            $0.pagination.keyedPage = built.keyed
             if built.isRefused {
                 $0.filterState.applied = nil
             }
@@ -281,7 +283,8 @@ final class FilterCoordinator: ObservableObject {
             tableName: tableName,
             limit: tab.pagination.pageSize,
             offset: tab.pagination.currentOffset,
-            columns: parent.tableQueryColumns(for: tab, builtOn: schema)
+            columns: parent.tableQueryColumns(for: tab, builtOn: schema),
+            seeks: true
         ).query
     }
 
@@ -320,10 +323,30 @@ final class FilterCoordinator: ObservableObject {
         tableName: String,
         limit: Int,
         offset: Int,
-        columns built: TableQueryColumns
-    ) -> (query: String, isRefused: Bool) {
+        columns built: TableQueryColumns,
+        seeks: Bool = false
+    ) -> (query: String, isRefused: Bool, keyed: KeyedPageRead?) {
         let applied = tab.filterState.applied
         let (columns, columnTypes) = (built.columns, built.columnTypes)
+
+        if seeks, let sortState = querySortState(for: tab),
+           let seek = parent.keysetSeek(for: tab, columns: columns, columnTypes: columnTypes),
+           let seekLimit = seek.key == nil ? tab.pagination.lastPageRowCount : limit,
+           let query = parent.queryBuilder.buildKeysetPageQuery(
+               tableName: tableName,
+               schemaName: tab.tableContext.schemaName,
+               filters: applied?.filters ?? [],
+               logicMode: parent.supportsMatchAnyFilters ? applied?.logicMode ?? .and : .and,
+               sortState: sortState,
+               columns: columns,
+               columnTypes: columnTypes,
+               selectColumns: built.selectColumns,
+               unloadedValues: built.unloadedValues,
+               limit: seekLimit,
+               seek: seek
+           ) {
+            return (query, false, KeyedPageRead(query: query, readsBackward: seek.readsBackward))
+        }
 
         let filteredQuery: String?
         if let search = activeBrowseSearch(for: tab.filterState) {
@@ -367,7 +390,7 @@ final class FilterCoordinator: ObservableObject {
             limit: limit,
             offset: offset
         )
-        return (query, isRefused)
+        return (query, isRefused, nil)
     }
 
     // MARK: - Filter State

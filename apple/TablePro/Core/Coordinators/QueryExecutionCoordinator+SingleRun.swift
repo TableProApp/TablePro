@@ -94,6 +94,8 @@ extension QueryExecutionCoordinator {
         let isTableTab = tab.tabType == .table
         let readsView = tab.tableContext.knowsView(named: tableName)
         let (grammar, lengthColumns) = (parent.lexicalGrammar, parent.unloadedValueLengthColumns(for: tab, sql: sql))
+        // A keyed page read backward comes in reverse key order; only the statement built that way is flipped.
+        let reversesRows = isTableTab && tab.pagination.keyedPage == KeyedPageRead(query: sql, readsBackward: true)
         let safeModeIsReadOnly = parent.runsAtReadOnly
         let held = parent.manualCommitRun(skipped: isTableTab || isAutoLoad)
         let bound = request.bound
@@ -145,7 +147,8 @@ extension QueryExecutionCoordinator {
                         let edits = isAutoLoad ? nil : await SucceededStatements.single(
                             statement.sql, scope: scope, databaseType: conn.type, grammar: grammar, ranOn: driver
                         )
-                        return (fetched.foldingUnloadedValues(lengthColumns: lengthColumns), edits)
+                        let page = fetched.foldingUnloadedValues(lengthColumns: lengthColumns)
+                        return (reversesRows ? page.reversingRows() : page, edits)
                     }
                 }
                 let fetchEndedAt = ContinuousClock.now

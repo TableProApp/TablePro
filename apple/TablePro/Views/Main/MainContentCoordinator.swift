@@ -1098,7 +1098,7 @@ final class MainContentCoordinator: ObservableObject {
         guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return nil }
         TableLoadTracer.shared.stage(.executeRequested, tabId: tabId)
 
-        let sql = tab.content.query
+        let sql = pageStatement(forTab: tabId) ?? tab.content.query
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             traceNavigationAbandoned(tabId: tabId, outcome: .emptyQuery)
             return nil

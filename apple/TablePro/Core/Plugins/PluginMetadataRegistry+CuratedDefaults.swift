@@ -249,6 +249,7 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
+                    seeksKeyedPages: true,
                     binaryLengthFunction: "OCTET_LENGTH",
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
@@ -322,6 +323,7 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
+                    seeksKeyedPages: true,
                     binaryLengthFunction: "OCTET_LENGTH",
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
@@ -403,6 +405,7 @@ extension PluginMetadataRegistry {
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .preferred,
                     verifiesServerWithSystemTrust: true,
+                    seeksKeyedPages: true,
                     readsCheckListsFromDDL: false,
                     readOnlyEnforcement: .sessionDefault
                 ),
@@ -685,6 +688,7 @@ extension PluginMetadataRegistry {
                     supportsCheckConstraintEditing: true,
                     supportsGeneratedColumns: true,
                     supportsDatabaseTriggerBrowse: true,
+                    seeksKeyedPages: true,
                     localFilePathField: .database,
                     newDatabaseFileExtensions: Self.sqliteFileExtensions,
                     supportsRemoteDatabaseFile: true,

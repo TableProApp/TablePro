@@ -281,6 +281,12 @@ struct PaginationState: Equatable {
     var pageSize: Int
     var currentPage: Int = 1
     var currentOffset: Int = 0
+    // How the next read finds a keyed page, set by the move that reached it and spent by that read; nil reads at
+    // `currentOffset`.
+    var seek: PageSeek?
+    // The statement built with a seek, so its rows are flipped back when it read backward, and a second run of it
+    // reads at the offset instead.
+    var keyedPage: KeyedPageRead?
     // Raised where rows are discarded; not derived from TabExecutionRegistry, whose claim lands a main-actor turn later.
     var isLoading: Bool = false
     var isApproximateRowCount: Bool = false
@@ -379,6 +385,14 @@ struct PaginationState: Equatable {
     private mutating func setPage(_ page: Int) {
         currentPage = page
         currentOffset = (page - 1) * pageSize
+        seek = nil
+    }
+
+    // Read backward from the end, the last page holds what its offset would: the rows past the pages before it.
+    var lastPageRowCount: Int? {
+        guard hasExactRowCount, let total = totalRowCount, total > 0 else { return nil }
+        let remainder = total - (totalPages - 1) * pageSize
+        return remainder > 0 ? remainder : nil
     }
 
     mutating func goToNextPage() {
@@ -435,6 +449,7 @@ struct PaginationState: Equatable {
     mutating func reset() {
         currentPage = 1
         currentOffset = 0
+        seek = nil
         isLoading = false
         // A superseded count's mark would otherwise suppress Count Exactly on the new table.
         isCountPending = false
@@ -456,8 +471,36 @@ struct PaginationState: Equatable {
 
     mutating func updateOffset(_ newOffset: Int) {
         guard newOffset >= 0 else { return }
+        seek = nil
         currentOffset = newOffset
         currentPage = (currentOffset / pageSize) + 1
+    }
+}
+
+struct KeyedPageRead: Equatable {
+    let query: String
+    let readsBackward: Bool
+}
+
+// Where a keyed page starts: past the last row of the page before, before the first row of the page after, or at
+// the end of the table.
+enum PageSeek: Equatable {
+    case after([PluginCellValue])
+    case before([PluginCellValue])
+    case last
+
+    var key: [PluginCellValue]? {
+        switch self {
+        case .after(let key), .before(let key): return key
+        case .last: return nil
+        }
+    }
+
+    var readsBackward: Bool {
+        switch self {
+        case .after: return false
+        case .before, .last: return true
+        }
     }
 }
 

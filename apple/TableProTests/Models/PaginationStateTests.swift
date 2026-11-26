@@ -450,3 +450,28 @@ struct PaginationStateTests {
         #expect(state.settledRowCountScope == nil)
     }
 }
+
+struct PaginationSeekTests {
+    @Test("Moving to a page by number drops the seek that reached the page before")
+    func pageNumberDropsSeek() {
+        var state = PaginationState(totalRowCount: 1_000, pageSize: 100, currentPage: 4, currentOffset: 300)
+        state.seek = .after(["400"])
+        state.goToPage(2)
+        #expect(state.seek == nil)
+        state.seek = .last
+        state.updatePageSize(50)
+        #expect(state.seek == nil)
+        state.seek = .before(["1"])
+        state.reset()
+        #expect(state.seek == nil)
+    }
+
+    @Test("The last page holds the rows past the pages before it")
+    func lastPageRowCount() {
+        #expect(PaginationState(totalRowCount: 2_500, pageSize: 1_000).lastPageRowCount == 500)
+        #expect(PaginationState(totalRowCount: 2_000, pageSize: 1_000).lastPageRowCount == 1_000)
+        var estimated = PaginationState(totalRowCount: 2_500, pageSize: 1_000)
+        estimated.isApproximateRowCount = true
+        #expect(estimated.lastPageRowCount == nil)
+    }
+}
