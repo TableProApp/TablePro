@@ -20,6 +20,10 @@ internal struct TeamRestartSheet: View {
         model.snapshot.map(TeamKeysPresentation.restartCandidates) ?? []
     }
 
+    private var waitingForKeyChange: [TeamMemberKeys] {
+        model.snapshot.map(TeamKeysPresentation.restartWaitsForKeyChange) ?? []
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
@@ -53,8 +57,16 @@ internal struct TeamRestartSheet: View {
                         row(member)
                     }
                 } footer: {
-                    if !candidates.isEmpty {
-                        Text("Include someone only after comparing their words with them.")
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !candidates.isEmpty {
+                            Text("Include someone only after comparing their words with them.")
+                        }
+                        if !waitingForKeyChange.isEmpty {
+                            Text(String(
+                                format: String(localized: "Left out until you compare their new keys on the team page: %@."),
+                                waitingForKeyChange.map(\.displayName).formatted(.list(type: .and))
+                            ))
+                        }
                     }
                 }
             }

@@ -136,8 +136,14 @@ private struct ResetKeysRows: View {
         }
     }
 
-    @ViewBuilder
+    // Redrawn when the hold ends, so Finish turns on with no other change to the reset.
     private func pendingRow(_ reset: PendingResetInfo) -> some View {
+        TimelineView(.explicit([ResetKeysModel.date(reset.heldUntilUs)])) { _ in
+            pendingContent(reset)
+        }
+    }
+
+    private func pendingContent(_ reset: PendingResetInfo) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             NoticeLabel(pendingText(reset), severity: reset.mine ? .info : .warning)
             HStack(spacing: 8) {

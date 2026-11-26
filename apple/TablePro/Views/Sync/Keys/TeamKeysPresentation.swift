@@ -81,9 +81,14 @@ internal enum TeamKeysPresentation {
         }
     }
 
-    // Owners can restart with no member at all, so the restart lists only those who could take a wrap.
+    // Owners can restart with no member at all, so the restart lists only those who could take a wrap. A member under
+    // a key-change alert takes none until this Mac accepts the new key (0056, Pins), so it is left out until then.
     static func restartCandidates(_ snapshot: TeamKeysSnapshot) -> [TeamMemberKeys] {
-        snapshot.members.filter { !$0.isYou && $0.status != .noKeys }
+        snapshot.members.filter { !$0.isYou && ($0.status == .awaitingConfirmation || $0.status == .holder) }
+    }
+
+    static func restartWaitsForKeyChange(_ snapshot: TeamKeysSnapshot) -> [TeamMemberKeys] {
+        snapshot.members.filter { !$0.isYou && $0.status == .alert }
     }
 
     static func statusText(of member: TeamMemberKeys) -> String {

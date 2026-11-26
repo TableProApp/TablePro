@@ -107,8 +107,9 @@ internal struct TeamMemberConfirmSheet: View {
         return false
     }
 
+    // A code still being read may yet differ, so Confirm waits for its answer.
     private var canConfirm: Bool {
-        hasWords && codeCheck != .differs && model.work == nil
+        hasWords && !isReadingCode && codeCheck != .differs && model.work == nil
     }
 
     private func loadWords() async {

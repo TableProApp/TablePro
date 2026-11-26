@@ -91,15 +91,18 @@ struct TeamKeysPresentationTests {
         #expect(TeamKeysPresentation.action(for: F.member(F.bo, status: .holder), in: F.snapshot(), team: F.keysTeam(role: .owner)) == nil)
     }
 
-    @Test("A restart lists the members who could take a wrap, never this account or one with no keys")
+    @Test("A restart lists the members who could take a wrap, never this account, one with no keys or one under an alert")
     func restartCandidates() {
+        let cy = "3E8F7D4B-9C4A-4F7B-8D3E-6B4A5F6E7D84"
         let snapshot = F.snapshot(members: [
             F.member(F.you, isYou: true, role: .owner, status: .awaitingConfirmation),
             F.member(F.ana, status: .awaitingConfirmation),
             F.member(F.bo, status: .noKeys),
+            F.member(cy, status: .alert),
         ])
 
         #expect(TeamKeysPresentation.restartCandidates(snapshot).map { $0.account } == [F.ana])
+        #expect(TeamKeysPresentation.restartWaitsForKeyChange(snapshot).map { $0.account } == [cy])
     }
 
     @Test("Notices show for this team and its members only, by name, with the action each asks for")
