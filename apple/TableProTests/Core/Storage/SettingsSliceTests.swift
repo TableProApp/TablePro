@@ -58,7 +58,7 @@ private final class DefaultsWriteLog {
     @MainActor
     func watch(_ journal: SyncHostJournal, as label: String) {
         let entries = entries
-        subscriptions.append(journal.changes.sink { _ in
+        subscriptions.append(journal.listen { _ in
             entries.withLock { $0.append(label) }
         })
     }

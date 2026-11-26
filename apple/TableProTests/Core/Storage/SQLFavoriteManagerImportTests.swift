@@ -77,7 +77,7 @@ struct SQLFavoriteManagerImportTests {
     func rowsAreReadableBeforeTheyAreJournaled() async throws {
         let path = databasePath
         var seen: [CommittedRows?] = []
-        let observing = journal.journal.changes.sink { _ in
+        let observing = journal.journal.listen { _ in
             seen.append(committedRows(at: path))
         }
         defer { observing.cancel() }

@@ -295,6 +295,18 @@ struct SyncRecordCacheTests {
         #expect(cache.allRecords().map(\.recordID.recordName).sorted() == ["Connection_Added", "Connection_Kept"])
     }
 
+    @Test("A cache whose folder cannot be listed reports a replace as failed instead of empty")
+    func replaceAllFailsWhenTheFolderCannotBeListed() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SyncRecordCacheTests/\(UUID().uuidString)", isDirectory: true)
+        let cache = SyncRecordCache(directory: directory, defaults: nil, storageKey: "recordCache")
+        cache.store([makeRecord("Connection_Old")])
+        try FileManager.default.setAttributes([.posixPermissions: 0o333], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path) }
+
+        #expect(!cache.replaceAll(with: []))
+    }
+
     @Test("Replacing the cache with nothing empties it")
     func replaceAllWithNothingEmptiesIt() throws {
         let cache = try makeCache()

@@ -27,6 +27,7 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         var hostChanges: [SyncHostChange] = []
         var hostChangeAttempts = 0
         var refuseHostChanges = false
+        var refuseCategories = false
         var uploadsAgain = 0
         var pass: (@Sendable (PassReasonTag) async -> Void)?
     }
@@ -61,7 +62,14 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
     }
 
     func setCategories(categories: SyncCategoriesArg) async throws {
-        update { $0.categories.append(categories) }
+        let refused = state.withLockUnchecked { state in
+            guard !state.refuseCategories else { return true }
+            state.categories.append(categories)
+            return false
+        }
+        if refused {
+            throw AccountError.network("the engine did not take the categories")
+        }
     }
 
     func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws {
@@ -121,7 +129,7 @@ private final class Fixture {
             policyGate: { [unowned self] in policy },
             policyChanges: policyChanges.eraseToAnyPublisher(),
             licenseChanges: Empty().eraseToAnyPublisher(),
-            journalChanges: journal.changes.eraseToAnyPublisher(),
+            journal: journal,
             makeNetworkMonitor: { nil },
             metadata: metadata,
             pushRegistrar: .inert,
@@ -487,6 +495,18 @@ struct SyncProviderCoordinatorTests {
 
         #expect(fixture.engine.read { $0.categories }.last == SyncCategoriesArg(offKinds: [], passwords: false))
         #expect(fixture.passes.last == .person)
+    }
+
+    @Test("A pass whose categories the engine refused sends nothing, so a category turned off never goes up")
+    func refusedCategoriesStopThePass() async throws {
+        let fixture = try Fixture()
+        fixture.engine.update { $0.refuseCategories = true }
+
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.providers == [.icloud])
+        #expect(fixture.passes.isEmpty)
     }
 
     @Test("A stop followed at once by an allow still stops iCloud before it waits for the switch again")

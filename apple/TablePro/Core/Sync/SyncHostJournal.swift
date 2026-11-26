@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import os
 import TableProSyncTransport
 
 // One write of a store the Mac still keeps in Swift: the kind and the ids of the records it saved and removed.
@@ -17,11 +18,14 @@ struct SyncHostChange: Equatable, Sendable {
 // Each Swift store's write path calls this once its write is on disk (core ADRs 0054 and 0060). The engine's diff, not
 // the journal, decides what goes up, so a missed call only delays a push. While the previous stable still runs the
 // Swift engine, the engine marks these ids in that build's metadata, so an edit made offline reaches it too.
-// Combine's subjects take a send from any thread, and stores journal on the main actor.
+// Unchecked for the subject, which only the main actor sends on; the waiting queue sits behind its lock.
 nonisolated final class SyncHostJournal: @unchecked Sendable {
     static let shared = SyncHostJournal()
 
-    let changes = PassthroughSubject<SyncHostChange, Never>()
+    private let subject = PassthroughSubject<SyncHostChange, Never>()
+    // Writes before anyone listens, such as the launch migrations that run before sync starts, wait for the first
+    // listener. Nil once one listened.
+    private let waiting = OSAllocatedUnfairLock<SyncHostChangeQueue?>(initialState: SyncHostChangeQueue())
 
     // An id a write both removed and wrote back is there once it lands, so it counts as written.
     @MainActor
@@ -30,7 +34,29 @@ nonisolated final class SyncHostJournal: @unchecked Sendable {
         let writtenIds = Set(written)
         let deleted = Self.unique(deleted).filter { !writtenIds.contains($0) }
         guard !written.isEmpty || !deleted.isEmpty else { return }
-        changes.send(SyncHostChange(kind: type.coreKind, written: written, deleted: deleted))
+        let change = SyncHostChange(kind: type.coreKind, written: written, deleted: deleted)
+        let held = waiting.withLock { queue -> Bool in
+            guard queue != nil else { return false }
+            queue?.append(change)
+            return true
+        }
+        if !held {
+            subject.send(change)
+        }
+    }
+
+    // Each change on the main actor, the ones that waited for a listener first.
+    @MainActor
+    func listen(_ receive: @escaping @MainActor (SyncHostChange) -> Void) -> AnyCancellable {
+        let listening = subject.sink { change in
+            MainActor.assumeIsolated { receive(change) }
+        }
+        let held = waiting.withLock { queue -> [SyncHostChange] in
+            defer { queue = nil }
+            return queue?.changes ?? []
+        }
+        held.forEach(receive)
+        return listening
     }
 
     private static func unique(_ ids: [String]) -> [String] {

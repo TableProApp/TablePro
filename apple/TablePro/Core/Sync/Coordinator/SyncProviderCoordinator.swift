@@ -36,7 +36,7 @@ final class SyncProviderCoordinator: ObservableObject {
     private let policyGate: @MainActor () -> DisableReason?
     private let policyChanges: AnyPublisher<DisableReason?, Never>
     private let licenseChanges: AnyPublisher<Void, Never>
-    private let journalChanges: AnyPublisher<SyncHostChange, Never>
+    private let journal: SyncHostJournal
     private let makeNetworkMonitor: () -> SyncNetworkMonitor?
     private let metadata: SyncMetadataStorage
     private let activationClock: any Clock<Duration>
@@ -73,7 +73,7 @@ final class SyncProviderCoordinator: ObservableObject {
             .map(SyncProviderPolicy.disableReason)
             .eraseToAnyPublisher(),
         licenseChanges: AnyPublisher<Void, Never> = AppEvents.shared.licenseStatusDidChange.eraseToAnyPublisher(),
-        journalChanges: AnyPublisher<SyncHostChange, Never> = SyncHostJournal.shared.changes.eraseToAnyPublisher(),
+        journal: SyncHostJournal = .shared,
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { SyncNetworkMonitor() },
         metadata: SyncMetadataStorage = .appDefault,
         pushRegistrar: SyncPushRegistrar = .live,
@@ -88,7 +88,7 @@ final class SyncProviderCoordinator: ObservableObject {
         self.policyGate = policyGate
         self.policyChanges = policyChanges
         self.licenseChanges = licenseChanges
-        self.journalChanges = journalChanges
+        self.journal = journal
         self.makeNetworkMonitor = makeNetworkMonitor
         self.metadata = metadata
         self.activationClock = activationClock
@@ -106,8 +106,7 @@ final class SyncProviderCoordinator: ObservableObject {
         host.statusChanges
             .sink { [weak self] in self?.refreshStatus() }
             .store(in: &observers)
-        journalChanges
-            .sink { [weak self] change in self?.journalRecorded(change) }
+        journal.listen { [weak self] change in self?.journalRecorded(change) }
             .store(in: &observers)
         licenseChanges
             .receive(on: RunLoop.main)
@@ -149,7 +148,14 @@ final class SyncProviderCoordinator: ObservableObject {
     // A category turned on is read whole by the next pass; one turned off sends nothing from the engine's next call on.
     func categoriesChanged() {
         guard syncStatus.isEnabled else { return }
-        Task { await tellCategories() }
+        Task {
+            guard let engine = host.openedEngine else { return }
+            do {
+                try await tellCategories(to: engine)
+            } catch {
+                Self.logger.error("The engine did not take the categories: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            }
+        }
         requestPass(.person)
     }
 
@@ -219,7 +225,8 @@ final class SyncProviderCoordinator: ObservableObject {
                 deliverJournal()
             }
             await journalDelivery?.value
-            await tellCategories()
+            // A category turned off must hold before anything else goes up.
+            try await tellCategories(to: host.engine())
             if started == generation {
                 try await host.engine().syncNow(why: why)
             }
@@ -279,16 +286,11 @@ final class SyncProviderCoordinator: ObservableObject {
         return choice
     }
 
-    private func tellCategories() async {
-        guard let engine = host.openedEngine else { return }
+    private func tellCategories(to engine: any SyncEngine) async throws {
         let categories = Self.categories(loadSettings())
         guard categories != toldCategories else { return }
-        do {
-            try await engine.setCategories(categories: categories)
-            toldCategories = categories
-        } catch {
-            Self.logger.error("The engine did not take the categories: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
-        }
+        try await engine.setCategories(categories: categories)
+        toldCategories = categories
     }
 
     // MARK: - Journal

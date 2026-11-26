@@ -24,6 +24,23 @@ struct SyncHostJournalTests {
         #expect(journal.changes == [SyncHostChange(kind: "table_folder_item", written: ["moved"], deleted: ["gone"])])
     }
 
+    @Test("Writes before anyone listens reach the first listener, and later ones go to it as they happen")
+    func writesBeforeTheFirstListenerWait() {
+        let journal = SyncHostJournal()
+        journal.recorded(.connection, written: ["A"])
+        journal.recorded(.connection, deleted: ["A"])
+        var received: [SyncHostChange] = []
+
+        let listening = journal.listen { received.append($0) }
+        journal.recorded(.group, written: ["G"])
+
+        #expect(received == [
+            SyncHostChange(kind: "connection", written: [], deleted: ["A"]),
+            SyncHostChange(kind: "group", written: ["G"], deleted: [])
+        ])
+        listening.cancel()
+    }
+
     @Test("A write that changed nothing tells nobody")
     func anEmptyWriteIsSilent() {
         let journal = SyncJournalRecorder()

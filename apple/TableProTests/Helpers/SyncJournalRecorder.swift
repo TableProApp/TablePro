@@ -14,7 +14,7 @@ final class SyncJournalRecorder {
     private var subscription: AnyCancellable?
 
     init() {
-        subscription = journal.changes.sink { [weak self] change in
+        subscription = journal.listen { [weak self] change in
             self?.take(change)
         }
     }
