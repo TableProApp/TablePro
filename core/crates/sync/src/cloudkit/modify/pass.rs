@@ -315,7 +315,7 @@ impl CloudKitSync {
     }
 
     // Everything arrived on TablePro Sync: the file stays moved, and iCloud never syncs it again until a move back.
-    pub async fn finish_move(&self, fence: &MoveFence<'_>) -> Result<(), SyncError> {
+    pub(crate) async fn finish_move(&self, fence: &MoveFence<'_>) -> Result<(), SyncError> {
         let session = self.session.lock().await;
         if let Some(state) = self.move_file(&session).await? {
             self.mark_move(state.as_ref(), MovePhase::Done, fence).await?;
@@ -342,7 +342,7 @@ impl CloudKitSync {
     // engine stops for good and the file is marked moved, so nothing of what the move then brings into the stores goes
     // to iCloud, after a restart too. A move called again after it stopped short finds the engine stopped and runs no
     // pass.
-    pub async fn stop_for_move(&self, fence: &MoveFence<'_>) -> Result<(), SyncError> {
+    pub(crate) async fn stop_for_move(&self, fence: &MoveFence<'_>) -> Result<(), SyncError> {
         let mut session = self.session.lock().await;
         if !self.stop.is_stopped() {
             match self.run_locked(&mut session, PassReason::Person).await {
@@ -402,7 +402,7 @@ impl CloudKitSync {
     // stops with no last pass and the file is marked moved, and the move meets the service with the state file's
     // CloudKit bases alone. No zone is read, so no deletion made on iCloud is inferred; only what this device's bases
     // record goes.
-    pub async fn copy_without_icloud(&self, fence: &MoveFence<'_>) -> Result<IcloudCopy, SyncError> {
+    pub(crate) async fn copy_without_icloud(&self, fence: &MoveFence<'_>) -> Result<IcloudCopy, SyncError> {
         self.stop.stop();
         let session = self.session.lock().await;
         let state = self.move_file(&session).await?;

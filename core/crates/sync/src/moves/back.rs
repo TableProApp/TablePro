@@ -15,7 +15,7 @@ use crate::api::cloudkit::{CloudKitFailure, CloudKitFetched, CloudKitOutcome, Cl
 use crate::api::control::PassReason;
 use crate::api::error::SyncError;
 use crate::api::ids::{RecordKey, ScopeName};
-use crate::api::state::{Provider, Row, RowKey, RowRange, StateStore, Table};
+use crate::api::state::{Row, RowKey, RowRange, StateStore, Table};
 use crate::cloudkit::fetch::{SCOPE, wire_fields};
 use tablepro_records::cloudkit::record_name;
 
