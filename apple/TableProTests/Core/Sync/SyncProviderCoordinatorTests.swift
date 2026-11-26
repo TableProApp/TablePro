@@ -357,6 +357,35 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.coordinator.syncStatus == .idle)
     }
 
+    @Test("An iCloud open that fails after an Off open shows sync failed, and the next pass opens it")
+    func failedICloudOpenAfterAnOffOpen() async throws {
+        let fixture = try Fixture()
+        let off = FakeSyncEngine()
+        off.update { state in
+            state.refusesProviderCalls = true
+            state.info.provider = .off
+            state.info.phase = .off
+        }
+        fixture.offEngine = off
+        fixture.enabled = false
+        fixture.coordinator.start()
+        fixture.journal.recorded(.connection, written: ["A"])
+        try await waitUntil { off.read { $0.hostChanges.count } == 1 }
+
+        fixture.opens = false
+        fixture.enabled = true
+        fixture.coordinator.enableSync()
+        await fixture.coordinator.passesFinished()
+        #expect(fixture.coordinator.syncStatus == .error(.unexpected))
+
+        fixture.opens = true
+        await fixture.coordinator.syncNow()
+
+        #expect(fixture.opened == [.off, .icloud])
+        #expect(fixture.passes == [.person])
+        #expect(fixture.coordinator.syncStatus == .idle)
+    }
+
     @Test("With iCloud stopped by the organization and the switch on, a write opens the engine Off, not for iCloud")
     func writeUnderAPolicyOpensOff() async throws {
         let fixture = try Fixture()
