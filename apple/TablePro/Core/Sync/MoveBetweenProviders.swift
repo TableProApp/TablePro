@@ -63,6 +63,7 @@ internal final class ProviderMoves: ObservableObject {
     private let settings: SettingsSlice<SyncSettings>
     private var observers: Set<AnyCancellable> = []
     private var providerWatch: AnyCancellable?
+    private var categoriesWatch: AnyCancellable?
     private var isMoving = false
     private var reconciling: Task<Void, Never>?
     // Each provider choice the moves did not write themselves, so a move that waited on one gives way to it.
@@ -87,6 +88,34 @@ internal final class ProviderMoves: ObservableObject {
                 }
                 Task { @MainActor [weak self] in self?.reconcile() }
             }
+        // iCloud's service hears the categories from the coordinator; any other open service hears them here.
+        categoriesWatch = settings.publisher
+            .map(Self.categories)
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] categories in
+                Task { @MainActor [weak self] in await self?.tell(categories) }
+            }
+    }
+
+    // On TablePro Sync a password goes up sealed in an envelope, so it follows its own switch rather than iCloud
+    // Keychain's (core ADR 0054, Providers).
+    nonisolated static func categories(_ settings: SyncSettings) -> SyncCategoriesArg {
+        let categories = SyncProviderCoordinator.categories(settings)
+        guard settings.provider == .tableproSync else { return categories }
+        return SyncCategoriesArg(
+            offKinds: categories.offKinds,
+            passwords: settings.syncConnections && settings.syncPasswords
+        )
+    }
+
+    private func tell(_ categories: SyncCategoriesArg) async {
+        guard settings.value.provider != .iCloud, let engine = host.openedEngine(.off) else { return }
+        do {
+            try await engine.setCategories(categories: categories)
+        } catch {
+            Self.logger.error("The engine did not take the categories: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+        }
     }
 
     // A Mac on TablePro Sync opens the engine at launch, whose scheduler then polls the service.
@@ -119,6 +148,12 @@ internal final class ProviderMoves: ObservableObject {
         choices.forced == .tableproSync && settings.value.provider != .tableproSync
     }
 
+    // The profile requires iCloud and this Mac's data is on TablePro Sync: the move back waits for the person, who
+    // confirms what it deletes on iCloud.
+    var awaitsMoveBack: Bool {
+        choices.forced == .icloud && settings.value.provider == .tableproSync
+    }
+
     private var current: SyncProviderTag {
         SyncProviderTag(settings.value.provider)
     }
@@ -147,12 +182,14 @@ internal final class ProviderMoves: ObservableObject {
             let keys = try await engine.keyState()
             try ensureCurrent(asked)
             guard case .approved = keys else { return .needsKeys(keys) }
-            if from == .icloud {
-                try await engine.moveToService()
-            } else {
-                try await engine.firstUpload()
+            // The profile is read again in the same turn as the call, and the core checks it as well. From iCloud the
+            // core moves, from Off it makes the first upload.
+            guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
+            try await engine.chooseProvider(provider: .tableproSync)
+            guard choice == asked else {
+                await stopPersonalSyncAfterSupersededMove()
+                throw ProviderMoveError.superseded
             }
-            try ensureCurrent(asked)
             setProvider(.tableproSync)
             if from == .icloud {
                 // Stopping iCloud has the coordinator tell the service it holds Off. That service is still the open one
@@ -162,6 +199,19 @@ internal final class ProviderMoves: ObservableObject {
             await firstPass(asked)
             return .moved
         }
+    }
+
+    // The core put personal data on TablePro Sync in the service that moved, which a choice made meanwhile overrides.
+    // Opening TablePro Sync's service replaces that one, and Off then stops personal sync there; another provider is
+    // the coordinator's to open.
+    private func stopPersonalSyncAfterSupersededMove() async {
+        guard settings.value.provider == .off else { return }
+        do {
+            try await host.engine(.tableproSync).chooseProvider(provider: .off)
+        } catch {
+            Self.logger.error("The moved service did not stop: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+        }
+        engineChanged()
     }
 
     // The first pass on the service the stored provider opens now. A choice made meanwhile wins over it.
@@ -274,6 +324,11 @@ internal final class ProviderMoves: ObservableObject {
     private func reconcile() {
         guard reconciling == nil, !isMoving, settings.value.provider == .off else { return }
         guard let engine = host.openedEngine(.tableproSync), engine.status().provider == .tableproSync else { return }
+        // A profile that requires TablePro Sync keeps a Mac that moved on it, so a reset or an import does not take it off.
+        guard choices.providers.contains(.off) else {
+            setProvider(.tableproSync)
+            return
+        }
         reconciling = Task { [weak self] in
             do {
                 try await engine.chooseProvider(provider: .off)

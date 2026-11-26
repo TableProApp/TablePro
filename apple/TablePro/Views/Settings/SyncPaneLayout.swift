@@ -35,6 +35,9 @@ enum SyncServiceNotice: Equatable {
     // The profile requires TablePro Sync, and this Mac stays off until the person reviews its first upload (core ADR
     // 0055, PersonalSyncProvider).
     case awaitsUpload
+    // The profile requires iCloud and this Mac's data is on TablePro Sync: the move back waits for the person, who
+    // confirms what it deletes on iCloud (core ADR 0054, Back to iCloud).
+    case awaitsMoveBack
     // Past the license's grace or after a lapse, the service takes key objects only (core ADR 0051, Gates).
     case pullOnly(selfHosted: Bool)
     // A company server's license ended and its grace runs until this date (core ADR 0046).
@@ -101,7 +104,9 @@ struct SyncPaneLayout: Equatable {
             let refused = policies.contains(.personalSyncOff)
             licenseGate = inputs.serviceAccess == .available ? nil : .serviceSync
             iCloudNotice = nil
-            serviceNotice = refused || !serviceLicensed ? nil : Self.serviceNotice(inputs)
+            serviceNotice = inputs.choices.forced == .icloud
+                ? .awaitsMoveBack
+                : (refused || !serviceLicensed ? nil : Self.serviceNotice(inputs))
             showsICloudStatus = false
             let live = serviceLicensed && !newIdentity && !refused
             let status = live ? Self.serviceStatus(inputs.engine?.phase) : nil

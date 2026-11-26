@@ -20,9 +20,10 @@ struct SyncProviderPolicyTests {
     func forcedICloudTurnsSyncOn() {
         let forced = ManagedPolicySnapshot(personalSyncProvider: ["icloud"])
 
-        for provider in SyncProviderSetting.allCases {
-            #expect(SyncProviderPolicy.settledProvider(provider, under: forced) == .iCloud, "\(provider)")
-        }
+        #expect(SyncProviderPolicy.settledProvider(.off, under: forced) == .iCloud)
+        #expect(SyncProviderPolicy.settledProvider(.iCloud, under: forced) == .iCloud)
+        // Data on TablePro Sync goes back only through the move back the person confirms.
+        #expect(SyncProviderPolicy.settledProvider(.tableproSync, under: forced) == .tableproSync)
         #expect(SyncProviderPolicy.iCloud(forced) == .init(isAllowed: true, isLocked: true))
     }
 

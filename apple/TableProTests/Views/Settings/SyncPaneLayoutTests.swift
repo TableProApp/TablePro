@@ -195,6 +195,14 @@ struct SyncPaneLayoutTests {
         #expect(layout.isPickerLocked)
     }
 
+    @Test("A forced iCloud on a Mac on TablePro Sync asks for the move back")
+    func forcedICloudAwaitsMoveBack() {
+        let layout = Self.layout(provider: .tableproSync, choices: Self.choices([.icloud]), engine: Self.engine(.tableproSync))
+        #expect(layout.serviceNotice == .awaitsMoveBack)
+        #expect(layout.options == [.iCloud, .tableproSync])
+        #expect(layout.isPickerLocked)
+    }
+
     @Test("A forced TablePro Sync on a Mac that is not signed in says why it stays off")
     func forcedServiceSignedOut() {
         let layout = Self.layout(provider: .off, choices: Self.choices([.tableproSync]), service: .signedOut)

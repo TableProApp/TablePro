@@ -45,7 +45,7 @@ struct SyncNoticeRow<Actions: View>: View {
 // grace itself.
 struct SyncServiceNoticeRow: View {
     let notice: SyncServiceNotice
-    let reviewUpload: () -> Void
+    let review: () -> Void
 
     var body: some View {
         switch notice {
@@ -56,8 +56,18 @@ struct SyncServiceNoticeRow: View {
                 message: String(localized: "This Mac starts syncing with TablePro Sync once you review what it uploads."),
                 tint: .accentColor
             ) {
-                Button(String(localized: "Review Upload…"), action: reviewUpload)
+                Button(String(localized: "Review Upload…"), action: review)
                     .accessibilityIdentifier("settings-sync-review-upload")
+            }
+        case .awaitsMoveBack:
+            SyncNoticeRow(
+                symbolName: "arrow.uturn.backward.circle",
+                title: String(localized: "Your Organization Uses iCloud"),
+                message: String(localized: "This Mac goes back to iCloud once you review what the move deletes there."),
+                tint: .accentColor
+            ) {
+                Button(String(localized: "Review Move Back…"), action: review)
+                    .accessibilityIdentifier("settings-sync-review-move-back")
             }
         case .pullOnly(let selfHosted):
             SyncNoticeRow(

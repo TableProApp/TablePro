@@ -53,9 +53,10 @@ internal final class SyncProviderPolicy {
     }
 
     // The provider the profile leaves this Mac on. A forced iCloud is taken as the person would pick it, and one taken
-    // away goes off. A forced TablePro Sync leaves a Mac that is not on it off: TablePro Sync becomes the provider only
-    // once the move or first upload the person confirms has run (core ADR 0055). Whether a server takes this Mac's data
-    // never changes what is stored: a server's answer moves no provider (core ADR 0051, Policies).
+    // away goes off. A move waits for the person: a forced TablePro Sync leaves a Mac that is not on it off until the
+    // move or first upload they confirm has run, and a forced iCloud leaves a Mac on TablePro Sync where it is until
+    // they confirm the move back and what it deletes on iCloud (core ADRs 0054 and 0055). Whether a server takes this
+    // Mac's data never changes what is stored: a server's answer moves no provider (core ADR 0051, Policies).
     nonisolated static func settledProvider(
         _ provider: SyncProviderSetting,
         under snapshot: ManagedPolicySnapshot
@@ -66,7 +67,14 @@ internal final class SyncProviderPolicy {
             current: SyncProviderTag(provider),
             tableproSyncAvailable: true
         ))
-        return settled == .tableproSync && provider != .tableproSync ? .off : settled
+        switch (provider, settled) {
+        case (.tableproSync, .iCloud):
+            return .tableproSync
+        case (.off, .tableproSync), (.iCloud, .tableproSync):
+            return .off
+        default:
+            return settled
+        }
     }
 }
 

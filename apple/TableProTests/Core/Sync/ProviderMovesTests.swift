@@ -31,6 +31,7 @@ private final class FakeMoveEngine: SyncMoveEngine, @unchecked Sendable {
         var moveFails = false
         var moveGate: AsyncGate?
         var moveBackGate: AsyncGate?
+        var keysGate: AsyncGate?
     }
 
     let opened: SyncProviderTag
@@ -80,13 +81,25 @@ private final class FakeMoveEngine: SyncMoveEngine, @unchecked Sendable {
         log.append("\(name) syncNow")
     }
 
+    // TablePro Sync chosen is the core's move from iCloud, or its first upload from Off.
     func chooseProvider(provider: SyncProviderTag) async throws {
         log.append("\(name) chooseProvider \(provider)")
+        if provider == .tableproSync {
+            await read { $0.moveGate }?.wait()
+            if read({ $0.moveFails }) {
+                throw ScriptedFailure()
+            }
+        }
         update { $0.provider = provider }
+    }
+
+    func setCategories(categories: SyncCategoriesArg) async throws {
+        log.append("\(name) setCategories \(categories.offKinds.count) off, passwords \(categories.passwords)")
     }
 
     func keyState() async throws -> KeyStateInfo {
         log.append("\(name) keyState")
+        await read { $0.keysGate }?.wait()
         return read { $0.keys }
     }
 
@@ -96,18 +109,6 @@ private final class FakeMoveEngine: SyncMoveEngine, @unchecked Sendable {
 
     func moveToService() async throws {
         log.append("\(name) moveToService")
-        await read { $0.moveGate }?.wait()
-        if read({ $0.moveFails }) {
-            throw ScriptedFailure()
-        }
-    }
-
-    func firstUpload() async throws {
-        log.append("\(name) firstUpload")
-        await read { $0.moveGate }?.wait()
-        if read({ $0.moveFails }) {
-            throw ScriptedFailure()
-        }
     }
 
     func planMoveToIcloud() async throws -> MoveBackPlanInfo {
@@ -212,7 +213,7 @@ struct ProviderMovesTests {
 
         #expect(outcome == .moved)
         #expect(fixture.log.all == [
-            "icloud keyState", "icloud moveToService", "provider tablepro-sync", "passesFinished",
+            "icloud keyState", "icloud chooseProvider tableproSync", "provider tablepro-sync", "passesFinished",
             "tablepro-sync syncNow"
         ])
         #expect(fixture.provider == .tableproSync)
@@ -226,7 +227,9 @@ struct ProviderMovesTests {
 
         _ = try await fixture.moves.moveToService()
 
-        #expect(fixture.log.all == ["off keyState", "off firstUpload", "provider tablepro-sync", "tablepro-sync syncNow"])
+        #expect(fixture.log.all == [
+            "off keyState", "off chooseProvider tableproSync", "provider tablepro-sync", "tablepro-sync syncNow"
+        ])
         #expect(fixture.provider == .tableproSync)
     }
 
@@ -257,7 +260,7 @@ struct ProviderMovesTests {
 
         fixture.opened?.update { $0.moveFails = false }
         #expect(try await fixture.moves.moveToService() == .moved)
-        #expect(fixture.log.all.filter { $0 == "icloud moveToService" }.count == 2)
+        #expect(fixture.log.all.filter { $0 == "icloud chooseProvider tableproSync" }.count == 2)
         #expect(fixture.provider == .tableproSync)
     }
 
@@ -285,7 +288,7 @@ struct ProviderMovesTests {
         await #expect(throws: ProviderMoveError.serverRefusesPersonalSync) {
             try await fixture.moves.moveToService()
         }
-        #expect(!fixture.log.all.contains("off firstUpload"))
+        #expect(!fixture.log.all.contains("off chooseProvider tableproSync"))
     }
 
     @Test("A second move while one runs is refused")
@@ -320,6 +323,27 @@ struct ProviderMovesTests {
         }
         #expect(fixture.provider == .off)
         #expect(!fixture.log.all.contains("tablepro-sync syncNow"))
+        // TablePro Sync's service replaces the one that moved, and personal sync stops there.
+        #expect(fixture.log.all.last == "tablepro-sync chooseProvider off")
+        #expect(fixture.opened?.opened == .tableproSync)
+    }
+
+    @Test("A profile that takes TablePro Sync away while the keys are read refuses the move")
+    func policyRevokedDuringTheKeys() async {
+        let fixture = Fixture(provider: .iCloud, open: .icloud)
+        let gate = AsyncGate()
+        fixture.opened?.update { $0.keysGate = gate }
+
+        let move = Task { try await fixture.moves.moveToService() == .moved }
+        await gate.arrived(1)
+        fixture.snapshot = ManagedPolicySnapshot(personalSyncProvider: ["off", "icloud"])
+        await gate.open()
+
+        await #expect(throws: ProviderMoveError.notAllowed) {
+            try await move.value
+        }
+        #expect(!fixture.log.all.contains("icloud chooseProvider tableproSync"))
+        #expect(fixture.provider == .iCloud)
     }
 
     // MARK: - Back to iCloud
@@ -421,7 +445,63 @@ struct ProviderMovesTests {
 
         #expect(fixture.provider == .tableproSync)
         #expect(!fixture.moves.awaitsMove)
-        #expect(fixture.log.all.contains("off firstUpload"))
+        #expect(fixture.log.all.contains("off chooseProvider tableproSync"))
+    }
+
+    @Test("A reset under a profile that requires TablePro Sync keeps a Mac that moved on it")
+    func resetUnderAForcedTableProSync() async throws {
+        let fixture = Fixture(provider: .tableproSync, open: .tableproSync)
+        fixture.snapshot = ManagedPolicySnapshot(personalSyncProvider: ["tablepro-sync"])
+        fixture.moves.start()
+
+        fixture.slice.value = .default
+
+        try await waitUntil { fixture.provider == .tableproSync }
+        #expect(!fixture.log.all.contains("tablepro-sync chooseProvider off"))
+    }
+
+    @Test("A profile that requires iCloud on a Mac on TablePro Sync waits for the person's move back")
+    func forcedICloudWaitsForTheMoveBack() {
+        let fixture = Fixture(provider: .tableproSync, open: .tableproSync)
+        fixture.snapshot = ManagedPolicySnapshot(personalSyncProvider: ["icloud"])
+
+        #expect(fixture.moves.awaitsMoveBack)
+        #expect(!fixture.moves.awaitsMove)
+    }
+
+    // MARK: - Categories
+
+    @Test("A category turned off reaches TablePro Sync's service")
+    func categoriesReachTheOpenService() async throws {
+        let fixture = Fixture(provider: .tableproSync, open: .tableproSync)
+
+        fixture.slice.update { $0.syncSQLFavorites = false }
+
+        try await waitUntil { fixture.log.all.contains { $0.hasPrefix("tablepro-sync setCategories") } }
+    }
+
+    @Test("On iCloud the categories are the coordinator's to tell")
+    func categoriesOnICloudStayWithTheCoordinator() async throws {
+        let fixture = Fixture(provider: .iCloud, open: .icloud)
+        // A provider change afterwards gives the main actor turns the forwarding would have taken.
+        fixture.slice.update { $0.syncSQLFavorites = false }
+        fixture.slice.update { $0.syncSQLFavorites = true }
+        await fixture.moves.turnOff()
+
+        #expect(!fixture.log.all.contains { $0.contains("icloud setCategories") })
+    }
+
+    @Test("On TablePro Sync passwords follow their own switch, not iCloud Keychain's")
+    func passwordsOnTableProSync() {
+        var settings = SyncSettings.default
+        settings.syncPasswords = true
+        settings.provider = .tableproSync
+        #expect(ProviderMoves.categories(settings).passwords)
+        settings.syncConnections = false
+        #expect(!ProviderMoves.categories(settings).passwords)
+        settings.provider = .off
+        settings.syncConnections = true
+        #expect(!ProviderMoves.categories(settings).passwords)
     }
 
     // MARK: - Another account
@@ -567,7 +647,6 @@ private final class CoordinatedEngine: SyncEngine, SyncMoveEngine, @unchecked Se
     func keyState() async throws -> KeyStateInfo { .approved(av: 1, keyDevice: "DEVICE") }
     func planMoveToService() async throws -> MovePlanInfo { MovePlanInfo(records: 1, stayingBehind: 0, secretsToSeal: 0) }
     func moveToService() async throws { record("move to service") }
-    func firstUpload() async throws { record("first upload") }
     func planMoveToIcloud() async throws -> MoveBackPlanInfo { MoveBackPlanInfo(icloudDeletions: 0) }
     func moveToIcloud(confirmedDeletions: UInt64) async throws { record("move to iCloud") }
     func chooseForNewIdentity(choice: NewIdentityChoiceTag) async throws {}
@@ -651,7 +730,7 @@ struct ProviderMovesCoordinatorTests {
 
         let iCloud = try #require(services.first(.icloud))
         let service = try #require(services.first(.tableproSync))
-        #expect(iCloud.calls.contains("move to service"))
+        #expect(iCloud.calls.contains("choose tableproSync"))
         #expect(iCloud.calls.last == "choose off")
         #expect(service.calls == ["sync"])
         #expect(service.status().provider == .tableproSync)

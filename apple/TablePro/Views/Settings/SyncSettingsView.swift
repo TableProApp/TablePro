@@ -61,7 +61,7 @@ struct SyncSettingsView: View {
             if let notice = layout.serviceNotice {
                 Section {
                     SyncServiceNoticeRow(notice: notice) {
-                        sheet = .moveToService(fromICloud: movesFromICloud)
+                        sheet = notice == .awaitsMoveBack ? .moveToICloud : .moveToService(fromICloud: movesFromICloud)
                     }
                 }
             }

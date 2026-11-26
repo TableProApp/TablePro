@@ -13,10 +13,10 @@ nonisolated protocol SyncMoveEngine: AnyObject, Sendable {
     func scopeStatuses() -> [ScopeStatusInfo]
     func syncNow(why: PassReasonTag) async throws
     func chooseProvider(provider: SyncProviderTag) async throws
+    func setCategories(categories: SyncCategoriesArg) async throws
     func keyState() async throws -> KeyStateInfo
     func planMoveToService() async throws -> MovePlanInfo
     func moveToService() async throws
-    func firstUpload() async throws
     func planMoveToIcloud() async throws -> MoveBackPlanInfo
     func moveToIcloud(confirmedDeletions: UInt64) async throws
     func chooseForNewIdentity(choice: NewIdentityChoiceTag) async throws
