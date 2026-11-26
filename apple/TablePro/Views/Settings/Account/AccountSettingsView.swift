@@ -164,7 +164,7 @@ private struct AccountIdentitySection: View {
 
             Button(String(localized: "Sign In")) {
                 Task {
-                    await model.signIn(using: WebAuthenticationSessionAuthenticator())
+                    await model.signIn(using: WebAuthenticationSessionAuthenticator { NSApp.keyWindow ?? NSApp.mainWindow })
                 }
             }
             .disabled(model.isBusy)
@@ -522,7 +522,7 @@ private struct AccountDeviceRow: View {
     var body: some View {
         SettingsRecordRow(
             title: device.name,
-            subtitle: AccountDeviceText.detail(system: device.system, lastSeenAt: device.lastSeenAt, isThisMac: device.isThisMac)
+            subtitle: AccountDeviceText.detail(system: device.system, lastSeenAt: device.lastSeenAt, isThisDevice: device.isThisDevice)
         ) {
             if let offlineUntil = device.offlineUntil {
                 Text(AccountDeviceText.offlineFile(until: offlineUntil))

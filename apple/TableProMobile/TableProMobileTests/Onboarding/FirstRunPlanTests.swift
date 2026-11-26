@@ -9,6 +9,8 @@ struct FirstRunPlanTests {
         hasConnections: Bool? = false,
         syncChoice: Bool? = nil,
         usageDataChoice: Bool? = nil,
+        iCloudSyncAllowed: Bool = true,
+        usageDataAllowed: Bool = true,
         lastSeenVersion: String? = nil,
         currentVersion: String = "1.1",
         hasHighlights: Bool = true
@@ -18,6 +20,8 @@ struct FirstRunPlanTests {
             hasConnections: hasConnections,
             syncChoice: syncChoice,
             usageDataChoice: usageDataChoice,
+            iCloudSyncAllowed: iCloudSyncAllowed,
+            usageDataAllowed: usageDataAllowed,
             lastSeenVersion: lastSeenVersion,
             currentVersion: currentVersion,
             hasHighlightsForCurrentVersion: hasHighlights
@@ -29,6 +33,8 @@ struct FirstRunPlanTests {
         hasConnections: Bool? = false,
         syncChoice: Bool? = nil,
         usageDataChoice: Bool? = nil,
+        iCloudSyncAllowed: Bool = true,
+        usageDataAllowed: Bool = true,
         lastSeenVersion: String? = nil,
         currentVersion: String = "1.1",
         hasHighlights: Bool = true
@@ -38,6 +44,8 @@ struct FirstRunPlanTests {
             hasConnections: hasConnections,
             syncChoice: syncChoice,
             usageDataChoice: usageDataChoice,
+            iCloudSyncAllowed: iCloudSyncAllowed,
+            usageDataAllowed: usageDataAllowed,
             lastSeenVersion: lastSeenVersion,
             currentVersion: currentVersion,
             hasHighlights: hasHighlights
@@ -48,6 +56,13 @@ struct FirstRunPlanTests {
     @Test("A fresh install asks every question, the origin first")
     func freshInstall() {
         #expect(plan() == .firstRun([.origin, .iCloud, .usageData]))
+    }
+
+    @Test("A question the organization's managed configuration answers is not asked")
+    func managedQuestionsAreSkipped() {
+        #expect(plan(iCloudSyncAllowed: false) == .firstRun([.origin, .usageData]))
+        #expect(plan(usageDataAllowed: false) == .firstRun([.origin, .iCloud]))
+        #expect(plan(hasSeenOrigin: true, syncChoice: true, usageDataAllowed: false) == .none)
     }
 
     @Test("A fresh install never shows What's New")

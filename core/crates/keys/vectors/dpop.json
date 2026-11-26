@@ -1,0 +1,63 @@
+{
+  "area": "dpop",
+  "suite": "tp1",
+  "format": 1,
+  "about": "DPoP proofs under a device's DSK, alg Ed25519 with an OKP jwk (ADR 0051, Keys on the wire)",
+  "cases": [
+    {
+      "name": "a push",
+      "op": "dpop",
+      "input": {
+        "dsk_seed_hex": "bea44207a68f9571b557d837ce5182a99e993416858b7367c35bc89d50aaf000",
+        "dsk_hex": "48aac26df2ca6d054061e602b687ca2123d1459ab2696d2f47209e9e4be0af55",
+        "method": "POST",
+        "url": "https://sync.example.com/v2/sync/scopes/personal/changes",
+        "access_token": "access-token-for-vectors",
+        "iat": 1764000000,
+        "jti_hex": "b701cee0e7d9b707cd00d14a000a8ce2"
+      },
+      "output": {
+        "header": "{\"typ\":\"dpop+jwt\",\"alg\":\"Ed25519\",\"jwk\":{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"SKrCbfLKbQVAYeYCtofKISPRRZqyaW0vRyCenkvgr1U\"}}",
+        "claims": "{\"jti\":\"twHO4OfZtwfNANFKAAqM4g\",\"htm\":\"POST\",\"htu\":\"https://sync.example.com/v2/sync/scopes/personal/changes\",\"iat\":1764000000,\"ath\":\"wyLdeYQayp2EiAY5YeR_EQ9VrCy3SfSDbMyca7C2N7I\"}",
+        "proof": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkMjU1MTkiLCJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJTS3JDYmZMS2JRVkFZZVlDdG9mS0lTUFJSWnF5YVcwdlJ5Q2Vua3ZncjFVIn19.eyJqdGkiOiJ0d0hPNE9mWnR3Zk5BTkZLQUFxTTRnIiwiaHRtIjoiUE9TVCIsImh0dSI6Imh0dHBzOi8vc3luYy5leGFtcGxlLmNvbS92Mi9zeW5jL3Njb3Blcy9wZXJzb25hbC9jaGFuZ2VzIiwiaWF0IjoxNzY0MDAwMDAwLCJhdGgiOiJ3eUxkZVlRYXlwMkVpQVk1WWVSX0VROVZyQ3kzU2ZTRGJNeWNhN0MyTjdJIn0.MwZ8WJbY-4SVHjmbW-slCjTyL3eDpr3EaLx67g_dABrRG7_pCru6BFNm1foAUfyYqIolOvpldL4fLr7ZjXJKCg"
+      }
+    },
+    {
+      "name": "a pull with a query, after the server's nonce",
+      "op": "dpop",
+      "input": {
+        "dsk_seed_hex": "bea44207a68f9571b557d837ce5182a99e993416858b7367c35bc89d50aaf000",
+        "dsk_hex": "48aac26df2ca6d054061e602b687ca2123d1459ab2696d2f47209e9e4be0af55",
+        "method": "GET",
+        "url": "https://sync.example.com/v2/sync/scopes/personal/changes?cursor=abc&limit=500",
+        "access_token": "access-token-for-vectors",
+        "iat": 1764000000,
+        "jti_hex": "b1c290aa566bd0d4714ce24374dd36ab",
+        "nonce": "server-nonce-1"
+      },
+      "output": {
+        "header": "{\"typ\":\"dpop+jwt\",\"alg\":\"Ed25519\",\"jwk\":{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"SKrCbfLKbQVAYeYCtofKISPRRZqyaW0vRyCenkvgr1U\"}}",
+        "claims": "{\"jti\":\"scKQqlZr0NRxTOJDdN02qw\",\"htm\":\"GET\",\"htu\":\"https://sync.example.com/v2/sync/scopes/personal/changes\",\"iat\":1764000000,\"ath\":\"wyLdeYQayp2EiAY5YeR_EQ9VrCy3SfSDbMyca7C2N7I\",\"nonce\":\"server-nonce-1\"}",
+        "proof": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkMjU1MTkiLCJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJTS3JDYmZMS2JRVkFZZVlDdG9mS0lTUFJSWnF5YVcwdlJ5Q2Vua3ZncjFVIn19.eyJqdGkiOiJzY0tRcWxacjBOUnhUT0pEZE4wMnF3IiwiaHRtIjoiR0VUIiwiaHR1IjoiaHR0cHM6Ly9zeW5jLmV4YW1wbGUuY29tL3YyL3N5bmMvc2NvcGVzL3BlcnNvbmFsL2NoYW5nZXMiLCJpYXQiOjE3NjQwMDAwMDAsImF0aCI6Ind5TGRlWVFheXAyRWlBWTVZZVJfRVE5VnJDeTNTZlNEYk15Y2E3QzJON0kiLCJub25jZSI6InNlcnZlci1ub25jZS0xIn0.nZrY4p1QhRMP2P96ClVrxzxQwbVtZ7cJsKQpPlzoFV3cuOPDOnSrBe1ExL9pusgQCyezAUDjGuv2x0gKEzNHBw"
+      }
+    },
+    {
+      "name": "a Sign Out revoke on a non-default port",
+      "op": "dpop",
+      "input": {
+        "dsk_seed_hex": "bea44207a68f9571b557d837ce5182a99e993416858b7367c35bc89d50aaf000",
+        "dsk_hex": "48aac26df2ca6d054061e602b687ca2123d1459ab2696d2f47209e9e4be0af55",
+        "method": "DELETE",
+        "url": "https://sync.example.com:8443/v2/sync/key-device",
+        "access_token": "access-token-for-vectors",
+        "iat": 1764000000,
+        "jti_hex": "986fc8d3d846cee0b0066b44c2d4814c"
+      },
+      "output": {
+        "header": "{\"typ\":\"dpop+jwt\",\"alg\":\"Ed25519\",\"jwk\":{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"SKrCbfLKbQVAYeYCtofKISPRRZqyaW0vRyCenkvgr1U\"}}",
+        "claims": "{\"jti\":\"mG_I09hGzuCwBmtEwtSBTA\",\"htm\":\"DELETE\",\"htu\":\"https://sync.example.com:8443/v2/sync/key-device\",\"iat\":1764000000,\"ath\":\"wyLdeYQayp2EiAY5YeR_EQ9VrCy3SfSDbMyca7C2N7I\"}",
+        "proof": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkMjU1MTkiLCJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJTS3JDYmZMS2JRVkFZZVlDdG9mS0lTUFJSWnF5YVcwdlJ5Q2Vua3ZncjFVIn19.eyJqdGkiOiJtR19JMDloR3p1Q3dCbXRFd3RTQlRBIiwiaHRtIjoiREVMRVRFIiwiaHR1IjoiaHR0cHM6Ly9zeW5jLmV4YW1wbGUuY29tOjg0NDMvdjIvc3luYy9rZXktZGV2aWNlIiwiaWF0IjoxNzY0MDAwMDAwLCJhdGgiOiJ3eUxkZVlRYXlwMkVpQVk1WWVSX0VROVZyQ3kzU2ZTRGJNeWNhN0MyTjdJIn0.yc6l1czHAO70bzee8Hq7q1WxhTJHI-eEeTsKn-8nLGxhcc6nIO4NuW9SLyxDGdgW_WJalvGgYnXwONdfJqPxBQ"
+      }
+    }
+  ]
+}

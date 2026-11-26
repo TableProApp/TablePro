@@ -7,16 +7,10 @@ import Foundation
 
 // The account's refresh tokens for the core's HostSecrets, through the device-only Keychain and the same calls the
 // Swift session made before, so an update reads the item it left.
-internal struct AccountKeychain: Sendable {
-    enum Failure: Error, Equatable {
-        case locked
-        case dismissed
-        case failed(String)
-    }
-
+internal struct AccountKeychain: AccountTokenKeychain {
     let keychain: any KeychainStoring
 
-    func refreshToken(signInKey: String?) throws(Failure) -> String? {
+    func refreshToken(signInKey: String?) throws(AccountKeychainFailure) -> String? {
         switch keychain.readStringResult(forKey: AccountRefreshTokenItem.key(signInKey: signInKey)) {
         case .found(let token):
             return token.isEmpty ? nil : token
@@ -33,7 +27,7 @@ internal struct AccountKeychain: Sendable {
         }
     }
 
-    func storeRefreshToken(_ token: String, signInKey: String?) throws(Failure) {
+    func storeRefreshToken(_ token: String, signInKey: String?) throws(AccountKeychainFailure) {
         guard keychain.writeString(token, forKey: AccountRefreshTokenItem.key(signInKey: signInKey)) else {
             throw .failed("the Keychain did not store the item")
         }

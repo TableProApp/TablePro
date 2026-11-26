@@ -3104,6 +3104,7 @@ MIT License
 Used by:
   cfg-if 1.0.4
   oauth2 5.0.0
+  openssl-probe 0.2.1
   socket2 0.6.5
 
 Copyright (c) 2014 Alex Crichton
