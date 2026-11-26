@@ -51,7 +51,7 @@ pub(crate) struct BaseView<'a> {
     bases: &'a Bases,
     // The fields of each key object this device holds, by scope and wire id.
     held: HashMap<(ScopeName, String), Value>,
-    // The ids where the server's other record is one this device checked: only those prove a fork.
+    // The ids where the server's other record proves a fork beside this device's own.
     checked: HashSet<(ScopeName, String)>,
 }
 

@@ -593,9 +593,9 @@ async fn the_roster_counts_only_once_the_team_s_pull_is_caught_up() {
     assert_eq!(caught_up.teams[0].roster.as_ref().map(Vec::len), Some(1));
 }
 
-// A different record at an id is no copy of this device's: the push-back does not count it as held, and a version the
-// server holds as another record ends the team once the device checked it under its signer's certificate in the team
-// (0051, What cannot go back).
+// A different record at an id is no copy of this device's: the push-back does not count it as held. A version the
+// server holds as another record ends the team only when a holder of the version before signed it: M, whom the device
+// pinned on first use, proves no fork until it holds version 6 (0051, What cannot go back).
 #[tokio::test]
 async fn another_record_at_an_id_is_not_this_device_s_copy() {
     let world = World::load();
@@ -655,10 +655,19 @@ async fn another_record_at_an_id_is_not_this_device_s_copy() {
         .check_other_versions(&mut *txn, &[(team, &ours)], &mut other_view)
         .await
         .unwrap();
+    let signed_only = other_view.holds_another(team, &id);
+    txn.put(held_row(team, &world.team_version(6, "M", 2, Start::Next)))
+        .await
+        .unwrap();
+    rig.service
+        .check_other_versions(&mut *txn, &[(team, &ours)], &mut other_view)
+        .await
+        .unwrap();
 
     assert_eq!(held_same, (true, false));
     assert!(!other_view.holds(team, &id));
     assert!(!unchecked);
+    assert!(!signed_only, "a signer the server can make up proves no fork");
     assert!(other_view.holds_another(team, &id));
 }
 

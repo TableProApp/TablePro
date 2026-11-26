@@ -25,7 +25,7 @@ use tablepro_keys::encoding::{AccountId, KeyPurpose, TeamId, Version};
 use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Public;
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
-use tablepro_keys::scope_key::KeyRef;
+use tablepro_keys::scope_key::{KeyRef, Start};
 
 pub(crate) use self::apply::TeamJudged;
 use self::book::TeamBook;
@@ -153,9 +153,11 @@ impl KeyService {
         book.holders_at(version, &mut facts).await
     }
 
-    // Whether `fields` are a version record at `key` that its signer's certificate in the team verifies. Beside the
-    // record this device holds there, that is a fork a restore ends the team on; bytes no certificate signs are none.
-    pub(crate) async fn signed_team_version(
+    // Whether `fields` are a `start` 0 version record at `key` signed by a holder of the version before it, by the
+    // holder rules over what the device holds. Beside the record this device holds there, that proves a fork a
+    // restore ends the team on. A signature alone proves none, since an account the server makes up signs a record of
+    // its own as easily; a restart, which no holder of the version before needs to sign, proves none either.
+    pub(crate) async fn proves_fork(
         &self,
         txn: &mut dyn StateTxn,
         key: KeyRef,
@@ -168,18 +170,29 @@ impl KeyService {
         let Some(record) = KeyObject::parse(id.kind().name(), &id.to_wire(), &text)
             .ok()
             .and_then(|object| object.version_record())
-            .filter(|record| record.key == key && key.purpose == KeyPurpose::Team)
+            .filter(|record| record.key == key && key.purpose == KeyPurpose::Team && record.start == Start::Next)
         else {
             return Ok(false);
         };
+        let Some(previous) = key.version.previous() else {
+            return Ok(false);
+        };
+        let team = TeamId(key.owner);
+        let book = self.load_team(txn, team).await?;
         let mut cache = service_facts::FactsCache::default();
         let mut facts = service_facts::ServiceFacts {
             service: self,
             txn,
-            scope: ScopeName::Team(TeamId(key.owner)),
+            scope: ScopeName::Team(team),
             cache: &mut cache,
         };
-        book::record_signed(self.origin(), &mut facts, &record).await
+        if !book::record_signed(self.origin(), &mut facts, &record).await? {
+            return Ok(false);
+        }
+        Ok(book
+            .holders_at(previous, &mut facts)
+            .await?
+            .is_some_and(|holders| holders.contains(&record.signer)))
     }
 
     // Whether the team's version in force is one this account signed at `av` or later: a rotation after the account's
