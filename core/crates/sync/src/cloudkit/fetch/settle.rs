@@ -1,7 +1,8 @@
 // One batch of what the zone said (0054, A pass): each copy merged three ways against its base, the stores written,
 // then the bases, the held and deferred sets and last the token, in one state commit. A batch that writes a store
-// first commits its bases as pending rows (0064), so a crash before the last commit replays the batch and leaves what a
-// store already took as it is, even once the zone changed again.
+// first commits its bases as pending rows (0064), with the approval queue's rows and the records it holds, so a crash
+// before the last commit replays the batch and leaves what a store already took as it is, even once the zone changed
+// again.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -203,9 +204,12 @@ impl<'s, 'f> Settle<'s, 'f> {
         let stored = record.as_ref().map(|record| &record.fields);
         match approval::gate(&mut self.txn, &key, copy.kind, stored, merged).await? {
             Gated::Apply(merged) => self.settle_local(copy.kind, &key, record.as_ref(), merged),
+            // No base: the device holds no copy to agree with iCloud on, and a base would read the record's absence
+            // from the store as a deletion made here. It takes one when the approval puts it in the store.
             Gated::Hold => {
-                self.hold(&key, HeldReason::AwaitingApproval, held_change(&copy))
-                    .await?;
+                return self
+                    .hold(&key, HeldReason::AwaitingApproval, held_change(&copy))
+                    .await;
             }
         }
         self.txn

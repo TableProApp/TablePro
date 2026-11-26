@@ -6,6 +6,8 @@ use tablepro_records::Kind;
 use tablepro_sync::api::SyncError;
 use tablepro_sync::api::error::StateError;
 
+use tablepro_sync::api::state::HeldReason;
+
 use crate::faults::Crashing;
 use crate::support::{A, B, Rig, projected};
 
@@ -138,4 +140,66 @@ async fn a_deletion_the_store_took_before_a_crash_leaves_no_base() {
     assert!(!rig.store(Kind::Connection).holds(A));
     assert!(rig.base(Kind::Connection, A).await.is_none());
     assert!(rig.pending_bases().await.is_empty());
+}
+
+// A connection new to the device waits whole for its host, in a batch that also writes a store, and the fetch stops
+// after the store write. The held record keeps no base and its rows landed with the staged bases, so the replay holds
+// it again and nothing reads its absence from the store as a deletion made here.
+#[tokio::test]
+async fn a_connection_held_whole_across_a_crash_after_the_store_write_is_never_deleted() {
+    let rig = Rig::new().await;
+    synced(&rig).await;
+    rig.save_elsewhere(Kind::Connection, B, &json!({"name": "new", "host": "db.example.com"}));
+    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 60));
+    let crashing = Crashing::new(rig.state.clone());
+    crashing.crash_after_commits(1);
+    let crashed = rig.fetcher_on(rig.cloud.as_ref(), &crashing).fetch().await;
+    let held_at_crash = rig.held(Kind::Connection, B).await.map(|row| row.reason);
+
+    rig.fetch().await.unwrap();
+    let pushed = rig.push().await.unwrap();
+
+    assert!(crashed.is_err());
+    assert_eq!(held_at_crash, Some(HeldReason::AwaitingApproval));
+    assert!(!rig.store(Kind::Connection).holds(B));
+    assert_eq!(
+        rig.held(Kind::Connection, B).await.map(|row| row.reason),
+        Some(HeldReason::AwaitingApproval)
+    );
+    assert!(rig.base(Kind::Connection, B).await.is_none());
+    assert_eq!(rig.waiting().await.len(), 1);
+    assert_eq!(pushed.deleted, 0);
+    assert!(rig.zone_fields(Kind::Connection, B).is_some());
+}
+
+// The zone moves a stored connection's port with its name, and the fetch stops after the store took the name and kept
+// its port. The waiting row landed with the staged bases, so the replay still holds the port for the person and the
+// push never sends the store's port back over the pulled one.
+#[tokio::test]
+async fn a_pulled_port_change_keeps_its_waiting_row_across_a_crash_after_the_store_write() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 5432}));
+    rig.fetch().await.unwrap();
+    rig.approve_everything().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod 2", "port": 6432}));
+    let crashing = Crashing::new(rig.state.clone());
+    crashing.crash_after_commits(1);
+    let crashed = rig.fetcher_on(rig.cloud.as_ref(), &crashing).fetch().await;
+    let after_crash = rig.store(Kind::Connection).fields(A);
+
+    rig.fetch().await.unwrap();
+    let pushed = rig.push().await.unwrap();
+    let waiting = rig.waiting().await;
+
+    let kept = projected(Kind::Connection, A, &json!({"name": "prod 2", "port": 5432}));
+    assert!(crashed.is_err());
+    assert_eq!(after_crash, Some(kept.clone()));
+    assert_eq!(rig.store(Kind::Connection).fields(A), Some(kept));
+    assert_eq!(waiting.len(), 1);
+    assert_eq!((waiting[0].field.as_str(), &waiting[0].pulled), ("/port", &json!(6432)));
+    assert_eq!(pushed.saved, 0);
+    assert_eq!(
+        rig.zone_fields(Kind::Connection, A),
+        Some(projected(Kind::Connection, A, &json!({"name": "prod 2", "port": 6432})))
+    );
 }

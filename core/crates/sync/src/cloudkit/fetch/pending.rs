@@ -1,8 +1,9 @@
 // The crash window between a store write and the state commit that follows it (0064, `pending_bases`). A batch that
-// writes a store first commits the bases it brings as pending rows, then writes the store, then commits the bases, the
-// token and the rest, which clears them. At a restart a pending base whose store copy is what that pull leaves becomes
-// the base; any other is dropped, and the store's copy stays an edit against the base it had. A pull the store took is
-// then no local edit, even when the zone changes again before the replay.
+// writes a store first commits the bases it brings as pending rows, with the approval queue's rows and the records it
+// holds, then writes the store, then commits the bases, the token and the rest, which clears them. At a restart a
+// pending base whose store copy is what that pull leaves becomes the base; any other is dropped, and the store's copy
+// stays an edit against the base it had. A pull the store took is then no local edit, even when the zone changes again
+// before the replay, and the store's value in a member that waits is never read as the device's edit of it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -82,9 +83,9 @@ impl Staged {
         bases
     }
 
-    // Rolls the batch's transaction back, commits its bases as pending rows in one of their own, and opens the
-    // transaction the batch commits after its store write, with every planned write in it again and the pending rows
-    // cleared. The rolled back transaction goes first, since SQLite keeps one writer at a time.
+    // Rolls the batch's transaction back, commits its bases as pending rows in one of their own with its approval and
+    // held rows, and opens the transaction the batch commits after its store write, with every planned write in it again
+    // and the pending rows cleared. The rolled back transaction goes first, since SQLite keeps one writer at a time.
     pub(super) async fn split(self, state: &dyn StateStore) -> Result<Self, SyncError> {
         let pending = self.bases();
         let Self { inner, writes } = self;
@@ -96,6 +97,17 @@ impl Staged {
         for (key, base) in &pending {
             let row = base.clone().unwrap_or_else(|| removal(key));
             staged.put(Row::PendingBase(row)).await?;
+        }
+        // A settle after a crash reads them: without them a held record reads as one the store dropped, and the store's
+        // value in a member that waits as the device's own edit.
+        for write in &writes {
+            match write {
+                Write::Put(row) if matches!(row.as_ref(), Row::Approval(_) | Row::Held(_)) => {
+                    staged.put(row.as_ref().clone()).await?;
+                }
+                Write::Delete(key @ (RowKey::Approval(..) | RowKey::Held(_))) => staged.delete(key).await?,
+                Write::Put(_) | Write::Delete(_) => {}
+            }
         }
         staged.commit().await?;
         let mut next = Self::new(state.begin().await?);
@@ -203,7 +215,7 @@ impl Settle<'_, '_> {
         let (Merged::Record(fields) | Merged::Contested { record: fields, .. }) = &merged else {
             return Ok(holds(record.as_ref(), &merged));
         };
-        // The store took what the approval queue left of the merge, and nothing of a new record it holds whole.
+        // The store took what the approval queue left of the merge. A record it holds whole keeps no base.
         let rows = approval::rows_of(&mut self.txn, &pending.key).await?;
         let split = approval::split(
             kind,
@@ -212,11 +224,7 @@ impl Settle<'_, '_> {
             fields,
             &rows,
         );
-        Ok(if split.hold {
-            record.is_none()
-        } else {
-            record.is_some_and(|record| record.fields == split.fields)
-        })
+        Ok(!split.hold && record.is_some_and(|record| record.fields == split.fields))
     }
 }
 

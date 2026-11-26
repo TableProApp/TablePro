@@ -22,7 +22,8 @@ use crate::api::ids::{KindName, RecordKey, ScopeName};
 use crate::api::state::{
     ApprovalDecision, ApprovalRow, HeldReason, Row, RowKey, RowRange, StateStore, StateTxn, Table,
 };
-use crate::engine::Adapters;
+use crate::api::transport::PulledRecord;
+use crate::engine::{Adapters, base_of};
 
 // What the store takes of a pulled record, and the queue's rows for it.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -293,7 +294,7 @@ impl Queue<'_> {
         };
         drop(txn);
         if let Some(held) = held {
-            return self.decide_held(row, held.record.fields, approve).await;
+            return self.decide_held(row, held.record, approve).await;
         }
         let stored = self.stored(key).await?;
         let adapter = self.adapter(key);
@@ -328,7 +329,7 @@ impl Queue<'_> {
 
     // A record new to the device goes into the store once every member that waited is approved. A refusal keeps the
     // whole record off this device, the only value it had of it.
-    async fn decide_held(&self, mut row: ApprovalRow, pulled: Option<Value>, approve: bool) -> Result<(), SyncError> {
+    async fn decide_held(&self, mut row: ApprovalRow, pulled: PulledRecord, approve: bool) -> Result<(), SyncError> {
         let key = row.key.clone();
         row.decision = if approve {
             ApprovalDecision::Approved
@@ -345,17 +346,15 @@ impl Queue<'_> {
         Ok(())
     }
 
-    async fn apply_held(
-        &self,
-        key: &RecordKey,
-        pulled: Option<Value>,
-        rows: Vec<ApprovalRow>,
-    ) -> Result<(), SyncError> {
+    // The record takes the base its pulled copy leaves as it goes in, which a pull that holds a record whole does not
+    // write for a provider that keeps no base for a copy the store does not hold.
+    async fn apply_held(&self, key: &RecordKey, pulled: PulledRecord, rows: Vec<ApprovalRow>) -> Result<(), SyncError> {
         let key = key.clone();
-        let (Some(pulled), Some(adapter), Some(kind)) = (pulled, self.adapter(&key), key.kind.known()) else {
+        let (Some(fields), Some(adapter), Some(kind)) = (pulled.fields.as_ref(), self.adapter(&key), key.kind.known())
+        else {
             return Ok(());
         };
-        let split = split(kind, &key, None, &pulled, &rows);
+        let split = split(kind, &key, None, fields, &rows);
         if split.hold {
             let mut txn = self.state.begin().await?;
             write(txn.as_mut(), &key, &split).await?;
@@ -375,6 +374,7 @@ impl Queue<'_> {
         for row in rows {
             txn.delete(&RowKey::Approval(row.key, row.field)).await?;
         }
+        txn.put(Row::Base(base_of(&key, kind.is_create_once(), &pulled))).await?;
         txn.delete(&RowKey::Held(key)).await?;
         txn.commit().await?;
         Ok(())
@@ -398,7 +398,7 @@ impl Queue<'_> {
         }
         drop(txn);
         for (held, rows) in ready {
-            self.apply_held(&held.key, held.record.fields, rows).await?;
+            self.apply_held(&held.key, held.record, rows).await?;
         }
         Ok(())
     }
