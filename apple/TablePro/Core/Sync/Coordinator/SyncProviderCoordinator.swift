@@ -24,6 +24,8 @@ final class SyncProviderCoordinator: ObservableObject {
     nonisolated static let pushFallbackInterval: Duration = .seconds(15 * 60)
     // A burst of edits, such as a drag across a list, asks for one pass.
     nonisolated static let journalDebounce: Duration = .seconds(2)
+    // The longest a quit waits for the previous stable's marks.
+    nonisolated static let quitFlushLimit: Duration = .seconds(2)
 
     @Published private(set) var syncStatus: SyncStatus = .disabled(.userDisabled)
     @Published private(set) var lastSyncDate: Date?
@@ -105,6 +107,9 @@ final class SyncProviderCoordinator: ObservableObject {
         hasStarted = true
         host.statusChanges
             .sink { [weak self] in self?.refreshStatus() }
+            .store(in: &observers)
+        host.reopened
+            .sink { [weak self] in self?.serviceReopened() }
             .store(in: &observers)
         journal.listen { [weak self] change in self?.journalRecorded(change) }
             .store(in: &observers)
@@ -263,7 +268,8 @@ final class SyncProviderCoordinator: ObservableObject {
     }
 
     // Queued behind every earlier choice when it is made, not when it runs. The engine is asked only when it does not
-    // hold the provider already, and a choice whose turn is over by then is dropped.
+    // hold the provider already, and a choice whose turn is over by then is dropped. Off goes to the service iCloud
+    // runs on, whatever else is open, and opens none: a service opened Off is off already.
     private func choose(
         _ provider: SyncProviderTag,
         while isCurrent: @escaping @MainActor () -> Bool = { true }
@@ -273,8 +279,13 @@ final class SyncProviderCoordinator: ObservableObject {
         let choice = Task<Result<Void, any Error>, Never> {
             await previous?.value
             do {
-                let engine = try await host.engine(for: provider)
-                guard isCurrent() else { return .success(()) }
+                let engine: (any SyncEngine)?
+                if provider == .off {
+                    engine = await host.existingEngine(for: .icloud)
+                } else {
+                    engine = try await host.engine(for: provider)
+                }
+                guard let engine, isCurrent() else { return .success(()) }
                 if engine.status().provider != provider {
                     try await engine.chooseProvider(provider: provider)
                 }
@@ -328,8 +339,9 @@ final class SyncProviderCoordinator: ObservableObject {
         let changes = undelivered.takeAll()
         guard !changes.isEmpty else { return }
         var delivered = 0
+        let engine: any SyncEngine
         do {
-            let engine = try await host.engine(for: syncStatus.isEnabled ? .icloud : .off)
+            engine = try await host.engine(for: syncStatus.isEnabled ? .icloud : .off)
             for change in changes {
                 try await engine.recordHostChanges(kind: change.kind, written: change.written, deleted: change.deleted)
                 delivered += 1
@@ -337,6 +349,52 @@ final class SyncProviderCoordinator: ObservableObject {
         } catch {
             undelivered.putBack(Array(changes[delivered...]))
             Self.logger.error("The engine did not take a host change: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            return
+        }
+        // A sign-in change closed it meanwhile, after its own flush may have begun.
+        guard host.openedEngine(for: .off) !== engine else { return }
+        do {
+            try await engine.flushLegacyMarks()
+        } catch {
+            Self.logger.error("A closed service's marks did not flush: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    // MARK: - Quit
+
+    // Every write told so far marks the Swift metadata the previous stable reads, which a quit would otherwise drop
+    // (core ADR 0054, Downgrade mirror). Bounded, so a Keychain or store that does not answer never holds the quit.
+    func flushBeforeQuit() async {
+        guard hasStarted else { return }
+        let (finished, finish) = AsyncStream<Void>.makeStream()
+        let flushing = Task { [weak self] in
+            await self?.flushLegacyMarks()
+            finish.yield()
+        }
+        let limit = Task { [activationClock] in
+            try? await activationClock.sleep(for: Self.quitFlushLimit)
+            finish.yield()
+        }
+        for await _ in finished {
+            break
+        }
+        limit.cancel()
+        flushing.cancel()
+    }
+
+    private func flushLegacyMarks() async {
+        host.stopReopening()
+        if !undelivered.isEmpty {
+            deliverJournal()
+        }
+        await journalDelivery?.value
+        await host.flushRetired()
+        // Whichever service is open, since the one that writes the mirror can be any.
+        guard let engine = await host.existingEngine(for: nil) else { return }
+        do {
+            try await engine.flushLegacyMarks()
+        } catch {
+            Self.logger.error("The previous stable's marks did not flush: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -404,6 +462,18 @@ final class SyncProviderCoordinator: ObservableObject {
         }
         arm()
         refreshStatus()
+    }
+
+    // A service opened after a sign-in change is told the provider again, in turn with every other choice.
+    private func serviceReopened() {
+        let provider: SyncProviderTag = syncStatus.isEnabled ? .icloud : .off
+        let started = generation
+        let choice = choose(provider) { [weak self] in self?.generation == started }
+        Task {
+            if case .failure(let error) = await choice.value {
+                Self.logger.error("The reopened engine did not take the provider: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            }
+        }
     }
 
     // What is in flight stops, and nothing more reaches CloudKit until iCloud runs again (P1-I3 under a profile).

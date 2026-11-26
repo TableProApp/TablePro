@@ -94,6 +94,34 @@ struct LegacySyncMetadataMirrorTests {
         return copy
     }
 
+    // The engine re-imports when a read differs from the one after its last write, so a read must not change by itself.
+    @Test("Two reads of metadata nothing changed in between are equal, the change token re-archived to the same bytes")
+    func unchangedMetadataReadsTheSameTwice() throws {
+        let token = try #require(CloudKitChangeToken.archive(try CloudKitCoreTransportTests.changeToken()))
+        try mirror.write(metadata: Self.pass(token: token, syncing: UUID(), localOnly: UUID(), owner: UUID()))
+        // What the previous stable writes itself: its token, and a cached record with a value of each kind it keeps.
+        metadata.saveToken(try CloudKitCoreTransportTests.changeToken())
+        let record = CKRecord(recordType: "Connection", recordID: CKRecord.ID(recordName: "Connection_A", zoneID: Self.zone))
+        record["name"] = "Production"
+        record["port"] = 5_432
+        record["isReadOnly"] = 1
+        record["updatedAt"] = Date(timeIntervalSince1970: 1_767_225_600.123)
+        record["tagIds"] = ["T1", "T2"]
+        record["settings"] = Data("{\"a\":1}".utf8)
+        cache.store([record])
+
+        let first = try mirror.read()
+        let later = LegacySyncMetadataMirror(
+            metadata: SyncMetadataStorage(userDefaults: suite.defaults),
+            recordCache: SyncRecordCache(directory: directory, defaults: nil)
+        )
+        let second = try later.read()
+
+        #expect(first.token != nil)
+        #expect(first.cache.count == 2)
+        #expect(first == second)
+    }
+
     @Test("The previous stable reads the pass through its own metadata and record cache")
     func previousStableReadsThePass() throws {
         let token = try #require(CloudKitChangeToken.archive(try CloudKitCoreTransportTests.changeToken()))
