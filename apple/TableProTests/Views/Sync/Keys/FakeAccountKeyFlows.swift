@@ -88,13 +88,20 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
         )
     }
 
-    static func member(_ team: String, _ account: String, teamName: String, name: String) -> ReviewedMemberInfo {
+    static func member(
+        _ team: String,
+        _ account: String,
+        teamName: String,
+        name: String,
+        isSelf: Bool = false
+    ) -> ReviewedMemberInfo {
         ReviewedMemberInfo(
             team: team,
             teamName: teamName,
             account: account,
             name: name,
             email: "\(name.split(separator: " ").first.map { $0.lowercased() } ?? "someone")@example.com",
+            isSelf: isSelf,
             confirmedUnderAv: 2
         )
     }

@@ -20,6 +20,8 @@ nonisolated internal struct AccountRemovalReview: Sendable {
         var teamName: String? { record.teamName }
         var name: String? { record.name }
         var email: String? { record.email }
+        // This account's own row, which the review lists but never removes.
+        var isSelf: Bool { record.isSelf }
     }
 
     let review: String

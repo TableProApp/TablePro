@@ -63,6 +63,21 @@ struct AccountRemovalFlowTests {
         #expect(flow.memberGroups.first?.members.map(\.name) == ["Ana", "Chi"])
     }
 
+    @Test("This account's own row is listed but never marked for removal")
+    func ownRowStays() async {
+        let flows = FakeAccountKeyFlows()
+        let me = FakeAccountKeyFlows.member("team_a", "ACCT-ME", teamName: "Acme", name: "Dat", isSelf: true)
+        flows.review = RemovalReviewInfo(review: "review-1", devices: [], members: [me])
+        let flow = Self.flow(flows, opened: Opened())
+        flow.recoveryKey = "key"
+        await flow.advance()
+
+        flow.setRemoving(AccountRemovalReview.Member(record: me), true)
+
+        #expect(flow.removing.isEmpty)
+        #expect(flow.memberGroups.first?.members.first?.isSelf == true)
+    }
+
     @Test("Only compared devices can be kept, never the lost one or this Mac")
     func keepRules() async {
         let flows = FakeAccountKeyFlows()

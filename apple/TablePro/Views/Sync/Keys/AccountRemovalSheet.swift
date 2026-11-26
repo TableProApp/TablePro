@@ -83,7 +83,7 @@ internal struct AccountRemovalSheet: View {
                                     set: { flow.setRemoving(member, !$0) }
                                 )
                             )
-                            .disabled(flow.isWorking)
+                            .disabled(flow.isWorking || member.isSelf)
                         }
                     } header: {
                         Text(verbatim: group.team.name ?? String(localized: "Unnamed team"))
@@ -186,7 +186,10 @@ private struct AccountReviewedMemberToggle: View {
     let keeps: Binding<Bool>
 
     private var title: String {
-        member.name ?? member.email ?? String(localized: "Unnamed teammate")
+        if member.isSelf {
+            return String(localized: "You")
+        }
+        return member.name ?? member.email ?? String(localized: "Unnamed teammate")
     }
 
     var body: some View {

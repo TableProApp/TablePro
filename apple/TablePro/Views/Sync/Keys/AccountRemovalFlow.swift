@@ -89,7 +89,7 @@ internal final class AccountRemovalFlow: ObservableObject, Identifiable {
     }
 
     func setRemoving(_ member: AccountRemovalReview.Member, _ removes: Bool) {
-        guard step == .review, !isWorking else { return }
+        guard step == .review, !isWorking, !member.isSelf else { return }
         if removes {
             removing.insert(member.id)
         } else {

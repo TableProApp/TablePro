@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProFFI
 import TableProTestSupport
 import Testing
 
