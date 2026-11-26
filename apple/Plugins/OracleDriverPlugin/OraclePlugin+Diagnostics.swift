@@ -125,9 +125,43 @@ extension OraclePlugin: PluginDiagnosticProvider {
                 ],
                 supportURL: issuesURL
             )
+        case .listenerRedirectFailed(let failure, let target):
+            return PluginDiagnostic(
+                title: String(localized: "Listener Redirect Not Followed"),
+                message: message,
+                suggestedActions: Self.redirectActions(failure),
+                diagnosticInfo: target.map { [DiagnosticEntry(label: String(localized: "Redirect target"), value: $0)] } ?? [],
+                supportURL: issuesURL
+            )
         case .notConnected, .connectionFailed, .queryFailed, .cancelled, .connectTimedOut, .tlsHandshakeFailed,
-             .transactionLost, .certificateAuthorityRequired, .verifyIdentityNeedsHostName:
+             .transactionLost, .certificateAuthorityRequired, .verifyIdentityNeedsHostName, .connectionRefused:
             return nil
+        }
+    }
+
+    private static func redirectActions(_ failure: OracleRedirectFailure) -> [String] {
+        switch failure {
+        case .throughTunnel:
+            return [
+                String(localized: "Enter the host and port of the redirect target below as this connection's host and port, and keep the tunnel."),
+                String(localized: "Or connect without the tunnel if this device reaches the redirect target directly.")
+            ]
+        case .unreachable:
+            return [
+                String(localized: "Check that this device can resolve and reach the redirect target below. RAC node addresses often resolve only on the server's network."),
+                String(localized: "Ask the DBA whether the listener can name an address clients reach, or connect to that address directly.")
+            ]
+        case .refused:
+            return [
+                String(localized: "Ask the DBA whether the service is registered with the listener at the redirect target below."),
+                String(localized: "ORA-12516 there can mean that listener tried to redirect the connection again. Ask the DBA to check the listener settings.")
+            ]
+        case .needsTLS:
+            return [String(localized: "Set an SSL mode in the connection's SSL settings so it connects over TCPS.")]
+        case .tooManyRedirects:
+            return [String(localized: "Ask the DBA to check the LOCAL_LISTENER and REMOTE_LISTENER settings, which may point the listeners at each other.")]
+        case .unreadable:
+            return [String(localized: "File an issue with your Oracle version and how the listener is set up.")]
         }
     }
 }

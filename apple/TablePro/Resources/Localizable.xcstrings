@@ -32912,6 +32912,18 @@
         }
       }
     },
+    "Ask the DBA to check the LOCAL_LISTENER and REMOTE_LISTENER settings, which may point the listeners at each other." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Ask the DBA whether the listener can name an address clients reach, or connect to that address directly." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Ask the DBA whether the service is registered with the listener at the redirect target below." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Ask the DBA which encryption and checksum algorithms the server requires. The driver supports AES with a SHA-2 checksum." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -43258,6 +43270,10 @@
           }
         }
       }
+    },
+    "Check that this device can resolve and reach the redirect target below. RAC node addresses often resolve only on the server's network." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Check the certificate paths in the connection's SSL settings." : {
       "extractionState" : "manual",
@@ -83650,6 +83666,10 @@
     "Enter the file's path on the server." : {
 
     },
+    "Enter the host and port of the redirect target below as this connection's host and port, and keep the tunnel." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enter the Key Passphrase in the connection's SSL/TLS settings." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -93033,6 +93053,10 @@
           }
         }
       }
+    },
+    "File an issue with your Oracle version and how the listener is set up." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "File an issue with your Oracle version and the details below so the driver can add support." : {
       "extractionState" : "manual",
@@ -119854,6 +119878,10 @@
     "LISTEN registrations" : {
 
     },
+    "Listener Redirect Not Followed" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Listens on all interfaces (0.0.0.0), reachable from your local network." : {
       "localizations" : {
         "fr" : {
@@ -132383,6 +132411,10 @@
     },
     "No analyze recorded in the server's statistics, and this user cannot read the table's statistics to confirm it." : {
 
+    },
+    "no answer within %lld seconds" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "No approved connections. A connection a client may reach without asking again appears here." : {
       "localizations" : {
@@ -148336,6 +148368,14 @@
       }
     },
     "Or choose DBMS_DEBUG as the protocol, which needs no ACL entry." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Or connect without the tunnel if this device reaches the redirect target directly." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "ORA-12516 there can mean that listener tried to redirect the connection again. Ask the DBA to check the listener settings." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -165085,6 +165125,10 @@
           }
         }
       }
+    },
+    "Redirect target" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Redis" : {
       "extractionState" : "stale",
@@ -186943,6 +186987,10 @@
           }
         }
       }
+    },
+    "Set an SSL mode in the connection's SSL settings so it connects over TCPS." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Set as Active" : {
       "localizations" : {
@@ -215586,6 +215634,10 @@
         }
       }
     },
+    "the host name could not be resolved" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The icon and color mark this connection in the connection list and its window." : {
 
     },
@@ -217286,6 +217338,30 @@
         }
       }
     },
+    "The Oracle listener redirected the connection to %@, which could not be reached." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %@, which expects TLS. Set an SSL mode for this connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %@, which the tunnel does not forward. Enter that host and port as this connection's host and port so the tunnel reaches them." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %1$@, and the listener there refused it. %2$@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to %1$@, which could not be reached (%2$@)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listener redirected the connection to an address TablePro could not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The Oracle listener refused the connection (ORA-%ld)." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -217369,6 +217445,14 @@
           }
         }
       }
+    },
+    "The Oracle listeners redirected the connection too many times." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The Oracle listeners redirected the connection too many times. The last address was %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The Oracle server accepted the connection but stopped answering during the login." : {
       "extractionState" : "manual",
@@ -220169,6 +220253,10 @@
     },
     "The server refused a change. The changes before it were saved." : {
 
+    },
+    "The server refused the connection. Check the host and port, and that the Oracle listener is running." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server refused the request. Try again in a moment." : {
 

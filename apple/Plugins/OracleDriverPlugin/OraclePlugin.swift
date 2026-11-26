@@ -255,7 +255,8 @@ nonisolated final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sen
             role: OracleConnectionOptions.role(from: config.additionalFields),
             tls: config.ssl.oracleTLSDescription(serverName: config.tunneledServerName),
             networkEncryption: OracleConnectionOptions.networkEncryption(from: config.additionalFields),
-            loginTimeoutSeconds: OracleConnectionOptions.loginTimeoutSeconds(from: config.additionalFields)
+            loginTimeoutSeconds: OracleConnectionOptions.loginTimeoutSeconds(from: config.additionalFields),
+            followsListenerRedirects: config.tunneledServerName == nil
         )
         let deadline = OracleConnectDeadline(seconds: options.loginTimeoutSeconds)
         let connection = OracleCoreConnection(options: options)
