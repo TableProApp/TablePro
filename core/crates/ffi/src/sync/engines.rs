@@ -202,13 +202,63 @@ pub(crate) struct ServiceEngine {
     _stores: Option<Listening>,
 }
 
+// The state file a sign-in names, as text the app keeps between launches (`SyncConfig::service_account`).
+pub(crate) fn identity_text(identity: &StateIdentity) -> Option<String> {
+    let StateIdentity::Service {
+        origin,
+        sign_in,
+        account,
+        device_row,
+    } = identity
+    else {
+        return None;
+    };
+    Some(
+        serde_json::json!({
+            "origin": origin.as_str(),
+            "sign_in": sign_in,
+            "account": account.to_wire(),
+            "device_row": device_row.0,
+        })
+        .to_string(),
+    )
+}
+
+// Text the app kept that names no sign-in reads as no previous one.
+pub(crate) fn identity_of(text: &str) -> Option<StateIdentity> {
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    let field = |name: &str| value.get(name).and_then(serde_json::Value::as_str);
+    Some(StateIdentity::Service {
+        origin: Origin::parse(field("origin")?).ok()?,
+        sign_in: field("sign_in")?.to_owned(),
+        account: AccountId::from_wire(field("account")?).ok()?,
+        device_row: DeviceRowId(field("device_row")?.to_owned()),
+    })
+}
+
+// Another account, or the same account on another server; a new sign-in of the same account is not one.
+fn another_sign_in(previous: &StateIdentity, origin: &Origin, account: AccountId) -> bool {
+    match previous {
+        StateIdentity::Service {
+            origin: last_origin,
+            account: last_account,
+            ..
+        } => last_origin != origin || *last_account != account,
+        StateIdentity::ICloud { .. } => false,
+    }
+}
+
 impl ServiceEngine {
-    // Called on the runtime: it opens the sign-in's state file, and the scheduler's task needs the runtime.
+    // Called on the runtime: it opens the sign-in's state file, and the scheduler's task needs the runtime. A sign-in
+    // to another account or server than `last` named counts what that file held unsent, for the Move my data or Start
+    // empty prompt, and lets the file go, as iCloud does with the last account's file (0054, Another account or
+    // server).
     pub(crate) async fn start(
         hosts: &Hosts,
         link: ServiceLink,
         categories: SyncCategories,
         mode: ServiceMode,
+        last: Option<StateIdentity>,
     ) -> Result<Self, SyncError> {
         let binding = link.binding;
         let identity = StateIdentity::Service {
@@ -218,6 +268,17 @@ impl ServiceEngine {
             device_row: link.device_row.clone(),
         };
         let state = hosts.files.open(identity).await?;
+        let follows = match last {
+            Some(previous) if another_sign_in(&previous, &link.origin, link.account) => {
+                let old = hosts.files.open(previous.clone()).await?;
+                let adapters = Adapters::new(hosts.adapters(Provider::TableproSync));
+                let unsent = tablepro_sync::service::unsent_changes(&old, &adapters).await?;
+                drop(old);
+                hosts.files.delete(previous).await?;
+                Some(unsent)
+            }
+            _ => None,
+        };
         let wake = Wake::new();
         let journal = Journal::new(wake.clone());
         let stop = StopSignal::new();
@@ -244,7 +305,7 @@ impl ServiceEngine {
             events: Some(Arc::clone(&hosts.events)),
             categories,
             mode,
-            follows: None,
+            follows,
         }));
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,
@@ -280,6 +341,8 @@ pub(crate) struct Restart {
     pub(crate) mode: ServiceMode,
     // The sign-in the account held when sync opened, which a later start must still be: another one opens sync again.
     pub(crate) session: Option<String>,
+    // The sign-in whose state file this device used last (`SyncConfig::service_account`).
+    pub(crate) last: Option<StateIdentity>,
 }
 
 impl Restart {
@@ -365,7 +428,7 @@ impl ServiceSlot {
                 } else {
                     restart.mode
                 };
-                ServiceEngine::start(&restart.hosts, link, categories, mode).await
+                ServiceEngine::start(&restart.hosts, link, categories, mode, restart.last.clone()).await
             }
             Ok(_) => Err(TransportError::SignedOut.into()),
             Err(error) => Err(error),

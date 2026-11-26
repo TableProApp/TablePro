@@ -33,8 +33,8 @@ use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
-    ApprovalDecision, KeyVersionState, MovePhase, MoveRow, Provider, Row, RowKey, RowRange, Standing, StateStore,
-    StateTxn, StoppedCause, StoreRow, StoresKindRow, Table,
+    ApprovalDecision, KeyVersionState, MovePhase, MoveRow, Provider, Row, RowKey, RowRange, Standing, StateIdentity,
+    StateStore, StateTxn, StoppedCause, StoreRow, StoresKindRow, Table,
 };
 use crate::api::transport::{ServiceTransport, TransportError};
 use crate::engine::{
@@ -277,6 +277,11 @@ impl ServiceSync {
 
     pub fn set_history_window(&self, entries: Option<u32>) {
         *self.history_window.lock().unwrap_or_else(PoisonError::into_inner) = entries;
+    }
+
+    // The sign-in this engine's state file belongs to.
+    pub fn identity(&self) -> &StateIdentity {
+        self.state.identity()
     }
 
     pub fn mode(&self) -> ServiceMode {

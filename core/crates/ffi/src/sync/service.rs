@@ -82,6 +82,13 @@ pub struct SyncConfig {
     // keep; None on first use. A switch made while the app was closed deletes that account's file.
     #[uniffi(default = None)]
     pub icloud_account: Option<String>,
+    // The TablePro Sync sign-in whose state file this device used last, as `SyncService::service_account` gave it;
+    // None on first use. Another account or server then waits for Move my data or Start empty (core ADR 0054).
+    #[uniffi(default = None)]
+    pub service_account: Option<String>,
+    // This device's id as the host keeps it, which names the SSH routes it publishes, so it clears only its own.
+    #[uniffi(default = None)]
+    pub route_publisher: Option<String>,
 }
 
 // The kinds turned off on this device, by their wire names, and the password switch.
@@ -596,6 +603,15 @@ impl SyncService {
         match &self.icloud {
             Ok(engine) => engine.sync.account(),
             Err(_) => self.config.icloud_account.clone(),
+        }
+    }
+
+    // The TablePro Sync sign-in whose state file the device uses now, for the app to keep and pass back as
+    // `SyncConfig::service_account` at the next launch.
+    pub fn service_account(&self) -> Option<String> {
+        match self.service.now() {
+            Ok(engine) => super::engines::identity_text(engine.sync.identity()),
+            Err(_) => self.config.service_account.clone(),
         }
     }
 }

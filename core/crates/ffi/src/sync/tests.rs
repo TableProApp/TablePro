@@ -56,6 +56,8 @@ fn config(provider: SyncProviderTag) -> SyncConfig {
         provider,
         categories: SyncCategoriesArg::default(),
         icloud_account: None,
+        service_account: None,
+        route_publisher: None,
     }
 }
 
@@ -736,4 +738,45 @@ async fn a_profile_that_forces_icloud_rests_personal_data_on_tablepro_sync_at_on
     assert_eq!(at_open.service.service.now().unwrap().sync.mode(), ServiceMode::TeamsOnly);
     assert_eq!(before, ServiceMode::Personal);
     assert_eq!(after, ServiceMode::TeamsOnly);
+}
+
+// A sign-in to another account than the one whose file this device used last pushes nothing personal until the person
+// picks Move my data or Start empty; a new sign-in of the same account is no switch (core ADR 0054, Another account or
+// server).
+#[tokio::test]
+async fn another_account_on_tablepro_sync_waits_for_move_my_data_or_start_empty() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let (first_account, other_account) = (AccountId(Uuid::new_v4()), AccountId(Uuid::new_v4()));
+    let first = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::TableproSync),
+        link: Ok(link(&server, first_account)),
+        ..parts
+    })
+    .await;
+    let kept = first.service.service_account().unwrap();
+    let following = || SyncConfig {
+        service_account: Some(kept.clone()),
+        ..config(SyncProviderTag::TableproSync)
+    };
+    let other = open(&tasks, |parts| OpenParts {
+        config: following(),
+        link: Ok(link(&server, other_account)),
+        ..parts
+    })
+    .await;
+    let same = open(&tasks, |parts| OpenParts {
+        config: following(),
+        link: Ok(link(&server, first_account)),
+        ..parts
+    })
+    .await;
+
+    let _ = other.service.sync_now(PassReasonTag::Person).await;
+    let _ = same.service.sync_now(PassReasonTag::Person).await;
+    let plan = other.service.plan_new_identity().await.unwrap();
+    let none = same.service.plan_new_identity().await.unwrap_err();
+
+    assert!(plan.account.ends_with(&other_account.to_wire()), "{plan:?}");
+    assert_eq!(code(&none), "sync.not_allowed");
 }

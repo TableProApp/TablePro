@@ -7,6 +7,7 @@ use std::sync::Arc;
 use tablepro_account::SyncProvider;
 use tablepro_sync::SyncError;
 use tablepro_sync::moves::{MoveParts, Mover};
+use tablepro_sync::api::state::{MovePhase, Provider};
 use tablepro_sync::service::ServiceMode;
 
 use super::service::{MoveBackPlanInfo, MovePlanInfo, SyncPlatformTag, SyncService};
@@ -45,6 +46,17 @@ impl SyncService {
     // What the managed policy leaves this platform (0055); with no account there is no policy to hold it to.
     pub(crate) fn allows(&self, provider: SyncProviderTag) -> bool {
         allowed(self.account.as_deref(), self.config.platform, provider)
+    }
+
+    // A move never brings personal data to a provider the values forbid.
+    fn allows_target(&self, provider: SyncProviderTag) -> Result<(), SyncError> {
+        if self.allows(provider) {
+            Ok(())
+        } else {
+            Err(SyncError::NotAllowed {
+                what: "move to a provider the managed policy does not allow",
+            })
+        }
     }
 }
 
@@ -85,23 +97,84 @@ pub(crate) fn hold_to_policy(service: &std::sync::Weak<SyncService>) -> impl Fut
 }
 
 impl SyncService {
+    // Whatever the provider in use or a move under way: a provider the values forbid carries no personal data from now,
+    // so an arrival in flight on TablePro Sync stops at its next check and commits nothing more.
     pub(crate) async fn leave_a_forbidden_provider(&self) {
-        if self.allows(self.config.provider) {
-            return;
+        if !self.allows(SyncProviderTag::Icloud)
+            && let Ok(engine) = &self.icloud
+        {
+            engine.stop();
         }
-        match self.config.provider {
-            SyncProviderTag::Icloud => {
-                if let Ok(engine) = &self.icloud {
-                    engine.stop();
-                }
+        if !self.allows(SyncProviderTag::TableproSync) {
+            self.service.forbid_personal();
+            if let Ok(engine) = self.service.now() {
+                engine.sync.set_mode(ServiceMode::TeamsOnly).await;
             }
-            SyncProviderTag::TableproSync => {
-                self.service.forbid_personal();
-                if let Ok(engine) = self.service.now() {
-                    engine.sync.set_mode(ServiceMode::TeamsOnly).await;
+        }
+    }
+}
+
+// A move between providers this device started and the app has not finished: its target, and whether everything
+// arrived, so the app keeps the target as its provider and opens sync again with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct OpenMoveInfo {
+    pub target: SyncProviderTag,
+    pub done: bool,
+}
+
+impl SyncService {
+    async fn open_move_now(&self) -> Result<Option<OpenMoveInfo>, SyncError> {
+        if let Ok(engine) = &self.icloud
+            && let Some(row) = engine.sync.open_move().await?
+        {
+            return Ok(Some(OpenMoveInfo {
+                target: SyncProviderTag::TableproSync,
+                done: row.phase == MovePhase::Done,
+            }));
+        }
+        let Ok(engine) = self.service.now() else {
+            return Ok(None);
+        };
+        Ok(engine.sync.move_row().await?.and_then(|row| {
+            let target = match row.target {
+                Provider::Service if self.config.provider != SyncProviderTag::TableproSync => {
+                    SyncProviderTag::TableproSync
                 }
+                Provider::ICloud if self.config.provider == SyncProviderTag::TableproSync => SyncProviderTag::Icloud,
+                Provider::Service | Provider::ICloud => return None,
+            };
+            Some(OpenMoveInfo {
+                target,
+                done: row.phase == MovePhase::Done,
+            })
+        }))
+    }
+}
+
+// A move a restart cut short goes on as soon as sync opens: iCloud stays stopped meanwhile, and the arrival goes on
+// from the bases its first try committed (0054, Moving between providers). A move back waits for the person, who
+// confirms its count again.
+pub(crate) fn resume_open_move(service: &std::sync::Weak<SyncService>) -> impl Future<Output = ()> + Send + 'static {
+    let service = std::sync::Weak::clone(service);
+    async move {
+        let Some(held) = service.upgrade() else {
+            return;
+        };
+        let open = match held.open_move_now().await {
+            Ok(Some(open)) if !open.done && open.target == SyncProviderTag::TableproSync => open,
+            Ok(_) => return,
+            Err(error) => {
+                tracing::warn!(code = error.code(), "the move this device started could not be read");
+                return;
             }
-            SyncProviderTag::Off => {}
+        };
+        let resumed = match held.config.provider {
+            SyncProviderTag::Icloud => held.move_to_service().await,
+            SyncProviderTag::Off => held.first_upload().await,
+            SyncProviderTag::TableproSync => Ok(()),
+        };
+        if let Err(error) = resumed {
+            tracing::warn!(code = error.code(), target = ?open.target, "the move this device started did not finish");
         }
     }
 }
@@ -149,6 +222,11 @@ impl SyncService {
         }
     }
 
+    // A move this device started that the app has not finished: the app keeps `target` as its provider once `done`.
+    pub async fn open_move(&self) -> Result<Option<OpenMoveInfo>, CoreError> {
+        Ok(self.open_move_now().await?)
+    }
+
     pub async fn plan_move_to_service(&self) -> Result<MovePlanInfo, CoreError> {
         self.on_mover(move |mover| async move { mover.plan_move_to_service().await.map(MovePlanInfo::from) })
             .await
@@ -157,6 +235,7 @@ impl SyncService {
     // From iCloud: a last iCloud pass, iCloud stops, and each record meets the service's copy (0054). While the values
     // forbid iCloud traffic, no iCloud call runs and the copies meet the service against this device's CloudKit bases.
     pub async fn move_to_service(&self) -> Result<(), CoreError> {
+        self.allows_target(SyncProviderTag::TableproSync)?;
         if self.allows(SyncProviderTag::Icloud) {
             self.on_mover(move |mover| async move { mover.move_to_service().await })
                 .await
@@ -168,6 +247,7 @@ impl SyncService {
 
     // From Off: what this device holds goes up under the normal merge, the server's copy winning a conflict.
     pub async fn first_upload(&self) -> Result<(), CoreError> {
+        self.allows_target(SyncProviderTag::TableproSync)?;
         self.on_mover(move |mover| async move { mover.first_upload().await })
             .await
     }
@@ -179,6 +259,7 @@ impl SyncService {
 
     // Refused unless the count is the plan's, which the person confirmed.
     pub async fn move_to_icloud(&self, confirmed_deletions: u64) -> Result<(), CoreError> {
+        self.allows_target(SyncProviderTag::Icloud)?;
         self.on_mover(move |mover| async move { mover.move_to_icloud(confirmed_deletions).await })
             .await
     }

@@ -16,11 +16,13 @@ use tablepro_sync::service::ServiceMode;
 use tablepro_sync::state::SqliteStateFiles;
 
 use super::cloudkit::{CloudKitBridge, CloudKitTransport};
-use super::engines::{Hosts, IcloudEngine, Restart, ServiceEngine, ServiceLink, ServiceSlot, service_link};
+use super::engines::{
+    Hosts, IcloudEngine, Restart, ServiceEngine, ServiceLink, ServiceSlot, identity_of, service_link,
+};
 use super::events::{Signals, forward};
 use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSettingsBridge};
 use super::legacy::{HostLegacyMirror, LegacyMirrorBridge};
-use super::moves::{allowed, hold_to_policy};
+use super::moves::{allowed, hold_to_policy, resume_open_move};
 use super::service::{SyncConfig, SyncListener, SyncPlatformTag, SyncService};
 use super::service_records::categories_arg;
 use crate::account::{AccountService, SyncProviderTag};
@@ -251,17 +253,19 @@ impl SyncService {
         } else {
             ServiceMode::TeamsOnly
         };
+        let last = parts.config.service_account.as_deref().and_then(identity_of);
         let restart = match (&parts.account, &hosts) {
             (Some(account), Ok(hosts)) => Some(Restart {
                 hosts: hosts.clone(),
                 account: Arc::clone(account),
                 mode,
                 session: parts.session.clone(),
+                last: last.clone(),
             }),
             _ => None,
         };
         let first = match (parts.link, &hosts, categories) {
-            (Ok(link), Ok(hosts), Ok(categories)) => ServiceEngine::start(hosts, link, categories, mode).await,
+            (Ok(link), Ok(hosts), Ok(categories)) => ServiceEngine::start(hosts, link, categories, mode, last).await,
             (Err(error), ..) | (_, _, Err(error)) => Err(error),
             (_, Err(error), _) => Err(error.clone()),
         };
@@ -285,6 +289,7 @@ impl SyncService {
         });
         let watching = service.tasks.spawn_owned(hold_to_policy(&Arc::downgrade(&service)));
         *service._policy.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(watching);
+        drop(service.tasks.spawn_task(resume_open_move(&Arc::downgrade(&service))));
         service
     }
 }
