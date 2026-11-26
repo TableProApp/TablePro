@@ -3707,6 +3707,9 @@
     "%@ could not be read as valid settings, so TablePro left it unchanged." : {
 
     },
+    "%@ could not be read." : {
+
+    },
     "%@ could not be updated" : {
 
     },
@@ -6131,6 +6134,9 @@
           }
         }
       }
+    },
+    "%@ shortcuts" : {
+
     },
     "%@ slower than the baseline" : {
       "localizations" : {
@@ -11288,6 +11294,9 @@
     "%d parts of this geometry cannot be drawn and are left out." : {
 
     },
+    "%d passwords could not be kept in the Keychain." : {
+
+    },
     "%d plugins could not be loaded." : {
       "localizations" : {
         "fr" : {
@@ -12104,6 +12113,9 @@
       }
     },
     "%lld additional errors are in Copy Details." : {
+
+    },
+    "%lld apps found." : {
 
     },
     "%lld bytes" : {
@@ -15278,6 +15290,9 @@
         }
       }
     },
+    "1 app found." : {
+
+    },
     "1 binary value is larger than the %1$@ this engine allows in one statement, so its INSERT may not restore." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -15656,6 +15671,9 @@
 
     },
     "1 part of this geometry cannot be drawn and is left out." : {
+
+    },
+    "1 password could not be kept in the Keychain." : {
 
     },
     "1 plugin could not be loaded." : {
@@ -17798,6 +17816,9 @@
     "A connection to this server is already saved as “%@”." : {
 
     },
+    "A connection URL you paste" : {
+
+    },
     "A connection with this name, host, and type already exists." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18170,6 +18191,9 @@
           }
         }
       }
+    },
+    "A file exported from TablePro" : {
+
     },
     "A filter cannot contain a comment." : {
       "localizations" : {
@@ -19910,6 +19934,9 @@
           }
         }
       }
+    },
+    "A small music store database in SQLite" : {
+
     },
     "A small query on each open connection catches a drop early. For a database that sleeps when idle or bills per query, pick Only when used: it checks when you next use the connection." : {
       "localizations" : {
@@ -30142,6 +30169,9 @@
         }
       }
     },
+    "Appearance and Keys" : {
+
+    },
     "Appearance Change" : {
       "localizations" : {
         "fr" : {
@@ -35135,6 +35165,9 @@
         }
       }
     },
+    "AWS Account" : {
+
+    },
     "AWS answered without the Redshift user and password." : {
 
     },
@@ -37544,6 +37577,9 @@
       }
     },
     "Bring an open tab to the front, using a tab id from list_recent_tabs. TablePro asks the user about the tab's connection first, as it does for any call that names a connection." : {
+
+    },
+    "Bring your connections, or start with a new one." : {
 
     },
     "Broadcast" : {
@@ -41996,6 +42032,9 @@
         }
       }
     },
+    "Changes apply now. You can change them later in Settings." : {
+
+    },
     "changes are in the open transaction" : {
 
     },
@@ -45013,6 +45052,9 @@
         }
       }
     },
+    "Choose File…" : {
+
+    },
     "Choose Folder" : {
       "localizations" : {
         "fr" : {
@@ -45308,6 +45350,9 @@
           }
         }
       }
+    },
+    "Choose what opens when you finish." : {
+
     },
     "Choose where to copy to." : {
       "localizations" : {
@@ -56664,6 +56709,9 @@
         }
       }
     },
+    "Connections and saved queries from apps on this Mac" : {
+
+    },
     "Connections are reached without asking." : {
       "localizations" : {
         "fr" : {
@@ -56673,6 +56721,9 @@
           }
         }
       }
+    },
+    "Connections File" : {
+
     },
     "Connections found in %@" : {
       "localizations" : {
@@ -57024,6 +57075,9 @@
 
     },
     "Connects to %@. The port names the socket file in the folder." : {
+
+    },
+    "Connects when you finish" : {
 
     },
     "Consistency" : {
@@ -57391,6 +57445,9 @@
           }
         }
       }
+    },
+    "Continue to add a connection or open the sample database." : {
+
     },
     "Continue Without Account" : {
 
@@ -69582,6 +69639,9 @@
           }
         }
       }
+    },
+    "Databases in your AWS account" : {
+
     },
     "Databases of %@" : {
       "localizations" : {
@@ -83526,6 +83586,9 @@
         }
       }
     },
+    "Enter the details of your own database" : {
+
+    },
     "Enter the ElastiCache cache name (replication group ID) to use IAM authentication." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -95004,6 +95067,9 @@
     "Finish in %@" : {
 
     },
+    "Finish on the Welcome window" : {
+
+    },
     "Finish Signing In" : {
       "localizations" : {
         "fr" : {
@@ -95212,6 +95278,9 @@
           }
         }
       }
+    },
+    "First Connection" : {
+
     },
     "First Name" : {
 
@@ -97276,6 +97345,9 @@
           }
         }
       }
+    },
+    "Found on this Mac: %@" : {
+
     },
     "Free" : {
 
@@ -102946,6 +103018,9 @@
     "How to read value: percent is a fraction (0.25 means 25 percent), date is ISO 8601" : {
 
     },
+    "How to start" : {
+
+    },
     "HTTP %d with a body of %d bytes" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -104060,6 +104135,12 @@
         }
       }
     },
+    "Import %lld Connections" : {
+
+    },
+    "Import 1 Connection" : {
+
+    },
     "Import all fields" : {
       "localizations" : {
         "fr" : {
@@ -104708,6 +104789,9 @@
         }
       }
     },
+    "Import from Another App" : {
+
+    },
     "Import from AWS" : {
       "localizations" : {
         "fr" : {
@@ -104847,6 +104931,9 @@
           }
         }
       }
+    },
+    "Import from Other Apps" : {
+
     },
     "Import from URL" : {
       "localizations" : {
@@ -105539,6 +105626,9 @@
           }
         }
       }
+    },
+    "Imports from an export file you choose" : {
+
     },
     "In Agent mode, use confirm_destructive_operation with the explicit confirmation phrase." : {
 
@@ -106410,6 +106500,9 @@
           }
         }
       }
+    },
+    "Include passwords (macOS asks for each one)" : {
+
     },
     "Include query results" : {
       "localizations" : {
@@ -112439,6 +112532,9 @@
           }
         }
       }
+    },
+    "Keep Current" : {
+
     },
     "Keep entries for" : {
       "localizations" : {
@@ -121305,6 +121401,9 @@
         }
       }
     },
+    "Looking for other database apps…" : {
+
+    },
     "Looking for RDS instances and Aurora clusters" : {
       "localizations" : {
         "fr" : {
@@ -125465,6 +125564,9 @@
           }
         }
       }
+    },
+    "Menu and editor keys. Pick the app you used before to keep its keys." : {
+
     },
     "menu.edit" : {
       "comment" : "The Edit menu in the menu bar",
@@ -135640,6 +135742,12 @@
         }
       }
     },
+    "No other database apps found on this Mac." : {
+
+    },
+    "No other database apps found." : {
+
+    },
     "No Output" : {
 
     },
@@ -139855,6 +139963,9 @@
         }
       }
     },
+    "Not found on this Mac: %@" : {
+
+    },
     "Not found: %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -141107,6 +141218,9 @@
       }
     },
     "Notes on the whole report, such as when the usage counters started" : {
+
+    },
+    "Nothing for Now" : {
 
     },
     "Nothing got at least %1$lld%% slower than the period before. A query needs %2$lld runs in both periods, and has to have grown by at least %3$@." : {
@@ -146553,6 +146667,9 @@
         }
       }
     },
+    "Open Sample" : {
+
+    },
     "Open Sample Database" : {
       "localizations" : {
         "fr" : {
@@ -146951,6 +147068,9 @@
           }
         }
       }
+    },
+    "Open the Imported Connection" : {
+
     },
     "Open this query in a new tab and run it" : {
       "comment" : "A description of the action to open a query in a new tab and run it.",
@@ -148434,6 +148554,9 @@
     "Other sessions using the package lose its state, and their next call to it fails once with ORA-04068." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Other Ways to Import" : {
+
     },
     "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
 
@@ -158468,6 +158591,9 @@
     "Project %@ has no Bigtable instance." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Project Folder" : {
+
     },
     "Project ID" : {
       "extractionState" : "manual",
@@ -178525,6 +178651,9 @@
         }
       }
     },
+    "Sample Database" : {
+
+    },
     "Sanitize formula-like values" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -184645,6 +184774,9 @@
         }
       }
     },
+    "Select the apps to import from. You review each one before anything is saved." : {
+
+    },
     "Selected" : {
       "localizations" : {
         "fr" : {
@@ -184830,6 +184962,9 @@
           }
         }
       }
+    },
+    "Selects them on the Welcome window" : {
+
     },
     "Self Cost" : {
       "localizations" : {
@@ -187437,6 +187572,9 @@
     "Settings file" : {
 
     },
+    "Settings found in a project's files" : {
+
+    },
     "Settings sections" : {
       "localizations" : {
         "fr" : {
@@ -187560,6 +187698,9 @@
           }
         }
       }
+    },
+    "Setup Guide" : {
+
     },
     "Setup Instructions" : {
       "localizations" : {
@@ -190565,6 +190706,9 @@
     "Show the connection this conversation works on, with its status." : {
 
     },
+    "Show the Imported Connections" : {
+
+    },
     "Show the messages that arrived while paused" : {
 
     },
@@ -193544,6 +193688,9 @@
           }
         }
       }
+    },
+    "Skip This App" : {
+
     },
     "Skip TLS Verification" : {
       "extractionState" : "manual",
@@ -199866,6 +200013,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "步驟"
+          }
+        }
+      }
+    },
+    "Step %1$lld of %2$lld, %3$@" : {
+
+    },
+    "Step %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Step %1$lld of %2$lld"
           }
         }
       }
@@ -211034,6 +211194,9 @@
         }
       }
     },
+    "The %lld shortcuts you changed are replaced." : {
+
+    },
     "The Access application policy must use a Service Auth rule, or Cloudflare still prompts for browser sign-in." : {
       "localizations" : {
         "fr" : {
@@ -220390,6 +220553,9 @@
           }
         }
       }
+    },
+    "The shortcut you changed is replaced." : {
+
     },
     "The slow query" : {
       "localizations" : {
@@ -239974,6 +240140,9 @@
         }
       }
     },
+    "Use %@ Shortcuts?" : {
+
+    },
     "Use ~/.pgpass" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -240664,6 +240833,9 @@
           }
         }
       }
+    },
+    "Use Shortcuts From" : {
+
     },
     "Use SSL if available" : {
       "localizations" : {
@@ -245904,6 +246076,9 @@
           }
         }
       }
+    },
+    "When you finish" : {
+
     },
     "When you last opened each connection, used by Recent and the Last Connected sort. Stays on this Mac." : {
       "localizations" : {

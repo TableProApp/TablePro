@@ -11,7 +11,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.Click(app.FindByName("Track", app.Find("ObjectTree")), () => app.TryFind("TableStatus") is not null);
         var status = app.Find("TableStatus");
         Assert.Contains(

@@ -60,6 +60,8 @@ struct TableProMobileApp: App {
             lockState.handleScenePhase(phase)
             switch phase {
             case .active:
+                appState.refreshManagedConfiguration()
+                appState.account.sceneBecameActive()
                 Task { await appState.queryActivities.reapOrphans() }
                 appState.backgroundRelease.cancelPreparation()
                 MemoryPressureMonitor.shared.start()
@@ -88,9 +90,9 @@ struct TableProMobileApp: App {
                 break
             }
         }
-        .onChange(of: appState.onboarding.usageDataChoice) { _, choice in
+        .onChange(of: appState.onboarding.isUsageDataEnabled) { _, enabled in
             guard !TestRuntime.isActive else { return }
-            Telemetry.shared.setEnabled(choice == true)
+            Telemetry.shared.setEnabled(enabled)
         }
         .backgroundTask(.appRefresh(Self.backgroundSyncIdentifier)) {
             await runBackgroundSync()

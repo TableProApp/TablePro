@@ -9,7 +9,7 @@ public sealed partial class ShellTests
     public void AGridCellNamesItsRowAndColumnHeadersAndARowHeaderSelectsItsRow(string theme)
     {
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "SELECT TrackId, Name FROM Track ORDER BY TrackId");
         app.Chord(

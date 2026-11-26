@@ -485,7 +485,11 @@ fn application_and_session_commands_have_separate_native_menus() {
     let primary = test.app.menu_by_id("primary_menu").expect("the primary menu");
     let mut app_actions = Vec::new();
     collect_actions(primary.upcast_ref(), &mut app_actions);
-    assert_eq!(app_actions.len(), 11);
+    assert_eq!(app_actions.len(), 12);
+    assert!(
+        app_actions.iter().any(|action| action == "win.setup-guide"),
+        "the menu has the Setup Guide"
+    );
     let button = session_menu_button(&test);
     assert!(!button.is_primary(), "F10 belongs to Main Menu");
     crate::test_support::assert_labelled(&button).expect("the menu's accessible name");

@@ -10,21 +10,11 @@ internal struct WelcomePresentations: ViewModifier {
         content
             .modifier(WelcomeDeletionAlerts(vm: vm))
             .sheet(item: $vm.activeSheet, onDismiss: {
-                if let outcome = vm.pendingImportOutcome {
-                    vm.importOutcome = outcome
-                    vm.pendingImportOutcome = nil
-                }
+                vm.importSheetDidDismiss()
                 onSheetDismiss()
                 WindowOpener.shared.openStagedConnectionForm()
             }) { sheet in
                 activeSheetContent(sheet)
-            }
-            .sheet(isPresented: $vm.presentsWelcomeSheet, onDismiss: {
-                vm.welcomeSheetDidDismiss()
-                onSheetDismiss()
-                SignInPrompt.live.presentIfNeeded()
-            }) {
-                WelcomeSheetView { vm.presentsWelcomeSheet = false }
             }
             .modifier(WelcomeConnectionCreationOverlays(vm: vm))
             .pluginInstallPrompt(for: $vm.pendingInstallType, type: \.self) { type in
@@ -90,13 +80,13 @@ internal struct WelcomePresentations: ViewModifier {
                 try vm.saveGroup(id: group.id, from: ConnectionGroupFields(group), to: draft)
             }
         case .importFile(let url):
-            ConnectionImportSheet(fileURL: url) { vm.finishImport($0) }
+            ConnectionImportSheet(fileURL: url, onCancel: { vm.activeSheet = nil }) { vm.finishImport($0, from: .fileOrLink) }
         case .exportConnections(let conns):
             ConnectionExportOptionsSheet(connections: conns)
         case .importFromApp:
-            ImportFromAppSheet { vm.finishImport($0) }
+            ImportFromAppSheet(onCancel: { vm.activeSheet = nil }, onDone: { vm.finishImport($0, from: $1) })
         case .importFromAWS:
-            ImportFromAWSSheet { vm.finishImport($0) }
+            ImportFromAWSSheet(onCancel: { vm.activeSheet = nil }) { vm.finishImport($0, from: .ownMachineOrAccount) }
         case .projectFolderScan(let url):
             ProjectFolderScanSheet(
                 rootURL: url,
@@ -110,7 +100,7 @@ internal struct WelcomePresentations: ViewModifier {
                 }
             )
         case .deeplinkImport(let bundle):
-            DeeplinkImportSheet(bundle: bundle) { vm.finishImport($0) }
+            DeeplinkImportSheet(bundle: bundle, onCancel: { vm.activeSheet = nil }) { vm.finishImport($0, from: .fileOrLink) }
         case .teamLibraryConflicts:
             TeamLibraryConflictSheet(sync: .shared)
         }

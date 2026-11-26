@@ -215,10 +215,11 @@ fn a_file_that_is_not_a_database_is_an_unsupported_format() {
         .collect_blocking(&CONNECTIONS_ONLY, &CancellationToken::new());
 
     assert!(matches!(outcome, Err(ForeignImportError::UnsupportedFormat { .. })));
-    assert_eq!(
+    // Counted as zero, the broken file would drop out of a list ranked by count.
+    assert!(matches!(
         home.importer(ForeignPlatform::MacOs).inventory_blocking(),
-        Inventory::default()
-    );
+        Err(ForeignImportError::UnsupportedFormat { .. })
+    ));
 }
 
 #[test]
@@ -316,7 +317,7 @@ fn a_database_without_saved_queries_imports_its_connections() {
     assert_eq!(collected.connections.len(), 1);
     assert!(collected.saved_queries.is_empty());
     assert_eq!(
-        importer.inventory_blocking(),
+        importer.inventory_blocking().expect("an inventory"),
         Inventory {
             connections: 1,
             saved_queries: 0
@@ -329,7 +330,7 @@ fn inventory_counts_connections_and_queries_without_the_demo_or_blank_rows() {
     let (_home, importer) = mac_home(FOLDERS_DATABASE);
 
     assert_eq!(
-        importer.inventory_blocking(),
+        importer.inventory_blocking().expect("an inventory"),
         Inventory {
             connections: 1,
             saved_queries: 3
@@ -346,7 +347,7 @@ fn cloud_workspace_queries_are_left_out() {
     assert!(!query_names(&collected).contains(&"Cloud report"));
     // The two rows without a connection type are not imported, so they are not counted either.
     assert_eq!(
-        importer.inventory_blocking(),
+        importer.inventory_blocking().expect("an inventory"),
         Inventory {
             connections: 4,
             saved_queries: 3
@@ -377,17 +378,21 @@ fn an_empty_home_has_nothing_on_any_platform() {
     let home = Home::new();
     for platform in [ForeignPlatform::MacOs, ForeignPlatform::Linux, ForeignPlatform::Windows] {
         let importer = home.importer(platform);
-        assert_eq!(importer.inventory_blocking(), Inventory::default());
+        assert_eq!(
+            importer.inventory_blocking().expect("an inventory"),
+            Inventory::default()
+        );
         assert!(!importer.is_available_blocking());
     }
 }
 
+// Deleting the app leaves its database, which is what an import reads.
 #[test]
-fn the_app_counts_as_available_when_its_database_is_there() {
+fn the_app_counts_as_available_when_its_database_is_there_even_once_the_app_is_gone() {
     let (home, importer) = mac_home(&["connections.sql"]);
     assert!(importer.is_available_blocking());
     *home.host.installed.lock().expect("the flag") = Some(false);
-    assert!(!importer.is_available_blocking());
+    assert!(importer.is_available_blocking());
 }
 
 #[test]

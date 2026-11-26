@@ -71,28 +71,24 @@ impl AppReader for TablePlus {
         self.present_stores().next().is_some()
     }
 
-    // Only the entries collect reads, so the count says what an import brings; the macOS app
-    // counts every entry, unreadable ones included.
-    fn inventory(&self) -> Inventory {
+    // Only the entries collect reads, so the count says what an import brings.
+    fn inventory(&self) -> Result<Inventory, ForeignImportError> {
         let mapping = Mapping {
             dialect: self.layout.dialect,
             dirs: &self.dirs,
             key_file_exists: self.key_file_exists,
         };
-        Inventory {
-            connections: self
-                .present_stores()
-                .map(|store| {
-                    load_entries(store).map_or(0, |entries| {
-                        entries
-                            .iter()
-                            .filter(|entry| mapping.connection(entry).is_some())
-                            .count()
-                    })
-                })
-                .sum(),
-            saved_queries: favorites::count(&self.layout.favorite_roots),
+        let mut connections = 0;
+        for store in self.present_stores() {
+            connections += load_entries(store)?
+                .iter()
+                .filter(|entry| mapping.connection(entry).is_some())
+                .count();
         }
+        Ok(Inventory {
+            connections,
+            saved_queries: favorites::count(&self.layout.favorite_roots),
+        })
     }
 
     fn collect(

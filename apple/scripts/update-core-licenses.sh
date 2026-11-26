@@ -23,13 +23,14 @@ fi
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-# The library build-core.sh makes: no engines, both Apple architectures.
+# The libraries build-core.sh makes: no engines, every macOS and iOS slice.
 generate() {
     cargo about generate --locked --fail \
         --config "$REPO_ROOT/linux/about.toml" \
         --manifest-path "$REPO_ROOT/core/crates/ffi/Cargo.toml" \
         --no-default-features \
         --target aarch64-apple-darwin --target x86_64-apple-darwin \
+        --target aarch64-apple-ios --target aarch64-apple-ios-sim \
         --output-file "$2" \
         "$1"
 }

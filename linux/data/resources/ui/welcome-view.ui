@@ -78,14 +78,29 @@
                 <property name="title" translatable="yes">No Connections</property>
                 <property name="description" translatable="yes">Add a database connection to get started.</property>
                 <property name="child">
-                  <object class="GtkButton">
-                    <property name="label" translatable="yes">Add Connection</property>
-                    <property name="action-name">win.new-connection</property>
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">12</property>
                     <property name="halign">center</property>
-                    <style>
-                      <class name="suggested-action"/>
-                      <class name="pill"/>
-                    </style>
+                    <child>
+                      <object class="GtkButton">
+                        <property name="label" translatable="yes">Add Connection</property>
+                        <property name="action-name">win.new-connection</property>
+                        <style>
+                          <class name="suggested-action"/>
+                          <class name="pill"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton">
+                        <property name="label" translatable="yes">Set Up…</property>
+                        <property name="action-name">win.setup-guide</property>
+                        <style>
+                          <class name="pill"/>
+                        </style>
+                      </object>
+                    </child>
                   </object>
                 </property>
               </object>

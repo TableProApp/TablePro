@@ -46,6 +46,7 @@ public sealed partial class SettingsView : UserControl
             ShowAccount();
             ShowMcp();
             ShowUpdateState();
+            ShowGuideChoices();
         };
         Unloaded += (_, _) =>
         {
@@ -109,6 +110,7 @@ public sealed partial class SettingsView : UserControl
         StatementSwitch.IsOn = settings.HighlightCurrentStatement;
         FoldingSwitch.IsOn = settings.CodeFolding;
         VimSwitch.IsOn = settings.VimMode;
+        FillPresets(ShortcutsBox, settings.ShortcutPreset);
         FillSchemes(LightSchemeBox, dark: false, settings.EditorLightScheme);
         FillSchemes(DarkSchemeBox, dark: true, settings.EditorDarkScheme);
         FillFamilies(GridFontBox, SqlEditor.InstalledFontFamilies(monospacedOnly: false), settings.GridFontFamily, "GridFontDefault");
@@ -124,6 +126,49 @@ public sealed partial class SettingsView : UserControl
         LoadAssistant();
         LoadMcp();
         LoadUpdates();
+        _loading = false;
+    }
+
+    // TablePro first, then the presets the core has for Windows; first names an app the user came from, listed on top.
+    internal static void FillPresets(ComboBox box, string? saved, string? first = null)
+    {
+        ArgumentNullException.ThrowIfNull(box);
+        box.Items.Clear();
+        box.Items.Add(new ComboBoxItem { Content = Strings.Get("ShortcutPresetTablePro"), Tag = string.Empty });
+        IReadOnlyList<KeymapPresetInfo> presets;
+        try
+        {
+            presets = TableProCore.KeymapPresets(KeymapPlatform.Windows);
+        }
+        catch (TableProException)
+        {
+            presets = [];
+        }
+
+        foreach (var preset in presets.OrderBy(preset => preset.Name == first ? 0 : 1))
+        {
+            box.Items.Add(new ComboBoxItem { Content = preset.Name, Tag = preset.Id });
+        }
+
+        box.SelectedItem = box.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => item.Tag is string id && id == (saved ?? string.Empty))
+            ?? box.Items[0];
+    }
+
+    // The setup guide writes these too, so the page shows them again each time it comes back.
+    private void ShowGuideChoices()
+    {
+        _loading = true;
+        var settings = _workbench.Settings;
+        ThemeBox.SelectedIndex = settings.Theme switch
+        {
+            AppTheme.Light => 0,
+            AppTheme.Dark => 1,
+            _ => 2,
+        };
+        VimSwitch.IsOn = settings.VimMode;
+        FillPresets(ShortcutsBox, settings.ShortcutPreset);
         _loading = false;
     }
 
@@ -301,6 +346,14 @@ public sealed partial class SettingsView : UserControl
         {
             var vim = VimSwitch.IsOn;
             _workbench.UpdateSettings(settings => settings with { VimMode = vim });
+        }
+    }
+
+    private void OnShortcutsChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && ShortcutsBox.SelectedItem is ComboBoxItem { Tag: string id })
+        {
+            _workbench.UpdateSettings(settings => settings with { ShortcutPreset = id.Length == 0 ? null : id });
         }
     }
 

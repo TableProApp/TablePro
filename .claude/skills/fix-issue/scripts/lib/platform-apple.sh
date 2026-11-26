@@ -369,28 +369,71 @@ swiftlint_filtered_dirs() {
 
 # ---------------------------------------------------------------------------- steps
 
-# The macOS project links the core (apple/project.yml, TableProFFI), and SwiftPM refuses to resolve it before
-# apple/scripts/build-core.sh has built its binary target. Rebuilt for this Mac's architecture when a file it is
-# built from changed after the last build. Fails the step when the core does not build.
+# Both Apple projects link the core (TableProFFI), and SwiftPM refuses to resolve it before
+# apple/scripts/build-core.sh has built its binary target. Rebuilt when a file it is built from changed after the last
+# build, or when it lacks the slice this step needs: this Mac's architecture, plus the Simulator's for an iOS step.
+# A rebuild keeps every slice the last one had, since each build replaces the XCFramework. Fails the step when the core
+# does not build.
 ensure_core() {
-    local log="$1" built="$APPLE_ROOT/Packages/TableProFFI/Build/TableProFFIC.xcframework" changed code
+    local log="$1" needed="${2:-$(uname -m)}" built="$APPLE_ROOT/Packages/TableProFFI/Build/TableProFFIC.xcframework"
+    local changed code slices
+    slices="$(core_slices "$built")"
     if [ -d "$built" ]; then
         changed="$(cd "$REPO_ROOT" && find core Cargo.toml Cargo.lock rust-toolchain.toml apple/scripts/build-core.sh \
             apple/scripts/lib/deployment-target.sh apple/scripts/lib/system-sqlite.sh \
             -type f ! -name '*.md' -newer "$built" -print -quit 2> /dev/null)"
-        [ -z "$changed" ] && return 0
-        note "core: $changed changed after the last core build, so it is rebuilt first"
+        if [ -n "$changed" ]; then
+            note "core: $changed changed after the last core build, so it is rebuilt first"
+        elif core_has_slice "$slices" "$needed"; then
+            return 0
+        else
+            note "core: built without its $needed slice, so it is rebuilt first"
+        fi
     else
         note "core: not built in this tree, so it is built first"
     fi
+    # One macOS slice only, since build-core.sh takes arm64, x86_64 or both: a universal one already covers either.
+    if ! core_has_slice "$slices" "$needed"; then
+        case "$needed" in
+            arm64 | x86_64 | both) slices="$(printf '%s\n' $slices | grep -vxE 'arm64|x86_64|both')" ;;
+        esac
+        slices="$(printf '%s\n' $slices "$needed")"
+    fi
+    slices="$(printf '%s\n' $slices | sort -u | tr '\n' ' ')"
     require_tool cargo
-    echo "== apple/scripts/build-core.sh $(uname -m)" >> "$log"
-    nice -n 10 "$APPLE_ROOT/scripts/build-core.sh" "$(uname -m)" >> "$log" 2>&1
+    echo "== apple/scripts/build-core.sh $slices" >> "$log"
+    # shellcheck disable=SC2086
+    nice -n 10 "$APPLE_ROOT/scripts/build-core.sh" $slices >> "$log" 2>&1
     code=$?
     [ $code -eq 0 ] && return 0
     STATUS=FAIL
     note "the core did not build: $(grep -E '^error|FATAL|❌' "$log" 2> /dev/null | head -5)"
     emit "$log" "$code"
+}
+
+# grep reads every line rather than quitting at a match, which would leave printf a SIGPIPE under pipefail.
+core_has_slice() {
+    case "$2" in
+        arm64 | x86_64) printf '%s\n' $1 | grep -xE "$2|both" > /dev/null ;;
+        *) printf '%s\n' $1 | grep -x "$2" > /dev/null ;;
+    esac
+}
+
+# The build-core.sh slice names an XCFramework holds, read from its Info.plist.
+core_slices() {
+    local plist="$1/Info.plist" ids
+    [ -f "$plist" ] || return 0
+    ids="$(plutil -extract AvailableLibraries json -o - "$plist" 2> /dev/null \
+        | python3 -c 'import json, sys; print("\n".join(l["LibraryIdentifier"] for l in json.load(sys.stdin)))' 2> /dev/null)"
+    printf '%s\n' "$ids" | while IFS= read -r id; do
+        case "$id" in
+            macos-arm64_x86_64) echo both ;;
+            macos-arm64) echo arm64 ;;
+            macos-x86_64) echo x86_64 ;;
+            ios-arm64) echo ios ;;
+            ios-arm64-simulator) echo ios-simulator ;;
+        esac
+    done
 }
 
 platform_parse() {
@@ -638,6 +681,7 @@ platform_step() {
             if [ ! -d "$project" ]; then
                 "$APPLE_ROOT/scripts/generate-project.sh" ios >> "$log" 2>&1
             fi
+            ensure_core "$log" ios-simulator
             # CI names one simulator; this machine may not have it, so take the first available iPhone.
             simulator="$(xcrun simctl list devices available 2> /dev/null \
                 | grep -m1 -oE 'iPhone[^(]*\([0-9A-F-]{36}\)' | grep -oE '[0-9A-F-]{36}')"
