@@ -28,11 +28,25 @@ const SHOP: &str = "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44";
 const SCRATCH: &str = "E6C12C96-3CBD-4A0E-9F41-E36B47F35D84";
 const REPORTS: &str = "380CB783-4B26-48F3-8F84-1468967A9FA3";
 
-struct LocalOnly(HashSet<Uuid>);
+// The connections the person keeps on this device, which a test can change as the person would.
+#[derive(Default)]
+struct LocalOnly(std::sync::Mutex<HashSet<Uuid>>);
+
+impl LocalOnly {
+    fn of(connections: &[&str]) -> Arc<Self> {
+        Arc::new(Self(std::sync::Mutex::new(
+            connections.iter().copied().map(uuid).collect(),
+        )))
+    }
+
+    fn keep_here(&self, connection: &str) {
+        self.0.lock().unwrap().insert(uuid(connection));
+    }
+}
 
 impl ConnectionStanding for LocalOnly {
     fn standing(&self, connection: Uuid) -> Standing {
-        if self.0.contains(&connection) {
+        if self.0.lock().unwrap().contains(&connection) {
             Standing::LocalOnly
         } else {
             Standing::Syncs
@@ -53,14 +67,22 @@ fn wire_id(id: Uuid) -> String {
 }
 
 async fn device(server: &Arc<FakeServer>, row: &str, dir: &Path) -> (Device, QueryHistory) {
+    device_keeping(server, row, dir, LocalOnly::of(&[SCRATCH])).await
+}
+
+async fn device_keeping(
+    server: &Arc<FakeServer>,
+    row: &str,
+    dir: &Path,
+    standing: Arc<LocalOnly>,
+) -> (Device, QueryHistory) {
     let history = QueryHistory::open(&StoragePaths::under(dir, "tablepro", "app.tablepro.TablePro"))
         .await
         .unwrap();
-    let mut builder = DeviceBuilder::new(server, row).extra_adapter(Arc::new(HistoryAdapter::new(
-        history.clone(),
-        Arc::new(LocalOnly(HashSet::from([uuid(SCRATCH)]))),
-    )));
-    for adapter in SavedQueryAdapter::all(&history) {
+    let standing: Arc<dyn ConnectionStanding> = standing;
+    let mut builder = DeviceBuilder::new(server, row)
+        .extra_adapter(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(&standing))));
+    for adapter in SavedQueryAdapter::all(&history, Some(standing)) {
         builder = builder.extra_adapter(adapter);
     }
     (builder.build().await, history)
@@ -395,4 +417,39 @@ async fn a_run_an_apple_app_recorded_with_a_password_in_it_never_reaches_the_ser
         2,
         "the device keeps its own history whole"
     );
+}
+
+#[tokio::test]
+async fn a_local_only_connection_s_queries_and_its_runs_deletions_never_leave_the_device() {
+    let server = FakeServer::new();
+    let dir = tempfile::tempdir().unwrap();
+    let standing = LocalOnly::of(&[SCRATCH]);
+    let (mac, mac_history) = device_keeping(&server, "dev_mac", dir.path(), Arc::clone(&standing)).await;
+    history_key(&mac).await;
+    let scratch_query = SavedQuery {
+        connection_id: Some(uuid(SCRATCH)),
+        ..query(query_id(1), "Scratch", None, 1_000)
+    };
+    save(
+        &mac_history,
+        vec![scratch_query, query(query_id(2), "Shop", None, 1_000)],
+        Vec::new(),
+    )
+    .await;
+    let shop_run = run(SHOP, "SELECT 1", 1_767_225_600_000);
+    mac_history.record(shop_run.clone()).await.unwrap();
+    mac.sync().await;
+
+    standing.keep_here(SHOP);
+    mac_history.clear_all().await.unwrap();
+    mac.sync().await;
+
+    assert_eq!(on_server(&server, query_id(1)), None);
+    assert!(on_server(&server, query_id(2)).is_some());
+    assert_eq!(
+        on_history(&server, shop_run.record_id),
+        Some((true, None)),
+        "the deletion of a run of a connection now kept here stays here"
+    );
+    assert!(mac_history.tombstones().await.unwrap().is_empty());
 }

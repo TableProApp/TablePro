@@ -290,3 +290,74 @@ async fn a_pulled_run_the_rules_keep_out_of_history_is_not_stored() {
         .collect();
     assert_eq!(ids, vec![entry_id(3)]);
 }
+
+#[tokio::test]
+async fn a_run_put_back_under_a_judged_id_is_judged_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let (history, adapter) = adapter(dir.path()).await;
+    let plain = ran_on("PostgreSQL", "SELECT * FROM users");
+    history.put(std::slice::from_ref(&plain)).await.unwrap();
+    let before = adapter.records(ScopeName::History).await.unwrap().records[0].standing;
+    for replacement in [
+        ran_on("PostgreSQL", "CREATE ROLE app LOGIN PASSWORD 'p'"),
+        ran_on("Oracle", "SELECT * FROM users"),
+    ] {
+        history.remove(&[plain.record_id]).await.unwrap();
+        history
+            .put(&[NewEntry {
+                record_id: plain.record_id,
+                ..replacement
+            }])
+            .await
+            .unwrap();
+
+        let after = adapter.records(ScopeName::History).await.unwrap().records[0].standing;
+
+        assert_eq!(after, Standing::LocalOnly);
+    }
+    assert_eq!(before, Standing::Syncs);
+}
+
+struct Unknown;
+
+impl ConnectionStanding for Unknown {
+    fn standing(&self, _connection: Uuid) -> Standing {
+        Standing::Unknown
+    }
+}
+
+#[tokio::test]
+async fn a_deletion_of_a_connection_that_does_not_sync_stays_here_and_one_not_known_yet_waits() {
+    let dir = tempfile::tempdir().unwrap();
+    let (history, adapter) = adapter(dir.path()).await;
+    let shop = ran_on("PostgreSQL", "SELECT 1");
+    let scratch = NewEntry {
+        connection_id: Uuid::parse_str(SCRATCH).unwrap(),
+        ..ran_on("PostgreSQL", "SELECT 2")
+    };
+    history.put(&[shop.clone(), scratch.clone()]).await.unwrap();
+    history.clear_all().await.unwrap();
+    let waiting = HistoryAdapter::new(history.clone(), Arc::new(Unknown))
+        .records(ScopeName::History)
+        .await
+        .unwrap();
+
+    let local = adapter.records(ScopeName::History).await.unwrap();
+
+    assert!(waiting.tombstones.is_empty());
+    assert_eq!(waiting.unreadable.len(), 2, "held while the standing is not known");
+    assert_eq!(local.tombstones, vec![uuid_id(shop.record_id)]);
+    assert!(local.unreadable.is_empty());
+    let left: Vec<Uuid> = history
+        .tombstones()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|tombstone| tombstone.record_id)
+        .collect();
+    assert_eq!(
+        left,
+        vec![shop.record_id],
+        "the Local only connection's deletion never leaves the device"
+    );
+}

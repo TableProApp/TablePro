@@ -44,7 +44,8 @@ pub(crate) struct Hosts {
     pub(crate) events: Arc<dyn EngineEvents>,
     // This Core's history database: its saved queries, their folders and the query history.
     pub(crate) history: Option<QueryHistory>,
-    // Which connections stay on this device. Until it is known, no history syncs (0051, What syncs).
+    // Which connections stay on this device. Until it is known, no history syncs and nothing of a connection does
+    // (0051, What syncs).
     pub(crate) standing: Option<Arc<dyn ConnectionStanding>>,
     // What the history database's writes tell each engine that syncs it.
     pub(crate) store_journal: Arc<StoreJournal>,
@@ -60,7 +61,7 @@ impl Hosts {
             .collect();
         if let Some(history) = &self.history {
             self.store_journal.add(journal.clone());
-            adapters.extend(SavedQueryAdapter::all(history));
+            adapters.extend(SavedQueryAdapter::all(history, self.standing.clone()));
             if let Some(standing) = &self.standing {
                 adapters.push(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(standing))));
             }

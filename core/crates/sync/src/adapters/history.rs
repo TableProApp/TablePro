@@ -6,11 +6,12 @@
 // Apple app records through the store with no driver to read its statements, and an older build's history may hold
 // one that carries a password.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tablepro_core::sql_syntax::{HistoryRecording, SqlGrammar};
 use tablepro_records::Kind;
 use tablepro_records::record_id::{self, uuid_id};
@@ -32,9 +33,17 @@ use crate::api::state::Standing;
 pub struct HistoryAdapter {
     history: QueryHistory,
     connections: Arc<dyn ConnectionStanding>,
-    // Each entry's verdict, by id: an entry never changes, and reading every statement on every pass would cost a lex
-    // of the whole history each time.
-    may_leave: Mutex<HashMap<Uuid, bool>>,
+    // Each entry's verdict with the digest of the engine and statement it was given for: reading every statement on
+    // every pass would lex the whole history each time, and a host can put another run back under a removed id.
+    may_leave: Mutex<HashMap<Uuid, ([u8; 32], bool)>>,
+}
+
+fn digest(entry: &Entry) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(entry.driver_id.as_bytes());
+    hasher.update([0]);
+    hasher.update(entry.query.as_bytes());
+    hasher.finalize().into()
 }
 
 impl HistoryAdapter {
@@ -46,31 +55,53 @@ impl HistoryAdapter {
         }
     }
 
-    // The verdicts of these entries, read for the ones not judged before.
+    // The verdicts of these entries, read for the ones not judged before as they are now.
     async fn judged(&self, entries: &[Entry]) -> Result<HashMap<Uuid, bool>, AdapterError> {
-        let mut known = self.may_leave.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        let present: HashSet<Uuid> = entries.iter().map(|entry| entry.record_id).collect();
-        known.retain(|id, _| present.contains(id));
-        let unjudged: Vec<(Uuid, String, String)> = entries
-            .iter()
-            .filter(|entry| !known.contains_key(&entry.record_id))
-            .map(|entry| (entry.record_id, entry.driver_id.clone(), entry.query.clone()))
-            .collect();
+        let held = self.may_leave.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let mut known: HashMap<Uuid, ([u8; 32], bool)> = HashMap::with_capacity(entries.len());
+        let mut unjudged = Vec::new();
+        for entry in entries {
+            let print = digest(entry);
+            match held.get(&entry.record_id) {
+                Some((seen, verdict)) if *seen == print => {
+                    known.insert(entry.record_id, (print, *verdict));
+                }
+                _ => unjudged.push((entry.record_id, print, entry.driver_id.clone(), entry.query.clone())),
+            }
+        }
         if !unjudged.is_empty() {
             let judged = blocking(move || {
                 unjudged
                     .into_iter()
-                    .map(|(id, engine, query)| (id, may_leave(&engine, &query)))
+                    .map(|(id, print, engine, query)| (id, (print, may_leave(&engine, &query))))
                     .collect::<Vec<_>>()
             })
             .await?;
             known.extend(judged);
         }
-        self.may_leave
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone_from(&known);
-        Ok(known)
+        let verdicts = known.iter().map(|(id, (_, verdict))| (*id, *verdict)).collect();
+        *self.may_leave.lock().unwrap_or_else(PoisonError::into_inner) = known;
+        Ok(verdicts)
+    }
+
+    // The person's deletions that go up, and those that wait while their connection's standing is not known: listed as
+    // held, so the engine neither sends them nor lets their base go. A deletion of a connection that does not sync
+    // stays on the device, as the Mac's sync boundary holds one, so its tombstone goes now.
+    async fn deletions_going_up(&self) -> Result<(Vec<String>, Vec<String>), AdapterError> {
+        let mut going = Vec::new();
+        let mut waiting = Vec::new();
+        let mut staying = Vec::new();
+        for tombstone in self.history.tombstones().await.map_err(store_error)? {
+            match self.connections.standing(tombstone.connection_id) {
+                Standing::Syncs => going.push(uuid_id(tombstone.record_id)),
+                Standing::Unknown => waiting.push(uuid_id(tombstone.record_id)),
+                Standing::LocalOnly => staying.push(tombstone.record_id),
+            }
+        }
+        if !staying.is_empty() {
+            self.history.drop_tombstones(&staying).await.map_err(store_error)?;
+        }
+        Ok((going, waiting))
     }
 }
 
@@ -158,8 +189,8 @@ impl RecordAdapter for HistoryAdapter {
             return Ok(LocalRecords::default());
         }
         let entries = self.history.entries().await.map_err(store_error)?;
-        let tombstones = self.history.tombstones().await.map_err(store_error)?;
         let may_leave = self.judged(&entries).await?;
+        let (tombstones, waiting) = self.deletions_going_up().await?;
         Ok(LocalRecords {
             records: entries
                 .iter()
@@ -172,8 +203,8 @@ impl RecordAdapter for HistoryAdapter {
                     },
                 })
                 .collect(),
-            unreadable: Vec::new(),
-            tombstones: tombstones.into_iter().map(uuid_id).collect(),
+            unreadable: waiting,
+            tombstones,
         })
     }
 

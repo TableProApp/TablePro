@@ -10,9 +10,10 @@ use tablepro_records::Kind;
 use tablepro_storage::saved_queries::SavedQuery;
 use tablepro_storage::{QueryHistory, SavedQueryWrite, StoragePaths};
 use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
+use tablepro_sync::adapters::settings::ConnectionStanding;
 use tablepro_sync::api::cloudkit::CloudKitTransport;
 use tablepro_sync::api::control::PassReason;
-use tablepro_sync::api::state::StateFiles;
+use tablepro_sync::api::state::{Standing, StateFiles};
 use tablepro_sync::cloudkit::fetch::Categories;
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync};
 use tablepro_sync::engine::{Clock, Journal, StopSignal};
@@ -53,11 +54,19 @@ fn theirs(name: &str, keyword: &str, created_ms: i64) -> Value {
     })
 }
 
+struct Syncs;
+
+impl ConnectionStanding for Syncs {
+    fn standing(&self, _connection: Uuid) -> Standing {
+        Standing::Syncs
+    }
+}
+
 fn icloud(rig: &Rig, history: &QueryHistory) -> CloudKitSync {
     CloudKitSync::new(CloudKitParts {
         transport: Arc::clone(&rig.cloud) as Arc<dyn CloudKitTransport>,
         files: Arc::clone(&rig.files) as Arc<dyn StateFiles>,
-        adapters: SavedQueryAdapter::all(history),
+        adapters: SavedQueryAdapter::all(history, Some(Arc::new(Syncs))),
         categories: Categories::new([Kind::SavedQuery, Kind::SavedQueryFolder]),
         clock: Arc::clone(&rig.clock) as Arc<dyn Clock>,
         stop: StopSignal::new(),

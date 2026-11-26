@@ -14,7 +14,7 @@ async fn history(dir: &std::path::Path) -> QueryHistory {
 }
 
 fn adapter(history: &QueryHistory, kind: Kind) -> Arc<dyn RecordAdapter> {
-    SavedQueryAdapter::all(history)
+    SavedQueryAdapter::all(history, None)
         .into_iter()
         .find(|adapter| adapter.kind() == kind)
         .unwrap()
@@ -320,4 +320,68 @@ async fn a_copy_with_no_times_takes_the_time_it_arrives() {
     let fields = fields_of(&queries, &id(1)).await.unwrap();
     assert!(fields["created_at"].as_i64().unwrap() >= before);
     assert_eq!(fields["sort_order"], json!(0));
+}
+
+struct LocalOnly(Uuid);
+
+impl ConnectionStanding for LocalOnly {
+    fn standing(&self, connection: Uuid) -> Standing {
+        if connection == self.0 {
+            Standing::LocalOnly
+        } else {
+            Standing::Syncs
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_record_of_a_connection_that_does_not_sync_stays_and_one_of_no_connection_goes() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = history(dir.path()).await;
+    let blog = Uuid::parse_str(BLOG).unwrap();
+    let standing = |connections: Option<Arc<dyn ConnectionStanding>>| {
+        SavedQueryAdapter::all(&history, connections)
+            .into_iter()
+            .find(|adapter| adapter.kind() == Kind::SavedQuery)
+            .unwrap()
+    };
+    let (known, unknown) = (standing(Some(Arc::new(LocalOnly(blog)))), standing(None));
+    known
+        .apply(
+            ScopeName::Personal,
+            vec![
+                put(&id(1), pulled("Shop", None, Some(SHOP), 1_000)),
+                put(&id(2), pulled("Blog", None, Some(BLOG), 1_000)),
+                put(&id(3), pulled("Everywhere", None, None, 1_000)),
+            ],
+        )
+        .await
+        .unwrap();
+
+    let read = |records: LocalRecords| {
+        let mut out: Vec<(String, Standing)> = records
+            .records
+            .into_iter()
+            .map(|record| (record.record_id, record.standing))
+            .collect();
+        out.sort_by(|left, right| left.0.cmp(&right.0));
+        out
+    };
+
+    assert_eq!(
+        read(known.records(ScopeName::Personal).await.unwrap()),
+        [
+            (id(1), Standing::Syncs),
+            (id(2), Standing::LocalOnly),
+            (id(3), Standing::Syncs)
+        ]
+    );
+    assert_eq!(
+        read(unknown.records(ScopeName::Personal).await.unwrap()),
+        [
+            (id(1), Standing::Unknown),
+            (id(2), Standing::Unknown),
+            (id(3), Standing::Syncs)
+        ]
+    );
 }

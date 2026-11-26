@@ -3,7 +3,8 @@
 // to reads as the top level, and times are whole milliseconds. A write that puts two records in one place under one
 // name or one keyword is settled by the store, the record created first keeping it (0052, Collisions); the store's
 // copy of each loser then differs from its base, so the next push sends the release as this device's own edit, as the
-// Swift engines' `SavedQueryKeywordResolver` did.
+// Swift engines' `SavedQueryKeywordResolver` did. A query or folder of a Local only or sample connection stays on the
+// device, as the Mac's sync boundary keeps it; one with no connection is in every connection and syncs.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -17,6 +18,7 @@ use tablepro_storage::saved_queries::SavedQuery;
 use tablepro_storage::{QueryHistory, SavedQueryFolder, SavedQueryWrite, StorageError};
 use uuid::Uuid;
 
+use super::settings::ConnectionStanding;
 use crate::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
 use crate::api::error::AdapterError;
 use crate::api::ids::ScopeName;
@@ -197,20 +199,34 @@ enum Held {
 pub struct SavedQueryAdapter {
     history: QueryHistory,
     held: Held,
+    // None while the connections' standing is not known: a record of a connection then waits.
+    connections: Option<Arc<dyn ConnectionStanding>>,
 }
 
 impl SavedQueryAdapter {
     // One adapter per kind over the one store.
-    pub fn all(history: &QueryHistory) -> Vec<Arc<dyn RecordAdapter>> {
+    pub fn all(
+        history: &QueryHistory,
+        connections: Option<Arc<dyn ConnectionStanding>>,
+    ) -> Vec<Arc<dyn RecordAdapter>> {
         [Held::Queries, Held::Folders]
             .into_iter()
             .map(|held| {
                 Arc::new(Self {
                     history: history.clone(),
                     held,
+                    connections: connections.clone(),
                 }) as Arc<dyn RecordAdapter>
             })
             .collect()
+    }
+
+    fn standing(&self, connection: Option<Uuid>) -> Standing {
+        match (connection, &self.connections) {
+            (None, _) => Standing::Syncs,
+            (Some(connection), Some(connections)) => connections.standing(connection),
+            (Some(_), None) => Standing::Unknown,
+        }
     }
 
     fn write(&self, changes: Vec<LocalChange>, held: &[SavedQuery]) -> Result<SavedQueryWrite, AdapterError> {
@@ -265,21 +281,21 @@ impl RecordAdapter for SavedQueryAdapter {
             Held::Queries => contents
                 .queries
                 .iter()
-                .map(|query| (query.id, query_fields(query)))
+                .map(|query| (query.id, query_fields(query), query.connection_id))
                 .collect::<Vec<_>>(),
             Held::Folders => contents
                 .folders
                 .iter()
-                .map(|folder| (folder.id, folder_fields(folder)))
+                .map(|folder| (folder.id, folder_fields(folder), folder.connection_id))
                 .collect(),
         };
         Ok(LocalRecords {
             records: records
                 .into_iter()
-                .map(|(id, fields)| LocalRecord {
+                .map(|(id, fields, connection)| LocalRecord {
                     record_id: uuid_id(id),
                     fields,
-                    standing: Standing::Syncs,
+                    standing: self.standing(connection),
                 })
                 .collect(),
             unreadable: Vec::new(),
