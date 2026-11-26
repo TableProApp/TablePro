@@ -346,32 +346,59 @@ impl KeyService {
         Ok(Some(objects))
     }
 
-    // A genesis of this device that a pull showed lost, its draft gone: the certificate in force at `av` 1 is another
-    // device's, so this device's leftover candidates and its `av` 1 keys go (0056, Genesis, step 3). An approval in
-    // flight, which stores the account's real keys, is left alone.
-    pub(crate) async fn forget_lost_genesis(&self, txn: &mut dyn StateTxn) -> Result<(), SyncError> {
-        if self.pin(txn, self.account()).await?.is_some() || pending_request(txn).await?.is_some() {
+    // An account change set of this device that a pull showed lost, its draft gone or its answer never seen: another
+    // certificate is in force at its `av`. Its leftover candidates, its team steps and its keys at that `av` go (0056,
+    // Genesis, step 3). Only on evidence that the set was this device's own, a candidate or a rotation row of its own
+    // beside keys the certificate in force does not name, and never in a file it cannot trust: a certificate the
+    // server alone serves erases nothing.
+    pub(crate) async fn forget_lost_rotation(&self, txn: &mut dyn StateTxn) -> Result<(), SyncError> {
+        if self.is_unanchored() || self.is_rebuilding() || pending_request(txn).await?.is_some() {
             return Ok(());
         }
-        let Some(in_force) = self.own_certificate(txn, Version::FIRST).await? else {
+        let av = match self.pin(txn, self.account()).await? {
+            Some(pin) => pin.av.next()?,
+            None => Version::FIRST,
+        };
+        let Some(in_force) = self.own_certificate(txn, av).await? else {
             return Ok(());
         };
-        let Some(keys) = self.account_keys(Version::FIRST).await? else {
+        let mut leftovers = Vec::new();
+        for kind in [
+            KeyKind::Account,
+            KeyKind::Recovery,
+            KeyKind::Device,
+            KeyKind::Version,
+            KeyKind::Ring,
+            KeyKind::Wrap,
+        ] {
+            for held in self.held_objects(txn, ScopeName::Personal, kind).await? {
+                let ours = if av == Version::FIRST {
+                    genesis_object(&held.object)
+                } else {
+                    super::account_replace::of_rotation(&held.object, av)
+                        || matches!(held.object.id, KeyRecordId::Ring(_))
+                };
+                if !held.applied && ours {
+                    leftovers.push(held.object);
+                }
+            }
+        }
+        let pending = RowKey::KeyPending(PendingFlow::AccountRotation { av });
+        let rotation_row = av != Version::FIRST && txn.get(&pending).await?.is_some();
+        if leftovers.is_empty() && !rotation_row {
+            return Ok(());
+        }
+        let Some(keys) = self.account_keys(av).await? else {
             return Ok(());
         };
         if keys.check_against(&in_force.ask, &in_force.aek).is_ok() {
             return Ok(());
         }
-        let mut leftovers = Vec::new();
-        for kind in [KeyKind::Recovery, KeyKind::Device, KeyKind::Version, KeyKind::Wrap] {
-            for held in self.held_objects(txn, ScopeName::Personal, kind).await? {
-                if !held.applied && genesis_object(&held.object) {
-                    leftovers.push(held.object);
-                }
-            }
-        }
         self.drop_candidates(txn, ScopeName::Personal, &leftovers).await?;
-        self.erase_account_keys(Version::FIRST).await
+        if rotation_row {
+            txn.delete(&pending).await?;
+        }
+        self.erase_account_keys(av).await
     }
 
     // The objects go, and so do the account keys at `av` 1 unless they are the ones the certificate in force names:

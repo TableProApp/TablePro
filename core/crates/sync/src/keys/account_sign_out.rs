@@ -22,9 +22,12 @@ use crate::api::transport::{DpopKey, TransportError};
 impl KeyService {
     pub(crate) async fn erase_on_sign_out(&self) -> Result<SignOutOutcome, SyncError> {
         let _serial = self.serialized().await;
-        // A device with no store holds no keys: its key tables go, and there is nothing to revoke.
-        if let Err(SyncError::DeviceStore(DeviceStoreError::Unavailable { .. })) = self.signing_out().await {
-            self.clear_key_state().await?;
+        // A device with no store holds no keys, so there is nothing to revoke or erase. One whose store is only away
+        // this session still holds them there, and is not told it signed out.
+        if let Err(SyncError::DeviceStore(DeviceStoreError::Unavailable { detail })) = self.signing_out().await {
+            if self.holds_key_state().await? {
+                return Err(DeviceStoreError::Unavailable { detail }.into());
+            }
             return Ok(SignOutOutcome::Revoked);
         }
         let signing_out = match self.signing_out().await? {
@@ -66,15 +69,29 @@ impl KeyService {
             })
             .collect();
         let pinned = self.pin(txn.as_mut(), self.account()).await?.map(|pin| pin.av);
-        let certified = self
+        // Only this device's own candidates and certificates that verify under its pin: an `av` the server alone made up
+        // sets no bound.
+        let mut certified = None;
+        for held in self
             .held_objects(txn.as_mut(), ScopeName::Personal, KeyKind::Account)
             .await?
-            .iter()
-            .filter_map(|held| match (&held.object.id, &held.object.body) {
-                (KeyRecordId::Account { av, .. }, KeyBody::Account(_)) => Some(*av),
-                _ => None,
-            })
-            .max();
+        {
+            let (KeyRecordId::Account { av, .. }, KeyBody::Account(body)) = (&held.object.id, &held.object.body) else {
+                continue;
+            };
+            let trusted = !held.applied
+                || self
+                    .verify_certificate(
+                        txn.as_mut(),
+                        ScopeName::Personal,
+                        &body.certificate(self.account(), *av),
+                    )
+                    .await
+                    .is_ok();
+            if trusted {
+                certified = certified.max(Some(*av));
+            }
+        }
         // One past the newest: a rotation stores its new keys before its push, and may have stopped there.
         let newest_av = pinned.max(certified).map_or(0, Version::get).saturating_add(1);
         Ok(SigningOut {
@@ -92,7 +109,7 @@ impl KeyService {
             .map(|device| device.dsk.clone())
             .collect::<Vec<_>>();
         for reset in &signing_out.resets {
-            if let Some(keys) = self.reset_keys(*reset).await? {
+            if let Some(keys) = self.load_reset_keys(*reset).await? {
                 held.push(keys.device.dsk.clone());
             }
         }
@@ -130,6 +147,16 @@ impl KeyService {
         // Last, since it holds the record of what this Sign Out erases.
         self.erase_device_keys().await?;
         Ok(outcome)
+    }
+
+    async fn holds_key_state(&self) -> Result<bool, SyncError> {
+        let mut txn = self.begin().await?;
+        for table in Table::KEY {
+            if !txn.scan(&RowRange::Table(table)).await?.is_empty() {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     async fn clear_key_state(&self) -> Result<(), SyncError> {

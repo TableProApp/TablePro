@@ -115,7 +115,9 @@ impl KeyService {
                 what: "store device keys before a Sign Out under way finishes",
             });
         }
-        let mut out = Zeroizing::new(vec![ITEM_FORMAT]);
+        // Sized up front, so no secret byte is left behind in a buffer a reallocation frees.
+        let mut out = Zeroizing::new(Vec::with_capacity(1 + 2 * (1 + DEVICE_KEYS_LEN)));
+        out.push(ITEM_FORMAT);
         encode_held_device_keys(keys, &mut out);
         Ok(self.device_store.store(self.device_keys_item(), out).await?)
     }
@@ -131,7 +133,10 @@ impl KeyService {
     }
 
     pub(crate) async fn start_signing_out(&self, signing_out: &SigningOut) -> Result<(), SyncError> {
-        let mut out = Zeroizing::new(vec![SIGNING_OUT]);
+        let mut out = Zeroizing::new(Vec::with_capacity(
+            1 + 4 + 2 + 16 * signing_out.resets.len() + 2 * (1 + DEVICE_KEYS_LEN),
+        ));
+        out.push(SIGNING_OUT);
         out.extend_from_slice(&signing_out.newest_av.to_be_bytes());
         let resets = u16::try_from(signing_out.resets.len()).map_err(|_| SyncError::Malformed {
             what: "too many resets to sign out of",
@@ -180,7 +185,8 @@ impl KeyService {
     }
 
     pub async fn store_account_keys(&self, av: Version, keys: &AccountKeys) -> Result<(), SyncError> {
-        let mut out = Zeroizing::new(vec![ITEM_FORMAT]);
+        let mut out = Zeroizing::new(Vec::with_capacity(1 + ACCOUNT_KEYS_LEN));
+        out.push(ITEM_FORMAT);
         out.extend_from_slice(keys.to_plaintext().as_slice());
         Ok(self.device_store.store(self.account_keys_item(av), out).await?)
     }
@@ -190,6 +196,14 @@ impl KeyService {
     }
 
     pub async fn reset_keys(&self, reset: ResetId) -> Result<Option<ResetKeys>, SyncError> {
+        if self.signing_out().await?.is_some() {
+            return Ok(None);
+        }
+        self.load_reset_keys(reset).await
+    }
+
+    // Sign Out reads them to prove the reset's end, past the gate above.
+    pub(crate) async fn load_reset_keys(&self, reset: ResetId) -> Result<Option<ResetKeys>, SyncError> {
         match self.device_store.load(self.reset_keys_item(reset)).await? {
             Some(bytes) => {
                 let body = item_body(&bytes, ACCOUNT_KEYS_LEN + DEVICE_KEYS_LEN, "reset keys item")?;
@@ -203,7 +217,8 @@ impl KeyService {
     }
 
     pub async fn store_reset_keys(&self, reset: ResetId, keys: &ResetKeys) -> Result<(), SyncError> {
-        let mut out = Zeroizing::new(vec![ITEM_FORMAT]);
+        let mut out = Zeroizing::new(Vec::with_capacity(1 + ACCOUNT_KEYS_LEN + DEVICE_KEYS_LEN));
+        out.push(ITEM_FORMAT);
         out.extend_from_slice(keys.account.to_plaintext().as_slice());
         encode_device_keys(&keys.device, &mut out);
         Ok(self.device_store.store(self.reset_keys_item(reset), out).await?)
@@ -587,8 +602,10 @@ fn decode_signing_out(bytes: &[u8]) -> Result<SigningOut, SyncError> {
         resets.push(ResetId(Uuid::from_slice(id).map_err(|_| malformed())?));
         at += 16;
     }
-    let mut keys = Zeroizing::new(vec![ITEM_FORMAT]);
-    keys.extend_from_slice(rest.get(at..).ok_or_else(malformed)?);
+    let tail = rest.get(at..).ok_or_else(malformed)?;
+    let mut keys = Zeroizing::new(Vec::with_capacity(1 + tail.len()));
+    keys.push(ITEM_FORMAT);
+    keys.extend_from_slice(tail);
     Ok(SigningOut {
         keys: decode_held_device_keys(&keys)?,
         newest_av,
