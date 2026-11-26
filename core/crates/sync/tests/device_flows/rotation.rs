@@ -536,7 +536,7 @@ async fn a_server_certificate_at_a_pending_rotation_s_av_is_never_adopted() {
 
     let pin = a.pin(account).await.unwrap();
     assert_eq!((pin.ik, pin.av.get()), (ik, 1));
-    assert!(!pin.replaced.contains(&ik));
+    assert!(pin.replaced.iter().all(|entry| entry.ik != ik));
 }
 
 // A team rotation whose answer was lost goes up again and meets `create_only` on its own version: once a pull brings

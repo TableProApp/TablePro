@@ -17,6 +17,7 @@ nonisolated protocol SyncEngine: AnyObject, Sendable {
     func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws
     func uploadAgain() async throws
     func icloudAccount() -> String?
+    func flushLegacyMarks() async throws
 }
 
 extension SyncService: SyncEngine {}
@@ -78,6 +79,15 @@ final class SyncEngineHost {
         }
     }
 
+    // The service opened for this provider, or for any with nil, once an open of one in flight ends. It never opens one.
+    func existingEngine(for provider: SyncProviderTag?) async -> (any SyncEngine)? {
+        if let opening, provider == nil || opening.provider == provider {
+            _ = await opening.task.result
+        }
+        guard let opened, provider == nil || opened.provider == provider else { return nil }
+        return opened.engine
+    }
+
     private func startOpening(_ provider: SyncProviderTag) -> Opening {
         let task = Task { [weak self, open, listener = SyncEngineListener(host: self)] in
             let engine = try await open(provider, listener)
@@ -100,9 +110,7 @@ final class SyncEngineHost {
         }
     }
 
-    // No settings host yet, and no device store, which holds the state file's MAC key and anchor (core ADR 0054,
-    // Integrity and freshness): until one lands, the core starts no iCloud engine and answers each call as unavailable.
-    // The account is optional, since iCloud needs none (Providers).
+    // No settings host yet. The account is optional, since iCloud needs none (core ADR 0054, Providers).
     private static func live() -> SyncEngineHost {
         let transport = CloudKitCoreTransport()
         let mirror = LegacySyncMetadataMirror(
@@ -110,6 +118,10 @@ final class SyncEngineHost {
             recordCache: SyncProviderCoordinator.makeRecordCache()
         )
         let defaults = AppStorageEnvironment.shared.defaults
+        let deviceStore = KeychainDeviceStore(
+            items: AppStorageEnvironment.shared.deviceItems,
+            accessGroup: KeychainHelper.resolveAccessGroup()
+        )
         return SyncEngineHost(
             transport: transport,
             keepICloudAccount: { account in
@@ -129,7 +141,7 @@ final class SyncEngineHost {
                     account: account,
                     cloudkit: transport,
                     settings: nil,
-                    deviceStore: nil,
+                    deviceStore: deviceStore,
                     legacyMirror: mirror,
                     listener: listener
                 )

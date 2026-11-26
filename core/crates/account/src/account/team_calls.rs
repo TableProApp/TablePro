@@ -1,14 +1,18 @@
-use std::num::NonZeroU64;
-
-use tablepro_cloud_api::answer_error;
+use reqwest::StatusCode;
+use reqwest::header::{ACCEPT, AUTHORIZATION, HeaderValue};
+use secrecy::ExposeSecret as _;
+use tablepro_cloud_api::{ApiError, rate_limited, read_capped, refusal, schema_mismatch, v2};
 
 use super::{Account, Call, Session};
 use crate::account_error::AccountError;
 use crate::profile::TeamMember;
 
-const MEMBER_PAGE: NonZeroU64 = NonZeroU64::MIN.saturating_add(199);
+const MEMBER_PAGE: u64 = 200;
 // A team holds at most 5,000 key holders (core ADR 0051, Limits), 25 pages of the document's largest.
 const MEMBER_PAGES: usize = 25;
+const MOST_MEMBERS: usize = 5_000;
+// A page of 200 members is tens of kilobytes; a server that sends far more is cut off.
+const MEMBER_PAGE_BYTES: usize = 1 << 20;
 
 impl Account {
     // The server serves the list to the team's owners and admins only, and refuses anyone else.
@@ -19,17 +23,40 @@ impl Account {
     }
 
     async fn fetch_team_members(&self, session: &mut Session, team_id: &str) -> Result<Vec<TeamMember>, AccountError> {
+        // A TypeID, so nothing in it reaches the path but its own segment.
+        if team_id.is_empty() || !team_id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_') {
+            return Err(AccountError::Protocol("a team id that is not a TypeID".to_owned()));
+        }
         session.waited(Call::TeamMembers)?;
-        let api = self.api(self.bearer(session, false).await?);
+        self.vouched(session).await?;
+        let token = self.access(session, false).await?;
+        let mut bearer = HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))
+            .map_err(|_| AccountError::Protocol("the access token is not a header value".to_owned()))?;
+        bearer.set_sensitive(true);
+        let url = format!("{}/teams/{team_id}/members", self.current().api);
         let mut members = Vec::new();
-        let mut cursor = None;
+        let mut cursor: Option<String> = None;
         for _ in 0..MEMBER_PAGES {
             self.reachable()?;
-            let page = match api.list_team_members(team_id, cursor.as_deref(), Some(MEMBER_PAGE)).await {
-                Ok(answer) => answer.into_inner(),
-                Err(error) => return session.answered(Call::TeamMembers, Err(answer_error(error).await.into())),
+            let mut query = vec![("limit", MEMBER_PAGE.to_string())];
+            query.extend(cursor.take().map(|cursor| ("cursor", cursor)));
+            let request = self
+                .inner
+                .http
+                .get(&url)
+                .query(&query)
+                .header(ACCEPT, "application/json")
+                .header(AUTHORIZATION, bearer.clone());
+            let page = match member_page(request).await {
+                Ok(page) => page,
+                Err(error) => return session.answered(Call::TeamMembers, Err(error)),
             };
             members.extend(page.data.into_iter().map(TeamMember::from));
+            if members.len() > MOST_MEMBERS {
+                return Err(AccountError::Protocol(format!(
+                    "a member list longer than {MOST_MEMBERS}"
+                )));
+            }
             cursor = page.next_cursor;
             if cursor.is_none() {
                 break;
@@ -37,6 +64,20 @@ impl Account {
         }
         Ok(members)
     }
+}
+
+// By hand, not through the generated client, so a server that sends more than a page of members is cut off.
+async fn member_page(request: reqwest::RequestBuilder) -> Result<v2::types::MemberList, AccountError> {
+    let response = request.send().await.map_err(AccountError::unreachable)?;
+    let status = response.status();
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        return Err(rate_limited(response.headers()).into());
+    }
+    let body = read_capped(response, MEMBER_PAGE_BYTES).await?;
+    if !status.is_success() {
+        return Err(refusal(status.as_u16(), &body).into());
+    }
+    serde_json::from_slice(&body).map_err(|error| AccountError::from(ApiError::Protocol(schema_mismatch(&error))))
 }
 
 #[cfg(test)]
@@ -129,16 +170,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_page_past_its_size_is_cut_off_and_a_team_id_that_is_no_typeid_never_reaches_the_path() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let padding = "x".repeat(MEMBER_PAGE_BYTES);
+        let endpoints = cloud(
+            move |method, path| match (method, path.split('?').next().unwrap_or_default()) {
+                ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
+                ("GET", "/v2/teams/team_01k8d6wk00f8xsr79e7x052rkk/members") => {
+                    (200, format!(r#"{{"data":[],"padding":"{padding}"}}"#))
+                }
+                _ => (404, String::new()),
+            },
+        );
+        let account = signed_in(dir.path(), endpoints).await;
+
+        let large = account.team_members(TEAM).await;
+        let path = account.team_members("team_01/../../devices").await;
+
+        assert!(matches!(large, Err(AccountError::Protocol(_))), "{large:?}");
+        assert!(matches!(path, Err(AccountError::Protocol(_))), "{path:?}");
+    }
+
+    #[tokio::test]
     async fn a_member_who_does_not_manage_the_team_is_refused_the_list() {
         let dir = tempfile::tempdir().expect("a temporary directory");
-        let endpoints = cloud(move |method, path| match (method, path.split('?').next().unwrap_or_default()) {
-            ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
-            ("GET", "/v2/teams/team_01k8d6wk00f8xsr79e7x052rkk/members") => (
-                403,
-                r#"{"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden"}"#.to_owned(),
-            ),
-            _ => (404, String::new()),
-        });
+        let endpoints = cloud(
+            move |method, path| match (method, path.split('?').next().unwrap_or_default()) {
+                ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
+                ("GET", "/v2/teams/team_01k8d6wk00f8xsr79e7x052rkk/members") => (
+                    403,
+                    r#"{"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden"}"#.to_owned(),
+                ),
+                _ => (404, String::new()),
+            },
+        );
         let account = signed_in(dir.path(), endpoints).await;
 
         let members = account.team_members(TEAM).await;

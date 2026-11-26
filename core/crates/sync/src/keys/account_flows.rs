@@ -1,5 +1,7 @@
 // `AccountFlows` (0056, Keys, The recovery key, Pins, Genesis, Sign Out, Replace, Envelopes and history, Rollback).
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use secrecy::SecretString;
 use serde_json::Value;
@@ -8,11 +10,13 @@ use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Public;
 
 use super::KeyService;
+use crate::api::device_store::DeviceStoreError;
 use crate::api::error::SyncError;
 use crate::api::key_flows::{
     Acceptance, AccountFlows, DraftId, Fingerprint, GenesisOutcome, KeyApplied, KeyArrival, KeyChange, KeyNotice,
     KeyState, NoticeId, OpenedEnvelope, RecoveryKeyDraft, RotationDraft, SignOutOutcome, TypedBack,
 };
+use crate::api::transport::DpopKey;
 
 #[async_trait]
 impl AccountFlows for KeyService {
@@ -111,5 +115,25 @@ impl AccountFlows for KeyService {
 
     async fn open_history_entry(&self, entry: HistoryId, fields: Value) -> Result<Value, SyncError> {
         self.open_history(entry, &fields).await
+    }
+
+    // The device keys are made on the first call, since a device proves even its first pull and its genesis or first
+    // request certifies them (0056, Approving a device, step 1). A Sign Out a crash cut off finishes first, as before
+    // any other read of the keys. With no device store there is no key to prove with, and only team plaintext syncs.
+    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
+        let _serial = self.serialized().await;
+        let made = match self.finish_cut_off_sign_out().await {
+            Ok(()) => self.ensure_device_keys().await,
+            Err(error) => Err(error),
+        };
+        match made {
+            Ok(device) => Ok(Some(DpopKey(Arc::new(device.dsk)))),
+            Err(SyncError::DeviceStore(DeviceStoreError::Unavailable { .. })) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn rebuilding(&self) -> bool {
+        self.is_rebuilding()
     }
 }
