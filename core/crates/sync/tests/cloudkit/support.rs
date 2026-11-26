@@ -9,7 +9,9 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tablepro_records::Kind;
 use tablepro_records::cloudkit::{CloudFields, CloudValue, from_wire, record_name, record_type_of, to_wire};
+use tablepro_sync::adapters::approval::Queue;
 use tablepro_sync::api::cloudkit::{CloudKitField, CloudKitTransport, CloudKitValue};
+use tablepro_sync::api::control::PendingApproval;
 use tablepro_sync::api::ids::{ChangeTag, KindName};
 use tablepro_sync::api::state::{
     BaseRow, DeferredRow, HeldRow, Row, RowKey, RowRange, StateFiles, StateIdentity, StateStore, StoreRow, Table,
@@ -22,7 +24,7 @@ use tablepro_sync::api::{
 };
 use tablepro_sync::cloudkit::fetch::{Categories, FetchReport, Fetcher, Rebased, ServerChanged};
 use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync, PushReport, Pusher, Waits};
-use tablepro_sync::engine::{Clock, Journal, StopSignal};
+use tablepro_sync::engine::{Adapters, Clock, Journal, StopSignal};
 use tablepro_sync_testing::{FakeCloudKit, MemoryStateFiles};
 use uuid::Uuid;
 
@@ -558,6 +560,28 @@ impl Rig {
         match self.row(RowKey::Held(key(kind, id))).await {
             Some(Row::Held(held)) => Some(held),
             _ => None,
+        }
+    }
+
+    // What waits for the person, as the app's approval sheet lists it.
+    pub async fn waiting(&self) -> Vec<PendingApproval> {
+        let adapters = Adapters::new(self.adapters());
+        let queue = Queue {
+            state: &self.state,
+            adapters: &adapters,
+        };
+        queue.waiting().await.unwrap()
+    }
+
+    // The person approves every value the queue holds.
+    pub async fn approve_everything(&self) {
+        let adapters = Adapters::new(self.adapters());
+        let queue = Queue {
+            state: &self.state,
+            adapters: &adapters,
+        };
+        for approval in queue.waiting().await.unwrap() {
+            queue.decide(&approval.key, &approval.field, true).await.unwrap();
         }
     }
 

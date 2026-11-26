@@ -21,6 +21,8 @@ pub use pass::{CloudKitParts, CloudKitReport, CloudKitSync};
 
 use super::codes;
 use super::fetch::{Categories, Fetcher, PROFILES, SCOPE, ServerChanged, carried};
+use crate::adapters::approval;
+use crate::adapters::fields::{get, set};
 use crate::api::adapter::{LocalRecord, LocalRecords};
 use crate::api::cloudkit::{CloudKitFailure, CloudKitField, CloudKitRecord, CloudKitValue};
 use crate::api::error::SyncError;
@@ -169,6 +171,32 @@ fn unwritable(kind: Kind, record: &LocalRecord) -> &'static str {
     match from_wire(kind, &record.record_id, &record.fields, 0) {
         Err(error) => error.code(),
         Ok(_) => "records.bad_field",
+    }
+}
+
+// The diff's copy and the save's both take the base's value in each member the approval queue holds.
+fn at_base(
+    kind: &KindName,
+    waiting: &BTreeMap<(KindName, String), BTreeSet<String>>,
+    bases: &[BaseRow],
+    local: &mut LocalRecords,
+    kept: &mut BTreeMap<String, LocalRecord>,
+) {
+    for base in bases {
+        let id = &base.key.record_id;
+        let Some(members) = waiting.get(&(kind.clone(), id.clone())) else {
+            continue;
+        };
+        let copies = local
+            .records
+            .iter_mut()
+            .filter(|record| record.record_id == *id)
+            .chain(kept.get_mut(id));
+        for copy in copies {
+            for pointer in members {
+                set(&mut copy.fields, pointer, get(base.fields.as_ref(), pointer).cloned());
+            }
+        }
     }
 }
 
@@ -322,9 +350,12 @@ impl<'p> Pusher<'p> {
     }
 
     // Each kind's store against its bases, in what iCloud carries of each copy. A kind whose category is off sends
-    // nothing; Local only copies, held records and those this pass leaves out stay.
+    // nothing; Local only copies, held records and those this pass leaves out stay. A member waiting for the person, or
+    // kept here after a rejection, goes up at its base's value, so the device never sends its old value back over the
+    // pulled one (0054, Rules for both providers).
     async fn pending(&self, report: &mut PushReport, leave: &Leave<'_>) -> Result<Vec<Item>, SyncError> {
         let held = self.held().await?;
+        let waiting = approval::held_members(self.fetcher.state.begin().await?.as_mut(), SCOPE).await?;
         let mut items = Vec::new();
         for (kind, adapter) in &self.fetcher.adapters {
             let kind = *kind;
@@ -346,8 +377,9 @@ impl<'p> Pusher<'p> {
                 None => None,
             };
             let stored = adapter.records(SCOPE).await?;
-            let (local, kept, unwritten) = Self::carried_copies(kind, stored);
+            let (mut local, mut kept, unwritten) = Self::carried_copies(kind, stored);
             let bases = self.bases(kind).await?;
+            at_base(&name, &waiting, &bases, &mut local, &mut kept);
             let skip: HashSet<String> = held
                 .iter()
                 .chain(leave.failed)

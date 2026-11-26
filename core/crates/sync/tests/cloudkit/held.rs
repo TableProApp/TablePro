@@ -246,8 +246,7 @@ async fn a_value_waiting_for_approval_gives_way_to_a_newer_unread_change_and_goe
     rig.save_elsewhere(Kind::Connection, A, &json!({"name": "renamed"}));
     rig.fetch().await.unwrap();
     let replaced = rig.held(Kind::Connection, A).await.unwrap().reason;
-    rig.hold_for_approval(Kind::Connection, B).await;
-    rig.save_elsewhere(Kind::Connection, B, &json!({"name": "b"}));
+    rig.save_elsewhere(Kind::Connection, B, &json!({"name": "b", "host": "db.example.com"}));
     rig.fetch().await.unwrap();
     let kept = rig.held(Kind::Connection, B).await.map(|row| row.reason);
     rig.delete_elsewhere(Kind::Connection, B);
@@ -256,6 +255,7 @@ async fn a_value_waiting_for_approval_gives_way_to_a_newer_unread_change_and_goe
     assert_eq!(replaced, HeldReason::Unreadable);
     assert_eq!(kept, Some(HeldReason::AwaitingApproval));
     assert!(rig.held(Kind::Connection, B).await.is_none());
+    assert!(rig.waiting().await.is_empty());
 }
 
 #[tokio::test]

@@ -6,11 +6,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use async_trait::async_trait;
 use tablepro_records::merge::Merged;
 
 use super::copy::kind_of;
 use super::settle::{Settle, View};
 use super::{Fetcher, SCOPE};
+use crate::adapters::approval;
 use crate::api::adapter::LocalRecord;
 use crate::api::error::{StateError, SyncError};
 use crate::api::ids::{ChangeTag, RecordKey};
@@ -110,6 +112,36 @@ impl Staged {
     }
 }
 
+// The approval queue writes its rows through the batch's transaction, so they go into the commit after the store write
+// too.
+#[async_trait]
+impl StateTxn for Staged {
+    async fn get(&mut self, key: &RowKey) -> Result<Option<Row>, StateError> {
+        Staged::get(self, key).await
+    }
+
+    async fn scan(&mut self, range: &RowRange) -> Result<Vec<Row>, StateError> {
+        Staged::scan(self, range).await
+    }
+
+    async fn put(&mut self, row: Row) -> Result<(), StateError> {
+        Staged::put(self, row).await
+    }
+
+    async fn delete(&mut self, key: &RowKey) -> Result<(), StateError> {
+        Staged::delete(self, key).await
+    }
+
+    // An iCloud file has no key tables.
+    async fn clear_key_tables(&mut self) -> Result<(), StateError> {
+        Ok(())
+    }
+
+    async fn commit(self: Box<Self>) -> Result<Committed, StateError> {
+        Staged::commit(*self).await
+    }
+}
+
 // A base the pull removes. iCloud keeps no tombstone bases, so a deletion mark on a pending row can only mean this.
 fn removal(key: &RecordKey) -> BaseRow {
     BaseRow {
@@ -168,7 +200,23 @@ impl Settle<'_, '_> {
             (None, None) => return Ok(false),
         };
         let merged = self.merged(kind, &pending.key, record.as_ref(), server, false).await?;
-        Ok(holds(record.as_ref(), &merged))
+        let (Merged::Record(fields) | Merged::Contested { record: fields, .. }) = &merged else {
+            return Ok(holds(record.as_ref(), &merged));
+        };
+        // The store took what the approval queue left of the merge, and nothing of a new record it holds whole.
+        let rows = approval::rows_of(&mut self.txn, &pending.key).await?;
+        let split = approval::split(
+            kind,
+            &pending.key,
+            record.as_ref().map(|record| &record.fields),
+            fields,
+            &rows,
+        );
+        Ok(if split.hold {
+            record.is_none()
+        } else {
+            record.is_some_and(|record| record.fields == split.fields)
+        })
     }
 }
 

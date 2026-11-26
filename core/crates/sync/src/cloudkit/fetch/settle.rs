@@ -13,6 +13,7 @@ use super::copy::{Copy, Incoming, kind_of};
 use super::pending::Staged;
 use super::stores::{Local, Planned, carried, overlay};
 use super::{Counts, Fetcher, PROFILES, SCOPE};
+use crate::adapters::approval::{self, Gated};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{ChangeTag, Cursor, KindName, RecordKey};
@@ -199,7 +200,14 @@ impl<'s, 'f> Settle<'s, 'f> {
         let merged = self
             .merged(copy.kind, &key, record.as_ref(), Some(&copy.fields), pull_wins)
             .await?;
-        self.settle_local(copy.kind, &key, record.as_ref(), merged);
+        let stored = record.as_ref().map(|record| &record.fields);
+        match approval::gate(&mut self.txn, &key, copy.kind, stored, merged).await? {
+            Gated::Apply(merged) => self.settle_local(copy.kind, &key, record.as_ref(), merged),
+            Gated::Hold => {
+                self.hold(&key, HeldReason::AwaitingApproval, held_change(&copy))
+                    .await?;
+            }
+        }
         self.txn
             .put(Row::Base(BaseRow {
                 key: key.clone(),
@@ -217,7 +225,8 @@ impl<'s, 'f> Settle<'s, 'f> {
 
     // What a pulled copy, or a deletion when `server` is None, leaves of the store's copy: the merge of what iCloud
     // carries of it against the base, put back on the local copy with what iCloud does not carry. In refill the pull
-    // wins.
+    // wins. The approval queue's sides keep a value that waits or was refused out of the device's side, as the
+    // service's pull does; a caller that writes the result passes it through `approval::gate` first.
     pub(super) async fn merged(
         &mut self,
         kind: Kind,
@@ -227,20 +236,23 @@ impl<'s, 'f> Settle<'s, 'f> {
         pull_wins: bool,
     ) -> Result<Merged, SyncError> {
         let local = record.map(|record| &record.fields);
-        let held = local.and_then(|local| carried(kind, &key.record_id, local));
+        let in_icloud = local.and_then(|local| carried(kind, &key.record_id, local));
         let merged = if pull_wins {
             server.map_or(Merged::Deleted, |server| Merged::Record(server.clone()))
         } else {
             let base = self.base(key).await?;
+            let base = base.as_ref().and_then(|base| base.fields.as_ref());
+            let (base, mine) =
+                approval::merge_sides(&mut self.txn, key, kind, base, in_icloud.as_ref().or(local)).await?;
             let sides = Sides {
-                base: base.as_ref().and_then(|base| base.fields.as_ref()),
-                local: held.as_ref().or(local),
+                base: base.as_ref(),
+                local: mine.as_ref(),
                 server,
             };
             merge::merge(kind, Mode::Personal, sides)
         };
-        Ok(match (merged, local, &held) {
-            (Merged::Record(fields), Some(local), Some(held)) => Merged::Record(overlay(local, held, &fields)),
+        Ok(match (merged, local, &in_icloud) {
+            (Merged::Record(fields), Some(local), Some(carried)) => Merged::Record(overlay(local, carried, &fields)),
             (merged, ..) => merged,
         })
     }
@@ -287,7 +299,12 @@ impl<'s, 'f> Settle<'s, 'f> {
         // Otherwise a content edit here revives the record: it stays, and with no base it goes up as a create. A
         // store in refill went back in time, so what differs from the base there is no edit.
         let pull_wins = self.pull_wins.contains(&kind);
-        let goes = self.merged(kind, key, record.as_ref(), None, pull_wins).await? == Merged::Deleted;
+        let merged = self.merged(kind, key, record.as_ref(), None, pull_wins).await?;
+        let stored = record.as_ref().map(|record| &record.fields);
+        let goes = matches!(
+            approval::gate(&mut self.txn, key, kind, stored, merged).await?,
+            Gated::Apply(Merged::Deleted)
+        );
         if record.is_some() && goes {
             self.plan(kind, key, Planned::Delete);
         }
@@ -307,6 +324,7 @@ impl<'s, 'f> Settle<'s, 'f> {
         match standing {
             Some(Standing::Syncs) if !PROFILES.contains(&kind) => {
                 self.plan(kind, key, Planned::Delete);
+                approval::gate(&mut self.txn, key, kind, None, Merged::Deleted).await?;
                 self.forget(key).await
             }
             Some(Standing::LocalOnly) if !PROFILES.contains(&kind) => self.forget(key).await,

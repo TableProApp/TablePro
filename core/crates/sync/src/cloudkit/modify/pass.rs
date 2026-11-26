@@ -11,13 +11,15 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use super::{PushReport, Pusher, Waits, zone};
+use crate::adapters::approval::Queue;
 use crate::api::adapter::RecordAdapter;
 use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
-use crate::api::control::{PassReason, SyncControl, SyncPhase, SyncStatus};
+use crate::api::control::{PassReason, PendingApproval, SyncControl, SyncPhase, SyncStatus};
 use crate::api::error::SyncError;
+use crate::api::ids::RecordKey;
 use crate::api::state::{Provider, RowRange, StateFiles, StateIdentity, StateStore, Table};
 use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, read_everything_again};
-use crate::engine::{Clock, EngineEvents, Journal, JournalIds, Pass, StopSignal};
+use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalIds, Pass, StopSignal};
 
 // The Swift engine's fallback timer, for changes no CloudKit push announced.
 const FALLBACK: Duration = Duration::from_secs(15 * 60);
@@ -216,6 +218,10 @@ impl CloudKitSync {
             Err(failure) => return Err(self.ended(session, failure)),
         };
         let (state, switched_from) = self.open(session, &account).await?;
+        // A record new to the device that the person approved whole, which a crash kept out of its store, goes in first.
+        self.stop.check()?;
+        let adapters = Adapters::new(self.adapters.clone());
+        self.queue(&state, &adapters).finish_decided().await?;
         let mut report = CloudKitReport {
             account,
             switched_from,
@@ -319,16 +325,25 @@ impl CloudKitSync {
         Ok(())
     }
 
-    async fn held(&self, session: &Session) -> Option<u32> {
+    // The approval queue over this session's state file and the stores (0054, Rules for both providers).
+    fn queue<'q>(&'q self, state: &'q Arc<dyn StateStore>, adapters: &'q Adapters) -> Queue<'q> {
+        Queue { state, adapters }
+    }
+
+    // The records held by id and the values waiting for the person.
+    async fn counts(&self, session: &Session) -> Option<(u32, u32)> {
         let state = session.state.as_ref()?;
         let mut txn = state.begin().await.ok()?;
         let held = txn.scan(&RowRange::Scope(Table::Held, SCOPE)).await.ok()?;
-        Some(u32::try_from(held.len()).unwrap_or(u32::MAX))
+        drop(txn);
+        let adapters = Adapters::new(self.adapters.clone());
+        let waiting = self.queue(state, &adapters).count().await.ok()?;
+        Some((u32::try_from(held.len()).unwrap_or(u32::MAX), waiting))
     }
 
     // A journal pass diffs only what it was told of, so the count it saw is not what waits.
     async fn finish(&self, session: &Session, outcome: &Result<CloudKitReport, SyncError>, journal_only: bool) {
-        let held = self.held(session).await;
+        let held = self.counts(session).await;
         let mut status = lock(&self.status);
         status.last_pass_ms = Some(self.clock.now_ms());
         match outcome {
@@ -350,8 +365,9 @@ impl CloudKitSync {
                 };
             }
         }
-        if let Some(held) = held {
+        if let Some((held, waiting)) = held {
             status.held = held;
+            status.waiting_approvals = waiting;
         }
         drop(status);
         if let Some(events) = &self.events {
@@ -393,5 +409,29 @@ impl SyncControl for CloudKitSync {
 
     async fn upload_again(&self) -> Result<(), SyncError> {
         self.run_upload_again().await.map(|_| ())
+    }
+
+    async fn approvals(&self) -> Result<Vec<PendingApproval>, SyncError> {
+        let session = self.session.lock().await;
+        let Some(state) = &session.state else {
+            return Ok(Vec::new());
+        };
+        let adapters = Adapters::new(self.adapters.clone());
+        self.queue(state, &adapters).waiting().await
+    }
+
+    async fn decide_approval(&self, key: RecordKey, field: String, approve: bool) -> Result<(), SyncError> {
+        let session = self.session.lock().await;
+        let state = session.state.as_ref().ok_or(SyncError::Unknown { what: "approval" })?;
+        let adapters = Adapters::new(self.adapters.clone());
+        self.queue(state, &adapters).decide(&key, &field, approve).await?;
+        if let Some((_, waiting)) = self.counts(&session).await {
+            lock(&self.status).waiting_approvals = waiting;
+        }
+        drop(session);
+        if let Some(events) = &self.events {
+            events.status_changed();
+        }
+        Ok(())
     }
 }

@@ -9,13 +9,13 @@ use tablepro_sync::api::error::StateError;
 use crate::faults::Crashing;
 use crate::support::{A, B, Rig, projected};
 
-fn connection(name: &str, port: i64) -> serde_json::Value {
-    json!({"name": name, "port": port})
+fn connection(name: &str, timeout: i64) -> serde_json::Value {
+    json!({"name": name, "query_timeout_seconds": timeout})
 }
 
-// The zone moves the port from 5432 to 6432, and the fetch that takes it stops at its last commit.
+// The zone moves the query timeout from 30 to 60, and the fetch that takes it stops at its last commit.
 async fn crashed_after_the_store_write(rig: &Rig) {
-    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 6432));
+    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 60));
     let crashing = Crashing::new(rig.state.clone());
     crashing.crash_after_commits(1);
     let crashed = rig.fetcher_on(rig.cloud.as_ref(), &crashing).fetch().await;
@@ -23,7 +23,7 @@ async fn crashed_after_the_store_write(rig: &Rig) {
 }
 
 async fn synced(rig: &Rig) {
-    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 5432));
+    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 30));
     rig.fetch().await.unwrap();
 }
 
@@ -34,15 +34,15 @@ async fn a_pull_the_store_took_before_a_crash_is_no_edit_when_the_zone_changes_a
     crashed_after_the_store_write(&rig).await;
     let after_crash = rig.store(Kind::Connection).fields(A);
     let staged = rig.pending_bases().await;
-    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 5432));
+    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 30));
 
     rig.fetch().await.unwrap();
     let pushed = rig.push().await.unwrap();
 
-    let back = projected(Kind::Connection, A, &connection("prod", 5432));
+    let back = projected(Kind::Connection, A, &connection("prod", 30));
     assert_eq!(
         after_crash,
-        Some(projected(Kind::Connection, A, &connection("prod", 6432)))
+        Some(projected(Kind::Connection, A, &connection("prod", 60)))
     );
     assert_eq!(staged.len(), 1);
     assert_eq!(rig.store(Kind::Connection).fields(A), Some(back.clone()));
@@ -56,14 +56,14 @@ async fn an_edit_merged_with_a_pull_before_a_crash_stays_the_only_edit() {
     let rig = Rig::new().await;
     synced(&rig).await;
     rig.store(Kind::Connection)
-        .put(A, projected(Kind::Connection, A, &connection("mine", 5432)));
+        .put(A, projected(Kind::Connection, A, &connection("mine", 30)));
     crashed_after_the_store_write(&rig).await;
-    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 5432));
+    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 30));
 
     rig.fetch().await.unwrap();
     rig.push().await.unwrap();
 
-    let mine = projected(Kind::Connection, A, &connection("mine", 5432));
+    let mine = projected(Kind::Connection, A, &connection("mine", 30));
     assert_eq!(rig.store(Kind::Connection).fields(A), Some(mine.clone()));
     assert_eq!(rig.zone_fields(Kind::Connection, A), Some(mine));
 }
@@ -72,9 +72,9 @@ async fn an_edit_merged_with_a_pull_before_a_crash_stays_the_only_edit() {
 async fn a_crash_before_the_store_write_leaves_the_edit_against_the_base_it_had() {
     let rig = Rig::new().await;
     synced(&rig).await;
-    let mine = projected(Kind::Connection, A, &connection("mine", 5432));
+    let mine = projected(Kind::Connection, A, &connection("mine", 30));
     rig.store(Kind::Connection).put(A, mine.clone());
-    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 6432));
+    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 60));
     let crashing = Crashing::new(rig.state.clone());
     crashing.crash_next_commit();
 
@@ -83,7 +83,7 @@ async fn a_crash_before_the_store_write_leaves_the_edit_against_the_base_it_had(
     rig.fetch().await.unwrap();
     rig.push().await.unwrap();
 
-    let merged = projected(Kind::Connection, A, &connection("mine", 6432));
+    let merged = projected(Kind::Connection, A, &connection("mine", 60));
     assert!(crashed.is_err());
     assert_eq!(after_crash, Some(mine));
     assert_eq!(rig.store(Kind::Connection).fields(A), Some(merged.clone()));
@@ -97,13 +97,13 @@ async fn a_store_that_took_its_write_keeps_the_pull_when_another_store_of_the_ba
     synced(&rig).await;
     rig.save_elsewhere(Kind::Group, B, &json!({"name": "Work"}));
     rig.fetch().await.unwrap();
-    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 6432));
+    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 60));
     rig.save_elsewhere(Kind::Group, B, &json!({"name": "Office"}));
     rig.store(Kind::Group).refuse_next_write();
 
     let refused = rig.fetch().await;
     let staged = rig.pending_bases().await.len();
-    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 5432));
+    rig.save_elsewhere(Kind::Connection, A, &connection("prod", 30));
     rig.fetch().await.unwrap();
     let pushed = rig.push().await.unwrap();
 
@@ -111,7 +111,7 @@ async fn a_store_that_took_its_write_keeps_the_pull_when_another_store_of_the_ba
     assert_eq!(staged, 2);
     assert_eq!(
         rig.store(Kind::Connection).fields(A),
-        Some(projected(Kind::Connection, A, &connection("prod", 5432)))
+        Some(projected(Kind::Connection, A, &connection("prod", 30)))
     );
     assert_eq!(
         rig.store(Kind::Group).fields(B),

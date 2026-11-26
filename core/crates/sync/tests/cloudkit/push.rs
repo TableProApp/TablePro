@@ -22,6 +22,7 @@ use crate::support::{A, B, C, D, KINDS, Rig, USER, name, projected};
 async fn synced(rig: &Rig, kind: Kind, id: &str, wire: &serde_json::Value) {
     rig.save_elsewhere(kind, id, wire);
     rig.fetch().await.unwrap();
+    rig.approve_everything().await;
 }
 
 fn tag_of(rig: &Rig, kind: Kind, id: &str) -> ChangeTag {
@@ -94,16 +95,34 @@ async fn local_only_records_held_records_and_categories_that_are_off_send_nothin
 #[tokio::test]
 async fn a_save_refused_with_the_server_s_copy_merges_and_goes_up_on_its_tag() {
     let rig = Rig::new().await;
-    synced(&rig, Kind::Connection, A, &json!({"name": "prod", "port": 5432})).await;
+    synced(
+        &rig,
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 30}),
+    )
+    .await;
     rig.store(Kind::Connection).put(
         A,
-        projected(Kind::Connection, A, &json!({"name": "mine", "port": 5432})),
+        projected(
+            Kind::Connection,
+            A,
+            &json!({"name": "mine", "query_timeout_seconds": 30}),
+        ),
     );
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 6432}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 60}),
+    );
 
     let report = rig.push().await.unwrap();
 
-    let merged = projected(Kind::Connection, A, &json!({"name": "mine", "port": 6432}));
+    let merged = projected(
+        Kind::Connection,
+        A,
+        &json!({"name": "mine", "query_timeout_seconds": 60}),
+    );
     assert_eq!((report.merged, report.saved), (1, 1));
     assert_eq!(rig.store(Kind::Connection).fields(A), Some(merged.clone()));
     assert_eq!(rig.zone_fields(Kind::Connection, A), Some(merged));

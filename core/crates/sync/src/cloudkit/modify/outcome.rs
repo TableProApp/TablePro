@@ -5,6 +5,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use super::{Answers, Item, Op, PushReport, Pusher, Waits};
+use crate::adapters::approval;
 use crate::api::cloudkit::{CloudKitFailure, CloudKitOutcome};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, RecordKey};
@@ -67,8 +68,12 @@ impl Pusher<'_> {
                         .await?;
                     report.saved = report.saved.saturating_add(1);
                 }
-                // A deletion that found no record is done as well.
+                // A deletion that found no record is done as well. A record the person deleted here has nothing left
+                // to approve.
                 (Op::Delete { .. }, CloudKitOutcome::Deleted { .. } | CloudKitOutcome::UnknownItem { .. }) => {
+                    for row in approval::rows_of(txn.as_mut(), &key).await? {
+                        txn.delete(&RowKey::Approval(row.key, row.field)).await?;
+                    }
                     txn.delete(&RowKey::Base(key)).await?;
                     report.deleted = report.deleted.saturating_add(1);
                 }

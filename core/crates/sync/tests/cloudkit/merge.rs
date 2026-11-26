@@ -39,7 +39,7 @@ fn side(kind: Kind, id: &str, case: &Value, name: &str) -> Option<Value> {
 }
 
 // The shared fixtures on the CloudKit path (0054, Verification): the base comes from a fetch, the store and the zone
-// change, and the next fetch leaves the store holding what the field merge gives.
+// change, and the next fetch leaves the store holding what the field merge gives once the person approved what waited.
 #[tokio::test]
 async fn the_shared_merge_fixtures_land_in_the_store_through_a_fetch() {
     let cases = cases();
@@ -62,6 +62,7 @@ async fn the_shared_merge_fixtures_land_in_the_store_through_a_fetch() {
         if let Some(base) = &base {
             rig.save_elsewhere(kind, &id, base);
             rig.fetch().await.unwrap();
+            rig.approve_everything().await;
         }
         match &local {
             Some(local) => rig.store(kind).put(&id, local.clone()),
@@ -73,6 +74,7 @@ async fn the_shared_merge_fixtures_land_in_the_store_through_a_fetch() {
         }
 
         rig.fetch().await.unwrap();
+        rig.approve_everything().await;
 
         let label = case["name"].as_str().unwrap();
         let expected = merge(
@@ -116,11 +118,23 @@ async fn refused_save(rig: &Rig, id: &str, fields: &Value) -> CloudKitOutcome {
 
 async fn edited_on_both_sides() -> (Rig, Value) {
     let rig = Rig::new().await;
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 5432}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 30}),
+    );
     rig.fetch().await.unwrap();
-    let mine = projected(Kind::Connection, A, &json!({"name": "mine", "port": 5432}));
+    let mine = projected(
+        Kind::Connection,
+        A,
+        &json!({"name": "mine", "query_timeout_seconds": 30}),
+    );
     rig.store(Kind::Connection).put(A, mine.clone());
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 6432}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 60}),
+    );
     (rig, mine)
 }
 
@@ -143,7 +157,11 @@ async fn a_save_refused_with_the_server_s_copy_merges_with_it_and_goes_through_o
     assert_eq!(rebased.merged.len(), 1);
     assert_eq!(
         rig.store(Kind::Connection).fields(A),
-        Some(projected(Kind::Connection, A, &json!({"name": "mine", "port": 6432})))
+        Some(projected(
+            Kind::Connection,
+            A,
+            &json!({"name": "mine", "query_timeout_seconds": 60})
+        ))
     );
     assert_eq!(base.tag, ChangeTag::CloudKit(server_tag));
     assert!(matches!(
@@ -167,7 +185,11 @@ async fn a_refusal_that_carries_no_copy_fetches_the_record_by_name() {
     assert_eq!(rebased.merged, [name(Kind::Connection, A)]);
     assert_eq!(
         rig.store(Kind::Connection).fields(A),
-        Some(projected(Kind::Connection, A, &json!({"name": "mine", "port": 6432})))
+        Some(projected(
+            Kind::Connection,
+            A,
+            &json!({"name": "mine", "query_timeout_seconds": 60})
+        ))
     );
     assert!(matches!(
         saved_after_the_rebase(&rig).await,
@@ -232,6 +254,7 @@ async fn a_profile_the_zone_lost_is_not_deleted_by_a_rebase() {
     let rig = Rig::new().await;
     rig.save_elsewhere(Kind::SshProfile, A, &json!({"name": "bastion", "host": "jump"}));
     rig.fetch().await.unwrap();
+    rig.approve_everything().await;
     rig.delete_elsewhere(Kind::SshProfile, A);
 
     let rebased = rig

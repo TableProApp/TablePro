@@ -13,7 +13,11 @@ use crate::support::{A, B, C, D, Rig, USER, name, projected};
 #[tokio::test]
 async fn a_first_fetch_takes_the_zone_and_keeps_each_record_s_system_fields() {
     let rig = Rig::new().await;
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "db"}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 30}),
+    );
     rig.save_elsewhere(Kind::Group, B, &json!({"name": "Work", "sort_order": 0}));
 
     let report = rig.fetch().await.unwrap();
@@ -25,7 +29,11 @@ async fn a_first_fetch_takes_the_zone_and_keeps_each_record_s_system_fields() {
     assert_eq!(report.counts.written, 2);
     assert_eq!(
         rig.store(Kind::Connection).fields(A),
-        Some(projected(Kind::Connection, A, &json!({"name": "prod", "host": "db"})))
+        Some(projected(
+            Kind::Connection,
+            A,
+            &json!({"name": "prod", "query_timeout_seconds": 30})
+        ))
     );
     assert_eq!(base.tag, ChangeTag::CloudKit(stored.system_fields.unwrap()));
     assert_eq!(base.fields, rig.store(Kind::Connection).fields(A));
@@ -94,13 +102,25 @@ async fn a_store_that_refuses_the_write_commits_no_base_and_no_token() {
 #[tokio::test]
 async fn a_crash_after_the_store_write_replays_with_no_effect() {
     let rig = Rig::new().await;
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 5432}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 30}),
+    );
     rig.fetch().await.unwrap();
     rig.store(Kind::Connection).put(
         A,
-        projected(Kind::Connection, A, &json!({"name": "mine", "port": 5432})),
+        projected(
+            Kind::Connection,
+            A,
+            &json!({"name": "mine", "query_timeout_seconds": 30}),
+        ),
     );
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 6432}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 60}),
+    );
     let crashing = Crashing::new(rig.state.clone());
     crashing.crash_after_commits(1);
 
@@ -109,13 +129,21 @@ async fn a_crash_after_the_store_write_replays_with_no_effect() {
     let writes = rig.store(Kind::Connection).writes();
     let replay = rig.fetch().await.unwrap();
 
-    let merged = projected(Kind::Connection, A, &json!({"name": "mine", "port": 6432}));
+    let merged = projected(
+        Kind::Connection,
+        A,
+        &json!({"name": "mine", "query_timeout_seconds": 60}),
+    );
     assert!(matches!(crashed, Err(SyncError::State(StateError::Io { .. }))));
     assert_eq!(after_crash, Some(merged.clone()));
     assert_eq!(replay.counts.written, 0);
     assert_eq!(rig.store(Kind::Connection).writes(), writes);
     assert_eq!(rig.store(Kind::Connection).fields(A), Some(merged));
-    let server = projected(Kind::Connection, A, &json!({"name": "prod", "port": 6432}));
+    let server = projected(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 60}),
+    );
     assert_eq!(rig.base(Kind::Connection, A).await.unwrap().fields, Some(server));
 }
 
@@ -205,19 +233,35 @@ async fn an_expired_token_starts_a_full_fetch_that_starts_over_whole_when_it_sto
 #[tokio::test]
 async fn a_store_written_while_the_pull_merges_is_read_and_merged_again() {
     let rig = Rig::new().await;
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 5432}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 30}),
+    );
     rig.fetch().await.unwrap();
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 6432}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 60}),
+    );
     rig.store(Kind::Connection).edit_after_next_read(
         A,
-        projected(Kind::Connection, A, &json!({"name": "mine", "port": 5432})),
+        projected(
+            Kind::Connection,
+            A,
+            &json!({"name": "mine", "query_timeout_seconds": 30}),
+        ),
     );
 
     rig.fetch().await.unwrap();
 
     assert_eq!(
         rig.store(Kind::Connection).fields(A),
-        Some(projected(Kind::Connection, A, &json!({"name": "mine", "port": 6432})))
+        Some(projected(
+            Kind::Connection,
+            A,
+            &json!({"name": "mine", "query_timeout_seconds": 60})
+        ))
     );
 }
 
@@ -321,12 +365,14 @@ async fn a_member_icloud_does_not_carry_stays_through_a_change_made_elsewhere() 
     let ssl = |mode: &str| json!({"name": "prod", "ssl_config": {"mode": mode}});
     rig.save_elsewhere(Kind::Connection, A, &ssl("Preferred"));
     rig.fetch().await.unwrap();
+    rig.approve_everything().await;
     let mut local = rig.store(Kind::Connection).fields(A).unwrap();
     local["ssl_config"]["server_name"] = json!("db.internal");
     rig.store(Kind::Connection).put(A, local);
     rig.save_elsewhere(Kind::Connection, A, &ssl("Required"));
 
     rig.fetch().await.unwrap();
+    rig.approve_everything().await;
 
     let stored = rig.store(Kind::Connection).fields(A).unwrap();
     assert_eq!(stored["ssl_config"]["mode"], json!("Required"));

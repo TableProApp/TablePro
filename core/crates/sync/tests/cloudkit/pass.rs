@@ -98,7 +98,11 @@ async fn a_pass_over_the_state_file_on_disk_commits_around_its_store_writes() {
         Arc::new(tablepro_sync_testing::FakeDeviceStore::new());
     let files: Arc<dyn StateFiles> = Arc::new(SqliteStateFiles::at(dir.path().to_path_buf(), store));
     let sync = rig.sync_over(Arc::clone(&rig.cloud) as Arc<dyn CloudKitTransport>, files, None);
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 5432}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 30}),
+    );
     rig.store(Kind::Group)
         .put(B, projected(Kind::Group, B, &json!({"name": "Work"})));
 
@@ -108,15 +112,27 @@ async fn a_pass_over_the_state_file_on_disk_commits_around_its_store_writes() {
         .unwrap();
     rig.store(Kind::Connection).put(
         A,
-        projected(Kind::Connection, A, &json!({"name": "mine", "port": 5432})),
+        projected(
+            Kind::Connection,
+            A,
+            &json!({"name": "mine", "query_timeout_seconds": 30}),
+        ),
     );
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "port": 6432}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "query_timeout_seconds": 60}),
+    );
     let second = timeout(Duration::from_secs(30), sync.run_pass(PassReason::Poll))
         .await
         .unwrap()
         .unwrap();
 
-    let merged = projected(Kind::Connection, A, &json!({"name": "mine", "port": 6432}));
+    let merged = projected(
+        Kind::Connection,
+        A,
+        &json!({"name": "mine", "query_timeout_seconds": 60}),
+    );
     assert_eq!((first.fetch.counts.written, first.push.saved), (1, 1));
     assert_eq!(second.push.saved, 1);
     assert_eq!(rig.store(Kind::Connection).fields(A), Some(merged.clone()));
