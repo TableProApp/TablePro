@@ -376,6 +376,9 @@ pub enum HeldReason {
     AwaitingApproval,
     // This device is not approved yet, so it holds what it may not apply (0056, D8).
     AwaitingDeviceApproval,
+    // The store refused a value a refill pulled: when it takes it, the pull wins as the refill would have, so the
+    // copy the restore left never reads as the device's edit.
+    RefusedInRefill,
 }
 
 #[derive(Debug, Clone, PartialEq)]

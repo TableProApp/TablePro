@@ -319,7 +319,12 @@ impl Settle<'_, '_> {
         for row in undo.approvals {
             self.txn.put(Row::Approval(row)).await?;
         }
-        self.hold(&key, HeldReason::Unreadable, undo.record).await
+        let reason = if self.pull_wins.contains(&kind) || self.pull_wins_keys.contains(&key) {
+            HeldReason::RefusedInRefill
+        } else {
+            HeldReason::Unreadable
+        };
+        self.hold(&key, reason, undo.record).await
     }
 
     // Each identity of a store this fetch sees moves its row, so a later rollback of the file below it shows for every

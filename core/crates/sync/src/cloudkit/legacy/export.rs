@@ -397,10 +397,10 @@ impl Builder<'_> {
                 continue;
             };
             match (reason, deleted) {
-                (HeldReason::Unreadable | HeldReason::UnknownKind, true) => {
+                (HeldReason::Unreadable | HeldReason::UnknownKind | HeldReason::RefusedInRefill, true) => {
                     self.out.deletions_held_for_unreadable.push(name);
                 }
-                (HeldReason::Unreadable | HeldReason::UnknownKind, false) => {
+                (HeldReason::Unreadable | HeldReason::UnknownKind | HeldReason::RefusedInRefill, false) => {
                     self.out.changes_held_for_unreadable.push(name);
                 }
                 (HeldReason::AwaitingApproval, _) => {

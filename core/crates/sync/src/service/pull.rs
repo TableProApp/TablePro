@@ -143,7 +143,7 @@ impl PageWrites {
     // The store refused the record's value: it is held by id with the server's copy, as a record this build cannot
     // read is, and nothing the pull settled for it lands, so its base stays the copy the store holds (0054, Rules for
     // both providers).
-    fn refuse(&mut self, key: RecordKey, record: PulledRecord) {
+    fn refuse(&mut self, key: RecordKey, record: PulledRecord, refilling: bool) {
         self.bases.retain(|base| base.key != key);
         self.dropped.retain(|dropped| *dropped != key);
         self.unheld.retain(|unheld| *unheld != key);
@@ -162,7 +162,12 @@ impl PageWrites {
         } else {
             record
         };
-        self.held.push(held(HeldReason::Unreadable, key.clone(), record));
+        let reason = if refilling {
+            HeldReason::RefusedInRefill
+        } else {
+            HeldReason::Unreadable
+        };
+        self.held.push(held(reason, key.clone(), record));
         self.refused.push(key);
     }
 }
@@ -400,7 +405,7 @@ impl ServiceSync {
             .into_iter()
             .filter_map(|row| match row {
                 Row::Held(row)
-                    if row.reason == HeldReason::Unreadable
+                    if matches!(row.reason, HeldReason::Unreadable | HeldReason::RefusedInRefill)
                         && (row.record.fields_json.is_some()
                             || row.record.fields.is_some()
                             || row.record.deleted.is_some())
@@ -417,13 +422,27 @@ impl ServiceSync {
         if held.is_empty() {
             return Ok(());
         }
-        let records = held.iter().map(|row| row.record.clone()).collect();
-        let mut writes = self.take_page(pull, adapters, records).await?;
-        ctx.report.store_refused.extend(writes.refused.iter().cloned());
-        writes.held.retain(|row| !held.contains(row));
-        writes.refused.clear();
-        if !writes.is_empty() {
-            self.commit_page(writes, None).await?;
+        // What a refill held takes the pull as the refill would have; the rest merges as any pull does.
+        let (refilled, merged): (Vec<HeldRow>, Vec<HeldRow>) =
+            held.into_iter().partition(|row| row.reason == HeldReason::RefusedInRefill);
+        for (batch, refill) in [(refilled, true), (merged, false)] {
+            if batch.is_empty() {
+                continue;
+            }
+            let wins = std::mem::take(&mut pull.pull_wins);
+            if refill {
+                pull.pull_wins = batch.iter().filter_map(|row| row.record.kind.known()).collect();
+            }
+            let records = batch.iter().map(|row| row.record.clone()).collect();
+            let taken = self.take_page(pull, adapters, records).await;
+            pull.pull_wins = wins;
+            let mut writes = taken?;
+            ctx.report.store_refused.extend(writes.refused.iter().cloned());
+            writes.held.retain(|row| !batch.contains(row));
+            writes.refused.clear();
+            if !writes.is_empty() {
+                self.commit_page(writes, None).await?;
+            }
         }
         Ok(())
     }
@@ -916,7 +935,8 @@ impl ServiceSync {
                         Some(sealed) if record.deleted.is_none() && sealed.tag == record.tag => sealed.clone(),
                         _ => record,
                     };
-                    writes.refuse(key, record);
+                    let refilling = record.kind.known().is_some_and(|kind| pull.pull_wins.contains(&kind));
+                    writes.refuse(key, record, refilling);
                 }
             }
         }

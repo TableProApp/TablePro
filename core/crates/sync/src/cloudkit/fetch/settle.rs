@@ -33,6 +33,8 @@ pub(super) struct Batch {
     pub items: Vec<Incoming>,
     // Kinds in refill: the pull wins over the store.
     pub pull_wins: BTreeSet<Kind>,
+    // Records a refill held when their store refused the pulled value, which the pull wins too.
+    pub pull_wins_keys: BTreeSet<RecordKey>,
     // The token this commit stores; None leaves the stored one.
     pub token: Option<Vec<u8>>,
     pub caught_up: bool,
@@ -90,6 +92,7 @@ pub(super) struct Settle<'s, 'f> {
     // For each record the batch plans a store change for, what holds it if its store refuses the change.
     pub(super) undo: BTreeMap<RecordKey, Undo>,
     pub keep_copies: BTreeSet<Kind>,
+    pub pull_wins_keys: BTreeSet<RecordKey>,
 }
 
 // A record's rows as the batch found them, and the pulled copy or deletion it is held with if its store refuses it.
@@ -214,6 +217,7 @@ impl Fetcher<'_> {
     async fn settle_once(&self, batch: Batch) -> Result<Result<Counts, String>, SyncError> {
         let txn = self.state.begin().await?;
         let mut settle = Settle::new(self, txn, batch.pull_wins);
+        settle.pull_wins_keys = batch.pull_wins_keys;
         settle.started = batch.started;
         settle.keep_copies = batch.keep_copies;
         for item in batch.items {
@@ -267,6 +271,7 @@ impl<'s, 'f> Settle<'s, 'f> {
             started: BTreeMap::new(),
             undo: BTreeMap::new(),
             keep_copies: BTreeSet::new(),
+            pull_wins_keys: BTreeSet::new(),
         }
     }
 
@@ -278,8 +283,8 @@ impl<'s, 'f> Settle<'s, 'f> {
         })
     }
 
-    fn against(&self, kind: Kind, kept: Option<Value>) -> Against {
-        match (self.pull_wins.contains(&kind), kept) {
+    fn against(&self, kind: Kind, key: &RecordKey, kept: Option<Value>) -> Against {
+        match (self.pull_wins.contains(&kind) || self.pull_wins_keys.contains(key), kept) {
             (true, Some(copy)) => Against::Copy(copy),
             (true, None) => Against::Pull,
             (false, _) => Against::Base,
@@ -338,7 +343,7 @@ impl<'s, 'f> Settle<'s, 'f> {
             View::Stored(record) => Some(record),
             View::Missing => None,
         };
-        let against = self.against(copy.kind, kept);
+        let against = self.against(copy.kind, &key, kept);
         let read = self.read(copy.kind, &key, record.as_ref()).await?;
         let merged = self
             .merged(copy.kind, &key, read.as_ref(), Some(&copy.fields), against)
@@ -526,7 +531,7 @@ impl<'s, 'f> Settle<'s, 'f> {
         };
         // Otherwise a content edit here revives the record: it stays, and with no base it goes up as a create. A
         // store in refill went back in time, so what differs from the base there is no edit.
-        let against = self.against(kind, kept);
+        let against = self.against(kind, key, kept);
         let record = self.read(kind, key, record.as_ref()).await?;
         let merged = self.merged(kind, key, record.as_ref(), None, against).await?;
         let stored = record.as_ref().map(|record| &record.fields);

@@ -224,6 +224,7 @@ impl Pass {
             started: self.start.stores.clone(),
             release: Vec::new(),
             keep_copies: self.start.keep_copies.clone(),
+            pull_wins_keys: BTreeSet::new(),
         }
     }
 }

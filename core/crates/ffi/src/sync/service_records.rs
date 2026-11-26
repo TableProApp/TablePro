@@ -191,7 +191,7 @@ impl From<TeamConflict> for TeamConflictInfo {
 impl From<HeldRecordReason> for HeldReasonTag {
     fn from(reason: HeldRecordReason) -> Self {
         match reason {
-            HeldRecordReason::Held(HeldReason::Unreadable) => Self::Unreadable,
+            HeldRecordReason::Held(HeldReason::Unreadable | HeldReason::RefusedInRefill) => Self::Unreadable,
             HeldRecordReason::Held(HeldReason::UnknownKind) => Self::UnknownKind,
             HeldRecordReason::Held(HeldReason::AwaitingApproval) => Self::AwaitingApproval,
             HeldRecordReason::Held(HeldReason::AwaitingDeviceApproval) => Self::AwaitingDeviceApproval,
