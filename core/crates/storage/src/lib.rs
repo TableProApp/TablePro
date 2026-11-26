@@ -15,11 +15,16 @@ pub mod fs;
 mod group_icon;
 mod group_name_error;
 mod group_tree;
+pub mod journal;
+mod lenient;
 mod name_rules;
 mod paths;
 pub mod query_history;
 pub mod saved_queries;
+pub mod store_identity;
+pub mod table_folders;
 mod tag_name_error;
+pub mod team_library;
 mod unix_time;
 pub mod upgrade_copies;
 
@@ -29,9 +34,14 @@ pub use connection_group_name::ConnectionGroupName;
 pub use connection_icon::ConnectionIcon;
 pub use connection_tag::ConnectionTag;
 pub use connection_tag_name::ConnectionTagName;
+pub use connections::field_trust;
 pub use connections::{
-    ConnectionList, ConnectionListSnapshot, ConnectionListState, ConnectionStore, ImportChange, ImportEntry,
-    ImportPreview, ImportReport, ImportedConnection, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig,
+    CloudSqlAuth, CloudSqlProxy, CloudflareAuth, CloudflareTunnel, ConnectionDetails, ConnectionList,
+    ConnectionListSnapshot, ConnectionListState, ConnectionOrigin, ConnectionStore, CredentialPassword,
+    CredentialProfile, CredentialReference, DeviceOnly, ImportChange, ImportEntry, ImportPreview, ImportReport,
+    ImportedConnection, KnownOrigin, LocalPasswordSource, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig,
+    SocksProxy, SshProfile, SshRoute, SshRouteHop, SshRouteTarget, TunnelCommand, TunnelCommandMethod, VaultAuth,
+    VaultDatabaseRole,
 };
 pub use credentials::{
     CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretItemLabeler,
@@ -44,7 +54,11 @@ pub use favourites::{DatabaseEnvironment, FavouriteDatabase, FavouriteTable, Fav
 pub use group_icon::{GroupIcon, SymbolName};
 pub use group_name_error::GroupNameError;
 pub use group_tree::GroupTree;
+pub use journal::{ChangeJournal, RecordKind};
 pub use paths::StoragePaths;
 pub use query_history::QueryHistory;
 pub use saved_queries::{SavedQueries, SavedQueriesSnapshot, SavedQueryFolder, SavedQueryFolders};
+pub use store_identity::{StoreContinuity, StoreIdentity};
+pub use table_folders::{TableFolder, TableFolderItem, TableFolders, TableRef, TableScope};
 pub use tag_name_error::TagNameError;
+pub use team_library::{TeamLibraryItem, TeamLibraryKind, TeamLibraryOwner, TeamLibraryStore, TeamLibraryTeam};
