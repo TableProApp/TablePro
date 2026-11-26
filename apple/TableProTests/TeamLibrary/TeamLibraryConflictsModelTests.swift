@@ -122,7 +122,7 @@ struct TeamLibraryConflictsModelTests {
         #expect(model.conflicts.isEmpty)
     }
 
-    @Test("A conflict another pass settled before the choice closes without an error")
+    @Test("A conflict another pass settled before the choice closes without an error or a choice")
     func settledConflictClosesQuietly() async {
         let conflict = TeamConflictFixture.conflict()
         let engine = FakeTeamConflictEngine([conflict])
@@ -130,11 +130,45 @@ struct TeamLibraryConflictsModelTests {
         await model.refresh()
 
         engine.set([])
+        await model.resolve(conflict, keep: .keepMine)
+
+        #expect(Self.choices(engine).isEmpty)
+        #expect(model.failure(for: conflict.record) == nil)
+        #expect(model.conflicts.isEmpty)
+    }
+
+    @Test("An engine that no longer knows the conflict when the choice lands reports no error")
+    func unknownConflictAtTheChoiceIsNoError() async {
+        let conflict = TeamConflictFixture.conflict()
+        let engine = FakeTeamConflictEngine([conflict])
+        let model = Self.model(engine)
+        await model.refresh()
+
         engine.failResolves(with: TeamConflictFixture.failure("sync.unknown"))
         await model.resolve(conflict, keep: .keepMine)
 
         #expect(model.failure(for: conflict.record) == nil)
-        #expect(model.conflicts.isEmpty)
+        #expect(model.resolving == nil)
+    }
+
+    @Test("A conflict a pull replaced since the sheet showed it is shown again, not resolved")
+    func replacedConflictIsShownAgain() async {
+        let shown = TeamConflictFixture.conflict(theirs: ["name": "Orders", "query": "select theirs"])
+        let replaced = TeamConflictFixture.conflict(theirs: ["name": "Orders", "query": "select newer"])
+        let engine = FakeTeamConflictEngine([shown])
+        let model = Self.model(engine)
+        await model.refresh()
+
+        engine.set([replaced])
+        await model.resolve(shown, keep: .keepTheirs)
+
+        #expect(Self.choices(engine).isEmpty)
+        #expect(model.conflicts == [replaced])
+        #expect(model.failure(for: replaced.record) == String(localized: "This item changed again. Review the new version, then choose."))
+
+        await model.resolve(replaced, keep: .keepTheirs)
+        #expect(Self.choices(engine) == ["q1 keepTheirs"])
+        #expect(model.failure(for: replaced.record) == nil)
     }
 
     @Test("A read that started before a choice does not bring the resolved conflict back")

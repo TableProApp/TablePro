@@ -94,7 +94,25 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
         resolving = conflict.record
         defer { resolving = nil }
         do {
-            try await engine().resolveConflict(record: conflict.record, keep: keep)
+            let engine = try await engine()
+            // The engine takes a choice by record alone, so one made over a conflict a pull has since replaced would
+            // keep a version the person never saw: the replacement is shown instead.
+            let current = try await engine.conflicts()
+            guard let now = current.first(where: { $0.record == conflict.record }) else {
+                generation += 1
+                conflicts = current
+                return
+            }
+            guard now == conflict else {
+                generation += 1
+                conflicts = current
+                failure = TeamLibraryConflictFailure(
+                    record: conflict.record,
+                    message: String(localized: "This item changed again. Review the new version, then choose.")
+                )
+                return
+            }
+            try await engine.resolveConflict(record: conflict.record, keep: keep)
         } catch let error as CoreError where Self.isGone(error) {
             Self.logger.notice("A team conflict was settled before the choice reached it")
         } catch {

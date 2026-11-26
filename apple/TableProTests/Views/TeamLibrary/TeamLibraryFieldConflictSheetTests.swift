@@ -100,6 +100,28 @@ struct TeamLibraryFieldConflictSheetTests {
         #expect(labels == [String(localized: "Folder")])
     }
 
+    @Test("Directional and control characters a teammate wrote show as escapes, and a name stays one short line")
+    func hostileTextShowsEveryCharacter() {
+        let longName = String(repeating: "Orders\n", count: 200)
+        let presentation = Presentation(
+            conflict: TeamConflictFixture.conflict(
+                fields: ["keyword", "query", "x\u{202E}y"],
+                mine: ["name": longName, "keyword": "a\u{2066}b", "query": "select 1\n\t-- \u{202E}gnirts\u{202C}", "x\u{202E}y": "1"],
+                theirs: ["name": longName, "keyword": "ab", "query": "select 2", "x\u{202E}y": "2"]
+            ),
+            teamName: "Acme\u{2028}Fake team"
+        )
+
+        #expect(!presentation.title.contains("\n"))
+        #expect(presentation.title.count < TeamLibraryConflictText.nameLimit + 60)
+        #expect(presentation.message.contains("Acme<U+2028>Fake team"))
+        let rows = Dictionary(uniqueKeysWithValues: presentation.rows.map { ($0.field, $0) })
+        #expect(rows["keyword"]?.mine == .text("a<U+2066>b"))
+        #expect(rows["query"]?.mine == .code("select 1\n\t-- <U+202E>gnirts<U+202C>"))
+        #expect(rows["x\u{202E}y"]?.label == "x<U+202E>y")
+        #expect(TeamLibraryConflictText.visible("Grüße 😀 مرحبا", keepingLineBreaks: false) == "Grüße 😀 مرحبا")
+    }
+
     @Test("Each side's value, Keep Mine, Keep Theirs and Decide Later are reachable through accessibility")
     func contentThroughAccessibility() async throws {
         var kept: [ConflictChoiceTag] = []

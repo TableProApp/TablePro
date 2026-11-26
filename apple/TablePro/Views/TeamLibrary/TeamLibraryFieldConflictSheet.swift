@@ -40,8 +40,10 @@ internal struct TeamLibraryFieldConflictPresentation: Equatable {
     init(conflict: TeamConflictInfo, teamName: String?) {
         let mine = conflict.mine.map(Self.members)
         let theirs = conflict.theirs.map(Self.members)
-        let name = Self.text(mine?["name"]) ?? Self.text(theirs?["name"]) ?? conflict.record.recordId
-        let team = teamName ?? String(localized: "your team")
+        let name = TeamLibraryConflictText.name(
+            Self.text(mine?["name"]) ?? Self.text(theirs?["name"]) ?? conflict.record.recordId
+        )
+        let team = teamName.map(TeamLibraryConflictText.name) ?? String(localized: "your team")
         switch (mine, theirs) {
         case (nil, _):
             shape = .youDeleted
@@ -93,7 +95,9 @@ internal struct TeamLibraryFieldConflictPresentation: Equatable {
         guard let value = members[field], !(value is NSNull) else { return .notSet }
         if let text = value as? String {
             if text.isEmpty { return .empty }
-            return codeFields(of: kind).contains(field) ? .code(text) : .text(text)
+            return codeFields(of: kind).contains(field)
+                ? .code(TeamLibraryConflictText.visible(text, keepingLineBreaks: true))
+                : .text(TeamLibraryConflictText.visible(text, keepingLineBreaks: false))
         }
         if let number = value as? NSNumber {
             if CFGetTypeID(number) == CFBooleanGetTypeID() {
@@ -105,7 +109,7 @@ internal struct TeamLibraryFieldConflictPresentation: Equatable {
               let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes]),
               let json = String(data: data, encoding: .utf8)
         else { return .notSet }
-        return .code(json)
+        return .code(TeamLibraryConflictText.visible(json, keepingLineBreaks: false))
     }
 
     // Known fields in the order the item's editor shows them, then any field a newer build wrote, by name.
@@ -174,7 +178,43 @@ internal struct TeamLibraryFieldConflictPresentation: Equatable {
         case ("library_query", "keyword"): String(localized: "Keyword")
         case ("library_query", "query"): "SQL"
         case (_, "sort_order"): String(localized: "Position")
-        default: field
+        default: TeamLibraryConflictText.name(field)
+        }
+    }
+}
+
+// What other members wrote, as text that shows every character it holds. A directional control reorders what a value
+// shows (CVE-2021-42574, "Trojan Source"), and a line break or control in a name can push the sheet's buttons away.
+internal enum TeamLibraryConflictText {
+    static let nameLimit = 80
+
+    static func visible(_ text: String, keepingLineBreaks: Bool) -> String {
+        var shown = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            if keepingLineBreaks, scalar == "\n" || scalar == "\r" || scalar == "\t" {
+                shown.append(scalar)
+            } else if isHidden(scalar) {
+                shown.append(contentsOf: "<U+\(String(format: "%04X", scalar.value))>".unicodeScalars)
+            } else {
+                shown.append(scalar)
+            }
+        }
+        return String(shown)
+    }
+
+    // One line, cut at `nameLimit` characters.
+    static func name(_ text: String) -> String {
+        let shown = visible(text, keepingLineBreaks: false)
+        guard shown.count > nameLimit else { return shown }
+        return String(shown.prefix(nameLimit)) + "…"
+    }
+
+    private static func isHidden(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x061C, 0x200E, 0x200F, 0x202A ... 0x202E, 0x2066 ... 0x2069, 0x2028, 0x2029:
+            true
+        default:
+            scalar.properties.generalCategory == .control
         }
     }
 }
@@ -231,10 +271,12 @@ internal struct TeamLibraryFieldConflictContent: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(presentation.title)
                         .font(.headline)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
                     Text(presentation.message)
                         .foregroundStyle(.secondary)
+                        .lineLimit(4)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -340,6 +382,8 @@ private struct TeamLibraryConflictFieldGrid: View {
                 GridRow {
                     Text(row.label)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: 160, alignment: .trailing)
                         .gridColumnAlignment(.trailing)
                     ForEach(columns) { column in
                         TeamLibraryConflictValueCell(value: column.value(row) ?? .notSet)
