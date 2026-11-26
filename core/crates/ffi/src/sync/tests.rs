@@ -546,7 +546,7 @@ fn a_credential_to_rotate_names_its_connection_while_the_store_holds_it() {
 }
 
 // An edit the app reported just before it quits reaches the Swift metadata before the quit goes on, and a mark the app
-// refused is the quit call's failure.
+// still refuses when the quit sends it again is the quit call's failure.
 #[tokio::test]
 async fn the_quit_call_waits_for_the_downgrade_marks_and_says_when_one_failed() {
     let tasks = runtime::tasks().unwrap();
@@ -567,16 +567,19 @@ async fn the_quit_call_waits_for_the_downgrade_marks_and_says_when_one_failed() 
         .unwrap();
     opened.service.flush_legacy_marks().await.unwrap();
     let marked = mirror.marks();
-    mirror.fail_marks(1);
+    // The mark the write sent and the one the quit sends again are both refused.
+    mirror.fail_marks(2);
     opened
         .service
         .record_host_changes("connection".to_owned(), Vec::new(), vec![id])
         .await
         .unwrap();
     let refused = opened.service.flush_legacy_marks().await;
+    let later = opened.service.flush_legacy_marks().await;
 
     assert!(marked >= 1, "no mark reached the Swift metadata");
     assert!(refused.is_err(), "{refused:?}");
+    assert!(later.is_ok(), "{later:?}");
 }
 
 // Off to TablePro Sync is the first upload; the move back needs the count the person confirmed; a zone this device never
