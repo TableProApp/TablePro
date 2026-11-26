@@ -729,11 +729,10 @@ impl WorkspaceShell {
         let Some(level) = level else {
             return;
         };
-        button.set_icon_name(match level {
-            tablepro_core::SafeModeLevel::Off => crate::ui::icons::CHANGES_ALLOW,
-            tablepro_core::SafeModeLevel::ConfirmWrites | tablepro_core::SafeModeLevel::ReadOnly => {
-                crate::ui::icons::CHANGES_PREVENT
-            }
+        button.set_icon_name(if level == tablepro_core::SafeModeLevel::Silent {
+            crate::ui::icons::CHANGES_ALLOW
+        } else {
+            crate::ui::icons::CHANGES_PREVENT
         });
         let said = gettext_f("Safe Mode: {level}", &[("level", &crate::ui::safe_mode::label(level))]);
         describe_icon_button(&button, &said, None);
@@ -941,14 +940,14 @@ impl WorkspaceShell {
         dialog.present(self.imp().window.upgrade().as_ref());
     }
 
-    pub(crate) fn rename_favorite(&self, id: i64, name: String) {
+    pub(crate) fn rename_favorite(&self, id: Uuid, name: String) {
         self.change_favorites(
             async move |history| history.saved_queries().rename(id, &name).await,
             gettext("Could not rename that saved query."),
         );
     }
 
-    pub(crate) fn delete_favorite(&self, id: i64) {
+    pub(crate) fn delete_favorite(&self, id: Uuid) {
         self.change_favorites(
             async move |history| history.saved_queries().delete(id).await,
             gettext("Could not delete that saved query."),
@@ -1263,7 +1262,7 @@ fn tab_menu() -> gio::Menu {
 
 fn safe_mode_levels() -> gio::Menu {
     let levels = gio::Menu::new();
-    for level in tablepro_core::SafeModeLevel::ALL {
+    for level in tablepro_core::SafeModeLevel::ENFORCED {
         let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::menu_label(level)), None);
         item.set_action_and_target_value(
             Some("win.safe-mode"),
@@ -1432,10 +1431,10 @@ mod tests {
         shell.reload_favorites();
         let current = shell.imp().favorites_generation.get();
         let saved = SavedQuery {
-            id: 1,
+            id: Uuid::from_u128(1),
             name: "Current".to_owned(),
             query: "SELECT 1".to_owned(),
-            connection_id: connection,
+            connection_id: Some(connection),
             connection_name: "Database".to_owned(),
             keyword: None,
             folder_id: None,

@@ -11,7 +11,7 @@ use super::WorkspaceShell;
 use crate::i18n::{gettext, gettext_f};
 
 impl WorkspaceShell {
-    pub(crate) fn move_favorite(&self, id: i64, folder: Option<i64>) {
+    pub(crate) fn move_favorite(&self, id: Uuid, folder: Option<Uuid>) {
         self.change_favorites_with(
             async move |history| history.saved_queries().set_folder(id, folder).await,
             gettext("Could not move that saved query."),
@@ -20,18 +20,18 @@ impl WorkspaceShell {
     }
 
     #[cfg(test)]
-    pub(crate) fn create_folder(&self, name: String, parent: Option<i64>) {
+    pub(crate) fn create_folder(&self, name: String, parent: Option<Uuid>) {
         if let Some(connection) = self.front().and_then(|front| front.connection_id()) {
             self.create_folder_for(connection, name, parent);
         }
     }
 
-    fn create_folder_for(&self, connection: Uuid, name: String, parent: Option<i64>) {
+    fn create_folder_for(&self, connection: Uuid, name: String, parent: Option<Uuid>) {
         self.change_favorites_with(
             async move |history| {
                 history
                     .saved_query_folders()
-                    .create(connection, &name, parent)
+                    .create(Some(connection), &name, parent)
                     .await
                     .map(drop)
             },
@@ -40,7 +40,7 @@ impl WorkspaceShell {
         );
     }
 
-    fn rename_folder(&self, id: i64, name: String) {
+    fn rename_folder(&self, id: Uuid, name: String) {
         self.change_favorites_with(
             async move |history| history.saved_query_folders().rename(id, &name).await,
             gettext("Could not rename that folder."),
@@ -48,7 +48,7 @@ impl WorkspaceShell {
         );
     }
 
-    pub(crate) fn delete_folder(&self, id: i64) {
+    pub(crate) fn delete_folder(&self, id: Uuid) {
         self.change_favorites_with(
             async move |history| history.saved_query_folders().delete(id).await,
             gettext("Could not delete that folder."),
@@ -57,10 +57,11 @@ impl WorkspaceShell {
     }
 
     pub(super) fn ask_folder_name(&self, parent: Option<SavedQueryFolder>, rename: Option<SavedQueryFolder>) {
+        // A folder with no connection shows in every connection; one made inside it belongs to this one.
         let Some(connection) = rename
             .as_ref()
             .or(parent.as_ref())
-            .map(|folder| folder.connection_id)
+            .and_then(|folder| folder.connection_id)
             .or_else(|| self.front().and_then(|front| front.connection_id()))
         else {
             return;
@@ -191,7 +192,7 @@ impl WorkspaceShell {
     }
 }
 
-fn destination(folders: &[(i64, String)], selected: u32) -> Option<Option<i64>> {
+fn destination(folders: &[(Uuid, String)], selected: u32) -> Option<Option<Uuid>> {
     if selected == 0 {
         Some(None)
     } else {
@@ -258,7 +259,7 @@ mod tests {
                 released.await.expect("release write");
                 history
                     .saved_query_folders()
-                    .create(owner, "Reports", None)
+                    .create(Some(owner), "Reports", None)
                     .await
                     .map(drop)
             },
@@ -298,7 +299,7 @@ mod tests {
         let saved = folders(&test, owner);
         assert_eq!(saved.len(), 1);
         assert_eq!(saved[0].name, "Reports");
-        assert_eq!(saved[0].connection_id, owner);
+        assert_eq!(saved[0].connection_id, Some(owner));
     }
 
     #[gtk4::test]
@@ -313,7 +314,7 @@ mod tests {
                     .save(tablepro_storage::saved_queries::NewSavedQuery {
                         name: name.to_owned(),
                         query: "SELECT 1".to_owned(),
-                        connection_id: owner,
+                        connection_id: Some(owner),
                         connection_name: "local".to_owned(),
                     })
                     .await
@@ -354,14 +355,17 @@ mod tests {
         let owner = test.workspace().connection_id().expect("owner");
         let task = test.services.tasks.spawn_task(async move {
             let folders = history.saved_query_folders();
-            let parent = folders.create(owner, "Reports", None).await.expect("parent");
-            let child = folders.create(owner, "Monthly", Some(parent)).await.expect("child");
+            let parent = folders.create(Some(owner), "Reports", None).await.expect("parent");
+            let child = folders
+                .create(Some(owner), "Monthly", Some(parent))
+                .await
+                .expect("child");
             let saved = history
                 .saved_queries()
                 .save(tablepro_storage::saved_queries::NewSavedQuery {
                     name: "Report".to_owned(),
                     query: "SELECT 1".to_owned(),
-                    connection_id: owner,
+                    connection_id: Some(owner),
                     connection_name: "local".to_owned(),
                 })
                 .await
@@ -412,10 +416,14 @@ mod tests {
 
     #[test]
     fn a_destination_never_converts_an_invalid_selection_into_the_root() {
-        let choices = vec![(42, "/No Folder".to_owned()), (7, "/Reports/Monthly".to_owned())];
+        let (first, second) = (Uuid::from_u128(42), Uuid::from_u128(7));
+        let choices = vec![
+            (first, "/No Folder".to_owned()),
+            (second, "/Reports/Monthly".to_owned()),
+        ];
         assert_eq!(destination(&choices, 0), Some(None));
-        assert_eq!(destination(&choices, 1), Some(Some(42)));
-        assert_eq!(destination(&choices, 2), Some(Some(7)));
+        assert_eq!(destination(&choices, 1), Some(Some(first)));
+        assert_eq!(destination(&choices, 2), Some(Some(second)));
         assert_eq!(destination(&choices, 3), None);
         assert_eq!(destination(&choices, gtk::INVALID_LIST_POSITION), None);
     }
