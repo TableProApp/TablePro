@@ -17,6 +17,7 @@ mod faults;
 mod full;
 mod held;
 mod merge;
+mod older_builds;
 mod pass;
 mod pending;
 mod pull;
