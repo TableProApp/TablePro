@@ -334,6 +334,13 @@ impl ServiceEngine {
     }
 }
 
+impl ServiceEngine {
+    // The values no longer allow the server it is bound to: no pass runs and none in flight commits more (0055).
+    pub(crate) fn stop(&self) {
+        self.stop.stop();
+    }
+}
+
 impl Drop for ServiceEngine {
     // A task that still holds the key flows keeps no recovery key a sheet left behind.
     fn drop(&mut self) {

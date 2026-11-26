@@ -111,6 +111,14 @@ impl SyncService {
                 engine.sync.set_mode(ServiceMode::TeamsOnly).await;
             }
         }
+        // A server the values no longer allow gets no more calls from the account, and sync on it, teams included,
+        // stops at once, so an answer it holds back lands nowhere (0055, When a value applies).
+        if let Some(account) = &self.account
+            && !account.account.policy().allows_server(&account.account.server().api_origin)
+            && let Ok(engine) = self.service.now()
+        {
+            engine.stop();
+        }
     }
 }
 
@@ -266,6 +274,7 @@ impl SyncService {
 
     // The zone a move left, with this device's iCloud state file, once the person asks.
     pub async fn delete_icloud_zone(&self) -> Result<(), CoreError> {
+        self.allows_target(SyncProviderTag::Icloud)?;
         self.on_mover(move |mover| async move { mover.delete_icloud_zone().await })
             .await
     }

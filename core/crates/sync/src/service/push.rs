@@ -184,10 +184,7 @@ impl ServiceSync {
         if !matches!(scope, ScopeName::Team(_)) && (info.approved != Some(true) || self.hooks.locked().is_some()) {
             return Ok(AfterPush::Done);
         }
-        let mut pending = self.pending(ctx, &row).await?;
-        if let Some(arrival) = ctx.arrival.as_deref().filter(|_| scope == ScopeName::Personal) {
-            arrival.mark(&mut pending);
-        }
+        let pending = self.pending(ctx, &row).await?;
         ctx.report.queued += pending.len();
         *ctx.report.queued_in.entry(scope).or_default() += pending.len();
         if pending.is_empty() {
@@ -244,6 +241,10 @@ impl ServiceSync {
             );
             forget_kept_off(&mut diffed, kind, &kept_off);
             let kept_back = hold_kept_off(&mut diffed, kind, &kept_off);
+            // The marker goes on before a refusal is looked up, so the change a refusal names is the one sent.
+            if let Some(arrival) = ctx.arrival.as_deref().filter(|_| scope == ScopeName::Personal) {
+                arrival.mark(&mut diffed.pending);
+            }
             if let Some(ids) = named {
                 diffed.pending.retain(|pending| ids.contains(&pending.key.record_id));
                 diffed.pruned.retain(|key| ids.contains(&key.record_id));
@@ -350,13 +351,11 @@ impl ServiceSync {
             );
             forget_kept_off(&mut diffed, kind, &kept_off);
             hold_kept_off(&mut diffed, kind, &kept_off);
+            // A record the server refused waits for the person whatever the marker made of its change.
             unsent += diffed
                 .pending
                 .iter()
-                .filter(|pending| {
-                    let print = fingerprint(&pending.change());
-                    refused.get(&pending.key).is_none_or(|held| held.digest != print)
-                })
+                .filter(|pending| !refused.contains_key(&pending.key))
                 .count();
         }
         Ok(unsent)
