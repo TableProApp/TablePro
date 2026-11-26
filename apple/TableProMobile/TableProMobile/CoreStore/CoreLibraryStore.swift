@@ -136,15 +136,25 @@ final class CoreLibraryStore {
 
     private func importLegacy(_ legacy: LegacyLibraryMirror.Contents, into library: ConnectionLibrary) throws -> Library {
         // A newer build wrote the core's copy of a connection it holds unread; the previous stable's is older.
-        let imported = Library(
-            connections: legacy.connections.filter { !heldByCore.contains($0.id) },
-            groups: legacy.groups,
-            tags: legacy.tags
-        )
+        let readable = legacy.connections.filter { !heldByCore.contains($0.id) }
+        // Connection-string secrets an older Mac synced move to the Keychain before the core's file first holds them.
+        let cleaned = readable.map { MongoURISecretMigration.keepingSecretsInKeychain($0, in: secureStore) }
+        let imported = Library(connections: cleaned, groups: legacy.groups, tags: legacy.tags)
+        if cleaned != readable {
+            try removeSecretCopies()
+        }
         flags = ConnectionDeviceFlags(of: imported.connections).keeping(heldByCore, from: flags)
         let digest = try replace(with: imported, favoritesOrder: favoritesOrder, in: library)
-        mirror.record = LegacyLibraryMirror.Record(legacy: mirror.digest(), core: digest ?? "", legacyBehind: false)
         loaded = true
+        if cleaned != readable {
+            do {
+                try mirrorWrite(imported, coreDigest: digest ?? "", removingSecrets: true, removingUnreadable: UnreadableCopies())
+            } catch {
+                mirror.logBehind(error)
+            }
+        } else {
+            mirror.record = LegacyLibraryMirror.Record(legacy: mirror.digest(), core: digest ?? "", legacyBehind: false)
+        }
         Self.logger.info("Read the connection library from the previous stable's files into the core")
         return imported
     }
@@ -180,13 +190,8 @@ final class CoreLibraryStore {
         }
         // Before anything is written, so a write that takes secrets out leaves no older copy holding them. Until the
         // copies are gone every later write tries again.
-        if removingSecrets {
-            secretCopiesPending = true
-        }
-        if secretCopiesPending {
-            try removeIfPresent(unreadableCopyURL)
-            try mirror.removeSecretCopies()
-            secretCopiesPending = false
+        if removingSecrets || secretCopiesPending {
+            try removeSecretCopies()
         }
         for id in removed.connections.intersection(heldByCore) {
             try Self.blocking { try await library.delete(id: id.uuidString) }
@@ -310,6 +315,14 @@ final class CoreLibraryStore {
         )
         storedFavorites = contents.favorites.compactMap(UUID.init(uuidString:))
         heldByCore = Set(contents.unreadable.compactMap(UUID.init(uuidString:)))
+    }
+
+    // Until every copy is gone each later write tries again.
+    private func removeSecretCopies() throws {
+        secretCopiesPending = true
+        try removeIfPresent(unreadableCopyURL)
+        try mirror.removeSecretCopies()
+        secretCopiesPending = false
     }
 
     // Nothing a file that was set aside held is carried into the next write.

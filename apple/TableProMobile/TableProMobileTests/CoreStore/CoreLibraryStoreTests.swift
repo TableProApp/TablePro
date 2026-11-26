@@ -57,6 +57,27 @@ struct CoreLibraryStoreTests {
         #expect(try Data(contentsOf: legacyConnectionsFile) == before)
     }
 
+    @Test("A connection-string secret an older Mac synced moves to the Keychain before the core's file holds it")
+    func mongoSecretNeverReachesTheCore() throws {
+        let connection = DatabaseConnection(
+            name: "Docs",
+            type: .mongodb,
+            host: "db.example.com",
+            port: 27_017,
+            additionalFields: ["mongoParam_tlsCertificateKeyFilePassword": "hunter2", "mongoParam_retryWrites": "true"]
+        )
+        try writeLegacy([connection])
+        try Data(contentsOf: legacyConnectionsFile).write(to: legacyConnectionsFile.appendingPathExtension("backup"))
+
+        let loaded = try makeStore().load()
+
+        #expect(loaded.connections.first?.additionalFields == ["mongoParam_retryWrites": "true"])
+        #expect(try secureStore.retrieve(forKey: ConnectionSecretKind.sslKeyPassphrase.account(for: connection.id)) == "hunter2")
+        for file in [coreFile, legacyConnectionsFile, legacyConnectionsFile.appendingPathExtension("backup")] {
+            #expect(!String(decoding: try Data(contentsOf: file), as: UTF8.self).contains("hunter2"))
+        }
+    }
+
     @Test("A write reaches the core's store and the files the previous stable reads")
     func writeReachesBothSides() async throws {
         let store = makeStore()
