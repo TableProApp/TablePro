@@ -212,7 +212,11 @@ async fn a_pulled_deletion_the_store_refused_keeps_the_waiting_row_and_brings_no
     rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "db.internal"}));
     rig.fetch().await.unwrap();
     rig.approve_everything().await;
-    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "elsewhere.example.com"}));
+    rig.save_elsewhere(
+        Kind::Connection,
+        A,
+        &json!({"name": "prod", "host": "elsewhere.example.com"}),
+    );
     rig.fetch().await.unwrap();
     let waited = rig.waiting().await.len();
     rig.delete_elsewhere(Kind::Connection, A);

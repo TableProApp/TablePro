@@ -710,9 +710,7 @@ mod tests {
         let mut substituted = pair.a_device;
         substituted.key_device = KeyDeviceId(Uuid::from_u128(99));
         let r_a = pair.choose();
-        pair.n
-            .receive_nonce(&mut pair.n_comparison, substituted, r_a)
-            .unwrap();
+        pair.n.receive_nonce(&mut pair.n_comparison, substituted, r_a).unwrap();
         let r_n = pair.n.reveal(&mut pair.n_comparison).unwrap();
         pair.receive_reveal(r_n).unwrap();
 

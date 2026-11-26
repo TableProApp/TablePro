@@ -59,15 +59,14 @@ impl KeyService {
         let mut drive = false;
         let mut moved_on = MovedOn::default();
         for record in &arrival.records {
-            let (moved, refused) =
-                match self
-                    .apply_session_record(txn.as_mut(), own.as_ref(), record, &mut moved_on)
-                    .await
-                {
-                    Ok(step) => step,
-                    Err(SyncError::Keys(error)) => (false, Some(error)),
-                    Err(error) => return Err(error),
-                };
+            let (moved, refused) = match self
+                .apply_session_record(txn.as_mut(), own.as_ref(), record, &mut moved_on)
+                .await
+            {
+                Ok(step) => step,
+                Err(SyncError::Keys(error)) => (false, Some(error)),
+                Err(error) => return Err(error),
+            };
             drive |= moved;
             if let Some(error) = refused {
                 applied.refused.push(RefusedObject {
@@ -222,7 +221,12 @@ impl KeyService {
 
     // The server purges a request and its steps once the session ends. Its row goes with it; one still live ended
     // without this side seeing why, so it ends as expired. True when the row went.
-    async fn purge(&self, txn: &mut dyn StateTxn, request: RequestId, pulled: &PulledRecord) -> Result<bool, SyncError> {
+    async fn purge(
+        &self,
+        txn: &mut dyn StateTxn,
+        request: RequestId,
+        pulled: &PulledRecord,
+    ) -> Result<bool, SyncError> {
         txn.delete(&RowKey::KeyObject(
             ScopeName::Personal,
             KindName::parse(pulled.kind.as_str())?,

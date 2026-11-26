@@ -121,8 +121,9 @@ async fn read_roster_from(
     caught_up: Option<CaughtUp>,
 ) -> Result<(), SyncError> {
     let scope = ScopeName::Team(team);
-    let Some(Row::Scope(mut row)) = device.get(RowKey::Scope(scope)).await else {
-        panic!("no scope row");
+    let mut row = match device.get(RowKey::Scope(scope)).await {
+        Some(Row::Scope(row)) => row,
+        _ => ScopeRow::new(scope),
     };
     let info = body.scopes.iter().find(|info| info.scope == scope).unwrap();
     row.role = info.role;

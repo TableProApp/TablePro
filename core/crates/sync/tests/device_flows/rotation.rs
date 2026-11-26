@@ -1071,7 +1071,10 @@ async fn a_resume_settling_a_cut_off_recovery_never_erases_a_retry_at_the_same_a
     let (resumed, retried) = tokio::join!(d.service.resume_rotation(crate::harness::v(2)), retry);
 
     resumed.unwrap();
-    assert!(matches!(retried, Err(SyncError::Transport(TransportError::Network { .. }))));
+    assert!(matches!(
+        retried,
+        Err(SyncError::Transport(TransportError::Network { .. }))
+    ));
     assert!(d.store.inner.holds(&account_keys(account, 2)));
     assert!(d.get(rotation_row(2)).await.is_some());
 }

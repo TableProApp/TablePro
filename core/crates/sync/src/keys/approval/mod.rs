@@ -227,8 +227,7 @@ impl KeyService {
             }
             return Ok(());
         }
-        if record.role == Role::NewDevice && record.end == Some(Ended::Approved) && !record.sent.approval
-        {
+        if record.role == Role::NewDevice && record.end == Some(Ended::Approved) && !record.sent.approval {
             return self.finish_switch(record).await;
         }
         if !record.live() {
