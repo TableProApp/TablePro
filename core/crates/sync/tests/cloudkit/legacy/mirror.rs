@@ -467,8 +467,19 @@ async fn a_record_waiting_for_approval_goes_to_the_previous_stable_as_it_was_bef
         .find(|record| record.name == name(Kind::Connection, A))
         .unwrap();
 
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "third.example.com"}));
+    sync.run_pass(PassReason::Poll).await.unwrap();
+    let again = mirror
+        .metadata()
+        .cache
+        .into_iter()
+        .find(|record| record.name == name(Kind::Connection, A))
+        .unwrap();
+
     assert_eq!(waiting.len(), 1);
     assert_eq!(cached.system_fields, before.system_fields);
+    // The second wait goes back to the copy the approval took, not the first wait's.
+    assert_eq!(again.system_fields, after.system_fields);
     assert_eq!(
         cached
             .fields

@@ -388,6 +388,8 @@ pub(crate) struct ServiceSlot {
     history_window: Mutex<Option<u32>>,
     // The values no longer allow personal data on TablePro Sync: a later start runs teams-only (0055).
     personal_forbidden: std::sync::atomic::AtomicBool,
+    // And no move on a later engine brings it back while they say so.
+    policy_forbids: std::sync::atomic::AtomicBool,
 }
 
 // An anchor the device store could not settle, as while it is locked, is no pass's to retry (0066) but a start's.
@@ -416,7 +418,12 @@ impl ServiceSlot {
             categories: Mutex::new(categories),
             history_window: Mutex::new(None),
             personal_forbidden: std::sync::atomic::AtomicBool::new(false),
+            policy_forbids: std::sync::atomic::AtomicBool::new(false),
         }
+    }
+
+    pub(crate) fn forbid_by_policy(&self) {
+        self.policy_forbids.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 
     pub(crate) fn forbid_personal(&self) {
@@ -457,6 +464,9 @@ impl ServiceSlot {
         .map(Arc::new);
         if let Ok(engine) = &started {
             engine.sync.set_history_window(*lock(&self.history_window));
+            if self.policy_forbids.load(std::sync::atomic::Ordering::SeqCst) {
+                engine.sync.forbid_personal();
+            }
         }
         *lock(&self.held) = started.clone();
         started

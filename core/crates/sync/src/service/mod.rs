@@ -92,6 +92,8 @@ pub struct ServiceSync {
     mode: Mutex<ServiceMode>,
     // What the last full pass found to send, per scope, so the count shown leaves out the scopes that rest.
     queued: Mutex<HashMap<ScopeName, usize>>,
+    // The managed values forbid personal data on TablePro Sync for this engine's life.
+    policy_forbids: std::sync::atomic::AtomicBool,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
@@ -228,6 +230,7 @@ impl ServiceSync {
             events: parts.events,
             mode: Mutex::new(parts.mode),
             queued: Mutex::default(),
+            policy_forbids: std::sync::atomic::AtomicBool::new(false),
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
                 provider: Some(Provider::Service),
@@ -291,6 +294,7 @@ impl ServiceSync {
     // Between passes: a move between providers, or the person turning personal sync on or off. Turning it on reads the
     // personal scope again on the next pass, since its kinds were off meanwhile.
     pub async fn set_mode(&self, mode: ServiceMode) {
+        let mode = if self.policy_rests() { ServiceMode::TeamsOnly } else { mode };
         let leaving = mode == ServiceMode::TeamsOnly;
         if leaving {
             self.leaving.fetch_add(1, Ordering::SeqCst);
@@ -317,10 +321,20 @@ impl ServiceSync {
 
     fn check_stop(&self) -> Result<(), SyncError> {
         self.stop.check()?;
-        if self.switching() {
+        if self.switching() || (self.policy_rests() && self.mode() == ServiceMode::Personal) {
             return Err(SyncError::Cancelled);
         }
         Ok(())
+    }
+
+    // The managed values forbid personal data on TablePro Sync (0055): it rests for this engine's life, and no move
+    // or mode change brings it back, so a move in flight when they changed commits nothing more.
+    pub fn forbid_personal(&self) {
+        self.policy_forbids.store(true, Ordering::SeqCst);
+    }
+
+    fn policy_rests(&self) -> bool {
+        self.policy_forbids.load(Ordering::SeqCst)
     }
 
     fn switching(&self) -> bool {
@@ -418,6 +432,11 @@ impl ServiceSync {
     pub(crate) async fn run_arrival(&self, arrival: Arrival) -> Result<PassReport, SyncError> {
         let mut session = self.session.lock().await;
         self.check_stop()?;
+        if self.policy_rests() {
+            return Err(SyncError::NotAllowed {
+                what: "personal data on TablePro Sync while the managed policy forbids it",
+            });
+        }
         let from = arrival.from();
         let open = matches!(
             self.move_row().await?,
@@ -485,8 +504,12 @@ impl ServiceSync {
         Ok(())
     }
 
-    // The move this file holds open or done, if any.
+    // The move this file holds open or done, if any. A file restored or replaced under the device holds none it can
+    // act on: an old row is no consent to move again, and the refill drops it.
     pub async fn move_row(&self) -> Result<Option<MoveRow>, SyncError> {
+        if self.state.opened().sync_tables == crate::api::state::SyncTrust::Refill {
+            return Ok(None);
+        }
         Ok(match begin(&self.state).await?.get(&RowKey::Move).await? {
             Some(Row::Move(row)) => Some(row),
             _ => None,
@@ -649,7 +672,11 @@ impl ServiceSync {
         arrival: Option<Arc<Arrival>>,
     ) -> Result<PassReport, SyncError> {
         tracing::debug!(?why, "sync pass");
-        // A move back to iCloud, open or done, keeps personal data resting here until the person moves it again.
+        // A move back to iCloud, open or done, keeps personal data resting here until the person moves it again, and so
+        // does a managed policy that forbids it.
+        if self.policy_rests() {
+            *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = ServiceMode::TeamsOnly;
+        }
         if matches!(
             self.move_row().await,
             Ok(Some(MoveRow {
@@ -1030,6 +1057,7 @@ impl ServiceSync {
             for row in txn.scan(&RowRange::Table(Table::Stores)).await? {
                 txn.delete(&row.key()).await?;
             }
+            txn.delete(&RowKey::Move).await?;
             self.check_stop()?;
             txn.commit().await?;
         }

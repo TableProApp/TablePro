@@ -14,7 +14,7 @@ use crate::api::control::{MoveBackPlan, MovePlan};
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::state::{MovePhase, MoveRow, Provider, Row, RowKey, RowRange, StateFiles, StateIdentity, Table};
-use crate::cloudkit::modify::{CloudKitSync, IcloudCopy};
+use crate::cloudkit::modify::{CloudKitSync, IcloudCopy, copy_rows};
 use crate::service::ServiceSync;
 
 pub struct MoveParts {
@@ -108,24 +108,17 @@ impl Mover {
                 phase,
             })
         };
-        let mut txn = state.begin().await?;
         if held.is_none() {
+            let mut txn = state.begin().await?;
             txn.put(moving(MovePhase::Open)).await?;
+            txn.commit().await?;
         }
-        let bases = txn
-            .scan(&RowRange::Scope(Table::Bases, ScopeName::Personal))
-            .await?
-            .into_iter()
-            .filter_map(|row| match row {
-                Row::Base(base) => Some(base),
-                _ => None,
-            })
-            .collect();
-        txn.commit().await?;
+        let (bases, kept_off) = copy_rows(state.as_ref()).await?;
         let copy = IcloudCopy {
             account: Some(account.clone()),
             bases,
             listed: None,
+            kept_off,
         };
         self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
         let mut txn = state.begin().await?;

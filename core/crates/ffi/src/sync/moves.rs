@@ -174,7 +174,9 @@ impl SyncService {
         }
         if !self.allows(SyncProviderTag::TableproSync) {
             self.service.forbid_personal();
+            self.service.forbid_by_policy();
             if let Ok(engine) = self.service.now() {
+                engine.sync.forbid_personal();
                 engine.sync.set_mode(ServiceMode::TeamsOnly).await;
             }
         }

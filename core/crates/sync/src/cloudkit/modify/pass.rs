@@ -47,6 +47,8 @@ pub struct IcloudCopy {
     pub account: Option<String>,
     pub bases: Vec<BaseRow>,
     pub listed: Option<BTreeSet<RecordKey>>,
+    // The connections the file recorded kept off sync: what was theirs never reads as this device's deletion.
+    pub kept_off: BTreeSet<uuid::Uuid>,
 }
 
 pub struct CloudKitParts {
@@ -128,6 +130,34 @@ pub struct CloudKitSync {
     account: Mutex<Option<String>>,
     status: Mutex<SyncStatus>,
     legacy: Option<LegacyLink>,
+}
+
+// The bases a move meets the service with, and the connections the file recorded kept off sync.
+pub async fn copy_rows(state: &dyn StateStore) -> Result<(Vec<BaseRow>, BTreeSet<uuid::Uuid>), SyncError> {
+    let mut txn = state.begin().await?;
+    let bases = txn
+        .scan(&RowRange::Scope(Table::Bases, SCOPE))
+        .await?
+        .into_iter()
+        .filter_map(|row| match row {
+            Row::Base(base) => Some(base),
+            _ => None,
+        })
+        .collect();
+    let kept_off = txn
+        .scan(&RowRange::ScopeKind(
+            Table::Standing,
+            SCOPE,
+            crate::api::ids::KindName::of(tablepro_records::Kind::Connection),
+        ))
+        .await?
+        .into_iter()
+        .filter_map(|row| match row {
+            Row::Standing(row) if row.standing != Standing::Syncs => uuid::Uuid::parse_str(&row.key.record_id).ok(),
+            _ => None,
+        })
+        .collect();
+    Ok((bases, kept_off))
 }
 
 fn identity(account: &str) -> StateIdentity {
@@ -325,17 +355,11 @@ impl CloudKitSync {
         Ok(())
     }
 
-    async fn bases_of(state: Option<Arc<dyn StateStore>>) -> Result<Vec<BaseRow>, SyncError> {
-        let mut bases = Vec::new();
-        if let Some(state) = state {
-            let mut txn = state.begin().await?;
-            for row in txn.scan(&RowRange::Scope(Table::Bases, SCOPE)).await? {
-                if let Row::Base(base) = row {
-                    bases.push(base);
-                }
-            }
-        }
-        Ok(bases)
+    async fn bases_of(state: Option<Arc<dyn StateStore>>) -> Result<(Vec<BaseRow>, BTreeSet<uuid::Uuid>), SyncError> {
+        let Some(state) = state else {
+            return Ok((Vec::new(), BTreeSet::new()));
+        };
+        copy_rows(state.as_ref()).await
     }
 
     // What the move meets the service's copies with, once the engine stopped: this device's CloudKit bases, and every
@@ -344,7 +368,7 @@ impl CloudKitSync {
     // and no deletion is inferred.
     pub async fn copy_for_move(&self) -> Result<IcloudCopy, SyncError> {
         let session = self.session.lock().await;
-        let bases = Self::bases_of(self.move_file(&session).await?).await?;
+        let (bases, kept_off) = Self::bases_of(self.move_file(&session).await?).await?;
         let signed_in = self.transport.account_status().await?.user_record_name;
         let listed = match &session.account {
             Some(account) if *account == signed_in && !session.zone_removed => self.listing(account).await?,
@@ -354,6 +378,7 @@ impl CloudKitSync {
             account: session.account.clone(),
             bases,
             listed,
+            kept_off,
         })
     }
 
@@ -377,10 +402,12 @@ impl CloudKitSync {
                 self.mark_move(state.as_ref(), MovePhase::Open).await?;
             }
         }
+        let (bases, kept_off) = Self::bases_of(state).await?;
         Ok(IcloudCopy {
             account: session.account.clone(),
-            bases: Self::bases_of(state).await?,
+            bases,
             listed: None,
+            kept_off,
         })
     }
 

@@ -24,6 +24,8 @@ pub(crate) struct FromIcloud {
     bases: HashMap<RecordKey, BaseRow>,
     // Every record a full fetch found in the zone; None when the zone could not be read, so no deletion is inferred.
     listed: Option<HashSet<RecordKey>>,
+    // The connections this device kept off sync, by the file's standing rows.
+    kept_off: std::collections::BTreeSet<uuid::Uuid>,
     // The markers the service's copies carried, by the service's ids, as the snapshot found them.
     markers: Mutex<HashMap<RecordKey, MoveMarker>>,
 }
@@ -48,6 +50,7 @@ impl Arrival {
                 .map(|base| (base.key.clone(), base))
                 .collect(),
             listed: copy.listed.map(|listed| listed.into_iter().collect()),
+            kept_off: copy.kept_off,
             markers: Mutex::default(),
         })
     }
@@ -113,11 +116,26 @@ impl Arrival {
         }
     }
 
-    // This device's CloudKit base names the record: its store held it, so its absence there is this device's deletion.
+    // This device's CloudKit base names the record: its store held it, so its absence there is this device's deletion,
+    // unless the record, or the connection it belongs to, stays on the device (0054, Rules for both providers).
     pub(crate) fn deleted_here(&self, key: &RecordKey) -> bool {
-        self.icloud()
-            .zip(in_zone(key))
-            .is_some_and(|(icloud, named)| icloud.bases.contains_key(&named))
+        let Some((icloud, named)) = self.icloud().zip(in_zone(key)) else {
+            return false;
+        };
+        let Some(base) = icloud.bases.get(&named) else {
+            return false;
+        };
+        let Some(kind) = key.kind.known() else {
+            return false;
+        };
+        let connection = if kind == tablepro_records::Kind::Connection {
+            uuid::Uuid::parse_str(&key.record_id).ok()
+        } else {
+            base.fields
+                .as_ref()
+                .and_then(|fields| crate::engine::owner(kind, fields))
+        };
+        !connection.is_some_and(|connection| icloud.kept_off.contains(&connection))
     }
 
     // The first device that moves a record creates it on the service with the marker of the CloudKit base it moved

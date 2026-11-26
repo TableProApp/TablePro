@@ -775,9 +775,9 @@ async fn another_account_on_tablepro_sync_waits_for_move_my_data_or_start_empty(
     })
     .await;
 
-    let _ = other.service.sync_now(PassReasonTag::Person).await;
-    let _ = same.service.sync_now(PassReasonTag::Person).await;
+    // The wait is in the new file before any pass, so a quit right after the open asks again.
     let plan = other.service.plan_new_identity().await.unwrap();
+    let _ = same.service.sync_now(PassReasonTag::Person).await;
     let none = same.service.plan_new_identity().await.unwrap_err();
 
     assert!(plan.account.ends_with(&other_account.to_wire()), "{plan:?}");

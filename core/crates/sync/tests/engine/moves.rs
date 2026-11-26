@@ -300,6 +300,27 @@ async fn a_move_with_icloud_forbidden_takes_the_device_s_own_deletion_from_its_b
     assert_eq!(live(&server, 1), None);
 }
 
+// A connection this device kept off sync and then deleted is no deletion of the device's to take to the service, even
+// with no zone listing to read.
+#[tokio::test]
+async fn a_move_with_icloud_forbidden_keeps_a_deleted_local_only_connection_on_the_service() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    let phone = Apple::on_icloud(&server, &cloud, "dev_phone").await;
+    mac.put(1, carried(1, "Prod", 1));
+    mac.icloud_pass().await;
+    phone.icloud_pass().await;
+    mac.mover(true).move_to_service().await.unwrap();
+    phone.device.connections.put_local_only(&id(1), carried(1, "Prod", 1));
+    phone.icloud_pass().await;
+    phone.device.connections.remove(&id(1));
+
+    phone.mover(true).move_to_service_without_icloud().await.unwrap();
+
+    assert!(live(&server, 1).is_some());
+}
+
 #[tokio::test]
 async fn local_only_records_stay_behind_and_the_plan_counts_them() {
     let server = FakeServer::new();

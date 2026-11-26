@@ -76,9 +76,27 @@ impl ServiceSync {
     }
 
     // Before the opener lets the last account's file go, so the wait outlives a quit before the first pass.
+    // A file this account already held waits too: what the last account left on the device goes nowhere unasked.
     pub async fn hold_for_account_choice(&self) -> Result<(), SyncError> {
         let _session = self.session.lock().await;
-        self.owe_account_choice().await
+        let Some(unsent) = self.follows else {
+            return Ok(());
+        };
+        self.stop.check()?;
+        let mut txn = begin(&self.state).await?;
+        let row = match txn.get(&RowKey::Scope(ScopeName::Personal)).await? {
+            Some(Row::Scope(row)) => row,
+            _ => ScopeRow::new(ScopeName::Personal),
+        };
+        if row.push_wait.is_none() {
+            txn.put(Row::Scope(ScopeRow {
+                push_wait: Some(PushWait::AccountChoice { unsent }),
+                ..row
+            }))
+            .await?;
+            txn.commit().await?;
+        }
+        Ok(())
     }
 
     // What the push of this person's own scopes waits for.

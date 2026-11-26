@@ -193,7 +193,7 @@ pub fn kept_off_connections(connections: &LocalRecords, bases: &[BaseRow]) -> Ve
 
 // The connection a record of `kind` belongs to: the one a saved query, a folder, a favourite or a table folder names, or
 // the one a settings category such as a column layout is about.
-fn owner(kind: Kind, fields: &Value) -> Option<Uuid> {
+pub(crate) fn owner(kind: Kind, fields: &Value) -> Option<Uuid> {
     if kind.is_settings() {
         return fields.get("category").and_then(Value::as_str).and_then(settings::owner);
     }

@@ -148,9 +148,27 @@ pub(super) fn going_up(
     local
 }
 
+// The move marker is left out, so a refused create stands for the same create sent later without it, and goes again
+// only once the record itself changed.
 fn fingerprint(change: &Change) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hash_change(&mut hasher, change);
+    match &change.op {
+        ChangeOp::Write { fields, patch } if patch.get(tablepro_records::move_marker::MEMBER).is_some() => {
+            let mut patch = patch.clone();
+            crate::adapters::fields::set(&mut patch, &format!("/{}", tablepro_records::move_marker::MEMBER), None);
+            hash_change(
+                &mut hasher,
+                &Change {
+                    op: ChangeOp::Write {
+                        fields: fields.clone(),
+                        patch,
+                    },
+                    ..change.clone()
+                },
+            );
+        }
+        _ => hash_change(&mut hasher, change),
+    }
     hasher.finalize().into()
 }
 
