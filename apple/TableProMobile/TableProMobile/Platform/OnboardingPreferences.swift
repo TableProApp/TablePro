@@ -15,6 +15,8 @@ final class OnboardingPreferences {
     private(set) var usageDataChoice: Bool?
     private(set) var hasSeenOrigin: Bool
     private(set) var lastSeenVersion: String?
+    // What the organization decides over the person's choices; their choices stay for when it lets go.
+    private(set) var managed: ManagedAppConfiguration
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -23,14 +25,22 @@ final class OnboardingPreferences {
         usageDataChoice = defaults.object(forKey: AppPreferences.usageDataKey) as? Bool
         hasSeenOrigin = defaults.bool(forKey: Self.hasSeenOriginKey)
         lastSeenVersion = defaults.string(forKey: Self.lastSeenVersionKey)
+        managed = ManagedAppConfiguration.current(defaults: defaults)
     }
 
     var isCloudSyncEnabled: Bool {
-        syncChoice == true
+        managed.settledICloudSync(syncChoice == true)
     }
 
     var isUsageDataEnabled: Bool {
-        usageDataChoice == true
+        usageDataChoice == true && managed.allowsUsageData
+    }
+
+    // An MDM changes the managed configuration while the app runs.
+    func refreshManagedConfiguration() {
+        let current = ManagedAppConfiguration.current(defaults: defaults)
+        guard current != managed else { return }
+        managed = current
     }
 
     func setSyncChoice(_ enabled: Bool) {

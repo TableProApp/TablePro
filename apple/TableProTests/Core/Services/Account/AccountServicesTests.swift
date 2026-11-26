@@ -7,6 +7,7 @@ import Combine
 import Foundation
 @testable import TablePro
 import TableProCloudAPI
+import TableProFFI
 import TableProTestSupport
 import Testing
 
@@ -464,7 +465,7 @@ struct AccountServicesTests {
 
         readings.send(held)
 
-        try await waitUntil { fixture.backend.appliedPolicies.last == held }
+        try await waitUntil { fixture.backend.appliedPolicies.last == held.coreArgument }
         fixture.services.stop()
     }
 

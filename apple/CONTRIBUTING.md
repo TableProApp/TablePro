@@ -11,7 +11,7 @@ This file covers the macOS and iOS apps in `apple/`, and every command in it run
 | SwiftLint | 0.65.1 | The version CI runs |
 | GitHub CLI | any | Optional: `scripts/download-libs.sh` falls back to `curl` |
 | Go | `toolchain` in `Native/HanaBridge/go.mod` | SAP HANA plugin only: run `scripts/build-hana.sh` with no argument before building `HanaDriver` or `AllPlugins`. When the installed `go` is another release, `go` switches to that toolchain itself |
-| Rust | `rust-toolchain.toml` at the repository root | Through [rustup](https://rustup.rs), which installs it. The app links the shared core: run `scripts/build-core.sh arm64` (or `x86_64`) before the first build and after a change under `core/`. The Dameng plugin pins its own in `Native/DamengBridge/rust-toolchain.toml`: run `scripts/build-dameng.sh arm64` before building `DamengDriver` or `AllPlugins` |
+| Rust | `rust-toolchain.toml` at the repository root | Through [rustup](https://rustup.rs), which installs it. Both apps link the shared core: run `scripts/build-core.sh arm64` (or `x86_64`) before the first build and after a change under `core/`, adding `ios-simulator` for the iOS app in the Simulator and `ios` for a device. The Dameng plugin pins its own in `Native/DamengBridge/rust-toolchain.toml`: run `scripts/build-dameng.sh arm64` before building `DamengDriver` or `AllPlugins` |
 
 Fork the repo on GitHub, then:
 

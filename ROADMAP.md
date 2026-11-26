@@ -591,8 +591,8 @@ Phase 7 runs now as its own lane, ahead of [Order](#order) (D-06). The account s
   - [ ] macOS
   - [ ] iOS
 - **T-09** iOS account: sign-in through `tablepro-account` via TableProFFI, the `tablepro-ios` OAuth client and the `ios` device platform
-  - [ ] server
-  - [ ] iOS
+  - [x] server
+  - [x] iOS
 - **T-10** Records in the core (`tablepro-records`): kinds, record ids, field classes, the field merge and the CloudKit mapping, one set for both providers
   - [ ] core
 - **T-11** Keys in the core (`tablepro-keys`): the end-to-end crypto, with signed logs, envelopes and recovery

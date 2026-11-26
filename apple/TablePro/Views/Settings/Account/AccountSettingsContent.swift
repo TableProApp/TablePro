@@ -58,12 +58,12 @@ internal struct AccountSettingsContent: Equatable {
         let name: String
         let system: String
         let lastSeenAt: Date
-        let isThisMac: Bool
+        let isThisDevice: Bool
         // Set while the device's offline file is valid, which keeps it from being removed.
         let offlineUntil: Date?
 
         var canRemove: Bool {
-            !isThisMac && offlineUntil == nil
+            !isThisDevice && offlineUntil == nil
         }
     }
 
@@ -281,12 +281,12 @@ internal struct AccountSettingsContent: Equatable {
                     name: device.name,
                     system: AccountCodes.systemName(platform: device.platform, osVersion: device.osVersion),
                     lastSeenAt: device.lastSeenAt,
-                    isThisMac: device.isThisMac,
+                    isThisDevice: device.isThisDevice,
                     offlineUntil: device.offlineFileValid(at: now) ? device.offlineUntil : nil
                 )
             }
             .sorted { lhs, rhs in
-                if lhs.isThisMac != rhs.isThisMac { return lhs.isThisMac }
+                if lhs.isThisDevice != rhs.isThisDevice { return lhs.isThisDevice }
                 return lhs.lastSeenAt > rhs.lastSeenAt
             }
     }
@@ -365,8 +365,7 @@ private extension EntitlementRefreshState {
     }
 }
 
-// Codes a newer server adds read as neutral text, never as a failure.
-internal enum AccountCodes {
+extension AccountCodes {
     static func planName(_ code: String) -> String {
         switch code {
         case "starter": String(localized: "Pro")
@@ -396,18 +395,6 @@ internal enum AccountCodes {
         )
         case "member": String(localized: "Member")
         default: nil
-        }
-    }
-
-    // A Linux app reports its distribution as the OS version ("Fedora 43").
-    static func systemName(platform: String, osVersion: String) -> String {
-        switch platform {
-        case "macos":
-            return osVersion.isEmpty ? "macOS" : String(format: String(localized: "macOS %@"), osVersion)
-        case "linux":
-            return osVersion.isEmpty ? "Linux" : osVersion
-        default:
-            return osVersion
         }
     }
 }

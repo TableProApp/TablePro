@@ -1,4 +1,6 @@
-use tablepro_storage::cloudkit::{CloudConnection, CloudGroup, CloudIds, CloudPull, CloudRecords};
+use tablepro_records::cloudkit::library::{
+    CloudConnection, CloudGroup, CloudIds, CloudPull, CloudRecords, apply_pull, edits_of,
+};
 use uuid::Uuid;
 
 use crate::error::CoreError;
@@ -50,7 +52,7 @@ impl ConnectionLibrary {
     // The records a push sends: new ones, and those with a field that differs from what the server last gave.
     pub async fn cloud_edits(&self, base: CloudLibraryRecords) -> Result<CloudLibraryRecords, CoreError> {
         let base = CloudRecords::from(base);
-        self.blocking(move |store| Ok(CloudLibraryRecords::from(store.cloud_edits_blocking(&base)?)))
+        self.blocking(move |store| Ok(CloudLibraryRecords::from(edits_of(store, &base)?)))
             .await
     }
 
@@ -68,8 +70,7 @@ impl ConnectionLibrary {
         };
         let deleted = pull.deleted.connections.clone();
         let _held = self.hold_writes().await;
-        self.blocking(move |store| Ok(store.apply_cloud_pull_blocking(&pull)?))
-            .await?;
+        self.blocking(move |store| Ok(apply_pull(store, &pull)?)).await?;
         self.delete_secrets(deleted).await
     }
 }
