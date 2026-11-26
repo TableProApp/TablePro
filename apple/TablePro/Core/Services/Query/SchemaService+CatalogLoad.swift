@@ -61,6 +61,10 @@ extension SchemaService {
         await readSideKinds(run, leasingFrom: provider, scope: scope)
     }
 
+    func generationToken(for connectionId: UUID) -> Int {
+        generations[connectionId] ?? 0
+    }
+
     func needsLoad(_ connectionId: UUID, scope: DatabaseScope?) -> Bool {
         guard case .loaded = state(for: connectionId) else { return true }
         return !((scope == nil || loadedScope(for: connectionId) == scope) && isCatalogCurrent(for: connectionId))
@@ -112,125 +116,80 @@ extension SchemaService {
         }
     }
 
+    // One call for every side kind, so an engine that answers several catalog reads in one round trip pays one
+    // instead of one per kind. A load and a refresh of the same catalog share the read.
     func readSideKinds(_ run: LoadRun, driver: DatabaseDriver) async -> SideReads {
-        let schema = run.scope?.schema
-        async let schemas = readSchemas(run, driver: driver)
-        async let routines = readRoutines(run, driver: driver)
-        async let triggers = readTriggers(run, driver: driver)
-        async let types = readTypes(run, driver: driver)
-        async let serverObjects = fetchServerObjectsSafely(
-            kinds: run.kinds.serverKindIds,
-            keys: Dictionary(uniqueKeysWithValues: run.kinds.serverKindIds.map {
-                ($0, ServerObjectLoadKey(load: run.loadKey, kindId: $0))
-            }),
-            connectionId: run.connectionId,
-            dedup: serverObjectsDedup,
-            schema: schema,
-            driver: driver
+        let request = CatalogSideRequest(
+            schema: run.scope?.schema,
+            schemas: run.reads(.schemas),
+            routines: run.reads(.routines),
+            triggers: run.reads(.triggers),
+            userDefinedTypes: run.reads(.types),
+            serverObjectKinds: run.reads(.serverObjects) ? run.kinds.serverKindIds : []
         )
-        return await SideReads(
-            schemas: schemas, routines: routines, triggers: triggers, types: types, serverObjects: serverObjects
-        )
+        let answers: CatalogSideObjects
+        do {
+            answers = try await sideObjectsDedup.execute(key: run.loadKey) {
+                await driver.fetchCatalogSideObjects(request)
+            }
+        } catch {
+            return SideReads(cancelled: request)
+        }
+        let connectionId = run.connectionId
+        var reads = SideReads()
+        reads.schemas = answers.schemas.map { Self.outcome($0, label: "schemas", connectionId: connectionId) }
+        reads.routines = answers.routines.map { Self.outcome($0, label: "routines", connectionId: connectionId) }
+        reads.triggers = answers.triggers.map { Self.outcome($0, label: "triggers", connectionId: connectionId) }
+        reads.types = answers.userDefinedTypes.map { Self.outcome($0, label: "types", connectionId: connectionId) }
+        for (kindId, answer) in answers.serverObjects {
+            reads.serverObjects[kindId] = Self.outcome(answer, label: "server objects", connectionId: connectionId)
+        }
+        return reads
     }
 
     enum SideKind: CaseIterable {
         case schemas, routines, triggers, types, serverObjects
     }
 
-    // A lease that cannot be had settles its kind and every later one, so no section waits on a read nothing runs.
+    // One lease for every side kind, which the driver may answer in one round trip. A column read asked for meanwhile
+    // waits that one read rather than the whole catalog. A lease that cannot be had settles every kind, so no section
+    // waits on a read nothing runs.
     private func readSideKinds(
         _ run: LoadRun,
         leasingFrom provider: any ScopedMetadataProviding,
         scope: DatabaseScope
     ) async {
         let order = SideKind.allCases.filter { run.reads($0) }
-        for (index, kind) in order.enumerated() {
-            let reads: SideReads
-            do {
-                reads = try await provider.withMetadataDriver(scope: scope) { [self] driver in
-                    await readSideKind(kind, of: run, driver: driver)
-                }
-            } catch {
-                settleUnreadKinds(Array(order[index...]), of: run, after: error)
-                return
+        guard !order.isEmpty else { return }
+        let reads: SideReads
+        do {
+            reads = try await provider.withMetadataDriver(scope: scope) { [self] driver in
+                await readSideKinds(run, driver: driver)
             }
-            guard commitSideReads(reads, of: run) else { return }
+        } catch {
+            settleUnreadKinds(order, of: run, after: error)
+            return
         }
+        _ = commitSideReads(reads, of: run)
     }
 
-    private func readSideKind(_ kind: SideKind, of run: LoadRun, driver: DatabaseDriver) async -> SideReads {
-        var reads = SideReads()
-        switch kind {
-        case .schemas:
-            reads.schemas = await readSchemas(run, driver: driver)
-        case .routines:
-            reads.routines = await readRoutines(run, driver: driver)
-        case .triggers:
-            reads.triggers = await readTriggers(run, driver: driver)
-        case .types:
-            reads.types = await readTypes(run, driver: driver)
-        case .serverObjects:
-            reads.serverObjects = await fetchServerObjectsSafely(
-                kinds: run.kinds.serverKindIds,
-                keys: Dictionary(uniqueKeysWithValues: run.kinds.serverKindIds.map {
-                    ($0, ServerObjectLoadKey(load: run.loadKey, kindId: $0))
-                }),
-                connectionId: run.connectionId,
-                dedup: serverObjectsDedup,
-                schema: run.scope?.schema,
-                driver: driver
+    // As `fetchObjectsSafely` settles a single read: a failure stays a failure, never an empty list.
+    private static func outcome<Value: Sendable>(
+        _ answer: Result<Value, any Error>,
+        label: String,
+        connectionId: UUID
+    ) -> MetadataFetchOutcome<Value> {
+        switch answer {
+        case .success(let value):
+            return .fetched(value)
+        case .failure(let error) where error is CancellationError:
+            return .cancelled
+        case .failure(let error):
+            logger.warning(
+                "[schema] \(label, privacy: .public) load failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
+            return .failed(error.localizedDescription)
         }
-        return reads
-    }
-
-    private func readSchemas(_ run: LoadRun, driver: DatabaseDriver) async -> MetadataFetchOutcome<[String]>? {
-        guard run.supportsSchemas || run.listsAttached else { return nil }
-        return await Self.fetchObjectsSafely(
-            key: run.loadKey,
-            connectionId: run.connectionId,
-            label: "schemas",
-            dedup: schemasDedup,
-            fetch: { try await driver.fetchSchemas() }
-        )
-    }
-
-    private func readRoutines(_ run: LoadRun, driver: DatabaseDriver) async -> MetadataFetchOutcome<[RoutineInfo]> {
-        let schema = run.scope?.schema
-        return await Self.fetchObjectsSafely(
-            key: run.loadKey,
-            connectionId: run.connectionId,
-            label: "routines",
-            dedup: routinesDedup,
-            fetch: { try await driver.fetchRoutines(schema: schema) }
-        )
-    }
-
-    private func readTriggers(_ run: LoadRun, driver: DatabaseDriver) async -> MetadataFetchOutcome<[TriggerInfo]>? {
-        guard run.kinds.triggers else { return nil }
-        let schema = run.scope?.schema
-        return await Self.fetchObjectsSafely(
-            key: run.loadKey,
-            connectionId: run.connectionId,
-            label: "triggers",
-            dedup: triggersDedup,
-            fetch: { try await driver.fetchAllTriggers(schema: schema) }
-        )
-    }
-
-    private func readTypes(
-        _ run: LoadRun,
-        driver: DatabaseDriver
-    ) async -> MetadataFetchOutcome<[UserDefinedTypeInfo]>? {
-        guard run.kinds.types else { return nil }
-        let schema = run.scope?.schema
-        return await Self.fetchObjectsSafely(
-            key: run.loadKey,
-            connectionId: run.connectionId,
-            label: "types",
-            dedup: typesDedup,
-            fetch: { try await driver.fetchUserDefinedTypes(schema: schema) }
-        )
     }
 
     // One fetch per declared kind, side by side; each settles its own group.
@@ -286,6 +245,20 @@ extension SchemaService {
                 "[schema] \(label, privacy: .public) load failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
             return .failed(error.localizedDescription)
+        }
+    }
+}
+
+extension SchemaService.SideReads {
+    // Every kind the request asked, settled as cancelled: a shared read that was called off answered none of them.
+    init(cancelled request: CatalogSideRequest) {
+        self.init()
+        if request.schemas { schemas = .cancelled }
+        if request.routines { routines = .cancelled }
+        if request.triggers { triggers = .cancelled }
+        if request.userDefinedTypes { types = .cancelled }
+        for kindId in request.serverObjectKinds {
+            serverObjects[kindId] = .cancelled
         }
     }
 }

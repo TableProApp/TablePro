@@ -29,6 +29,13 @@ internal enum PostLaunchWork {
 
         Task { await PluginManager.shared.sweepPluginSignatures() }
         Task { await QueryHistoryManager.shared.performStartupCleanup() }
+        // The core's history.db takes in what the stores the previous stable reads hold (core ADR 0010, slices 3 and 9).
+        Task {
+            await SQLFavoriteManager.shared.pushToCore()
+            await FavoriteTablesStorage.shared.coreMirror?.push()
+            await FavoriteDatabasesStorage.shared.coreMirror?.push()
+            await TableFolderStorage.shared.coreMirror?.push()
+        }
         let supportDirectory = AppStorageEnvironment.shared.supportDirectory
         Task.detached(priority: .utility) { RetiredTableLoadHistory.remove(in: supportDirectory) }
         SignInPrompt.live.presentIfNeeded()

@@ -58,6 +58,27 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private var issuedStagingTokens: Set<String> = []
     private static let maxIssuedStagingTokens = 10_000
 
+    // The key browses paged forward, by what they list, so the next page continues each from its saved cursor.
+    private let keyBrowseLock = NSLock()
+    private var keyBrowseWalks: [RedisKeyBrowseWalk.Scope: RedisKeyBrowseWalk] = [:]
+    private var keyBrowseOrder: [RedisKeyBrowseWalk.Scope] = []
+    private static let maxKeyBrowseWalks = 8
+
+    func savedKeyBrowseWalk(for scope: RedisKeyBrowseWalk.Scope) -> RedisKeyBrowseWalk? {
+        keyBrowseLock.withLock { keyBrowseWalks[scope] }
+    }
+
+    func saveKeyBrowseWalk(_ walk: RedisKeyBrowseWalk) {
+        keyBrowseLock.withLock {
+            keyBrowseWalks[walk.scope] = walk
+            keyBrowseOrder.removeAll { $0 == walk.scope }
+            keyBrowseOrder.append(walk.scope)
+            while keyBrowseOrder.count > Self.maxKeyBrowseWalks {
+                keyBrowseWalks[keyBrowseOrder.removeFirst()] = nil
+            }
+        }
+    }
+
     var serverVersion: String? {
         redisConnection?.serverVersion()
     }

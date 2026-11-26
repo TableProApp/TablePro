@@ -91,7 +91,7 @@ final class QueryDiagnosticsController {
     private func apply(_ produced: [QueryDiagnostic], in controller: TextViewController) {
         guard let manager = controller.textView.emphasisManager else { return }
 
-        let length = (controller.textView.string as NSString).length
+        let length = controller.textView.textStorage.length
         let emphases = produced.compactMap { diagnostic -> Emphasis? in
             guard diagnostic.range.location >= 0,
                   NSMaxRange(diagnostic.range) <= length else { return nil }

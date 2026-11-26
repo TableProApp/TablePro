@@ -37,7 +37,8 @@ pub(super) async fn delete_folder(pool: &SqlitePool, path: &Path, id: Uuid) -> R
     let owner: Option<String> = row.try_get("connection_id")?;
     let parent: Option<String> = row.try_get("parent_record_id")?;
     let subtree: Vec<(i64, String)> = sqlx::query_as(AssertSqlSafe(format!(
-        "{SUBTREE} SELECT folder.id, folder.record_id FROM saved_query_folders folder JOIN subtree USING (record_id)"
+        "{SUBTREE} SELECT folder.id, folder.record_id FROM saved_query_folders folder JOIN subtree USING (record_id) \
+         ORDER BY folder.id"
     )))
     .bind(rowid)
     .fetch_all(&mut *transaction)
@@ -267,7 +268,7 @@ async fn unfile_queries(
     Ok(unfiled)
 }
 
-fn rowid_deletes(table: &'static str, ids: &[i64]) -> Vec<CopyDelete> {
+pub(super) fn rowid_deletes(table: &'static str, ids: &[i64]) -> Vec<CopyDelete> {
     ids.chunks(IDS_PER_STATEMENT)
         .map(|chunk| CopyDelete {
             table,
@@ -280,7 +281,7 @@ fn rowid_deletes(table: &'static str, ids: &[i64]) -> Vec<CopyDelete> {
         .collect()
 }
 
-async fn delete_folder_rows(database: &mut SqliteConnection, ids: &[i64]) -> Result<(), StorageError> {
+pub(super) async fn delete_folder_rows(database: &mut SqliteConnection, ids: &[i64]) -> Result<(), StorageError> {
     for chunk in ids.chunks(IDS_PER_STATEMENT) {
         let sql = format!(
             "DELETE FROM saved_query_folders WHERE id IN ({})",

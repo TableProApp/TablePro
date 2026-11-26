@@ -642,12 +642,12 @@ struct AppStateLibraryTests {
         var renamed = original
         renamed.name = "Renamed"
 
-        try FileManager.default.removeItem(at: fixture.connectionsFile)
-        try FileManager.default.createDirectory(at: fixture.connectionsFile, withIntermediateDirectories: false)
+        try FileManager.default.removeItem(at: fixture.coreConnectionsFile)
+        try FileManager.default.createDirectory(at: fixture.coreConnectionsFile, withIntermediateDirectories: false)
         #expect(!state.applySyncedConnections([renamed]))
         #expect(!state.applySyncedConnections([renamed]))
 
-        try FileManager.default.removeItem(at: fixture.connectionsFile)
+        try FileManager.default.removeItem(at: fixture.coreConnectionsFile)
         #expect(state.applySyncedConnections([renamed]))
         let reloaded = try JSONDecoder().decode([DatabaseConnection].self, from: Data(contentsOf: fixture.connectionsFile))
         #expect(reloaded.map(\.name) == ["Renamed"])
