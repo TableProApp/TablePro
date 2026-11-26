@@ -65,7 +65,7 @@ paths:
   - "apple/TablePro/Models/Highlight/HighlightRule.swift"
   - "apple/TablePro/Models/ServerDashboard/DashboardTile.swift"
   - "apple/TablePro/Models/Sidebar/TableFolder.swift"
-  - "apple/TablePro/Core/Services/TeamLibrary/TeamLibraryItem.swift"
+  - "apple/TablePro/Core/Services/TeamLibrary/TeamLibraryLegacyImport.swift"
   - "apple/TablePro/Models/Workspace/WorkspaceID.swift"
   - "apple/TablePro/Core/AI/Chat/ChatTurn.swift"
   - "apple/TablePro/Core/AI/ChatGPTCodex/ChatGPTCodexModels.swift"
@@ -84,7 +84,6 @@ paths:
   - "apple/TableProMobile/TableProMobile/SSH/HostKeyStore.swift"
   - "apple/TablePro/Core/Transfer/Shared/ImportColumnMatcher.swift"
   - "apple/TablePro/Core/Services/Formatting/ValueDisplayFormat.swift"
-  - "apple/TablePro/Core/Services/TeamLibrary/TeamLibraryState.swift"
   - "apple/TablePro/Core/Services/Account/*Store.swift"
   - "apple/TablePro/Core/VersionHistory/VersionHistoryModels.swift"
   - "apple/TablePro/Core/UsersRoles/PrivilegeExpansionStore.swift"
@@ -174,7 +173,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Generate Rows settings per table | UserDefaults, device-local | `RowGenerationSettingsStore` |
 | Row inspector field heights, per column name | UserDefaults, device-local | `InspectorFieldHeightStore` |
 | Favorite tables (iCloud-synced) | UserDefaults | `FavoriteTablesStorage` |
-| Team library read cache, per server and account: each team's pull cursor and items (synced with tablepro-cloud's `/v2`, never iCloud). Unsent edits stay in memory only; the library 0.88 and earlier kept, with its unsent edits, is read once for the tablepro.app sign-in the core restores, behind the UserDefaults flag `com.TablePro.teamLibrary.earlierLibraryConsidered`, then deleted; its edits are uploaded once (`TeamLibrarySync` has the rules) | JSON, one file per team in `TeamLibraryCache/<digest of server and account>/`; 0.88 and earlier: `TeamLibrary/` and `team_library.json` | `TeamLibraryStorage` through `TeamLibrarySync` |
+| Team Library, per server and account: each team's items, the edits this Mac has not had taken, what it published and turned down, and the conflicts (tablepro-cloud's `/v2/sync` team scopes, never iCloud). A quit keeps the edits; Sign Out asks, then deletes it all once signed out; an involuntary sign-out keeps it for the same account, and another account's sign-in deletes it. The library 0.88 kept is read once for the tablepro.app sign-in the core restores, the owner written to `com.TablePro.teamLibrary.earlierLibraryOwner` and read back first, and its files stay until the core took them; 0.89's read cache gives only what this Mac published | the core's Team Library store and service state file (core ADR 0054); 0.88: `TeamLibrary/`, `team_library.json`; 0.89: `TeamLibraryCache/<digest of server and account>/` | the core through `TeamLibrary`; earlier builds' files through `TeamLibraryLegacyImport`, once |
 | TablePro account: the device, the entitlement, the chosen server, a company server's license and entitlement keys | `Account/account.json` in Application Support, device-local, never synced | the core's `tablepro-account` through `AccountServices` |
 | The account's refresh token: tablepro.app's in the item earlier builds read, each company server's in its own | Keychain `com.TablePro.account.refreshToken`, and one item per company server, device-only | the core through `KeychainHostSecrets` |
 | The entitlement builds before the core kept, read once when `account.json` is missing so the update stays signed in | `Account/entitlement.jwt` in Application Support | the core (`legacy_entitlement_file`) |

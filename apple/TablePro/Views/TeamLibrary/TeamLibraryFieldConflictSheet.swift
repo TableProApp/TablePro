@@ -36,14 +36,19 @@ internal struct TeamLibraryFieldConflictPresentation: Equatable {
     let title: String
     let message: String
     let rows: [Row]
+    // Who last changed or deleted the team's copy; none when the server names no one to this account.
+    let writer: String?
 
-    init(conflict: TeamConflictInfo, teamName: String?) {
+    init(conflict: TeamConflictInfo, teamName: String?, writer: String? = nil) {
         let mine = conflict.mine.map(Self.members)
         let theirs = conflict.theirs.map(Self.members)
         let name = TeamLibraryConflictText.name(
             Self.text(mine?["name"]) ?? Self.text(theirs?["name"]) ?? conflict.record.recordId
         )
         let team = teamName.map(TeamLibraryConflictText.name) ?? String(localized: "your team")
+        self.writer = writer
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : TeamLibraryConflictText.name($0) }
         switch (mine, theirs) {
         case (nil, _):
             shape = .youDeleted
@@ -291,6 +296,13 @@ internal struct TeamLibraryFieldConflictContent: View {
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("team-library-conflict-fields")
+
+            if let writer = presentation.writer {
+                LabeledContent(String(localized: "Changed By"), value: writer)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("team-library-conflict-writer")
+            }
 
             if let failure {
                 Label(failure, systemImage: "exclamationmark.triangle")

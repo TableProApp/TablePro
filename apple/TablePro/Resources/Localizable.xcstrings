@@ -113138,6 +113138,9 @@
         }
       }
     },
+    "Kept on this Mac and uploaded when the team library takes them. Signing out asks first." : {
+
+    },
     "Kerberos (GSSAPI)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -206691,6 +206694,9 @@
     "TablePro couldn't create a token for this client, so the client wasn't paired. Try pairing again." : {
 
     },
+    "TablePro couldn't delete the Team Library data of the account you signed out of. Team Library stays off until it can." : {
+
+    },
     "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro." : {
       "localizations" : {
         "fr" : {
@@ -207360,6 +207366,9 @@
           }
         }
       }
+    },
+    "TablePro is still deleting the Team Library data of the last account on this Mac. Team Library stays off until it is gone." : {
+
     },
     "TablePro is still trying to reconnect." : {
       "localizations" : {
@@ -209205,7 +209214,13 @@
     "Team Library changes were discarded" : {
 
     },
+    "Team Library data is still on this Mac" : {
+
+    },
     "Team Library ended for this sign-in before these changes were uploaded: %@." : {
+
+    },
+    "Team Library isn't available on this Mac right now." : {
 
     },
     "Team library updated %@" : {

@@ -100,6 +100,24 @@ struct TeamLibraryFieldConflictSheetTests {
         #expect(labels == [String(localized: "Folder")])
     }
 
+    @Test("The team's version names who last changed it, a deletion too, and no one when the server names no one")
+    func teamVersionNamesItsWriter() {
+        let edited = Presentation(conflict: TeamConflictFixture.conflict(), teamName: "Acme", writer: "Grace Hopper")
+        #expect(edited.writer == "Grace Hopper")
+
+        let deleted = Presentation(
+            conflict: TeamConflictFixture.conflict(fields: ["query"], mine: ["name": "Orders", "query": "select 1"], theirs: nil),
+            teamName: "Acme",
+            writer: "Grace Hopper"
+        )
+        #expect(deleted.shape == .teamDeleted)
+        #expect(deleted.writer == "Grace Hopper")
+
+        let unnamed = Presentation(conflict: TeamConflictFixture.conflict(), teamName: "Acme", writer: "  ")
+        #expect(unnamed.writer == nil)
+        #expect(Presentation(conflict: TeamConflictFixture.conflict(), teamName: "Acme").writer == nil)
+    }
+
     @Test("Directional and control characters a teammate wrote show as escapes, and a name stays one short line")
     func hostileTextShowsEveryCharacter() {
         let longName = String(repeating: "Orders\n", count: 200)

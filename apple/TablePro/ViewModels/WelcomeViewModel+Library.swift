@@ -425,8 +425,8 @@ extension WelcomeViewModel {
             isSyncEnabled: services.appSettings.sync.enabled,
             isCompareSyncEnabled: AppModuleSettings.shared.isEnabled(.compareSync),
             canPublishToTeamCatalog: services.featureAccess.isAvailable(.teamCatalog),
-            teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrarySync.shared.writableTeams : [],
-            hasTeamLibraryConflicts: !TeamLibrarySync.shared.conflicts.isEmpty
+            teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrary.shared.writableTeams : [],
+            hasTeamLibraryConflicts: !TeamLibrary.shared.conflicts.conflicts.isEmpty
         )
     }
 

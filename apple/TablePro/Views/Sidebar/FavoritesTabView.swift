@@ -4,7 +4,8 @@ import TableProPluginKit
 import TableProUtilities
 
 internal struct FavoritesTabView: View {
-    @ObservedObject private var teamLibrarySync = TeamLibrarySync.shared
+    @ObservedObject private var teamLibrary = TeamLibrary.shared
+    @ObservedObject private var teamConflicts = TeamLibrary.shared.conflicts
     @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var sidebarDisplay = SidebarDisplayPreferences.shared
     @ObservedObject private var gitStatusStore = LinkedFolderGitStatusStore.shared
@@ -195,7 +196,7 @@ internal struct FavoritesTabView: View {
             LinkedFolderCommitSheet(target: target)
         }
         .sheet(isPresented: $showsTeamLibraryConflicts) {
-            TeamLibraryConflictSheet(sync: teamLibrarySync)
+            TeamLibraryFieldConflictSheet(model: teamConflicts)
         }
         .sheet(item: $linkedMetadataTarget) { file in
             LinkedFavoriteMetadataDialog(
@@ -256,7 +257,7 @@ internal struct FavoritesTabView: View {
     // Before the filter: the empty state asks whether the user owns anything, which the filtered list cannot answer.
     private var allTeamLibraryQueries: [TeamLibraryQuery] {
         guard featureAccess.isAvailable(.teamLibrary) else { return [] }
-        return teamLibrarySync.content.queries
+        return teamLibrary.content.queries
     }
 
     private var teamLibraryQueries: [TeamLibraryQuery] {
@@ -282,7 +283,7 @@ internal struct FavoritesTabView: View {
     }
 
     private func publishSavedQueriesToTeam(teamID: String) {
-        let destination = teamLibrarySync.destination(teamID)
+        let destination = teamLibrary.destination(teamID)
         Task { @MainActor in
             let favorites = await SQLFavoriteManager.shared.fetchFavorites()
             let folders = await SQLFavoriteManager.shared.fetchFolders()
@@ -293,7 +294,7 @@ internal struct FavoritesTabView: View {
             guard await confirmPublishSavedQueries(count: favorites.count) else { return }
             let outcome: TeamLibraryPublishOutcome
             do throws(TeamLibraryPublishError) {
-                outcome = .finished(try await teamLibrarySync.publishSavedQueries(
+                outcome = .finished(try await teamLibrary.publishSavedQueries(
                     favorites: favorites,
                     folders: folders,
                     to: destination
@@ -348,8 +349,8 @@ internal struct FavoritesTabView: View {
                 teamQueries: teamLibraryQueries.map(FavoritesOutlineTeamQuery.init),
                 renamingFolderId: viewModel.renamingFolderId,
                 allFolders: viewModel.nodes.collectFolders(),
-                teamLibraryTeams: featureAccess.isAvailable(.teamLibrary) ? teamLibrarySync.writableTeams : [],
-                hasTeamLibraryConflicts: !teamLibrarySync.conflicts.isEmpty,
+                teamLibraryTeams: featureAccess.isAvailable(.teamLibrary) ? teamLibrary.writableTeams : [],
+                hasTeamLibraryConflicts: !teamConflicts.conflicts.isEmpty,
                 linkedFileGitStates: gitStatusStore.states(for: Self.linkedFavorites(in: items)),
                 linkedFolderGitStates: linkedFolderGitStates
             ),
@@ -555,7 +556,7 @@ internal struct FavoritesTabView: View {
                 break
             }
         case .teamQuery(let id, _, _):
-            guard let query = teamLibrarySync.content.queries.first(where: { $0.id == id })
+            guard let query = teamLibrary.content.queries.first(where: { $0.id == id })
             else { return }
             coordinator?.runFavoriteInNewTab(teamFavorite(from: query))
         }

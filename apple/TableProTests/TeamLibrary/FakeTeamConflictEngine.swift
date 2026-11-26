@@ -9,7 +9,7 @@ import TableProFFI
 import TableProTestSupport
 
 // The engine's conflicts table: a choice drops the conflict, as the core does once the store takes the kept side.
-final class FakeTeamConflictEngine: TeamConflictEngine, @unchecked Sendable {
+class FakeTeamConflictEngine: TeamConflictEngine, @unchecked Sendable {
     private let lock = NSLock()
     private var held: [TeamConflictInfo]
     private var resolveFailure: CoreError?

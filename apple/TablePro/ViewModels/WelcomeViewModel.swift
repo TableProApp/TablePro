@@ -644,7 +644,7 @@ final class WelcomeViewModel: ObservableObject {
         guard FeatureAccess.shared.isAvailable(.teamLibrary) else { return [] }
         let placeholderURL = URL(fileURLWithPath: "/")
         var seen: Set<UUID> = []
-        return TeamLibrarySync.shared.content.connections.compactMap { connection in
+        return TeamLibrary.shared.content.connections.compactMap { connection in
             let id = LinkedFolderWatcher.stableId(namespace: teamLibraryNamespace, key: connection.id)
             guard seen.insert(id).inserted else { return nil }
             return LinkedConnection(

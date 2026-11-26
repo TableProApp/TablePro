@@ -3,7 +3,6 @@
 //  TableProTests
 //
 
-import Combine
 import Foundation
 @testable import TablePro
 import TableProFFI
@@ -12,62 +11,44 @@ import Testing
 
 @MainActor
 struct TeamLibraryConflictsModelTests {
-    private final class NameSource {
-        var answer: [String: String]?
-        var asked = 0
-
-        init(_ answer: [String: String]?) {
-            self.answer = answer
-        }
-    }
-
-    private static func model(
-        _ engine: FakeTeamConflictEngine,
-        names: NameSource = NameSource([TeamConflictFixture.team: "Acme"]),
-        changes: PassthroughSubject<Void, Never> = PassthroughSubject()
-    ) -> TeamLibraryConflictsModel {
-        TeamLibraryConflictsModel(
-            engine: { engine },
-            changes: changes.eraseToAnyPublisher(),
-            teamNames: {
-                names.asked += 1
-                return names.answer
-            }
-        )
+    private static func model(_ engine: FakeTeamConflictEngine) -> TeamLibraryConflictsModel {
+        TeamLibraryConflictsModel(engine: { engine })
     }
 
     private static func choices(_ engine: FakeTeamConflictEngine) -> [String] {
         engine.choices.map { "\($0.record.recordId) \($0.keep)" }
     }
 
-    @Test("A refresh shows the engine's conflicts and names their team once from the profile")
-    func refreshShowsConflictsAndTeamNames() async {
+    @Test("A refresh shows the engine's conflicts, named by the team names Team Library gives")
+    func refreshShowsConflicts() async {
         let conflict = TeamConflictFixture.conflict()
         let engine = FakeTeamConflictEngine([conflict])
-        let names = NameSource([TeamConflictFixture.team: "Acme"])
-        let model = Self.model(engine, names: names)
+        let model = Self.model(engine)
 
         await model.refresh()
-        await model.refresh()
+        model.name([TeamConflictFixture.team: "Acme"])
 
         #expect(model.conflicts == [conflict])
         #expect(model.teamName(of: TeamConflictFixture.team) == "Acme")
-        #expect(names.asked == 1)
     }
 
-    @Test("A profile that could not be read is asked again; a team it does not list is not")
-    func teamNamesAskedAgainOnlyAfterAFailure() async {
-        let engine = FakeTeamConflictEngine([TeamConflictFixture.conflict()])
-        let names = NameSource(nil)
-        let model = Self.model(engine, names: names)
+    @Test("The end of a sign-in clears the conflicts, and a choice still out then changes nothing")
+    func endClearsAndFencesChoices() async {
+        let conflict = TeamConflictFixture.conflict()
+        let engine = FakeTeamConflictEngine([conflict])
+        let model = Self.model(engine)
+        await model.refresh()
+        let gate = AsyncGate()
+        engine.holdNextRead(at: gate)
 
-        await model.refresh()
-        #expect(model.teamName(of: TeamConflictFixture.team) == nil)
-        names.answer = [:]
-        await model.refresh()
-        await model.refresh()
+        let choosing = Task { await model.resolve(conflict, keep: .keepMine) }
+        await gate.arrived(1)
+        model.end()
+        await gate.open()
+        await choosing.value
 
-        #expect(names.asked == 2)
+        #expect(model.conflicts.isEmpty)
+        #expect(Self.choices(engine).isEmpty)
         #expect(model.teamName(of: TeamConflictFixture.team) == nil)
     }
 
@@ -187,20 +168,5 @@ struct TeamLibraryConflictsModelTests {
         await stale.value
 
         #expect(model.conflicts.isEmpty)
-    }
-
-    @Test("The engine's signal reads the conflicts again")
-    func signalRefreshes() async throws {
-        let engine = FakeTeamConflictEngine()
-        let changes = PassthroughSubject<Void, Never>()
-        let model = Self.model(engine, changes: changes)
-        model.start()
-        try await waitUntil { engine.reads >= 1 }
-
-        let conflict = TeamConflictFixture.conflict()
-        engine.set([conflict])
-        changes.send()
-
-        try await waitUntil { model.conflicts == [conflict] }
     }
 }

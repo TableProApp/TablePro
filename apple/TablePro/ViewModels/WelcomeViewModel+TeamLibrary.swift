@@ -13,13 +13,13 @@ extension WelcomeViewModel {
     func publishConnectionsToTeamLibrary(_ connectionsToPublish: [DatabaseConnection], teamID: String) {
         guard !connectionsToPublish.isEmpty else { return }
 
-        let sync = TeamLibrarySync.shared
-        let destination = sync.destination(teamID)
+        let library = TeamLibrary.shared
+        let destination = library.destination(teamID)
         Task { @MainActor in
             let outcome = await Self.publishConnections(
                 connectionsToPublish,
                 to: destination,
-                through: sync,
+                through: library,
                 confirm: Self.confirmPublishToTeamLibrary
             )
             TeamLibraryPublishing.present(outcome) {
@@ -29,33 +29,20 @@ extension WelcomeViewModel {
     }
 
     func presentTeamLibraryConflicts() {
-        guard !TeamLibrarySync.shared.conflicts.isEmpty else { return }
+        guard !TeamLibrary.shared.conflicts.conflicts.isEmpty else { return }
         activeSheet = .teamLibraryConflicts
     }
 
     static func publishConnections(
         _ connections: [DatabaseConnection],
-        to teamID: String,
-        through sync: TeamLibrarySync,
-        exporter: ConnectionBundleExporter = ConnectionBundleExporter(),
-        confirm: @MainActor ([DatabaseConnection]) async -> Bool
-    ) async -> TeamLibraryPublishOutcome {
-        await publishConnections(connections, to: sync.destination(teamID), through: sync, exporter: exporter, confirm: confirm)
-    }
-
-    static func publishConnections(
-        _ connections: [DatabaseConnection],
         to destination: TeamLibraryDestination,
-        through sync: TeamLibrarySync,
+        through library: TeamLibrary,
         exporter: ConnectionBundleExporter = ConnectionBundleExporter(),
         confirm: @MainActor ([DatabaseConnection]) async -> Bool
     ) async -> TeamLibraryPublishOutcome {
         guard await confirm(connections) else { return .declined }
-        let plan = connections.map {
-            TeamLibraryPublishPlan.Connection(id: $0.id, settings: exporter.teamShareableSettings(for: $0))
-        }
         do throws(TeamLibraryPublishError) {
-            return .finished(try await sync.publishConnections(plan, to: destination))
+            return .finished(try await library.publishConnections(connections, exporter: exporter, to: destination))
         } catch {
             return .failed(error)
         }
