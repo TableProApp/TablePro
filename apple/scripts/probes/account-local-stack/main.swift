@@ -128,7 +128,7 @@ struct AccountLocalStackProbe {
             script: script,
             rowsScript: rowsScript,
             steps: Set((environment["PROBE_STEPS"] ?? "").split(separator: ",").map(String.init)),
-            stack: AccountCoreSetup.developmentStack(environment)
+            stack: AccountDevelopmentStack.read(environment)
         )
         await probe.run()
         print("\(probe.report.passed) passed, \(probe.report.failed) failed")
@@ -144,7 +144,7 @@ private final class Probe {
     private let script: String
     private let rowsScript: String
     private let steps: Set<String>
-    private let stack: AccountCoreSetup.DevelopmentStack?
+    private let stack: AccountDevelopmentStack?
     private let machine = MachineDescription.current()
     private let scratch = "account-local-stack-\(UUID().uuidString)"
     private var directory: URL { FileManager.default.temporaryDirectory.appendingPathComponent(scratch, isDirectory: true) }
@@ -155,7 +155,7 @@ private final class Probe {
         script: String,
         rowsScript: String,
         steps: Set<String>,
-        stack: AccountCoreSetup.DevelopmentStack?
+        stack: AccountDevelopmentStack?
     ) {
         self.config = config
         self.library = library
@@ -230,7 +230,7 @@ private final class Probe {
 
         let devices = try? await services.fetchDevices()
         report.expect(
-            devices?.contains { $0.isThisMac && $0.holdsLicense } == true,
+            devices?.contains { $0.isThisDevice && $0.holdsLicense } == true,
             "GET /v2/devices lists this Mac as licensed"
         )
         do throws(AccountError) {
@@ -316,7 +316,7 @@ private final class Probe {
 
         let devices = (try? await services.fetchDevices()) ?? []
         report.expect(
-            devices.count == 4 && devices.contains { $0.isThisMac && !$0.holdsLicense },
+            devices.count == 4 && devices.contains { $0.isThisDevice && !$0.holdsLicense },
             "GET /v2/devices lists the holders and this Mac without a slot",
             "\(devices.map { "\($0.name) \($0.holdsLicense)" })"
         )
@@ -705,7 +705,11 @@ private final class Probe {
             policy: ManagedPolicySnapshot(),
             developmentStack: stack
         )
-        let backend = CoreAccountBackend(setup: setup, machine: machine, keychain: AccountKeychain(keychain: keychain))
+        let backend = CoreAccountBackend(
+            config: setup.accountConfig(machine: machine),
+            appVersion: machine.appVersion,
+            keychain: AccountKeychain(keychain: keychain)
+        )
         let services = AccountServices(
             backend: backend,
             transport: LoggedTransport(log: log),

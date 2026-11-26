@@ -39,7 +39,7 @@ public sealed partial class ShellTests
     {
         const string Sql = "SELECT COUNT(*) FROM Genre;";
         using var app = AppSession.Launch(theme);
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Album", app.Find("ObjectTree"));
         var id = SampleConnectionId(app.DataFolder);
 

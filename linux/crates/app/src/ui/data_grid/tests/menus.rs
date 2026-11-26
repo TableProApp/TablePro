@@ -168,6 +168,40 @@ fn the_cell_menu_shows_the_cell_keys() {
 }
 
 #[gtk4::test]
+fn a_menu_built_before_a_preset_change_shows_the_keys_it_brings() {
+    let back = crate::application::keymap::BackToTablePro;
+    let grid = two_text_rows();
+    let menu = cell_menu(&grid);
+    let header = crate::ui::data_grid::grid_menu::row_numbers_header_menu(false);
+    assert_eq!(accel_of(&menu, "grid.insert-row"), Some(Some("<Primary>n".to_owned())));
+    assert_eq!(accel_of(&menu, "grid.duplicate-rows"), Some(None));
+
+    crate::application::keymap::apply(&gtk::Application::builder().build(), "dbeaver");
+
+    assert_eq!(
+        accel_of(&menu, "grid.insert-row"),
+        Some(Some("<Alt>Insert".to_owned())),
+        "the open grid still shows the old key"
+    );
+    assert_eq!(
+        accel_of(&menu, "grid.duplicate-rows"),
+        Some(Some("<Primary><Alt>Insert".to_owned()))
+    );
+    assert_eq!(
+        accel_of(&menu, "grid.export"),
+        Some(Some("<Primary><Shift>e".to_owned())),
+        "a key no preset moves went"
+    );
+    assert_eq!(
+        accel_of(header.upcast_ref(), "grid.select-all"),
+        Some(Some("<Primary>a".to_owned()))
+    );
+    drop(back);
+    assert_eq!(accel_of(&menu, "grid.insert-row"), Some(Some("<Primary>n".to_owned())));
+    assert_eq!(accel_of(&menu, "grid.duplicate-rows"), Some(None));
+}
+
+#[gtk4::test]
 fn shift_f10_opens_menu_anchored_to_focused_cell() {
     let grid = two_text_rows();
     let cell = grid.focus(1, 1);

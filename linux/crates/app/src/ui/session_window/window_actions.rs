@@ -74,7 +74,24 @@ pub(super) fn install(window: &adw::ApplicationWindow, input: &InputSender<Sessi
         retry_with_new_secret(input.clone()),
         safe_mode(input.clone()),
         new_group(input.clone()),
+        setup_guide(),
     ]);
+}
+
+// The main menu's Setup Guide and the empty library's Set Up…, after the menu that fired it has closed.
+fn setup_guide() -> gio::ActionEntry<adw::ApplicationWindow> {
+    gio::ActionEntry::builder("setup-guide")
+        .activate(|window: &adw::ApplicationWindow, _, _| {
+            let Some(window) = window.downcast_ref::<SessionWindow>().map(|window| window.downgrade()) else {
+                return;
+            };
+            glib::idle_add_local_once(move || {
+                if let Some(window) = window.upgrade() {
+                    window.open_setup_guide();
+                }
+            });
+        })
+        .build()
 }
 
 // The main menu's New Group…, which always makes a group at the top level, as macOS does.
@@ -192,6 +209,7 @@ pub(super) fn sync(window: &adw::ApplicationWindow, page: SessionPage, failed: O
         ("retry-connect", failed.is_some()),
         ("retry-with-new-secret", reenter),
         ("edit-connection", failed.is_some_and(|(_, editable)| editable)),
+        ("setup-guide", page != SessionPage::Setup),
     ] {
         if let Some(action) = window.lookup_action(name).and_downcast::<gio::SimpleAction>() {
             action.set_enabled(enabled);

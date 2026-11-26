@@ -160,13 +160,17 @@ impl AppReader for DataGrip {
         !locations::locations(&self.config_dirs(), &self.home).is_empty()
     }
 
-    fn inventory(&self) -> Inventory {
+    fn inventory(&self) -> Result<Inventory, ForeignImportError> {
         let config_dirs = self.config_dirs();
-        let scan = self.scan(&locations::locations(&config_dirs, &self.home));
-        Inventory {
+        let locations = locations::locations(&config_dirs, &self.home);
+        if let Some(error) = none_readable(&locations) {
+            return Err(error);
+        }
+        let scan = self.scan(&locations);
+        Ok(Inventory {
             connections: scan.sources.len(),
             saved_queries: consoles::count(&scan.console_sources, &config_dirs),
-        }
+        })
     }
 
     fn collect(
@@ -226,6 +230,24 @@ impl AppReader for DataGrip {
         let passwords = self.password_outcome(request, stopped, &stores);
         assemble(ForeignApp::DataGrip, records, saved_queries, passwords)
     }
+}
+
+// A data sources file that cannot be opened is skipped like a broken one, so only when no file opens is the count
+// unknown rather than zero.
+fn none_readable(locations: &[Location]) -> Option<ForeignImportError> {
+    let mut first = None;
+    for location in locations {
+        match std::fs::File::open(&location.data_sources) {
+            Ok(_) => return None,
+            Err(source) => {
+                first.get_or_insert(ForeignImportError::Unreadable {
+                    path: location.data_sources.clone(),
+                    source,
+                });
+            }
+        }
+    }
+    first
 }
 
 // The shared file carries the driver and URL, the local file the user name, SSH and SSL; per field the

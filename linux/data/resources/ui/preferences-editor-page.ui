@@ -53,6 +53,12 @@
       <object class="AdwPreferencesGroup">
         <property name="title" translatable="yes">Keyboard</property>
         <child>
+          <object class="AdwComboRow" id="shortcuts_row">
+            <property name="title" translatable="yes">Shortcuts</property>
+            <property name="subtitle" translatable="yes">Use the keys of an app you know</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwSwitchRow" id="vim_row">
             <property name="title" translatable="yes">Vim Keybindings</property>
             <property name="subtitle" translatable="yes">Normal, insert and visual modes, and commands such as :w and :q</property>
