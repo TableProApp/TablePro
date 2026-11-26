@@ -111,6 +111,8 @@ pub struct SyncService {
     pub(crate) config: SyncConfig,
     pub(crate) icloud: Result<IcloudEngine, SyncError>,
     pub(crate) service: Arc<ServiceSlot>,
+    // This Core's connections, which name what a removed party could read.
+    pub(crate) connections: Option<tablepro_storage::ConnectionStore>,
     #[expect(dead_code, reason = "no engine pass writes the downgrade mirror yet")]
     pub(crate) legacy_mirror: Option<Arc<dyn tablepro_sync::api::LegacyMirror>>,
     pub(crate) _forward: AbortOnDropHandle<()>,

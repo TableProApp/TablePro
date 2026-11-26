@@ -27,6 +27,7 @@ pub(crate) struct OpenParts {
     pub(crate) account: Option<Arc<AccountService>>,
     // This Core's state files; None on a Core opened without storage.
     pub(crate) files: Option<Arc<dyn StateFiles>>,
+    pub(crate) connections: Option<tablepro_storage::ConnectionStore>,
     pub(crate) cloudkit: Option<Arc<dyn sync::CloudKitTransport>>,
     pub(crate) settings: Option<Arc<dyn sync::HostSettings>>,
     pub(crate) device_store: Option<Arc<dyn sync::HostDeviceStore>>,
@@ -85,6 +86,7 @@ impl Core {
             config,
             account,
             files,
+            connections: self.store.clone(),
             cloudkit: cloudkit.map(|host| Arc::new(CloudKitBridge(host)) as Arc<dyn sync::CloudKitTransport>),
             settings: settings.map(|host| Arc::new(HostSettingsBridge { host, kind }) as Arc<dyn sync::HostSettings>),
             device_store,
@@ -182,6 +184,7 @@ impl SyncService {
             config: parts.config,
             icloud,
             service: Arc::new(ServiceSlot::new(first, restart, kept)),
+            connections: parts.connections,
             legacy_mirror: parts.legacy_mirror,
             _forward: forwarding,
         })

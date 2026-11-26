@@ -72,6 +72,7 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         config: config(SyncProviderTag::Off),
         account: None,
         files: Some(files as Arc<dyn StateFiles>),
+        connections: None,
         cloudkit: None,
         settings: None,
         device_store: Some(device_store as Arc<dyn tablepro_sync::api::HostDeviceStore>),
@@ -352,10 +353,12 @@ async fn a_discarded_replace_draft_is_gone_with_the_recovery_key_it_held() {
         .await
         .unwrap_err();
     let malformed = opened.service.discard_key_draft("not a draft".to_owned()).unwrap_err();
+    let reset = opened.service.resume_reset("not a reset".to_owned()).await.unwrap_err();
 
     assert!(again.is_ok());
     assert_eq!(code(&finished), "sync.unknown");
     assert_eq!(code(&malformed), "sync.malformed");
+    assert_eq!(code(&reset), "sync.malformed");
 }
 
 #[tokio::test]
@@ -450,7 +453,7 @@ fn a_team_s_rows_carry_the_names_the_account_could_read_and_none_for_the_rest() 
         stopped: Vec::new(),
     };
 
-    let info = team_keys_info(keys, &names(team, ana));
+    let info = team_keys_info(keys, &names(team, ana), bo);
 
     assert_eq!(info.team, ScopeName::Team(team).wire());
     assert_eq!(info.team_name.as_deref(), Some("Acme"));
@@ -472,11 +475,12 @@ fn a_reviewed_member_names_its_team_and_reads_back_as_the_engine_s() {
         confirmed_under_av: Version::new(3).unwrap(),
     };
 
-    let info = reviewed_member_info(member, &names(team, ana));
+    let info = reviewed_member_info(member, &names(team, ana), ana);
     let back = super::keys::reviewed_member_arg(&info).unwrap();
 
     assert_eq!(info.team_name.as_deref(), Some("Acme"));
     assert_eq!(info.name.as_deref(), Some("Ana"));
+    assert!(info.is_self);
     assert_eq!(back, member);
     assert_eq!(
         super::keys::reviewed_member_arg(&super::keys::ReviewedMemberInfo {
@@ -500,4 +504,39 @@ async fn a_start_that_failed_for_a_reason_that_stays_is_not_tried_again() {
 
     assert_eq!(first, Some("sync.signed_out"));
     assert_eq!(again, Some("sync.signed_out"));
+}
+
+#[test]
+fn a_credential_to_rotate_names_its_connection_while_the_store_holds_it() {
+    use tablepro_keys::envelope::{EnvelopeId, ParentKind, SecretKind};
+
+    let kept = Uuid::from_u128(5);
+    let gone = Uuid::from_u128(6);
+    let names = std::collections::HashMap::from([(kept, "Prod".to_owned())]);
+    let id = |connection: Uuid, kind| {
+        EnvelopeId::new(
+            ParentKind::Connection,
+            &tablepro_keys::encoding::uuid_to_wire(connection),
+            kind,
+        )
+        .unwrap()
+    };
+    let profile = EnvelopeId::new(
+        ParentKind::SshProfile,
+        &tablepro_keys::encoding::uuid_to_wire(kept),
+        SecretKind::SshPassword,
+    )
+    .unwrap();
+
+    let named = super::keys::credential_info(&id(kept, SecretKind::Password), &names);
+    let missing = super::keys::credential_info(&id(gone, SecretKind::Plugin("token".to_owned())), &names);
+    let other = super::keys::credential_info(&profile, &names);
+
+    assert_eq!(named.connection_name.as_deref(), Some("Prod"));
+    assert_eq!(named.field, "password");
+    assert_eq!(named.connection, Some(tablepro_keys::encoding::uuid_to_wire(kept)));
+    assert_eq!(missing.connection_name, None);
+    assert_eq!(missing.field, "plugin.token");
+    assert_eq!((other.connection.clone(), other.connection_name.clone()), (None, None));
+    assert_eq!(other.parent_kind, "ssh_profile");
 }
