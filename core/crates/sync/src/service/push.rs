@@ -125,6 +125,7 @@ impl ServiceSync {
         }
         let pending = self.pending(ctx, session, &row).await?;
         ctx.report.queued += pending.len();
+        *ctx.report.queued_in.entry(scope).or_default() += pending.len();
         if pending.is_empty() {
             self.clear_outbox(scope).await?;
         }
@@ -203,7 +204,7 @@ impl ServiceSync {
                 out.extend(pending);
             }
             if !diffed.acknowledged.is_empty() {
-                self.stop.check()?;
+                self.check_stop()?;
                 adapter
                     .tombstones_pushed(
                         scope,
@@ -213,7 +214,7 @@ impl ServiceSync {
             }
         }
         if !pruned.is_empty() {
-            self.stop.check()?;
+            self.check_stop()?;
             let mut txn = begin(&self.state).await?;
             for key in pruned {
                 txn.delete(&RowKey::Base(key)).await?;
@@ -238,7 +239,7 @@ impl ServiceSync {
                 continue;
             };
             let print = fingerprint(&pending.change());
-            self.stop.check()?;
+            self.check_stop()?;
             let sealed = match self.keys.seal_history_entry(HistoryId(id), fields.clone()).await {
                 Ok(sealed) => sealed,
                 Err(error @ (SyncError::Keys(_) | SyncError::NotAllowed { .. } | SyncError::Locked { .. })) => {
@@ -327,7 +328,7 @@ impl ServiceSync {
         let retention_ms = i64::try_from(ctx.body.idempotency_retention_secs.saturating_mul(1_000)).unwrap_or(i64::MAX);
         for fresh in [false, true] {
             let key = self.outbox_key(scope, digest, retention_ms, fresh).await?;
-            self.stop.check()?;
+            self.check_stop()?;
             let request = PushBatch {
                 scope,
                 epoch: Some(epoch),
@@ -376,7 +377,7 @@ impl ServiceSync {
         });
         let key = row.idempotency_key.clone();
         txn.put(Row::Outbox(row)).await?;
-        self.stop.check()?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(key)
     }
@@ -388,13 +389,13 @@ impl ServiceSync {
             return Ok(());
         }
         txn.delete(&RowKey::Outbox(scope)).await?;
-        self.stop.check()?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
 
     async fn epoch_changed(&self, scope: ScopeName) -> Result<(), SyncError> {
-        self.stop.check()?;
+        self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         if let Some(Row::Scope(mut row)) = txn.get(&RowKey::Scope(scope)).await? {
             row.refill = true;
@@ -501,7 +502,7 @@ impl ServiceSync {
         deleted_history: Vec<String>,
         gone: Vec<RecordKey>,
     ) -> Result<(), SyncError> {
-        self.stop.check()?;
+        self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         // A record the person deleted here has nothing left to approve.
         for key in &gone {
@@ -537,7 +538,7 @@ impl ServiceSync {
                 .into_iter()
                 .find(|adapter| adapter.kind() == kind);
             if let Some(adapter) = adapter {
-                self.stop.check()?;
+                self.check_stop()?;
                 adapter.tombstones_pushed(scope, ids).await?;
             }
         }

@@ -111,10 +111,15 @@ pub struct ServiceSync {
     proofs: Arc<dyn ProofSource>,
     clock: Arc<dyn Clock>,
     stop: StopSignal,
+    // A switch to teams-only ends the pass in flight at its next store write, commit or send, so nothing personal goes
+    // on once personal sync stops (0055, Leaving a provider).
+    switching: StopSignal,
     journal: Journal,
     events: Option<Arc<dyn EngineEvents>>,
     // Changed only under the session lock, so one pass and one decision each see one mode.
     mode: Mutex<ServiceMode>,
+    // What the last full pass found to send, per scope, so the count shown leaves out the scopes that rest.
+    queued: Mutex<HashMap<ScopeName, usize>>,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
@@ -144,6 +149,7 @@ pub struct PassReport {
     pub skipped: Vec<(ScopeName, &'static str)>,
     pub pull_only: bool,
     pub queued: usize,
+    pub queued_in: HashMap<ScopeName, usize>,
 }
 
 // One store as the pass found it: its identity at the start, and whether its kinds refill.
@@ -231,9 +237,11 @@ impl ServiceSync {
             proofs: parts.proofs,
             clock: parts.clock,
             stop: parts.stop,
+            switching: StopSignal::new(),
             journal: parts.journal,
             events: parts.events,
             mode: Mutex::new(parts.mode),
+            queued: Mutex::default(),
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
                 provider: Some(Provider::Service),
@@ -271,19 +279,44 @@ impl ServiceSync {
     // Between passes: a move between providers, or the person turning personal sync on or off. Turning it on reads the
     // personal scope again on the next pass, since its kinds were off meanwhile.
     pub async fn set_mode(&self, mode: ServiceMode) {
+        if mode == ServiceMode::TeamsOnly && self.mode() == ServiceMode::Personal {
+            self.switching.stop();
+        }
         let session = self.session.lock().await;
         let changed = {
             let mut held = self.mode.lock().unwrap_or_else(PoisonError::into_inner);
             std::mem::replace(&mut *held, mode) != mode
         };
+        self.switching.resume();
         drop(session);
         if changed {
             self.refresh_counts().await;
+            let queued = self.queued_shown();
+            self.status_lock().queued_changes = queued;
             if let Some(events) = &self.events {
                 events.status_changed();
             }
             self.journal.pass_soon(PassReason::Person);
         }
+    }
+
+    fn check_stop(&self) -> Result<(), SyncError> {
+        self.stop.check()?;
+        self.switching.check()
+    }
+
+    fn stopping(&self) -> bool {
+        self.stop.is_stopped() || self.switching.is_stopped()
+    }
+
+    fn queued_shown(&self) -> u32 {
+        let queued = self.queued.lock().unwrap_or_else(PoisonError::into_inner);
+        let shown: usize = queued
+            .iter()
+            .filter(|(scope, _)| carries_personal(self.mode(), **scope))
+            .map(|(_, count)| *count)
+            .sum();
+        u32::try_from(shown).unwrap_or(u32::MAX)
     }
 
     // The stores as the person's decisions reach them: a value the service pulled for personal data while it rests
@@ -366,7 +399,7 @@ impl ServiceSync {
     }
 
     async fn run(&self, session: &mut Session, named: Option<JournalIds>) -> Result<PassReport, SyncError> {
-        self.stop.check()?;
+        self.check_stop()?;
         self.refill_stale_file(session).await?;
         self.queue().finish_decided().await?;
         let body = self.poll_scopes(session).await?;
@@ -546,7 +579,7 @@ impl ServiceSync {
                 // Kept as a missing row until the refill is done, so a pass cut short refills again and the writes
                 // of a half-done refill never read as the store going on.
                 if refill && stored.is_some() {
-                    self.stop.check()?;
+                    self.check_stop()?;
                     let mut txn = begin(&self.state).await?;
                     txn.delete(&RowKey::Store(store.clone())).await?;
                     txn.commit().await?;
@@ -577,7 +610,7 @@ impl ServiceSync {
         if rows.is_empty() {
             return Ok(());
         }
-        self.stop.check()?;
+        self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         for row in rows {
             txn.put(row).await?;
@@ -647,7 +680,7 @@ impl ServiceSync {
             return Ok(());
         }
         if self.state.opened().sync_tables == crate::api::state::SyncTrust::Refill {
-            self.stop.check()?;
+            self.check_stop()?;
             let mut txn = begin(&self.state).await?;
             for row in txn.scan(&RowRange::Table(Table::Stores)).await? {
                 txn.delete(&row.key()).await?;
@@ -661,19 +694,30 @@ impl ServiceSync {
     // A journal pass diffs only what it was told of, so the count it saw is not what waits.
     async fn finish(&self, outcome: &Result<PassReport, SyncError>, journal_only: bool) {
         let counts = self.counts().await;
+        if let (Ok(report), false) = (outcome, journal_only) {
+            self.queued
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone_from(&report.queued_in);
+        }
+        let queued = self.queued_shown();
         let mut status = self.status_lock();
         status.last_pass_ms = Some(self.clock.now_ms());
         match outcome {
             Ok(report) => {
                 status.problem = None;
                 if !journal_only {
-                    status.queued_changes = u32::try_from(report.queued).unwrap_or(u32::MAX);
+                    status.queued_changes = queued;
                 }
                 status.phase = if report.pull_only {
                     SyncPhase::PullOnly
                 } else {
                     SyncPhase::Idle
                 };
+            }
+            // A switch to teams-only ended the pass; the next one runs at once.
+            Err(SyncError::Cancelled) if self.switching.is_stopped() && !self.stop.is_stopped() => {
+                status.phase = SyncPhase::Idle;
             }
             Err(error) => {
                 status.problem = Some(error.code());

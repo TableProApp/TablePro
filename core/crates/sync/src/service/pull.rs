@@ -266,7 +266,7 @@ impl ServiceSync {
         row: &mut ScopeRow,
     ) -> Result<Option<CaughtUp>, SyncError> {
         for _ in 0..MAX_PAGES {
-            self.stop.check()?;
+            self.check_stop()?;
             // A history snapshot asks for no more than its window still takes.
             let limit = pull
                 .window
@@ -435,7 +435,7 @@ impl ServiceSync {
         let Some((family, records)) = run else {
             return Ok(());
         };
-        self.stop.check()?;
+        self.check_stop()?;
         // Each run starts from the position the page reached so far, which the state file holds only once the page
         // commits, so a second run of versions goes on from the first's; the position only moves forward (0056,
         // Rollback, In order).
@@ -513,7 +513,7 @@ impl ServiceSync {
         // A conflict is kept before the store takes the server's side of it, so a crash between the two never loses
         // the device's side (0044, Conflict rules).
         if !writes.conflicts.is_empty() {
-            self.stop.check()?;
+            self.check_stop()?;
             let mut txn = begin(&self.state).await?;
             for conflict in &writes.conflicts {
                 txn.put(Row::Conflict(conflict.clone())).await?;
@@ -735,7 +735,7 @@ impl ServiceSync {
             }
         }
         for (index, changes) in grouped {
-            self.stop.check()?;
+            self.check_stop()?;
             if let Some(adapter) = adapters.get(index) {
                 adapter.apply(scope, changes).await?;
             }
@@ -744,7 +744,7 @@ impl ServiceSync {
     }
 
     pub(super) async fn commit_page(&self, writes: PageWrites, row: Option<&ScopeRow>) -> Result<(), SyncError> {
-        self.stop.check()?;
+        self.check_stop()?;
         let mut txn = begin(&self.state).await?;
         for key in writes.unheld {
             txn.delete(&RowKey::Held(key)).await?;
@@ -779,7 +779,7 @@ impl ServiceSync {
         if let Some(row) = row {
             txn.put(Row::Scope(row.clone())).await?;
         }
-        self.stop.check()?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
@@ -887,7 +887,7 @@ impl ServiceSync {
         let Some(cursor) = row.older_cursor.clone() else {
             return Ok(false);
         };
-        self.stop.check()?;
+        self.check_stop()?;
         let request = PullRequest {
             scope,
             cursor: Some(cursor),

@@ -295,3 +295,57 @@ async fn a_personal_approval_rests_unlisted_and_undecided_while_teams_only() {
         .any(|row| matches!(row, Row::Held(held) if held.key == key))
     );
 }
+
+// Personal sync stops at once: the pass in flight writes nothing personal more and sends nothing more, and an answer
+// the server gave before the switch is dropped (0055, Leaving a provider).
+#[tokio::test]
+async fn a_switch_to_teams_only_ends_the_pass_in_flight_before_it_writes_what_it_pulled() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    mac.connections.put(&id(1), connection("Prod"));
+    mac.sync().await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mini.connections.put(&id(3), connection("Local"));
+    let (reached, release) = mini.wire.hold_next_pull(ScopeName::Personal);
+
+    let switch = async {
+        reached.notified().await;
+        let let_go = async {
+            tokio::task::yield_now().await;
+            release.notify_one();
+        };
+        tokio::join!(mini.sync.set_mode(ServiceMode::TeamsOnly), let_go);
+    };
+    let (ended, ()) = tokio::join!(mini.pass(), switch);
+    let status = mini.sync.status();
+    mini.sync().await;
+
+    assert_eq!(ended.unwrap_err().code(), "sync.cancelled");
+    assert_eq!(status.problem, None);
+    assert_eq!(status.queued_changes, 0);
+    assert_eq!(mini.sync.mode(), ServiceMode::TeamsOnly);
+    assert_eq!(mini.connections.get(&id(1)), None);
+    assert_eq!(stored(&server, "connection", &id(3)), None);
+}
+
+// The count of what waits to go up leaves out personal data once it rests, even before another pass runs.
+#[tokio::test]
+async fn the_queued_count_leaves_out_the_personal_scope_once_it_rests() {
+    let server = FakeServer::new();
+    server.add_team(team(), &[(account(), Role::Owner)]);
+    let queries = MemoryAdapter::new(Kind::LibraryQuery, "team_library", StoreFile::new());
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .adapter(ScopeName::Team(team()), Arc::clone(&queries))
+        .build()
+        .await;
+    mini.sync().await;
+    mini.connections.put(&id(3), connection("Local"));
+    queries.put("q1", query("Report"));
+    mini.sync().await;
+    let both = mini.sync.status().queued_changes;
+
+    mini.sync.set_mode(ServiceMode::TeamsOnly).await;
+
+    assert_eq!(both, 2);
+    assert_eq!(mini.sync.status().queued_changes, 1);
+}
