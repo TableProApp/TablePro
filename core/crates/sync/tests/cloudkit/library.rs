@@ -73,9 +73,11 @@ impl Shelf {
 
     async fn take_everything(&self) {
         let adapters = Adapters::new(self.adapters());
+        let stop = StopSignal::new();
         let queue = Queue {
             state: &self.rig.state,
             adapters: &adapters,
+            fence: &stop,
         };
         for approval in queue.waiting().await.unwrap() {
             queue

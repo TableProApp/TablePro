@@ -205,7 +205,7 @@ impl SyncService {
     pub(crate) async fn open(tasks: Tasks, mut parts: OpenParts) -> Arc<Self> {
         let (cloudkit, files) = (parts.cloudkit.clone(), parts.files.clone());
         let signals = Arc::new(Signals::default());
-        let forwarding = forward(Arc::clone(&signals), parts.listener, &tasks);
+        let forwarding = forward(Arc::clone(&signals), Arc::clone(&parts.listener), &tasks);
         let hosts = parts.hosts(signals);
         let categories = categories_arg(&parts.config.categories);
         let mirror = parts.legacy_mirror;

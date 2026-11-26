@@ -18,8 +18,8 @@ use crate::api::scopes::{LineageEpoch, Role, ScopePolicies};
 use crate::api::state::{
     ApprovalDecision, ApprovalRow, BaseRow, BindingRow, ConflictRow, DeferredRow, DeletedHistoryRow, HeldReason,
     HeldRow, Holder, KeyComparisonRow, KeyDevicePinRow, KeyEnvelopeRow, KeyObjectRow, KeyPendingRow, KeyPinRow,
-    KeyVersionRow, KeyVersionState, LegacyMirrorRow, OutboxRow, PendingFlow, Provider, PushWait, RefusedRow, Row,
-    ScopeRow, Served, Standing, StandingRow, StoppedCause, StoreRow, StoresKindRow, Table,
+    KeyVersionRow, KeyVersionState, LegacyMirrorRow, MovePhase, MoveRow, OutboxRow, PendingFlow, Provider, PushWait,
+    RefusedRow, Row, ScopeRow, Served, Standing, StandingRow, StoppedCause, StoreRow, StoresKindRow, Table,
 };
 use crate::api::transport::{DeletedReason, PulledRecord, ServiceMeta};
 
@@ -331,6 +331,8 @@ fn deleted(text: &str) -> Result<DeletedReason, StateError> {
     }
 }
 
+const MOVE_PHASES: [(MovePhase, &str); 2] = [(MovePhase::Open, "open"), (MovePhase::Done, "done")];
+
 const STANDINGS: [(Standing, &str); 3] = [
     (Standing::Syncs, "syncs"),
     (Standing::LocalOnly, "local_only"),
@@ -477,6 +479,11 @@ pub(crate) fn columns(row: &Row) -> Vec<u8> {
         }
         Row::LegacyMirror(row) => {
             out.bytes(&row.value);
+        }
+        Row::Move(row) => {
+            out.maybe(row.from, |out, from| out.text(provider_name(from)))
+                .text(provider_name(row.target))
+                .text(name_of(&MOVE_PHASES, row.phase));
         }
         key_row => key_columns(&mut out, key_row),
     }
@@ -745,6 +752,11 @@ pub(crate) fn decode(table: Table, key: &[u8], columns: &[u8]) -> Result<Row, St
         Table::LegacyMirror => Row::LegacyMirror(LegacyMirrorRow {
             item: keys.text("item")?,
             value: read.bytes("value")?,
+        }),
+        Table::Moves => Row::Move(MoveRow {
+            from: read.maybe(|bytes| provider(&text(bytes)?))?,
+            target: provider(&read.text("move target")?)?,
+            phase: named(&MOVE_PHASES, &read.text("move phase")?, "move phase")?,
         }),
         key_table => key_row(key_table, &mut keys, &mut read)?,
     };

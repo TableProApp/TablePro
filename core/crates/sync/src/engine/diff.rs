@@ -130,6 +130,11 @@ pub struct KeptOff {
 }
 
 impl KeptOff {
+    // An engine with no connection store: what its adapters say of each record's connection stands alone.
+    pub fn none() -> Self {
+        Self::default()
+    }
+
     // None when the connection store could not be read.
     pub fn of(connections: Option<&LocalRecords>) -> Self {
         let Some(local) = connections else {

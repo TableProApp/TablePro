@@ -20,8 +20,8 @@ pub(super) async fn rows(tx: &mut Transaction<'static, Sqlite>) -> Result<bool, 
         1 => {}
         _ => return Err(StateError::Integrity),
     }
-    // Schema 1 had neither table, so no commit wrote what they hold.
-    for table in [Table::StoresKinds, Table::Refused] {
+    // Schema 1 had none of these tables, so no commit wrote what they hold.
+    for table in [Table::StoresKinds, Table::Refused, Table::Moves] {
         let statement = format!("DELETE FROM {}", table.name());
         sqlx::query(AssertSqlSafe(statement))
             .execute(&mut **tx)

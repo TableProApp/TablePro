@@ -84,12 +84,12 @@ pub(crate) async fn key_digest_in(
     Ok(hasher.finalize().into())
 }
 
-// The sync tables a schema's digest takes, in order. Schema 1 had no `stores_kinds` or `refused` (0066, The state
-// file).
+// The sync tables a schema's digest takes, in order. Schema 1 had no `stores_kinds`, `refused` or `moves` (0066, The
+// state file).
 fn sync_tables(schema: u32) -> impl Iterator<Item = Table> {
     Table::SYNC
         .into_iter()
-        .filter(move |table| schema > 1 || !matches!(table, Table::StoresKinds | Table::Refused))
+        .filter(move |table| schema > 1 || !matches!(table, Table::StoresKinds | Table::Refused | Table::Moves))
 }
 
 pub(crate) async fn sync_digest_in(tx: &mut Transaction<'static, Sqlite>, schema: u32) -> Result<[u8; 32], StateError> {

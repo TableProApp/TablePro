@@ -28,9 +28,10 @@ use crate::api::adapter::{LocalRecord, LocalRecords};
 use crate::api::cloudkit::{CloudKitFailure, CloudKitField, CloudKitRecord, CloudKitValue};
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, KindName, RecordKey};
-use crate::api::state::{BaseRow, Row, RowKey, RowRange, Standing, Table};
+use crate::api::state::{BaseRow, Row, RowKey, RowRange, Standing, StandingRow, Table};
 use crate::engine::{
     Backoff, JournalIds, KeptOff, Pending, PendingOp, StopSignal, diff, forget_kept_off, hold_kept_off,
+    kept_off_connections,
 };
 
 // A pass sends again what a refusal merged, at most this many times; what is left waits for the next pass.
@@ -406,24 +407,7 @@ impl<'p> Pusher<'p> {
     async fn pending(&self, report: &mut PushReport, leave: &Leave<'_>) -> Result<Vec<Item>, SyncError> {
         let held = self.held().await?;
         let waiting = approval::held_members(self.fetcher.state.begin().await?.as_mut(), SCOPE).await?;
-        // The connections that keep their records on the device; a store that cannot be read keeps all.
-        let connections = match self.fetcher.adapters.get(&Kind::Connection) {
-            Some(adapter) => adapter.records(SCOPE).await.ok(),
-            None => None,
-        };
-        let recorded = self
-            .fetcher
-            .state
-            .begin()
-            .await?
-            .scan(&RowRange::ScopeKind(Table::Standing, SCOPE, KindName::of(Kind::Connection)))
-            .await?
-            .into_iter()
-            .filter_map(|row| match row {
-                Row::Standing(row) if row.standing != Standing::Syncs => Uuid::parse_str(&row.key.record_id).ok(),
-                _ => None,
-            });
-        let kept_off = KeptOff::of(connections.as_ref()).recorded(recorded);
+        let kept_off = self.kept_off(leave.counting).await?;
         let mut forgotten = Vec::new();
         let mut items = Vec::new();
         for (kind, adapter) in &self.fetcher.adapters {
@@ -492,6 +476,53 @@ impl<'p> Pusher<'p> {
             txn.commit().await?;
         }
         Ok(items)
+    }
+
+    // The connections that keep their records on the device; a store that cannot be read keeps all, and an engine with
+    // no connection store leaves that to its adapters. A connection kept off sync that a base names gets its standing
+    // recorded, so once the store no longer holds it its deletion and its records' stay on the device (0054, Rules for
+    // both providers).
+    async fn kept_off(&self, counting: bool) -> Result<KeptOff, SyncError> {
+        let Some(adapter) = self.fetcher.adapters.get(&Kind::Connection) else {
+            return Ok(KeptOff::none());
+        };
+        let connections = adapter.records(SCOPE).await.ok();
+        let name = KindName::of(Kind::Connection);
+        let bases = self.bases(Kind::Connection).await?;
+        let mut txn = self.fetcher.state.begin().await?;
+        let mut recorded: HashMap<String, Standing> = HashMap::new();
+        for row in txn.scan(&RowRange::ScopeKind(Table::Standing, SCOPE, name.clone())).await? {
+            if let Row::Standing(row) = row {
+                recorded.insert(row.key.record_id, row.standing);
+            }
+        }
+        if let (Some(local), false) = (&connections, counting) {
+            let mut wrote = false;
+            for id in kept_off_connections(local, &bases) {
+                let wire = tablepro_records::record_id::uuid_id(id);
+                let Some(record) = local.records.iter().find(|record| record.record_id == wire) else {
+                    continue;
+                };
+                if recorded.get(&wire) != Some(&record.standing) {
+                    txn.put(Row::Standing(StandingRow {
+                        key: RecordKey::new(SCOPE, name.clone(), wire.clone()),
+                        standing: record.standing,
+                    }))
+                    .await?;
+                    recorded.insert(wire, record.standing);
+                    wrote = true;
+                }
+            }
+            if wrote {
+                self.stop.check()?;
+                txn.commit().await?;
+            }
+        }
+        let kept = recorded
+            .into_iter()
+            .filter(|(_, standing)| *standing != Standing::Syncs)
+            .filter_map(|(id, _)| Uuid::parse_str(&id).ok());
+        Ok(KeptOff::of(connections.as_ref()).recorded(kept))
     }
 
     // The store's copies by the id the zone names them with (0052, Long ids), each as what iCloud carries of it, so a

@@ -432,15 +432,15 @@ impl ServiceSync {
         if scope != ScopeName::Personal {
             return Ok(KeptOff::default());
         }
-        let connections = match self
+        let Some(adapter) = self
             .adapters
             .in_scope(scope)
             .into_iter()
             .find(|adapter| adapter.kind() == Kind::Connection)
-        {
-            Some(adapter) => adapter.records(scope).await.ok(),
-            None => None,
+        else {
+            return Ok(KeptOff::none());
         };
+        let connections = adapter.records(scope).await.ok();
         let name = KindName::of(Kind::Connection);
         let mut recorded: HashMap<String, Standing> = HashMap::new();
         for row in begin(&self.state)

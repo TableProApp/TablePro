@@ -175,15 +175,15 @@ impl AccountService {
 
         #[async_trait::async_trait]
         impl tablepro_account::RefreshTokenVault for NoVault {
-            async fn load_refresh_token(&self) -> Result<Option<SecretString>, tablepro_account::SecretError> {
+            async fn load_refresh_token(&self) -> Result<Option<SecretString>, tablepro_core::credentials::SecretError> {
                 Ok(None)
             }
 
-            async fn store_refresh_token(&self, _: &SecretString) -> Result<(), tablepro_account::SecretError> {
+            async fn store_refresh_token(&self, _: &SecretString) -> Result<(), tablepro_core::credentials::SecretError> {
                 Ok(())
             }
 
-            async fn delete_refresh_token(&self) -> Result<(), tablepro_account::SecretError> {
+            async fn delete_refresh_token(&self) -> Result<(), tablepro_core::credentials::SecretError> {
                 Ok(())
             }
         }

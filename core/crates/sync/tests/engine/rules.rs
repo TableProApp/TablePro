@@ -200,24 +200,15 @@ async fn a_decision_on_a_record_the_store_cannot_read_keeps_the_approval_waiting
         .put(&id(1), json!({"name": "Prod", "startup_commands": "SET a = 1"}));
     mini.sync().await;
     mac.sync().await;
-    mac.sync
-        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), true)
-        .await
-        .unwrap();
+    mac.decide(key(&id(1)), "/startup_commands", true).await.unwrap();
     mac.connections
         .put(&id(1), json!({"name": "Prod", "startup_commands": "DROP TABLE users"}));
     mac.sync().await;
     mini.sync().await;
     mini.connections.make_unreadable(&id(1));
 
-    let rejected = mini
-        .sync
-        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), false)
-        .await;
-    let approved = mini
-        .sync
-        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), true)
-        .await;
+    let rejected = mini.decide(key(&id(1)), "/startup_commands", false).await;
+    let approved = mini.decide(key(&id(1)), "/startup_commands", true).await;
 
     assert_eq!(rejected.unwrap_err().code(), "sync.adapter.unreadable");
     assert_eq!(approved.unwrap_err().code(), "sync.adapter.unreadable");
@@ -238,7 +229,7 @@ async fn a_held_record_never_goes_in_over_a_copy_the_store_cannot_read() {
     mini.sync().await;
     mini.connections.make_unreadable(&id(1));
 
-    let approved = mini.sync.decide_approval(key(&id(1)), "/host".to_owned(), true).await;
+    let approved = mini.decide(key(&id(1)), "/host", true).await;
     let Some(Row::Approval(mut row)) = mini.row(RowKey::Approval(key(&id(1)), "/host".to_owned())).await else {
         panic!("the approval row went");
     };

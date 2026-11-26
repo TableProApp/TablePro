@@ -67,6 +67,21 @@ impl MoveBack {
         }
     }
 
+    // The ids the personal stores hold once personal sync rests, so a pass that ran between the plan and the fence
+    // leaves no base behind for a record it took off this device.
+    pub(super) async fn held_now(&mut self, service: &crate::service::ServiceSync) -> Result<(), SyncError> {
+        self.held = service
+            .personal_ids()
+            .await?
+            .into_iter()
+            .flat_map(|(kind, ids)| {
+                ids.into_iter()
+                    .map(move |id| RecordKey::new(ScopeName::Personal, kind, shortened(kind, id)))
+            })
+            .collect();
+        Ok(())
+    }
+
     // Nothing but what the person confirmed may go from the zone: any other CloudKit base the device's stores lack,
     // whatever the service did meanwhile, loses its base, so the iCloud engine sends no deletion for it, and the next
     // fetch reads the zone whole and brings the record back.
@@ -82,6 +97,8 @@ impl MoveBack {
                 txn.delete(&RowKey::Base(base.key)).await?;
             }
         }
+        // The file syncs on iCloud again once its move back ends.
+        txn.delete(&RowKey::Move).await?;
         txn.commit().await?;
         read_everything_again(state.as_ref()).await
     }

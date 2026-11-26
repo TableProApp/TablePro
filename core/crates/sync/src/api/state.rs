@@ -151,6 +151,8 @@ pub enum Table {
     Approvals,
     Conflicts,
     LegacyMirror,
+    // A move between providers this device started: its target and how far it went (0054, Moving between providers).
+    Moves,
     KeyObjects,
     KeyPins,
     KeyDevicePins,
@@ -162,7 +164,7 @@ pub enum Table {
 }
 
 impl Table {
-    pub const SYNC: [Self; 14] = [
+    pub const SYNC: [Self; 15] = [
         Self::Binding,
         Self::Scopes,
         Self::Stores,
@@ -177,6 +179,7 @@ impl Table {
         Self::Approvals,
         Self::Conflicts,
         Self::LegacyMirror,
+        Self::Moves,
     ];
 
     pub const KEY: [Self; 8] = [
@@ -206,6 +209,7 @@ impl Table {
             Self::Approvals => "approvals",
             Self::Conflicts => "conflicts",
             Self::LegacyMirror => "legacy_mirror",
+            Self::Moves => "moves",
             Self::KeyObjects => "key_objects",
             Self::KeyPins => "key_pins",
             Self::KeyDevicePins => "key_device_pins",
@@ -434,6 +438,23 @@ pub struct ConflictRow {
     pub base: Option<Value>,
     pub mine: Option<Value>,
     pub theirs: Option<Value>,
+}
+
+// How far a move went. A move to TablePro Sync is `Open` in the iCloud file it leaves once iCloud stopped for it, so
+// that file never syncs again while it is, and in the service file while the arrival's snapshot runs; `Done` in the
+// iCloud file once everything arrived. A move back to iCloud is `Open` in the service file until iCloud holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MovePhase {
+    Open,
+    Done,
+}
+
+// The one row of `moves`. `from` is None for a first upload from no provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MoveRow {
+    pub from: Option<Provider>,
+    pub target: Provider,
+    pub phase: MovePhase,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -690,6 +711,7 @@ pub enum Row {
     Approval(ApprovalRow),
     Conflict(ConflictRow),
     LegacyMirror(LegacyMirrorRow),
+    Move(MoveRow),
     KeyObject(KeyObjectRow),
     KeyPin(KeyPinRow),
     KeyDevicePin(KeyDevicePinRow),
@@ -716,6 +738,7 @@ pub enum RowKey {
     Approval(RecordKey, String),
     Conflict(RecordKey),
     LegacyMirror(String),
+    Move,
     KeyObject(ScopeName, KindName, String),
     KeyPin(AccountId),
     KeyDevicePin(KeyDeviceId),
@@ -743,6 +766,7 @@ impl Row {
             Self::Approval(row) => RowKey::Approval(row.key.clone(), row.field.clone()),
             Self::Conflict(row) => RowKey::Conflict(row.key.clone()),
             Self::LegacyMirror(row) => RowKey::LegacyMirror(row.item.clone()),
+            Self::Move(_) => RowKey::Move,
             Self::KeyObject(row) => RowKey::KeyObject(row.scope, row.kind.clone(), row.record_id.clone()),
             Self::KeyPin(row) => RowKey::KeyPin(row.account),
             Self::KeyDevicePin(row) => RowKey::KeyDevicePin(row.key_device),
@@ -786,6 +810,7 @@ impl RowKey {
             Self::Approval(..) => Table::Approvals,
             Self::Conflict(_) => Table::Conflicts,
             Self::LegacyMirror(_) => Table::LegacyMirror,
+            Self::Move => Table::Moves,
             Self::KeyObject(..) => Table::KeyObjects,
             Self::KeyPin(_) => Table::KeyPins,
             Self::KeyDevicePin(_) => Table::KeyDevicePins,
@@ -802,7 +827,7 @@ impl RowKey {
     pub fn encoded(&self) -> Vec<u8> {
         let mut out = Vec::new();
         match self {
-            Self::Binding => {}
+            Self::Binding | Self::Move => {}
             Self::Scope(scope) | Self::Outbox(scope) => column(&mut out, scope.wire().as_bytes()),
             Self::Store(text) | Self::LegacyMirror(text) | Self::DeletedHistory(text) => {
                 column(&mut out, text.as_bytes());

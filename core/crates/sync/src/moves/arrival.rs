@@ -10,7 +10,7 @@ use tablepro_records::move_marker::{MEMBER, MoveMarker};
 use tablepro_records::record_id::shortened;
 
 use crate::api::ids::{ChangeTag, RecordKey, ScopeName};
-use crate::api::state::BaseRow;
+use crate::api::state::{BaseRow, Provider};
 use crate::cloudkit::modify::IcloudCopy;
 use crate::engine::{Pending, PendingOp};
 
@@ -50,6 +50,14 @@ impl Arrival {
             listed: copy.listed.map(|listed| listed.into_iter().collect()),
             markers: Mutex::default(),
         })
+    }
+
+    // The provider the personal data comes from; None for a first upload.
+    pub(crate) const fn from(&self) -> Option<Provider> {
+        match self {
+            Self::FromIcloud(_) => Some(Provider::ICloud),
+            Self::FirstUpload => None,
+        }
     }
 
     fn icloud(&self) -> Option<&FromIcloud> {

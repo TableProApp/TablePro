@@ -28,11 +28,14 @@ use crate::api::error::SyncError;
 use crate::api::ids::{KindName, RecordKey};
 use crate::api::legacy::LegacyMirror;
 use crate::api::state::{
-    BaseRow, Provider, PushWait, Row, RowRange, Standing, StateFiles, StateIdentity, StateStore, SyncTrust, Table,
+    BaseRow, MovePhase, MoveRow, Provider, PushWait, Row, RowKey, RowRange, Standing, StateFiles, StateIdentity,
+    StateStore, SyncTrust, Table,
 };
 use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, listed_key, read_everything_again};
 use crate::cloudkit::legacy::{Context, LegacyLink};
 use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalEntry, JournalIds, Pass, StopSignal};
+
+const MOVED: &str = "sync with iCloud once this device's data moved to TablePro Sync";
 
 // The Swift engine's fallback timer, for changes no CloudKit push announced.
 const FALLBACK: Duration = Duration::from_secs(15 * 60);
@@ -227,23 +230,102 @@ impl CloudKitSync {
         self.run_locked(&mut session, why).await
     }
 
+    // The state file of the account this engine syncs, opened if no pass opened it yet: a move reads and marks it
+    // whether or not iCloud ran in this process.
+    async fn move_file(&self, session: &Session) -> Result<Option<Arc<dyn StateStore>>, SyncError> {
+        Ok(match (&session.state, &session.account) {
+            (Some(state), _) => Some(Arc::clone(state)),
+            (None, Some(account)) => Some(self.files.open(identity(account)).await?),
+            (None, None) => None,
+        })
+    }
+
+    async fn mark_move(&self, state: &dyn StateStore, phase: MovePhase) -> Result<(), SyncError> {
+        let mut txn = state.begin().await?;
+        txn.put(Row::Move(MoveRow {
+            from: Some(Provider::ICloud),
+            target: Provider::Service,
+            phase,
+        }))
+        .await?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    // The move to TablePro Sync this file holds, if this device started one.
+    pub async fn open_move(&self) -> Result<Option<MoveRow>, SyncError> {
+        let session = self.session.lock().await;
+        let Some(state) = self.move_file(&session).await? else {
+            return Ok(None);
+        };
+        Ok(match state.begin().await?.get(&RowKey::Move).await? {
+            Some(Row::Move(row)) if row.target == Provider::Service => Some(row),
+            _ => None,
+        })
+    }
+
+    // Everything arrived on TablePro Sync: the file stays moved, and iCloud never syncs it again until a move back.
+    pub async fn finish_move(&self) -> Result<(), SyncError> {
+        let session = self.session.lock().await;
+        if let Some(state) = self.move_file(&session).await? {
+            self.mark_move(state.as_ref(), MovePhase::Done).await?;
+        }
+        Ok(())
+    }
+
+    // A file this device moved to TablePro Sync never syncs on iCloud again, after a restart too, so nothing the move
+    // brought into the stores goes to iCloud (0054, Moving between providers). No CloudKit call runs for it.
+    async fn moved_out(&self, session: &Session) -> Result<bool, SyncError> {
+        let Some(state) = self.move_file(session).await? else {
+            return Ok(false);
+        };
+        Ok(matches!(
+            state.begin().await?.get(&RowKey::Move).await?,
+            Some(Row::Move(MoveRow {
+                target: Provider::Service,
+                ..
+            }))
+        ))
+    }
+
     // A move to TablePro Sync begins (0054, Moving between providers, step 1): a last pass sends what waited, then the
-    // engine stops for good, so nothing of what the move then brings into the stores goes to iCloud. A move called
-    // again after it stopped short finds the engine stopped and runs no pass.
+    // engine stops for good and the file is marked moved, so nothing of what the move then brings into the stores goes
+    // to iCloud, after a restart too. A move called again after it stopped short finds the engine stopped and runs no
+    // pass.
     pub async fn stop_for_move(&self) -> Result<(), SyncError> {
         let mut session = self.session.lock().await;
-        if self.stop.is_stopped() {
-            return Ok(());
+        if !self.stop.is_stopped() {
+            match self.run_locked(&mut session, PassReason::Person).await {
+                Ok(_) => {}
+                // A zone that is gone has nothing to send to; the move goes on without it.
+                Err(SyncError::CloudKit(CloudKitFailure::ZoneNotFound | CloudKitFailure::ZoneDeletedByUser))
+                    if session.zone_removed => {}
+                // A file that moved already runs no pass.
+                Err(SyncError::NotAllowed { what }) if what == MOVED => {}
+                Err(error) => return Err(error),
+            }
+            self.stop.stop();
         }
-        match self.run_locked(&mut session, PassReason::Person).await {
-            Ok(_) => {}
-            // A zone that is gone has nothing to send to; the move goes on without it.
-            Err(SyncError::CloudKit(CloudKitFailure::ZoneNotFound | CloudKitFailure::ZoneDeletedByUser))
-                if session.zone_removed => {}
-            Err(error) => return Err(error),
+        if let Some(state) = self.move_file(&session).await? {
+            let held = state.begin().await?.get(&RowKey::Move).await?;
+            if !matches!(held, Some(Row::Move(MoveRow { target: Provider::Service, .. }))) {
+                self.mark_move(state.as_ref(), MovePhase::Open).await?;
+            }
         }
-        self.stop.stop();
         Ok(())
+    }
+
+    async fn bases_of(state: Option<Arc<dyn StateStore>>) -> Result<Vec<BaseRow>, SyncError> {
+        let mut bases = Vec::new();
+        if let Some(state) = state {
+            let mut txn = state.begin().await?;
+            for row in txn.scan(&RowRange::Scope(Table::Bases, SCOPE)).await? {
+                if let Row::Base(base) = row {
+                    bases.push(base);
+                }
+            }
+        }
+        Ok(bases)
     }
 
     // What the move meets the service's copies with, once the engine stopped: this device's CloudKit bases, and every
@@ -252,15 +334,7 @@ impl CloudKitSync {
     // and no deletion is inferred.
     pub async fn copy_for_move(&self) -> Result<IcloudCopy, SyncError> {
         let session = self.session.lock().await;
-        let mut bases = Vec::new();
-        if let Some(state) = &session.state {
-            let mut txn = state.begin().await?;
-            for row in txn.scan(&RowRange::Scope(Table::Bases, SCOPE)).await? {
-                if let Row::Base(base) = row {
-                    bases.push(base);
-                }
-            }
-        }
+        let bases = Self::bases_of(self.move_file(&session).await?).await?;
         let signed_in = self.transport.account_status().await?.user_record_name;
         let listed = match &session.account {
             Some(account) if *account == signed_in && !session.zone_removed => self.listing(account).await?,
@@ -274,28 +348,22 @@ impl CloudKitSync {
     }
 
     // The move's copy while iCloud traffic is forbidden (0055: TablePro Sync forced with iCloud not allowed): the engine
-    // stops with no last pass, and the move meets the service with the state file's CloudKit bases alone. No zone is
-    // read, so no deletion made on iCloud is inferred; only what this device's bases record goes.
+    // stops with no last pass and the file is marked moved, and the move meets the service with the state file's
+    // CloudKit bases alone. No zone is read, so no deletion made on iCloud is inferred; only what this device's bases
+    // record goes.
     pub async fn copy_without_icloud(&self) -> Result<IcloudCopy, SyncError> {
         self.stop.stop();
         let session = self.session.lock().await;
-        let state = match (&session.state, &session.account) {
-            (Some(state), _) => Some(Arc::clone(state)),
-            (None, Some(account)) => Some(self.files.open(identity(account)).await?),
-            (None, None) => None,
-        };
-        let mut bases = Vec::new();
-        if let Some(state) = state {
-            let mut txn = state.begin().await?;
-            for row in txn.scan(&RowRange::Scope(Table::Bases, SCOPE)).await? {
-                if let Row::Base(base) = row {
-                    bases.push(base);
-                }
+        let state = self.move_file(&session).await?;
+        if let Some(state) = &state {
+            let held = state.begin().await?.get(&RowKey::Move).await?;
+            if !matches!(held, Some(Row::Move(MoveRow { target: Provider::Service, .. }))) {
+                self.mark_move(state.as_ref(), MovePhase::Open).await?;
             }
         }
         Ok(IcloudCopy {
             account: session.account.clone(),
-            bases,
+            bases: Self::bases_of(state).await?,
             listed: None,
         })
     }
@@ -370,6 +438,10 @@ impl CloudKitSync {
 
     async fn run(&self, session: &mut Session, named: Option<&JournalIds>) -> Result<CloudKitReport, SyncError> {
         self.stop.check()?;
+        if self.moved_out(session).await? {
+            self.stop.stop();
+            return Err(SyncError::NotAllowed { what: MOVED });
+        }
         let account = match self.transport.account_status().await {
             Ok(status) => status.user_record_name,
             Err(failure) => return Err(self.ended(session, failure)),

@@ -13,7 +13,7 @@ use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use crate::api::control::{MoveBackPlan, MovePlan};
 use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
-use crate::api::state::{Row, RowRange, StateFiles, StateIdentity, Table};
+use crate::api::state::{MovePhase, MoveRow, Provider, Row, RowKey, RowRange, StateFiles, StateIdentity, Table};
 use crate::cloudkit::modify::{CloudKitSync, IcloudCopy};
 use crate::service::ServiceSync;
 
@@ -53,14 +53,18 @@ impl Mover {
     // zone no longer lists since another device moved it is deleted on the service unless its content changed there.
     // A move that stops short (`sync.move_incomplete` or any other error once iCloud stopped) leaves iCloud stopped,
     // since the stores may already hold what the service brought; calling it again goes on from there.
+    // One that went through already is done, so calling it again moves nothing twice.
     pub async fn move_to_service(&self) -> Result<(), SyncError> {
         let icloud = self.parts.icloud.as_ref().ok_or(SyncError::NotAllowed {
             what: "move to TablePro Sync while iCloud is not the provider",
         })?;
+        if icloud.open_move().await?.is_some_and(|row| row.phase == MovePhase::Done) {
+            return Ok(());
+        }
         icloud.stop_for_move().await?;
         let copy = icloud.copy_for_move().await?;
         self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
-        Ok(())
+        icloud.finish_move().await
     }
 
     // The forward move while iCloud traffic is forbidden (0055: TablePro Sync forced, `ICloudSyncAllowed` off): iCloud
@@ -70,31 +74,55 @@ impl Mover {
     // The engine may never have started, as when the values forbade iCloud at launch: the state file it used last
     // holds the bases then.
     pub async fn move_to_service_without_icloud(&self) -> Result<(), SyncError> {
-        let copy = match &self.parts.icloud {
-            Some(icloud) => icloud.copy_without_icloud().await?,
-            None => {
-                let account = self.parts.icloud_account.as_ref().ok_or(SyncError::NotAllowed {
-                    what: "move from an iCloud state file this device never used",
-                })?;
-                let state = self.parts.files.open(icloud_file(account)).await?;
-                let mut txn = state.begin().await?;
-                let bases = txn
-                    .scan(&RowRange::Scope(Table::Bases, ScopeName::Personal))
-                    .await?
-                    .into_iter()
-                    .filter_map(|row| match row {
-                        Row::Base(base) => Some(base),
-                        _ => None,
-                    })
-                    .collect();
-                IcloudCopy {
-                    account: Some(account.clone()),
-                    bases,
-                    listed: None,
-                }
+        if let Some(icloud) = &self.parts.icloud {
+            if icloud.open_move().await?.is_some_and(|row| row.phase == MovePhase::Done) {
+                return Ok(());
             }
+            let copy = icloud.copy_without_icloud().await?;
+            self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
+            return icloud.finish_move().await;
+        }
+        let account = self.parts.icloud_account.as_ref().ok_or(SyncError::NotAllowed {
+            what: "move from an iCloud state file this device never used",
+        })?;
+        let state = self.parts.files.open(icloud_file(account)).await?;
+        let held = match state.begin().await?.get(&RowKey::Move).await? {
+            Some(Row::Move(row)) => Some(row.phase),
+            _ => None,
+        };
+        if held == Some(MovePhase::Done) {
+            return Ok(());
+        }
+        let moving = |phase| {
+            Row::Move(MoveRow {
+                from: Some(Provider::ICloud),
+                target: Provider::Service,
+                phase,
+            })
+        };
+        let mut txn = state.begin().await?;
+        if held.is_none() {
+            txn.put(moving(MovePhase::Open)).await?;
+        }
+        let bases = txn
+            .scan(&RowRange::Scope(Table::Bases, ScopeName::Personal))
+            .await?
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Base(base) => Some(base),
+                _ => None,
+            })
+            .collect();
+        txn.commit().await?;
+        let copy = IcloudCopy {
+            account: Some(account.clone()),
+            bases,
+            listed: None,
         };
         self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
+        let mut txn = state.begin().await?;
+        txn.put(moving(MovePhase::Done)).await?;
+        txn.commit().await?;
         Ok(())
     }
 
@@ -123,21 +151,25 @@ impl Mover {
 
     // Refused unless `confirmed_deletions` is the count the plan gives now. Personal data then rests on the service, and
     // the app turns iCloud on as it does today.
+    // Personal service sync rests from the moment the count is checked, so no pass changes the stores between what the
+    // move keeps and what iCloud then reads; the `moves` row keeps it resting after a restart until the move ends.
     pub async fn move_to_icloud(&self, confirmed_deletions: u64) -> Result<(), SyncError> {
-        let back = self.move_back().await?;
+        let mut back = self.move_back().await?;
         if u64::try_from(back.len()).unwrap_or(u64::MAX) != confirmed_deletions {
             return Err(SyncError::NotAllowed {
                 what: "move back with another count of iCloud deletions than the person confirmed",
             });
         }
-        back.delete().await?;
-        back.keep_the_rest().await?;
-        drop(back);
+        self.parts.service.leave_for_icloud().await?;
         self.parts
             .service
             .set_mode(crate::service::ServiceMode::TeamsOnly)
             .await;
-        Ok(())
+        back.held_now(&self.parts.service).await?;
+        back.delete().await?;
+        back.keep_the_rest().await?;
+        drop(back);
+        self.parts.service.left_for_icloud().await
     }
 
     // The zone a move left stays until the person deletes it, with this device's iCloud state file.

@@ -206,7 +206,8 @@ async fn a_store_restored_while_its_category_is_off_refills_once_the_category_is
     rig.turn_on(Kind::Tag);
     let on = rig.fetch().await.unwrap();
 
-    assert!(off.refilled.is_empty() && !off.full);
+    // The pass that marked the kind reads the zone whole to keep the copies the restore left (0066, `deferred`).
+    assert!(off.refilled.is_empty() && off.full);
     assert_eq!(on.refilled, [Kind::Tag]);
     assert_eq!(
         rig.store(Kind::Tag).fields(A),

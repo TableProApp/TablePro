@@ -12,7 +12,7 @@ pub use identity::unsent_changes;
 use push::AfterPush;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -33,8 +33,8 @@ use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
-    ApprovalDecision, KeyVersionState, Provider, Row, RowKey, RowRange, Standing, StateStore, StateTxn, StoppedCause,
-    StoreRow, StoresKindRow, Table,
+    ApprovalDecision, KeyVersionState, MovePhase, MoveRow, Provider, Row, RowKey, RowRange, Standing, StateStore,
+    StateTxn, StoppedCause, StoreRow, StoresKindRow, Table,
 };
 use crate::api::transport::{ServiceTransport, TransportError};
 use crate::engine::{
@@ -92,8 +92,6 @@ pub struct ServiceSync {
     mode: Mutex<ServiceMode>,
     // What the last full pass found to send, per scope, so the count shown leaves out the scopes that rest.
     queued: Mutex<HashMap<ScopeName, usize>>,
-    // A move to this provider began and has not finished.
-    arriving: AtomicBool,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
@@ -230,7 +228,6 @@ impl ServiceSync {
             events: parts.events,
             mode: Mutex::new(parts.mode),
             queued: Mutex::default(),
-            arriving: AtomicBool::new(false),
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
                 provider: Some(Provider::Service),
@@ -409,14 +406,24 @@ impl ServiceSync {
 
     // Personal data arrives from another provider or from none (0054, Moving between providers): what the service file
     // kept of the personal scope while it rested is let go, its pull starts from a snapshot that meets the device's
-    // records by `arrival`'s rule, and personal sync is on from then. One that fails leaves personal data resting.
+    // records by `arrival`'s rule, and personal sync is on from then. One that fails leaves personal data resting. The
+    // `moves` row holds the arrival open from the commit that lets go until the commit that ends it, so a move called
+    // again after it stopped short, in this process or after a restart, goes on from the bases its first try committed
+    // and a record merged then never meets the marker again.
     pub(crate) async fn run_arrival(&self, arrival: Arrival) -> Result<PassReport, SyncError> {
         let mut session = self.session.lock().await;
         self.check_stop()?;
-        // A move called again after it stopped short goes on from the bases its first try committed, so a record merged
-        // then never meets the marker again.
-        if !self.arriving.swap(true, Ordering::SeqCst) {
-            self.let_go_of_personal(matches!(arrival, Arrival::FirstUpload)).await?;
+        let from = arrival.from();
+        let open = matches!(
+            self.move_row().await?,
+            Some(MoveRow {
+                target: Provider::Service,
+                phase: MovePhase::Open,
+                ..
+            })
+        );
+        if !open {
+            self.let_go_of_personal(matches!(arrival, Arrival::FirstUpload), from).await?;
         }
         let before = std::mem::replace(
             &mut *self.mode.lock().unwrap_or_else(PoisonError::into_inner),
@@ -426,29 +433,64 @@ impl ServiceSync {
             .pass_locked(&mut session, PassReason::Person, Some(Arc::new(arrival)))
             .await
         {
-            Ok(report) => {
-                // The personal scope was pulled to the end and nothing personal is left to send, so no record goes up
-                // later without the rules of the move.
-                let personal = ScopeName::Personal;
-                let reached = report.reached.contains(&personal)
-                    && !report.pull_only
-                    && !report.skipped.iter().any(|(scope, _)| *scope == personal)
-                    && self.scope_row(personal).await?.is_some_and(|row| row.caught_up);
-                if reached && self.unsent(personal).await? == 0 {
-                    Ok(report)
-                } else {
-                    Err(SyncError::MoveIncomplete)
-                }
-            }
+            Ok(report) => self.arrived(report).await,
             Err(error) => Err(error),
         };
-        if outcome.is_ok() {
-            self.arriving.store(false, Ordering::SeqCst);
-        } else {
+        if outcome.is_err() {
             *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = before;
             self.refresh_counts().await;
         }
         outcome
+    }
+
+    // The personal scope was pulled to the end and nothing personal is left to send, so no record goes up later without
+    // the rules of the move; the arrival's row then goes in the same commit as nothing else.
+    async fn arrived(&self, report: PassReport) -> Result<PassReport, SyncError> {
+        let personal = ScopeName::Personal;
+        let reached = report.reached.contains(&personal)
+            && !report.pull_only
+            && !report.skipped.iter().any(|(scope, _)| *scope == personal)
+            && self.scope_row(personal).await?.is_some_and(|row| row.caught_up);
+        if !reached || self.unsent(personal).await? != 0 {
+            return Err(SyncError::MoveIncomplete);
+        }
+        self.check_stop()?;
+        let mut txn = begin(&self.state).await?;
+        txn.delete(&RowKey::Move).await?;
+        txn.commit().await?;
+        Ok(report)
+    }
+
+    // The move this file holds open or done, if any.
+    pub async fn move_row(&self) -> Result<Option<MoveRow>, SyncError> {
+        Ok(match begin(&self.state).await?.get(&RowKey::Move).await? {
+            Some(Row::Move(row)) => Some(row),
+            _ => None,
+        })
+    }
+
+    // A move back to iCloud starts: until it ends, personal data rests here as on iCloud, after a restart too.
+    pub(crate) async fn leave_for_icloud(&self) -> Result<(), SyncError> {
+        self.check_stop()?;
+        let mut txn = begin(&self.state).await?;
+        txn.put(Row::Move(MoveRow {
+            from: Some(Provider::Service),
+            target: Provider::ICloud,
+            phase: MovePhase::Open,
+        }))
+        .await?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    // The move back went through: iCloud holds the personal data, so the row goes and personal data stays resting.
+    pub(crate) async fn left_for_icloud(&self) -> Result<(), SyncError> {
+        self.set_mode(ServiceMode::TeamsOnly).await;
+        self.check_stop()?;
+        let mut txn = begin(&self.state).await?;
+        txn.delete(&RowKey::Move).await?;
+        txn.commit().await?;
+        Ok(())
     }
 
     // Personal records the person deleted on the service that this device no longer holds: what a move back to iCloud
@@ -516,9 +558,15 @@ impl ServiceSync {
     // flight, so nothing an earlier spell on TablePro Sync agreed stands in for the copy the arrival meets. A first
     // upload refills, in the same commit, each kind that lives in the personal scope alone (0066, Per-kind refills),
     // so the marks outlive a restart and a kind a team scope shares, as the envelopes, takes no refill there.
-    async fn let_go_of_personal(&self, refills: bool) -> Result<(), SyncError> {
+    async fn let_go_of_personal(&self, refills: bool, from: Option<Provider>) -> Result<(), SyncError> {
         let scope = ScopeName::Personal;
         let mut txn = begin(&self.state).await?;
+        txn.put(Row::Move(MoveRow {
+            from,
+            target: Provider::Service,
+            phase: MovePhase::Open,
+        }))
+        .await?;
         if refills {
             for adapter in self.adapters.in_scope(scope) {
                 let kind = adapter.kind();
@@ -571,6 +619,17 @@ impl ServiceSync {
         arrival: Option<Arc<Arrival>>,
     ) -> Result<PassReport, SyncError> {
         tracing::debug!(?why, "sync pass");
+        // A move back to iCloud that stopped short keeps personal data resting until the person moves it again.
+        if matches!(
+            self.move_row().await,
+            Ok(Some(MoveRow {
+                target: Provider::ICloud,
+                phase: MovePhase::Open,
+                ..
+            }))
+        ) {
+            *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = ServiceMode::TeamsOnly;
+        }
         self.set_phase(SyncPhase::Syncing);
         let taken = self.journal.take();
         let named = (why == PassReason::Journal).then(|| taken.clone());
