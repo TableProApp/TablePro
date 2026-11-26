@@ -69,6 +69,15 @@ async fn approve_everything(device: &Device) {
     }
 }
 
+// What a store holds of a record: a member its model has no place for rides on the base instead.
+fn as_held(kind: Kind, record: &Value) -> Value {
+    let mut out = record.clone();
+    if let Value::Object(members) = &mut out {
+        members.retain(|name, _| tablepro_sync::adapters::carry::holds(kind, &format!("/{name}")));
+    }
+    out
+}
+
 fn copy(case: &Value, name: &str) -> Option<Value> {
     Some(case[name].clone()).filter(|copy| !copy.is_null())
 }
@@ -116,10 +125,10 @@ async fn the_shared_merge_fixtures_land_in_the_store_through_a_pull() {
         if merged == "deleted" {
             assert_eq!(held, None, "{name}");
         } else if let Some(record) = merged.get("record") {
-            assert_eq!(held.as_ref(), Some(record), "{name}");
+            assert_eq!(held, Some(as_held(kind, record)), "{name}");
             assert!(conflicts.is_empty(), "{name}");
         } else if let Some(contested) = merged.get("contested") {
-            assert_eq!(held.as_ref(), Some(&contested["record"]), "{name}");
+            assert_eq!(held, Some(as_held(kind, &contested["record"])), "{name}");
             let fields: Vec<Value> = conflicts[0]
                 .fields
                 .iter()

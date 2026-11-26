@@ -14,7 +14,7 @@ use serde_json::{Map, Value, json};
 use tablepro_records::Kind;
 use tablepro_records::record_id::shortened;
 use tablepro_records::schema::Type;
-use tablepro_records::settings::{Document, owner, registry};
+use tablepro_records::settings::{CategoryId, Document, owner, registry};
 use uuid::Uuid;
 
 use crate::api::adapter::{HostSettings, LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
@@ -189,7 +189,15 @@ impl RecordAdapter for SettingsAdapter {
                     let category = held.iter().flatten().find_map(|settings| {
                         (shortened(kind, settings.category.clone()) == record_id).then(|| settings.category.clone())
                     });
-                    if let Some(category) = category {
+                    // Only a theme or a column layout goes with a deletion. A named category going would reset the
+                    // device's options to the app's defaults, looser than a cautious setup, with nobody asked; the
+                    // device keeps it, and its copy goes up again.
+                    let removable = category.as_deref().is_some_and(|category| {
+                        registry(kind)
+                            .and_then(|registry| registry.category(category))
+                            .is_some_and(|known| !matches!(known.id, CategoryId::Named(_)))
+                    });
+                    if let Some(category) = category.filter(|_| removable) {
                         self.host.apply(category, None).await.map_err(host_error)?;
                     }
                 }
@@ -290,9 +298,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_deleted_theme_goes_and_a_record_whose_category_is_not_its_id_is_left_out() {
+    async fn a_deleted_theme_goes_a_named_category_stays_and_a_record_whose_category_is_not_its_id_is_left_out() {
         let host = Arc::new(Host::default());
         host.apply("theme.ocean".to_owned(), Some(json!({"name": "Ocean"})))
+            .await
+            .unwrap();
+        host.apply("ai".to_owned(), Some(json!({"enabled": false})))
             .await
             .unwrap();
         let adapter = SettingsAdapter::new(host.clone(), None);
@@ -300,9 +311,14 @@ mod tests {
         adapter
             .apply(
                 ScopeName::Personal,
-                vec![LocalChange::Delete {
-                    record_id: "theme.ocean".to_owned(),
-                }],
+                vec![
+                    LocalChange::Delete {
+                        record_id: "theme.ocean".to_owned(),
+                    },
+                    LocalChange::Delete {
+                        record_id: "ai".to_owned(),
+                    },
+                ],
             )
             .await
             .unwrap();
@@ -317,6 +333,13 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(host.categories().await.unwrap().is_empty());
+        let left: Vec<String> = host
+            .categories()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|settings| settings.category)
+            .collect();
+        assert_eq!(left, ["ai"]);
     }
 }

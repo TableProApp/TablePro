@@ -13,6 +13,7 @@ use super::refill::Cut;
 use super::scopes::refresh;
 use super::{PassCtx, ServiceSync, begin};
 use crate::adapters::approval::{self, Split};
+use crate::adapters::categories::DeviceCategories;
 use crate::adapters::{conflict, local_view};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
 use crate::api::error::SyncError;
@@ -20,8 +21,8 @@ use crate::api::ids::{Cursor, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{ArrivalOrder, CaughtUp};
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{
-    ApprovalDecision, ApprovalRow, BaseRow, ConflictRow, DeletedHistoryRow, HeldReason, HeldRow, Row, RowKey, RowRange,
-    ScopeRow, Table,
+    ApprovalDecision, ApprovalRow, BaseRow, ConflictRow, DeferredRow, DeletedHistoryRow, HeldReason, HeldRow, Row,
+    RowKey, RowRange, ScopeRow, Table,
 };
 use crate::api::transport::{DeletedReason, Proof, PullRequest, PulledPage, PulledRecord, TransportError};
 use crate::engine::{Judgement, base_of, settle};
@@ -50,6 +51,8 @@ struct Pull {
     // A history snapshot still reads older pages, and has left them, so `older_cursor` is where paging back starts.
     older: bool,
     older_read: bool,
+    // The categories as the pass began, so one pass never reads a kind it then skips.
+    categories: DeviceCategories,
 }
 
 // A server that never lets a pull catch up, or a snapshot too large to keep, ends the pass instead of the device.
@@ -101,6 +104,8 @@ pub(super) struct PageWrites {
     // Open conflicts a pull settled.
     resolved: Vec<RecordKey>,
     approvals: Vec<(RecordKey, Split)>,
+    deferred: Vec<DeferredRow>,
+    undeferred: Vec<RecordKey>,
     // Rows of other tables that settle in the same commit, as a refilled store's identity.
     rows: Vec<Row>,
 }
@@ -115,6 +120,8 @@ impl PageWrites {
             && self.conflicts.is_empty()
             && self.resolved.is_empty()
             && self.approvals.is_empty()
+            && self.deferred.is_empty()
+            && self.undeferred.is_empty()
             && self.rows.is_empty()
     }
 }
@@ -126,6 +133,8 @@ struct SettleInputs {
     approvals: HashMap<RecordKey, Vec<ApprovalRow>>,
     // Records held whole until the person decides.
     awaiting: HashSet<RecordKey>,
+    // Copies a store refill took while their kind was off, which win once the kind is read.
+    deferred: HashSet<RecordKey>,
     deleted_history: HashSet<String>,
 }
 
@@ -176,7 +185,7 @@ impl ServiceSync {
             can_open && self.holds_scope_key(scope).await? && !self.waiting_envelopes(scope).await?.is_empty();
         // A build that reads a kind the last pull did not fetches again what it held for it (0054, Rules).
         // A kind this device turned off is not read, so turning it on reads it again the same way.
-        let categories = self.categories();
+        let categories = ctx.categories.clone();
         let mut reading: Vec<KindName> = adapters
             .iter()
             .map(|adapter| adapter.kind())
@@ -205,6 +214,7 @@ impl ServiceSync {
                 .flatten(),
             older: scope == ScopeName::History && snapshot,
             older_read: false,
+            categories,
         };
         refresh(&mut row, info);
         if row.epoch.is_none() {
@@ -299,14 +309,17 @@ impl ServiceSync {
         let mut writes = PageWrites::default();
         let mut run: Option<(Family, Vec<PulledRecord>)> = None;
         let mut to_settle = Vec::new();
-        let categories = self.categories();
         for mut record in records {
             pull.seen
                 .insert((record.kind.as_str().to_owned(), record.record_id.clone()));
             let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
-            // A kind this device turned off takes nothing, not even its base, so the snapshot that follows turning it
-            // on settles what came meanwhile, deletions included (0054, Rules for both providers).
-            if record.kind.known().is_some_and(|kind| !categories.syncs(kind)) {
+            // A kind this device turned off takes nothing of its store, so the snapshot that follows turning it on
+            // settles what came meanwhile, deletions included (0054, Rules for both providers). Only a refill reads it
+            // now, for what the refill decides that the store need not take yet.
+            if let Some(kind) = record.kind.known().filter(|kind| !pull.categories.syncs(*kind)) {
+                if pull.cut.is_some() || pull.pull_wins.contains(&kind) {
+                    to_settle.push(record);
+                }
                 continue;
             }
             // A live record always carries its fields; one without them is no deletion this device would sign.
@@ -359,7 +372,14 @@ impl ServiceSync {
                     }
                 }
             }
-            if record.kind.known() == Some(Kind::HistoryEntry) && record.deleted.is_none() {
+            if pull.scope == ScopeName::History
+                && record.kind.known() == Some(Kind::HistoryEntry)
+                && record.deleted.is_none()
+            {
+                if !pull.can_open {
+                    writes.held.push(held(HeldReason::AwaitingDeviceApproval, key, record));
+                    continue;
+                }
                 match self.history_opens(&record).await? {
                     HistoryOpens::Plain(fields) => {
                         record.fields = Some(fields);
@@ -427,71 +447,152 @@ impl ServiceSync {
                 continue;
             }
             let base = inputs.bases.get(&key);
+            let judgement = pull.judge(kind, base, &record);
+            if !pull.categories.syncs(kind) {
+                Self::while_off(&key, kind, judgement, base, &record, writes);
+                continue;
+            }
             if kind == Kind::HistoryEntry && !self.history_taken(&inputs, base, &record, writes) {
                 continue;
             }
-            let stored = local.and_then(|local| local.records.get(&key.record_id));
-            let rows = inputs.approvals.get(&key).map_or(&[][..], Vec::as_slice);
-            let open = inputs.conflicts.get(&key);
-            let (base_view, mine) = match open {
-                Some(row) => conflict::sides(row, base, stored),
-                None => (base.cloned(), stored.cloned()),
+            // A refill that came while the kind was off wins now that it is read (0054, Store identity).
+            let judgement = if inputs.deferred.contains(&key) {
+                writes.undeferred.push(key.clone());
+                match judgement {
+                    Judgement::Merge => Judgement::PullWins,
+                    other => other,
+                }
+            } else {
+                judgement
             };
-            // The merge reads the device's side as it would go up: with what the store cannot hold, and with what
-            // waits for the person or was refused at the base's value.
-            let held_members: BTreeSet<String> = rows
-                .iter()
-                .filter(|row| row.decision != ApprovalDecision::Approved)
-                .map(|row| row.field.clone())
-                .collect();
-            let base_fields = base_view.as_ref().and_then(|base| base.fields.as_ref());
-            let mine = mine.map(|mine| LocalRecord {
-                fields: local_view(kind, pull.scope, &mine.fields, base_fields, &held_members),
-                ..mine
-            });
-            let judgement = pull.judge(kind, base, &record);
-            let settled = settle(&key, kind, judgement, base_view.as_ref(), mine.as_ref(), &record);
-            let stored_fields = stored.map(|stored| &stored.fields);
-            match settled.store {
-                Some(LocalChange::Put { record_id, fields }) => {
-                    let split = approval::split(kind, &key, stored_fields, &fields, rows);
-                    if split.hold {
-                        writes
-                            .held
-                            .push(held(HeldReason::AwaitingApproval, key.clone(), record.clone()));
-                    } else if stored_fields != Some(&split.fields) {
-                        writes.store.push((
-                            index,
-                            LocalChange::Put {
-                                record_id,
-                                fields: split.fields.clone(),
-                            },
-                        ));
-                    }
-                    writes.approvals.push((key.clone(), split));
-                }
-                Some(change @ LocalChange::Delete { .. }) => {
-                    writes.approvals.push((key.clone(), cleared(rows)));
-                    writes.store.push((index, change));
-                }
-                None if record.deleted == Some(DeletedReason::User) => {
-                    writes.approvals.push((key.clone(), cleared(rows)));
-                }
-                None => {}
+            let stored = local.and_then(|local| local.records.get(&key.record_id));
+            self.settle_one(pull, &inputs, key, kind, index, judgement, base, stored, record, writes);
+        }
+        // A conflict is kept before the store takes the server's side of it, so a crash between the two never loses
+        // the device's side (0044, Conflict rules).
+        if !writes.conflicts.is_empty() {
+            self.stop.check()?;
+            let mut txn = begin(&self.state).await?;
+            for conflict in &writes.conflicts {
+                txn.put(Row::Conflict(conflict.clone())).await?;
             }
-            if open.is_some() && settled.base.is_some() && settled.conflict.is_none() {
-                writes.resolved.push(key.clone());
-            }
-            // A copy pulled again unchanged leaves a record that waits for the person waiting, else the diff would
-            // read the store's lack of it as a deletion.
-            let unchanged = settled.base.is_none();
-            writes.bases.extend(settled.base);
-            writes.conflicts.extend(settled.conflict);
-            if !(unchanged && inputs.awaiting.contains(&key)) {
-                writes.unheld.push(key);
-            }
+            txn.commit().await?;
         }
         self.write_store(pull.scope, adapters, writes).await
+    }
+
+    // What a kind turned off takes from a refill without touching its store: a base the restore lost, which the
+    // device's copy goes up on once the kind is on, and, from a store that was restored, the copy that wins once the
+    // kind is read again. Anything else is read again when the kind is turned on.
+    fn while_off(
+        key: &RecordKey,
+        kind: Kind,
+        judgement: Judgement,
+        base: Option<&BaseRow>,
+        record: &PulledRecord,
+        writes: &mut PageWrites,
+    ) {
+        match judgement {
+            Judgement::LocalWins => {
+                writes
+                    .bases
+                    .extend(settle(key, kind, judgement, base, None, record).base);
+            }
+            Judgement::PullWins => writes.deferred.push(DeferredRow {
+                key: key.clone(),
+                record: record.clone(),
+            }),
+            Judgement::Merge => {}
+        }
+    }
+
+    #[expect(clippy::too_many_arguments, reason = "one record with everything a pull knows of it")]
+    fn settle_one(
+        &self,
+        pull: &Pull,
+        inputs: &SettleInputs,
+        key: RecordKey,
+        kind: Kind,
+        index: usize,
+        judgement: Judgement,
+        base: Option<&BaseRow>,
+        stored: Option<&LocalRecord>,
+        record: PulledRecord,
+        writes: &mut PageWrites,
+    ) {
+        let rows = inputs.approvals.get(&key).map_or(&[][..], Vec::as_slice);
+        let open = inputs.conflicts.get(&key);
+        // A record held whole until the person decides is new to the device: a later copy merges as a create, never
+        // against a base the store does not hold.
+        let awaiting = stored.is_none() && inputs.awaiting.contains(&key);
+        let (base_view, mine) = match open {
+            _ if awaiting => (None, None),
+            Some(row) => conflict::sides(row, base, stored),
+            None => (base.cloned(), stored.cloned()),
+        };
+        // The merge reads the device's side as it would go up: with what the store cannot hold, and with what waits
+        // for the person or was refused at the base's value, except the members an open conflict holds the device's
+        // own values of.
+        let contested: Vec<String> = open.map(conflict::contested).unwrap_or_default();
+        let under_contest = |field: &str| {
+            contested.iter().any(|name| {
+                let pointer = format!("/{}", name.replace('~', "~0").replace('/', "~1"));
+                field == pointer || field.starts_with(&format!("{pointer}/"))
+            })
+        };
+        let held_members: BTreeSet<String> = rows
+            .iter()
+            .filter(|row| row.decision != ApprovalDecision::Approved && !under_contest(&row.field))
+            .map(|row| row.field.clone())
+            .collect();
+        let mine_side = mine.as_ref().map(|mine| mine.fields.clone());
+        let base_fields = base_view.as_ref().and_then(|base| base.fields.as_ref());
+        let mine = mine.map(|mine| LocalRecord {
+            fields: local_view(kind, pull.scope, &mine.fields, base_fields, &held_members),
+            ..mine
+        });
+        let mut settled = settle(&key, kind, judgement, base_view.as_ref(), mine.as_ref(), &record);
+        // The row keeps the device's own copy, never the merge's view of it, so Keep Mine writes nothing the device
+        // did not hold.
+        if let Some(conflict) = settled.conflict.as_mut() {
+            conflict.mine = mine_side;
+        }
+        let stored_fields = stored.map(|stored| &stored.fields);
+        match (&settled.kept, &settled.store) {
+            (Some(fields), _) => {
+                let split = approval::split(kind, &key, stored_fields, fields, rows);
+                if split.hold {
+                    writes
+                        .held
+                        .push(held(HeldReason::AwaitingApproval, key.clone(), record.clone()));
+                } else if stored_fields != Some(&split.fields) {
+                    writes.store.push((
+                        index,
+                        LocalChange::Put {
+                            record_id: key.record_id.clone(),
+                            fields: split.fields.clone(),
+                        },
+                    ));
+                }
+                writes.approvals.push((key.clone(), split));
+            }
+            (None, Some(change @ LocalChange::Delete { .. })) => {
+                writes.approvals.push((key.clone(), cleared(rows)));
+                writes.store.push((index, change.clone()));
+            }
+            // A tombstone of a record the store does not hold leaves nothing to decide; one the store keeps, as against
+            // a policy or a contested deletion, keeps what waits.
+            (None, _) if record.deleted.is_some() && stored.is_none() => {
+                writes.approvals.push((key.clone(), cleared(rows)));
+            }
+            (None, _) => {}
+        }
+        if open.is_some() && settled.base.is_some() && settled.conflict.is_none() {
+            writes.resolved.push(key.clone());
+        }
+        writes.bases.extend(settled.base);
+        writes.conflicts.extend(settled.conflict);
+        writes.unheld.push(key);
     }
 
     // A `user` tombstone of a history entry is final: a device refuses its id when it comes back, whatever the server
@@ -537,6 +638,9 @@ impl ServiceSync {
                 && row.reason == HeldReason::AwaitingApproval
             {
                 inputs.awaiting.insert(key.clone());
+            }
+            if txn.get(&RowKey::Deferred(key.clone())).await?.is_some() {
+                inputs.deferred.insert(key.clone());
             }
             if key.kind.known() == Some(Kind::HistoryEntry)
                 && txn.get(&RowKey::DeletedHistory(key.record_id.clone())).await?.is_some()
@@ -603,6 +707,12 @@ impl ServiceSync {
         }
         for (key, split) in &writes.approvals {
             approval::write(txn.as_mut(), key, split).await?;
+        }
+        for key in writes.undeferred {
+            txn.delete(&RowKey::Deferred(key)).await?;
+        }
+        for row in writes.deferred {
+            txn.put(Row::Deferred(row)).await?;
         }
         for row in writes.rows {
             txn.put(row).await?;
@@ -678,7 +788,9 @@ impl ServiceSync {
                 .map(|adapter| adapter.store().to_owned());
             let except = envelopes.filter(|_| unchecked);
             writes.rows = self.settled_stores(ctx, pull.scope, except.as_deref()).await?;
-            if pull.can_open {
+            // A history snapshot that stopped at its window did not serve the older entries it holds back.
+            let whole_history = pull.scope != ScopeName::History || pull.older_cursor.is_none();
+            if pull.can_open && whole_history {
                 writes
                     .unheld
                     .extend(self.waiting_envelopes(pull.scope).await?.into_iter().filter(|key| {
@@ -687,6 +799,7 @@ impl ServiceSync {
                             .contains(&(key.kind.as_str().to_owned(), key.record_id.clone()))
                     }));
             }
+            writes.undeferred.extend(self.deferred_unseen(pull).await?);
             if row.refill {
                 if !unchecked {
                     ctx.adopt.push((pull.scope, ctx.body.epoch, info.epochs.clone()));
@@ -743,17 +856,40 @@ impl ServiceSync {
             held_keys: Vec::new(),
             held_envelopes: Vec::new(),
             seen: HashSet::new(),
-            can_open: false,
+            can_open: self.history_opens_now().await,
             buffered: 0,
             reading: Vec::new(),
             window: None,
             older: false,
             older_read: false,
+            categories: self.categories(),
         };
         row.older_cursor = page.cursor.clone().filter(|_| !page.records.is_empty());
         let writes = self.take_page(&mut pull, &adapters, page.records).await?;
         self.commit_page(writes, Some(&row)).await?;
         Ok(row.older_cursor.is_some())
+    }
+
+    // Copies a refill kept for a kind that was off, which a snapshot reading that kind no longer serves: what they
+    // stood for goes up as a create, as the refill would have sent it.
+    async fn deferred_unseen(&self, pull: &Pull) -> Result<Vec<RecordKey>, SyncError> {
+        let rows = begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::Deferred, pull.scope))
+            .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Deferred(row) => Some(row.key),
+                _ => None,
+            })
+            .filter(|key| pull.reading.contains(&key.kind))
+            .filter(|key| {
+                !pull
+                    .seen
+                    .contains(&(key.kind.as_str().to_owned(), key.record_id.clone()))
+            })
+            .collect())
     }
 
     // Envelopes, and in the history scope entries, kept until the keys could open them.

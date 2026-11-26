@@ -9,6 +9,7 @@ use serde_json::{Map, Value};
 use tablepro_records::Kind;
 use tablepro_records::schema::{Approval, Class, ENTRY, Field, Type, entry_class, schema};
 use tablepro_records::settings::{Document, registry};
+use tablepro_storage::field_trust::{FieldTrust, field_trust};
 
 use crate::api::ids::ScopeName;
 
@@ -78,14 +79,20 @@ fn walk_object(
             Type::Object(nested) if is_object(left) && is_object(right) => {
                 walk_object(kind, scope, nested, left, right, &pointer, out);
             }
-            Type::Entries(_) if field.class == Class::ByEntry && is_entries(left) && is_entries(right) => {
+            Type::Entries(_)
+                if field.class == Class::ByEntry
+                    && is_entries(left)
+                    && is_entries(right)
+                    && keyed(left)
+                    && keyed(right) =>
+            {
                 walk_entries(scope, left, right, &pointer, out);
             }
             Type::Map(_) if field.class == Class::ByEntry && is_object(left) && is_object(right) => {
                 for key in names(left, right) {
                     out.push(Member {
                         pointer: format!("{pointer}/{}", escape(&key)),
-                        rule: Rule::of(entry_class(scope.records_scope(), None), scope),
+                        rule: entry_rule(scope, &key),
                     });
                 }
             }
@@ -107,9 +114,39 @@ fn walk_entries(scope: ScopeName, a: Option<&Value>, b: Option<&Value>, prefix: 
     for id in ids {
         out.push(Member {
             pointer: format!("{prefix}/{}", escape(&id)),
-            rule: Rule::of(entry_class(scope.records_scope(), None), scope),
+            rule: entry_rule(scope, &id),
         });
     }
+}
+
+// A driver's field by the trust the core gives its id (`field_trust`, the Mac's `ConnectionFieldTrust`): a secret or
+// a value the host sets never comes from a pull, a field for the person's own devices is dropped in a team, and any
+// other field waits.
+fn entry_rule(scope: ScopeName, id: &str) -> Rule {
+    let trust = field_trust(id).map(|trust| match trust {
+        FieldTrust::Secret => "secret",
+        FieldTrust::HostInternal => "hostInternal",
+        FieldTrust::OwnDevices => "ownDevices",
+        FieldTrust::Setting | FieldTrust::Destination | FieldTrust::LocalFile | FieldTrust::LocalCredential { .. } => {
+            "setting"
+        }
+    });
+    Rule::of(entry_class(scope.records_scope(), trust), scope)
+}
+
+// A list addressed by item id only when every item is an object with a string id no other item has; any other list
+// is one member, judged whole, so no second item with an id slips past the first.
+fn keyed(value: Option<&Value>) -> bool {
+    let Some(value) = value else {
+        return true;
+    };
+    let Some(items) = value.as_array() else {
+        return false;
+    };
+    let mut seen = BTreeSet::new();
+    items
+        .iter()
+        .all(|item| item.is_object() && item_id(item).is_some_and(|id| seen.insert(id.to_owned())))
 }
 
 // A settings record's options by the class its platform's registry gives each one in the record's category; an
@@ -137,7 +174,7 @@ fn walk_options(
         Some(Document::Object(fields)) if is_object(a) && is_object(b) => {
             walk_object(kind, scope, fields, a, b, prefix, out);
         }
-        Some(Document::List(fields)) if is_list(a) && is_list(b) => walk_list(kind, scope, fields, a, b, prefix, out),
+        Some(Document::List(fields)) if keyed(a) && keyed(b) => walk_list(kind, scope, fields, a, b, prefix, out),
         _ => out.push(Member {
             pointer: prefix.to_owned(),
             rule: ALWAYS,
@@ -169,10 +206,6 @@ fn walk_list(
     for id in ids {
         let pointer = format!("{prefix}/{}", escape(&id));
         let (left, right) = (find(a, &id), find(b, &id));
-        if left.is_some_and(|item| !item.is_object()) || right.is_some_and(|item| !item.is_object()) {
-            out.push(Member { pointer, rule: ALWAYS });
-            continue;
-        }
         walk_object(kind, scope, fields, left, right, &pointer, out);
     }
 }
@@ -193,10 +226,6 @@ fn names(a: Option<&Value>, b: Option<&Value>) -> BTreeSet<String> {
 // Absent counts as either shape, so a member one side lacks is still walked into.
 fn is_object(value: Option<&Value>) -> bool {
     value.is_none_or(Value::is_object)
-}
-
-fn is_list(value: Option<&Value>) -> bool {
-    value.is_none_or(Value::is_array)
 }
 
 fn is_entries(value: Option<&Value>) -> bool {
@@ -259,7 +288,13 @@ fn put(value: &mut Value, parts: &[String], to: Option<Value>) {
         if to.is_none() {
             return;
         }
-        *value = Value::Object(Map::new());
+        // A list item is put back by its id, so a list the copy lacks is made as a list.
+        let item = rest.is_empty() && to.as_ref().and_then(item_id) == Some(first.as_str());
+        *value = if item {
+            Value::Array(Vec::new())
+        } else {
+            Value::Object(Map::new())
+        };
     }
     match value {
         Value::Object(members) => {
@@ -315,13 +350,16 @@ pub fn with_members_of(
 ) -> Value {
     let mut out = copy.clone();
     for member in members(kind, scope, Some(copy), from) {
-        if member.rule == Rule::Stays || held.contains(&member.pointer) {
+        if member.rule == Rule::Stays {
             set(&mut out, &member.pointer, get(from, &member.pointer).cloned());
         }
     }
-    for pointer in held {
-        if get(Some(&out), pointer) != get(from, pointer) {
-            set(&mut out, pointer, get(from, pointer).cloned());
+    // With no base, a waiting member has no other value: the device's own goes.
+    if from.is_some() {
+        for pointer in held {
+            if get(Some(&out), pointer) != get(from, pointer) {
+                set(&mut out, pointer, get(from, pointer).cloned());
+            }
         }
     }
     out
@@ -445,6 +483,77 @@ mod tests {
                 "/additional_fields/useSSL"
             ),
             Some(ALWAYS)
+        );
+    }
+
+    #[test]
+    fn a_list_with_a_repeated_or_missing_id_is_one_member_judged_whole() {
+        let repeated = json!({"additional_fields": [
+            {"id": "proxyhost", "value": "a"},
+            {"id": "proxyhost", "value": "evil"},
+        ]});
+        let missing = json!({"additional_fields": [{"value": "evil"}]});
+
+        assert_eq!(
+            rule_of(Kind::Connection, ScopeName::Personal, &repeated, "/additional_fields"),
+            Some(ALWAYS)
+        );
+        assert_eq!(
+            rule_of(Kind::Connection, ScopeName::Personal, &missing, "/additional_fields"),
+            Some(ALWAYS)
+        );
+    }
+
+    #[test]
+    fn a_driver_field_takes_its_trust_secrets_stay_and_own_device_fields_drop_in_a_team() {
+        let personal = json!({"additional_fields": [
+            {"id": "awsSecretAccessKey", "value": "x"},
+            {"id": "beancountRunLedgerPlugins", "value": "true"},
+        ]});
+        let library = json!({"additionalFields": {"beancountRunLedgerPlugins": "true"}});
+
+        assert_eq!(
+            rule_of(
+                Kind::Connection,
+                ScopeName::Personal,
+                &personal,
+                "/additional_fields/awsSecretAccessKey"
+            ),
+            Some(Rule::Stays)
+        );
+        assert_eq!(
+            rule_of(
+                Kind::Connection,
+                ScopeName::Personal,
+                &personal,
+                "/additional_fields/beancountRunLedgerPlugins"
+            ),
+            Some(ALWAYS)
+        );
+        assert_eq!(
+            rule_of(
+                Kind::LibraryConnection,
+                ScopeName::Team(team()),
+                &library,
+                "/additionalFields/beancountRunLedgerPlugins"
+            ),
+            Some(Rule::Stays)
+        );
+    }
+
+    #[test]
+    fn an_entry_put_back_into_a_missing_list_makes_a_list() {
+        let mut value = json!({"name": "a"});
+
+        set(
+            &mut value,
+            "/additional_fields/x",
+            Some(json!({"id": "x", "value": "1"})),
+        );
+
+        assert_eq!(
+            value,
+            json!({"name": "a", "additional_fields": [{"id": "x", "value": "1"}]})
         );
     }
 

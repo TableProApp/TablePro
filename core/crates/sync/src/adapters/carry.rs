@@ -17,6 +17,14 @@ fn held(kind: Kind) -> Option<Held> {
     if kind.is_create_once() {
         return None;
     }
+    // A settings record's host keeps the category and its options; a format stamp the CloudKit projection writes, or
+    // a member a newer build adds beside them, rides on the base.
+    if kind.is_settings() {
+        return Some(Held {
+            targets: vec!["category", "options"],
+            unknown: false,
+        });
+    }
     let model: &Model = MODELS.iter().find(|model| model.kind == kind)?;
     let mut targets = Vec::new();
     let mut unknown = false;
@@ -75,9 +83,15 @@ fn carry(held: &Held, base: &Value, out: &mut Value, prefix: &str) {
         }
         let inner = format!("{path}.");
         if held.targets.iter().any(|target| target.starts_with(&inner)) {
-            // Only into an object the store still holds: one it lacks was removed here.
-            if let Some(nested) = out.get_mut(name) {
-                carry(held, value, nested, &path);
+            // An object the store lacks keeps only what the store could never have held of it, so a removal here
+            // still removes what the store holds.
+            let absent = !out.contains_key(name);
+            let nested = out
+                .entry(name.clone())
+                .or_insert_with(|| Value::Object(serde_json::Map::new()));
+            carry(held, value, nested, &path);
+            if absent && matches!(nested, Value::Object(members) if members.is_empty()) {
+                out.remove(name);
             }
             continue;
         }
@@ -129,11 +143,16 @@ mod tests {
     }
 
     #[test]
-    fn nothing_is_carried_into_an_object_the_store_removed() {
+    fn an_object_the_store_removed_keeps_only_what_the_store_never_held_of_it() {
         let base = json!({"name": "Prod", "ssh_config": {"host": "bastion", "future_nested": true}});
+        let gone = json!({"name": "Prod", "ssh_config": {"host": "bastion"}});
         let stored = json!({"name": "Prod"});
 
-        assert_eq!(carried(Kind::Connection, &stored, Some(&base)), stored);
+        assert_eq!(
+            carried(Kind::Connection, &stored, Some(&base)),
+            json!({"name": "Prod", "ssh_config": {"future_nested": true}})
+        );
+        assert_eq!(carried(Kind::Connection, &stored, Some(&gone)), stored);
     }
 
     #[test]
@@ -145,14 +164,15 @@ mod tests {
         assert!(!holds(Kind::Connection, "/ssh_config/future"));
         assert!(holds(Kind::Connection, "/additional_fields/useSSL"));
         assert!(holds(Kind::MacosSettings, "/options/anything"));
+        assert!(!holds(Kind::MacosSettings, "/schema_version"));
     }
 
     #[test]
-    fn settings_and_history_carry_nothing() {
+    fn a_settings_record_carries_what_beside_its_options_the_host_does_not_keep() {
         let base = json!({"category": "general", "options": {}, "schema_version": 1});
         let stored = json!({"category": "general", "options": {}});
 
-        assert_eq!(carried(Kind::MacosSettings, &stored, Some(&base)), stored);
+        assert_eq!(carried(Kind::MacosSettings, &stored, Some(&base)), base);
         assert_eq!(carried(Kind::HistoryEntry, &stored, Some(&base)), stored);
     }
 }

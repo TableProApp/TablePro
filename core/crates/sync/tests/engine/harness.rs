@@ -836,6 +836,10 @@ impl DeviceBuilder {
             stop: stop.clone(),
             journal: Journal::new(wake),
             events: None,
+            categories: tablepro_sync::api::control::SyncCategories {
+                off: Vec::new(),
+                passwords: true,
+            },
         });
         Device {
             server: self.server,

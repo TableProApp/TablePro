@@ -14,7 +14,7 @@ use super::{PassCtx, ServiceSync, begin, scope_refusal};
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, IdempotencyKey, KindName, ScopeName};
 use crate::api::key_flows::{
-    ArrivalOrder, CaughtUp, KeyApplied, KeyArrival, KeyHooks, LockCause, PushBackVerdict, Roster, StopAction,
+    ArrivalOrder, CaughtUp, KeyApplied, KeyArrival, KeyHooks, KeyState, LockCause, PushBackVerdict, Roster, StopAction,
 };
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{KeyVersionState, PendingFlow, Row, RowKey, RowRange, StoppedCause, Table};
@@ -161,6 +161,11 @@ impl ServiceSync {
             }
             Err(error) => Err(error),
         }
+    }
+
+    // Whether history entries can be opened now: only on an unlocked device whose keys are approved.
+    pub(super) async fn history_opens_now(&self) -> bool {
+        self.hooks.locked().is_none() && matches!(self.keys.key_state().await, Ok(KeyState::Approved { .. }))
     }
 
     // Whether this device holds the scope's key in force, so envelopes kept waiting can be read again.

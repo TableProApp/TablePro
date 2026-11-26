@@ -56,14 +56,15 @@ pub fn split(kind: Kind, key: &RecordKey, stored: Option<&Value>, merged: &Value
     for member in members(kind, key.scope, stored, Some(merged)) {
         let pointer = member.pointer;
         let (old, new) = (get(stored, &pointer), get(Some(merged), &pointer));
+        // A member the store has no place for rides on the base, so it never needs the person; the store keeps what
+        // it holds, so an adapter that does keep it never takes the pulled value unasked.
         let approval = match member.rule {
-            Rule::Waits(_) if !holds(kind, &pointer) => continue,
             Rule::Applies => continue,
-            Rule::Stays => {
+            Rule::Waits(approval) if holds(kind, &pointer) => approval,
+            Rule::Stays | Rule::Waits(_) => {
                 set(&mut out.fields, &pointer, old.cloned());
                 continue;
             }
-            Rule::Waits(approval) => approval,
         };
         seen.insert(pointer.clone());
         let row = rows.iter().find(|row| row.field == pointer);
@@ -125,8 +126,40 @@ pub async fn rows_of(txn: &mut dyn StateTxn, key: &RecordKey) -> Result<Vec<Appr
         .collect())
 }
 
-// For a pull that settles inside one state transaction, as the CloudKit fetch does: called with the merge's result
-// before the store's copy is planned. A deletion clears the record's rows; a copy the device keeps as it is, as a
+// The sides a merge reads, for a pull that settles inside one state transaction, as the CloudKit fetch does: a record
+// held whole until the person decides merges as one new to the device, and the device's side has the base's value in
+// each member that waits or was refused, so the merge never reads a value the device did not take as its own edit.
+// The caller merges these, then passes the result to `gate`.
+pub async fn merge_sides(
+    txn: &mut dyn StateTxn,
+    key: &RecordKey,
+    kind: Kind,
+    base: Option<&Value>,
+    stored: Option<&Value>,
+) -> Result<(Option<Value>, Option<Value>), SyncError> {
+    if stored.is_none() && awaits(txn, key).await? {
+        return Ok((None, None));
+    }
+    let held: BTreeSet<String> = rows_of(txn, key)
+        .await?
+        .into_iter()
+        .filter(|row| row.decision != ApprovalDecision::Approved)
+        .map(|row| row.field)
+        .collect();
+    let local = stored.map(|stored| super::local_view(kind, key.scope, stored, base, &held));
+    Ok((base.cloned(), local))
+}
+
+// Whether the record is held whole until the person decides.
+pub async fn awaits(txn: &mut dyn StateTxn, key: &RecordKey) -> Result<bool, SyncError> {
+    Ok(matches!(
+        txn.get(&RowKey::Held(key.clone())).await?,
+        Some(Row::Held(held)) if held.reason == HeldReason::AwaitingApproval
+    ))
+}
+
+// For a pull that settles inside one state transaction, as the CloudKit fetch does: called with the result of merging
+// `merge_sides` before the store's copy is planned. A deletion clears the record's rows; a copy the device keeps as it is, as a
 // contested deletion or an envelope sealed again, passes as it came.
 pub async fn gate(
     txn: &mut dyn StateTxn,
@@ -300,13 +333,12 @@ impl Queue<'_> {
         let mut txn = self.state.begin().await?;
         txn.put(Row::Approval(row)).await?;
         let rows = rows_of(txn.as_mut(), &key).await?;
+        txn.commit().await?;
         let ready = rows.iter().all(|row| row.decision == ApprovalDecision::Approved);
         let (Some(pulled), Some(adapter), Some(kind), true) = (pulled, self.adapter(&key), key.kind.known(), ready)
         else {
-            txn.commit().await?;
             return Ok(());
         };
-        drop(txn);
         let split = split(kind, &key, None, &pulled, &rows);
         if split.hold {
             let mut txn = self.state.begin().await?;

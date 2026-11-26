@@ -646,3 +646,187 @@ async fn a_snapshot_that_serves_a_waiting_record_again_keeps_it_waiting() {
     assert!(matches!(&held[..], [Row::Held(row)] if row.reason == HeldReason::AwaitingApproval));
     assert_eq!(server.stored(personal(), "connection", &id(1)).unwrap().deleted, None);
 }
+
+#[tokio::test]
+async fn a_record_waiting_whole_stays_held_through_a_placement_edit_and_a_refusal() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "host": "db", "sort_order": 1}));
+    mac.sync().await;
+    mini.sync().await;
+
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "host": "db", "sort_order": 7}));
+    mac.sync().await;
+    mini.sync().await;
+    mini.sync
+        .decide_approval(key(&id(1)), "/host".to_owned(), false)
+        .await
+        .unwrap();
+    mini.sync().await;
+
+    let stored = server.stored(personal(), "connection", &id(1)).unwrap();
+    assert_eq!(stored.deleted, None);
+    assert_eq!(
+        stored.fields,
+        Some(json!({"name": "Prod", "host": "db", "sort_order": 7}))
+    );
+    assert_eq!(mini.connections.get(&id(1)), None);
+    let held = mini.rows(RowRange::Table(Table::Held)).await;
+    assert!(matches!(&held[..], [Row::Held(row)] if row.reason == HeldReason::AwaitingApproval));
+}
+
+#[tokio::test]
+async fn a_restored_store_whose_kind_was_off_lets_the_pull_win_once_the_kind_is_on() {
+    let server = FakeServer::new();
+    let file = StoreFile::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = DeviceBuilder::new(&server, "dev_mini")
+        .connections(
+            MemoryAdapter::new(Kind::Connection, "connections", Arc::clone(&file)),
+            Arc::clone(&file),
+        )
+        .build()
+        .await;
+    let named = |name: &str| json!({"name": name, "sort_order": 1});
+    mac.connections.put(&id(1), named("Old"));
+    mac.sync().await;
+    mini.sync().await;
+    mac.connections.put(&id(1), named("New"));
+    mac.sync().await;
+    mini.sync().await;
+    let off = |off: bool| SyncCategories {
+        off: if off {
+            vec![KindName::of(Kind::Connection)]
+        } else {
+            Vec::new()
+        },
+        passwords: true,
+    };
+
+    mini.sync.set_categories(off(true)).await.unwrap();
+    // A backup from before the rename comes back while connections are off.
+    mini.connections.put(&id(1), named("Old"));
+    file.restored();
+    mini.sync().await;
+    mini.sync.set_categories(off(false)).await.unwrap();
+    mini.sync().await;
+
+    assert_eq!(mini.connections.get(&id(1)), Some(named("New")));
+    assert_eq!(stored(&server, "connection", &id(1)), Some(named("New")));
+}
+
+#[tokio::test]
+async fn a_conflict_a_teammate_settles_to_the_device_s_values_leaves_them_in_the_store() {
+    let server = FakeServer::new();
+    let (mac, mac_queries, mini, mini_queries) = team_devices(&server).await;
+    mac_queries.put("q1", query("Report", "select 1"));
+    mac.sync().await;
+    mini.sync().await;
+    mac_queries.put("q1", query("Theirs", "select 1"));
+    mini_queries.put("q1", query("Mine", "select 1"));
+    mac.sync().await;
+    mini.sync().await;
+
+    mac_queries.put("q1", query("Mine", "select 1"));
+    mac.sync().await;
+    mini.sync().await;
+    mac.sync().await;
+
+    assert!(mini.sync.conflicts().await.unwrap().is_empty());
+    assert_eq!(mini_queries.get("q1"), Some(query("Mine", "select 1")));
+    assert_eq!(
+        server
+            .stored(ScopeOwner::Team(team()), "library_query", "q1")
+            .unwrap()
+            .fields,
+        Some(query("Mine", "select 1"))
+    );
+}
+
+#[tokio::test]
+async fn keep_mine_against_a_deletion_sends_the_device_s_own_host_never_the_one_waiting() {
+    let server = FakeServer::new();
+    server.add_team(team(), &[(account(), Role::Owner)]);
+    let scope = ScopeName::Team(team());
+    let library = |row: &str| {
+        (
+            row.to_owned(),
+            MemoryAdapter::new(Kind::LibraryConnection, "team_library", StoreFile::new()),
+        )
+    };
+    let (mac_row, mac_items) = library("dev_mac");
+    let (mini_row, mini_items) = library("dev_mini");
+    let mac = DeviceBuilder::new(&server, &mac_row)
+        .adapter(scope, Arc::clone(&mac_items))
+        .build()
+        .await;
+    let mini = DeviceBuilder::new(&server, &mini_row)
+        .adapter(scope, Arc::clone(&mini_items))
+        .build()
+        .await;
+    let item = |name: &str, host: &str| json!({"name": name, "host": host});
+    let lib_key = RecordKey::new(scope, Kind::LibraryConnection, "c1");
+    mac_items.put("c1", item("Prod", "a"));
+    mac.sync().await;
+    mini.sync().await;
+    mini.sync
+        .decide_approval(lib_key.clone(), "/host".to_owned(), true)
+        .await
+        .unwrap();
+    mac_items.put("c1", item("Prod", "evil"));
+    mac.sync().await;
+    mini.sync().await;
+
+    mini_items.put("c1", item("Prod renamed", "a"));
+    mac_items.remove("c1");
+    mac.sync().await;
+    mini.sync().await;
+    let open = mini.sync.conflicts().await.unwrap();
+    mini.sync
+        .resolve_conflict(lib_key, ConflictChoice::KeepMine)
+        .await
+        .unwrap();
+    mini.sync().await;
+
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].mine, Some(item("Prod renamed", "a")));
+    assert_eq!(mini_items.get("c1"), Some(item("Prod renamed", "a")));
+    let revived = server
+        .stored(ScopeOwner::Team(team()), "library_connection", "c1")
+        .unwrap();
+    assert_eq!(revived.deleted, None);
+    assert_eq!(revived.fields, Some(item("Prod renamed", "a")));
+}
+
+#[tokio::test]
+async fn a_policy_revival_sends_the_device_s_own_value_of_a_member_still_waiting() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mini.connections.put(&id(1), json!({"name": "Prod", "host": "a"}));
+    mini.sync().await;
+    mac.sync().await;
+    mac.sync
+        .decide_approval(key(&id(1)), "/host".to_owned(), true)
+        .await
+        .unwrap();
+    mac.connections.put(&id(1), json!({"name": "Prod", "host": "b"}));
+    mac.sync().await;
+    mini.sync().await;
+
+    server.set_policies(Policies {
+        personal_sync: false,
+        ..Policies::default()
+    });
+    mini.sync().await;
+    server.set_policies(Policies::default());
+    mini.sync().await;
+
+    assert_eq!(
+        stored(&server, "connection", &id(1)),
+        Some(json!({"name": "Prod", "host": "a"}))
+    );
+}

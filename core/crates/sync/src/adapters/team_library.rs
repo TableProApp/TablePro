@@ -52,7 +52,6 @@ fn store_error(error: StorageError) -> AdapterError {
     }
 }
 
-// A store never written yet has no identity; the first write starts its generation.
 fn stamp(identity: Option<tablepro_storage::StoreIdentity>) -> StoreStamp {
     identity.map_or(
         StoreStamp {
@@ -76,12 +75,16 @@ impl RecordAdapter for TeamLibraryAdapter {
         STORE
     }
 
+    // A store never written yet starts its generation now, so its first write is not read as a restore.
     async fn identity(&self) -> Result<StoreStamp, AdapterError> {
         let store = self.store.clone();
-        let identity = blocking(move || store.identity_blocking())
-            .await?
-            .map_err(store_error)?;
-        Ok(stamp(identity))
+        let identity = blocking(move || match store.identity_blocking()? {
+            Some(identity) => Ok(identity),
+            None => store.start_new_generation_blocking(),
+        })
+        .await?
+        .map_err(store_error)?;
+        Ok(stamp(Some(identity)))
     }
 
     async fn records(&self, scope: ScopeName) -> Result<LocalRecords, AdapterError> {
@@ -222,7 +225,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(after.needs_refill(before));
+        assert!(!after.needs_refill(before));
         assert_eq!(held.len(), 1);
         assert_eq!(held[0].record_id, "QueryId-Kept-Case");
         assert_eq!(held[0].fields, query);

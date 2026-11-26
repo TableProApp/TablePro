@@ -73,6 +73,8 @@ pub struct ServiceParts {
     pub stop: StopSignal,
     pub journal: Journal,
     pub events: Option<Arc<dyn EngineEvents>>,
+    // The categories the app opened sync with (`SyncConfig.categories`), so no pass runs before they are known.
+    pub categories: SyncCategories,
 }
 
 pub struct ServiceSync {
@@ -144,6 +146,8 @@ struct PassCtx {
     keys_ready: bool,
     // A journal pass diffs only these records.
     named: Option<JournalIds>,
+    // The categories as the pass began.
+    categories: DeviceCategories,
     // What each history entry sealed this pass was before sealing, so a refusal is remembered by it.
     sealed_prints: HashMap<RecordKey, [u8; 32]>,
     report: PassReport,
@@ -195,7 +199,7 @@ impl ServiceSync {
                 held: 0,
                 queued_changes: 0,
             }),
-            categories: Mutex::new(DeviceCategories::default()),
+            categories: Mutex::new(DeviceCategories::from(&parts.categories)),
             history_window: Mutex::new(None),
         }
     }
@@ -301,6 +305,7 @@ impl ServiceSync {
             approved,
             keys_ready: false,
             named,
+            categories: self.categories(),
             sealed_prints: HashMap::new(),
             report: PassReport::default(),
         };

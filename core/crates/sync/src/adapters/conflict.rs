@@ -8,13 +8,16 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use serde_json::Value;
+use tablepro_records::Kind;
 
 use super::approval::{self, Split, split};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
 use crate::api::control::{ConflictChoice, TeamConflict};
 use crate::api::error::SyncError;
 use crate::api::ids::RecordKey;
-use crate::api::state::{BaseRow, ConflictRow, HeldReason, HeldRow, Row, RowKey, RowRange, StateStore, Table};
+use crate::api::state::{
+    ApprovalRow, BaseRow, ConflictRow, HeldReason, HeldRow, Row, RowKey, RowRange, StateStore, Table,
+};
 use crate::api::transport::PulledRecord;
 use crate::engine::Adapters;
 
@@ -153,26 +156,7 @@ impl Conflicts<'_> {
             .into_iter()
             .find(|record| record.record_id == key.record_id)
             .map(|record| record.fields);
-        let kept = match keep {
-            ConflictChoice::KeepMine => row.mine.as_ref(),
-            ConflictChoice::KeepTheirs => row.theirs.as_ref(),
-        };
-        let wanted = match (over_members(&row), stored.as_ref(), kept) {
-            (true, Some(stored), Some(_)) => Some(overlay(stored, kept, &contested(&row))),
-            (_, _, kept) => kept.cloned(),
-        };
-        let outcome = match (wanted, keep) {
-            (None, _) => Outcome::Delete,
-            (Some(fields), ConflictChoice::KeepMine) => Outcome::Put(fields, None),
-            (Some(fields), ConflictChoice::KeepTheirs) => {
-                let split = split(kind, key, stored.as_ref(), &fields, &rows);
-                if split.hold {
-                    Outcome::Hold(split, fields)
-                } else {
-                    Outcome::Put(split.fields.clone(), Some(split))
-                }
-            }
-        };
+        let outcome = outcome(&row, &rows, kind, key, stored.as_ref(), keep);
         match &outcome {
             Outcome::Delete if stored.is_some() => {
                 adapter
@@ -222,6 +206,57 @@ impl Conflicts<'_> {
         txn.delete(&RowKey::Conflict(key.clone())).await?;
         txn.commit().await?;
         Ok(())
+    }
+}
+
+// What the store takes for the side the person kept.
+fn outcome(
+    row: &ConflictRow,
+    rows: &[ApprovalRow],
+    kind: Kind,
+    key: &RecordKey,
+    stored: Option<&Value>,
+    keep: ConflictChoice,
+) -> Outcome {
+    let kept = match keep {
+        ConflictChoice::KeepMine => row.mine.as_ref(),
+        ConflictChoice::KeepTheirs => row.theirs.as_ref(),
+    };
+    let wanted = match (over_members(row), stored, kept) {
+        (true, Some(stored), Some(_)) => Some(overlay(stored, kept, &contested(row))),
+        (_, _, kept) => kept.cloned(),
+    };
+    match (wanted, keep) {
+        (None, _) => Outcome::Delete,
+        // The person chose the device's values, so what waited for approval in the contested members, or in a
+        // record kept against a deletion, goes; their own values go up.
+        (Some(fields), ConflictChoice::KeepMine) => {
+            let names = contested(row);
+            let decided = |field: &str| {
+                !over_members(row)
+                    || names.iter().any(|name| {
+                        let pointer = format!("/{}", name.replace('~', "~0").replace('/', "~1"));
+                        field == pointer || field.starts_with(&format!("{pointer}/"))
+                    })
+            };
+            let cleared = Split {
+                clear: rows
+                    .iter()
+                    .filter(|row| decided(&row.field))
+                    .map(|row| row.field.clone())
+                    .collect(),
+                ..Split::default()
+            };
+            Outcome::Put(fields, Some(cleared))
+        }
+        (Some(fields), ConflictChoice::KeepTheirs) => {
+            let split = split(kind, key, stored, &fields, rows);
+            if split.hold {
+                Outcome::Hold(split, fields)
+            } else {
+                Outcome::Put(split.fields.clone(), Some(split))
+            }
+        }
     }
 }
 
