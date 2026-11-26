@@ -266,6 +266,24 @@ async fn an_argument_the_engine_cannot_read_is_refused_before_any_call() {
         .await
         .unwrap_err();
 
+    let record = super::service::SyncRecordRef {
+        scope: "personal".to_owned(),
+        kind: "connection".to_owned(),
+        record_id: "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44".to_owned(),
+    };
+    let short = opened
+        .service
+        .decide_approval(record.clone(), "host".to_owned(), "ab".to_owned(), true)
+        .await
+        .unwrap_err();
+    let upper = opened
+        .service
+        .resolve_conflict(record, "AB".repeat(32), super::service::ConflictChoiceTag::KeepMine)
+        .await
+        .unwrap_err();
+
+    assert_eq!(code(&short), "sync.malformed");
+    assert_eq!(code(&upper), "sync.malformed");
     assert_eq!(code(&team), "sync.malformed");
     assert_eq!(code(&account), "sync.malformed");
     assert_eq!(code(&kind), "sync.malformed");

@@ -404,7 +404,7 @@ impl ServiceSync {
         };
         for action in actions {
             self.stop.check()?;
-            let Some(key) = self.proofs.dpop_key().await? else {
+            let Some(key) = self.keys.dpop_key().await? else {
                 return Ok(());
             };
             let sent = match action {
@@ -453,6 +453,7 @@ mod tests {
             record_id: record_id.to_owned(),
             fields: "{}".to_owned(),
             applied: true,
+            served: None,
         })
     }
 

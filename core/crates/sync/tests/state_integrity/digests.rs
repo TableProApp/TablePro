@@ -5,14 +5,14 @@ use tablepro_keys::encoding::{AccountId, KeyDeviceId, KeyPurpose, RequestId, Tea
 use tablepro_keys::keys::{Ed25519Public, X25519Public};
 use tablepro_keys::sas::{Role as ComparisonRole, SessionState};
 use tablepro_keys::state_mac::{StateSnapshot, state_mac};
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced};
 use tablepro_records::Kind;
 use tablepro_records::limits::MAX_RECORD_BYTES;
 use tablepro_sync::api::device_store::{DeviceItem, HostDeviceStore};
 use tablepro_sync::api::ids::{ChangeTag, EpochId, KindName, RecordKey, ScopeName};
 use tablepro_sync::api::state::{
     BaseRow, DeletedHistoryRow, Holder, KeyComparisonRow, KeyDevicePinRow, KeyEnvelopeRow, KeyObjectRow, KeyPendingRow,
-    KeyPinRow, KeyVersionRow, KeyVersionState, PendingFlow, Provider, Row, RowKey, StoppedCause,
+    KeyPinRow, KeyVersionRow, KeyVersionState, PendingFlow, Provider, Row, RowKey, Served, StoppedCause,
 };
 use tablepro_sync::state::integrity::{key_digest, sync_digest};
 use tablepro_sync::state::state_name;
@@ -74,6 +74,25 @@ fn the_key_digest_frames_each_table_its_rows_and_their_values_as_0054_writes_the
             record_id: "A".to_owned(),
         }),
         Row::KeyVersion(version_row(KeyPurpose::Personal)),
+        Row::KeyObject(KeyObjectRow {
+            scope: ScopeName::Personal,
+            kind: KindName::of(Kind::KeyReset),
+            record_id: "R".to_owned(),
+            fields: "{}".to_owned(),
+            applied: true,
+            served: Some(Served {
+                taken_at_us: 7,
+                held_until_us: Some(9),
+            }),
+        }),
+        Row::KeyPin(KeyPinRow {
+            account: id(1),
+            ik: ik(2),
+            av: v(3),
+            how: PinHow::Replaced,
+            alert: false,
+            replaced: vec![Replaced { ik: ik(1), av: v(3) }],
+        }),
     ];
     let mut input = Vec::new();
     for name in [
@@ -87,6 +106,26 @@ fn the_key_digest_frames_each_table_its_rows_and_their_values_as_0054_writes_the
         "deleted_history",
     ] {
         match name {
+            "key_objects" => {
+                input.extend(framed(name, 1));
+                input.extend(value(b"personal"));
+                input.extend(value(b"key.reset"));
+                input.extend(value(b"R"));
+                input.extend(value(b"{}"));
+                input.extend(value(&1_u64.to_be_bytes()));
+                // `served`: `taken_at`, then `held_until`, 8 bytes big-endian each (0066).
+                input.extend(value(&[7_i64.to_be_bytes(), 9_i64.to_be_bytes()].concat()));
+            }
+            "key_pins" => {
+                input.extend(framed(name, 1));
+                input.extend(value(id(1).0.as_bytes()));
+                input.extend(value(&[2; 32]));
+                input.extend(value(&3_u64.to_be_bytes()));
+                input.extend(value(b"replaced"));
+                input.extend(value(&0_u64.to_be_bytes()));
+                // Each replaced entry: the IK's 32 bytes, then the replace `av` as a `u32` big-endian (0066).
+                input.extend(value(&[&[1; 32][..], &3_u32.to_be_bytes()].concat()));
+            }
             "key_versions" => {
                 input.extend(framed(name, 1));
                 input.extend(value(b"personal"));
@@ -156,7 +195,7 @@ fn team_row(holders: Vec<Holder>, state: KeyVersionState, cause: Option<StoppedC
     })
 }
 
-fn pin(account: AccountId, ik: Ed25519Public, av: u32, how: PinHow, alert: bool, replaced: Vec<Ed25519Public>) -> Row {
+fn pin(account: AccountId, ik: Ed25519Public, av: u32, how: PinHow, alert: bool, replaced: Vec<Replaced>) -> Row {
     Row::KeyPin(KeyPinRow {
         account,
         ik,
@@ -214,8 +253,9 @@ fn key_digest_vectors() {
                 record_id: format!("{}/1", account().to_wire()),
                 fields: format!("{{\"q\":\"{}\"}}", "a".repeat(MAX_RECORD_BYTES - 8)),
                 applied: true,
+                served: None,
             })],
-            "89d65ca5dd70816d6148c4d7ab05cc79893389e15a75619208ebe9a9d1226df0",
+            "9bb99af21cafadcaa38b239ed09febadc5e5dfce184f2a529a746dce8b965aec",
         ),
         (
             "holders in order",
@@ -235,9 +275,9 @@ fn key_digest_vectors() {
             "holders after one endorsed replacement",
             vec![
                 team_row(vec![Holder { account: a, ik: ik(1) }], KeyVersionState::Ok, None),
-                pin(a, ik(2), 2, PinHow::FirstUse, false, vec![ik(1)]),
+                pin(a, ik(2), 2, PinHow::FirstUse, false, vec![Replaced { ik: ik(1), av: v(2) }]),
             ],
-            "211a85b58842eac40c515a81699eda52d0950d0893b0f7370aebf284dec1f122",
+            "20f6b84a3c15de74ec2ba13caef84083dc3a86382e4b2f36ec3a42a1cb8dd242",
         ),
         (
             "holders after two endorsed replacements during a stop",
@@ -247,9 +287,16 @@ fn key_digest_vectors() {
                     KeyVersionState::Stopped,
                     Some(StoppedCause::CatchUp),
                 ),
-                pin(a, ik(3), 3, PinHow::FirstUse, false, vec![ik(1), ik(2)]),
+                pin(
+                    a,
+                    ik(3),
+                    3,
+                    PinHow::FirstUse,
+                    false,
+                    vec![Replaced { ik: ik(1), av: v(2) }, Replaced { ik: ik(2), av: v(3) }],
+                ),
             ],
-            "f5678646a67c9fa378a9ed3fe709c31f47a25de4f0c888bf76cd1dc3b546366d",
+            "54ed04f5871a6a7d09922f5da7fc6128dcbe67decedb0b1fe3e26eee93eab982",
         ),
         (
             "holders after a reset during a stop",

@@ -134,6 +134,7 @@ fn object_row(object: &KeyObject) -> Row {
         record_id: object.id.to_wire(),
         fields: object.fields_json(),
         applied: true,
+        served: None,
     })
 }
 

@@ -7978,6 +7978,7 @@ dependencies = [
  "chrono",
  "csbindgen",
  "futures",
+ "hex",
  "russh",
  "secrecy",
  "serde_json",

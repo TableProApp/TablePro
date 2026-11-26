@@ -21,7 +21,7 @@ use tablepro_sync::engine::{
     SystemClock, Wake, spawn,
 };
 use tablepro_sync::keys::{KeyService, KeyServiceParts};
-use tablepro_sync::service::{ProofSource, ServiceParts, ServiceSync};
+use tablepro_sync::service::{ServiceParts, ServiceSync};
 
 // What the service engine runs over for one sign-in: who it is, and the `/v2/sync` transport that signs its calls.
 pub(crate) struct ServiceLink {
@@ -144,7 +144,6 @@ impl ServiceEngine {
             adapters: Adapters::new(hosts.adapters()),
             keys: Arc::clone(&keys) as Arc<dyn KeyFlows>,
             hooks,
-            proofs: Arc::clone(&keys) as Arc<dyn ProofSource>,
             clock: Arc::new(SystemClock),
             stop: stop.clone(),
             journal: journal.clone(),
