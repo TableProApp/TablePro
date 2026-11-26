@@ -97,36 +97,18 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             groupReads: groupReads(for: tables, dataSource: dataSource, progress: progress))
         var statementTally = SQLExportStatementTally()
 
-        let actualDestination: URL
-        let gzipTempURL: URL?
-
-        if options.compressWithGzip {
-            let tempSQL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString + ".sql")
-            gzipTempURL = tempSQL
-            actualDestination = tempSQL
-        } else {
-            gzipTempURL = nil
-            actualDestination = destination
-        }
-
-        // Compression runs over one file, so a compressed export never splits, and says so.
-        let splitSize = options.compressWithGzip ? 0 : options.splitSizeMegabytes
-        if options.compressWithGzip, options.splitSizeMegabytes > 0 {
-            run.metadataWarnings.append(String(localized:
-                "A compressed export is written as one file, so the split size was not applied."))
-        }
         var readScope = await SQLExportReadScope.open(on: dataSource, for: tables)
         let writer: SQLExportFileWriter
         do {
             writer = try SQLExportFileWriter(
-                destination: actualDestination,
-                splitSizeMegabytes: splitSize,
+                destination: destination,
+                splitSizeMegabytes: options.splitSizeMegabytes,
                 sessionDeclaration: .forDatabaseType(
                     dataSource.databaseTypeId,
                     readTimeZone: readScope.readTimeZone,
                     readsWithANSIQuotes: readScope.readsWithANSIQuotes,
-                    literalsEscapeBackslash: dataSource.lexicalFeatures.contains(.backslashEscapesInSingleQuotes))
+                    literalsEscapeBackslash: dataSource.lexicalFeatures.contains(.backslashEscapesInSingleQuotes)),
+                compressesWithGzip: options.compressWithGzip
             )
         } catch {
             await readScope.close(on: dataSource)
@@ -193,7 +175,7 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             await readScope.close(on: dataSource)
             // The publication point: a Stop during any phase above, the grant phase included, must not replace the file.
             try progress.checkCancellation()
-            let writtenParts = try writer.commit()
+            let writtenParts = try writer.commit { try progress.checkCancellation() }
             committed = true
             if writer.didSplit, let first = writtenParts.first, let last = writtenParts.last {
                 run.metadataWarnings.append(String(
@@ -211,13 +193,6 @@ nonisolated final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, S
             }
             await readScope.close(on: dataSource)
             throw error
-        }
-
-        if options.compressWithGzip, let gzipSource = gzipTempURL {
-            progress.setStatus(String(localized: "Compressing\u{2026}"))
-            defer { try? FileManager.default.removeItem(at: gzipSource) }
-            try await SQLExportCompressor.compress(
-                source: gzipSource, to: destination, progress: progress)
         }
 
         progress.finalizeTable()
