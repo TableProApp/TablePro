@@ -37,6 +37,7 @@ private final class FakeMoveEngine: SyncMoveEngine, @unchecked Sendable {
         var keys: KeyStateInfo = .approved(av: 1, keyDevice: "DEVICE")
         var moveFails = false
         var moveGate: AsyncGate?
+        var moveBackGate: AsyncGate?
     }
 
     let log: MoveLog
@@ -91,6 +92,7 @@ private final class FakeMoveEngine: SyncMoveEngine, @unchecked Sendable {
 
     func moveToIcloud(confirmedDeletions: UInt64) async throws {
         log.append("moveToIcloud \(confirmedDeletions)")
+        await read { $0.moveBackGate }?.wait()
         if read({ $0.moveFails }) {
             throw ScriptedFailure()
         }
@@ -116,6 +118,8 @@ private final class Fixture {
     var cloudKitClosed = true
     var opened = true
     var snapshot = ManagedPolicySnapshot()
+    var iCloudPassGate: AsyncGate?
+    var passesGate: AsyncGate?
     private(set) var moves: ProviderMoves!
 
     init(provider: SyncProviderSetting, engineProvider: SyncProviderTag?) {
@@ -135,8 +139,14 @@ private final class Fixture {
             openedEngine: { [unowned self] in opened ? engine : nil },
             engineChanges: engineChanges.eraseToAnyPublisher(),
             iCloudRuns: { [unowned self] in iCloudRuns },
-            iCloudPass: { [unowned self] in log.append("iCloudPass") },
-            passesFinished: { [unowned self] in log.append("passesFinished") },
+            iCloudPass: { [unowned self] in
+                log.append("iCloudPass")
+                await iCloudPassGate?.wait()
+            },
+            passesFinished: { [unowned self] in
+                log.append("passesFinished")
+                await passesGate?.wait()
+            },
             cloudKit: CloudKitReach(
                 isClosed: { [unowned self] in cloudKitClosed },
                 open: { [unowned self] in
@@ -265,6 +275,25 @@ struct ProviderMovesTests {
         #expect(fixture.provider == .off)
     }
 
+    @Test("Off chosen during the last iCloud pass ends the move before TablePro Sync is chosen")
+    func offDuringTheLastICloudPass() async throws {
+        let fixture = Fixture(provider: .iCloud, engineProvider: .icloud)
+        let gate = AsyncGate()
+        fixture.iCloudPassGate = gate
+
+        let move = Task { try await fixture.moves.moveToService() }
+        await gate.arrived(1)
+        fixture.slice.update { $0.provider = .off }
+        await gate.open()
+
+        await #expect(throws: ProviderMoveError.superseded) {
+            try await move.value
+        }
+        #expect(fixture.provider == .off)
+        #expect(!fixture.log.all.contains("moveToService"))
+        #expect(!fixture.log.all.contains("provider tablepro-sync"))
+    }
+
     // MARK: - Back to iCloud
 
     @Test("The move back opens CloudKit, passes the confirmed count, and hands CloudKit to iCloud open")
@@ -289,6 +318,25 @@ struct ProviderMovesTests {
 
         #expect(fixture.log.all == ["passesFinished", "openCloudKit", "moveToIcloud 3", "closeCloudKit"])
         #expect(fixture.provider == .tableproSync)
+        #expect(fixture.cloudKitClosed)
+    }
+
+    @Test("Off chosen during the move back wins: the engine leaves iCloud and the Mac stays off")
+    func offDuringTheMoveBack() async throws {
+        let fixture = Fixture(provider: .tableproSync, engineProvider: .tableproSync)
+        let gate = AsyncGate()
+        fixture.engine.update { $0.moveBackGate = gate }
+
+        let move = Task { try await fixture.moves.moveToICloud(confirmedDeletions: 3) }
+        await gate.arrived(1)
+        fixture.slice.update { $0.provider = .off }
+        await gate.open()
+
+        await #expect(throws: ProviderMoveError.superseded) {
+            try await move.value
+        }
+        #expect(fixture.provider == .off)
+        #expect(fixture.engine.status().provider == .off)
         #expect(fixture.cloudKitClosed)
     }
 
@@ -390,6 +438,25 @@ struct ProviderMovesTests {
         try await fixture.moves.deleteICloudData()
 
         #expect(fixture.log.all == ["passesFinished", "openCloudKit", "deleteIcloudZone", "closeCloudKit"])
+    }
+
+    @Test("A profile that takes iCloud away while the deletion waits keeps CloudKit closed and deletes nothing")
+    func policyRevokedBeforeCloudKitOpens() async throws {
+        let fixture = Fixture(provider: .tableproSync, engineProvider: .tableproSync)
+        let gate = AsyncGate()
+        fixture.passesGate = gate
+
+        let deletion = Task { try await fixture.moves.deleteICloudData() }
+        await gate.arrived(1)
+        fixture.snapshot = ManagedPolicySnapshot(iCloudSyncAllowed: false)
+        await gate.open()
+
+        await #expect(throws: ProviderMoveError.notAllowed) {
+            try await deletion.value
+        }
+        #expect(!fixture.log.all.contains("openCloudKit"))
+        #expect(!fixture.log.all.contains("deleteIcloudZone"))
+        #expect(fixture.cloudKitClosed)
     }
 
     @Test("The iCloud data stays while this Mac syncs with iCloud, and once the organization takes iCloud away")
