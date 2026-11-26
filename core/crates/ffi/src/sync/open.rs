@@ -166,6 +166,21 @@ fn own_device_store(_: &Tasks) -> Option<Arc<dyn sync::HostDeviceStore>> {
 impl OpenParts {
     // The host's services and this Core's stores, which both engines share; the stores' writes reach the engines that
     // listen from now on.
+    // A provider the values no longer allow carries no personal data from the start (0055, Leaving a provider).
+    fn service_mode(&self) -> ServiceMode {
+        let personal = self.config.provider == SyncProviderTag::TableproSync
+            && allowed(
+                self.account.as_deref(),
+                self.config.platform,
+                SyncProviderTag::TableproSync,
+            );
+        if personal {
+            ServiceMode::Personal
+        } else {
+            ServiceMode::TeamsOnly
+        }
+    }
+
     fn hosts(&mut self, events: Arc<Signals>) -> Result<Hosts, SyncError> {
         let Some(files) = self.files.take() else {
             return Err(SyncError::NotAllowed {
@@ -294,18 +309,7 @@ impl SyncService {
             Ok(_) => (None, None),
         };
         let kept = categories.clone().unwrap_or_default();
-        // A provider the values no longer allow carries no personal data from the start (0055, Leaving a provider).
-        let personal = parts.config.provider == SyncProviderTag::TableproSync
-            && allowed(
-                parts.account.as_deref(),
-                parts.config.platform,
-                SyncProviderTag::TableproSync,
-            );
-        let mode = if personal {
-            ServiceMode::Personal
-        } else {
-            ServiceMode::TeamsOnly
-        };
+        let mode = parts.service_mode();
         let last = parts.config.service_account.as_deref().and_then(identity_of);
         let restart = match (&parts.account, &hosts) {
             (Some(account), Ok(hosts)) => Some(Restart {
@@ -323,7 +327,7 @@ impl SyncService {
             (_, Err(error), _) => Err(error.clone()),
         };
         let slot = ServiceSlot::new(first, restart, kept);
-        if !personal {
+        if matches!(mode, ServiceMode::TeamsOnly) {
             slot.forbid_personal();
         }
         let service = Arc::new(Self {
