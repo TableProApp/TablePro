@@ -818,10 +818,10 @@ async fn a_team_step_that_meets_create_only_rotates_again_after_a_pull_while_sti
     assert!(a.get(rotation_row(2)).await.is_none());
 }
 
-// A team step the server refuses for good is recorded and the flow carries on: removing a lost device with R still
+// A team step the server refuses is recorded and the flow carries on: removing a lost device with R still
 // works afterwards (D7).
 #[tokio::test]
-async fn a_team_step_refused_for_good_does_not_block_the_next_removal() {
+async fn a_refused_team_step_does_not_block_the_next_removal() {
     let server = FakeServer::new();
     let account = new_account();
     let a = Device::new(&server, account, "dev_a").await;
@@ -992,4 +992,123 @@ async fn a_recovery_does_not_start_while_the_device_asks_for_approval() {
         n.service.device_keys().await.unwrap().pending.unwrap().key_device,
         asking
     );
+}
+
+// A certificate the server signed under an IK of its own stands at a pending removal's `av`. It locks the device and
+// decides nothing: the removal's keys and the review's marks stay. A device certificate there that its keys did not
+// sign is refused.
+#[tokio::test]
+async fn a_certificate_under_an_ik_the_server_made_up_erases_nothing() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    a.wire.fail_next_push(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    let review = a.service.begin_removal(r, Vec::new()).await.unwrap();
+    a.service
+        .finish_removal(review.review, Vec::new(), Vec::new())
+        .await
+        .unwrap_err();
+    let (foreign, _) = crate::harness::foreign_certificate_with_keys(account, 2);
+    let stranger = KeyDeviceId(tablepro_keys::encoding::random_uuid().unwrap());
+    let forged = crate::harness::forged_device_certificate(account, stranger, 2);
+    a.service
+        .apply_account_objects(crate::harness::arrival(vec![
+            crate::harness::served(&foreign),
+            crate::harness::served(&forged),
+        ]))
+        .await
+        .unwrap();
+
+    a.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(a.service.account_keys(crate::harness::v(2)).await.unwrap().is_some());
+    assert!(a.get(rotation_row(2)).await.is_some());
+    assert!(
+        crate::harness::held(&a, tablepro_keys::record_id::KeyKind::Device, &forged.id.to_wire())
+            .await
+            .is_none()
+    );
+}
+
+// A team step the server refused is tried again on the next pass, and the flow ends once it goes through.
+#[tokio::test]
+async fn a_refused_team_step_is_tried_again_on_the_next_pass() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let team = owned_team(&a).await;
+    a.wire
+        .refuse_push_after(2, tablepro_sync::api::transport::RejectedCode::BadStatement);
+    rotate_keeping_only_self(&a, &r).await;
+    assert!(!stored_in_team(&server, team, "key.version", &team_version(team, 2)));
+
+    a.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(stored_in_team(&server, team, "key.version", &team_version(team, 2)));
+    assert!(a.get(rotation_row(2)).await.is_none());
+}
+
+// After `create_only` the version in force came before this account's rotation, still wrapped to its old key: the
+// team is rotated again whatever the server's `rotation_due` says.
+#[tokio::test]
+async fn a_version_wrapped_to_the_old_account_key_is_rotated_again_though_the_server_says_not_due() {
+    use tablepro_sync::api::scopes::Role;
+    let server = FakeServer::new();
+    let (account, admin) = (new_account(), new_account());
+    let team = tablepro_keys::encoding::TeamId(tablepro_keys::encoding::random_uuid().unwrap());
+    server.add_team(team, &[(account, Role::Owner), (admin, Role::Admin)]);
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    crate::harness::team_pass(&a, team).await;
+    a.service.create_team_keys(team).await.unwrap();
+    let c = Device::new(&server, admin, "dev_c").await;
+    c.genesis().await;
+    crate::harness::team_pass(&c, team).await;
+    crate::harness::team_pass(&a, team).await;
+    a.service.confirm_member(team, admin).await.unwrap();
+    crate::harness::team_pass(&c, team).await;
+    c.service.rotate_team(team, Vec::new()).await.unwrap();
+
+    rotate_keeping_only_self(&a, &r).await;
+    server.set_rotation_due(team, false);
+    crate::harness::team_pass(&a, team).await;
+    a.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(stored_in_team(&server, team, "key.version", &team_version(team, 3)));
+}
+
+// B, left out of A's rotation, recovers with R and its push never goes up; A rotates again first. B's next pull
+// settles its recovery: the account keys R opened and the device keys it drew go.
+#[tokio::test]
+async fn a_pinned_device_whose_recovery_lost_drops_what_r_opened_on_its_next_pull() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    rotate_keeping_only_self(&a, &r).await;
+    b.pull().await;
+    assert_eq!(b.pin(account).await.unwrap().av.get(), 2);
+    b.wire.fail_next_push(TransportError::Network {
+        detail: "offline".to_owned(),
+    });
+    b.service.recover(r.clone()).await.unwrap_err();
+    rotate_keeping_only_self(&a, &r).await;
+
+    b.pull().await;
+    b.service.resume_rotation(crate::harness::v(3)).await.ok();
+
+    assert!(b.service.device_keys().await.unwrap().pending.is_none());
+    let opened = tablepro_sync::api::device_store::DeviceItem::AccountKeys {
+        origin: crate::harness::origin(),
+        account,
+        av: crate::harness::v(2),
+    };
+    assert!(!b.store.inner.holds(&opened));
+    assert!(b.get(rotation_row(3)).await.is_none());
 }

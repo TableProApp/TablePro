@@ -914,3 +914,19 @@ async fn n_refusing_an_approval_the_server_applied_revokes_the_key_device() {
     assert_eq!(n.wire.pushed.lock().unwrap().len(), pushes);
     assert!(n.service.device_keys().await.unwrap().pending.is_none());
 }
+
+// The row the refused key device was bound to is gone already: the revoke is met and the device may ask again.
+#[tokio::test]
+async fn a_revoke_answered_device_removed_is_met() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let (n, request, dsk) = approval_under_an_uncompared_dsk(&server, account).await;
+    server.approve(&n.row, dsk);
+    n.wire
+        .fail_next_revoke(tablepro_sync::api::transport::TransportError::DeviceRemoved);
+
+    n.service.resume_approval(request).await.unwrap_err();
+
+    assert!(n.service.device_keys().await.unwrap().pending.is_none());
+    n.service.request_approval().await.unwrap();
+}

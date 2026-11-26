@@ -362,6 +362,25 @@ impl KeyService {
         let Some(in_force) = self.own_certificate(txn, av).await? else {
             return Ok(());
         };
+        if av != Version::FIRST {
+            // A rotation flow of this device at `av` settles by the certificate it names, its recovery keys with it.
+            if txn
+                .get(&RowKey::KeyPending(PendingFlow::AccountRotation { av }))
+                .await?
+                .is_some()
+            {
+                return self.settle_flow_if_lost(txn, av).await;
+            }
+            // Only a certificate the pin's chain verifies stands for another device's rotation: one under an IK the
+            // server made up erases nothing.
+            if self
+                .verify_certificate(txn, ScopeName::Personal, &in_force)
+                .await
+                .is_err()
+            {
+                return Ok(());
+            }
+        }
         let mut leftovers = Vec::new();
         for kind in [
             KeyKind::Account,
@@ -383,9 +402,7 @@ impl KeyService {
                 }
             }
         }
-        let pending = RowKey::KeyPending(PendingFlow::AccountRotation { av });
-        let rotation_row = av != Version::FIRST && txn.get(&pending).await?.is_some();
-        if leftovers.is_empty() && !rotation_row {
+        if leftovers.is_empty() {
             return Ok(());
         }
         let Some(keys) = self.account_keys(av).await? else {
@@ -395,9 +412,6 @@ impl KeyService {
             return Ok(());
         }
         self.drop_candidates(txn, ScopeName::Personal, &leftovers).await?;
-        if rotation_row {
-            txn.delete(&pending).await?;
-        }
         self.erase_account_keys(av).await
     }
 

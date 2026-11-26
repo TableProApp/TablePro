@@ -314,14 +314,16 @@ impl KeyService {
         }
     }
 
-    // This device's own activation applied, never before `held_until`: the certificate at the reset's `av` is its
-    // proposal's under the IK it proposed, the device certificate there names its reset device keys, and the personal
-    // and history versions there are signed under the reset's ASK, which only this device holds. The proposal's own
-    // records are public, so they alone never decide it.
+    // This device's own activation applied, adopted never before `held_until`.
     pub(super) async fn own_activation_applied(&self, record: &ResetRecord) -> Result<bool, SyncError> {
-        if self.now_us() < record.held_until_us {
-            return Ok(false);
-        }
+        Ok(self.now_us() >= record.held_until_us && self.activation_present(record).await?)
+    }
+
+    // The activation's records are in force: the certificate at the reset's `av` is its proposal's under the IK it
+    // proposed, the device certificate there names its reset device keys, and the personal and history versions there
+    // are signed under the reset's ASK, which only this device holds. The proposal's own records are public, so they
+    // alone never decide it. Whatever the clock says, a reset whose activation is present is never ended.
+    pub(super) async fn activation_present(&self, record: &ResetRecord) -> Result<bool, SyncError> {
         let Some(keys) = self.reset_keys(record.reset).await? else {
             return Ok(false);
         };

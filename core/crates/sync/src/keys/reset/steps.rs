@@ -122,9 +122,23 @@ impl KeyService {
         record.state = state;
         if state != ResetState::Active {
             self.erase_reset_keys(record.reset).await?;
-            if let Some(candidates) = self.activation_candidates_of(txn, record).await? {
-                self.drop_candidates(txn, ScopeName::Personal, &candidates).await?;
-            }
+            let candidates = match self.activation_candidates_of(txn, record).await? {
+                Some(candidates) => candidates,
+                // Its certificate gave way to another at that id; its device certificate is its own all the same.
+                None => {
+                    let id = KeyRecordId::Device {
+                        account: self.account(),
+                        key_device: record.key_device,
+                        av: record.av,
+                    };
+                    self.held_object(txn, ScopeName::Personal, KeyKind::Device, &id.to_wire())
+                        .await?
+                        .filter(|held| !held.applied)
+                        .map(|held| vec![held.object])
+                        .unwrap_or_default()
+                }
+            };
+            self.drop_candidates(txn, ScopeName::Personal, &candidates).await?;
         }
         self.raise_notice(KeyNoticeKind::ResetEnded {
             reset: record.reset,
@@ -179,7 +193,7 @@ impl KeyService {
         for record in &mut records {
             // An activation of this device's own that applied is adopted, never ended for its age.
             let ended = record.overdue(now) || self.av_taken(txn.as_mut(), record.av, &record.ik).await?;
-            if ended && record.pending() && !self.own_activation_applied(record).await? {
+            if ended && record.pending() && !self.activation_present(record).await? {
                 self.end_reset(txn.as_mut(), record, ResetState::Superseded).await?;
                 self.put_reset(txn.as_mut(), record).await?;
                 changed = true;
@@ -192,22 +206,24 @@ impl KeyService {
     }
 
     // Another certificate applied at the `av` a reset proposed: a rotation or a replace by someone holding R, which
-    // ends it (0056, Reset).
-    async fn av_taken(&self, txn: &mut dyn StateTxn, av: Version, ik: &Ed25519Public) -> Result<bool, SyncError> {
-        let id = KeyRecordId::Account {
-            account: self.account(),
-            av,
+    // ends it (0056, Reset). Only one the pin's chain verifies: a server's own certificate ends nothing.
+    pub(super) async fn av_taken(
+        &self,
+        txn: &mut dyn StateTxn,
+        av: Version,
+        ik: &Ed25519Public,
+    ) -> Result<bool, SyncError> {
+        let Some(certificate) = self.own_certificate(txn, av).await? else {
+            return Ok(false);
         };
-        Ok(
-            match self
-                .applied_object(txn, ScopeName::Personal, KeyKind::Account, &id.to_wire())
-                .await?
-                .map(|object| object.body)
-            {
-                Some(KeyBody::Account(body)) => body.ik != *ik,
-                _ => false,
-            },
-        )
+        if certificate.ik == *ik || self.pin(txn, self.account()).await?.is_none() {
+            return Ok(false);
+        }
+        match self.verify_certificate(txn, ScopeName::Personal, &certificate).await {
+            Ok(_) => Ok(true),
+            Err(SyncError::Keys(_) | SyncError::NotAllowed { .. }) => Ok(false),
+            Err(other) => Err(other),
+        }
     }
 
     // Other devices' resets: each `key.reset` `key_objects` holds that this device did not propose, with the times a

@@ -882,3 +882,31 @@ async fn another_device_s_reset_is_shown_from_key_objects_and_never_kept_in_key_
         (proposed.reset, false, ResetState::Pending, proposed.held_until_us)
     );
 }
+
+// The tombstone of this device's own reset arrives before the activation's versions: the reset keys stay, and the
+// activation is adopted once they arrive.
+#[tokio::test]
+async fn an_own_reset_s_tombstone_before_its_activation_erases_nothing() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let proposed = propose_reset(&a, ResetKind::KeepScopeKeys).await;
+    server.advance_clock(7 * DAY_US);
+    a.wire.lose_next_answer();
+    a.service.activate_reset(proposed.reset).await.unwrap_err();
+
+    a.service
+        .apply_reset_objects(crate::harness::arrival(vec![tombstone(
+            "key.reset",
+            &reset_id(account, proposed.reset),
+        )]))
+        .await
+        .unwrap();
+    let kept = a.service.reset_keys(proposed.reset).await.unwrap().is_some();
+    a.pull().await;
+    a.service.resume_reset(proposed.reset).await.unwrap();
+
+    assert!(kept);
+    assert_eq!(a.pending_reset_state().await, Some(ResetState::Active));
+}

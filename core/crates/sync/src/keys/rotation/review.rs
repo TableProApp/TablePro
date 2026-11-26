@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use tablepro_keys::encoding::{AccountId, KeyDeviceId, KeyPurpose, TeamId, Version, WrapPurpose};
-use tablepro_keys::keys::Signature;
+use tablepro_keys::keys::{Ed25519Public, Signature};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::wrap::{Recipient, Wrap};
 use uuid::Uuid;
@@ -15,19 +15,21 @@ use crate::api::key_flows::ReviewedMember;
 use crate::api::state::{Row, RowRange, StateTxn, Table};
 use crate::keys::KeyService;
 
-// Format 1 carried no certificate; format 2 no stuck or retried teams and no opened `av`.
+// Format 1 carried no certificate; format 2 no IK, refused or retried teams and no opened `av`.
 const FORMAT: u8 = 3;
 
-// The team steps an account rotation still owes: the members marked for removal per team, the teams done, and the
-// signature of this flow's own certificate at that `av`, which tells its rotation from another device's. Teams the
-// server refused for good are recorded and carried into the next rotation; a team that met `create_only` waits for a
-// pull past the version this device held then. A recovery names the `av` whose account keys R opened on a device that
-// did not hold them, which go if the recovery never applies.
+// The team steps an account rotation still owes: the members marked for removal per team, the teams done, the
+// signature of this flow's own certificate at that `av`, and the IK the account was under when it began. The
+// signature tells this flow's rotation from another's; the IK tells another device's that won, under it or endorsed
+// by it, from a certificate nothing verifies. Teams the server refused are recorded and tried again on later passes;
+// a team that met `create_only` waits for a pull past the version this device held then. A recovery names the `av`
+// whose account keys R opened on a device that did not hold them, which go if the recovery never applies.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct TeamSteps {
     pub remove: Vec<(TeamId, AccountId)>,
     pub done: Vec<TeamId>,
     pub certificate: Option<Signature>,
+    pub ik: Option<Ed25519Public>,
     pub stuck: Vec<TeamId>,
     pub retry: Vec<(TeamId, Version)>,
     pub opened: Option<Version>,
@@ -66,6 +68,7 @@ impl TeamSteps {
             &mut out,
             self.certificate.as_ref().map(|signature| signature.0.as_slice()),
         );
+        push_optional(&mut out, self.ik.as_ref().map(|ik| ik.0.as_slice()));
         push_count(&mut out, self.stuck.len());
         for team in &self.stuck {
             out.extend_from_slice(team.0.as_bytes());
@@ -100,11 +103,6 @@ impl TeamSteps {
             .filter(|(marked, _)| *marked == team)
             .map(|(_, account)| *account)
             .collect()
-    }
-
-    // A team this flow has nothing more to do in.
-    pub fn settled(&self, team: TeamId) -> bool {
-        self.done.contains(&team) || self.stuck.contains(&team)
     }
 }
 
@@ -141,6 +139,11 @@ fn decode(bytes: &[u8]) -> Option<TeamSteps> {
         };
     }
     if format >= 3 {
+        steps.ik = match take(1)? {
+            [0] => None,
+            [1] => Some(Ed25519Public(take(32)?.try_into().ok()?)),
+            _ => return None,
+        };
         for _ in 0..count(take(4)?)? {
             steps.stuck.push(TeamId(uuid(take(16)?)?));
         }
@@ -326,6 +329,7 @@ mod tests {
             remove: vec![(TeamId(Uuid::from_u128(1)), account(2))],
             done: vec![TeamId(Uuid::from_u128(3))],
             certificate: Some(Signature([9; 64])),
+            ik: Some(Ed25519Public([4; 32])),
             stuck: vec![TeamId(Uuid::from_u128(5))],
             retry: vec![(TeamId(Uuid::from_u128(6)), v(7))],
             opened: Some(v(2)),

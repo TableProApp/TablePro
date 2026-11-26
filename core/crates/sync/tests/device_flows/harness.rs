@@ -141,6 +141,7 @@ pub struct Wire {
     // Counts down the pushes before the one the server refuses, with the code it refuses it with.
     refuse_after: Mutex<Option<(i64, RejectedCode)>>,
     fail: Mutex<Option<TransportError>>,
+    revoke: Mutex<Option<TransportError>>,
     lose: AtomicBool,
     // Counts down the pushes before the one whose answer is lost; 0 loses none.
     lose_after: AtomicI64,
@@ -168,6 +169,11 @@ impl Wire {
 
     pub fn fail_next_push(&self, error: TransportError) {
         *self.fail.lock().unwrap() = Some(error);
+    }
+
+    // The next Sign Out revoke answers `error` instead of reaching the server.
+    pub fn fail_next_revoke(&self, error: TransportError) {
+        *self.revoke.lock().unwrap() = Some(error);
     }
 
     // The last push's changes by kind and record id, whatever order they went up in.
@@ -245,6 +251,9 @@ impl ServiceTransport for Wire {
     }
 
     async fn revoke_key_device(&self, proof: DpopKey) -> Result<(), TransportError> {
+        if let Some(error) = self.revoke.lock().unwrap().take() {
+            return Err(error);
+        }
         self.client.revoke_key_device(proof).await
     }
 
@@ -284,6 +293,7 @@ impl Device {
             refuse: Mutex::new(None),
             refuse_after: Mutex::new(None),
             fail: Mutex::new(None),
+            revoke: Mutex::new(None),
             lose: AtomicBool::new(false),
             lose_after: AtomicI64::new(0),
         });
@@ -837,4 +847,29 @@ pub fn forged_device_certificate(
 
 pub fn v(value: u32) -> Version {
     Version::new(value).unwrap()
+}
+
+// A certificate at `av` under an IK of the server's own, with the account keys it names, so objects can be signed
+// under it.
+pub fn foreign_certificate_with_keys(account: AccountId, av: u32) -> (KeyObject, tablepro_keys::keys::AccountKeys) {
+    let ik = tablepro_keys::keys::Ed25519Seed::generate().unwrap();
+    let keys = tablepro_keys::keys::AccountKeys::generate().unwrap();
+    let certificate = tablepro_keys::cert::AccountCertificate::sign(
+        &origin(),
+        account,
+        Version::new(av).unwrap(),
+        tablepro_keys::cert::CertKind::GenesisOrRotation,
+        &ik,
+        keys.public().unwrap(),
+        None,
+    )
+    .unwrap();
+    let object = KeyObject {
+        id: tablepro_keys::record_id::KeyRecordId::Account {
+            account,
+            av: Version::new(av).unwrap(),
+        },
+        body: tablepro_keys::body::KeyBody::Account(tablepro_keys::body::AccountBody::of(&certificate)),
+    };
+    (object, keys)
 }

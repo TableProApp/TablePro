@@ -181,7 +181,7 @@ impl KeyService {
                 }
                 Checked::Held => applied.held.push(object.id.to_wire()),
                 Checked::Refused(error) => {
-                    if !self.locks_only(object, &error).await? {
+                    if !self.stays_refused(txn, object, &error).await? {
                         put_back(txn, object, arrived.before.clone()).await?;
                     }
                     applied.refused.push(RefusedObject {
@@ -215,7 +215,7 @@ impl KeyService {
                     continue;
                 }
                 if let Checked::Refused(error) = self.check_personal_object(txn, &object).await?
-                    && !self.locks_only(&object, &error).await?
+                    && !self.stays_refused(txn, &object, &error).await?
                 {
                     put_back(txn, &object, None).await?;
                     applied.refused.push(RefusedObject {
@@ -228,16 +228,78 @@ impl KeyService {
         Ok(in_force)
     }
 
-    async fn locks_only(&self, object: &KeyObject, error: &KeysError) -> Result<bool, SyncError> {
-        if *error == KeysError::Unendorsed {
+    // A refused object that stays held, never in force for any decision: the unendorsed certificate itself, what it
+    // signs that verifies under its own keys, and an `account` or `trust` wrap to this device.
+    async fn stays_refused(
+        &self,
+        txn: &mut dyn StateTxn,
+        object: &KeyObject,
+        error: &KeysError,
+    ) -> Result<bool, SyncError> {
+        if let Some(wrap) = object.wrap()
+            && matches!(wrap.target.purpose, WrapPurpose::Account | WrapPurpose::Trust)
+        {
+            let own = self.device_keys().await?.current.map(|keys| keys.key_device);
+            if Some(wrap.target.recipient) == own.map(Recipient::Device) {
+                return Ok(true);
+            }
+        }
+        if *error != KeysError::Unendorsed {
+            return Ok(false);
+        }
+        if matches!(object.id, KeyRecordId::Account { .. }) {
             return Ok(true);
         }
-        let Some(wrap) = object.wrap() else {
-            return Ok(false);
-        };
-        let own = self.device_keys().await?.current.map(|keys| keys.key_device);
-        Ok(matches!(wrap.target.purpose, WrapPurpose::Account | WrapPurpose::Trust)
-            && Some(wrap.target.recipient) == own.map(Recipient::Device))
+        self.signed_under_own_keys(txn, object).await
+    }
+
+    // An object at an unendorsed certificate's `av` that verifies under the keys that certificate names, as a reset
+    // elsewhere writes them. One that does not is refused like any other.
+    async fn signed_under_own_keys(&self, txn: &mut dyn StateTxn, object: &KeyObject) -> Result<bool, SyncError> {
+        Ok(match (&object.id, &object.body) {
+            (KeyRecordId::Device { key_device, av, .. }, KeyBody::Device(body)) => {
+                self.unendorsed_at(txn, *av).await?.is_some_and(|certificate| {
+                    body.certificate(self.account, *key_device, *av)
+                        .verify(&self.origin, &certificate.ask)
+                        .is_ok()
+                })
+            }
+            (KeyRecordId::Recovery { av, .. }, _) => self.unendorsed_at(txn, *av).await?.is_some(),
+            (KeyRecordId::Version(_), _) => match object.version_record() {
+                Some(record) if record.signer == self.account && record.key.owner == self.account.0 => self
+                    .unendorsed_at(txn, record.signer_av)
+                    .await?
+                    .is_some_and(|certificate| record.verify(&self.origin, &certificate.ask).is_ok()),
+                _ => false,
+            },
+            (KeyRecordId::Wrap(target), _) => match (object.wrap(), target.recipient) {
+                (Some(wrap), Recipient::Account(account)) if account == self.account => {
+                    let recipient = self.unendorsed_at(txn, target.recipient_version).await?;
+                    let wrapper = self.unendorsed_at(txn, wrap.wrapper.av).await?;
+                    match (recipient, wrapper) {
+                        (Some(recipient), Some(wrapper)) => {
+                            wrap.verify(&self.origin, &recipient.aek, &wrapper.ask).is_ok()
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            },
+            _ => false,
+        })
+    }
+
+    // The own certificate at `av` as held, its self-signature checked: what an object under it is judged by while
+    // nothing endorses its IK.
+    async fn unendorsed_at(
+        &self,
+        txn: &mut dyn StateTxn,
+        av: Version,
+    ) -> Result<Option<AccountCertificate>, SyncError> {
+        Ok(self
+            .own_certificate(txn, av)
+            .await?
+            .filter(|certificate| certificate.verify(&self.origin).is_ok()))
     }
 
     // The key devices the account certifies at `av`: each device certificate there under the ASK of the verified

@@ -156,13 +156,18 @@ impl KeyService {
             .await?
             .is_some_and(|held| held.applied);
         if let Some(mut record) = self.reset_record(txn, reset).await? {
-            if self.own_activation_applied(&record).await? {
-                return Ok(record.pending().then_some(reset));
+            // A write's records come in no set order, so the activation's versions may follow its tombstone: only a
+            // cancel or another certificate verified at its `av` ends this device's own reset here, and an overdue
+            // one ends when the wait is past (0051, Resets).
+            if self.activation_present(&record).await? {
+                return Ok((record.pending() && self.own_activation_applied(&record).await?).then_some(reset));
             }
             let state = if cancelled {
                 ResetState::Cancelled
-            } else {
+            } else if self.av_taken(txn, record.av, &record.ik).await? {
                 ResetState::Superseded
+            } else {
+                return Ok(None);
             };
             self.end_reset(txn, &mut record, state).await?;
             self.put_reset(txn, &record).await?;

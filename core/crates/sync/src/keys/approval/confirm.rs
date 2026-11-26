@@ -22,7 +22,7 @@ use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::{KeyNoticeKind, SessionEnd};
 use crate::api::state::{KeyDevicePinRow, Row, RowKey, RowRange, StateTxn, Table};
-use crate::api::transport::{DpopKey, RejectedCode};
+use crate::api::transport::{DpopKey, RejectedCode, TransportError};
 use crate::keys::{HeldDeviceKeys, HeldObject, KeyService, OwnAccount, create_change};
 
 async fn scan_rows(txn: &mut dyn StateTxn, table: Table) -> Result<Vec<Row>, SyncError> {
@@ -492,9 +492,15 @@ impl KeyService {
             .as_ref()
             .filter(|keys| keys.key_device == record.n.key_device)
         {
-            self.transport()
+            // A row already gone holds no key device either.
+            match self
+                .transport()
                 .revoke_key_device(DpopKey(Arc::new(pending.dsk.clone())))
-                .await?;
+                .await
+            {
+                Ok(()) | Err(TransportError::DeviceRemoved | TransportError::NotFound) => {}
+                Err(error) => return Err(error.into()),
+            }
             self.store_device_keys(&HeldDeviceKeys {
                 current: held.current,
                 pending: None,
