@@ -104,8 +104,8 @@ final class SyncEngineHost {
                 return try await CoreStoreHost.shared.core().openSync(
                     config: SyncConfig(
                         platform: .macos,
-                        categories: SyncProviderCoordinator.categories(settings),
                         provider: settings.enabled ? .icloud : .off,
+                        categories: SyncProviderCoordinator.categories(settings),
                         icloudAccount: defaults.string(forKey: icloudAccountKey)
                     ),
                     account: account,
