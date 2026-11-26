@@ -239,9 +239,13 @@ internal struct TeamLibraryFieldConflictContent: View {
                 }
             }
 
+            // A connection can differ in many fields: the rows scroll so the buttons stay on a small screen.
             GroupBox {
-                TeamLibraryConflictFieldGrid(presentation: presentation)
-                    .padding(4)
+                ScrollView {
+                    TeamLibraryConflictFieldGrid(presentation: presentation)
+                        .padding(4)
+                }
+                .frame(maxHeight: 360)
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("team-library-conflict-fields")
