@@ -768,6 +768,7 @@ pub struct DeviceBuilder {
     connections: Option<(Arc<MemoryAdapter>, Arc<StoreFile>)>,
     extra: Vec<(ScopeName, Arc<MemoryAdapter>)>,
     others: Vec<Arc<dyn RecordAdapter>>,
+    memory_connections: bool,
     keys: Option<Arc<KeyLog>>,
     seed: Option<Arc<Ed25519Seed>>,
 }
@@ -782,9 +783,17 @@ impl DeviceBuilder {
             connections: None,
             extra: Vec::new(),
             others: Vec::new(),
+            memory_connections: true,
             keys: None,
             seed: None,
         }
+    }
+
+    // The core's own stores in place of the in-memory connections, as an app opens the engine over them.
+    pub fn core_stores(mut self, adapters: Vec<Arc<dyn RecordAdapter>>) -> Self {
+        self.memory_connections = false;
+        self.others.extend(adapters);
+        self
     }
 
     // An adapter of the test's own, over a store that behaves as a core store does.
@@ -841,7 +850,10 @@ impl DeviceBuilder {
                 file,
             )
         });
-        let mut adapters: Vec<Arc<dyn RecordAdapter>> = vec![Arc::clone(&connections) as Arc<dyn RecordAdapter>];
+        let mut adapters: Vec<Arc<dyn RecordAdapter>> = Vec::new();
+        if self.memory_connections {
+            adapters.push(Arc::clone(&connections) as Arc<dyn RecordAdapter>);
+        }
         for (scope, adapter) in &self.extra {
             adapter.register(*scope);
             adapters.push(Arc::clone(adapter) as Arc<dyn RecordAdapter>);

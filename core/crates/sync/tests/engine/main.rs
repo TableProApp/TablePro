@@ -10,6 +10,7 @@ mod epochs;
 mod fixtures;
 mod harness;
 mod keys;
+mod library;
 mod parts;
 mod pass;
 mod rules;
