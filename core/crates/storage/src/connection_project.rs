@@ -56,6 +56,12 @@ impl ConnectionProject {
     }
 }
 
+impl crate::lenient::Identified for ConnectionProject {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,11 +86,5 @@ mod tests {
 
         assert_eq!(cleaned.name.as_str(), "Acme EU");
         assert!(serde_json::from_str::<ConnectionProject>(&stored(" ")).is_err());
-    }
-}
-
-impl crate::lenient::Identified for ConnectionProject {
-    fn id(&self) -> Uuid {
-        self.id
     }
 }
