@@ -1,11 +1,13 @@
 // The sync surface the apps call (core ADRs 0054 and 0056): `SyncService`, its listener, and the callbacks the
-// apps implement. Its bodies answer `sync.unimplemented` until the engine and key lanes fill them.
+// apps implement, and Team Library over the engine. Its bodies answer `sync.unimplemented` until the engine and key
+// lanes fill them.
 
 mod cloudkit;
 mod host;
 mod keys;
 mod legacy;
 mod service;
+mod team_library;
 
 pub use cloudkit::{
     CloudKitAccount, CloudKitChanges, CloudKitDeletion, CloudKitFailure, CloudKitFetched, CloudKitField,
@@ -28,4 +30,9 @@ pub use service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
     PassReasonTag, PendingApprovalInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag,
     SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo,
+};
+pub use team_library::{
+    TeamConnectionArg, TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo,
+    TeamLibraryItemRef, TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg,
+    TeamScopeStatusInfo, UnsentTeamEditInfo, UnsentTeamEditTag,
 };

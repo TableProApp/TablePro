@@ -158,6 +158,11 @@ pub use sync::{
     StoppedDeviceInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag,
     SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
 };
+pub use sync::{
+    TeamConnectionArg, TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo,
+    TeamLibraryItemRef, TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg,
+    TeamScopeStatusInfo, UnsentTeamEditInfo, UnsentTeamEditTag,
+};
 pub use syntax::SqlGrammarTag;
 pub use table_folders::{TableFolderItemRecord, TableFolderRecord, TableFolderStore, TableRefRecord};
 

@@ -8264,6 +8264,7 @@ dependencies = [
  "sha2 0.11.0",
  "tablepro-keys",
  "tablepro-records",
+ "tablepro-storage",
  "tablepro-sync",
  "tokio",
  "uuid",
