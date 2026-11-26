@@ -14,7 +14,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", "DELETE FROM Track");
         app.Chord(() => app.TryFind("ConfirmRunStatements") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
@@ -35,7 +35,7 @@ public sealed partial class ShellTests
         const string Update = "BEGIN; UPDATE Track SET Name = 'Pending' WHERE TrackId = 1;";
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", Update);
         app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
@@ -65,7 +65,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         var tabs = app.Find("Tabs");
         bool Open() => tabs.FindFirstDescendant(condition => condition.ByName("Query 2")) is not null;
@@ -83,7 +83,7 @@ public sealed partial class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.OpenSampleFromHelp();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto("Query 1", Endless);
         app.Chord(() => app.Find("StopButton").IsEnabled, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);

@@ -11,9 +11,9 @@ internal struct ImportReviewStep: View {
     let title: String
     let banner: ImportReviewBanner?
     let onBack: (() -> Void)?
+    let onCancel: () -> Void
     let onFinished: (ImportOutcome) -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var review: ImportReview
     @State private var isRequestingImport = false
 
@@ -22,11 +22,13 @@ internal struct ImportReviewStep: View {
         banner: ImportReviewBanner?,
         preview: ImportPreview,
         onBack: (() -> Void)?,
+        onCancel: @escaping () -> Void,
         onFinished: @escaping (ImportOutcome) -> Void
     ) {
         self.title = title
         self.banner = banner
         self.onBack = onBack
+        self.onCancel = onCancel
         self.onFinished = onFinished
         _review = StateObject(wrappedValue: ImportReview(preview: preview))
     }
@@ -122,7 +124,7 @@ internal struct ImportReviewStep: View {
                     .controlSize(.small)
             }
 
-            Button(String(localized: "Cancel")) { dismiss() }
+            Button(String(localized: "Cancel")) { onCancel() }
                 .keyboardShortcut(.cancelAction)
                 .disabled(isRequestingImport)
 

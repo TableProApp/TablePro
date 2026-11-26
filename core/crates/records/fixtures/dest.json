@@ -1,0 +1,69 @@
+[
+  {
+    "name": "a connection password through an SSH route with a jump host",
+    "parent": "connection",
+    "secret": "password",
+    "fields": {
+      "name": "Shop", "type": "PostgreSQL", "host": "db.internal", "port": 5432, "database": "shop", "username": "app",
+      "color": "Blue", "sort_order": 2, "tag_ids": ["84BC7D00-A144-4C18-80C0-A11C6070D4F9"],
+      "ssl_config": {"mode": "Verify Identity", "ca_certificate_path": "~/certs/ca.pem", "client_certificate_path": "", "client_key_path": "~/k.pem"},
+      "ssh_config": {"enabled": true, "host": "bastion", "port": 22, "username": "ops", "auth_method": "Private Key",
+        "private_key_path": "~/.ssh/id", "agent_socket_path": "", "totp_mode": "none",
+        "jump_hosts": [{"id": "9E5B6C0B-1C11-4C5B-9C8B-8E3C2C1A0B01", "host": "edge", "port": 2222, "username": "a", "auth_method": "SSH Agent", "private_key_path": ""}]}
+    },
+    "dest": {
+      "type": "PostgreSQL", "host": "db.internal", "port": 5432, "database": "shop", "username": "app",
+      "ssl_config": {"mode": "Verify Identity", "ca_certificate_path": "~/certs/ca.pem", "client_certificate_path": ""},
+      "ssh_config": {"enabled": true, "host": "bastion", "port": 22, "username": "ops", "private_key_path": "~/.ssh/id",
+        "jump_hosts": [{"host": "edge", "port": 2222, "username": "a", "private_key_path": ""}]}
+    }
+  },
+  {
+    "name": "a driver's secure field is sealed as the password is",
+    "parent": "connection",
+    "secret": "plugin.serviceAccountKey",
+    "fields": {"type": "BigQuery", "host": "", "database": "analytics", "ssh_profile_id": "3FD0B191-5CF8-4760-84A9-92779983F3CF"},
+    "dest": {"type": "BigQuery", "host": "", "database": "analytics", "ssh_profile_id": "3FD0B191-5CF8-4760-84A9-92779983F3CF"}
+  },
+  {
+    "name": "an SSH key passphrase on a connection",
+    "parent": "connection",
+    "secret": "ssh_key_passphrase",
+    "fields": {"host": "db", "ssh_config": {"enabled": true, "host": "bastion", "port": 22, "username": "ops", "private_key_path": "~/.ssh/id", "jump_hosts": []}},
+    "dest": {"ssh_config": {"host": "bastion", "port": 22, "username": "ops", "private_key_path": "~/.ssh/id"}}
+  },
+  {
+    "name": "a team connection's password, in the bundle's names",
+    "parent": "library_connection",
+    "secret": "password",
+    "fields": {"name": "Shared", "type": "MySQL", "host": "db.team", "port": 3306, "database": "app", "username": "ro",
+      "sslConfig": {"mode": "Required", "caCertificatePath": "", "clientCertificatePath": "", "clientKeyPath": ""},
+      "sshConfig": {"enabled": false, "host": "", "username": "", "authMethod": "Password", "privateKeyPath": "", "agentSocketPath": ""}},
+    "dest": {"type": "MySQL", "host": "db.team", "port": 3306, "database": "app", "username": "ro",
+      "sslConfig": {"mode": "Required", "caCertificatePath": "", "clientCertificatePath": ""},
+      "sshConfig": {"enabled": false, "host": "", "username": "", "privateKeyPath": ""}}
+  },
+  {
+    "name": "an SSH profile's TOTP secret",
+    "parent": "ssh_profile",
+    "secret": "ssh_totp_secret",
+    "fields": {"name": "Bastion", "host": "bastion", "port": 22, "username": "ops", "auth_method": "Password", "totp_mode": "prompt_at_connect"},
+    "dest": {"host": "bastion", "port": 22, "username": "ops"}
+  },
+  {
+    "name": "a credential profile's password",
+    "parent": "credential_profile",
+    "secret": "password",
+    "fields": {"name": "DBA", "username": "dba", "password_mode": "stored", "sort_order": 0},
+    "dest": {"username": "dba"}
+  },
+  {
+    "name": "an AI provider's key",
+    "parent": "macos_settings",
+    "secret": "ai_key.7C1A2B3D-0000-4000-8000-000000000001",
+    "fields": {"category": "ai", "options": {"enabled": true, "providers": [
+      {"id": "7C1A2B3D-0000-4000-8000-000000000001", "type": "openAI", "name": "Work", "model": "x", "endpoint": "https://api.openai.com/v1"}
+    ]}},
+    "dest": {"type": "openAI", "endpoint": "https://api.openai.com/v1"}
+  }
+]

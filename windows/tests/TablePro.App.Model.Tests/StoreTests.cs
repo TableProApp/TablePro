@@ -51,6 +51,29 @@ public sealed class StoreTests : IDisposable
     }
 
     [Fact]
+    public void TheSetupGuideStartsUnseenOnTableProKeysAndBothComeBackAsSaved()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark" }""");
+        var before = new SettingsStore(path).Load();
+        Assert.False(before.SetupGuideSeen);
+        Assert.Null(before.ShortcutPreset);
+
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings { SetupGuideSeen = true, ShortcutPreset = " dbeaver " });
+        var after = store.Load();
+
+        Assert.True(after.SetupGuideSeen);
+        Assert.Equal("dbeaver", after.ShortcutPreset);
+        var json = System.IO.File.ReadAllText(path);
+        Assert.Contains("\"setupGuideSeen\": true", json, StringComparison.Ordinal);
+        Assert.Contains("\"shortcutPreset\": \"dbeaver\"", json, StringComparison.Ordinal);
+
+        System.IO.File.WriteAllText(path, """{ "shortcutPreset": "   " }""");
+        Assert.Null(new SettingsStore(path).Load().ShortcutPreset);
+    }
+
+    [Fact]
     public void AMissingOrBrokenSettingsFileGivesTheDefaults()
     {
         var path = File("settings.json");

@@ -4,23 +4,83 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
+
+// Outlives the picker view, so Back from the review finds the scan, the selection and every toggle as left.
+@MainActor
+final class ForeignSourcePickerModel: ObservableObject {
+    @Published private(set) var rows: [ForeignSourceRow] = []
+    @Published private(set) var isLoading = true
+    @Published var selectedId: String?
+    @Published private var choices: [String: ForeignImportRequest] = [:]
+
+    private let scan: @Sendable () async -> [ForeignSourceRow]
+
+    init(scan: @escaping @Sendable () async -> [ForeignSourceRow] = { await ForeignSourceScanner.scan() }) {
+        self.scan = scan
+    }
+
+    func load() async {
+        guard isLoading else { return }
+        let scanned = await scan()
+        guard isLoading else { return }
+        rows = scanned
+        isLoading = false
+        if selectedId == nil {
+            selectedId = ForeignSourceRule.preselected(scanned.map(\.summary))
+        }
+    }
+
+    var selectedRow: ForeignSourceRow? {
+        rows.first { $0.id == selectedId }
+    }
+
+    func request(for row: ForeignSourceRow) -> ForeignImportRequest {
+        choices[row.id] ?? Self.defaultRequest(for: row)
+    }
+
+    func setIncludePasswords(_ include: Bool, for row: ForeignSourceRow) {
+        var request = request(for: row)
+        request.includePasswords = include
+        choices[row.id] = request
+    }
+
+    func setIncludeSavedQueries(_ include: Bool, for row: ForeignSourceRow) {
+        var request = request(for: row)
+        request.includeSavedQueries = include
+        choices[row.id] = request
+    }
+
+    // Keychain passwords start off so a first import raises no prompt; saved queries start on only when there are some.
+    nonisolated static func defaultRequest(for row: ForeignSourceRow) -> ForeignImportRequest {
+        ForeignImportRequest(
+            includePasswords: !row.importer.readsPasswordsFromKeychain,
+            includeSavedQueries: offersSavedQueries(row.importer) && row.inventory.savedQueries > 0
+        )
+    }
+
+    nonisolated static func offersSavedQueries(_ importer: any ForeignAppImporter) -> Bool {
+        if case .unavailable = importer.savedQuerySupport { return false }
+        return true
+    }
+}
 
 struct ImportFromAppSourcePicker: View {
     let onSelect: (any ForeignAppImporter, ForeignImportRequest, ForeignAppInventory) -> Void
     let onCancel: () -> Void
 
-    @State private var selectedId: String?
-    @State private var includePasswords = true
-    @State private var includeSavedQueries = true
-    @State private var sources: [Source] = []
-    @State private var isLoading = true
+    @StateObject private var model: ForeignSourcePickerModel
 
-    struct Source: Sendable {
-        let importer: any ForeignAppImporter
-        let available: Bool
-        let inventory: ForeignAppInventory
+    init(
+        model: @autoclosure @escaping () -> ForeignSourcePickerModel = ForeignSourcePickerModel(),
+        onSelect: @escaping (any ForeignAppImporter, ForeignImportRequest, ForeignAppInventory) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        _model = StateObject(wrappedValue: model())
+        self.onSelect = onSelect
+        self.onCancel = onCancel
     }
 
     var body: some View {
@@ -33,7 +93,7 @@ struct ImportFromAppSourcePicker: View {
             Divider()
             footer
         }
-        .task { await loadSources() }
+        .task { await model.load() }
     }
 
     private var header: some View {
@@ -48,7 +108,7 @@ struct ImportFromAppSourcePicker: View {
 
     private var sourceList: some View {
         Group {
-            if isLoading {
+            if model.isLoading {
                 VStack {
                     Spacer()
                     ProgressView()
@@ -57,11 +117,11 @@ struct ImportFromAppSourcePicker: View {
                 }
                 .frame(maxWidth: .infinity)
             } else {
-                List(selection: $selectedId) {
-                    ForEach(sources, id: \.importer.id) { source in
-                        sourceRow(source)
-                            .tag(source.importer.id)
-                            .disabled(!source.available)
+                List(selection: $model.selectedId) {
+                    ForEach(model.rows) { row in
+                        sourceRow(row)
+                            .tag(row.id)
+                            .disabled(row.availability != .available)
                     }
                 }
                 .listStyle(.inset)
@@ -69,24 +129,36 @@ struct ImportFromAppSourcePicker: View {
         }
     }
 
-    private func sourceRow(_ source: Source) -> some View {
+    private func sourceRow(_ row: ForeignSourceRow) -> some View {
         HStack(spacing: 12) {
-            appIcon(for: source.importer)
+            appIcon(for: row.importer)
                 .frame(width: 32, height: 32)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(source.importer.displayName)
+                Text(row.importer.displayName)
                     .font(.body)
                 Group {
-                    if source.importer.importFileTypes != nil {
+                    if row.picksFile {
                         Text(String(localized: "Choose an export file to import"))
-                    } else if source.available {
-                        Text(Self.connectionsFound(source.inventory.connections))
-                        if let queries = Self.savedQueriesFound(source.inventory.savedQueries) {
-                            Text(queries)
-                        }
                     } else {
-                        Text(String(localized: "Not installed"))
+                        switch row.availability {
+                        case .available:
+                            Text(Self.connectionsFound(row.inventory.connections))
+                            if let queries = Self.savedQueriesFound(row.inventory.savedQueries) {
+                                Text(queries)
+                            }
+                        case .notFound:
+                            Text(String(localized: "Not installed"))
+                        case .unreadable(let reason):
+                            Label {
+                                Text(verbatim: reason)
+                                    .lineLimit(2)
+                            } icon: {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .accessibilityHidden(true)
+                            }
+                            .help(reason)
+                        }
                     }
                 }
                 .font(.subheadline)
@@ -113,20 +185,35 @@ struct ImportFromAppSourcePicker: View {
     }
 
     private var options: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let selected = model.selectedRow
+        let request = selected.map { model.request(for: $0) }
+        let offersSavedQueries = selected.map { ForeignSourcePickerModel.offersSavedQueries($0.importer) } ?? false
+        return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Toggle("Include passwords", isOn: $includePasswords)
-                Text(includePasswordsSubtitle)
+                Toggle("Include passwords", isOn: Binding(
+                    get: { request?.includePasswords ?? false },
+                    set: { include in
+                        if let selected {
+                            model.setIncludePasswords(include, for: selected)
+                        }
+                    }
+                ))
+                .disabled(selected == nil)
+                Text(includePasswordsSubtitle(for: selected))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Toggle("Include saved queries", isOn: Binding(
-                    get: { readsSavedQueries && includeSavedQueries },
-                    set: { includeSavedQueries = $0 }
+                    get: { offersSavedQueries && request?.includeSavedQueries == true },
+                    set: { include in
+                        if let selected {
+                            model.setIncludeSavedQueries(include, for: selected)
+                        }
+                    }
                 ))
-                .disabled(!readsSavedQueries)
-                if let caption = savedQueriesCaption {
+                .disabled(!offersSavedQueries)
+                if let caption = savedQueriesCaption(for: selected) {
                     Text(caption)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -146,29 +233,20 @@ struct ImportFromAppSourcePicker: View {
             Button(String(localized: "Continue")) { continueAction() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(selectedSource?.available != true)
+                .disabled(model.selectedRow?.availability != .available)
         }
         .padding(12)
     }
 
-    private var selectedSource: Source? {
-        sources.first { $0.importer.id == selectedId }
-    }
-
-    private var includePasswordsSubtitle: String {
-        if selectedSource?.importer.readsPasswordsFromKeychain ?? true {
+    private func includePasswordsSubtitle(for row: ForeignSourceRow?) -> String {
+        if row?.importer.readsPasswordsFromKeychain ?? true {
             return String(localized: "Read saved passwords from Keychain (requires permission)")
         }
         return String(localized: "Saved passwords are decrypted during import")
     }
 
-    private var readsSavedQueries: Bool {
-        if case .unavailable? = selectedSource?.importer.savedQuerySupport { return false }
-        return true
-    }
-
-    private var savedQueriesCaption: String? {
-        switch selectedSource?.importer.savedQuerySupport {
+    private func savedQueriesCaption(for row: ForeignSourceRow?) -> String? {
+        switch row?.importer.savedQuerySupport {
         case .reads(let caption):
             caption
         case .unavailable(let reason):
@@ -178,8 +256,12 @@ struct ImportFromAppSourcePicker: View {
         }
     }
 
-    private var request: ForeignImportRequest {
-        ForeignImportRequest(includePasswords: includePasswords, includeSavedQueries: readsSavedQueries && includeSavedQueries)
+    private func request(for row: ForeignSourceRow) -> ForeignImportRequest {
+        let chosen = model.request(for: row)
+        return ForeignImportRequest(
+            includePasswords: chosen.includePasswords,
+            includeSavedQueries: ForeignSourcePickerModel.offersSavedQueries(row.importer) && chosen.includeSavedQueries
+        )
     }
 
     static func connectionsFound(_ count: Int) -> String {
@@ -195,36 +277,17 @@ struct ImportFromAppSourcePicker: View {
             : String(format: String(localized: "%d saved queries found"), count)
     }
 
-    private func loadSources() async {
-        guard isLoading else { return }
-        let loaded = await Self.inventorySources()
-        sources = loaded
-        isLoading = false
-        if selectedId == nil, let first = loaded.first(where: \.available) {
-            selectedId = first.importer.id
-        }
-    }
-
-    @concurrent
-    nonisolated private static func inventorySources() async -> [Source] {
-        ForeignAppImporterRegistry.all.map { importer in
-            let available = importer.isAvailable()
-            let inventory = available ? importer.inventory() : ForeignAppInventory(connections: 0, savedQueries: 0)
-            return Source(importer: importer, available: available, inventory: inventory)
-        }
-    }
-
     private func continueAction() {
-        guard let source = selectedSource, source.available else { return }
-        if source.importer.importFileTypes != nil {
-            presentFilePicker(for: source)
+        guard let row = model.selectedRow, row.availability == .available else { return }
+        if row.picksFile {
+            presentFilePicker(for: row)
         } else {
-            onSelect(source.importer, request, source.inventory)
+            onSelect(row.importer, request(for: row), row.inventory)
         }
     }
 
-    private func presentFilePicker(for source: Source) {
-        let importer = source.importer
+    private func presentFilePicker(for row: ForeignSourceRow) {
+        let importer = row.importer
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
@@ -234,8 +297,8 @@ struct ImportFromAppSourcePicker: View {
         }
         panel.message = String(format: String(localized: "Choose a %@ export file to import"), importer.displayName)
 
-        let selectedRequest = request
-        let inventory = source.inventory
+        let selectedRequest = request(for: row)
+        let inventory = row.inventory
         let completion: (NSApplication.ModalResponse) -> Void = { response in
             guard response == .OK, let url = panel.url else { return }
             var configured = importer

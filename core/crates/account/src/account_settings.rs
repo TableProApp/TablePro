@@ -9,8 +9,8 @@ use crate::machine_id::MachineId;
 use crate::server::{ServerSettings, origin_text};
 
 // tablepro-cloud registers one public OAuth client per app, each with its own redirect: Linux's and Windows's take
-// the loopback one this crate listens on, on any port (api.md, OAuth). The Mac's is a custom scheme, which the host's
-// web authenticator answers.
+// the loopback one this crate listens on, on any port (api.md, OAuth). The Mac's and iOS's are the same custom scheme,
+// which the host's web authenticator answers, so only the client ID and PKCE keep each app to its own codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AppClient {
     pub client_id: &'static str,
@@ -51,6 +51,13 @@ impl AppClient {
         client_id: "tablepro-macos",
         platform: Platform::Macos,
         system: "macOS",
+        redirect: Redirect::Scheme("app.tablepro"),
+    };
+
+    pub const IOS: Self = Self {
+        client_id: "tablepro-ios",
+        platform: Platform::Ios,
+        system: "iOS",
         redirect: Redirect::Scheme("app.tablepro"),
     };
 }
@@ -183,8 +190,13 @@ mod tests {
             (AppClient::MACOS.client_id, AppClient::MACOS.platform.to_string()),
             ("tablepro-macos", "macos".to_owned())
         );
+        assert_eq!(
+            (AppClient::IOS.client_id, AppClient::IOS.platform.to_string()),
+            ("tablepro-ios", "ios".to_owned())
+        );
         assert_eq!(AppClient::LINUX.redirect, Redirect::Loopback);
         assert_eq!(AppClient::MACOS.redirect, Redirect::Scheme("app.tablepro"));
+        assert_eq!(AppClient::IOS.redirect, Redirect::Scheme("app.tablepro"));
     }
 
     #[test]

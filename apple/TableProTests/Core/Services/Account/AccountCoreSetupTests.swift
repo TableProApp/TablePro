@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProFFI
 import Testing
 
 struct AccountCoreSetupTests {
@@ -74,6 +75,44 @@ struct AccountCoreSetupTests {
             environment: half, isDebugBuild: true
         )
         #expect(partial.developmentStack == nil)
+    }
+}
+
+struct AccountCoreSetupConfigTests {
+    @Test("The core gets the Mac's client, its machine ID, the profile's values and the entitlement file from before")
+    func configIsTheMacs() {
+        let setup = AccountCoreSetup.make(
+            supportDirectory: URL(fileURLWithPath: "/Users/ada/Library/Application Support/TablePro", isDirectory: true),
+            machineID: "mid",
+            policy: ManagedPolicySnapshot(accountServerURL: "https://tablepro.example.com", allowOtherAccountServers: false),
+            environment: [:], isDebugBuild: false
+        )
+        let machine = MachineDescription(machineID: "mid", name: "Ada's Mac", appVersion: "0.90.0", osVersion: "26.1")
+
+        let config = setup.accountConfig(machine: machine)
+
+        #expect(config.client == .macos)
+        #expect(config.machineId == "mid")
+        #expect(config.deviceName == "Ada's Mac")
+        #expect(config.policy == setup.policy.coreArgument)
+        #expect(config.legacyEntitlementFile == setup.legacyEntitlementFile.path)
+        #expect(config.accountUrl == nil && config.apiUrl == nil && config.licenseKeys.isEmpty)
+    }
+
+    @Test("A development stack's addresses and keys reach the core with the /v2 base")
+    func developmentStackReachesTheCore() {
+        let setup = AccountCoreSetup.make(
+            supportDirectory: URL(fileURLWithPath: "/tmp", isDirectory: true), machineID: "mid",
+            policy: ManagedPolicySnapshot(),
+            environment: ["TABLEPRO_ACCOUNT_URL": "http://account.localhost:5284", "TABLEPRO_API_URL": "http://api.localhost:5284/"],
+            isDebugBuild: true
+        )
+        let machine = MachineDescription(machineID: "mid", name: "Mac", appVersion: "0.90.0", osVersion: "26.1")
+
+        let config = setup.accountConfig(machine: machine)
+
+        #expect(config.accountUrl == "http://account.localhost:5284")
+        #expect(config.apiUrl == "http://api.localhost:5284/v2")
     }
 }
 

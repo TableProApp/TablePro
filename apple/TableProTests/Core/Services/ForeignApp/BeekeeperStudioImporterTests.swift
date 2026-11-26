@@ -157,7 +157,30 @@ struct BeekeeperStudioImporterTests {
     func inventoryCounts() throws {
         try makeFoldersDatabase()
 
-        #expect(importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 3))
+        #expect(try importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 3))
+    }
+
+    @Test("An app.db left behind by a deleted Beekeeper Studio is available, and the probe sees it")
+    func leftoverDataIsAvailable() throws {
+        var imp = importer
+        imp.resolveAppURL = { _ in nil }
+        #expect(!imp.hasDataAtDefaultLocation())
+        #expect(!imp.isAvailable())
+        #expect(try imp.inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
+
+        try makeDatabase(Self.connectionSchema)
+
+        #expect(imp.hasDataAtDefaultLocation())
+        #expect(imp.isAvailable())
+    }
+
+    @Test("An app.db that is there but cannot be read is unreadable, never zero")
+    func unreadableDatabaseThrows() throws {
+        try Data("not a database".utf8).write(to: tempDir.appendingPathComponent("app.db"))
+
+        #expect(throws: ForeignAppImportError.self) {
+            try importer.inventory()
+        }
     }
 
     @Test("inventory counts only the connections collect imports")
@@ -169,7 +192,7 @@ struct BeekeeperStudioImporterTests {
         let result = try importer.collect(.connectionsOnly)
 
         #expect(result.connections.map { $0.name } == ["Shop"])
-        #expect(importer.inventory().connections == result.connections.count)
+        #expect(try importer.inventory().connections == result.connections.count)
     }
 
     @Test("inventory and collect agree on which saved queries are blank")
@@ -185,7 +208,7 @@ struct BeekeeperStudioImporterTests {
         let result = try importer.collect(.withSavedQueries)
 
         #expect(result.savedQueryNames == ["Orders", "Form feed"])
-        #expect(importer.inventory().savedQueries == result.bundle.savedQueries.count)
+        #expect(try importer.inventory().savedQueries == result.bundle.savedQueries.count)
     }
 
     @Test("TLS verification follows what each engine's Beekeeper connector does")

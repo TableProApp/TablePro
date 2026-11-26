@@ -8,9 +8,9 @@ import TableProImport
 
 struct ConnectionImportSheet: View {
     let fileURL: URL
+    let onCancel: () -> Void
     let onFinished: (ImportOutcome) -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @State private var phase: Phase = .loading
     @State private var passphrase = ""
     @State private var passphraseError: String?
@@ -44,6 +44,7 @@ struct ConnectionImportSheet: View {
                     banner: nil,
                     preview: preview,
                     onBack: nil,
+                    onCancel: onCancel,
                     onFinished: onFinished
                 )
             case .failed(let message):
@@ -71,7 +72,7 @@ struct ConnectionImportSheet: View {
             Spacer()
             HStack {
                 Spacer()
-                Button(String(localized: "OK")) { dismiss() }
+                Button(String(localized: "OK")) { onCancel() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             }
@@ -110,7 +111,7 @@ struct ConnectionImportSheet: View {
 
             HStack {
                 Spacer()
-                Button(String(localized: "Cancel")) { dismiss() }
+                Button(String(localized: "Cancel")) { onCancel() }
                     .keyboardShortcut(.cancelAction)
                 Button(String(localized: "Decrypt")) { requestDecrypt() }
                     .buttonStyle(.borderedProminent)
