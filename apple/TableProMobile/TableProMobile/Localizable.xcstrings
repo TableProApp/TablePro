@@ -31531,6 +31531,9 @@
         }
       }
     },
+    "Your change to %@ was not saved because it changed on another device at the same time. Make the change again." : {
+
+    },
     "Your connections could not be loaded, so nothing can be added right now." : {
       "localizations" : {
         "ko" : {

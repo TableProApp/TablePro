@@ -51,6 +51,13 @@ final class AppState {
     @ObservationIgnored private var unsavedLibraryParts: Set<LibraryPart> = []
     // Set by a write that went on top of a sync pass, so the part's write ends by taking what the store holds.
     @ObservationIgnored private var adoptAfterWrite = false
+    // Names of records whose change this device could not put on top of a sync pass, which the connection list tells the
+    // person about; the store kept the pass's copy.
+    private(set) var editsNotApplied: [String] = []
+
+    func dismissEditsNotApplied() {
+        editsNotApplied = []
+    }
     let libraryPreferences: ConnectionLibraryPreferences
     let sshProvider: IOSSSHProvider
     let secureStore: any SecureStore
@@ -455,8 +462,12 @@ final class AppState {
         do {
             let stored = try library.load()
             let rebased = LibraryRebase.rebased(image, from: libraryImage(), onto: stored)
-            try library.write(rebased, keepingPastedSSHKeys: heldKeys, removingUnreadable: removed)
+            try library.write(rebased.library, keepingPastedSSHKeys: heldKeys, removingUnreadable: removed)
             adoptAfterWrite = true
+            if !rebased.unmerged.isEmpty {
+                Self.logger.error("\(rebased.unmerged.count, privacy: .public) library edits did not merge over a sync pass and were not saved")
+                editsNotApplied += rebased.unmerged
+            }
             return true
         } catch {
             Self.logger.error("Failed to save \(part, privacy: .public) over a sync pass: \(LogRedaction.publicDescription(of: error), privacy: .public)")

@@ -231,6 +231,14 @@ struct ConnectionListView: View {
         } message: {
             Text(actionErrorMessage ?? "")
         }
+        .alert(String(localized: "Changes Not Saved"), isPresented: editsNotAppliedPresented) {
+            Button(String(localized: "OK")) { appState.dismissEditsNotApplied() }
+        } message: {
+            Text(String(
+                format: String(localized: "Your change to %@ was not saved because it changed on another device at the same time. Make the change again."),
+                appState.editsNotApplied.formatted(.list(type: .and))
+            ))
+        }
         .alert(refusal?.title ?? "", isPresented: refusalPresented, presenting: refusal) { _ in
             Button(String(localized: "OK")) { presenter.refusedConnectionId = nil }
         } message: { error in
@@ -830,6 +838,15 @@ struct ConnectionListView: View {
               let connection = appState.connections.first(where: { $0.id == id }),
               let error = IOSDriverFactory.refusal(for: connection) else { return nil }
         return ErrorClassifier.connectionFailure(error)
+    }
+
+    private var editsNotAppliedPresented: Binding<Bool> {
+        Binding(
+            get: { !appState.editsNotApplied.isEmpty },
+            set: { presented in
+                if !presented { appState.dismissEditsNotApplied() }
+            }
+        )
     }
 
     private var refusalPresented: Binding<Bool> {
