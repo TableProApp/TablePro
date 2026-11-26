@@ -207,15 +207,21 @@ impl KeyService {
         self.comparisons().insert(request, comparison);
     }
 
-    // One step through the session's comparison; a session without one takes no step.
-    pub(super) fn with_comparison<T>(
+    // One step through a copy of the session's comparison; a session without one takes no step. The copy takes the
+    // kept one's place only once the row it moved committed (`keep_comparison`), so a write that fails leaves the
+    // comparison where the row is and the step can be taken again.
+    pub(super) fn step_comparison<T>(
         &self,
         record: &mut SessionRecord,
         step: impl FnOnce(&mut SessionRecord, &mut Comparison) -> Result<T, KeysError>,
-    ) -> Result<T, KeysError> {
-        let mut comparisons = self.comparisons();
-        let comparison = comparisons.get_mut(&record.request).ok_or(KeysError::Session)?;
-        step(record, comparison)
+    ) -> Result<(T, Comparison), KeysError> {
+        let mut comparison = self
+            .comparisons()
+            .get(&record.request)
+            .cloned()
+            .ok_or(KeysError::Session)?;
+        let out = step(record, &mut comparison)?;
+        Ok((out, comparison))
     }
 
     // The row, and the pending flow while the session has a step to send or N has a change set to merge.
@@ -347,8 +353,9 @@ impl KeyService {
     }
 
     pub(super) async fn send_reveal(&self, record: &mut SessionRecord) -> Result<(), SyncError> {
+        // Past the reveal the row holds every input, so the comparison is not needed once it commits.
         if record.state == tablepro_keys::sas::SessionState::Chosen {
-            self.with_comparison(record, SessionRecord::reveal)?;
+            self.step_comparison(record, SessionRecord::reveal)?;
             self.save_session(record).await?;
         }
         match self.push_step(record, &reveal_object(record)?).await? {

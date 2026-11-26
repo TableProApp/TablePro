@@ -5,7 +5,7 @@ use tablepro_keys::KeysError;
 use tablepro_keys::body::{CancelReason, KeyBody, KeyObject, SasBody};
 use tablepro_keys::encoding::RequestId;
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
-use tablepro_keys::sas::{Role, SasDevice, SessionState};
+use tablepro_keys::sas::{Comparison, Role, SasDevice, SessionState};
 
 use super::session::SessionRecord;
 use super::steps::SESSION_US;
@@ -42,12 +42,17 @@ impl KeyService {
         let mut txn = self.begin().await?;
         let own = self.own_account(txn.as_mut()).await?;
         let mut drive = false;
+        let mut moved_on = Vec::new();
         for record in &arrival.records {
-            let (moved, refused) = match self.apply_session_record(txn.as_mut(), own.as_ref(), record).await {
-                Ok(step) => step,
-                Err(SyncError::Keys(error)) => (false, Some(error)),
-                Err(error) => return Err(error),
-            };
+            let (moved, refused) =
+                match self
+                    .apply_session_record(txn.as_mut(), own.as_ref(), record, &mut moved_on)
+                    .await
+                {
+                    Ok(step) => step,
+                    Err(SyncError::Keys(error)) => (false, Some(error)),
+                    Err(error) => return Err(error),
+                };
             drive |= moved;
             if let Some(error) = refused {
                 applied.refused.push(RefusedObject {
@@ -57,6 +62,9 @@ impl KeyService {
             }
         }
         txn.commit().await?;
+        for (request, comparison) in moved_on {
+            self.keep_comparison(request, comparison);
+        }
         if drive {
             self.hooks().pass_soon();
         }
@@ -65,11 +73,13 @@ impl KeyService {
 
     // Whether the session moved so this side has a step to send, and the step's refusal. A refused step still
     // leaves the session as it ended, as a reveal that does not open the commitment does.
+    // A comparison a step moved goes to `moved_on`, kept once the rows commit.
     async fn apply_session_record(
         &self,
         txn: &mut dyn StateTxn,
         own: Option<&OwnAccount>,
         pulled: &PulledRecord,
+        moved_on: &mut Vec<(RequestId, Comparison)>,
     ) -> Result<(bool, Option<KeysError>), SyncError> {
         let Some(request) = request_of(pulled) else {
             return Ok((false, None));
@@ -116,12 +126,15 @@ impl KeyService {
                 }
                 Ok(false)
             }
-            (KeyBody::Sas(step), Some(held)) => self.apply_step(held, own, step),
+            (KeyBody::Sas(step), Some(held)) => self.apply_step(held, own, step, moved_on),
             _ => Ok(false),
         };
         if let Some(record) = record.as_mut() {
             record.expire_if_due(self.now_us());
             self.put_session(txn, record).await?;
+            if !record.needs_comparison() {
+                moved_on.retain(|(request, _)| *request != record.request);
+            }
         }
         match moved {
             Ok(moved) => Ok((moved, None)),
@@ -135,6 +148,7 @@ impl KeyService {
         held: &mut SessionRecord,
         own: Option<&OwnAccount>,
         step: &SasBody,
+        moved_on: &mut Vec<(RequestId, Comparison)>,
     ) -> Result<bool, KeysError> {
         match (held.role, step) {
             (
@@ -154,7 +168,9 @@ impl KeyService {
                 if held.a == Some((a, *r)) {
                     return Ok(false);
                 }
-                self.with_comparison(held, |held, comparison| held.receive_nonce(comparison, a, *r))?;
+                let ((), comparison) =
+                    self.step_comparison(held, |held, comparison| held.receive_nonce(comparison, a, *r))?;
+                moved_on.push((held.request, comparison));
                 Ok(true)
             }
             (Role::Approver, SasBody::Nonce { key_device, r, .. }) => {
@@ -171,8 +187,8 @@ impl KeyService {
                 }
                 // A reveal that does not open the commitment ends the session; this side sends its `cancel` with that
                 // reason.
-                self.with_comparison(held, |held, comparison| held.receive_reveal(comparison, *r))
-                    .map(|()| false)
+                self.step_comparison(held, |held, comparison| held.receive_reveal(comparison, *r))
+                    .map(|_| false)
             }
             (Role::NewDevice, SasBody::Reveal { .. }) => Ok(false),
             (_, SasBody::Cancel { reason }) => {

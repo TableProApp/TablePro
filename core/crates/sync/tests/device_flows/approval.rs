@@ -310,6 +310,36 @@ async fn an_approver_restarted_before_the_reveal_ends_the_session() {
     assert_eq!(n.service.approval_session(request).await.unwrap().phase, user);
 }
 
+// N reads A's `nonce` step and the commit that keeps it does not land: the comparison stays where the row is, so the
+// same step read again moves the session on to its reveal.
+#[tokio::test]
+async fn a_nonce_step_whose_commit_did_not_land_is_taken_again() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    let id = KeyRecordId::Sas {
+        request,
+        step: tablepro_keys::record_id::SasStep::Nonce,
+    }
+    .to_wire();
+    let nonce = crate::harness::served(&stored(&server, account, "key.sas", &id).unwrap());
+    n.fail_next_commit();
+
+    let failed = n.service.apply_session_objects(arrival(vec![nonce.clone()])).await;
+    let again = n.service.apply_session_objects(arrival(vec![nonce])).await.unwrap();
+    let phase = n.service.approval_session(request).await.unwrap().phase;
+
+    assert!(failed.is_err());
+    assert!(again.refused.is_empty(), "{again:?}");
+    assert!(matches!(phase, SessionPhase::Compare { .. }), "{phase:?}");
+}
+
 // A server-made approval: a device certificate the server replays at the new key device's id, with wraps signed by a
 // key the new device never compared. N refuses it and keeps the keys it had.
 #[tokio::test]
