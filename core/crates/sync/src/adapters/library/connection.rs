@@ -22,7 +22,8 @@ use super::tunnel::{
 use super::values::{Object, boolean, clamped, integer, text, unknown_members, uuid_at, uuid_value};
 use crate::adapters::unsettled::{SSH_PROFILE_UNLINKED, TLS_MODE_UNSETTLED};
 
-// Every member the wire schema names, so the rest are the keys a newer build wrote.
+// Every member the store's model reads, so the rest are kept as a newer build wrote them: `project_id`, which the
+// model does not hold yet, and the format stamp among them.
 const MEMBERS: &[&str] = &[
     "name",
     "type",
@@ -35,7 +36,6 @@ const MEMBERS: &[&str] = &[
     "safe_mode_level",
     "sort_order",
     "group_id",
-    "project_id",
     "is_favorite",
     "tag_ids",
     "query_timeout_seconds",
@@ -54,7 +54,6 @@ const MEMBERS: &[&str] = &[
     "credential_reference",
     "auth_mode",
     "network_options",
-    "schema_version",
     "last_opened_at",
     "local_only",
     "is_sample",

@@ -16,6 +16,7 @@ mod approval;
 mod faults;
 mod full;
 mod held;
+mod library;
 mod merge;
 mod older_builds;
 mod pass;
