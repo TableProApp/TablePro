@@ -9,10 +9,13 @@ set -euo pipefail
 
 NEW_APP="$(cd "${1:?the TablePro.app of this build}" && pwd)"
 OLD_APP="$(cd "${2:?the TablePro.app of the previous stable}" && pwd)"
-if pgrep -x TablePro >/dev/null; then
-    echo "Quit every TablePro first: a run here must be the only one" >&2
-    exit 2
-fi
+# Another copy of either app would hold the sandbox's files; an installed TablePro elsewhere keeps to its own.
+for app in "$NEW_APP" "$OLD_APP"; do
+    if pgrep -f "^$app/Contents/MacOS/TablePro" >/dev/null; then
+        echo "Quit $app first: a run here must be the only one" >&2
+        exit 2
+    fi
+done
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/tablepro-library-downgrade.XXXXXX")"
 SUPPORT="$SANDBOX/TablePro"
 mkdir -p "$SUPPORT"
