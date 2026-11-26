@@ -341,7 +341,7 @@ impl SyncService {
     }
 
     pub async fn sync_now(&self, why: PassReasonTag) -> Result<(), CoreError> {
-        self.on_control(|control| async move { control.sync_now(why.into()).await })
+        self.on_control(move |control| async move { control.sync_now(why.into()).await })
             .await
     }
 
@@ -385,48 +385,48 @@ impl SyncService {
 
     // Among what the managed policy allows (core ADR 0055).
     pub async fn choose_provider(&self, provider: SyncProviderTag) -> Result<(), CoreError> {
-        self.on_control(|control| async move { control.choose_provider(provider.into()).await })
+        self.on_control(move |control| async move { control.choose_provider(provider.into()).await })
             .await
     }
 
     pub async fn plan_move_to_service(&self) -> Result<MovePlanInfo, CoreError> {
-        self.on_control(|control| async move { control.plan_move_to_service().await.map(MovePlanInfo::from) })
+        self.on_control(move |control| async move { control.plan_move_to_service().await.map(MovePlanInfo::from) })
             .await
     }
 
     pub async fn move_to_service(&self) -> Result<(), CoreError> {
-        self.on_control(|control| async move { control.move_to_service().await })
+        self.on_control(move |control| async move { control.move_to_service().await })
             .await
     }
 
     pub async fn plan_move_to_icloud(&self) -> Result<MoveBackPlanInfo, CoreError> {
-        self.on_control(|control| async move { control.plan_move_to_icloud().await.map(MoveBackPlanInfo::from) })
+        self.on_control(move |control| async move { control.plan_move_to_icloud().await.map(MoveBackPlanInfo::from) })
             .await
     }
 
     // Refused unless the count is the plan's, which the person confirmed.
     pub async fn move_to_icloud(&self, confirmed_deletions: u64) -> Result<(), CoreError> {
-        self.on_control(|control| async move { control.move_to_icloud(confirmed_deletions).await })
+        self.on_control(move |control| async move { control.move_to_icloud(confirmed_deletions).await })
             .await
     }
 
     pub async fn choose_for_new_identity(&self, choice: NewIdentityChoiceTag) -> Result<(), CoreError> {
-        self.on_control(|control| async move { control.choose_for_new_identity(choice.into()).await })
+        self.on_control(move |control| async move { control.choose_for_new_identity(choice.into()).await })
             .await
     }
 
     pub async fn upload_again(&self) -> Result<(), CoreError> {
-        self.on_control(|control| async move { control.upload_again().await })
+        self.on_control(move |control| async move { control.upload_again().await })
             .await
     }
 
     pub async fn delete_icloud_zone(&self) -> Result<(), CoreError> {
-        self.on_control(|control| async move { control.delete_icloud_zone().await })
+        self.on_control(move |control| async move { control.delete_icloud_zone().await })
             .await
     }
 
     pub async fn approvals(&self) -> Result<Vec<PendingApprovalInfo>, CoreError> {
-        self.on_control(|control| async move {
+        self.on_control(move |control| async move {
             let approvals = control.approvals().await?;
             Ok(approvals.into_iter().map(PendingApprovalInfo::from).collect())
         })
@@ -442,12 +442,12 @@ impl SyncService {
         approve: bool,
     ) -> Result<(), CoreError> {
         let (key, seen) = (record_arg(&record)?, digest_arg(&digest)?);
-        self.on_control(|control| async move { control.decide_approval(key, field, seen, approve).await })
+        self.on_control(move |control| async move { control.decide_approval(key, field, seen, approve).await })
             .await
     }
 
     pub async fn conflicts(&self) -> Result<Vec<TeamConflictInfo>, CoreError> {
-        self.on_control(|control| async move {
+        self.on_control(move |control| async move {
             let conflicts = control.conflicts().await?;
             Ok(conflicts.into_iter().map(TeamConflictInfo::from).collect())
         })
@@ -462,12 +462,12 @@ impl SyncService {
         keep: ConflictChoiceTag,
     ) -> Result<(), CoreError> {
         let (key, seen) = (record_arg(&record)?, digest_arg(&digest)?);
-        self.on_control(|control| async move { control.resolve_conflict(key, seen, keep.into()).await })
+        self.on_control(move |control| async move { control.resolve_conflict(key, seen, keep.into()).await })
             .await
     }
 
     pub async fn held_records(&self) -> Result<Vec<HeldRecordInfo>, CoreError> {
-        self.on_control(|control| async move {
+        self.on_control(move |control| async move {
             let held = control.held_records().await?;
             Ok(held.into_iter().map(HeldRecordInfo::from).collect())
         })
@@ -476,7 +476,7 @@ impl SyncService {
 
     // True while older entries remain on the server.
     pub async fn load_older_history(&self) -> Result<bool, CoreError> {
-        self.on_control(|control| async move { control.load_older_history().await })
+        self.on_control(move |control| async move { control.load_older_history().await })
             .await
     }
 
