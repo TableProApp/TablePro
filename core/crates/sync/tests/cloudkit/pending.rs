@@ -143,7 +143,7 @@ async fn a_deletion_the_store_took_before_a_crash_leaves_no_base() {
 }
 
 // A connection new to the device waits whole for its host, in a batch that also writes a store, and the fetch stops
-// after the store write. The held record keeps no base and its rows landed with the staged bases, so the replay holds
+// after the store write. Its held row landed with the staged bases, so its staged base is not taken, the replay holds
 // it again and nothing reads its absence from the store as a deletion made here.
 #[tokio::test]
 async fn a_connection_held_whole_across_a_crash_after_the_store_write_is_never_deleted() {
@@ -166,7 +166,6 @@ async fn a_connection_held_whole_across_a_crash_after_the_store_write_is_never_d
         rig.held(Kind::Connection, B).await.map(|row| row.reason),
         Some(HeldReason::AwaitingApproval)
     );
-    assert!(rig.base(Kind::Connection, B).await.is_none());
     assert_eq!(rig.waiting().await.len(), 1);
     assert_eq!(pushed.deleted, 0);
     assert!(rig.zone_fields(Kind::Connection, B).is_some());
@@ -202,4 +201,32 @@ async fn a_pulled_port_change_keeps_its_waiting_row_across_a_crash_after_the_sto
         rig.zone_fields(Kind::Connection, A),
         Some(projected(Kind::Connection, A, &json!({"name": "prod 2", "port": 6432})))
     );
+}
+
+// A stored connection whose pulled host waits is deleted in the zone, and the store refuses the deletion after the
+// staged bases committed. The waiting row is removed only with the store's deletion, so the store's own host never
+// reads as an edit made here and the push does not bring the connection back.
+#[tokio::test]
+async fn a_pulled_deletion_the_store_refused_keeps_the_waiting_row_and_brings_nothing_back() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "db.internal"}));
+    rig.fetch().await.unwrap();
+    rig.approve_everything().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod", "host": "elsewhere.example.com"}));
+    rig.fetch().await.unwrap();
+    let waited = rig.waiting().await.len();
+    rig.delete_elsewhere(Kind::Connection, A);
+    rig.store(Kind::Connection).refuse_next_write();
+
+    let refused = rig.fetch().await;
+    let kept = rig.waiting().await.len();
+    rig.fetch().await.unwrap();
+    let pushed = rig.push().await.unwrap();
+
+    assert_eq!(waited, 1);
+    assert!(matches!(refused, Err(SyncError::Adapter(_))));
+    assert_eq!(kept, 1);
+    assert!(!rig.store(Kind::Connection).holds(A));
+    assert_eq!(pushed.saved, 0);
+    assert!(rig.zone_fields(Kind::Connection, A).is_none());
 }

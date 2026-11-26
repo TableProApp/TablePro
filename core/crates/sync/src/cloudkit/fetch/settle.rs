@@ -204,12 +204,11 @@ impl<'s, 'f> Settle<'s, 'f> {
         let stored = record.as_ref().map(|record| &record.fields);
         match approval::gate(&mut self.txn, &key, copy.kind, stored, merged).await? {
             Gated::Apply(merged) => self.settle_local(copy.kind, &key, record.as_ref(), merged),
-            // No base: the device holds no copy to agree with iCloud on, and a base would read the record's absence
-            // from the store as a deletion made here. It takes one when the approval puts it in the store.
+            // Its base, the copy and its creation date, lands only with this held row (`Staged::split`), so nothing
+            // reads the record's absence from the store as a deletion made here.
             Gated::Hold => {
-                return self
-                    .hold(&key, HeldReason::AwaitingApproval, held_change(&copy))
-                    .await;
+                self.hold(&key, HeldReason::AwaitingApproval, held_change(&copy))
+                    .await?;
             }
         }
         self.txn
