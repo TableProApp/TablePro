@@ -16,6 +16,7 @@ internal struct TeamMemberConfirmSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var words: TeamFingerprintLoad = .loading
     @State private var codeCheck: TeamCodeComparison?
+    @State private var lastPhotoHadNoCode = false
     @State private var isReadingCode = false
     @State private var showsMismatch = false
 
@@ -95,6 +96,9 @@ internal struct TeamMemberConfirmSheet: View {
             NoticeLabel(String(localized: "Their code matches. You can confirm them."), severity: .success)
         case .differs:
             NoticeLabel(String(localized: "Their code doesn't match the keys this Mac has for them. Don't confirm them."), severity: .error)
+            if lastPhotoHadNoCode {
+                NoticeLabel(String(localized: "The last photo had no TablePro code in it."), severity: .info)
+            }
         case .unreadable:
             NoticeLabel(String(localized: "No TablePro code was found in the photo. Try again closer to the screen."))
         case nil:
@@ -125,10 +129,13 @@ internal struct TeamMemberConfirmSheet: View {
     private func read(_ image: CGImage) async {
         isReadingCode = true
         defer { isReadingCode = false }
-        guard let text = await TeamFingerprintCode.text(in: image) else {
-            codeCheck = .unreadable
-            return
+        let next: TeamCodeComparison
+        if let text = await TeamFingerprintCode.text(in: image) {
+            next = await model.compareCode(text, with: member)
+        } else {
+            next = .unreadable
         }
-        codeCheck = await model.compareCode(text, with: member)
+        lastPhotoHadNoCode = next == .unreadable
+        codeCheck = TeamCodeComparison.settled(after: codeCheck, reading: next)
     }
 }

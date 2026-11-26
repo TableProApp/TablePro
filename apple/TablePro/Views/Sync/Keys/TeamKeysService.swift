@@ -64,14 +64,15 @@ nonisolated internal struct TeamStoppedDevice: Equatable, Sendable, Identifiable
     var id: String { device }
 }
 
-// A secret a removed party could read: the team connection that holds it and the envelope table's secret kind, such
-// as `password` or `plugin.<field id>` (core ADR 0056, Envelopes and history).
+// A secret a removed party could read: the connection that holds it, by name and driver while this Mac still has it,
+// and the envelope table's secret kind, such as `password` or `plugin.<field id>` (core ADR 0056, Old data).
 nonisolated internal struct TeamCredentialToRotate: Equatable, Sendable, Identifiable {
-    let connectionID: String
+    let envelope: String
     let connectionName: String?
+    let driver: String?
     let fieldKey: String
 
-    var id: String { "\(connectionID)/\(fieldKey)" }
+    var id: String { envelope }
 }
 
 nonisolated internal struct TeamKeysSnapshot: Equatable, Sendable {

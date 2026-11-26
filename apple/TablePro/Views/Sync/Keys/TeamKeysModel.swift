@@ -12,6 +12,11 @@ internal enum TeamCodeComparison: Equatable {
     case matches
     case differs
     case unreadable
+
+    // A mismatch stands until a code that matches: a photo with no code in it, or a check that failed, proves nothing.
+    static func settled(after previous: TeamCodeComparison?, reading next: TeamCodeComparison) -> TeamCodeComparison {
+        next == .unreadable && previous == .differs ? .differs : next
+    }
 }
 
 // One team's keys page: the team key's state, its members' keys, the devices stopped on it and what a removed party

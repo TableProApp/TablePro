@@ -55,9 +55,8 @@ internal final class ResetKeysLiveService: ResetKeysService {
         try await service().cancelReset(reset: reset, recoveryKey: recoveryKey)
     }
 
-    // Lane K8 adds the call that sends the lost proposal again; until then the core holds it with the notice.
     func proposeResetAgain(reset: String) async throws {
-        throw TeamKeysCallMissing()
+        try await service().resumeReset(reset: reset)
     }
 
     func activateReset(reset: String) async throws {

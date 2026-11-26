@@ -349,7 +349,9 @@ private struct TeamCredentialsSection: View {
             ForEach(credentials) { credential in
                 SettingsRecordRow(
                     title: credential.connectionName ?? String(localized: "A team connection"),
-                    subtitle: TeamKeysPresentation.secretName(credential.fieldKey) { TeamKeysPresentation.driverFieldLabel($0) }
+                    subtitle: TeamKeysPresentation.secretName(credential.fieldKey) {
+                        TeamKeysPresentation.driverFieldLabel($0, driver: credential.driver)
+                    }
                 )
             }
         } header: {

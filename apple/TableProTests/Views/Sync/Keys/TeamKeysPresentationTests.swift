@@ -141,12 +141,17 @@ struct TeamKeysPresentationTests {
         #expect(!notices[0].text.contains("9F9F9F9F"))
     }
 
-    @Test("An envelope id gives the connection and the secret kind, and each kind its name")
-    func credentialsToRotate() {
-        let credential = TeamKeysLiveService.credential(ofEnvelope: "library_connection/conn-1/plugin.awsSecretKey")
+    @Test("A code mismatch stands through photos with no code, and only a match lifts it")
+    func mismatchIsSticky() {
+        #expect(TeamCodeComparison.settled(after: .differs, reading: .unreadable) == .differs)
+        #expect(TeamCodeComparison.settled(after: .differs, reading: .matches) == .matches)
+        #expect(TeamCodeComparison.settled(after: .matches, reading: .differs) == .differs)
+        #expect(TeamCodeComparison.settled(after: nil, reading: .unreadable) == .unreadable)
+        #expect(TeamCodeComparison.settled(after: .matches, reading: .unreadable) == .unreadable)
+    }
 
-        #expect(credential == TeamCredentialToRotate(connectionID: "conn-1", connectionName: nil, fieldKey: "plugin.awsSecretKey"))
-        #expect(TeamKeysLiveService.credential(ofEnvelope: "password") == nil)
+    @Test("Each secret kind reads by its name, a driver's own by that driver's label")
+    func credentialsToRotate() {
         #expect(TeamKeysPresentation.secretName("ssh_key_passphrase") { _ in nil } == String(localized: "SSH key passphrase"))
         #expect(TeamKeysPresentation.secretName("plugin.awsSecretKey") { $0 == "awsSecretKey" ? "Secret Access Key" : nil } == "Secret Access Key")
         #expect(TeamKeysPresentation.secretName("plugin.other") { _ in nil } == String(localized: "Secret"))

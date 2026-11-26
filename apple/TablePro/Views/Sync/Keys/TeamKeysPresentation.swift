@@ -128,14 +128,11 @@ internal enum TeamKeysPresentation {
         }
     }
 
-    // The label the drivers give a secure field with this id, when they agree on one. The row names no driver, so a
-    // field id two drivers label differently reads as a plain secret.
-    static func driverFieldLabel(_ fieldID: String, registry: PluginMetadataRegistry = .shared) -> String? {
-        let labels = Set(registry.allRegisteredTypeIds().compactMap { typeID in
-            registry.snapshot(forRegisteredTypeId: typeID)?.connection.additionalConnectionFields
-                .first { $0.id == fieldID && $0.isSecure }?.label
-        })
-        return labels.count == 1 ? labels.first : nil
+    // The label the connection's driver gives that secure field, while the driver is known on this Mac.
+    static func driverFieldLabel(_ fieldID: String, driver: String?, registry: PluginMetadataRegistry = .shared) -> String? {
+        guard let driver else { return nil }
+        return registry.snapshot(for: DatabaseType(rawValue: driver))?.connection.additionalConnectionFields
+            .first { $0.id == fieldID && $0.isSecure }?.label
     }
 
     // The notices about this team and its members. A stopped or ended team key shows in the status row instead.
@@ -227,9 +224,6 @@ internal enum TeamKeysFailureText {
         }
         if error is TeamKeysEngineMissing {
             return String(localized: "Sign in to your TablePro account to use end-to-end keys.")
-        }
-        if error is TeamKeysCallMissing {
-            return message(code: "sync.unimplemented")
         }
         guard let error = error as? CoreError else { return generic }
         guard case .Failed(let info) = error else { return nil }

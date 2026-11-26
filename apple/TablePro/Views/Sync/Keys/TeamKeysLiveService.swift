@@ -8,9 +8,6 @@ import TableProFFI
 
 internal struct TeamKeysEngineMissing: Error {}
 
-// A flow this build's core does not serve yet.
-internal struct TeamKeysCallMissing: Error {}
-
 // The key screens reach the one sync service `SyncEngineHost` opened over the account (core ADR 0054). Key objects live
 // on TablePro Sync whatever the personal provider is (0056, What the server stores), so any opened service serves
 // them, which is what asking for Off returns.
@@ -82,8 +79,15 @@ internal final class TeamKeysLiveService: TeamKeysService {
     }
 
     func credentialsToRotate(team: String) async throws -> [TeamCredentialToRotate] {
-        let envelopes = try await service().credentialsToRotate(scope: team)
-        return envelopes.compactMap(Self.credential(ofEnvelope:))
+        let credentials = try await service().credentialsToRotate(scope: team)
+        return credentials.map {
+            TeamCredentialToRotate(
+                envelope: $0.envelope,
+                connectionName: $0.connectionName,
+                driver: $0.connectionDriver,
+                fieldKey: $0.field
+            )
+        }
     }
 
     func keyNotices() async throws -> [KeyNoticeInfo] {
@@ -94,21 +98,6 @@ internal final class TeamKeysLiveService: TeamKeysService {
         try await service().dismissKeyNotice(notice: notice)
     }
 
-    // An envelope id is `<parent kind>/<parent id>/<secret kind>`, the parent's id lying between the first and the
-    // last `/` (core ADR 0052). Lane K8 serves these rows with the connection's name; until then they carry none.
-    static func credential(ofEnvelope envelope: String) -> TeamCredentialToRotate? {
-        guard let first = envelope.firstIndex(of: "/"), let last = envelope.lastIndex(of: "/"), first < last else {
-            return nil
-        }
-        return TeamCredentialToRotate(
-            connectionID: String(envelope[envelope.index(after: first)..<last]),
-            connectionName: nil,
-            fieldKey: String(envelope[envelope.index(after: last)...])
-        )
-    }
-
-    // The server lists names and emails to owners and admins only, so another member reads none. The record does not
-    // say which row is this account's own.
     static func snapshot(_ info: TeamKeysInfo) -> TeamKeysSnapshot {
         TeamKeysSnapshot(
             version: info.version,
@@ -117,7 +106,7 @@ internal final class TeamKeysLiveService: TeamKeysService {
             rotationDue: info.rotationDue,
             holder: info.holder,
             members: info.members.map {
-                TeamMemberKeys(account: $0.account, name: $0.name, email: $0.email, isYou: false, role: $0.role, status: $0.status)
+                TeamMemberKeys(account: $0.account, name: $0.name, email: $0.email, isYou: $0.isSelf, role: $0.role, status: $0.status)
             },
             stoppedDevices: info.stopped.map {
                 TeamStoppedDevice(

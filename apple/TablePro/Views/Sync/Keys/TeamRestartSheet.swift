@@ -10,11 +10,15 @@ import TableProFFI
 // confirms, each after a comparison of their words, so nothing is wrapped to someone no person looked at.
 internal struct TeamRestartSheet: View {
     @ObservedObject var model: TeamKeysModel
+    @StateObject private var selection: TeamRestartSelection
 
     @Environment(\.dismiss) private var dismiss
-    @State private var included: Set<String> = []
     @State private var shownWords: String?
-    @State private var words: [String: TeamFingerprintLoad] = [:]
+
+    init(model: TeamKeysModel) {
+        self.model = model
+        _selection = StateObject(wrappedValue: TeamRestartSelection(service: model.service))
+    }
 
     private var candidates: [TeamMemberKeys] {
         model.snapshot.map(TeamKeysPresentation.restartCandidates) ?? []
@@ -59,7 +63,7 @@ internal struct TeamRestartSheet: View {
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
                         if !candidates.isEmpty {
-                            Text("Include someone only after comparing their words with them.")
+                            Text("Compare each member's words with them. Only those whose words match get the new key.")
                         }
                         if !waitingForKeyChange.isEmpty {
                             Text(String(
@@ -74,16 +78,23 @@ internal struct TeamRestartSheet: View {
             // A grouped Form answers any proposal with the whole height, so it alone is capped (#2930).
             .frame(maxHeight: 360)
 
+            if !changedNames.isEmpty {
+                NoticeLabel(String(
+                    format: String(localized: "The keys this Mac has for %@ changed since you compared them. Compare their words again."),
+                    changedNames.formatted(.list(type: .and))
+                ))
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+            }
+
             Divider()
+                .padding(.top, changedNames.isEmpty ? 0 : 12)
 
             DialogFooter {
                 Button(String(localized: "Cancel"), role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button(String(localized: "Start Over")) {
-                    Task {
-                        let accounts = candidates.map(\.account).filter(included.contains)
-                        if await model.restart(confirming: accounts) { dismiss() }
-                    }
+                    Task { await startOver() }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(model.work != nil)
@@ -93,59 +104,55 @@ internal struct TeamRestartSheet: View {
         .frame(width: 520)
     }
 
+    private var changedNames: [String] {
+        selection.changed.compactMap { account in candidates.first { $0.account == account }?.displayName }
+    }
+
     @ViewBuilder
     private func row(_ member: TeamMemberKeys) -> some View {
+        let included = selection.isIncluded(member.account)
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Toggle(isOn: inclusion(member)) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(verbatim: member.displayName)
-                        Text(verbatim: TeamKeysPresentation.roleName(member.role))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(verbatim: member.displayName)
+                    Text(verbatim: included
+                        ? String(localized: "Gets the new key")
+                        : TeamKeysPresentation.roleName(member.role))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                if included {
+                    Button(String(localized: "Leave Out")) { selection.exclude(member.account) }
+                        .accessibilityLabel(Text(String(format: String(localized: "Leave out %@"), member.displayName)))
+                } else {
+                    Button(shownWords == member.account ? String(localized: "Hide Words") : String(localized: "Compare Words")) {
+                        shownWords = shownWords == member.account ? nil : member.account
+                    }
+                    .accessibilityLabel(Text(String(format: String(localized: "Compare %@'s words"), member.displayName)))
+                }
+            }
+            if shownWords == member.account, !included {
+                VStack(alignment: .leading, spacing: 8) {
+                    TeamFingerprintLoadView(load: selection.words[member.account] ?? .loading)
+                    if case .loaded? = selection.words[member.account] {
+                        Button(String(localized: "Words Match")) {
+                            selection.wordsMatch(member.account)
+                            shownWords = nil
+                        }
+                        .accessibilityLabel(Text(String(format: String(localized: "%@'s words match"), member.displayName)))
                     }
                 }
-                .toggleStyle(.checkbox)
-                Spacer(minLength: 8)
-                Button(shownWords == member.account ? String(localized: "Hide Words") : String(localized: "Compare Words")) {
-                    toggleWords(member)
-                }
-                .accessibilityLabel(Text(String(format: String(localized: "Compare %@'s words"), member.displayName)))
-            }
-            if shownWords == member.account {
-                TeamFingerprintLoadView(load: words[member.account] ?? .loading)
-                    .padding(.leading, 20)
-                    .task { await loadWords(member) }
+                .padding(.leading, 12)
+                .task { await selection.loadWords(member.account) }
             }
         }
     }
 
-    private func inclusion(_ member: TeamMemberKeys) -> Binding<Bool> {
-        Binding(
-            get: { included.contains(member.account) },
-            set: { isOn in
-                if isOn {
-                    included.insert(member.account)
-                } else {
-                    included.remove(member.account)
-                }
-            }
-        )
-    }
-
-    private func toggleWords(_ member: TeamMemberKeys) {
-        shownWords = shownWords == member.account ? nil : member.account
-    }
-
-    private func loadWords(_ member: TeamMemberKeys) async {
-        if case .loaded? = words[member.account] { return }
-        do {
-            let fingerprint = try await model.service.accountFingerprint(account: member.account)
-            words[member.account] = .loaded(fingerprint)
-        } catch {
-            words[member.account] = .failed(
-                TeamKeysFailureText.message(error) ?? String(localized: "Couldn't load their words.")
-            )
+    private func startOver() async {
+        guard let accounts = await selection.accountsToWrap(in: candidates.map(\.account)) else { return }
+        if await model.restart(confirming: accounts) {
+            dismiss()
         }
     }
 }
