@@ -384,6 +384,38 @@ async fn a_copy_kept_while_off_deletes_nothing_on_a_full_fetch_that_lists_nothin
     assert!(rig.store(Kind::FavouriteTable).holds(&favourite));
 }
 
+// The copy stands for the store the restore left: a later refill of another store never takes it again, so an edit made
+// meanwhile still reads as an edit once the kind is on (Codex review round 2).
+#[tokio::test]
+async fn a_copy_kept_while_off_is_not_taken_again_when_another_store_refills() {
+    let rig = Rig::new().await;
+    let favourite = tablepro_records::record_id::favourite_table(uuid::Uuid::nil(), Some("shop"), None, "orders").id;
+    let table = |schema: &str| json!({"connection_id": A, "database": "shop", "name": "orders", "schema": schema});
+    rig.save_elsewhere(Kind::FavouriteTable, &favourite, &table("public"));
+    rig.save_elsewhere(Kind::Group, B, &json!({"name": "Work"}));
+    rig.fetch().await.unwrap();
+    rig.turn_off(Kind::FavouriteTable);
+    rig.store(Kind::FavouriteTable).restore(vec![(
+        &favourite,
+        projected(Kind::FavouriteTable, &favourite, &table("public")),
+    )]);
+    rig.fetch().await.unwrap();
+    rig.store(Kind::FavouriteTable)
+        .put(&favourite, projected(Kind::FavouriteTable, &favourite, &table("mine")));
+    rig.store(Kind::Group)
+        .restore(vec![(B, projected(Kind::Group, B, &json!({"name": "Work"})))]);
+    let other = rig.fetch().await.unwrap();
+
+    rig.turn_on(Kind::FavouriteTable);
+    rig.fetch().await.unwrap();
+
+    assert_eq!(other.refilled, [Kind::Group]);
+    assert_eq!(
+        rig.store(Kind::FavouriteTable).fields(&favourite),
+        Some(projected(Kind::FavouriteTable, &favourite, &table("mine")))
+    );
+}
+
 // The pull wins over what iCloud carries; a field only this device keeps stays.
 #[tokio::test]
 async fn a_refill_keeps_the_fields_icloud_does_not_carry() {
