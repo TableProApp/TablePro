@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import TableProFFI
+import TableProHTTP
 
 // What a removal asks the person about (core ADR 0056, Removing a device, step 2): the devices a rotation can keep,
 // and the teammates this account confirmed while the lost device held its keys. `record` goes back unchanged.
