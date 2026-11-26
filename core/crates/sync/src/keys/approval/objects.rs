@@ -16,6 +16,21 @@ use crate::api::state::{PendingFlow, RowKey, StateTxn};
 use crate::api::transport::PulledRecord;
 use crate::keys::{KeyService, OwnAccount};
 
+// What the comparisons kept in memory take once the arrival's rows commit: one a step moved on, and the ones whose
+// session no longer needs them.
+#[derive(Default)]
+struct MovedOn {
+    kept: Vec<(RequestId, Comparison)>,
+    retired: Vec<RequestId>,
+}
+
+impl MovedOn {
+    fn retire(&mut self, request: RequestId) {
+        self.kept.retain(|(kept, _)| *kept != request);
+        self.retired.push(request);
+    }
+}
+
 const fn session_end(reason: CancelReason) -> SessionEnd {
     match reason {
         CancelReason::User => SessionEnd::User,
@@ -42,7 +57,7 @@ impl KeyService {
         let mut txn = self.begin().await?;
         let own = self.own_account(txn.as_mut()).await?;
         let mut drive = false;
-        let mut moved_on = Vec::new();
+        let mut moved_on = MovedOn::default();
         for record in &arrival.records {
             let (moved, refused) =
                 match self
@@ -62,8 +77,11 @@ impl KeyService {
             }
         }
         txn.commit().await?;
-        for (request, comparison) in moved_on {
+        for (request, comparison) in moved_on.kept {
             self.keep_comparison(request, comparison);
+        }
+        for request in moved_on.retired {
+            self.settle_comparison(request, false);
         }
         if drive {
             self.hooks().pass_soon();
@@ -73,19 +91,20 @@ impl KeyService {
 
     // Whether the session moved so this side has a step to send, and the step's refusal. A refused step still
     // leaves the session as it ended, as a reveal that does not open the commitment does.
-    // A comparison a step moved goes to `moved_on`, kept once the rows commit.
     async fn apply_session_record(
         &self,
         txn: &mut dyn StateTxn,
         own: Option<&OwnAccount>,
         pulled: &PulledRecord,
-        moved_on: &mut Vec<(RequestId, Comparison)>,
+        moved_on: &mut MovedOn,
     ) -> Result<(bool, Option<KeysError>), SyncError> {
         let Some(request) = request_of(pulled) else {
             return Ok((false, None));
         };
         let Some(fields) = pulled.fields_json.as_deref().filter(|_| pulled.deleted.is_none()) else {
-            self.purge(txn, request, pulled).await?;
+            if self.purge(txn, request, pulled).await? {
+                moved_on.retire(request);
+            }
             return Ok((false, None));
         };
         let object = KeyObject::parse(pulled.kind.as_str(), &pulled.record_id, fields.as_bytes())?;
@@ -133,7 +152,7 @@ impl KeyService {
             record.expire_if_due(self.now_us());
             self.put_session(txn, record).await?;
             if !record.needs_comparison() {
-                moved_on.retain(|(request, _)| *request != record.request);
+                moved_on.retire(record.request);
             }
         }
         match moved {
@@ -148,7 +167,7 @@ impl KeyService {
         held: &mut SessionRecord,
         own: Option<&OwnAccount>,
         step: &SasBody,
-        moved_on: &mut Vec<(RequestId, Comparison)>,
+        moved_on: &mut MovedOn,
     ) -> Result<bool, KeysError> {
         match (held.role, step) {
             (
@@ -170,7 +189,7 @@ impl KeyService {
                 }
                 let ((), comparison) =
                     self.step_comparison(held, |held, comparison| held.receive_nonce(comparison, a, *r))?;
-                moved_on.push((held.request, comparison));
+                moved_on.kept.push((held.request, comparison));
                 Ok(true)
             }
             (Role::Approver, SasBody::Nonce { key_device, r, .. }) => {
@@ -202,8 +221,8 @@ impl KeyService {
     }
 
     // The server purges a request and its steps once the session ends. Its row goes with it; one still live ended
-    // without this side seeing why, so it ends as expired.
-    async fn purge(&self, txn: &mut dyn StateTxn, request: RequestId, pulled: &PulledRecord) -> Result<(), SyncError> {
+    // without this side seeing why, so it ends as expired. True when the row went.
+    async fn purge(&self, txn: &mut dyn StateTxn, request: RequestId, pulled: &PulledRecord) -> Result<bool, SyncError> {
         txn.delete(&RowKey::KeyObject(
             ScopeName::Personal,
             KindName::parse(pulled.kind.as_str())?,
@@ -224,8 +243,9 @@ impl KeyService {
                 txn.delete(&RowKey::KeyComparison(request)).await?;
                 txn.delete(&RowKey::KeyPending(PendingFlow::Approval { request }))
                     .await?;
+                return Ok(true);
             }
         }
-        Ok(())
+        Ok(false)
     }
 }

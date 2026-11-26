@@ -248,9 +248,6 @@ impl KeyService {
         } else {
             txn.delete(&RowKey::KeyPending(flow)).await?;
         }
-        if !record.needs_comparison() {
-            self.comparisons().remove(&record.request);
-        }
         Ok(())
     }
 
@@ -258,7 +255,16 @@ impl KeyService {
         let mut txn = self.begin().await?;
         self.put_session(txn.as_mut(), record).await?;
         txn.commit().await?;
+        self.settle_comparison(record.request, record.needs_comparison());
         Ok(())
+    }
+
+    // Once a row committed: a session past its reveal, or ended, needs its comparison no more. Before the commit the
+    // row on disk may still need it, so a failed write can take its step again.
+    pub(super) fn settle_comparison(&self, request: RequestId, needed: bool) {
+        if !needed {
+            self.comparisons().remove(&request);
+        }
     }
 
     pub(super) async fn require_session(&self, request: RequestId) -> Result<SessionRecord, SyncError> {
@@ -270,6 +276,7 @@ impl KeyService {
         if record.expire_if_due(self.now_us()) {
             self.put_session(txn.as_mut(), &record).await?;
             txn.commit().await?;
+            self.settle_comparison(record.request, record.needs_comparison());
         }
         Ok(record)
     }
