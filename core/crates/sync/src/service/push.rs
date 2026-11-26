@@ -19,7 +19,7 @@ use crate::api::ids::{ChangeTag, EpochId, IdempotencyKey, KindName, RecordKey, S
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{BaseRow, DeletedHistoryRow, OutboxRow, Row, RowKey, RowRange, ScopeRow, Table};
 use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DeletedReason, Proof, PushBatch, TransportError};
-use crate::engine::{Pending, PendingOp, change_bytes, diff, split};
+use crate::engine::{KeptOff, Pending, PendingOp, change_bytes, diff, hold_kept_off, split};
 
 enum Sent {
     Answered { conflicts: bool },
@@ -158,6 +158,7 @@ impl ServiceSync {
         let none = HashSet::new();
         let mut out = Vec::new();
         let mut pruned = Vec::new();
+        let kept_off = self.kept_off(scope).await;
         for adapter in self.adapters.in_scope(scope) {
             let kind = adapter.kind();
             if kind_off(row.policies, scope, kind)
@@ -183,6 +184,7 @@ impl ServiceSync {
                 &bases,
                 skip.get(&KindName::of(kind)).unwrap_or(&none),
             );
+            hold_kept_off(&mut diffed, kind, &kept_off);
             if let Some(ids) = named {
                 diffed.pending.retain(|pending| ids.contains(&pending.key.record_id));
                 diffed.pruned.retain(|key| ids.contains(&key.record_id));
@@ -308,6 +310,23 @@ impl ServiceSync {
             && ctx.keys_ready
             && !rotation_due
             && !self.hooks.holds_secrets(scope)
+    }
+
+    // The personal scope's connections that keep their records on the device; a store that cannot be read keeps all.
+    async fn kept_off(&self, scope: ScopeName) -> KeptOff {
+        if scope != ScopeName::Personal {
+            return KeptOff::default();
+        }
+        let connections = match self
+            .adapters
+            .in_scope(scope)
+            .into_iter()
+            .find(|adapter| adapter.kind() == Kind::Connection)
+        {
+            Some(adapter) => adapter.records(scope).await.ok(),
+            None => None,
+        };
+        KeptOff::of(connections.as_ref())
     }
 
     async fn skipped(&self, scope: ScopeName) -> Result<HashMap<KindName, HashSet<String>>, SyncError> {

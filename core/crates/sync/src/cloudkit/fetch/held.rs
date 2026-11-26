@@ -144,8 +144,15 @@ impl Fetcher<'_> {
             let Some(kind) = kind_of(&held.key).filter(|kind| self.categories.syncs(*kind)) else {
                 continue;
             };
+            // Its store refused it in this fetch: the next pass tries it again.
+            let refused = self
+                .refused
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains(&held.key);
             match settle.view(&held.key, kind).await? {
                 View::NoAdapter | View::Unreadable(_) => {}
+                _ if refused => {}
                 _ if held.record.deleted.is_some() => recovery.deletions.push(held.key),
                 View::Stored(record) if record.standing == Standing::LocalOnly => recovery.release.push(held.key),
                 // CloudKit asked to wait before this record is asked for again.

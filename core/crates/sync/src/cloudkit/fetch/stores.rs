@@ -11,10 +11,11 @@ use uuid::Uuid;
 
 use super::settle::{Settle, View};
 use super::{SCOPE, identity_row};
+use crate::adapters::{apply_keeping, approval};
 use crate::api::adapter::{LocalChange, LocalRecord, StoreStamp};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{KindName, RecordKey};
-use crate::api::state::{Row, RowKey, RowRange, Standing, StandingRow, StoreRow, Table};
+use crate::api::state::{HeldReason, Row, RowKey, RowRange, Standing, StandingRow, StoreRow, Table};
 
 // Keyed by the id the zone names a record with, so a long id meets its `sha256-` form (0052, Long ids).
 #[derive(Debug)]
@@ -265,18 +266,56 @@ impl Settle<'_, '_> {
             let Some(adapter) = fetcher.adapters.get(&kind) else {
                 continue;
             };
-            fetcher.check_stop()?;
-            let changes: Vec<LocalChange> = changes.into_values().collect();
-            for change in &changes {
+            let changes: Vec<(String, LocalChange)> = changes.into_iter().collect();
+            for (_, change) in &changes {
                 match change {
                     LocalChange::Put { .. } => self.counts.written += 1,
                     LocalChange::Delete { .. } => self.counts.removed += 1,
                 }
             }
-            let stamp = adapter.apply(SCOPE, changes).await?;
-            self.note_store(adapter.store(), stamp).await?;
+            let applied = apply_keeping(adapter.as_ref(), SCOPE, changes, || fetcher.check_stop()).await?;
+            for wire in applied.refused {
+                self.refused(kind, wire).await?;
+            }
+            if let Some(stamp) = applied.stamp {
+                self.note_store(adapter.store(), stamp).await?;
+            }
         }
         Ok(Some(()))
+    }
+
+    // The store refused the record's value: it is held by id with the pulled copy and keeps the base and the approval
+    // rows the batch found, so the store's copy stays what the device holds against them (0054, Rules for both
+    // providers). The pending base the batch staged for it no longer matches the store, so a restart before the commit
+    // drops it too.
+    async fn refused(&mut self, kind: Kind, wire: String) -> Result<(), SyncError> {
+        let key = RecordKey::new(SCOPE, KindName::of(kind), wire);
+        let Some(undo) = self.undo.remove(&key) else {
+            return Ok(());
+        };
+        if undo.record.deleted.is_some() {
+            self.counts.removed = self.counts.removed.saturating_sub(1);
+        } else {
+            self.counts.written = self.counts.written.saturating_sub(1);
+        }
+        self.counts.refused = self.counts.refused.saturating_add(1);
+        self.fetcher
+            .refused
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(key.clone());
+        match undo.base {
+            Some(base) => self.txn.put(Row::Base(base)).await?,
+            None => self.txn.delete(&RowKey::Base(key.clone())).await?,
+        }
+        // The approval queue's rows go back to what the record waited on before the change the store refused.
+        for row in approval::rows_of(&mut self.txn, &key).await? {
+            self.txn.delete(&RowKey::Approval(row.key, row.field)).await?;
+        }
+        for row in undo.approvals {
+            self.txn.put(Row::Approval(row)).await?;
+        }
+        self.hold(&key, HeldReason::Unreadable, undo.record).await
     }
 
     // Each identity of a store this fetch sees moves the rows of the kinds it keeps, so a later rollback of the file

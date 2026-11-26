@@ -14,7 +14,6 @@ use tablepro_keys::encoding::{AccountId, KeyDeviceId, KeyPurpose, TeamId, Versio
 use tablepro_keys::keys::{AccountKeys, DeviceKeys, Signature};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
 use tablepro_keys::recovery::RecoveryKey;
-use tablepro_keys::wrap::Recipient;
 
 use self::plan::{Rotation, check_recovery_key, kept_devices};
 use self::review::TeamSteps;
@@ -177,7 +176,14 @@ impl KeyService {
         }
         let kept = kept_devices(txn.as_mut(), &own.device, keep).await?;
         let current = self.current_keys(txn.as_mut()).await?;
-        drop(txn);
+        // The flow is named before its account keys are stored, as a recovery names what it draws: a cut-off before
+        // the candidates commit leaves a flow with nothing to push, which a resume ends as gone with those keys.
+        txn.put(Row::KeyPending(KeyPendingRow {
+            flow: PendingFlow::AccountRotation { av: own.av.next()? },
+            state: steps.encode(),
+        }))
+        .await?;
+        txn.commit().await?;
         let rotation = Rotation {
             av: own.av,
             recovery: &draft.recovery,
@@ -328,7 +334,8 @@ impl KeyService {
 
     // Pushes one rotation change set and adopts it once applied. The new account keys go to the device store and the
     // set to `key_objects` as candidates before the push, so a retry resends the same objects. The pending flow names
-    // the certificate, so a resume tells this rotation from another device's at the same `av`.
+    // the certificate, so a resume tells this rotation from another device's at the same `av`. The caller writes the
+    // flow's row before this stores the keys.
     async fn rotate_account(
         &self,
         rotation: &Rotation<'_>,
@@ -866,7 +873,7 @@ impl KeyService {
                 return Ok(Step::Done);
             }
         }
-        match self.rotate_team(team, steps.removals_for(team)).await {
+        match self.rotate_team_owed(team, av, &steps.removals_for(team)).await {
             Err(SyncError::Rejected {
                 code: RejectedCode::CreateOnly,
             }) => Ok(Step::Retry(keys.version.unwrap_or(Version::FIRST))),
@@ -874,9 +881,9 @@ impl KeyService {
         }
     }
 
-    // Due unless the version in force came after this account's rotation to `av`, wrapped to it at that `av` or later,
+    // Due unless a holder of the version in force wrapped it to this account at `av` or later, by a wrap that verifies,
     // and no member the review marked holds it. The server's `rotation_due` alone decides nothing: a version wrapped
-    // to the old account key is one the lost device can open.
+    // to the old account key is one the lost device can open, and a server can serve a wrap with any target.
     async fn rotation_still_due(
         &self,
         team: TeamId,
@@ -889,24 +896,9 @@ impl KeyService {
         };
         let _serial = self.serialized().await;
         let mut txn = self.begin().await?;
-        let account = Recipient::Account(self.account());
-        let wrapped_since = self
-            .applied_objects(txn.as_mut(), ScopeName::Team(team), KeyKind::Wrap)
-            .await?
-            .iter()
-            .filter_map(KeyObject::wrap)
-            .any(|wrap| {
-                wrap.target.purpose == WrapPurpose::Key(KeyPurpose::Team)
-                    && wrap.target.version == version
-                    && wrap.target.recipient == account
-                    && wrap.target.recipient_version >= av
-            });
-        if !wrapped_since {
-            return Ok(true);
-        }
-        Ok(match self.team_holders_at(txn.as_mut(), team, version).await? {
-            Some(holders) => marked.iter().any(|account| holders.contains(account)),
-            None => !marked.is_empty(),
+        Ok(match self.team_holders_since(txn.as_mut(), team, version, av).await? {
+            Some((holders, wrapped_since)) => !wrapped_since || marked.iter().any(|account| holders.contains(account)),
+            None => true,
         })
     }
 

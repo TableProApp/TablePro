@@ -118,6 +118,8 @@ pub struct PassReport {
     pub refused: Vec<(RecordKey, String)>,
     // The scopes this pass reached, as the device's keys and lock let it.
     pub reached: Vec<ScopeName>,
+    // Pulled records the store refused to keep, held by id.
+    pub store_refused: Vec<RecordKey>,
     pub skipped: Vec<(ScopeName, &'static str)>,
     pub pull_only: bool,
     pub queued: usize,
@@ -872,7 +874,8 @@ impl ServiceSync {
         status.last_pass_ms = Some(self.clock.now_ms());
         match outcome {
             Ok(report) => {
-                status.problem = None;
+                // A record the store refused is held, never dropped silently: the pass that held it says so.
+                status.problem = (!report.store_refused.is_empty()).then_some(crate::api::error::UNREADABLE);
                 if !journal_only {
                     status.queued_changes = queued;
                 }

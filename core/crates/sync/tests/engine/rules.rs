@@ -130,6 +130,142 @@ async fn a_rejection_keeps_the_device_s_value_and_a_newer_pulled_value_asks_agai
     assert_eq!(waiting[0].pulled, json!("SET b = 2"));
 }
 
+// The device's copy turns unreadable while a pulled value waits: no decision lands, and the row waits for the person.
+#[tokio::test]
+async fn a_decision_on_a_record_the_store_cannot_read_keeps_the_approval_waiting() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mini.connections
+        .put(&id(1), json!({"name": "Prod", "startup_commands": "SET a = 1"}));
+    mini.sync().await;
+    mac.sync().await;
+    mac.sync
+        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), true)
+        .await
+        .unwrap();
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "startup_commands": "DROP TABLE users"}));
+    mac.sync().await;
+    mini.sync().await;
+    mini.connections.make_unreadable(&id(1));
+
+    let rejected = mini
+        .sync
+        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), false)
+        .await;
+    let approved = mini
+        .sync
+        .decide_approval(key(&id(1)), "/startup_commands".to_owned(), true)
+        .await;
+
+    assert_eq!(rejected.unwrap_err().code(), "sync.adapter.unreadable");
+    assert_eq!(approved.unwrap_err().code(), "sync.adapter.unreadable");
+    assert_eq!(mini.sync.approvals().await.unwrap().len(), 1);
+}
+
+// A connection new to the device waits whole while a copy the store cannot read takes its id, as a restored file
+// can: approving it writes nothing over that copy, and a decision a crash left unapplied is not replayed over it.
+#[tokio::test]
+async fn a_held_record_never_goes_in_over_a_copy_the_store_cannot_read() {
+    use tablepro_sync::api::state::ApprovalDecision;
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mac.connections
+        .put(&id(1), json!({"name": "Prod", "host": "db.example.com"}));
+    mac.sync().await;
+    mini.sync().await;
+    mini.connections.make_unreadable(&id(1));
+
+    let approved = mini.sync.decide_approval(key(&id(1)), "/host".to_owned(), true).await;
+    let Some(Row::Approval(mut row)) = mini.row(RowKey::Approval(key(&id(1)), "/host".to_owned())).await else {
+        panic!("the approval row went");
+    };
+    row.decision = ApprovalDecision::Approved;
+    let mut txn = mini.state.begin().await.unwrap();
+    txn.put(Row::Approval(row)).await.unwrap();
+    txn.commit().await.unwrap();
+    mini.sync().await;
+
+    assert_eq!(approved.unwrap_err().code(), "sync.adapter.unreadable");
+    assert_eq!(mini.connections.get(&id(1)), None);
+    assert!(mini.row(RowKey::Held(key(&id(1)))).await.is_some());
+    assert!(
+        mini.row(RowKey::Approval(key(&id(1)), "/host".to_owned()))
+            .await
+            .is_some()
+    );
+}
+
+// The store cannot keep one pulled value: that record is held by id with the server's copy, the pass goes on and says
+// so on every pass it stays held, a later change of another record still lands, and the held one goes in once the
+// store takes it, with no change on the server.
+#[tokio::test]
+async fn a_value_the_store_refuses_is_held_and_the_pass_goes_on() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    let mini = Device::new(&server, "dev_mini").await;
+    mini.connections.refuse_value(&id(1), true);
+    mac.connections.put(&id(1), json!({"name": "Prod"}));
+    mac.connections.put(&id(2), json!({"name": "Stage"}));
+    mac.sync().await;
+
+    let report = mini.pass().await.unwrap();
+    let problem = mini.sync.status().problem;
+    let held = mini.row(RowKey::Held(key(&id(1)))).await;
+    mac.connections.put(&id(2), json!({"name": "Stage 2"}));
+    mac.sync().await;
+    mini.sync().await;
+    let later = mini.connections.get(&id(2));
+    let still = mini.sync.status().problem;
+    mini.connections.refuse_value(&id(1), false);
+    mini.sync().await;
+
+    assert_eq!(report.store_refused, vec![key(&id(1))]);
+    assert_eq!(problem, Some("sync.adapter.unreadable"));
+    let Some(Row::Held(held)) = held else {
+        panic!("the refused record is not held");
+    };
+    assert_eq!(held.reason, HeldReason::Unreadable);
+    assert_eq!(held.record.fields, Some(json!({"name": "Prod"})));
+    assert_eq!(later, Some(json!({"name": "Stage 2"})));
+    assert_eq!(still, Some("sync.adapter.unreadable"));
+    assert_eq!(mini.connections.get(&id(1)), Some(json!({"name": "Prod"})));
+    assert!(mini.row(RowKey::Held(key(&id(1)))).await.is_none());
+    assert_eq!(mini.sync.status().problem, None);
+}
+
+// A saved query of a connection that stays on the device: its deletion waits while the connection is Local only, and
+// goes up once the connection syncs again (0054, Rules for both providers).
+#[tokio::test]
+async fn a_saved_query_deletion_waits_while_its_connection_stays_on_the_device() {
+    let server = FakeServer::new();
+    let queries = MemoryAdapter::new(Kind::SavedQuery, "queries", StoreFile::new());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&queries))
+        .build()
+        .await;
+    let connection = id(9);
+    mac.connections.put(&connection, json!({"name": "Prod"}));
+    queries.put(
+        &id(1),
+        json!({"name": "Revenue", "query": "SELECT 1", "connection_id": connection}),
+    );
+    mac.sync().await;
+    let pushed = stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_some();
+    mac.connections.put_local_only(&connection, json!({"name": "Prod"}));
+    queries.remove(&id(1));
+    mac.sync().await;
+    let held = stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_some();
+    mac.connections.put(&connection, json!({"name": "Prod"}));
+    mac.sync().await;
+
+    assert!(pushed);
+    assert!(held);
+    assert!(stored(&server, Kind::SavedQuery.as_str(), &id(1)).is_none());
+}
+
 #[tokio::test]
 async fn a_value_the_device_already_holds_asks_nothing_on_its_first_pass() {
     let server = FakeServer::new();

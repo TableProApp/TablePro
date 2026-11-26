@@ -124,11 +124,14 @@ pub enum AdapterError {
     Host { detail: String },
 }
 
+// Also the status problem of a pass that held a record its store refused to keep.
+pub(crate) const UNREADABLE: &str = "sync.adapter.unreadable";
+
 impl AdapterError {
     pub const fn code(&self) -> &'static str {
         match self {
             Self::Store { .. } => "sync.adapter.store",
-            Self::Unreadable { .. } => "sync.adapter.unreadable",
+            Self::Unreadable { .. } => UNREADABLE,
             Self::Host { .. } => "sync.adapter.host",
         }
     }

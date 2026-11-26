@@ -152,6 +152,8 @@ pub struct MemoryAdapter {
     held: Mutex<Held>,
     elsewhere: Mutex<std::collections::HashMap<ScopeName, Held>>,
     on_apply: Mutex<Option<Box<dyn Fn() + Send>>>,
+    // Ids whose pulled change the store cannot take: a write that touches one fails whole.
+    refused_values: Mutex<std::collections::HashSet<String>>,
 }
 
 impl MemoryAdapter {
@@ -164,6 +166,7 @@ impl MemoryAdapter {
             held: Mutex::default(),
             elsewhere: Mutex::default(),
             on_apply: Mutex::new(None),
+            refused_values: Mutex::default(),
         })
     }
 
@@ -192,6 +195,23 @@ impl MemoryAdapter {
     pub fn remove(&self, id: &str) {
         lock(&self.held).records.remove(id);
         self.file.advance();
+    }
+
+    // The store cannot keep a value for this id, as a build that does not know it would; false takes it again.
+    pub fn refuse_value(&self, id: &str, refused: bool) {
+        let mut values = lock(&self.refused_values);
+        if refused {
+            values.insert(id.to_owned());
+        } else {
+            values.remove(id);
+        }
+    }
+
+    // A copy the store still holds and can no longer read, as one a newer build rewrote.
+    pub fn make_unreadable(&self, id: &str) {
+        let mut held = lock(&self.held);
+        held.records.remove(id);
+        held.unreadable.push(id.to_owned());
     }
 
     // A create-once entry the person deleted: a tombstone the store keeps until it is pushed.
@@ -246,6 +266,15 @@ impl RecordAdapter for MemoryAdapter {
         if let Some(run) = lock(&self.on_apply).as_ref() {
             run();
         }
+        let refused = lock(&self.refused_values);
+        if changes.iter().any(|change| match change {
+            LocalChange::Put { record_id, .. } | LocalChange::Delete { record_id } => refused.contains(record_id),
+        }) {
+            return Err(AdapterError::Unreadable {
+                detail: "a value this store cannot keep".to_owned(),
+            });
+        }
+        drop(refused);
         if scope == self.home() {
             lock(&self.held).apply(changes);
         } else {

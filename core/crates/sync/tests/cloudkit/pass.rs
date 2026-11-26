@@ -346,3 +346,26 @@ async fn the_records_a_pass_held_by_id_are_listed_with_why() {
     assert_eq!(held[0].key.record_id, A);
     assert_eq!(held[0].reason, HeldRecordReason::Held(HeldReason::Unreadable));
 }
+
+// A record the store refused is held, and each pass that tries it again and holds it again says so in the status.
+#[tokio::test]
+async fn a_pass_that_holds_a_value_the_store_refused_says_so() {
+    let rig = Rig::new().await;
+    rig.save_elsewhere(Kind::Connection, A, &json!({"name": "prod"}));
+    rig.store(Kind::Connection).refuse_value(A, true);
+    let sync = rig.sync(None);
+
+    sync.run_pass(PassReason::Launch).await.unwrap();
+    let problem = sync.status().problem;
+    let held = sync.status().held;
+    sync.run_pass(PassReason::Poll).await.unwrap();
+    let still = sync.status().problem;
+    rig.store(Kind::Connection).refuse_value(A, false);
+    sync.run_pass(PassReason::Poll).await.unwrap();
+
+    assert_eq!(problem, Some("sync.adapter.unreadable"));
+    assert_eq!(held, 1);
+    assert_eq!(still, Some("sync.adapter.unreadable"));
+    assert_eq!(sync.status().problem, None);
+    assert!(rig.store(Kind::Connection).holds(A));
+}
