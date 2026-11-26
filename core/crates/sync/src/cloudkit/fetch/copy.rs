@@ -97,6 +97,14 @@ pub(super) fn changed(record: &CloudKitRecord) -> Option<Incoming> {
     })
 }
 
+// A copy fetched by name, as wire fields, or None when this build cannot read it.
+pub(crate) fn wire_fields(record: &CloudKitRecord) -> Option<(RecordKey, Value)> {
+    match changed(record)? {
+        Incoming::Changed(copy) => Some((copy.key, copy.fields)),
+        Incoming::Deleted(_) | Incoming::Unread { .. } => None,
+    }
+}
+
 pub(super) fn deleted(deletion: &CloudKitDeletion) -> Option<Incoming> {
     let record_type = record_type_named(&deletion.record_type)?;
     key_in(record_type, &deletion.name).map(Incoming::Deleted)

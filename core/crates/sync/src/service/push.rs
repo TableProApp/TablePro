@@ -123,7 +123,10 @@ impl ServiceSync {
         if !matches!(scope, ScopeName::Team(_)) && (info.approved != Some(true) || self.hooks.locked().is_some()) {
             return Ok(AfterPush::Done);
         }
-        let pending = self.pending(ctx, session, &row).await?;
+        let mut pending = self.pending(ctx, session, &row).await?;
+        if let Some(arrival) = ctx.arrival.as_deref().filter(|_| scope == ScopeName::Personal) {
+            arrival.mark(&mut pending);
+        }
         ctx.report.queued += pending.len();
         *ctx.report.queued_in.entry(scope).or_default() += pending.len();
         if pending.is_empty() {

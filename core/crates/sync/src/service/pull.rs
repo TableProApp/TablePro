@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use tablepro_keys::encoding::Version;
-use tablepro_records::Kind;
+use tablepro_records::{Kind, move_marker};
 
 use super::keys::{Family, HistoryOpens, KeyMark, Opens, family, key_mark};
 use super::refill::Cut;
@@ -25,7 +25,8 @@ use crate::api::state::{
     RowKey, RowRange, ScopeRow, Table,
 };
 use crate::api::transport::{DeletedReason, Proof, PullRequest, PulledPage, PulledRecord, TransportError};
-use crate::engine::{Judgement, base_of, settle};
+use crate::engine::{Judgement, base_of, settle, settle_moved};
+use crate::moves::Arrival;
 
 struct Pull {
     scope: ScopeName,
@@ -55,6 +56,8 @@ struct Pull {
     older_read: bool,
     // The categories as the pass began, so one pass never reads a kind it then skips.
     categories: DeviceCategories,
+    // Personal data arriving this pass, in the personal scope only.
+    arrival: Option<Arc<Arrival>>,
 }
 
 // A server that never lets a pull catch up, or a snapshot too large to keep, ends the pass instead of the device.
@@ -180,9 +183,14 @@ impl ServiceSync {
             row.refill = true;
         }
         ctx.new_epoch |= row.refill;
+        let arrival = ctx.arrival.clone().filter(|_| scope == ScopeName::Personal);
+        // A first upload from no provider is a refill of the device's personal records: the server's copy wins, and
+        // what the server lacks goes up as a create. A move from iCloud merges against the copy both providers last
+        // shared instead, whatever the service file saw of the stores.
+        let wins = arrival.as_deref().map(Arrival::pull_wins);
         let pull_wins: HashSet<Kind> = adapters
             .iter()
-            .filter(|adapter| ctx.refills(adapter.store()))
+            .filter(|adapter| wins.unwrap_or_else(|| ctx.refills(adapter.store())))
             .map(|adapter| adapter.kind())
             .collect();
         let can_open = ctx.keys_ready;
@@ -233,6 +241,7 @@ impl ServiceSync {
             older: scope == ScopeName::History && snapshot,
             older_read: false,
             categories,
+            arrival,
         };
         refresh(&mut row, info);
         if row.epoch.is_none() {
@@ -338,6 +347,11 @@ impl ServiceSync {
             pull.seen
                 .insert((record.kind.as_str().to_owned(), record.record_id.clone()));
             let key = RecordKey::new(pull.scope, record.kind.clone(), record.record_id.clone());
+            // No store, base or patch ever holds a move marker; only an arriving move reads it (0051, Move markers).
+            let marker = record.fields.as_mut().and_then(move_marker::strip);
+            if let (Some(marker), Some(arrival)) = (marker, &pull.arrival) {
+                arrival.marked(&key, marker);
+            }
             // A kind this device turned off takes nothing of its store, so the snapshot that follows turning it on
             // settles what came meanwhile, deletions included (0054, Rules for both providers). Only a refill reads it
             // now, for what the refill decides that the store need not take yet.
@@ -478,7 +492,10 @@ impl ServiceSync {
                 writes.held.push(held(HeldReason::Unreadable, key, record));
                 continue;
             }
-            let base = inputs.bases.get(&key);
+            // Arriving from iCloud, the copy this device and iCloud last agreed is the base (0054, Moving between
+            // providers).
+            let moved = pull.arrival.as_deref().and_then(|arrival| arrival.icloud_base(&key));
+            let base = inputs.bases.get(&key).or(moved.as_ref());
             let judgement = pull.judge(kind, base, &record);
             let stored = local.and_then(|local| local.records.get(&key.record_id));
             if !pull.categories.syncs(kind) {
@@ -601,7 +618,17 @@ impl ServiceSync {
             fields: local_view(kind, pull.scope, &mine.fields, base_fields, &held_members),
             ..mine
         });
-        let mut settled = settle(&key, kind, judgement, base_view.as_ref(), mine.as_ref(), &record);
+        let marker = pull.arrival.as_deref().and_then(|arrival| arrival.marker(&key));
+        let mut settled = match (marker, stored) {
+            (Some(marker), Some(_)) => settle_moved(&key, kind, &marker, mine.as_ref(), &record),
+            // Gone from the zone since another device moved it: deleted on iCloud, unless its content changed here
+            // since (0054, Deletions made on a device still on iCloud).
+            (Some(marker), None) if !awaiting && pull.arrival.as_deref().is_some_and(|arrival| arrival.gone(&key)) => {
+                settle_moved(&key, kind, &marker, None, &record)
+            }
+            (Some(_), None) => settle(&key, kind, judgement, None, None, &record),
+            (None, _) => settle(&key, kind, judgement, base_view.as_ref(), mine.as_ref(), &record),
+        };
         // The row keeps the device's own values in the members it contests, never the merge's view of them, so Keep
         // Mine writes nothing the device did not hold; the members the merge did not contest stay as the merge read
         // them, so a value that waits or was refused is never taken for the device's edit. Against a deletion the
@@ -924,6 +951,7 @@ impl ServiceSync {
             older: false,
             older_read: false,
             categories: self.categories(),
+            arrival: None,
         };
         row.older_cursor = page.cursor.clone().filter(|_| !page.records.is_empty());
         let writes = self.take_page(&mut pull, &adapters, page.records).await?;

@@ -16,14 +16,15 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_keys::encoding::KeyPurpose;
+use tablepro_records::Kind;
 
 use crate::adapters::approval::Queue;
 use crate::adapters::categories::DeviceCategories;
 use crate::adapters::conflict::Conflicts;
 use crate::api::adapter::StoreStamp;
 use crate::api::control::{
-    ConflictChoice, HeldRecord, HeldRecordReason, PassReason, PendingApproval, SyncCategories, SyncControl, SyncPhase,
-    SyncStatus, TeamConflict,
+    ConflictChoice, HeldRecord, HeldRecordReason, MovePlan, PassReason, PendingApproval, SyncCategories, SyncControl,
+    SyncPhase, SyncStatus, TeamConflict,
 };
 use crate::api::device_store::DeviceStoreError;
 use crate::api::error::SyncError;
@@ -31,14 +32,15 @@ use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
-    ApprovalDecision, KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow,
-    Table,
+    ApprovalDecision, KeyVersionState, Provider, Row, RowKey, RowRange, Standing, StateStore, StateTxn, StoppedCause,
+    StoreRow, Table,
 };
 use crate::api::transport::{DpopKey, ServiceTransport, TransportError};
 use crate::engine::{
     Adapters, Clock, EngineEvents, EngineHooks, Fence, Journal, JournalEntry, JournalIds, Pass, StopSignal,
 };
 use crate::keys::KeyService;
+use crate::moves::Arrival;
 
 // This device's signing key, which every personal and history call and every key-object or envelope write carries
 // (0051, DPoP). None until the device holds keys.
@@ -168,6 +170,8 @@ struct StoreSeen {
 struct PassCtx {
     body: ScopesBody,
     mode: ServiceMode,
+    // Personal data arriving this pass, and by which rule its snapshot meets the device's records.
+    arrival: Option<Arc<Arrival>>,
     // The device held a key when the pass began, which decides the scopes it reaches; each call reads the key itself.
     keyed: bool,
     stores: HashMap<String, StoreSeen>,
@@ -398,12 +402,140 @@ impl ServiceSync {
 
     pub async fn run_pass(&self, why: PassReason) -> Result<PassReport, SyncError> {
         let mut session = self.session.lock().await;
+        self.pass_locked(&mut session, why, None).await
+    }
+
+    // Personal data arrives from another provider or from none (0054, Moving between providers): what the service file
+    // kept of the personal scope while it rested is let go, its pull starts from a snapshot that meets the device's
+    // records by `arrival`'s rule, and personal sync is on from then. One that fails leaves personal data resting.
+    pub(crate) async fn run_arrival(&self, arrival: Arrival) -> Result<PassReport, SyncError> {
+        let mut session = self.session.lock().await;
+        self.check_stop()?;
+        self.let_go_of_personal().await?;
+        let before = std::mem::replace(
+            &mut *self.mode.lock().unwrap_or_else(PoisonError::into_inner),
+            ServiceMode::Personal,
+        );
+        let outcome = self
+            .pass_locked(&mut session, PassReason::Person, Some(Arc::new(arrival)))
+            .await;
+        if outcome.is_err() {
+            *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = before;
+            self.refresh_counts().await;
+        }
+        outcome
+    }
+
+    // Personal records the person deleted on the service that this device no longer holds: what a move back to iCloud
+    // may delete there. A `policy` tombstone is not one (0051, Tombstones).
+    pub(crate) async fn deleted_by_the_person(&self) -> Result<Vec<RecordKey>, SyncError> {
+        let scope = ScopeName::Personal;
+        let rows = begin(&self.state)
+            .await?
+            .scan(&RowRange::Scope(Table::Bases, scope))
+            .await?;
+        let mut deleted = Vec::new();
+        let mut held: HashMap<Kind, HashSet<String>> = HashMap::new();
+        for row in rows {
+            let Row::Base(base) = row else { continue };
+            let Some(kind) = base.key.kind.known() else { continue };
+            if base.deleted != Some(crate::api::transport::DeletedReason::User) || kind.is_key() {
+                continue;
+            }
+            if !held.contains_key(&kind) {
+                let mut ids = HashSet::new();
+                for adapter in self.adapters.in_scope(scope) {
+                    if adapter.kind() == kind {
+                        ids.extend(
+                            adapter
+                                .records(scope)
+                                .await?
+                                .records
+                                .into_iter()
+                                .map(|record| record.record_id),
+                        );
+                    }
+                }
+                held.insert(kind, ids);
+            }
+            if !held.get(&kind).is_some_and(|ids| ids.contains(&base.key.record_id)) {
+                deleted.push(base.key);
+            }
+        }
+        Ok(deleted)
+    }
+
+    // What a move of personal data here takes and what stays on the device (0054, Moving between providers).
+    pub(crate) async fn personal_plan(&self) -> Result<MovePlan, SyncError> {
+        let categories = self.categories();
+        let mut plan = MovePlan {
+            records: 0,
+            staying_behind: 0,
+            secrets_to_seal: 0,
+        };
+        for adapter in self.adapters.in_scope(ScopeName::Personal) {
+            let kind = adapter.kind();
+            for record in adapter.records(ScopeName::Personal).await?.records {
+                let goes = record.standing == Standing::Syncs && categories.syncs(kind);
+                match (goes, kind) {
+                    (true, Kind::SecretEnvelope) => plan.secrets_to_seal += 1,
+                    (true, _) => plan.records += 1,
+                    (false, _) => plan.staying_behind += 1,
+                }
+            }
+        }
+        Ok(plan)
+    }
+
+    // Every personal row but the key objects': bases, held records, refill copies, waiting values and the batch in
+    // flight, so nothing an earlier spell on TablePro Sync agreed stands in for the copy the arrival meets.
+    async fn let_go_of_personal(&self) -> Result<(), SyncError> {
+        let scope = ScopeName::Personal;
+        let mut txn = begin(&self.state).await?;
+        for table in [
+            Table::Bases,
+            Table::Held,
+            Table::Deferred,
+            Table::Approvals,
+            Table::Conflicts,
+        ] {
+            for row in txn.scan(&RowRange::Scope(table, scope)).await? {
+                let key = match &row {
+                    Row::Base(row) => &row.key,
+                    Row::Held(row) => &row.key,
+                    Row::Deferred(row) => &row.key,
+                    Row::Approval(row) => &row.key,
+                    Row::Conflict(row) => &row.key,
+                    _ => continue,
+                };
+                if !key.kind.is_key() {
+                    txn.delete(&row.key()).await?;
+                }
+            }
+        }
+        txn.delete(&RowKey::Outbox(scope)).await?;
+        if let Some(Row::Scope(mut row)) = txn.get(&RowKey::Scope(scope)).await? {
+            row.cursor = None;
+            row.read_kinds.clear();
+            txn.put(Row::Scope(row)).await?;
+        }
+        self.check_stop()?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    async fn pass_locked(
+        &self,
+        session: &mut Session,
+        why: PassReason,
+        arrival: Option<Arc<Arrival>>,
+    ) -> Result<PassReport, SyncError> {
         tracing::debug!(?why, "sync pass");
         self.set_phase(SyncPhase::Syncing);
         let taken = self.journal.take();
         let named = (why == PassReason::Journal).then(|| taken.clone());
         let journal_only = named.is_some();
-        let outcome = self.run(&mut session, named).await;
+        let outcome = self.run(session, named, arrival).await;
         if outcome.is_err() {
             self.journal.give_back(taken);
         }
@@ -414,7 +546,12 @@ impl ServiceSync {
         outcome
     }
 
-    async fn run(&self, session: &mut Session, named: Option<JournalIds>) -> Result<PassReport, SyncError> {
+    async fn run(
+        &self,
+        session: &mut Session,
+        named: Option<JournalIds>,
+        arrival: Option<Arc<Arrival>>,
+    ) -> Result<PassReport, SyncError> {
         self.check_stop()?;
         self.refill_stale_file(session).await?;
         self.queue().finish_decided().await?;
@@ -427,6 +564,7 @@ impl ServiceSync {
         let mut ctx = PassCtx {
             body,
             mode: self.mode(),
+            arrival,
             keyed,
             stores: HashMap::new(),
             snapshots_done: HashSet::new(),

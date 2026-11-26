@@ -4,6 +4,7 @@
 // file, so the next pass reads the account again. A removed zone clears the state and nothing goes up until the person
 // asks to upload again.
 
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -17,12 +18,21 @@ use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use crate::api::control::{PassReason, PendingApproval, SyncControl, SyncPhase, SyncStatus};
 use crate::api::error::SyncError;
 use crate::api::ids::RecordKey;
-use crate::api::state::{Provider, RowRange, StateFiles, StateIdentity, StateStore, SyncTrust, Table};
+use crate::api::state::{BaseRow, Provider, Row, RowRange, StateFiles, StateIdentity, StateStore, SyncTrust, Table};
 use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, read_everything_again};
 use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalIds, Pass, StopSignal};
 
 // The Swift engine's fallback timer, for changes no CloudKit push announced.
 const FALLBACK: Duration = Duration::from_secs(15 * 60);
+
+// The iCloud side of a move: the account, this device's CloudKit bases and, from a full fetch, every record the zone
+// lists, by the ids the zone names them with.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IcloudCopy {
+    pub account: Option<String>,
+    pub bases: Vec<BaseRow>,
+    pub listed: Option<BTreeSet<RecordKey>>,
+}
 
 pub struct CloudKitParts {
     pub transport: Arc<dyn CloudKitTransport>,
@@ -175,6 +185,46 @@ impl CloudKitSync {
     pub async fn run_pass(&self, why: PassReason) -> Result<CloudKitReport, SyncError> {
         let mut session = self.session.lock().await;
         self.run_locked(&mut session, why).await
+    }
+
+    // What a move to TablePro Sync takes from iCloud (0054, Moving between providers, step 1): a last pass, so what
+    // waited goes up, then a full fetch, so the move knows each record the zone still lists, then the engine stops. A
+    // zone that is gone lists nothing the move can trust, so it infers no deletion.
+    pub async fn last_pass_before_move(&self) -> Result<IcloudCopy, SyncError> {
+        let mut session = self.session.lock().await;
+        let listed = match self.run_locked(&mut session, PassReason::Person).await {
+            Ok(_) => {
+                let state = session.state.clone().ok_or(SyncError::NotAllowed {
+                    what: "move without an iCloud state file",
+                })?;
+                read_everything_again(state.as_ref()).await?;
+                let report = self.run_locked(&mut session, PassReason::Person).await?;
+                Some(report.fetch.listed.ok_or(SyncError::Malformed {
+                    what: "full fetch with no listing",
+                })?)
+            }
+            Err(SyncError::CloudKit(CloudKitFailure::ZoneNotFound | CloudKitFailure::ZoneDeletedByUser))
+                if session.zone_removed =>
+            {
+                None
+            }
+            Err(error) => return Err(error),
+        };
+        let mut bases = Vec::new();
+        if let Some(state) = &session.state {
+            let mut txn = state.begin().await?;
+            for row in txn.scan(&RowRange::Scope(Table::Bases, SCOPE)).await? {
+                if let Row::Base(base) = row {
+                    bases.push(base);
+                }
+            }
+        }
+        self.stop.stop();
+        Ok(IcloudCopy {
+            account: session.account.clone(),
+            bases,
+            listed,
+        })
     }
 
     // After a removed zone, the person's answer: the zone is made again and everything this device holds goes up.
