@@ -14,8 +14,8 @@ use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::{FakeCloudKit, FakeDeviceStore, FakeServer};
 use uuid::Uuid;
 
-use super::engines::ServiceLink;
-use super::keys::{GenesisOutcomeTag, KeyStateInfo, team_keys_info, reviewed_member_info};
+use super::engines::{ServiceLink, ServiceSlot};
+use super::keys::{GenesisOutcomeTag, KeyStateInfo, reviewed_member_info, team_keys_info};
 use super::names::{Names, Person};
 use super::open::OpenParts;
 use super::service::{
@@ -25,20 +25,24 @@ use crate::account::SyncProviderTag;
 use crate::error::CoreError;
 use crate::runtime;
 
-// Counts the signals, and can hold the thread that calls it until the test lets go.
+// Counts the signals, and can hold the thread of its first call until the test lets go, saying when it is held.
 #[derive(Default)]
 struct Listener {
     status: AtomicUsize,
     keys: AtomicUsize,
-    held: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+    returned: AtomicUsize,
+    held: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
 }
 
 impl SyncListener for Listener {
     fn status_changed(&self) {
         self.status.fetch_add(1, Ordering::SeqCst);
-        if let Some(release) = self.held.lock().unwrap().take() {
+        let held = self.held.lock().unwrap().take();
+        if let Some((entered, release)) = held {
+            let _ = entered.send(());
             let _ = release.recv();
         }
+        self.returned.fetch_add(1, Ordering::SeqCst);
     }
 
     fn keys_changed(&self) {
@@ -91,6 +95,7 @@ fn link(server: &Arc<FakeServer>, account: AccountId) -> ServiceLink {
         account,
         device_row: device_row.clone(),
         transport: Arc::new(server.client(account, device_row)),
+        binding: None,
     }
 }
 
@@ -180,9 +185,10 @@ async fn icloud_without_its_transport_is_unavailable_and_keeps_the_account_the_a
 #[tokio::test]
 async fn a_pass_finishes_while_the_listener_is_still_running() {
     let tasks = runtime::tasks().unwrap();
-    let (release, held) = std::sync::mpsc::channel();
+    let (entered_tx, entered) = std::sync::mpsc::channel();
+    let (release, release_rx) = std::sync::mpsc::channel();
     let listener = Arc::new(Listener {
-        held: Mutex::new(Some(held)),
+        held: Mutex::new(Some((entered_tx, release_rx))),
         ..Listener::default()
     });
     let opened = open(&tasks, |parts| OpenParts {
@@ -192,16 +198,20 @@ async fn a_pass_finishes_while_the_listener_is_still_running() {
         ..parts
     })
     .await;
+    let service = Arc::clone(&opened.service);
+    let pass = tasks.spawn_task(async move { service.sync_now(PassReasonTag::Person).await });
 
-    let pass = tokio::time::timeout(
-        Duration::from_secs(30),
-        opened.service.sync_now(PassReasonTag::Person),
-    )
-    .await;
+    let held = tasks
+        .spawn_blocking_task(move || entered.recv_timeout(Duration::from_secs(30)))
+        .await
+        .unwrap();
+    let passed = tokio::time::timeout(Duration::from_secs(30), pass).await;
+    let returned_meanwhile = listener.returned.load(Ordering::SeqCst);
     release.send(()).unwrap();
 
-    assert!(matches!(pass, Ok(Ok(()))), "{pass:?}");
-    assert!(listener.status.load(Ordering::SeqCst) >= 1);
+    assert!(held.is_ok(), "the listener was never called");
+    assert!(matches!(passed, Ok(Ok(Ok(())))), "{passed:?}");
+    assert_eq!(returned_meanwhile, 0, "the pass ended only once the listener returned");
 }
 
 #[tokio::test]
@@ -221,12 +231,7 @@ async fn genesis_runs_through_the_service_over_the_engine_s_key_flows() {
     opened.service.sync_now(PassReasonTag::Launch).await.unwrap();
     let before = opened.service.key_state().await.unwrap();
     let draft = opened.service.begin_genesis().await.unwrap();
-    let groups: Vec<String> = draft
-        .text
-        .expose_secret()
-        .split('-')
-        .map(str::to_lowercase)
-        .collect();
+    let groups: Vec<String> = draft.text.expose_secret().split('-').map(str::to_lowercase).collect();
     let typed = draft
         .check
         .iter()
@@ -245,6 +250,57 @@ async fn genesis_runs_through_the_service_over_the_engine_s_key_flows() {
     assert_eq!(outcome, GenesisOutcomeTag::Created);
     assert!(matches!(after, KeyStateInfo::Approved { av: 1, .. }), "{after:?}");
     assert_eq!(opened.service.status().problem, None);
+}
+
+fn typed(draft: &super::keys::RecoveryKeyDraftInfo) -> Vec<SecretString> {
+    let groups: Vec<String> = draft.text.expose_secret().split('-').map(str::to_lowercase).collect();
+    draft
+        .check
+        .iter()
+        .map(|index| SecretString::from(groups[usize::from(*index)].clone()))
+        .collect()
+}
+
+// A closed Replace sheet leaves no draft, so the current recovery key it held is dropped, and its zeroizing bytes
+// with it; the draft cannot be finished afterwards, and discarding it again is no error.
+#[tokio::test]
+async fn a_discarded_replace_draft_is_gone_with_the_recovery_key_it_held() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let opened = open(&tasks, |parts| OpenParts {
+        config: config(SyncProviderTag::TableproSync),
+        link: Ok(link(&server, AccountId(Uuid::new_v4()))),
+        ..parts
+    })
+    .await;
+    opened.service.sync_now(PassReasonTag::Launch).await.unwrap();
+    let genesis = opened.service.begin_genesis().await.unwrap();
+    opened
+        .service
+        .finish_genesis(genesis.draft.clone(), typed(&genesis))
+        .await
+        .unwrap();
+    let replace = opened
+        .service
+        .begin_replace_recovery_key(genesis.text.clone())
+        .await
+        .unwrap();
+
+    opened
+        .service
+        .discard_key_draft(replace.recovery.draft.clone())
+        .unwrap();
+    let again = opened.service.discard_key_draft(replace.recovery.draft.clone());
+    let finished = opened
+        .service
+        .finish_replace_recovery_key(replace.recovery.draft.clone(), typed(&replace.recovery), Vec::new())
+        .await
+        .unwrap_err();
+    let malformed = opened.service.discard_key_draft("not a draft".to_owned()).unwrap_err();
+
+    assert!(again.is_ok());
+    assert_eq!(code(&finished), "sync.unknown");
+    assert_eq!(code(&malformed), "sync.malformed");
 }
 
 #[tokio::test]
@@ -275,6 +331,24 @@ async fn an_argument_the_engine_cannot_read_is_refused_before_any_call() {
         .await
         .unwrap_err();
 
+    let record = super::service::SyncRecordRef {
+        scope: "personal".to_owned(),
+        kind: "connection".to_owned(),
+        record_id: "6F1C2A9E-0B4D-4C8E-9A51-3D7E2B1F0C44".to_owned(),
+    };
+    let short = opened
+        .service
+        .decide_approval(record.clone(), "host".to_owned(), "ab".to_owned(), true)
+        .await
+        .unwrap_err();
+    let upper = opened
+        .service
+        .resolve_conflict(record, "AB".repeat(32), super::service::ConflictChoiceTag::KeepMine)
+        .await
+        .unwrap_err();
+
+    assert_eq!(code(&short), "sync.malformed");
+    assert_eq!(code(&upper), "sync.malformed");
     assert_eq!(code(&team), "sync.malformed");
     assert_eq!(code(&account), "sync.malformed");
     assert_eq!(code(&kind), "sync.malformed");
@@ -327,7 +401,10 @@ fn a_team_s_rows_carry_the_names_the_account_could_read_and_none_for_the_rest() 
     assert_eq!(info.team_name.as_deref(), Some("Acme"));
     assert_eq!(info.members[0].name.as_deref(), Some("Ana"));
     assert_eq!(info.members[0].email.as_deref(), Some("ana@example.com"));
-    assert_eq!((info.members[1].name.clone(), info.members[1].email.clone()), (None, None));
+    assert_eq!(
+        (info.members[1].name.clone(), info.members[1].email.clone()),
+        (None, None)
+    );
 }
 
 #[test]
@@ -353,4 +430,19 @@ fn a_reviewed_member_names_its_team_and_reads_back_as_the_engine_s() {
         }),
         Err(SyncError::Malformed { what: "version" })
     );
+}
+
+#[tokio::test]
+async fn a_start_that_failed_for_a_reason_that_stays_is_not_tried_again() {
+    let slot = ServiceSlot::new(
+        Err(tablepro_sync::api::TransportError::SignedOut.into()),
+        None,
+        tablepro_sync::api::control::SyncCategories::default(),
+    );
+
+    let first = slot.engine().await.err().map(|error| error.code());
+    let again = slot.engine().await.err().map(|error| error.code());
+
+    assert_eq!(first, Some("sync.signed_out"));
+    assert_eq!(again, Some("sync.signed_out"));
 }

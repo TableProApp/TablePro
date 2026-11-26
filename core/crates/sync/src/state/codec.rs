@@ -7,7 +7,7 @@ use serde_json::Value;
 use tablepro_keys::encoding::{AccountId, KeyDeviceId, KeyPurpose, Origin, RequestId, ResetId, TeamId, Version};
 use tablepro_keys::keys::{Ed25519Public, X25519Public};
 use tablepro_keys::sas::{Role as ComparisonRole, SessionState};
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced};
 use uuid::Uuid;
 
 use crate::api::error::StateError;
@@ -18,8 +18,8 @@ use crate::api::scopes::{LineageEpoch, Role, ScopePolicies};
 use crate::api::state::{
     ApprovalDecision, ApprovalRow, BaseRow, BindingRow, ConflictRow, DeferredRow, DeletedHistoryRow, HeldReason,
     HeldRow, Holder, KeyComparisonRow, KeyDevicePinRow, KeyEnvelopeRow, KeyObjectRow, KeyPendingRow, KeyPinRow,
-    KeyVersionRow, KeyVersionState, LegacyMirrorRow, OutboxRow, PendingFlow, Provider, Row, ScopeRow, Standing,
-    StandingRow, StoppedCause, StoreRow, Table,
+    KeyVersionRow, KeyVersionState, LegacyMirrorRow, OutboxRow, PendingFlow, Provider, PushWait, RefusedRow, Row,
+    ScopeRow, Served, Standing, StandingRow, StoppedCause, StoreRow, StoresKindRow, Table,
 };
 use crate::api::transport::{DeletedReason, PulledRecord, ServiceMeta};
 
@@ -449,6 +449,7 @@ pub(crate) fn columns(row: &Row) -> Vec<u8> {
         Row::Store(row) => {
             out.bytes(row.generation.as_bytes()).int(row.sequence);
         }
+        Row::StoresKind(_) | Row::DeletedHistory(_) => {}
         Row::Base(row) | Row::PendingBase(row) => base_columns(&mut out, row),
         Row::Standing(row) => {
             out.text(name_of(&STANDINGS, row.standing));
@@ -464,6 +465,9 @@ pub(crate) fn columns(row: &Row) -> Vec<u8> {
             out.text(&row.idempotency_key.0)
                 .bytes(&row.request_digest)
                 .signed(row.created_at_ms);
+        }
+        Row::Refused(row) => {
+            out.bytes(&row.digest).text(&row.code);
         }
         Row::Approval(row) => approval_columns(&mut out, row),
         Row::Conflict(row) => {
@@ -515,7 +519,8 @@ fn scope_columns(out: &mut Writer, row: &ScopeRow) {
         .bytes(&kinds_bytes(&row.read_kinds))
         .flag(row.refill)
         .flag(row.rotation_due)
-        .flag(row.caught_up);
+        .flag(row.caught_up)
+        .maybe(row.push_wait, |out, wait| out.text(wait.as_str()));
 }
 
 fn base_columns(out: &mut Writer, row: &BaseRow) {
@@ -558,10 +563,16 @@ fn approval_columns(out: &mut Writer, row: &ApprovalRow) {
 fn key_columns(out: &mut Writer, row: &Row) {
     match row {
         Row::KeyObject(row) => {
-            out.text(&row.fields).flag(row.applied);
+            out.text(&row.fields)
+                .flag(row.applied)
+                .maybe(row.served, |out, served| out.bytes(&served_bytes(served)));
         }
         Row::KeyPin(row) => {
-            let replaced: Vec<u8> = row.replaced.iter().flat_map(|ik| ik.0).collect();
+            let replaced: Vec<u8> = row
+                .replaced
+                .iter()
+                .flat_map(|entry| [&entry.ik.0[..], &entry.av.get().to_be_bytes()].concat())
+                .collect();
             out.bytes(&row.ik.0)
                 .int(u64::from(row.av.get()))
                 .text(row.how.name())
@@ -596,6 +607,32 @@ fn key_columns(out: &mut Writer, row: &Row) {
     }
 }
 
+// 0066, `key_objects.served`: `taken_at`, then on a `key.reset` `held_until`, 8 bytes big-endian each.
+fn served_bytes(served: Served) -> Vec<u8> {
+    let mut out = served.taken_at_us.to_be_bytes().to_vec();
+    if let Some(held_until) = served.held_until_us {
+        out.extend_from_slice(&held_until.to_be_bytes());
+    }
+    out
+}
+
+fn served(bytes: &[u8]) -> Result<Served, StateError> {
+    match bytes.len() {
+        8 => Ok(Served {
+            taken_at_us: signed(bytes)?,
+            held_until_us: None,
+        }),
+        16 => {
+            let (taken_at, held_until) = bytes.split_at(8);
+            Ok(Served {
+                taken_at_us: signed(taken_at)?,
+                held_until_us: Some(signed(held_until)?),
+            })
+        }
+        _ => Err(malformed("served times")),
+    }
+}
+
 // The row a table's stored key and columns hold.
 pub(crate) fn decode(table: Table, key: &[u8], columns: &[u8]) -> Result<Row, StateError> {
     let mut keys = Reader::new(key);
@@ -607,6 +644,10 @@ pub(crate) fn decode(table: Table, key: &[u8], columns: &[u8]) -> Result<Row, St
             store: keys.text("store")?,
             generation: uuid(read.present("generation")?)?,
             sequence: read.int("sequence")?,
+        }),
+        Table::StoresKinds => Row::StoresKind(StoresKindRow {
+            store: keys.text("store")?,
+            kind: kind(keys.present("kind")?)?,
         }),
         Table::Bases => Row::Base(base_row(record_key(&mut keys)?, &mut read)?),
         Table::PendingBases => Row::PendingBase(base_row(record_key(&mut keys)?, &mut read)?),
@@ -628,6 +669,11 @@ pub(crate) fn decode(table: Table, key: &[u8], columns: &[u8]) -> Result<Row, St
             idempotency_key: IdempotencyKey(read.text("idempotency key")?),
             request_digest: read.fixed("request digest")?,
             created_at_ms: read.signed("created at")?,
+        }),
+        Table::Refused => Row::Refused(RefusedRow {
+            key: record_key(&mut keys)?,
+            digest: read.fixed("refused digest")?,
+            code: read.text("refused code")?,
         }),
         Table::Approvals => Row::Approval(approval_row(record_key(&mut keys)?, keys.text("field")?, &mut read)?),
         Table::Conflicts => Row::Conflict(ConflictRow {
@@ -683,6 +729,7 @@ fn scope_row(scope: ScopeName, read: &mut Reader<'_>) -> Result<ScopeRow, StateE
         refill: read.flag("refill")?,
         rotation_due: read.flag("rotation due")?,
         caught_up: read.flag("caught up")?,
+        push_wait: read.maybe(|bytes| PushWait::parse(&text(bytes)?).ok_or_else(|| malformed("push wait")))?,
     })
 }
 
@@ -723,6 +770,7 @@ fn key_row(table: Table, keys: &mut Reader<'_>, read: &mut Reader<'_>) -> Result
             record_id: keys.text("record id")?,
             fields: read.text("fields")?,
             applied: read.flag("applied")?,
+            served: read.maybe(served)?,
         }),
         Table::KeyPins => Row::KeyPin(pin_row(AccountId(uuid(keys.present("account")?)?), read)?),
         Table::KeyDevicePins => Row::KeyDevicePin(KeyDevicePinRow {
@@ -761,11 +809,21 @@ fn pin_row(account: AccountId, read: &mut Reader<'_>) -> Result<KeyPinRow, State
     let how = PinHow::parse(&read.text("pin how")?).map_err(|_| malformed("pin how"))?;
     let alert = read.flag("alert")?;
     let replaced = read.bytes("replaced")?;
-    let (chunks, rest) = replaced.as_chunks::<32>();
+    // 0066: per entry the IK's 32 bytes, then the replace `av` as a `u32` big-endian.
+    let (chunks, rest) = replaced.as_chunks::<36>();
     if !rest.is_empty() {
         return Err(malformed("replaced IKs"));
     }
-    let replaced = chunks.iter().map(|chunk| Ed25519Public(*chunk)).collect();
+    let replaced = chunks
+        .iter()
+        .map(|chunk| {
+            let (ik, av) = chunk.split_at(32);
+            Ok(Replaced {
+                ik: Ed25519Public(fixed(ik)?),
+                av: version(u64::from(u32::from_be_bytes(fixed(av)?)))?,
+            })
+        })
+        .collect::<Result<_, StateError>>()?;
     Ok(KeyPinRow {
         account,
         ik,

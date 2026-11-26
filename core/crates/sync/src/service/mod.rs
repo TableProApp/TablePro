@@ -24,7 +24,6 @@ use crate::api::control::{
     ConflictChoice, HeldRecord, HeldRecordReason, PassReason, PendingApproval, SyncCategories, SyncControl, SyncPhase,
     SyncStatus, TeamConflict,
 };
-use crate::api::device_store::DeviceStoreError;
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
@@ -32,45 +31,8 @@ use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
     KeyVersionState, Provider, Row, RowKey, RowRange, StateStore, StateTxn, StoppedCause, StoreRow, Table,
 };
-use crate::api::transport::{DpopKey, ServiceTransport, TransportError};
+use crate::api::transport::{ServiceTransport, TransportError};
 use crate::engine::{Adapters, Clock, EngineEvents, EngineHooks, Journal, JournalEntry, JournalIds, Pass, StopSignal};
-use crate::keys::KeyService;
-
-// This device's signing key, which every personal and history call and every key-object or envelope write carries
-// (0051, DPoP). None until the device holds keys.
-#[async_trait]
-pub trait ProofSource: Send + Sync {
-    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError>;
-
-    // A stale file's key tables still rebuild, so no envelope opens yet: the ones held meanwhile are read again once
-    // the rebuild ends, though no key row moved (0054, A stale file).
-    fn rebuilding(&self) -> bool {
-        false
-    }
-}
-
-// The device keys are made on the first call, since a device proves even its first pull and its genesis or first
-// request certifies them (0056, Approving a device, step 1). A Sign Out a crash cut off finishes first, as before any
-// other read of the keys. With no device store there is no key to prove with, and only team plaintext syncs.
-#[async_trait]
-impl ProofSource for KeyService {
-    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
-        let _serial = self.serialized().await;
-        let made = match self.finish_cut_off_sign_out().await {
-            Ok(()) => self.ensure_device_keys().await,
-            Err(error) => Err(error),
-        };
-        match made {
-            Ok(device) => Ok(Some(DpopKey(Arc::new(device.dsk)))),
-            Err(SyncError::DeviceStore(DeviceStoreError::Unavailable { .. })) => Ok(None),
-            Err(error) => Err(error),
-        }
-    }
-
-    fn rebuilding(&self) -> bool {
-        self.is_rebuilding()
-    }
-}
 
 pub struct ServiceParts {
     pub transport: Arc<dyn ServiceTransport>,
@@ -78,7 +40,6 @@ pub struct ServiceParts {
     pub adapters: Adapters,
     pub keys: Arc<dyn KeyFlows>,
     pub hooks: Arc<EngineHooks>,
-    pub proofs: Arc<dyn ProofSource>,
     pub clock: Arc<dyn Clock>,
     pub stop: StopSignal,
     pub journal: Journal,
@@ -93,7 +54,6 @@ pub struct ServiceSync {
     adapters: Adapters,
     keys: Arc<dyn KeyFlows>,
     hooks: Arc<EngineHooks>,
-    proofs: Arc<dyn ProofSource>,
     clock: Arc<dyn Clock>,
     stop: StopSignal,
     journal: Journal,
@@ -104,6 +64,8 @@ pub struct ServiceSync {
     categories: Mutex<DeviceCategories>,
     // The history entries this device keeps, its retention, which a snapshot takes newest first; None takes all.
     history_window: Mutex<Option<u32>>,
+    // The scopes as the last body served them, which the app reads while a pass holds the session.
+    scopes_seen: Mutex<Vec<ScopeInfo>>,
 }
 
 #[derive(Debug, Default)]
@@ -195,7 +157,6 @@ impl ServiceSync {
             adapters: parts.adapters,
             keys: parts.keys,
             hooks: parts.hooks,
-            proofs: parts.proofs,
             clock: parts.clock,
             stop: parts.stop,
             journal: parts.journal,
@@ -213,6 +174,7 @@ impl ServiceSync {
             }),
             categories: Mutex::new(DeviceCategories::from(&parts.categories)),
             history_window: Mutex::new(None),
+            scopes_seen: Mutex::new(Vec::new()),
         }
     }
 
@@ -226,6 +188,25 @@ impl ServiceSync {
 
     // The app's history retention, in entries: a snapshot of the history scope takes that many, newest first, and the
     // history view pages back for older ones (0051, Pull; F18).
+    // Each scope as the last scopes body served it: its policies, whether it takes writes, its role (0051, Scopes;
+    // Policies). Empty before the first poll.
+    pub fn scopes_seen(&self) -> Vec<ScopeInfo> {
+        self.scopes_seen.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    // A body that changed what the app shows of its scopes tells the app to read them again.
+    fn saw_scopes(&self, body: &ScopesBody) {
+        let changed = {
+            let mut seen = self.scopes_seen.lock().unwrap_or_else(PoisonError::into_inner);
+            let changed = *seen != body.scopes;
+            seen.clone_from(&body.scopes);
+            changed
+        };
+        if changed && let Some(events) = &self.events {
+            events.status_changed();
+        }
+    }
+
     pub fn set_history_window(&self, entries: Option<u32>) {
         *self.history_window.lock().unwrap_or_else(PoisonError::into_inner) = entries;
     }
@@ -301,7 +282,7 @@ impl ServiceSync {
         self.refill_stale_file(session).await?;
         self.queue().finish_decided().await?;
         let body = self.poll_scopes(session).await?;
-        let keyed = self.proofs.dpop_key().await?.is_some();
+        let keyed = self.keys.dpop_key().await?.is_some();
         let approved = body
             .scopes
             .iter()
@@ -707,9 +688,15 @@ impl SyncControl for ServiceSync {
         self.queue().waiting().await
     }
 
-    async fn decide_approval(&self, key: RecordKey, field: String, approve: bool) -> Result<(), SyncError> {
+    async fn decide_approval(
+        &self,
+        key: RecordKey,
+        field: String,
+        seen: [u8; 32],
+        approve: bool,
+    ) -> Result<(), SyncError> {
         let session = self.session.lock().await;
-        self.queue().decide(&key, &field, approve).await?;
+        self.queue().decide(&key, &field, seen, approve).await?;
         drop(session);
         self.refresh_counts().await;
         self.decided(&key);
@@ -721,9 +708,9 @@ impl SyncControl for ServiceSync {
         self.conflict_table().open().await
     }
 
-    async fn resolve_conflict(&self, key: RecordKey, keep: ConflictChoice) -> Result<(), SyncError> {
+    async fn resolve_conflict(&self, key: RecordKey, seen: [u8; 32], keep: ConflictChoice) -> Result<(), SyncError> {
         let session = self.session.lock().await;
-        self.conflict_table().resolve(&key, keep).await?;
+        self.conflict_table().resolve(&key, seen, keep).await?;
         drop(session);
         self.refresh_counts().await;
         self.decided(&key);

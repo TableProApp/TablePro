@@ -3,7 +3,7 @@ use serde_json::Value;
 use tablepro_keys::encoding::{AccountId, KeyDeviceId, KeyPurpose, Origin, RequestId, ResetId, TeamId, Version};
 use tablepro_keys::keys::{Ed25519Public, X25519Public};
 use tablepro_keys::sas::{Role as ComparisonRole, SessionState};
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced};
 use uuid::Uuid;
 
 use super::error::StateError;
@@ -136,6 +136,8 @@ pub enum Table {
     Binding,
     Scopes,
     Stores,
+    // 0066: per (store, kind), a refill the kind still owes.
+    StoresKinds,
     Bases,
     // 0064: the bases a pull will apply, written before the store; at a restart one whose store copy matches becomes
     // the base, and one that does not stays a local edit.
@@ -144,6 +146,8 @@ pub enum Table {
     Held,
     Deferred,
     Outbox,
+    // 0066: per record, the change the server refused and its code.
+    Refused,
     Approvals,
     Conflicts,
     LegacyMirror,
@@ -158,16 +162,18 @@ pub enum Table {
 }
 
 impl Table {
-    pub const SYNC: [Self; 12] = [
+    pub const SYNC: [Self; 14] = [
         Self::Binding,
         Self::Scopes,
         Self::Stores,
+        Self::StoresKinds,
         Self::Bases,
         Self::PendingBases,
         Self::Standing,
         Self::Held,
         Self::Deferred,
         Self::Outbox,
+        Self::Refused,
         Self::Approvals,
         Self::Conflicts,
         Self::LegacyMirror,
@@ -189,12 +195,14 @@ impl Table {
             Self::Binding => "binding",
             Self::Scopes => "scopes",
             Self::Stores => "stores",
+            Self::StoresKinds => "stores_kinds",
             Self::Bases => "bases",
             Self::PendingBases => "pending_bases",
             Self::Standing => "standing",
             Self::Held => "held",
             Self::Deferred => "deferred",
             Self::Outbox => "outbox",
+            Self::Refused => "refused",
             Self::Approvals => "approvals",
             Self::Conflicts => "conflicts",
             Self::LegacyMirror => "legacy_mirror",
@@ -264,6 +272,33 @@ pub struct ScopeRow {
     // The last pull reached a page with no records. It schedules pulls; a roster decision takes the `CaughtUp` of a
     // pull that followed its scopes body, never this flag.
     pub caught_up: bool,
+    // On iCloud, what the zone's push waits for (0066, Rules); None on the service.
+    pub push_wait: Option<PushWait>,
+}
+
+// What an iCloud zone's push waits for, kept so a restart waits the same way (0066, Rules).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PushWait {
+    // Another iCloud account: the person picks Move my data or Start empty.
+    AccountChoice,
+    // This device saw the zone removed, and nothing goes up until its own person asks to upload again, even after
+    // another device made the zone again.
+    UploadAgain,
+}
+
+impl PushWait {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AccountChoice => "account_choice",
+            Self::UploadAgain => "upload_again",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        [Self::AccountChoice, Self::UploadAgain]
+            .into_iter()
+            .find(|wait| wait.as_str() == text)
+    }
 }
 
 impl ScopeRow {
@@ -282,18 +317,27 @@ impl ScopeRow {
             refill: false,
             rotation_due: false,
             caught_up: false,
+            push_wait: None,
         }
     }
 }
 
-// One row per store file the core keeps, such as `connections.json` or `history.db`: every kind that file holds refills
-// together (0060, 0064).
+// One row per store file the core keeps, such as `connections.json` or `history.db`, for its generation and write
+// sequence (0060, 0064). A new generation or a lower sequence owes each of its kinds a refill in `stores_kinds`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreRow {
     // The store file's name.
     pub store: String,
     pub generation: Uuid,
     pub sequence: u64,
+}
+
+// A kind of the store whose refill is still owed: it refills once its category is on, and the row then goes (0066,
+// Per-kind refills).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StoresKindRow {
+    pub store: String,
+    pub kind: KindName,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -343,7 +387,8 @@ pub struct HeldRow {
     pub record: PulledRecord,
 }
 
-// A deletion pulled for a category that is off, applied once the category is read.
+// A deletion pulled for a category that is off, applied once the category is read, or the copy a store refill found
+// for a record while its kind was off (0066).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeferredRow {
     pub key: RecordKey,
@@ -357,6 +402,17 @@ pub struct OutboxRow {
     // SHA-256 of the body sent, so a rebuilt batch reuses the key only when it is the same request.
     pub request_digest: [u8; 32],
     pub created_at_ms: i64,
+}
+
+// A change the server refused (0051, Push): sent again only once what the pass would send differs, after a restart too
+// (0066).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefusedRow {
+    pub key: RecordKey,
+    // SHA-256 of the change as the pass sent it.
+    pub digest: [u8; 32],
+    // The server's code.
+    pub code: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -400,6 +456,15 @@ pub struct KeyObjectRow {
     pub fields: String,
     // In force: served by the server, or written and applied by this device.
     pub applied: bool,
+    // The server's times, None until it serves the record (0066).
+    pub served: Option<Served>,
+}
+
+// When the server took a key object and, on a `key.reset`, until when it holds it (0051, Pull).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Served {
+    pub taken_at_us: i64,
+    pub held_until_us: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -409,8 +474,8 @@ pub struct KeyPinRow {
     pub av: Version,
     pub how: PinHow,
     pub alert: bool,
-    // In the order replaced; never gone back to.
-    pub replaced: Vec<Ed25519Public>,
+    // In the order replaced, each with the `av` of the replace certificate that retired it; never gone back to.
+    pub replaced: Vec<Replaced>,
 }
 
 // Own-device pins: never taken from a certificate.
@@ -618,6 +683,7 @@ pub enum Row {
     Binding(BindingRow),
     Scope(ScopeRow),
     Store(StoreRow),
+    StoresKind(StoresKindRow),
     Base(BaseRow),
     // A base a pull wrote before the store, in `pending_bases`; its columns are a base's.
     PendingBase(BaseRow),
@@ -625,6 +691,7 @@ pub enum Row {
     Held(HeldRow),
     Deferred(DeferredRow),
     Outbox(OutboxRow),
+    Refused(RefusedRow),
     Approval(ApprovalRow),
     Conflict(ConflictRow),
     LegacyMirror(LegacyMirrorRow),
@@ -643,12 +710,14 @@ pub enum RowKey {
     Binding,
     Scope(ScopeName),
     Store(String),
+    StoresKind(String, KindName),
     Base(RecordKey),
     PendingBase(RecordKey),
     Standing(RecordKey),
     Held(RecordKey),
     Deferred(RecordKey),
     Outbox(ScopeName),
+    Refused(RecordKey),
     Approval(RecordKey, String),
     Conflict(RecordKey),
     LegacyMirror(String),
@@ -668,12 +737,14 @@ impl Row {
             Self::Binding(_) => RowKey::Binding,
             Self::Scope(row) => RowKey::Scope(row.scope),
             Self::Store(row) => RowKey::Store(row.store.clone()),
+            Self::StoresKind(row) => RowKey::StoresKind(row.store.clone(), row.kind.clone()),
             Self::Base(row) => RowKey::Base(row.key.clone()),
             Self::PendingBase(row) => RowKey::PendingBase(row.key.clone()),
             Self::Standing(row) => RowKey::Standing(row.key.clone()),
             Self::Held(row) => RowKey::Held(row.key.clone()),
             Self::Deferred(row) => RowKey::Deferred(row.key.clone()),
             Self::Outbox(row) => RowKey::Outbox(row.scope),
+            Self::Refused(row) => RowKey::Refused(row.key.clone()),
             Self::Approval(row) => RowKey::Approval(row.key.clone(), row.field.clone()),
             Self::Conflict(row) => RowKey::Conflict(row.key.clone()),
             Self::LegacyMirror(row) => RowKey::LegacyMirror(row.item.clone()),
@@ -709,12 +780,14 @@ impl RowKey {
             Self::Binding => Table::Binding,
             Self::Scope(_) => Table::Scopes,
             Self::Store(_) => Table::Stores,
+            Self::StoresKind(..) => Table::StoresKinds,
             Self::Base(_) => Table::Bases,
             Self::PendingBase(_) => Table::PendingBases,
             Self::Standing(_) => Table::Standing,
             Self::Held(_) => Table::Held,
             Self::Deferred(_) => Table::Deferred,
             Self::Outbox(_) => Table::Outbox,
+            Self::Refused(_) => Table::Refused,
             Self::Approval(..) => Table::Approvals,
             Self::Conflict(_) => Table::Conflicts,
             Self::LegacyMirror(_) => Table::LegacyMirror,
@@ -739,11 +812,16 @@ impl RowKey {
             Self::Store(text) | Self::LegacyMirror(text) | Self::DeletedHistory(text) => {
                 column(&mut out, text.as_bytes());
             }
+            Self::StoresKind(store, kind) => {
+                column(&mut out, store.as_bytes());
+                column(&mut out, kind.as_str().as_bytes());
+            }
             Self::Base(key)
             | Self::PendingBase(key)
             | Self::Standing(key)
             | Self::Held(key)
             | Self::Deferred(key)
+            | Self::Refused(key)
             | Self::Conflict(key) => {
                 record_columns(&mut out, key);
             }

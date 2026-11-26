@@ -12,9 +12,10 @@ use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Seed;
 use tablepro_records::Kind;
 use tablepro_sync::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
+use tablepro_sync::api::control::{ConflictChoice, SyncControl};
 use tablepro_sync::api::device_store::HostDeviceStore;
 use tablepro_sync::api::error::{AdapterError, StateError, SyncError};
-use tablepro_sync::api::ids::{ChangeTag, DeviceRowId, IdempotencyKey, KindName, ScopeName};
+use tablepro_sync::api::ids::{ChangeTag, DeviceRowId, IdempotencyKey, KindName, RecordKey, ScopeName};
 use tablepro_sync::api::key_flows::{
     AccountFlows, ApprovalFlows, ArrivalOrder, DeviceFlows, KeyApplied, KeyArrival, KeyChangeSet, KeyState,
     OpenedEnvelope, PushBackVerdict, ResetFlows, RestoreFlows, Roster, StopAction, StopFlows, TeamFlows,
@@ -28,7 +29,7 @@ use tablepro_sync::api::transport::{
     Transport, TransportError,
 };
 use tablepro_sync::engine::{Adapters, Clock, EngineHooks, Journal, StopSignal, Wake};
-use tablepro_sync::service::{PassReport, ProofSource, ServiceParts, ServiceSync};
+use tablepro_sync::service::{PassReport, ServiceParts, ServiceSync};
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
 use tablepro_sync_testing::{FakeClient, FakeDeviceStore, FakeServer, MemoryStateFiles};
@@ -265,21 +266,6 @@ impl RecordAdapter for MemoryAdapter {
     }
 }
 
-// The device's key, and whether the key flows say their tables still rebuild.
-#[derive(Debug)]
-pub struct FixedProof(pub Option<DpopKey>, pub Arc<KeyLog>);
-
-#[async_trait]
-impl ProofSource for FixedProof {
-    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
-        Ok(self.0.clone())
-    }
-
-    fn rebuilding(&self) -> bool {
-        self.1.rebuilding.load(Ordering::SeqCst)
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct TestClock(pub AtomicI64);
 
@@ -435,6 +421,8 @@ pub struct KeyLog {
     newest: Mutex<BTreeMap<String, u32>>,
     waiting_for_approval: AtomicBool,
     rebuilding: AtomicBool,
+    // The device's key, which the builder sets.
+    proof: Mutex<Option<DpopKey>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -603,6 +591,14 @@ impl AccountFlows for KeyLog {
             .ok_or(SyncError::Malformed {
                 what: "sealed history entry",
             })
+    }
+
+    async fn dpop_key(&self) -> Result<Option<DpopKey>, SyncError> {
+        Ok(lock(&self.proof).clone())
+    }
+
+    fn rebuilding(&self) -> bool {
+        self.rebuilding.load(Ordering::SeqCst)
     }
 }
 
@@ -848,6 +844,7 @@ impl DeviceBuilder {
         }
         adapters.extend(self.others);
         let keys = self.keys.unwrap_or_default();
+        *lock(&keys.proof) = Some(DpopKey(Arc::clone(&seed)));
         let wake = Wake::new();
         let hooks = Arc::new(EngineHooks::new(wake.clone(), None));
         let stop = StopSignal::new();
@@ -858,7 +855,6 @@ impl DeviceBuilder {
             adapters: Adapters::new(adapters),
             keys: Arc::clone(&keys) as Arc<dyn tablepro_sync::api::key_flows::KeyFlows>,
             hooks: Arc::clone(&hooks),
-            proofs: Arc::new(FixedProof(Some(DpopKey(Arc::clone(&seed))), Arc::clone(&keys))),
             clock: Arc::clone(&clock) as Arc<dyn Clock>,
             stop: stop.clone(),
             journal: Journal::new(wake),
@@ -887,6 +883,30 @@ impl DeviceBuilder {
 impl Device {
     pub async fn new(server: &Arc<FakeServer>, row: &str) -> Self {
         DeviceBuilder::new(server, row).build().await
+    }
+
+    // Decides the approval as the person would: on the value `approvals` shows now.
+    pub async fn decide(&self, key: RecordKey, field: &str, approve: bool) -> Result<(), SyncError> {
+        let seen = self
+            .sync
+            .approvals()
+            .await?
+            .into_iter()
+            .find(|approval| approval.key == key && approval.field == field)
+            .map_or([0; 32], |approval| approval.digest);
+        self.sync.decide_approval(key, field.to_owned(), seen, approve).await
+    }
+
+    // Resolves the conflict as the person would: as `conflicts` shows it now.
+    pub async fn resolve(&self, key: RecordKey, keep: ConflictChoice) -> Result<(), SyncError> {
+        let seen = self
+            .sync
+            .conflicts()
+            .await?
+            .into_iter()
+            .find(|conflict| conflict.key == key)
+            .map_or([0; 32], |conflict| conflict.digest);
+        self.sync.resolve_conflict(key, seen, keep).await
     }
 
     pub async fn pass(&self) -> Result<PassReport, SyncError> {

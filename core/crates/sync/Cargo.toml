@@ -6,14 +6,19 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+tablepro-account.workspace = true
+tablepro-cloud-api.workspace = true
 tablepro-keys.workspace = true
 tablepro-records.workspace = true
 tablepro-storage.workspace = true
 async-trait.workspace = true
+chrono.workspace = true
 # The system RNG for the SAS nonces (0056, Libraries).
 aws-lc-rs.workspace = true
 hex.workspace = true
+reqwest.workspace = true
 secrecy.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sqlx = { workspace = true, features = ["migrate", "macros"] }

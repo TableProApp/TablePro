@@ -21,6 +21,7 @@ use tablepro_keys::wrap::{Recipient, Wrap, Wrapper};
 
 pub(crate) use self::holders::{Chain, same_holder};
 use super::KeyService;
+use super::pins::seen_replaced;
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, ScopeName};
 use crate::api::key_flows::{StopAction, StopFlows};
@@ -278,7 +279,7 @@ impl KeyService {
         let Some(signed_under) = certificates.get(&wrapper.av) else {
             return Ok(Reconfirmation::Held);
         };
-        if pin.replaced.contains(&signed_under.ik) {
+        if seen_replaced(&pin.replaced, &signed_under.ik) {
             return Err(KeysError::RetiredIk.into());
         }
         match same_holder(self.origin(), &pin.ik, &certificates, wrapper.av) {
