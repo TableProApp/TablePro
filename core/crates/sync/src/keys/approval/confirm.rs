@@ -421,6 +421,13 @@ impl KeyService {
         // with its switch still owed, which `finish_switch` makes on resume (0054, The device's key state).
         self.store_account_keys(opened.av, &opened.keys).await?;
         record.merged();
+        // A file with no anchor never verified the envelope floors it holds either: it starts from none, as a recovery
+        // does.
+        if self.is_unanchored() {
+            for row in scan_rows(txn.as_mut(), Table::KeyEnvelopes).await? {
+                txn.delete(&row.key()).await?;
+            }
+        }
         self.write_merged(txn.as_mut(), &merged).await?;
         self.put_session(txn.as_mut(), record).await?;
         // The approver's view replaces what a file with no anchor held, so the anchor stops owing it with this commit.

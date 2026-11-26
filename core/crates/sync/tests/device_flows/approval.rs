@@ -567,6 +567,36 @@ async fn an_unanchored_device_asks_again_and_the_approval_clears_the_lock() {
     assert_eq!(b.av().await, 1);
 }
 
+// The envelope floors a file with no anchor holds were never verified, so the approval that starts it over from the
+// approver's view drops them with its own pins and versions (0054, A stale file).
+#[tokio::test]
+async fn an_approval_of_an_unanchored_file_drops_the_envelope_floors_it_held() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let b = b
+        .reopen(crate::harness::opened_with(
+            tablepro_sync::api::state::KeyTrust::Unanchored,
+        ))
+        .await;
+    let planted = tablepro_sync::api::state::KeyEnvelopeRow {
+        scope: ScopeName::Personal,
+        record_id: "connection/planted/password".to_owned(),
+        kv: tablepro_keys::encoding::Version::new(9).unwrap(),
+    };
+    crate::harness::put_rows(&b, vec![tablepro_sync::api::state::Row::KeyEnvelope(planted)]).await;
+    let held = b.rows(tablepro_sync::api::state::Table::KeyEnvelopes).await.len();
+
+    approve(&b, &a).await;
+
+    assert_eq!(held, 1);
+    assert!(b.rows(tablepro_sync::api::state::Table::KeyEnvelopes).await.is_empty());
+    assert!(matches!(b.key_state().await, KeyState::Approved { .. }));
+}
+
 #[tokio::test]
 async fn an_approver_with_no_anchor_or_still_rebuilding_does_not_approve() {
     let server = FakeServer::new();
