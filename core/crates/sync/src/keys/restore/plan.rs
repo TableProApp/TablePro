@@ -79,6 +79,10 @@ pub(crate) fn plan(inputs: &Inputs<'_>) -> Plan {
     // An account `av` the device verified with no certificate it holds: nothing above it can go back.
     let Some(personal) = plan_personal(inputs) else {
         plan.blind = true;
+        for team in &inputs.teams {
+            let (_, verdict) = plan_team(inputs, team);
+            plan.teams.push((team.team, verdict));
+        }
         return plan;
     };
     // A device the server does not approve, and that no account change set going back certifies, can write no key

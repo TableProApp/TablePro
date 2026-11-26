@@ -69,14 +69,14 @@ impl RestoreFlows for KeyService {
                 .collect(),
             server: &view,
         });
-        if plan.blind {
-            return Err(SyncError::NotAllowed {
-                what: "push back an account certificate the engine kept no base for",
-            });
-        }
         let effects = self.apply_verdicts(&mut *txn, &gathered, &plan, epoch).await?;
         txn.commit().await?;
         self.announce(&effects)?;
+        // An account certificate this device never held leaves nothing of its own to push back: another device of the
+        // account puts that set back. Each team's wait or end above still stands.
+        if plan.blind {
+            return Ok(Vec::new());
+        }
         plan.sets
             .into_iter()
             .map(|set| {
@@ -225,6 +225,14 @@ fn refusal(set: &KeyChangeSet, outcomes: &[ChangeOutcome]) -> Refusal {
     }
 }
 
+// A wrap or a `key.member` alone: its refusal ends nothing, so it never holds a wait open either (0051).
+fn goes_alone(set: &plan::PlannedSet) -> bool {
+    matches!(
+        set.objects.as_slice(),
+        [held] if matches!(held.object.id.kind().name(), "key.wrap" | "key.member")
+    )
+}
+
 fn scope_info(body: &ScopesBody, scope: ScopeName) -> Option<&ScopeInfo> {
     body.scopes.iter().find(|info| info.scope == scope)
 }
@@ -354,7 +362,10 @@ impl KeyService {
                 // while the row waits, so a set cut short here goes on the next pass before anything is sealed.
                 TeamVerdict::Done
                     if stop::kind(&row) == Some(StoppedCause::RestoreWait)
-                        && !plan.sets.iter().any(|set| set.scope == ScopeName::Team(*team)) =>
+                        && !plan
+                            .sets
+                            .iter()
+                            .any(|set| set.scope == ScopeName::Team(*team) && !goes_alone(set)) =>
                 {
                     txn.put(Row::KeyVersion(stop::resumed(row))).await?;
                     effects.resumed.push(*team);

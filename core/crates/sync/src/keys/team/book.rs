@@ -243,7 +243,10 @@ impl TeamBook {
                     false
                 }
                 // Only the person's comparison clears a held restart (0064).
-                (KeyVersionState::Stopped, Some(StoppedCause::RestartHeld)) => false,
+                (KeyVersionState::Stopped, Some(StoppedCause::RestartHeld)) => {
+                    self.judge_held_restart(facts, &mut progress).await?;
+                    false
+                }
                 (KeyVersionState::Stopped, _) => self.clear_stop(facts, &mut progress).await?,
                 (KeyVersionState::Ok, _) => {
                     let waiting = self.grow(facts, &mut progress).await?;
@@ -298,6 +301,31 @@ impl TeamBook {
             }
         }
         Ok(Some(holders.into_iter().map(|holder| holder.account).collect()))
+    }
+
+    // A held restart is judged again on every call, as any version on the way is: once its signer's newer `av` or
+    // replaced key makes it stale, the team stops as a catch-up, which is reported, instead of waiting on words the
+    // person can no longer accept (0056, Advancing).
+    async fn judge_held_restart(
+        &mut self,
+        facts: &mut dyn TeamFacts,
+        progress: &mut Progress,
+    ) -> Result<(), SyncError> {
+        let Some(next) = self.row.as_ref().and_then(|row| row.version.next().ok()) else {
+            return Ok(());
+        };
+        let Some(item) = self.versions.get(&next).cloned() else {
+            return Ok(());
+        };
+        let failure = match usable_signer(facts, item.value.signer, item.value.signer_av).await? {
+            Check::Pass((_, pin)) => check_signed_under_newest(item.value.signer_av, pin.av).err(),
+            Check::Wait => None,
+            Check::Fail(error) => Some(error),
+        };
+        if let Some(error) = failure {
+            self.stop(&item.record_id, error, progress);
+        }
+        Ok(())
     }
 
     // A flow that uses the version the device holds checks first that the record it holds there is the anchored one.

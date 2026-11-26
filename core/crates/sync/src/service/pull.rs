@@ -471,9 +471,12 @@ impl ServiceSync {
         // Before approval a personal pull serves key objects only: it settles no base, store or epoch.
         let whole = pull.scope != ScopeName::Personal || info.approved == Some(true);
         // A refill that kept envelopes it could not check is not done for them: their store and the epoch wait for a
-        // pass that can, so that pass refills them by the same rule.
+        // pass that can, so that pass refills them by the same rule. Only a device that could check none leaves it
+        // open; envelopes that wait for a team's key are held by id, and the store settles, so its other copies stop
+        // refilling.
         let refilling = pull.cut.is_some() || pull.pull_wins.contains(&Kind::SecretEnvelope);
         let unchecked = refilling
+            && !pull.can_open
             && writes
                 .held
                 .iter()
