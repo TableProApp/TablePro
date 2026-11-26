@@ -24,7 +24,7 @@ use crate::api::error::SyncError;
 use crate::api::ids::ScopeName;
 use crate::api::key_flows::{OpenedEnvelope, Roster};
 use crate::api::scopes::Role;
-use crate::api::state::{KeyEnvelopeRow, KeyVersionState, Row, RowKey, RowRange, StateTxn, Table};
+use crate::api::state::{KeyEnvelopeRow, KeyVersionState, Row, RowKey, RowRange, StateTxn, StoppedCause, Table};
 use crate::api::transport::RejectedCode;
 use crate::keys::KeyService;
 
@@ -137,6 +137,13 @@ impl KeyService {
         let book = self.load_team(&mut *txn, team).await?;
         book.check_anchor()?;
         let Some(row) = book.row().filter(|row| row.state == KeyVersionState::Ok).cloned() else {
+            // Nothing is written under the team key while a restart waits for the person's words (0064).
+            if book
+                .row()
+                .is_some_and(|row| row.stopped_cause == Some(StoppedCause::RestartHeld))
+            {
+                return Err(KeysError::RestartHeld.into());
+            }
             return Err(SyncError::NotAllowed {
                 what: "seal under a team key this device does not hold as current",
             });

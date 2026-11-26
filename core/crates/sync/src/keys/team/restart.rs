@@ -46,10 +46,9 @@ impl KeyService {
         let (record, signer) = self.restart_held(&mut *txn, team).await?.ok_or(SyncError::NotAllowed {
             what: "accept a restart this device does not hold",
         })?;
+        // Words of another key accept nothing: the restart stays held (0064).
         if signer.ik != signer_ik {
-            return Err(SyncError::NotAllowed {
-                what: "accept a restart under another key than the one compared",
-            });
+            return Err(KeysError::RestartHeld.into());
         }
         let pin = self.pin(&mut *txn, signer.account).await?;
         if pin.as_ref().is_some_and(|pin| pin.alert || pin.ik != signer.ik) {

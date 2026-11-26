@@ -314,6 +314,21 @@ async fn a_restart_another_account_signed_waits_for_the_person_to_compare_its_si
     let shown = s.p.service.held_restart(s.t.team).await.unwrap().unwrap();
     assert_eq!((shown.version, shown.signer), (v(3), s.m.account));
     assert_eq!(shown.words.words.len(), 6);
+    let sealed =
+        s.p.service
+            .seal_team_envelope(
+                s.t.team,
+                tablepro_keys::envelope::EnvelopeId::new(
+                    tablepro_keys::envelope::ParentKind::LibraryConnection,
+                    "warehouse",
+                    tablepro_keys::envelope::SecretKind::Password,
+                )
+                .unwrap(),
+                secrecy::SecretString::from("new"),
+                serde_json::json!({}),
+            )
+            .await;
+    assert_eq!(sealed.unwrap_err().code(), "keys.restart_held");
 
     // The restart came because no holder is left among the owners and admins; a roster read saying so ends nothing.
     for account in [s.t.owner.account, s.a_before.account] {
@@ -328,7 +343,7 @@ async fn a_restart_another_account_signed_waits_for_the_person_to_compare_its_si
 
     let other = tablepro_keys::keys::Ed25519Seed::generate().unwrap().public().unwrap();
     let wrong = s.p.service.accept_restart(s.t.team, other).await;
-    assert_eq!(wrong.unwrap_err().code(), "sync.not_allowed");
+    assert_eq!(wrong.unwrap_err().code(), "keys.restart_held");
     assert_eq!(
         s.p.service.team_keys(s.t.team).await.unwrap().stopped_cause,
         Some(StoppedCause::RestartHeld)
