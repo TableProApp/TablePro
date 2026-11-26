@@ -4,8 +4,6 @@ use super::fixtures::{BETA_3, BETA_5, old_database};
 use super::*;
 use crate::unix_time::from_unix;
 
-const RECORD_IDS: i64 = 20_261_126_000_000;
-
 async fn beta_rows(pool: &SqlitePool, connection: Uuid) {
     for (id, name, parent) in [(1, "Reports", None), (2, "Monthly", Some(1))] {
         sqlx::query(
@@ -203,7 +201,10 @@ async fn a_beta_3_database_upgrades_through_every_migration() {
         .fetch_all(&history.pool)
         .await
         .expect("applied");
-    assert_eq!(applied.last(), Some(&RECORD_IDS));
+    assert_eq!(
+        applied.last().copied(),
+        schema::MIGRATOR.iter().last().map(|migration| migration.version)
+    );
     assert_eq!(
         history
             .search_page(&HistoryQuery::from_input("widgets"), HistoryPageRequest::first(10))

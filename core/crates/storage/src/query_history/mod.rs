@@ -21,6 +21,7 @@ pub mod retention;
 mod schema;
 mod search_fold;
 mod status_filter;
+mod synced;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -363,6 +364,8 @@ impl QueryHistory {
         let mut deleted = Vec::with_capacity(ids.len());
         for chunk in ids.chunks(IDS_PER_STATEMENT) {
             let placeholders = vec!["?"; chunk.len()].join(",");
+            let binds: Vec<Bind> = chunk.iter().map(|id| Bind::Integer(*id)).collect();
+            synced::tombstone(&mut transaction, &format!("WHERE id IN ({placeholders})"), &binds).await?;
             let sql = format!(
                 "DELETE FROM history WHERE id IN ({placeholders}) RETURNING id, record_id, query, driver_id, \
                  connection_id, connection_name, executed_at, duration_ms, rows_affected, success, cancelled, \
@@ -411,8 +414,10 @@ impl QueryHistory {
             .execute(&mut *transaction)
             .await?;
         }
+        let restored: Vec<Uuid> = entries.iter().map(|entry| entry.record_id).collect();
+        synced::untombstone(&mut transaction, &restored).await?;
         transaction.commit().await?;
-        self.history_changed(entries.iter().map(|entry| entry.record_id), []);
+        self.history_changed(restored, []);
         Ok(())
     }
 
@@ -428,6 +433,7 @@ impl QueryHistory {
             }],
         )
         .await?;
+        synced::tombstone(&mut transaction, "", &[]).await?;
         let removed: Vec<String> = sqlx::query_scalar("DELETE FROM history RETURNING record_id")
             .fetch_all(&mut *transaction)
             .await?;
@@ -519,6 +525,12 @@ impl QueryHistory {
                 sql: "DELETE FROM main.history WHERE connection_id = ?".to_owned(),
                 binds: vec![Bind::Text(connection.to_string())],
             }],
+        )
+        .await?;
+        synced::tombstone(
+            &mut transaction,
+            "WHERE connection_id = ?",
+            &[Bind::Text(connection.to_string())],
         )
         .await?;
         let gone: Vec<String> = sqlx::query_scalar("DELETE FROM history WHERE connection_id = ? RETURNING record_id")
@@ -883,7 +895,7 @@ mod tests {
             .fetch_one(&history.pool)
             .await
             .expect("count migrations");
-        assert_eq!(applied, 6);
+        assert_eq!(applied, 7);
     }
 
     /// A database an earlier build wrote, with its saved queries, is kept
@@ -1077,7 +1089,7 @@ mod tests {
     /// means a change went into a file that has already run somewhere.
     #[test]
     fn migrator_embeds_every_migration() {
-        assert_eq!(schema::MIGRATOR.iter().count(), 6);
+        assert_eq!(schema::MIGRATOR.iter().count(), 7);
     }
 
     #[tokio::test]
