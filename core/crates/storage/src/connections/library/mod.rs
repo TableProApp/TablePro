@@ -93,7 +93,7 @@ impl ConnectionStore {
         document.tidy();
         if document != before {
             self.commit(&mut state, document)?;
-        } else if self.digest_on_disk().as_deref() != over {
+        } else if self.digest_on_disk()?.as_deref() != over {
             // Nothing written, so the file must still be the one it answers for.
             return Err(StorageError::LibraryChanged.into());
         }
@@ -462,8 +462,15 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 impl ConnectionStore {
-    fn digest_on_disk(&self) -> Option<String> {
-        std::fs::read(&self.inner.path).ok().map(|bytes| sha256_hex(&bytes))
+    fn digest_on_disk(&self) -> Result<Option<String>, StorageError> {
+        match std::fs::read(&self.inner.path) {
+            Ok(bytes) => Ok(Some(sha256_hex(&bytes))),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(source) => Err(StorageError::Io {
+                path: self.inner.path.clone(),
+                source,
+            }),
+        }
     }
 }
 

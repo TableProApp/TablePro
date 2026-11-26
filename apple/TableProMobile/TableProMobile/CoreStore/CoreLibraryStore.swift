@@ -20,6 +20,7 @@ final class CoreLibraryStore {
         case repeatedId
         case heldByUnreadableRecord(UUID)
         case noAnswer
+        case libraryChanged
     }
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CoreLibraryStore")
@@ -202,13 +203,17 @@ final class CoreLibraryStore {
             try removeSecretCopies()
         }
         let unread = removed.connections.intersection(heldByCore)
+        if !unread.isEmpty {
+            // A delete goes over whatever file is there, so it waits for the file to still be the one this store read.
+            let over = fileDigest
+            let current = try Self.blocking { try await library.libraryContents() }.digest
+            guard current == over else { throw Failure.libraryChanged }
+        }
         for id in unread {
             try Self.blocking { try await library.delete(id: id.uuidString) }
             heldByCore.remove(id)
             legacyCopiesOfHeld.removeAll { $0.id == id }
-        }
-        // Each delete rewrote the file, so the write that follows goes over the file as they left it.
-        if !unread.isEmpty {
+            // After each delete, so one that fails later leaves the digest at the file the others left.
             fileDigest = try Self.blocking { try await library.libraryContents() }.digest
         }
         flags = ConnectionDeviceFlags(of: next.connections).keeping(heldByCore, from: flags)
@@ -236,9 +241,14 @@ final class CoreLibraryStore {
         )
         do {
             try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
-            let written = try Self.blocking { try await library.replaceLibrary(library: write, over: fileDigest) }
+            let over = fileDigest
+            let written = try Self.blocking { try await library.replaceLibrary(library: write, over: over) }
+            fileDigest = written.digest
             let contents = try Self.blocking { try await library.libraryContents() }
-            remember(contents)
+            // Another writer's file in between is not this write's to take in; the next write is refused over it.
+            if contents.digest == written.digest {
+                remember(contents)
+            }
             flags.save(to: defaults)
             return written.digest
         } catch {
