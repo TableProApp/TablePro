@@ -52,6 +52,11 @@ struct ConnectionStoreIntegrity: Sendable {
         self.keySource = keySource
     }
 
+    // Whether a tag can be written or checked at all, so a store can tell "no key" from "not tagged".
+    var hasKey: Bool {
+        keySource.key() != nil
+    }
+
     static func tagURL(for fileURL: URL) -> URL {
         fileURL.appendingPathExtension("hmac")
     }

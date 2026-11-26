@@ -26,7 +26,16 @@ struct TagStorageImportTests {
         if let seed {
             defaults.set(seed, forKey: "com.TablePro.tags")
         }
-        return (TagStorage(userDefaults: defaults, syncJournal: tracker.journal, appEvents: events), defaults)
+        let connections = ConnectionStorage(
+            fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+                .appendingPathComponent("connections.json"),
+            userDefaults: defaults,
+            syncJournal: tracker.journal,
+            keychain: InMemoryKeychain(),
+            appEvents: events
+        )
+        return (TagStorage(syncJournal: tracker.journal, connectionStorage: connections, appEvents: events), defaults)
     }
 
     private func preset(_ name: String) throws -> ConnectionTag {

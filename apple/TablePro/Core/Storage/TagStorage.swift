@@ -2,8 +2,6 @@
 //  TagStorage.swift
 //  TablePro
 //
-//  Created by Claude on 20/12/25.
-//
 
 import Combine
 import Foundation
@@ -30,25 +28,21 @@ internal final class TagStorage {
     internal static let shared = TagStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TagStorage")
 
-    private let tagsKey = "com.TablePro.tags"
-    private let defaults: UserDefaults
     private let syncJournal: SyncHostJournal
+    private let connectionStorageProvider: () -> ConnectionStorage
     private let appEvents: AppEvents
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
-    private var cachedTags: [ConnectionTag]?
-    /// Set when the stored payload could not be understood at all. Every mutation rewrites the
-    /// whole array, so continuing over an unreadable store would replace a user's own tags with
-    /// the preset list this falls back to for display.
+    /// Set when the library could not be read. Every mutation rewrites the whole library, so
+    /// continuing over an unreadable one would replace a user's own tags with the preset list this
+    /// falls back to for display.
     internal private(set) var storeIsUnreadable = false
 
     internal init(
-        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         syncJournal: SyncHostJournal = .shared,
+        connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
         appEvents: AppEvents = .shared
     ) {
-        self.defaults = userDefaults
         self.syncJournal = syncJournal
+        self.connectionStorageProvider = connectionStorage
         self.appEvents = appEvents
         if loadTags().isEmpty {
             saveTags(ConnectionTag.presets)
@@ -57,60 +51,33 @@ internal final class TagStorage {
 
     // MARK: - Tag CRUD
 
-    /// A payload that decodes element by element keeps every tag it can read: one entry written by
-    /// a future version, or truncated on disk, used to take the whole library down with it and
-    /// leave the presets standing in its place.
     internal func loadTags() -> [ConnectionTag] {
-        if let cached = cachedTags { return cached }
-
-        guard let data = defaults.data(forKey: tagsKey) else {
-            storeIsUnreadable = false
-            let tags = ConnectionTag.presets
-            cachedTags = tags
-            return tags
-        }
-
-        if let tags = try? decoder.decode([ConnectionTag].self, from: data) {
-            storeIsUnreadable = false
-            cachedTags = tags
-            return tags
-        }
-
-        guard let salvaged = try? decoder.decode([SalvagedTag].self, from: data) else {
-            Self.logger.error("Tag store could not be read; leaving it untouched")
+        guard let image = connectionStorageProvider().library.current() else {
+            Self.logger.error("The connection library could not be read; leaving the tags untouched")
             storeIsUnreadable = true
             return ConnectionTag.presets
         }
-
-        let tags = salvaged.compactMap(\.tag)
-        Self.logger.error(
-            "Dropped \(salvaged.count - tags.count, privacy: .public) unreadable tag entries"
-        )
         storeIsUnreadable = false
-        cachedTags = tags
-        return tags
+        return image.tags
     }
 
     /// A save that failed leaves the store holding the previous set, so a caller that goes on to
     /// write related state must check the result.
     @discardableResult
     internal func saveTags(_ tags: [ConnectionTag]) -> Bool {
-        let previous = defaults.data(forKey: tagsKey) == nil ? [] : loadTags()
-        guard !storeIsUnreadable else {
+        let previous = loadTags()
+        let library = connectionStorageProvider().library
+        guard !storeIsUnreadable, var image = library.current() else {
             Self.logger.error("Refusing to overwrite an unreadable tag store")
             return false
         }
-
-        do {
-            let data = try encoder.encode(tags)
-            defaults.set(data, forKey: tagsKey)
-            cachedTags = nil
-            syncJournal.recorded(.tag, written: SyncRecordChanges.changedIds(from: previous, to: tags))
-            return true
-        } catch {
-            Self.logger.error("Failed to save tags: \(error)")
+        image.tags = tags
+        guard library.commit(image, byUser: false) else {
+            Self.logger.error("Failed to save tags")
             return false
         }
+        syncJournal.recorded(.tag, written: SyncRecordChanges.changedIds(from: previous, to: tags))
+        return true
     }
 
     internal func addTag(_ tag: ConnectionTag) throws {
@@ -198,15 +165,5 @@ internal final class TagStorage {
     private static func match(_ key: String, in tags: [ConnectionTag]) -> ConnectionTag? {
         let named = tags.filter { matchKey($0.name) == key }
         return named.first(where: \.isPreset) ?? named.first
-    }
-}
-
-/// Decodes one tag and keeps going when it cannot, so a single unreadable entry costs that entry
-/// rather than the whole library.
-private struct SalvagedTag: Decodable {
-    let tag: ConnectionTag?
-
-    init(from decoder: Decoder) throws {
-        tag = try? ConnectionTag(from: decoder)
     }
 }

@@ -33,7 +33,8 @@ final class GroupStorageTests: XCTestCase {
         tracker = SyncJournalRecorder()
         connectionFileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("group-connections_\(unique).json")
+            .appendingPathComponent("group-connections_\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try? FileManager.default.createDirectory(
             at: connectionFileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -49,7 +50,6 @@ final class GroupStorageTests: XCTestCase {
             self?.changeCount += 1
         }
         storage = GroupStorage(
-            userDefaults: defaults,
             syncJournal: tracker.journal,
             connectionStorage: self.connectionStorage,
             appEvents: appEvents
@@ -57,7 +57,7 @@ final class GroupStorageTests: XCTestCase {
     }
 
     override func tearDown() {
-        try? FileManager.default.removeItem(at: connectionFileURL)
+        try? FileManager.default.removeItem(at: connectionFileURL.deletingLastPathComponent())
         defaults = nil
         syncDefaults = nil
         suite = nil

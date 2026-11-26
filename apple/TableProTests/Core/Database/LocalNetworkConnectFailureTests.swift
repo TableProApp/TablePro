@@ -42,7 +42,8 @@ struct LocalNetworkConnectFailureTests {
     private func makeFixture(probe: any LocalNetworkAccessProbing) throws -> Fixture {
         FakeMSSQLPluginRegistration.registerIfNeeded()
         let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("tablepro-local-network-\(UUID().uuidString).json")
+            .appendingPathComponent("tablepro-local-network-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         let suite = try EphemeralDefaults()
         let storage = ConnectionStorage(fileURL: fileURL, userDefaults: suite.defaults, keychain: InMemoryKeychain())
         let manager = DatabaseManager(connectionStorage: storage, localNetworkProbe: probe)
@@ -60,7 +61,7 @@ struct LocalNetworkConnectFailureTests {
                 manager.removeSession(for: connectionId)
                 FakeMSSQLPlugin.clearConnectFailure(for: connectionId)
                 suite.defaults.removePersistentDomain(forName: suite.suiteName)
-                try? FileManager.default.removeItem(at: fileURL)
+                try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
             }
         )
     }

@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use serde_json::json;
 use tablepro_core::{AiPolicy, AuthMode, ExternalAccess, SafeModeLevel, TlsConfig};
@@ -815,6 +816,7 @@ fn library_as_another_app_holds_it() -> LibraryWrite {
         connections: vec![first, second],
         groups: vec![blank],
         tags: vec![preset, long],
+        removing: Vec::new(),
     }
 }
 
@@ -824,7 +826,7 @@ fn a_library_write_keeps_every_id_and_value_as_given() {
     let store = store(&root);
     let library = library_as_another_app_holds_it();
 
-    store.replace_library_blocking(library.clone()).expect("write");
+    replace(&store, library.clone()).expect("write");
     let reread = |store: &ConnectionStore| {
         let list = store.list_blocking().expect("list");
         LibraryWrite {
@@ -832,6 +834,7 @@ fn a_library_write_keeps_every_id_and_value_as_given() {
             groups: list.groups.to_vec(),
             tags: list.tags.to_vec(),
             favorites: list.favorites.to_vec(),
+            removing: Vec::new(),
         }
     };
 
@@ -851,7 +854,7 @@ fn a_missing_group_or_parent_reads_as_the_top_level_and_stays_stored() {
     let root = TempDir::new().expect("tempdir");
     let store = store(&root);
     let library = library_as_another_app_holds_it();
-    store.replace_library_blocking(library.clone()).expect("write");
+    replace(&store, library.clone()).expect("write");
 
     let list = store.list_blocking().expect("list");
 
@@ -872,7 +875,7 @@ fn a_library_write_is_one_journal_call_naming_each_record() {
     let ids = |list: &[RecordRef]| list.to_vec();
     let refs = |ids: &[Uuid]| ids.iter().copied().map(RecordRef::Id).collect::<Vec<_>>();
 
-    store.replace_library_blocking(library.clone()).expect("write");
+    replace(&store, library.clone()).expect("write");
     let calls = journal.take_entries();
 
     assert_eq!(calls.len(), 1);
@@ -887,7 +890,7 @@ fn a_library_write_is_one_journal_call_naming_each_record() {
         favorites: vec![library.connections[0].id],
         ..library.clone()
     };
-    store.replace_library_blocking(kept).expect("drop one");
+    replace(&store, kept).expect("drop one");
     let calls = journal.take_entries();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0][0].kind, RecordKind::Connection);
@@ -911,7 +914,7 @@ fn a_library_write_refuses_an_id_named_twice_and_writes_nothing() {
 
     let repeated = twice.tags[0].id;
 
-    let refused = store.replace_library_blocking(twice);
+    let refused = replace(&store, twice);
 
     assert!(
         matches!(refused, Err(StorageError::RepeatedId { id }) if id == repeated),
@@ -926,7 +929,7 @@ fn a_library_write_keeps_a_connection_this_build_cannot_read_unless_it_names_it(
     let (store, held) = seeded_with_unreadable(&root, false);
     let library = library_as_another_app_holds_it();
 
-    store.replace_library_blocking(library.clone()).expect("write");
+    replace(&store, library.clone()).expect("write");
     let list = store.list_blocking().expect("list");
     assert_eq!(list.unreadable.to_vec(), [held.id]);
     assert_eq!(list.connections.len(), library.connections.len());
@@ -936,7 +939,7 @@ fn a_library_write_keeps_a_connection_this_build_cannot_read_unless_it_names_it(
         id: held.id,
         ..plain("now readable")
     });
-    store.replace_library_blocking(named).expect("write");
+    replace(&store, named).expect("write");
     let list = store.list_blocking().expect("list");
     assert!(list.unreadable.is_empty());
     assert!(list.connections.iter().any(|saved| saved.id == held.id));
@@ -995,7 +998,7 @@ fn an_edit_keeps_a_group_that_has_not_arrived_and_an_orphan_group_reorders_at_th
         icon: None,
     };
     library.groups.push(orphan.clone());
-    store.replace_library_blocking(library.clone()).expect("write");
+    replace(&store, library.clone()).expect("write");
     let waiting = library.connections[1].clone();
 
     let edited = store
@@ -1035,12 +1038,14 @@ fn an_upsert_keeps_its_place_among_connections_of_one_order() {
     let root = TempDir::new().expect("tempdir");
     let store = store(&root);
     let connections = vec![plain("a"), plain("b"), plain("c")];
-    store
-        .replace_library_blocking(LibraryWrite {
+    replace(
+        &store,
+        LibraryWrite {
             connections: connections.clone(),
             ..LibraryWrite::default()
-        })
-        .expect("write");
+        },
+    )
+    .expect("write");
 
     store
         .upsert_blocking(SavedConnection {
@@ -1062,12 +1067,14 @@ fn a_move_at_the_top_lifts_a_cycle_partner_out_rather_than_nesting_it() {
     let mut first = stored_group("First", None);
     let second = stored_group("Second", Some(first.id));
     first.parent_id = Some(second.id);
-    store
-        .replace_library_blocking(LibraryWrite {
+    replace(
+        &store,
+        LibraryWrite {
             groups: vec![first.clone(), second.clone()],
             ..LibraryWrite::default()
-        })
-        .expect("write");
+        },
+    )
+    .expect("write");
 
     store
         .move_groups_blocking(&[first.id], None, None)
@@ -1099,12 +1106,14 @@ fn an_import_files_into_a_group_that_reads_at_the_top_by_its_name() {
     let root = TempDir::new().expect("tempdir");
     let store = store(&root);
     let waiting = stored_group("Work", Some(Uuid::new_v4()));
-    store
-        .replace_library_blocking(LibraryWrite {
+    replace(
+        &store,
+        LibraryWrite {
             groups: vec![waiting.clone()],
             ..LibraryWrite::default()
-        })
-        .expect("write");
+        },
+    )
+    .expect("write");
 
     store
         .import_blocking(std::path::Path::new("other.json"), &bytes)
@@ -1118,4 +1127,274 @@ fn an_import_files_into_a_group_that_reads_at_the_top_by_its_name() {
         .find(|saved| saved.name == "api")
         .expect("the import");
     assert_eq!(api.group_id, Some(waiting.id));
+}
+
+// Over the file as the store holds it now, as a host that just checked it writes.
+fn replace(store: &ConnectionStore, write: LibraryWrite) -> Result<Option<String>, StorageError> {
+    let over = store.read_library_blocking()?.digest;
+    store.replace_library_blocking(over.as_deref(), |_| Ok::<_, StorageError>(write))
+}
+
+fn sha256_of(path: &std::path::Path) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(std::fs::read(path).expect("the file")))
+}
+
+#[test]
+fn a_library_read_and_write_give_the_digest_of_the_bytes_on_disk() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    assert_eq!(store.read_library_blocking().expect("read").digest, None, "no file yet");
+
+    let written = replace(&store, library_as_another_app_holds_it()).expect("write");
+
+    let path = paths(&root).connections_file();
+    assert_eq!(written.as_deref(), Some(sha256_of(&path).as_str()));
+    let edited = std::fs::read_to_string(&path)
+        .expect("the file")
+        .replace("Prod", "Staging");
+    std::fs::write(&path, edited).expect("an edit outside the store");
+    let read = store.read_library_blocking().expect("read");
+    assert_eq!(read.digest.as_deref(), Some(sha256_of(&path).as_str()));
+    assert_ne!(read.digest, written);
+    assert_eq!(
+        replace(
+            &store,
+            LibraryWrite {
+                connections: read.list.connections.to_vec(),
+                groups: read.list.groups.to_vec(),
+                tags: read.list.tags.to_vec(),
+                favorites: read.list.favorites.to_vec(),
+                removing: Vec::new(),
+            }
+        )
+        .expect("a write that changes nothing"),
+        read.digest
+    );
+}
+
+#[test]
+fn a_rebuild_keeps_only_what_it_names_and_starts_a_new_generation() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, held) = seeded_with_unreadable(&root, false);
+    let journal = Arc::new(Recording::default());
+    store.save_ssh_profile_blocking(ssh_profile()).expect("a profile");
+    let mut kept = plain("kept");
+    kept.unknown = BTreeMap::from([("from_a_newer_build".to_owned(), json!(true))]);
+    store.upsert_blocking(kept.clone()).expect("save");
+    let before = store.identity_blocking().expect("identity").expect("stamped");
+    store.set_journal(Some(journal.clone()));
+
+    let rebuilt = store
+        .rebuild_library_blocking(
+            LibraryWrite {
+                connections: vec![SavedConnection {
+                    unknown: BTreeMap::new(),
+                    ..kept.clone()
+                }],
+                ..LibraryWrite::default()
+            },
+            SystemTime::now(),
+        )
+        .expect("rebuild");
+
+    let list = store.list_blocking().expect("list");
+    assert!(list.unreadable.is_empty(), "{:?}", list.unreadable);
+    assert!(list.ssh_profiles.is_empty());
+    assert!(list.connections[0].unknown.is_empty());
+    let after = list.store.expect("stamped");
+    assert_ne!(after.generation, before.generation);
+    assert_eq!(
+        rebuilt.digest.as_deref(),
+        Some(sha256_of(&paths(&root).connections_file()).as_str())
+    );
+    assert_eq!(rebuilt.set_aside, None);
+    let calls = journal.take_entries();
+    assert_eq!(calls.len(), 1);
+    assert!(
+        calls[0].iter().all(|entry| entry.deleted.is_empty()),
+        "an id from the file it replaced is a deletion to send: {calls:?} ({})",
+        held.id
+    );
+}
+
+#[test]
+fn a_rebuild_sets_aside_a_file_this_build_cannot_read() {
+    let root = TempDir::new().expect("tempdir");
+    let path = paths(&root).connections_file();
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+    std::fs::write(&path, b"{ half an edit").expect("a damaged file");
+    let store = store(&root);
+    let kept = plain("kept");
+
+    let rebuilt = store
+        .rebuild_library_blocking(
+            LibraryWrite {
+                connections: vec![kept.clone()],
+                ..LibraryWrite::default()
+            },
+            SystemTime::now(),
+        )
+        .expect("rebuild");
+
+    let aside = rebuilt.set_aside.expect("set aside");
+    assert_eq!(std::fs::read(&aside).expect("the copy"), b"{ half an edit");
+    assert_eq!(store.list_blocking().expect("list").connections.to_vec(), [kept]);
+}
+
+#[test]
+fn a_library_write_over_a_file_that_changed_since_is_refused() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let vouched = replace(&store, library_as_another_app_holds_it()).expect("write");
+    let path = paths(&root).connections_file();
+    let swapped = std::fs::read_to_string(&path)
+        .expect("the file")
+        .replace("Prod", "Planted");
+    std::fs::write(&path, &swapped).expect("a swap");
+
+    let over_old = store.replace_library_blocking(vouched.as_deref(), |_| {
+        Ok::<_, StorageError>(library_as_another_app_holds_it())
+    });
+    let over_none = store.replace_library_blocking(None, |_| Ok::<_, StorageError>(LibraryWrite::default()));
+
+    assert!(matches!(over_old, Err(StorageError::LibraryChanged)), "{over_old:?}");
+    assert!(matches!(over_none, Err(StorageError::LibraryChanged)), "{over_none:?}");
+    assert_eq!(std::fs::read_to_string(&path).expect("the file"), swapped);
+}
+
+#[test]
+fn a_library_write_over_a_file_swapped_for_one_that_does_not_read_is_refused_as_changed() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let vouched = replace(&store, library_as_another_app_holds_it()).expect("write");
+    std::fs::write(paths(&root).connections_file(), b"{ half an edit").expect("a swap");
+
+    let refused = store.replace_library_blocking(vouched.as_deref(), |_| {
+        Ok::<_, StorageError>(library_as_another_app_holds_it())
+    });
+
+    assert!(matches!(refused, Err(StorageError::LibraryChanged)), "{refused:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_rebuild_sets_aside_a_file_the_system_will_not_let_it_read() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    replace(&store, library_as_another_app_holds_it()).expect("write");
+    let path = paths(&root).connections_file();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).expect("locked out");
+    if std::fs::read(&path).is_ok() {
+        // Root reads whatever the mode says, so there is nothing to test.
+        return;
+    }
+    let kept = plain("kept");
+
+    let rebuilt = store
+        .rebuild_library_blocking(
+            LibraryWrite {
+                connections: vec![kept.clone()],
+                ..LibraryWrite::default()
+            },
+            SystemTime::now(),
+        )
+        .expect("rebuild");
+
+    assert!(rebuilt.set_aside.is_some());
+    assert_eq!(store.list_blocking().expect("list").connections.to_vec(), [kept]);
+}
+
+#[test]
+fn a_library_write_takes_out_an_entry_this_build_cannot_read_that_it_names() {
+    let root = TempDir::new().expect("tempdir");
+    let (store, held) = seeded_with_unreadable(&root, false);
+    let kept = plain("kept");
+
+    replace(
+        &store,
+        LibraryWrite {
+            connections: vec![kept.clone()],
+            removing: vec![held.id],
+            ..LibraryWrite::default()
+        },
+    )
+    .expect("write");
+
+    let list = store.list_blocking().expect("list");
+    assert!(list.unreadable.is_empty(), "{:?}", list.unreadable);
+    assert_eq!(list.connections.to_vec(), [kept]);
+}
+
+#[test]
+fn a_library_write_refuses_what_the_store_would_drop() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let connection = plain("a");
+    let tag = Uuid::new_v4();
+    let stray = Uuid::new_v4();
+
+    let favourite_twice = replace(
+        &store,
+        LibraryWrite {
+            connections: vec![connection.clone()],
+            favorites: vec![connection.id, connection.id],
+            ..LibraryWrite::default()
+        },
+    );
+    let tag_twice = replace(
+        &store,
+        LibraryWrite {
+            connections: vec![SavedConnection {
+                tags: vec![tag, tag],
+                ..connection.clone()
+            }],
+            ..LibraryWrite::default()
+        },
+    );
+    let favourite_of_nothing = replace(
+        &store,
+        LibraryWrite {
+            connections: vec![connection.clone()],
+            favorites: vec![stray],
+            ..LibraryWrite::default()
+        },
+    );
+
+    let kept_and_removed = replace(
+        &store,
+        LibraryWrite {
+            connections: vec![connection.clone()],
+            removing: vec![connection.id],
+            ..LibraryWrite::default()
+        },
+    );
+
+    assert!(matches!(kept_and_removed, Err(StorageError::RepeatedId { id }) if id == connection.id));
+    assert!(matches!(favourite_twice, Err(StorageError::RepeatedId { id }) if id == connection.id));
+    assert!(matches!(tag_twice, Err(StorageError::RepeatedId { id }) if id == tag));
+    assert!(matches!(favourite_of_nothing, Err(StorageError::ConnectionNotFound { id }) if id == stray));
+    assert_eq!(
+        store.read_library_blocking().expect("read").digest,
+        None,
+        "nothing was written"
+    );
+}
+
+#[test]
+fn a_rebuild_refuses_an_id_named_twice() {
+    let root = TempDir::new().expect("tempdir");
+    let store = store(&root);
+    let connection = plain("a");
+
+    let refused = store.rebuild_library_blocking(
+        LibraryWrite {
+            connections: vec![connection.clone(), connection],
+            ..LibraryWrite::default()
+        },
+        SystemTime::now(),
+    );
+
+    assert!(matches!(refused, Err(StorageError::RepeatedId { .. })), "{refused:?}");
 }
