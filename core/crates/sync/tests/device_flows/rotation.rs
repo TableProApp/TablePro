@@ -982,6 +982,71 @@ async fn a_recovery_another_device_won_drops_its_candidates_and_device_keys() {
     assert_eq!(candidates, 0);
 }
 
+// A recovery cut off after it drew its device keys and before its candidates were kept: the flow named them first,
+// so the resume that finds nothing of the rotation drops them with the keys R opened.
+#[tokio::test]
+async fn a_recovery_cut_off_before_its_candidates_drops_the_device_keys_it_drew_on_resume() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let d = Device::new(&server, account, "dev_d").await;
+    d.pull().await;
+    // The read of R and the row that names what the flow draws land; the candidates do not.
+    d.fail_commit_after(2);
+
+    d.service.recover(r).await.unwrap_err();
+    let drawn = d.service.device_keys().await.unwrap().pending.is_some();
+    let named = d.get(rotation_row(2)).await.is_some();
+    d.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(drawn);
+    assert!(named);
+    assert!(d.service.device_keys().await.unwrap().pending.is_none());
+    assert!(d.get(rotation_row(2)).await.is_none());
+    let opened = tablepro_sync::api::device_store::DeviceItem::AccountKeys {
+        origin: crate::harness::origin(),
+        account,
+        av: tablepro_keys::encoding::Version::FIRST,
+    };
+    assert!(!d.store.inner.holds(&opened));
+}
+
+// The same window on a device that held the account keys R opens, so the flow had nothing else to name before it drew.
+#[tokio::test]
+async fn a_recovery_of_a_device_that_held_its_keys_cut_off_before_its_candidates_drops_what_it_drew() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let b = Device::new(&server, account, "dev_b").await;
+    approve(&b, &a).await;
+    let b = b
+        .reopen(crate::harness::opened_with(
+            tablepro_sync::api::state::KeyTrust::Unanchored,
+        ))
+        .await;
+    let current = b
+        .service
+        .device_keys()
+        .await
+        .unwrap()
+        .current
+        .map(|keys| keys.key_device);
+    // The read of R, the key tables a file with no anchor clears and the flow's row land; the candidates do not.
+    b.fail_commit_after(3);
+
+    b.service.recover(r).await.unwrap_err();
+    let drawn = b.service.device_keys().await.unwrap().pending.is_some();
+    b.service.resume_rotation(crate::harness::v(2)).await.unwrap();
+
+    assert!(drawn);
+    let held = b.service.device_keys().await.unwrap();
+    assert!(held.pending.is_none());
+    assert_eq!(held.current.map(|keys| keys.key_device), current);
+    assert!(b.get(rotation_row(2)).await.is_none());
+}
+
 // A recovery that never went up is refused when it goes up again: the account keys R opened go too.
 #[tokio::test]
 async fn a_recovery_refused_on_resume_keeps_no_account_keys() {

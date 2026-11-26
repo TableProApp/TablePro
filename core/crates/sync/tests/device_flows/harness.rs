@@ -33,10 +33,11 @@ use zeroize::Zeroizing;
 
 pub const ORIGIN: &str = "https://sync.example.com";
 
-// A state file whose next commit can be made to fail, as a crash between two writes would leave it.
+// A state file whose next commit, or one a few commits on, can be made to fail, as a crash between two writes would
+// leave it. The count is how many commits land first; below zero none fails.
 pub struct Flaky {
     inner: Arc<dyn StateStore>,
-    fail_commit: Arc<AtomicBool>,
+    fail_commit: Arc<AtomicI64>,
 }
 
 #[async_trait]
@@ -59,7 +60,7 @@ impl StateStore for Flaky {
 
 struct FlakyTxn {
     inner: Box<dyn StateTxn>,
-    fail_commit: Arc<AtomicBool>,
+    fail_commit: Arc<AtomicI64>,
 }
 
 #[async_trait]
@@ -89,7 +90,11 @@ impl StateTxn for FlakyTxn {
     }
 
     async fn commit(self: Box<Self>) -> Result<Committed, StateError> {
-        if self.fail_commit.swap(false, Ordering::SeqCst) {
+        let landing = self.fail_commit.load(Ordering::SeqCst);
+        if landing >= 0 {
+            self.fail_commit.store(landing - 1, Ordering::SeqCst);
+        }
+        if landing == 0 {
             return Err(StateError::Io {
                 detail: "the commit did not land".to_owned(),
             });
@@ -284,7 +289,7 @@ pub struct Device {
     pub row: DeviceRowId,
     pub account: AccountId,
     files: Arc<MemoryStateFiles>,
-    fail_commit: Arc<AtomicBool>,
+    fail_commit: Arc<AtomicI64>,
     skew: Arc<ServerClock>,
 }
 
@@ -340,7 +345,7 @@ impl Device {
             device_row: row.clone(),
         };
         files.set_opened(identity.clone(), opened);
-        let fail_commit = Arc::new(AtomicBool::new(false));
+        let fail_commit = Arc::new(AtomicI64::new(-1));
         let state: Arc<dyn StateStore> = Arc::new(Flaky {
             inner: files.open(identity).await.unwrap(),
             fail_commit: Arc::clone(&fail_commit),
@@ -387,7 +392,12 @@ impl Device {
     }
 
     pub fn fail_next_commit(&self) {
-        self.fail_commit.store(true, Ordering::SeqCst);
+        self.fail_commit.store(0, Ordering::SeqCst);
+    }
+
+    // The commit after `landing` more land fails.
+    pub fn fail_commit_after(&self, landing: i64) {
+        self.fail_commit.store(landing, Ordering::SeqCst);
     }
 
     pub fn fail_next_device_keys_write(&self) {

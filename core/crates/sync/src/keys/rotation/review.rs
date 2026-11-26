@@ -15,15 +15,17 @@ use crate::api::key_flows::ReviewedMember;
 use crate::api::state::{Row, RowRange, StateTxn, Table};
 use crate::keys::KeyService;
 
-// Format 1 carried no certificate; format 2 no IK, refused or retried teams and no opened `av`.
-const FORMAT: u8 = 3;
+// Format 1 carried no certificate; format 2 no IK, refused or retried teams and no opened `av`; format 3 no drawn key
+// device.
+const FORMAT: u8 = 4;
 
 // The team steps an account rotation still owes: the members marked for removal per team, the teams done, the
 // signature of this flow's own certificate at that `av`, and the IK the account was under when it began. The
 // signature tells this flow's rotation from another's; the IK tells another device's that won, under it or endorsed
 // by it, from a certificate nothing verifies. Teams the server refused are recorded and tried again on later passes;
 // a team that met `create_only` waits for a pull past the version this device held then. A recovery names the `av`
-// whose account keys R opened on a device that did not hold them, which go if the recovery never applies.
+// whose account keys R opened on a device that did not hold them, and the key device it drew, both of which go if the
+// recovery never applies.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct TeamSteps {
     pub remove: Vec<(TeamId, AccountId)>,
@@ -33,6 +35,7 @@ pub(crate) struct TeamSteps {
     pub stuck: Vec<TeamId>,
     pub retry: Vec<(TeamId, Version)>,
     pub opened: Option<Version>,
+    pub drawn: Option<KeyDeviceId>,
 }
 
 fn push_count(out: &mut Vec<u8>, count: usize) {
@@ -84,6 +87,10 @@ impl TeamSteps {
                 .map(|av| av.get().to_be_bytes())
                 .as_ref()
                 .map(<[u8; 4]>::as_slice),
+        );
+        push_optional(
+            &mut out,
+            self.drawn.as_ref().map(|device| device.0.as_bytes().as_slice()),
         );
         out
     }
@@ -161,6 +168,13 @@ fn decode(bytes: &[u8]) -> Option<TeamSteps> {
         steps.opened = match take(1)? {
             [0] => None,
             [1] => Some(Version::new(u32::from_be_bytes(take(4)?.try_into().ok()?)).ok()?),
+            _ => return None,
+        };
+    }
+    if format >= 4 {
+        steps.drawn = match take(1)? {
+            [0] => None,
+            [1] => Some(KeyDeviceId(uuid(take(16)?)?)),
             _ => return None,
         };
     }
@@ -354,7 +368,16 @@ mod tests {
             stuck: vec![TeamId(Uuid::from_u128(5))],
             retry: vec![(TeamId(Uuid::from_u128(6)), v(7))],
             opened: Some(v(2)),
+            drawn: Some(KeyDeviceId(Uuid::from_u128(8))),
         };
+        // A state an earlier build wrote names no drawn key device.
+        let before_drawn = TeamSteps {
+            drawn: None,
+            ..steps.clone()
+        };
+        let mut format_3 = before_drawn.encode();
+        format_3[0] = 3;
+        format_3.pop();
         let marker_only = TeamSteps {
             certificate: Some(Signature([8; 64])),
             ..TeamSteps::default()
@@ -363,6 +386,7 @@ mod tests {
         assert_eq!(TeamSteps::decode(&[]).unwrap(), TeamSteps::default());
         assert!(TeamSteps::default().encode().is_empty());
         assert_eq!(TeamSteps::decode(&steps.encode()).unwrap(), steps);
+        assert_eq!(TeamSteps::decode(&format_3).unwrap(), before_drawn);
         assert_eq!(TeamSteps::decode(&marker_only.encode()).unwrap(), marker_only);
         assert_eq!(steps.removals_for(TeamId(Uuid::from_u128(1))), vec![account(2)]);
     }

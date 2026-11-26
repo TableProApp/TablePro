@@ -256,25 +256,26 @@ impl KeyService {
             drop(txn);
         }
         steps.ik = Some(recovered.certificate.ik);
-        // The keys R opened, on a device that did not hold them, go if the recovery never applies: the flow names
-        // them before they are stored, so a crash between the two leaves nothing unnamed.
         let opened = if opened_before == Some(recovered.certificate.av)
             || self.account_keys(recovered.certificate.av).await?.is_none()
         {
             steps.opened = Some(recovered.certificate.av);
-            let mut txn = self.begin().await?;
-            txn.put(Row::KeyPending(KeyPendingRow {
-                flow: PendingFlow::AccountRotation { av },
-                state: steps.encode(),
-            }))
-            .await?;
-            txn.commit().await?;
             Some(&recovered.keys)
         } else {
             None
         };
-        // It compared with no device, so the rotation keeps only itself, under new device keys.
+        // It compared with no device, so the rotation keeps only itself, under new device keys. These and the keys R
+        // opened on a device that did not hold them go if the recovery never applies: the flow names them before they
+        // are stored, so a crash between the two leaves nothing it does not name.
         let device = DeviceKeys::generate()?;
+        steps.drawn = Some(device.key_device);
+        let mut txn = self.begin().await?;
+        txn.put(Row::KeyPending(KeyPendingRow {
+            flow: PendingFlow::AccountRotation { av },
+            state: steps.encode(),
+        }))
+        .await?;
+        txn.commit().await?;
         let held = self.device_keys().await?;
         self.store_device_keys(&HeldDeviceKeys {
             current: held.current.clone(),
@@ -642,6 +643,8 @@ impl KeyService {
         if let Some(opened) = steps.opened {
             self.erase_account_keys(opened).await?;
         }
+        // A recovery cut off before it wrote its candidates names the key device it drew.
+        let writer = writer.or(steps.drawn);
         let held = self.device_keys().await?;
         if writer.is_some() && held.pending.as_ref().map(|pending| pending.key_device) == writer {
             self.store_device_keys(&HeldDeviceKeys {
@@ -656,10 +659,22 @@ impl KeyService {
         Ok(())
     }
 
-    // Neither applied nor a candidate any more: nothing of the flow can still apply, so the keys R opened for it go.
+    // Neither applied nor a candidate any more: nothing of the flow can still apply, so the keys R opened for it and
+    // the device keys a recovery drew go, the device store before the row.
     async fn end_gone_flow(&self, av: Version, steps: &TeamSteps) -> Result<(), SyncError> {
         if let Some(opened) = steps.opened {
             self.erase_account_keys(opened).await?;
+        }
+        if let Some(drawn) = steps.drawn {
+            let _serial = self.serialized().await;
+            let held = self.device_keys().await?;
+            if held.pending.as_ref().is_some_and(|pending| pending.key_device == drawn) {
+                self.store_device_keys(&HeldDeviceKeys {
+                    current: held.current,
+                    pending: None,
+                })
+                .await?;
+            }
         }
         self.end_team_steps(PendingFlow::AccountRotation { av }).await
     }
