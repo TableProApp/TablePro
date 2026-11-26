@@ -25,6 +25,21 @@ pub struct MoveParts {
     pub files: Arc<dyn StateFiles>,
     // The iCloud account whose state file this device used last (`SyncConfig::icloud_account`).
     pub icloud_account: Option<String>,
+    // Whether the managed values allow the provider now (0055); checked right before each commit a move makes, so a
+    // revocation between two steps commits nothing more.
+    pub allowed: Allowed,
+}
+
+pub type Allowed = Arc<dyn Fn(Provider) -> bool + Send + Sync>;
+
+fn fence(allowed: &Allowed, provider: Provider) -> Result<(), SyncError> {
+    if allowed(provider) {
+        Ok(())
+    } else {
+        Err(SyncError::NotAllowed {
+            what: "a move to a provider the managed policy no longer allows",
+        })
+    }
 }
 
 pub struct Mover {
@@ -64,9 +79,11 @@ impl Mover {
         {
             return Ok(());
         }
+        fence(&self.parts.allowed, Provider::Service)?;
         icloud.stop_for_move().await?;
         let copy = icloud.copy_for_move().await?;
         self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
+        fence(&self.parts.allowed, Provider::Service)?;
         icloud.finish_move().await
     }
 
@@ -85,8 +102,10 @@ impl Mover {
             {
                 return Ok(());
             }
+            fence(&self.parts.allowed, Provider::Service)?;
             let copy = icloud.copy_without_icloud().await?;
             self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
+            fence(&self.parts.allowed, Provider::Service)?;
             return icloud.finish_move().await;
         }
         let account = self.parts.icloud_account.as_ref().ok_or(SyncError::NotAllowed {
@@ -108,6 +127,7 @@ impl Mover {
             })
         };
         if held.is_none() {
+            fence(&self.parts.allowed, Provider::Service)?;
             let mut txn = state.begin().await?;
             txn.put(moving(MovePhase::Open)).await?;
             txn.commit().await?;
@@ -120,6 +140,7 @@ impl Mover {
             kept_off,
         };
         self.parts.service.run_arrival(Arrival::from_icloud(copy)).await?;
+        fence(&self.parts.allowed, Provider::Service)?;
         let mut txn = state.begin().await?;
         txn.put(moving(MovePhase::Done)).await?;
         txn.commit().await?;
@@ -135,6 +156,7 @@ impl Mover {
                 what: "first upload while iCloud is the provider",
             });
         }
+        fence(&self.parts.allowed, Provider::Service)?;
         if let Some(account) = &self.parts.icloud_account {
             self.parts.files.delete(icloud_file(account)).await?;
         }
@@ -160,15 +182,17 @@ impl Mover {
                 what: "move back with another count of iCloud deletions than the person confirmed",
             });
         }
+        fence(&self.parts.allowed, Provider::ICloud)?;
         self.parts.service.leave_for_icloud().await?;
         self.parts
             .service
             .set_mode(crate::service::ServiceMode::TeamsOnly)
             .await;
         back.held_now(&self.parts.service).await?;
-        back.delete().await?;
-        back.keep_the_rest().await?;
+        back.delete(&self.parts.allowed).await?;
+        back.keep_the_rest(&self.parts.allowed).await?;
         drop(back);
+        fence(&self.parts.allowed, Provider::ICloud)?;
         self.parts.service.left_for_icloud().await
     }
 
@@ -183,10 +207,12 @@ impl Mover {
             what: "delete an iCloud zone this device never used",
         })?;
         let transport = self.transport()?;
+        fence(&self.parts.allowed, Provider::ICloud)?;
         match transport.delete_zone(account.clone()).await {
             Ok(()) | Err(CloudKitFailure::ZoneNotFound | CloudKitFailure::ZoneDeletedByUser) => {}
             Err(failure) => return Err(failure.into()),
         }
+        fence(&self.parts.allowed, Provider::ICloud)?;
         self.parts.files.delete(icloud_file(account)).await?;
         Ok(())
     }

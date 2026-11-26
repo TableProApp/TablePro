@@ -120,6 +120,23 @@ impl Apple {
             cloudkit: Some(Arc::clone(&self.cloud) as Arc<dyn CloudKitTransport>),
             files: Arc::clone(&self.files) as Arc<dyn StateFiles>,
             icloud_account: Some(USER.to_owned()),
+            allowed: Arc::new(|_| true),
+        })
+    }
+
+    // As `mover`, under values that allow iCloud for the first `calls` checks only.
+    fn mover_revoked_after(&self, calls: usize) -> Mover {
+        let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        Mover::new(MoveParts {
+            service: Arc::clone(&self.device.sync),
+            icloud: None,
+            cloudkit: Some(Arc::clone(&self.cloud) as Arc<dyn CloudKitTransport>),
+            files: Arc::clone(&self.files) as Arc<dyn StateFiles>,
+            icloud_account: Some(USER.to_owned()),
+            allowed: Arc::new(move |provider| {
+                provider != tablepro_sync::api::state::Provider::ICloud
+                    || seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < calls
+            }),
         })
     }
 
@@ -645,6 +662,31 @@ async fn a_move_back_cut_short_keeps_personal_data_resting_on_the_service() {
     assert!(back.is_err());
     assert_eq!(device.sync.mode(), ServiceMode::TeamsOnly);
     assert!(live(&server, 2).is_none());
+}
+
+// The values forbid iCloud between the move back's CloudKit deletion and its commit: the move commits nothing more,
+// and personal data keeps resting on TablePro Sync with the move still open.
+#[tokio::test]
+async fn a_move_back_revoked_between_its_steps_commits_nothing_more() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    mac.put(1, carried(1, "Prod", 1));
+    mac.icloud_pass().await;
+    mac.mover(true).move_to_service().await.unwrap();
+    let web = on_the_service(&server).await;
+    web.connections.remove(&id(1));
+    web.sync().await;
+    mac.device.sync().await;
+    let plan = mac.mover(false).plan_move_to_icloud().await.unwrap();
+
+    // The first two checks pass (the move's start and the deletion's request), the commit after it does not.
+    let back = mac.mover_revoked_after(2).move_to_icloud(plan.icloud_deletions).await;
+    let row = mac.device.sync.move_row().await.unwrap();
+
+    assert_eq!(back.unwrap_err().code(), "sync.not_allowed");
+    assert_eq!(row.map(|row| (row.target, row.phase)), Some((tablepro_sync::api::state::Provider::ICloud, MovePhase::Open)));
+    assert_eq!(mac.device.sync.mode(), ServiceMode::TeamsOnly);
 }
 
 // Only what the person confirmed leaves the zone: a record the device no longer holds for any other reason, as one

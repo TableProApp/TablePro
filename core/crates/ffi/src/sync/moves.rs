@@ -30,6 +30,14 @@ impl SyncService {
         let slot = Arc::clone(&self.service);
         let icloud = self.icloud.as_ref().ok().map(|engine| Arc::clone(&engine.sync));
         let (cloudkit, files, icloud_account) = (self.cloudkit.clone(), self.files.clone(), self.icloud_account());
+        let (account, platform) = (self.account.clone(), self.config.platform);
+        let allowed: tablepro_sync::moves::Allowed = Arc::new(move |provider| {
+            let tag = match provider {
+                Provider::Service => SyncProviderTag::TableproSync,
+                Provider::ICloud => SyncProviderTag::Icloud,
+            };
+            allowed(account.as_deref(), platform, tag)
+        });
         on_runtime(&self.tasks, async move {
             let engine = slot.engine().await?;
             let files = files.ok_or(SyncError::NotAllowed {
@@ -41,6 +49,7 @@ impl SyncService {
                 cloudkit,
                 files,
                 icloud_account,
+                allowed,
             });
             work(mover).await.map_err(CoreError::from)
         })
