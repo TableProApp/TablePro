@@ -26,15 +26,34 @@ use crate::api::ids::ScopeName;
 // The store adapters, one per kind. Each holds its kind's records of every scope the kind syncs in and is asked for one
 // scope at a time (0054, Adapters).
 #[derive(Clone, Default)]
-pub struct Adapters(Vec<Arc<dyn RecordAdapter>>);
+pub struct Adapters {
+    all: Vec<Arc<dyn RecordAdapter>>,
+    teams_only: bool,
+}
 
 impl Adapters {
     pub fn new(adapters: Vec<Arc<dyn RecordAdapter>>) -> Self {
-        Self(adapters)
+        Self {
+            all: adapters,
+            teams_only: false,
+        }
+    }
+
+    // The same stores asked for their team scopes' records only, as a device whose personal provider is not TablePro
+    // Sync keeps them (0054, Providers). An envelope store holds both, so the scope decides, not the kind.
+    #[must_use]
+    pub fn teams_only(&self) -> Self {
+        Self {
+            all: self.all.clone(),
+            teams_only: true,
+        }
     }
 
     pub fn in_scope(&self, scope: ScopeName) -> Vec<Arc<dyn RecordAdapter>> {
-        self.0
+        if self.teams_only && !matches!(scope, ScopeName::Team(_)) {
+            return Vec::new();
+        }
+        self.all
             .iter()
             .filter(|adapter| adapter.kind().scopes().contains(&scope.records_scope()))
             .map(Arc::clone)

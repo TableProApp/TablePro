@@ -28,7 +28,7 @@ use tablepro_sync::api::transport::{
     Transport, TransportError,
 };
 use tablepro_sync::engine::{Adapters, Clock, EngineHooks, Journal, StopSignal, Wake};
-use tablepro_sync::service::{PassReport, ProofSource, ServiceParts, ServiceSync};
+use tablepro_sync::service::{PassReport, ProofSource, ServiceMode, ServiceParts, ServiceSync};
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
 use tablepro_sync_testing::{FakeClient, FakeDeviceStore, FakeServer, MemoryStateFiles};
@@ -764,6 +764,7 @@ pub struct DeviceBuilder {
     server: Arc<FakeServer>,
     row: String,
     approved: bool,
+    mode: ServiceMode,
     state: Option<Arc<dyn StateStore>>,
     connections: Option<(Arc<MemoryAdapter>, Arc<StoreFile>)>,
     extra: Vec<(ScopeName, Arc<MemoryAdapter>)>,
@@ -778,6 +779,7 @@ impl DeviceBuilder {
             server: Arc::clone(server),
             row: row.to_owned(),
             approved: true,
+            mode: ServiceMode::Personal,
             state: None,
             connections: None,
             extra: Vec::new(),
@@ -790,6 +792,12 @@ impl DeviceBuilder {
     // An adapter of the test's own, over a store that behaves as a core store does.
     pub fn extra_adapter(mut self, adapter: Arc<dyn RecordAdapter>) -> Self {
         self.others.push(adapter);
+        self
+    }
+
+    // A device whose personal provider is iCloud or Off: Team Library and the key objects only.
+    pub fn teams_only(mut self) -> Self {
+        self.mode = ServiceMode::TeamsOnly;
         self
     }
 
@@ -867,6 +875,7 @@ impl DeviceBuilder {
                 off: Vec::new(),
                 passwords: true,
             },
+            mode: self.mode,
         });
         Device {
             server: self.server,

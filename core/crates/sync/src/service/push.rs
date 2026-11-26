@@ -150,7 +150,7 @@ impl ServiceSync {
         let scope = row.scope;
         let skip = self.skipped(scope).await?;
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
-        let categories = ctx.categories.clone();
+        let categories = ctx.categories_in(scope);
         let none = HashSet::new();
         let mut out = Vec::new();
         let mut pruned = Vec::new();

@@ -187,16 +187,22 @@ impl ServiceSync {
             .collect();
         let can_open = ctx.keys_ready;
         let rebuilding = self.proofs.rebuilding();
+        let categories = ctx.categories_in(scope);
+        let sealed = match scope {
+            ScopeName::History => Kind::HistoryEntry,
+            ScopeName::Personal | ScopeName::Team(_) => Kind::SecretEnvelope,
+        };
         // Envelopes kept while the device could not check them are read again in a snapshot once it can, which
         // serves each one's current copy after the key objects (0051, Pull). Once a snapshot judged them, only a change
-        // of the keys reads them again, so one under a key this account was never given refills nothing.
+        // of the keys reads them again, so one under a key this account was never given refills nothing. While their
+        // kind is off nothing reads them, and turning it on reads them again.
         let waiting = can_open
+            && categories.syncs(sealed)
             && self.holds_scope_key(scope).await?
             && !self.waiting_envelopes(scope).await?.is_empty()
             && waited.get(&scope) != Some(&key_mark(&self.state, scope, can_open, rebuilding).await?);
         // A build that reads a kind the last pull did not fetches again what it held for it (0054, Rules).
         // A kind this device turned off is not read, so turning it on reads it again the same way.
-        let categories = ctx.categories.clone();
         let mut reading: Vec<KindName> = adapters
             .iter()
             .map(|adapter| adapter.kind())
@@ -339,6 +345,9 @@ impl ServiceSync {
                 if pull.cut.is_some() || pull.pull_wins.contains(&kind) {
                     to_settle.push(record);
                 }
+                continue;
+            }
+            if record.kind.known().is_none() && !pull.categories.keeps_unknown(&record.kind) {
                 continue;
             }
             // A live record always carries its fields; one without them is no deletion this device would sign.
