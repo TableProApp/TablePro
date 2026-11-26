@@ -15,6 +15,7 @@ impl ServiceSync {
         let held = session.body.is_some().then(|| session.etag.clone()).flatten();
         match self.transport.scopes(held, proof).await? {
             ScopesAnswer::Body { body, etag } => {
+                self.saw_scopes(&body);
                 session.etag = Some(etag);
                 session.body = Some(*body);
             }

@@ -11,8 +11,8 @@ use tablepro_sync::api::{KindName, RecordKey, ScopeName};
 
 use super::service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
-    PassReasonTag, PendingApprovalInfo, SyncCategoriesArg, SyncPhaseTag, SyncRecordRef, SyncStatusInfo,
-    TeamConflictInfo,
+    PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncPhaseTag, SyncRecordRef,
+    SyncStatusInfo, TeamConflictInfo,
 };
 use crate::account::SyncProviderTag;
 
@@ -196,6 +196,18 @@ impl From<HeldRecord> for HeldRecordInfo {
         Self {
             record: held.key.into(),
             reason: held.reason.into(),
+        }
+    }
+}
+
+impl From<tablepro_sync::api::ScopeInfo> for ScopeStatusInfo {
+    fn from(info: tablepro_sync::api::ScopeInfo) -> Self {
+        Self {
+            scope: info.scope.wire(),
+            writable: info.writable,
+            personal_sync: info.policies.personal_sync,
+            password_sync: info.policies.password_sync,
+            history_sync: info.policies.history_sync,
         }
     }
 }

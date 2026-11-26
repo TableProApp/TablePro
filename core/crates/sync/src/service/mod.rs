@@ -64,6 +64,8 @@ pub struct ServiceSync {
     categories: Mutex<DeviceCategories>,
     // The history entries this device keeps, its retention, which a snapshot takes newest first; None takes all.
     history_window: Mutex<Option<u32>>,
+    // The scopes as the last body served them, which the app reads while a pass holds the session.
+    scopes_seen: Mutex<Vec<ScopeInfo>>,
 }
 
 #[derive(Debug, Default)]
@@ -172,6 +174,7 @@ impl ServiceSync {
             }),
             categories: Mutex::new(DeviceCategories::from(&parts.categories)),
             history_window: Mutex::new(None),
+            scopes_seen: Mutex::new(Vec::new()),
         }
     }
 
@@ -185,6 +188,25 @@ impl ServiceSync {
 
     // The app's history retention, in entries: a snapshot of the history scope takes that many, newest first, and the
     // history view pages back for older ones (0051, Pull; F18).
+    // Each scope as the last scopes body served it: its policies, whether it takes writes, its role (0051, Scopes;
+    // Policies). Empty before the first poll.
+    pub fn scopes_seen(&self) -> Vec<ScopeInfo> {
+        self.scopes_seen.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    // A body that changed what the app shows of its scopes tells the app to read them again.
+    fn saw_scopes(&self, body: &ScopesBody) {
+        let changed = {
+            let mut seen = self.scopes_seen.lock().unwrap_or_else(PoisonError::into_inner);
+            let changed = *seen != body.scopes;
+            seen.clone_from(&body.scopes);
+            changed
+        };
+        if changed && let Some(events) = &self.events {
+            events.status_changed();
+        }
+    }
+
     pub fn set_history_window(&self, entries: Option<u32>) {
         *self.history_window.lock().unwrap_or_else(PoisonError::into_inner) = entries;
     }

@@ -149,6 +149,17 @@ pub struct SyncStatusInfo {
     pub queued_changes: u32,
 }
 
+// A scope as the server's last scopes body named it (core ADR 0051, Scopes; Policies). A switch is None where the scope
+// carries none; `writable` is false past grace or after a lapse, when only key-object writes are taken.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ScopeStatusInfo {
+    pub scope: String,
+    pub writable: bool,
+    pub personal_sync: Option<bool>,
+    pub password_sync: Option<bool>,
+    pub history_sync: Option<bool>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum PassReasonTag {
     // A store the app keeps wrote, after the write landed.
@@ -473,6 +484,22 @@ impl SyncService {
     // newest first, and `load_older_history` pages back. None keeps every entry.
     pub fn set_history_window(&self, entries: Option<u32>) {
         self.service.set_history_window(entries);
+    }
+
+    // The scopes TablePro Sync's last scopes body named, for the server's policy switches; empty before its first
+    // poll or while it does not run. `status_changed` follows a body that changed them.
+    pub fn scope_statuses(&self) -> Vec<ScopeStatusInfo> {
+        self.service.now().map_or_else(
+            |_| Vec::new(),
+            |engine| {
+                engine
+                    .sync
+                    .scopes_seen()
+                    .into_iter()
+                    .map(ScopeStatusInfo::from)
+                    .collect()
+            },
+        )
     }
 
     // The iCloud account whose state file the device uses now, for the app to keep and pass back as

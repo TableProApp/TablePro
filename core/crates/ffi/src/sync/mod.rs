@@ -36,6 +36,6 @@ pub use legacy::{
 };
 pub use service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
-    PassReasonTag, PendingApprovalInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag,
-    SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo,
+    PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener,
+    SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo, TeamConflictInfo,
 };
