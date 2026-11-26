@@ -17,6 +17,7 @@ nonisolated protocol SyncEngine: AnyObject, Sendable {
     func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws
     func uploadAgain() async throws
     func icloudAccount() -> String?
+    func flushLegacyMarks() async throws
 }
 
 extension SyncService: SyncEngine {}

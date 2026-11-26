@@ -213,6 +213,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 AppRelauncher.shared.terminationWasCancelled()
                 return
             }
+            // Once the quit is decided, so a Cancel never waits on it.
+            await SyncProviderCoordinator.shared.flushBeforeQuit()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

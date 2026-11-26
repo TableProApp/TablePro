@@ -24,6 +24,8 @@ final class SyncProviderCoordinator: ObservableObject {
     nonisolated static let pushFallbackInterval: Duration = .seconds(15 * 60)
     // A burst of edits, such as a drag across a list, asks for one pass.
     nonisolated static let journalDebounce: Duration = .seconds(2)
+    // The longest a quit waits for the previous stable's marks.
+    nonisolated static let quitFlushLimit: Duration = .seconds(2)
 
     @Published private(set) var syncStatus: SyncStatus = .disabled(.userDisabled)
     @Published private(set) var lastSyncDate: Date?
@@ -343,6 +345,42 @@ final class SyncProviderCoordinator: ObservableObject {
         } catch {
             undelivered.putBack(Array(changes[delivered...]))
             Self.logger.error("The engine did not take a host change: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    // MARK: - Quit
+
+    // Every write told so far marks the Swift metadata the previous stable reads, which a quit would otherwise drop
+    // (core ADR 0054, Downgrade mirror). Bounded, so a Keychain or store that does not answer never holds the quit.
+    func flushBeforeQuit() async {
+        guard hasStarted else { return }
+        let (finished, finish) = AsyncStream<Void>.makeStream()
+        let flushing = Task { [weak self] in
+            await self?.flushLegacyMarks()
+            finish.yield()
+        }
+        let limit = Task { [activationClock] in
+            try? await activationClock.sleep(for: Self.quitFlushLimit)
+            finish.yield()
+        }
+        for await _ in finished {
+            break
+        }
+        limit.cancel()
+        flushing.cancel()
+    }
+
+    private func flushLegacyMarks() async {
+        if !undelivered.isEmpty {
+            deliverJournal()
+        }
+        await journalDelivery?.value
+        // Only iCloud's engine writes the mirror.
+        guard let engine = await host.existingEngine(for: .icloud) else { return }
+        do {
+            try await engine.flushLegacyMarks()
+        } catch {
+            Self.logger.error("The previous stable's marks did not flush: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 

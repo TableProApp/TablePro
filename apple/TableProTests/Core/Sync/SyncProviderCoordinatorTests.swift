@@ -32,6 +32,9 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         var refusesProviderCalls = false
         var icloudAccount: String?
         var uploadsAgain = 0
+        // How many host changes the engine held at each flush.
+        var flushes: [Int] = []
+        var flush: (@Sendable () async -> Void)?
         var pass: (@Sendable (PassReasonTag) async -> Void)?
     }
 
@@ -99,6 +102,14 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
 
     func icloudAccount() -> String? {
         read { $0.icloudAccount }
+    }
+
+    func flushLegacyMarks() async throws {
+        let flush = state.withLockUnchecked { state in
+            state.flushes.append(state.hostChanges.count)
+            return state.flush
+        }
+        await flush?()
     }
 }
 
@@ -420,6 +431,46 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.openAttempts == [.icloud, .icloud])
         #expect(fixture.providers == [.icloud])
         #expect(fixture.passes == [.person])
+    }
+
+    @Test("A quit waits for the writes told so far to reach the engine, then for its marks to flush")
+    func quitFlushesTheMarks() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.journal.recorded(.connection, written: ["A"])
+        await fixture.coordinator.flushBeforeQuit()
+
+        #expect(fixture.engine.read { $0.flushes } == [1])
+    }
+
+    @Test("A flush that does not answer holds the quit only for the limit")
+    func quitFlushIsBounded() async throws {
+        let fixture = try Fixture()
+        let gate = AsyncGate()
+        fixture.engine.update { $0.flush = { await gate.wait() } }
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        let quitting = Task { await fixture.coordinator.flushBeforeQuit() }
+        await gate.arrived(1)
+        // The activation hold after the launch pass sleeps too, for longer.
+        try await waitUntil { fixture.clock.pendingSleeperCount == 2 }
+        fixture.clock.advance(by: SyncProviderCoordinator.quitFlushLimit)
+        await quitting.value
+        await gate.open()
+
+        #expect(fixture.engine.read { $0.flushes } == [0])
+    }
+
+    @Test("A quit before sync started opens nothing")
+    func quitBeforeStartOpensNothing() async throws {
+        let fixture = try Fixture()
+
+        await fixture.coordinator.flushBeforeQuit()
+
+        #expect(fixture.openAttempts.isEmpty)
     }
 
     @Test("A CloudKit notice asks the engine for a pass")
