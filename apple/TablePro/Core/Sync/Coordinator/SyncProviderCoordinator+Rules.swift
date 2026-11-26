@@ -43,7 +43,8 @@ extension SyncProviderCoordinator {
             return .error(info.problem.flatMap(error(forProblem:)) ?? .busy)
         case .unavailable:
             return .error(info.problem.flatMap(error(forProblem:)) ?? .blocked(.unavailable))
-        // Phases of TablePro Sync, which this Mac does not run.
+        // `pullOnly` is TablePro Sync's. On iCloud, `newIdentity` holds the push after an account switch until the person
+        // picks Move my data or Start empty (core ADR 0066), a choice this Mac has no sheet for yet.
         case .pullOnly, .newIdentity:
             return .error(.unexpected)
         case .off, .idle:
@@ -87,11 +88,21 @@ extension SyncProviderCoordinator {
 
     nonisolated private static func rank(_ reason: PassReasonTag) -> Int {
         switch reason {
-        case .foreground: return 0
-        case .networkBack: return 1
-        case .cloudKitPush: return 2
-        case .launch: return 3
-        case .person: return 4
+        case .journal: return 0
+        case .foreground: return 1
+        case .networkBack: return 2
+        case .cloudKitPush: return 3
+        case .accountChanged: return 4
+        case .launch: return 5
+        case .person: return 6
         }
+    }
+
+    // The kinds this Mac's switches leave out, and whether passwords ride along.
+    nonisolated static func categories(_ settings: SyncSettings) -> SyncCategoriesArg {
+        SyncCategoriesArg(
+            offKinds: SyncRecordType.allCases.filter { !settings.syncs($0) }.map(\.coreKind),
+            passwords: settings.syncsPasswords
+        )
     }
 }

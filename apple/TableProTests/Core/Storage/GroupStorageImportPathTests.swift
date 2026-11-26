@@ -15,29 +15,27 @@ struct GroupStorageImportPathTests {
     private let unique = UUID().uuidString
     private let pool = EphemeralDefaultsPool()
     private let defaults: UserDefaults
-    private let metadata: SyncMetadataStorage
     private let events: AppEvents
     private let storage: GroupStorage
 
     init() throws {
         defaults = try pool.make().defaults
-        metadata = SyncMetadataStorage(userDefaults: try pool.make().defaults)
         let appEvents = AppEvents()
         events = appEvents
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let tracker = SyncJournalRecorder()
         let keychain = InMemoryKeychain()
         let connections = ConnectionStorage(
             fileURL: FileManager.default.temporaryDirectory
                 .appendingPathComponent("tablepro-tests")
                 .appendingPathComponent("group-import-\(unique).json"),
             userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain,
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         )
         storage = GroupStorage(
             userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connections,
             appEvents: appEvents
         )
@@ -123,13 +121,13 @@ struct GroupStorageImportPathTests {
 
         #expect(announcements == 1)
         #expect(storage.loadGroups().count == 3)
-        #expect(metadata.dirtyIds(for: .group) == Set(storage.loadGroups().map { $0.id.uuidString }))
+        #expect(tracker.dirtyIds(for: .group) == Set(storage.loadGroups().map { $0.id.uuidString }))
     }
 
     @Test("Paths that already exist write nothing")
     func existingPathsWriteNothing() throws {
         let first = try storage.ensureGroupPaths([[group("A"), group("B")]])
-        metadata.clearDirty(type: .group)
+        tracker.clearDirty(type: .group)
         var announcements = 0
         let subscription = events.connectionUpdated.sink { _ in announcements += 1 }
         defer { subscription.cancel() }
@@ -138,7 +136,7 @@ struct GroupStorageImportPathTests {
 
         #expect(again == first)
         #expect(announcements == 0)
-        #expect(metadata.dirtyIds(for: .group).isEmpty)
+        #expect(tracker.dirtyIds(for: .group).isEmpty)
     }
 
     @Test("An empty path has no group")

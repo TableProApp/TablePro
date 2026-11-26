@@ -1,0 +1,56 @@
+import Combine
+import Foundation
+@testable import TablePro
+import TableProSyncTransport
+import Testing
+
+@MainActor
+struct SyncHostJournalTests {
+    @Test("A write names the core's kind and each id once, in the order written")
+    func aWriteNamesTheKindAndEachIdOnce() {
+        let journal = SyncJournalRecorder()
+
+        journal.journal.recorded(.favorite, written: ["B", "A", "B"], deleted: ["C", "C"])
+
+        #expect(journal.changes == [SyncHostChange(kind: "saved_query", written: ["B", "A"], deleted: ["C"])])
+    }
+
+    @Test("An id a write both removed and wrote back counts as written")
+    func anIdWrittenBackCountsAsWritten() {
+        let journal = SyncJournalRecorder()
+
+        journal.journal.recorded(.tableFolderItem, written: ["moved"], deleted: ["moved", "gone"])
+
+        #expect(journal.changes == [SyncHostChange(kind: "table_folder_item", written: ["moved"], deleted: ["gone"])])
+    }
+
+    @Test("A write that changed nothing tells nobody")
+    func anEmptyWriteIsSilent() {
+        let journal = SyncJournalRecorder()
+
+        journal.journal.recorded(.connection)
+        journal.journal.recorded(.group, written: [], deleted: [])
+
+        #expect(journal.changes.isEmpty)
+    }
+
+    @Test("Every record type iCloud carries maps to the core kind of the same CloudKit record type")
+    func everyRecordTypeHasItsCoreKind() {
+        let kinds = Dictionary(uniqueKeysWithValues: SyncRecordType.allCases.map { ($0, $0.coreKind) })
+
+        #expect(kinds == [
+            .connection: "connection",
+            .group: "group",
+            .tag: "tag",
+            .settings: "macos_settings",
+            .favorite: "saved_query",
+            .favoriteFolder: "saved_query_folder",
+            .tableFavorite: "favourite_table",
+            .favoriteDatabase: "favourite_database",
+            .sshProfile: "ssh_profile",
+            .credentialProfile: "credential_profile",
+            .tableFolder: "table_folder",
+            .tableFolderItem: "table_folder_item"
+        ])
+    }
+}

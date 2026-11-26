@@ -23,6 +23,8 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         )
         var passes: [PassReasonTag] = []
         var providers: [SyncProviderTag] = []
+        var categories: [SyncCategoriesArg] = []
+        var hostChanges: [SyncHostChange] = []
         var uploadsAgain = 0
         var pass: (@Sendable (PassReasonTag) async -> Void)?
     }
@@ -56,6 +58,14 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         }
     }
 
+    func setCategories(categories: SyncCategoriesArg) async throws {
+        update { $0.categories.append(categories) }
+    }
+
+    func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws {
+        update { $0.hostChanges.append(SyncHostChange(kind: kind, written: written, deleted: deleted)) }
+    }
+
     func uploadAgain() async throws {
         update { $0.uploadsAgain += 1 }
     }
@@ -69,8 +79,10 @@ private final class Fixture {
     let clock = ManualClock()
     let policyChanges = PassthroughSubject<DisableReason?, Never>()
     let notifications = NotificationCenter()
+    let journal = SyncHostJournal()
     var opening: AsyncGate?
     var enabled = true
+    var settings = SyncSettings.default
     var policy: DisableReason?
     var opens = true
     var listener: (any SyncListener)?
@@ -91,7 +103,7 @@ private final class Fixture {
         coordinator = SyncProviderCoordinator(
             host: host,
             loadSettings: { [unowned self] in
-                var settings = SyncSettings.default
+                var settings = settings
                 settings.enabled = enabled
                 return settings
             },
@@ -99,6 +111,7 @@ private final class Fixture {
             policyGate: { [unowned self] in policy },
             policyChanges: policyChanges.eraseToAnyPublisher(),
             licenseChanges: Empty().eraseToAnyPublisher(),
+            journalChanges: journal.changes.eraseToAnyPublisher(),
             makeNetworkMonitor: { nil },
             metadata: metadata,
             pushRegistrar: .inert,
@@ -386,8 +399,98 @@ struct SyncProviderCoordinatorTests {
         try await waitUntil { fixture.passes.count == 2 }
         await fixture.coordinator.passesFinished()
 
-        #expect(fixture.passes == [.launch, .launch])
+        #expect(fixture.passes == [.launch, .accountChanged])
         #expect(!fixture.transport.isClosed)
+    }
+
+    @Test("A store's write reaches the engine at once, offline too, and asks for one pass after a quiet spell")
+    func journalReachesTheEngineAndDebouncesAPass() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+
+        fixture.journal.recorded(.connection, written: ["A"])
+        fixture.journal.recorded(.group, deleted: ["G"])
+        try await waitUntil { fixture.engine.read { $0.hostChanges.count } == 2 }
+        #expect(fixture.engine.read { $0.hostChanges } == [
+            SyncHostChange(kind: "connection", written: ["A"], deleted: []),
+            SyncHostChange(kind: "group", written: [], deleted: ["G"])
+        ])
+        #expect(fixture.passes == [.launch])
+
+        // The activation hold after the launch pass sleeps too, for longer.
+        try await waitUntil { fixture.clock.pendingSleeperCount == 2 }
+        fixture.clock.advance(by: SyncProviderCoordinator.journalDebounce)
+        try await waitUntil { fixture.passes.count == 2 }
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.passes == [.launch, .journal])
+    }
+
+    @Test("With iCloud off, a store's write reaches no engine and asks for no pass")
+    func journalWhileOffIsDropped() async throws {
+        let fixture = try Fixture()
+        fixture.enabled = false
+        fixture.coordinator.start()
+
+        fixture.journal.recorded(.connection, written: ["A"])
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.engine.read { $0.hostChanges }.isEmpty)
+        #expect(fixture.passes.isEmpty)
+        #expect(fixture.listener == nil)
+    }
+
+    @Test("A pass tells the engine this Mac's categories once, and a change tells it again with a pass")
+    func categoriesReachTheEngine() async throws {
+        let fixture = try Fixture()
+        fixture.settings.syncTableFavorites = false
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        #expect(fixture.engine.read { $0.categories } == [SyncCategoriesArg(offKinds: ["favourite_table"], passwords: false)])
+
+        fixture.settings.syncTableFavorites = true
+        fixture.coordinator.categoriesChanged()
+        try await waitUntil { fixture.engine.read { $0.categories.count } == 2 }
+        await fixture.coordinator.passesFinished()
+
+        #expect(fixture.engine.read { $0.categories }.last == SyncCategoriesArg(offKinds: [], passwords: false))
+        #expect(fixture.passes.last == .person)
+    }
+
+    @Test("A stop followed at once by an allow still stops iCloud before it waits for the switch again")
+    func stopThenAllowStillStops() async throws {
+        let fixture = try Fixture()
+        fixture.coordinator.start()
+        await fixture.coordinator.passesFinished()
+        var seen: [SyncStatus] = []
+        let watching = fixture.coordinator.$syncStatus.sink { seen.append($0) }
+        defer { watching.cancel() }
+
+        fixture.policy = .managedPolicy
+        fixture.policyChanges.send(.managedPolicy)
+        fixture.policy = nil
+        fixture.policyChanges.send(nil)
+        try await waitUntil { seen.last == .idle }
+        await fixture.coordinator.passesFinished()
+
+        #expect(seen.contains(.disabled(.managedPolicy)))
+        #expect(fixture.transport.isClosed == false)
+    }
+
+    @Test("Allowed again with the switch off, iCloud stays off for the person's reason")
+    func allowedAgainFollowsTheSwitch() async throws {
+        let fixture = try Fixture()
+        fixture.enabled = false
+        fixture.policy = .managedPolicy
+        fixture.coordinator.start()
+        #expect(fixture.coordinator.syncStatus == .disabled(.managedPolicy))
+
+        fixture.policy = nil
+        fixture.policyChanges.send(nil)
+
+        try await waitUntil { fixture.coordinator.syncStatus == .disabled(.userDisabled) }
+        #expect(fixture.transport.isClosed)
     }
 }
 
@@ -440,10 +543,34 @@ struct SyncProviderCoordinatorStatusTests {
         }
     }
 
-    @Test("The person's pass stands in for any other")
+    @Test("The person's pass stands in for any other, and a journal pass for none")
     func strongestPass() {
         #expect(SyncProviderCoordinator.stronger(nil, .foreground) == .foreground)
         #expect(SyncProviderCoordinator.stronger(.foreground, .person) == .person)
         #expect(SyncProviderCoordinator.stronger(.person, .cloudKitPush) == .person)
+        #expect(SyncProviderCoordinator.stronger(.journal, .foreground) == .foreground)
+        #expect(SyncProviderCoordinator.stronger(.cloudKitPush, .journal) == .cloudKitPush)
+        #expect(SyncProviderCoordinator.stronger(.cloudKitPush, .accountChanged) == .accountChanged)
+        #expect(SyncProviderCoordinator.stronger(.accountChanged, .person) == .person)
     }
+
+    @Test("Each switch that is off names its core kinds, and passwords ride only with connections")
+    func categoriesFromTheSwitches() {
+        var settings = SyncSettings.default
+        settings.enabled = true
+        settings.syncGroupsAndTags = false
+        settings.syncSQLFavorites = false
+        settings.syncPasswords = true
+
+        let categories = SyncProviderCoordinator.categories(settings)
+
+        #expect(Set(categories.offKinds) == ["group", "tag", "saved_query", "saved_query_folder"])
+        #expect(categories.passwords)
+        #expect(!SyncProviderCoordinator.categories(settings.settingConnections(false)).passwords)
+        #expect(SyncProviderCoordinator.categories(settings.settingConnections(false)).offKinds.contains("connection"))
+    }
+}
+
+extension SyncPushRegistrar {
+    static let inert = SyncPushRegistrar(register: {}, unregister: {})
 }

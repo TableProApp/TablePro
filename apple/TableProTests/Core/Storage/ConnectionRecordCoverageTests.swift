@@ -198,7 +198,7 @@ struct ConnectionDuplicateCoverageTests {
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults)),
+            syncJournal: SyncHostJournal(),
             keychain: InMemoryKeychain()
         )
     }

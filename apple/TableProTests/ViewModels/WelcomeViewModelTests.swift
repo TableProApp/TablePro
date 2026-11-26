@@ -27,7 +27,7 @@ final class WelcomeViewModelTests {
         syncSuite = try EphemeralDefaults()
         defaults = suite.defaults
         syncDefaults = syncSuite.defaults
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults))
+        let tracker = SyncJournalRecorder()
         connectionFileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("welcome-\(unique)", isDirectory: true)
@@ -39,13 +39,13 @@ final class WelcomeViewModelTests {
         let connectionStorage = ConnectionStorage(
             fileURL: connectionFileURL,
             userDefaults: defaults,
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
         self.connectionStorage = connectionStorage
         // The parameter is an @escaping @autoclosure: `self.connectionStorage` would capture self.
         groupStorage = GroupStorage(
             userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage
         )
         welcomeRouter = WelcomeRouter()
@@ -103,7 +103,7 @@ final class WelcomeViewModelTests {
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: live.syncTracker,
+            syncJournal: live.syncTracker.journal,
             welcomeRouter: welcomeRouter,
             telemetry: live.telemetry
         )

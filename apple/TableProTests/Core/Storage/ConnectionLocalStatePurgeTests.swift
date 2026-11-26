@@ -68,7 +68,7 @@ struct ConnectionLocalStatePurgeTests {
         let deleted = UUID()
         _ = await storage.record(entry(connectionId: deleted, query: "SELECT secret FROM billing"))
 
-        await ConnectionLocalState.purgeAsyncStores([deleted], origin: .local, queryHistory: manager)
+        await ConnectionLocalState.purgeAsyncStores([deleted], queryHistory: manager)
 
         #expect(await recordedQueries(storage, connectionId: deleted).isEmpty)
     }
@@ -81,7 +81,7 @@ struct ConnectionLocalStatePurgeTests {
         _ = await storage.record(entry(connectionId: deleted, query: "SELECT secret FROM billing"))
         _ = await storage.record(entry(connectionId: kept, query: "SELECT 1"))
 
-        await ConnectionLocalState.purgeAsyncStores([deleted], origin: .local, queryHistory: manager)
+        await ConnectionLocalState.purgeAsyncStores([deleted], queryHistory: manager)
 
         #expect(await recordedQueries(storage, connectionId: deleted).isEmpty)
         #expect(await recordedQueries(storage, connectionId: kept) == ["SELECT 1"])
@@ -95,28 +95,26 @@ struct ConnectionLocalStatePurgeTests {
         _ = await storage.record(entry(connectionId: first, query: "SELECT 1"))
         _ = await storage.record(entry(connectionId: second, query: "SELECT 2"))
 
-        await ConnectionLocalState.purgeAsyncStores([first, second], origin: .local, queryHistory: manager)
+        await ConnectionLocalState.purgeAsyncStores([first, second], queryHistory: manager)
 
         #expect(await recordedQueries(storage, connectionId: first).isEmpty)
         #expect(await recordedQueries(storage, connectionId: second).isEmpty)
     }
 
-    private func makeFavorites(defaults: UserDefaults) -> (SQLFavoriteManager, SyncMetadataStorage) {
+    @MainActor
+    private func makeFavorites() -> (SQLFavoriteManager, SyncJournalRecorder) {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("purge_favorites_\(UUID().uuidString).db")
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true
         )
-        let metadata = SyncMetadataStorage(
-            userDefaults: defaults,
-            prefix: "tests.\(UUID().uuidString)"
-        )
+        let journal = SyncJournalRecorder()
         let manager = SQLFavoriteManager(
             storage: SQLFavoriteStorage(databaseURL: url, removeDatabaseOnDeinit: true),
-            syncTracker: SyncChangeTracker(metadataStorage: metadata)
+            syncJournal: journal.journal
         )
-        return (manager, metadata)
+        return (manager, journal)
     }
 
     private func seedFavorite(_ manager: SQLFavoriteManager, connectionId: UUID) async -> SQLFavorite {
@@ -127,38 +125,20 @@ struct ConnectionLocalStatePurgeTests {
         return favorite
     }
 
-    /// The device that deleted the connection already told CloudKit. A tombstone from here sends
-    /// its own deletion back at it.
-    @Test("A remote purge removes the SQL favorites without tombstoning them")
-    func remotePurgeLeavesNoFavoriteTombstone() async throws {
-        let suite = try EphemeralDefaults()
-        let (favorites, metadata) = makeFavorites(defaults: suite.defaults)
+    @Test("A purge journals the SQL favorites it removes")
+    @MainActor
+    func purgeJournalsFavorites() async throws {
+        let (favorites, journal) = makeFavorites()
         let (history, _) = makeHistory()
         let deleted = UUID()
         let favorite = await seedFavorite(favorites, connectionId: deleted)
 
         await ConnectionLocalState.purgeAsyncStores(
-            [deleted], origin: .remote, sqlFavorites: favorites, queryHistory: history
+            [deleted], sqlFavorites: favorites, queryHistory: history
         )
 
         #expect(await favorites.fetchFavorites(connectionId: deleted).isEmpty)
-        #expect(!metadata.tombstones(for: .favorite).contains { $0.id == favorite.id.uuidString })
-    }
-
-    @Test("A local purge tombstones the SQL favorites it removes")
-    func localPurgeTombstonesFavorites() async throws {
-        let suite = try EphemeralDefaults()
-        let (favorites, metadata) = makeFavorites(defaults: suite.defaults)
-        let (history, _) = makeHistory()
-        let deleted = UUID()
-        let favorite = await seedFavorite(favorites, connectionId: deleted)
-
-        await ConnectionLocalState.purgeAsyncStores(
-            [deleted], origin: .local, sqlFavorites: favorites, queryHistory: history
-        )
-
-        #expect(await favorites.fetchFavorites(connectionId: deleted).isEmpty)
-        #expect(metadata.tombstones(for: .favorite).contains { $0.id == favorite.id.uuidString })
+        #expect(journal.tombstonedIds(for: .favorite).contains(favorite.id.uuidString))
     }
 
     /// A filtered clear deletes from `history` alone, and both snapshot tables keep their own copy
@@ -186,7 +166,7 @@ struct ConnectionLocalStatePurgeTests {
         )
         #expect(!(await storage.planSnapshots(matching: identity, excluding: nil, limit: 10)).isEmpty)
 
-        await ConnectionLocalState.purgeAsyncStores([deleted], origin: .local, queryHistory: manager)
+        await ConnectionLocalState.purgeAsyncStores([deleted], queryHistory: manager)
 
         #expect((await storage.planSnapshots(matching: identity, excluding: nil, limit: 10)).isEmpty)
     }
@@ -211,7 +191,7 @@ struct ConnectionLocalStatePurgeTests {
             )
         )
 
-        await ConnectionLocalState.purgeAsyncStores([deleted], origin: .local, queryHistory: manager)
+        await ConnectionLocalState.purgeAsyncStores([deleted], queryHistory: manager)
 
         #expect(!(await storage.planSnapshots(matching: keptIdentity, excluding: nil, limit: 10)).isEmpty)
     }
@@ -276,7 +256,7 @@ struct ConnectionLocalStatePurgeTests {
         await versions.record(tabId: keptTab, connectionId: kept, text: "SELECT 1", reason: .run)
 
         await ConnectionLocalState.purgeAsyncStores(
-            [deleted], origin: .remote, queryHistory: history, queryTabVersions: versions
+            [deleted], queryHistory: history, queryTabVersions: versions
         )
 
         #expect(versions.summaries(tabId: deletedTab).isEmpty)
@@ -329,7 +309,6 @@ struct ConnectionLocalStatePurgeTests {
 
         ConnectionLocalState.purge(
             connectionIds: [deleted],
-            origin: .remote,
             tableScopedStores: [],
             queryHistory: history,
             defaults: suite.defaults,

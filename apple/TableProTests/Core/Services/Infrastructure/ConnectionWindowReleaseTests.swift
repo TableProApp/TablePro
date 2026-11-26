@@ -261,7 +261,7 @@ private extension AppServices {
             dateFormattingService: dateFormattingService,
             copilotService: copilotService,
             mcpServerManager: mcpServerManager,
-            syncTracker: syncTracker,
+            syncJournal: syncTracker.journal,
             welcomeRouter: welcomeRouter,
             telemetry: telemetry
         )

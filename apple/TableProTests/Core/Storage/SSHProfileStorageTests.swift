@@ -17,7 +17,6 @@ struct SSHProfileStorageTests {
     private let storage: SSHProfileStorage
     private let connections: ConnectionStorage
     private let keychain: InMemoryKeychain
-    private let metadata: SyncMetadataStorage
 
     init() throws {
         let unique = UUID().uuidString
@@ -35,19 +34,18 @@ struct SSHProfileStorageTests {
         let syncDefaults = try pool.make().defaults
 
         keychain = InMemoryKeychain()
-        metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let tracker = SyncJournalRecorder()
         let connectionStorage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: connectionDefaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain
         )
         connections = connectionStorage
         storage = SSHProfileStorage(
             userDefaults: profileDefaults,
             keychain: keychain,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage
         )
     }
@@ -149,11 +147,11 @@ struct SSHProfileStorageTests {
     func deleteRecordsTombstoneAfterPersisting() {
         let profile = makeProfile()
         #expect(storage.addProfile(profile))
-        #expect(metadata.tombstones(for: .sshProfile).isEmpty)
+        #expect(tracker.tombstones(for: .sshProfile).isEmpty)
 
         #expect(storage.deleteProfile(profile))
 
-        #expect(metadata.tombstones(for: .sshProfile).contains { $0.id == profile.id.uuidString })
+        #expect(tracker.tombstones(for: .sshProfile).contains { $0.id == profile.id.uuidString })
     }
 
     @Test("A save that cannot run reports the failure instead of returning silently")
@@ -163,7 +161,7 @@ struct SSHProfileStorageTests {
         let corrupted = SSHProfileStorage(
             userDefaults: profileDefaults,
             keychain: InMemoryKeychain(),
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: SyncHostJournal(),
             connectionStorage: connections
         )
 
@@ -215,7 +213,7 @@ struct SSHProfileStorageTests {
         let lockedStorage = SSHProfileStorage(
             userDefaults: try pool.make().defaults,
             keychain: lockedKeychain,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: SyncHostJournal(),
             connectionStorage: lockedConnections
         )
 

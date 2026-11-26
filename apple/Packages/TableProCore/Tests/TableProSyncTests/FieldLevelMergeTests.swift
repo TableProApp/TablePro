@@ -277,6 +277,34 @@ struct SyncRecordCacheTests {
         #expect(cache.record(for: record.recordID)?["name"] as? String == "Production")
     }
 
+    @Test("Replacing the whole cache keeps exactly the records handed in, rewriting only what changed")
+    func replaceAllKeepsOnlyTheRecordsHandedIn() throws {
+        let cache = try makeCache()
+        let kept = makeRecord("Connection_Kept")
+        let dropped = makeRecord("Connection_Dropped")
+        cache.store([kept, dropped])
+        let edited = makeRecord("Connection_Kept")
+        edited["name"] = "Staging" as CKRecordValue
+        let added = makeRecord("Connection_Added")
+
+        #expect(cache.replaceAll(with: [edited, added]))
+
+        #expect(cache.record(named: "Connection_Kept")?["name"] as? String == "Staging")
+        #expect(cache.record(named: "Connection_Added") != nil)
+        #expect(cache.record(named: "Connection_Dropped") == nil)
+        #expect(cache.allRecords().map(\.recordID.recordName).sorted() == ["Connection_Added", "Connection_Kept"])
+    }
+
+    @Test("Replacing the cache with nothing empties it")
+    func replaceAllWithNothingEmptiesIt() throws {
+        let cache = try makeCache()
+        cache.store([makeRecord("Connection_A")])
+
+        #expect(cache.replaceAll(with: []))
+
+        #expect(cache.allRecords().isEmpty)
+    }
+
     @Test("A removed record is gone")
     func removedRecordIsGone() throws {
         let cache = try makeCache()

@@ -106,7 +106,7 @@ final class AppSettingsManager {
 
     private let storage: AppSettingsStorage
     private let themeEngine: ThemeEngine
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let appEvents: AppEvents
     private let dateFormattingService: DateFormattingService
     private let mcpServerManager: MCPServerManager
@@ -114,14 +114,15 @@ final class AppSettingsManager {
     private let connectionListPreferences: ConnectionListPreferences
     private let passwordSyncDefaults: UserDefaults
     private let switchSync: @MainActor (Bool) -> Void
+    private let changeSyncCategories: @MainActor () -> Void
     private let applyHistoryRetention: @MainActor () -> Void
     private let resetOutsideSettings: @MainActor () -> Void
-    private var deferredDirtyCategories: [String]?
+    private var deferredWrittenCategories: [String]?
 
     init(
         storage: AppSettingsStorage = .shared,
         themeEngine: ThemeEngine = .shared,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         appEvents: AppEvents = .shared,
         dateFormattingService: DateFormattingService = .shared,
         mcpServerManager: MCPServerManager = .shared,
@@ -136,6 +137,9 @@ final class AppSettingsManager {
                 SyncProviderCoordinator.shared.disableSync()
             }
         },
+        changeSyncCategories: @escaping @MainActor () -> Void = {
+            SyncProviderCoordinator.shared.categoriesChanged()
+        },
         applyHistoryRetention: @escaping @MainActor () -> Void = {
             Task { await QueryHistoryManager.shared.applySettingsChange() }
         },
@@ -149,7 +153,7 @@ final class AppSettingsManager {
     ) {
         self.storage = storage
         self.themeEngine = themeEngine
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.appEvents = appEvents
         self.dateFormattingService = dateFormattingService
         self.mcpServerManager = mcpServerManager
@@ -157,6 +161,7 @@ final class AppSettingsManager {
         self.connectionListPreferences = connectionListPreferences
         self.passwordSyncDefaults = passwordSyncDefaults
         self.switchSync = switchSync
+        self.changeSyncCategories = changeSyncCategories
         self.applyHistoryRetention = applyHistoryRetention
         self.resetOutsideSettings = resetOutsideSettings
 
@@ -207,7 +212,7 @@ final class AppSettingsManager {
         // Share usage data is a consent choice, so a reset keeps it.
         resetGeneral.shareAnalytics = general.shareAnalytics
 
-        deferredDirtyCategories = []
+        deferredWrittenCategories = []
         general = resetGeneral
         appearance = .default
         appearanceMode = .auto
@@ -224,9 +229,9 @@ final class AppSettingsManager {
         mcp = .default
         typography = .default
         storage.resetToDefaults()
-        let changedCategories = deferredDirtyCategories ?? []
-        deferredDirtyCategories = nil
-        syncTracker.markDirty(.settings, ids: changedCategories)
+        let changedCategories = deferredWrittenCategories ?? []
+        deferredWrittenCategories = nil
+        syncJournal.recorded(.settings, written: changedCategories)
 
         connectionListPreferences.resetShowsRecent()
         resetOutsideSettings()
@@ -250,12 +255,12 @@ final class AppSettingsManager {
         mcpSlice.attach { [weak self] old, new in self?.commitMCP(from: old, to: new) }
     }
 
-    // A reset collects its categories and marks them once, after the whole reset is saved.
-    private func markDirty(_ category: String) {
-        if deferredDirtyCategories != nil {
-            deferredDirtyCategories?.append(category)
+    // A reset collects its categories and journals them once, after the whole reset is saved.
+    private func recordWritten(_ category: String) {
+        if deferredWrittenCategories != nil {
+            deferredWrittenCategories?.append(category)
         } else {
-            syncTracker.markDirty(.settings, id: category)
+            syncJournal.recorded(.settings, written: [category])
         }
     }
 
@@ -270,13 +275,13 @@ final class AppSettingsManager {
         if old.connectionHealthCheck != new.connectionHealthCheck {
             appEvents.connectionHealthCheckChanged.send(())
         }
-        markDirty(AppSettingsCategory.general)
+        recordWritten(AppSettingsCategory.general)
     }
 
     private func commitAppearance(_ new: AppearanceSettings) {
         storage.saveAppearance(new)
         themeEngine.select(lightThemeId: new.preferredLightThemeId, darkThemeId: new.preferredDarkThemeId)
-        markDirty(AppSettingsCategory.appearance)
+        recordWritten(AppSettingsCategory.appearance)
     }
 
     private func commitAppearanceMode(_ new: AppAppearanceMode) {
@@ -287,12 +292,12 @@ final class AppSettingsManager {
     private func commitEditor(_ new: EditorSettings) {
         storage.saveEditor(new)
         appEvents.editorSettingsChanged.send(())
-        markDirty(AppSettingsCategory.editor)
+        recordWritten(AppSettingsCategory.editor)
     }
 
     private func commitFormatter(_ new: SQLFormatterSettings) {
         storage.saveFormatter(new)
-        markDirty(AppSettingsCategory.formatter)
+        recordWritten(AppSettingsCategory.formatter)
     }
 
     private func commitTypography(_ new: TypographySettings) {
@@ -302,7 +307,7 @@ final class AppSettingsManager {
 
     private func commitNotifications(_ new: NotificationSettings) {
         storage.saveNotifications(new)
-        markDirty(AppSettingsCategory.notifications)
+        recordWritten(AppSettingsCategory.notifications)
     }
 
     private func commitDataGrid(from old: DataGridSettings, to new: DataGridSettings) {
@@ -311,13 +316,13 @@ final class AppSettingsManager {
             dateFormattingService.updateFormat(new.dateFormat)
         }
         appEvents.dataGridSettingsChanged.send(())
-        markDirty(AppSettingsCategory.dataGrid)
+        recordWritten(AppSettingsCategory.dataGrid)
     }
 
     private func commitValueColors(_ new: ValueColorSettings) {
         storage.saveValueColors(new)
         appEvents.valueColorSettingsChanged.send(())
-        markDirty(AppSettingsCategory.valueColors)
+        recordWritten(AppSettingsCategory.valueColors)
     }
 
     private func commitHistory(from old: HistorySettings, to new: HistorySettings) {
@@ -325,24 +330,24 @@ final class AppSettingsManager {
         if !new.hasSameRetention(as: old) {
             applyHistoryRetention()
         }
-        markDirty(AppSettingsCategory.history)
+        recordWritten(AppSettingsCategory.history)
     }
 
     private func commitTabs(_ new: TabSettings) {
         storage.saveTabs(new)
-        markDirty(AppSettingsCategory.tabs)
+        recordWritten(AppSettingsCategory.tabs)
     }
 
     private func commitKeyboard(_ new: KeyboardSettings) {
         storage.saveKeyboard(new)
-        markDirty(AppSettingsCategory.keyboard)
+        recordWritten(AppSettingsCategory.keyboard)
         MainMenuBuilder.syncKeyEquivalents(keyboard: new)
         appEvents.keyboardSettingsChanged.send(())
     }
 
     private func commitAI(_ new: AISettings) {
         storage.saveAI(new)
-        markDirty(AppSettingsCategory.ai)
+        recordWritten(AppSettingsCategory.ai)
         appEvents.aiSettingsChanged.send(())
         copilotService.stopIfDisallowed(by: new)
     }
@@ -353,6 +358,8 @@ final class AppSettingsManager {
         passwordSyncDefaults.set(new.syncsPasswords, forKey: KeychainHelper.passwordSyncEnabledKey)
         if old.enabled != new.enabled {
             switchSync(new.enabled)
+        } else if old != new {
+            changeSyncCategories()
         }
     }
 

@@ -13,6 +13,8 @@ nonisolated protocol SyncEngine: AnyObject, Sendable {
     func status() -> SyncStatusInfo
     func syncNow(why: PassReasonTag) async throws
     func chooseProvider(provider: SyncProviderTag) async throws
+    func setCategories(categories: SyncCategoriesArg) async throws
+    func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws
     func uploadAgain() async throws
 }
 
@@ -81,7 +83,10 @@ final class SyncEngineHost {
                 throw AccountError.network("the account did not open")
             }
             return try await opener.openSync(
-                config: SyncConfig(platform: .macos),
+                config: SyncConfig(
+                    platform: .macos,
+                    categories: SyncProviderCoordinator.categories(AppSettingsStorage.shared.loadSync())
+                ),
                 cloudkit: transport,
                 settings: nil,
                 deviceStore: nil,

@@ -14,7 +14,7 @@ struct SQLFavoriteVersionTests {
     private let storage: SQLFavoriteStorage
     private let suite: EphemeralDefaults
     private let defaults: UserDefaults
-    private let tracker: SyncChangeTracker
+    private let tracker: SyncJournalRecorder
 
     init() throws {
         let url = FileManager.default.temporaryDirectory
@@ -24,7 +24,7 @@ struct SQLFavoriteVersionTests {
         storage = SQLFavoriteStorage(databaseURL: url, removeDatabaseOnDeinit: true)
         suite = try EphemeralDefaults()
         defaults = suite.defaults
-        tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: defaults))
+        tracker = SyncJournalRecorder()
     }
 
     private func makeFavorite(name: String = "Revenue", query: String = "SELECT 1", updatedAt: Date = Date(timeIntervalSince1970: 100)) -> SQLFavorite {
@@ -113,7 +113,7 @@ struct SQLFavoriteVersionTests {
 
     @Test("Restoring writes the old text, records the text it replaced, and marks the query for sync")
     func restoreRecordsReplacedTextAndMarksDirty() async throws {
-        let manager = SQLFavoriteManager(storage: storage, syncTracker: tracker)
+        let manager = SQLFavoriteManager(storage: storage, syncJournal: tracker.journal)
         var favorite = makeFavorite(query: "SELECT old")
         #expect(await storage.addFavorite(favorite))
         favorite.query = "SELECT new"
@@ -126,12 +126,12 @@ struct SQLFavoriteVersionTests {
         #expect(restored.query == "SELECT old")
         #expect(restored.name == "Revenue")
         #expect(await manager.fetchVersions(favoriteId: favorite.id).map(\.query) == ["SELECT new", "SELECT old"])
-        #expect(tracker.dirtyRecords(for: .favorite).contains(favorite.id.uuidString))
+        #expect(tracker.dirtyIds(for: .favorite).contains(favorite.id.uuidString))
     }
 
     @Test("Restoring a version of a deleted query fails")
     func restoreOfDeletedFavoriteFails() async throws {
-        let manager = SQLFavoriteManager(storage: storage, syncTracker: tracker)
+        let manager = SQLFavoriteManager(storage: storage, syncJournal: tracker.journal)
         var favorite = makeFavorite(query: "SELECT old")
         #expect(await storage.addFavorite(favorite))
         favorite.query = "SELECT new"

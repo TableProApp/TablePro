@@ -22,6 +22,8 @@ final class SyncProviderCoordinator: ObservableObject {
     // While CloudKit's notices reach this Mac they bring other devices' changes, so an activation only covers a lost one.
     nonisolated static let activationInterval: Duration = .seconds(60)
     nonisolated static let pushFallbackInterval: Duration = .seconds(15 * 60)
+    // A burst of edits, such as a drag across a list, asks for one pass.
+    nonisolated static let journalDebounce: Duration = .seconds(2)
 
     @Published private(set) var syncStatus: SyncStatus = .disabled(.userDisabled)
     @Published private(set) var lastSyncDate: Date?
@@ -34,6 +36,7 @@ final class SyncProviderCoordinator: ObservableObject {
     private let policyGate: @MainActor () -> DisableReason?
     private let policyChanges: AnyPublisher<DisableReason?, Never>
     private let licenseChanges: AnyPublisher<Void, Never>
+    private let journalChanges: AnyPublisher<SyncHostChange, Never>
     private let makeNetworkMonitor: () -> SyncNetworkMonitor?
     private let metadata: SyncMetadataStorage
     private let activationClock: any Clock<Duration>
@@ -46,6 +49,10 @@ final class SyncProviderCoordinator: ObservableObject {
     private var pendingPass: PassReasonTag?
     private var activationCooldown: Task<Void, Never>?
     private var activationHeld = false
+    private var journalPass: Task<Void, Never>?
+    // Every host change the engine is told, in order; a pass waits for the ones before it.
+    private var journalDelivery: Task<Void, Never>?
+    private var toldCategories: SyncCategoriesArg?
     // Each turn of iCloud on or off, so a pass that began before one changes nothing after it.
     private var generation = 0
     // Every provider the engine is told, in order: a pass waits for the off before it, and an off follows the on.
@@ -64,6 +71,7 @@ final class SyncProviderCoordinator: ObservableObject {
             .map(SyncProviderPolicy.disableReason)
             .eraseToAnyPublisher(),
         licenseChanges: AnyPublisher<Void, Never> = AppEvents.shared.licenseStatusDidChange.eraseToAnyPublisher(),
+        journalChanges: AnyPublisher<SyncHostChange, Never> = SyncHostJournal.shared.changes.eraseToAnyPublisher(),
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { SyncNetworkMonitor() },
         metadata: SyncMetadataStorage = .appDefault,
         pushRegistrar: SyncPushRegistrar = .live,
@@ -78,6 +86,7 @@ final class SyncProviderCoordinator: ObservableObject {
         self.policyGate = policyGate
         self.policyChanges = policyChanges
         self.licenseChanges = licenseChanges
+        self.journalChanges = journalChanges
         self.makeNetworkMonitor = makeNetworkMonitor
         self.metadata = metadata
         self.activationClock = activationClock
@@ -94,6 +103,9 @@ final class SyncProviderCoordinator: ObservableObject {
         hasStarted = true
         host.statusChanges
             .sink { [weak self] in self?.refreshStatus() }
+            .store(in: &observers)
+        journalChanges
+            .sink { [weak self] change in self?.journalRecorded(change) }
             .store(in: &observers)
         licenseChanges
             .receive(on: RunLoop.main)
@@ -130,6 +142,13 @@ final class SyncProviderCoordinator: ObservableObject {
 
     func disableSync() {
         stop(.disabled(policyGate() ?? .userDisabled))
+    }
+
+    // A category turned on is read whole by the next pass; one turned off sends nothing from the engine's next call on.
+    func categoriesChanged() {
+        guard syncStatus.isEnabled else { return }
+        Task { await tellCategories() }
+        requestPass(.person)
     }
 
     // MARK: - Passes
@@ -194,6 +213,8 @@ final class SyncProviderCoordinator: ObservableObject {
         }
         do {
             try await choose(.icloud) { [weak self] in self?.generation == started }.value.get()
+            await journalDelivery?.value
+            await tellCategories()
             if started == generation {
                 try await host.engine().syncNow(why: why)
             }
@@ -251,6 +272,48 @@ final class SyncProviderCoordinator: ObservableObject {
         }
         providerChoice = Task { _ = await choice.value }
         return choice
+    }
+
+    private func tellCategories() async {
+        guard let engine = host.openedEngine else { return }
+        let categories = Self.categories(loadSettings())
+        guard categories != toldCategories else { return }
+        do {
+            try await engine.setCategories(categories: categories)
+            toldCategories = categories
+        } catch {
+            Self.logger.error("The engine did not take the categories: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
+    // MARK: - Journal
+
+    // Told while iCloud runs, offline too, so the engine can mark them for the previous stable. With iCloud off the
+    // diff finds them once it turns on, and the previous stable marks everything when turned on.
+    private func journalRecorded(_ change: SyncHostChange) {
+        guard syncStatus.isEnabled else { return }
+        let previous = journalDelivery
+        let host = host
+        journalDelivery = Task {
+            await previous?.value
+            do {
+                try await host.engine().recordHostChanges(kind: change.kind, written: change.written, deleted: change.deleted)
+            } catch {
+                Self.logger.error("The engine did not take a host change: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            }
+        }
+        journalPass?.cancel()
+        let clock = activationClock
+        journalPass = Task { [weak self] in
+            do {
+                try await clock.sleep(for: Self.journalDebounce)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self else { return }
+            journalPass = nil
+            requestPass(.journal)
+        }
     }
 
     private func saveSubscriptionIfNeeded() async {
@@ -324,6 +387,9 @@ final class SyncProviderCoordinator: ObservableObject {
         let wasRunning = syncStatus.isEnabled
         syncStatus = status
         pendingPass = nil
+        journalPass?.cancel()
+        journalPass = nil
+        toldCategories = nil
         disarm()
         guard wasRunning else { return }
         generation += 1
@@ -362,7 +428,7 @@ final class SyncProviderCoordinator: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self, syncStatus.isEnabled else { return }
                 host.transport.cancelCallsInFlight()
-                requestPass(.launch)
+                requestPass(.accountChanged)
             }
         }
     }

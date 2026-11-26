@@ -141,7 +141,7 @@ final class ConnectionEditorStoreFixture {
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: live.syncTracker,
+            syncJournal: live.syncTracker.journal,
             welcomeRouter: live.welcomeRouter,
             telemetry: live.telemetry
         )

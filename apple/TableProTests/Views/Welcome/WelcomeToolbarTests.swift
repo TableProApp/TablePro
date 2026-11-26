@@ -23,14 +23,14 @@ private final class WelcomeLibraryFixture {
             .appendingPathComponent("welcome-toolbar-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let events = AppEvents()
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: defaults))
+        let tracker = SyncJournalRecorder()
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: defaults,
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
-        let groupStorage = GroupStorage(userDefaults: defaults, syncTracker: tracker, connectionStorage: connectionStorage)
-        let tagStorage = TagStorage(userDefaults: defaults, syncTracker: tracker, appEvents: events)
+        let groupStorage = GroupStorage(userDefaults: defaults, syncJournal: tracker.journal, connectionStorage: connectionStorage)
+        let tagStorage = TagStorage(userDefaults: defaults, syncJournal: tracker.journal, appEvents: events)
         let prod = ConnectionTag(name: "prod", color: .red)
         let euWest = ConnectionTag(name: "eu-west", color: .blue)
         let unused = ConnectionTag(name: "unused-prod", color: .gray)
@@ -77,7 +77,7 @@ private final class WelcomeLibraryFixture {
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             welcomeRouter: WelcomeRouter(),
             telemetry: live.telemetry
         )

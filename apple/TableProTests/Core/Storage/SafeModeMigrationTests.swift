@@ -18,7 +18,7 @@ struct SafeModeMigrationTests {
     private let pool = EphemeralDefaultsPool()
     private let storage: ConnectionStorage
     private let defaults: UserDefaults
-    private let tracker: SyncChangeTracker
+    private let tracker: SyncJournalRecorder
 
     init() throws {
         let unique = UUID().uuidString
@@ -32,12 +32,11 @@ struct SafeModeMigrationTests {
         let defaults = try pool.make().defaults
         let syncDefaults = try pool.make().defaults
         self.defaults = defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        self.tracker = SyncChangeTracker(metadataStorage: metadata)
+        self.tracker = SyncJournalRecorder()
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: InMemoryKeychain()
         )
     }
@@ -163,7 +162,7 @@ struct SafeModeMigrationTests {
         #expect(session?.safeModeLevel == .readOnly)
         #expect(session?.connection.safeModeLevel == .readOnly)
         #expect(saved?.safeModeLevel == .readOnly)
-        #expect(tracker.dirtyRecords(for: .connection).contains(id.uuidString))
+        #expect(tracker.dirtyIds(for: .connection).contains(id.uuidString))
     }
 
     @Test("resolvedConnectionDefinition prefers the persisted safe mode over a stale caller copy")
@@ -278,7 +277,7 @@ struct SafeModeMigrationTests {
         #expect(updated)
         #expect(storage.loadPassword(for: id) == "secret")
         #expect(storage.loadConnection(id: id)?.safeModeLevel == .safeModeFull)
-        #expect(tracker.dirtyRecords(for: .connection).contains(id.uuidString))
+        #expect(tracker.dirtyIds(for: .connection).contains(id.uuidString))
     }
 
     @Test("updateSafeModeLevel skips sync dirtiness for local-only connections")
@@ -303,7 +302,7 @@ struct SafeModeMigrationTests {
 
         #expect(updated)
         #expect(storage.loadConnection(id: id)?.safeModeLevel == .readOnly)
-        #expect(!tracker.dirtyRecords(for: .connection).contains(id.uuidString))
+        #expect(!tracker.dirtyIds(for: .connection).contains(id.uuidString))
     }
 
     // MARK: - Live Session Reconciliation

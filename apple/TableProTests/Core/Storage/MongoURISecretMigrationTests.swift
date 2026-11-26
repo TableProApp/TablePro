@@ -19,7 +19,7 @@ struct MongoURISecretMigrationTests {
         storage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: try pool.make().defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: try pool.make().defaults)),
+            syncJournal: SyncHostJournal(),
             keychain: keychain,
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         )

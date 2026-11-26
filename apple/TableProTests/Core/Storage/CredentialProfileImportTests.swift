@@ -14,7 +14,6 @@ struct CredentialProfileImportTests {
     private let pool = EphemeralDefaultsPool()
     private let directory: URL
     private let keychain = InMemoryKeychain()
-    private let metadata: SyncMetadataStorage
     private let integrity: ConnectionStoreIntegrity
     private let connections: ConnectionStorage
     private let storage: CredentialProfileStorage
@@ -25,15 +24,12 @@ struct CredentialProfileImportTests {
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("credential-import-\(unique)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        metadata = SyncMetadataStorage(
-            userDefaults: try pool.make().defaults
-        )
         integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let tracker = SyncJournalRecorder()
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: try pool.make().defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain,
             integrity: integrity
         )
@@ -41,7 +37,7 @@ struct CredentialProfileImportTests {
         storage = CredentialProfileStorage(
             fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
             integrity: integrity
         )
@@ -110,7 +106,7 @@ struct CredentialProfileImportTests {
             planned("p2", name: "Two")
         ]))
 
-        #expect(metadata.dirtyIds(for: .credentialProfile) == Set(created.values.map(\.uuidString)))
+        #expect(tracker.dirtyIds(for: .credentialProfile) == Set(created.values.map(\.uuidString)))
         #expect(storage.loadProfiles().map(\.sortOrder) == [0, 1])
     }
 
@@ -122,7 +118,7 @@ struct CredentialProfileImportTests {
         let unreadable = CredentialProfileStorage(
             fileURL: fileURL,
             keychain: keychain,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: SyncHostJournal(),
             connectionStorage: connections,
             integrity: integrity
         )

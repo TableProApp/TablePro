@@ -8,7 +8,6 @@ struct CatalogEditFavoriteAdoptionTests {
     private let connection = TestFixtures.makeConnection(database: "shop")
     private let suite: EphemeralDefaults
     private let syncSuite: EphemeralDefaults
-    private let metadata: SyncMetadataStorage
     private let favoriteTables: FavoriteTablesStorage
     private let favoriteDatabases: FavoriteDatabasesStorage
     private let databaseManager: DatabaseManager
@@ -19,16 +18,15 @@ struct CatalogEditFavoriteAdoptionTests {
         suite = try EphemeralDefaults()
         syncSuite = try EphemeralDefaults()
         let defaults = suite.defaults
-        metadata = SyncMetadataStorage(userDefaults: syncSuite.defaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
-        favoriteTables = FavoriteTablesStorage(userDefaults: defaults, syncTracker: tracker)
-        favoriteDatabases = FavoriteDatabasesStorage(defaults: defaults, syncTracker: tracker)
+        let tracker = SyncJournalRecorder()
+        favoriteTables = FavoriteTablesStorage(userDefaults: defaults, syncJournal: tracker.journal)
+        favoriteDatabases = FavoriteDatabasesStorage(defaults: defaults, syncJournal: tracker.journal)
         let connectionStorage = ConnectionStorage(
             fileURL: FileManager.default.temporaryDirectory
                 .appendingPathComponent("tablepro-tests")
                 .appendingPathComponent("catalog-edit-favorites-\(unique).json"),
             userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: InMemoryKeychain()
         )
         databaseManager = DatabaseManager(connectionStorage: connectionStorage)
@@ -67,8 +65,8 @@ struct CatalogEditFavoriteAdoptionTests {
         }
         favoriteTables.addFavorite(name: "orders", schema: "public", database: "archive", connectionId: connection.id)
         favoriteDatabases.setFavorite(database: "shop", environment: .production, connectionId: connection.id)
-        metadata.clearDirty(type: .tableFavorite)
-        metadata.clearDirty(type: .favoriteDatabase)
+        tracker.clearDirty(type: .tableFavorite)
+        tracker.clearDirty(type: .favoriteDatabase)
 
         var databaseChanges = 0
         let tableChanges = changes(of: .favoriteTablesDidChange, from: favoriteTables) {
@@ -85,8 +83,8 @@ struct CatalogEditFavoriteAdoptionTests {
         #expect(favorites.filter { $0.database == "shop_v2" }.count == 200)
         #expect(favorites.contains { $0.database == "archive" })
         #expect(!favorites.contains { $0.database == "shop" })
-        #expect(metadata.dirtyIds(for: .tableFavorite).count == 200)
-        #expect(metadata.tombstones(for: .tableFavorite).count == 200)
+        #expect(tracker.dirtyIds(for: .tableFavorite).count == 200)
+        #expect(tracker.tombstones(for: .tableFavorite).count == 200)
         #expect(favoriteDatabases.favorites(for: connection.id).map(\.database) == ["shop_v2"])
     }
 

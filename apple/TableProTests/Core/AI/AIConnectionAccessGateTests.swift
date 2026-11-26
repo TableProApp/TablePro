@@ -108,14 +108,14 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
         )
         let defaults = try EphemeralDefaults()
         let syncDefaults = try EphemeralDefaults()
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults.defaults))
+        let tracker = SyncJournalRecorder()
         self.fileURL = fileURL
         self.defaults = defaults
         self.syncDefaults = syncDefaults
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults.defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: InMemoryKeychain()
         )
     }
@@ -346,7 +346,7 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: live.syncTracker,
+            syncJournal: live.syncTracker.journal,
             welcomeRouter: live.welcomeRouter,
             telemetry: live.telemetry
         )

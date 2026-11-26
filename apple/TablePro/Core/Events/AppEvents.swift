@@ -109,8 +109,6 @@ final class AppEvents {
 
     let licenseStatusDidChange = PassthroughSubject<Void, Never>()
 
-    let syncChangeTracked = PassthroughSubject<Void, Never>()
-
     // MARK: - MCP
 
     let mcpAuditLogChanged = PassthroughSubject<Void, Never>()

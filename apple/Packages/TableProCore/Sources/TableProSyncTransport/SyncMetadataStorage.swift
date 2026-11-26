@@ -385,6 +385,11 @@ public final class SyncMetadataStorage: @unchecked Sendable {
         set { userDefaults.set(newValue.rawValue, forKey: key("zoneState")) }
     }
 
+    // Back to what the getter infers from the token and the last sync date, as before the key existed.
+    public func forgetZoneState() {
+        userDefaults.removeObject(forKey: key("zoneState"))
+    }
+
     // MARK: - Reset
 
     public func clearAll() {

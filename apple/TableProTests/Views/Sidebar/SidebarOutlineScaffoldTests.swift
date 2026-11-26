@@ -587,9 +587,8 @@ struct DatabaseTreeFavoriteRefreshTests {
         let favoritesDefaults = favoritesSuite.defaults
         let syncDefaults = syncSuite.defaults
 
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
-        let storage = FavoriteTablesStorage(userDefaults: favoritesDefaults, syncTracker: tracker)
+        let tracker = SyncJournalRecorder()
+        let storage = FavoriteTablesStorage(userDefaults: favoritesDefaults, syncJournal: tracker.journal)
         let coordinator = DatabaseTreeOutlineCoordinator(favoriteTablesStorage: storage)
         let connectionId = UUID()
         let table = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
@@ -659,9 +658,8 @@ struct DatabaseTreeFavoriteRefreshTests {
         let databaseDefaults = databaseSuite.defaults
         let syncDefaults = syncSuite.defaults
 
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
-        let tableStorage = FavoriteTablesStorage(userDefaults: tableDefaults, syncTracker: tracker)
+        let tracker = SyncJournalRecorder()
+        let tableStorage = FavoriteTablesStorage(userDefaults: tableDefaults, syncJournal: tracker.journal)
         let databaseStorage = FavoriteDatabasesStorage(defaults: databaseDefaults)
         let coordinator = DatabaseTreeOutlineCoordinator(
             favoriteTablesStorage: tableStorage,

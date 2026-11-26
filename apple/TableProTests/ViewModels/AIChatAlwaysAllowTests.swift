@@ -34,11 +34,11 @@ struct AIChatAlwaysAllowTests {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: try pool.make().defaults))
+        let tracker = SyncJournalRecorder()
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: try pool.make().defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             appEvents: AppEvents()
         )
         registry = ChatToolRegistry()
@@ -141,7 +141,7 @@ struct AIChatAlwaysAllowTests {
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: live.syncTracker,
+            syncJournal: live.syncTracker.journal,
             welcomeRouter: live.welcomeRouter,
             telemetry: live.telemetry
         )

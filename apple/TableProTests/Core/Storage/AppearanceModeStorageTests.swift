@@ -96,18 +96,18 @@ struct AppearanceModeStorageTests {
 
     // MARK: - Manager
 
-    private func makeManager(tracker: SyncChangeTracker, root: URL) -> (AppSettingsManager, ThemeEngine) {
+    private func makeManager(tracker: SyncJournalRecorder, root: URL) -> (AppSettingsManager, ThemeEngine) {
         let catalog = ThemeCatalog(
             userDirectory: root.appendingPathComponent("Themes", isDirectory: true),
             bundleDirectory: nil,
             fileTrash: .folder(root.appendingPathComponent("Trash", isDirectory: true)),
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
         let engine = ThemeEngine(catalog: catalog)
         let manager = AppSettingsManager(
             storage: AppSettingsStorage(userDefaults: defaults),
             themeEngine: engine,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             appEvents: AppEvents()
         )
         return (manager, engine)
@@ -121,7 +121,7 @@ struct AppearanceModeStorageTests {
     @Test("Changing the mode saves it on this Mac, applies it, and marks nothing for sync")
     func modeChangeStaysLocal() throws {
         let syncSuite = try EphemeralDefaults()
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncSuite.defaults))
+        let tracker = SyncJournalRecorder()
         let root = Self.makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let (manager, engine) = makeManager(tracker: tracker, root: root)
@@ -132,7 +132,7 @@ struct AppearanceModeStorageTests {
 
         #expect(AppSettingsStorage(userDefaults: defaults).loadAppearanceMode() == .dark)
         #expect(engine.mode == .dark)
-        #expect(tracker.dirtyRecords(for: .settings).isEmpty)
+        #expect(tracker.dirtyIds(for: .settings).isEmpty)
 
         manager.appearanceMode = .auto
         #expect(engine.mode == .auto)
@@ -141,14 +141,14 @@ struct AppearanceModeStorageTests {
     @Test("Changing a theme id marks the appearance record and leaves the mode")
     func themeChangeSyncs() throws {
         let syncSuite = try EphemeralDefaults()
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncSuite.defaults))
+        let tracker = SyncJournalRecorder()
         let root = Self.makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let (manager, engine) = makeManager(tracker: tracker, root: root)
 
         manager.appearance = AppearanceSettings(preferredDarkThemeId: "user.night")
 
-        #expect(tracker.dirtyRecords(for: .settings) == [AppSettingsCategory.appearance])
+        #expect(tracker.dirtyIds(for: .settings) == [AppSettingsCategory.appearance])
         #expect(manager.appearanceMode == .auto)
         #expect(engine.darkThemeId == "user.night")
     }
