@@ -113,17 +113,18 @@ impl Device {
     }
 
     pub async fn scope(&self, scope: ScopeName) -> ScopeRow {
-        match self
+        let row = self
             .state
             .begin()
             .await
             .unwrap()
             .get(&RowKey::Scope(scope))
             .await
-            .unwrap()
-        {
-            Some(Row::Scope(row)) => row,
-            _ => panic!("no scope row for {scope}"),
-        }
+            .unwrap();
+        row.and_then(|row| match row {
+            Row::Scope(row) => Some(row),
+            _ => None,
+        })
+        .unwrap()
     }
 }

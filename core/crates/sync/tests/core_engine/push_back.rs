@@ -56,18 +56,19 @@ async fn a_rotation_the_restore_lost_goes_back_on_the_next_pass_and_the_device_t
 }
 
 async fn team_row(device: &Device, team: TeamId) -> KeyVersionRow {
-    match device
+    let row = device
         .state
         .begin()
         .await
         .unwrap()
         .get(&RowKey::KeyVersion(ScopeName::Team(team), KeyPurpose::Team))
         .await
-        .unwrap()
-    {
-        Some(Row::KeyVersion(row)) => row,
-        _ => panic!("no team key row"),
-    }
+        .unwrap();
+    row.and_then(|row| match row {
+        Row::KeyVersion(row) => Some(row),
+        _ => None,
+    })
+    .unwrap()
 }
 
 // The member waits for the owner's version as `restore_wait` and resumes on its own pass once the owner's device put it
