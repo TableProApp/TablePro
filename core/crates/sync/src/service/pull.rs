@@ -518,6 +518,7 @@ impl ServiceSync {
             for conflict in &writes.conflicts {
                 txn.put(Row::Conflict(conflict.clone())).await?;
             }
+            self.check_stop()?;
             txn.commit().await?;
         }
         self.write_store(pull.scope, adapters, writes).await

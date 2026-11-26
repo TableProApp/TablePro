@@ -569,6 +569,7 @@ impl Rig {
         let queue = Queue {
             state: &self.state,
             adapters: &adapters,
+            fence: &StopSignal::new(),
         };
         queue.waiting().await.unwrap()
     }
@@ -579,6 +580,7 @@ impl Rig {
         let queue = Queue {
             state: &self.state,
             adapters: &adapters,
+            fence: &StopSignal::new(),
         };
         for approval in queue.waiting().await.unwrap() {
             queue.decide(&approval.key, &approval.field, true).await.unwrap();

@@ -349,3 +349,35 @@ async fn the_queued_count_leaves_out_the_personal_scope_once_it_rests() {
     assert_eq!(both, 2);
     assert_eq!(mini.sync.status().queued_changes, 1);
 }
+
+// A switch to teams-only that waits behind a switch to personal still holds back every pass queued before it, so no
+// pass runs with personal data while the person's last word was to stop it.
+#[tokio::test]
+async fn a_pass_queued_between_a_switch_on_and_a_later_switch_off_carries_nothing_personal() {
+    let server = FakeServer::new();
+    let mac = Device::new(&server, "dev_mac").await;
+    mac.connections.put(&id(1), connection("Prod"));
+    mac.sync().await;
+    let mini = DeviceBuilder::new(&server, "dev_mini").teams_only().build().await;
+    let (reached, release) = mini.wire.hold_next_pull(ScopeName::Personal);
+
+    let queued = async {
+        reached.notified().await;
+        let let_go = async {
+            tokio::task::yield_now().await;
+            release.notify_one();
+        };
+        tokio::join!(
+            mini.sync.set_mode(ServiceMode::Personal),
+            mini.pass(),
+            mini.sync.set_mode(ServiceMode::TeamsOnly),
+            let_go,
+        )
+    };
+    let (first, ((), between, (), ())) = tokio::join!(mini.pass(), queued);
+
+    assert_eq!(first.unwrap_err().code(), "sync.cancelled");
+    assert_eq!(between.unwrap_err().code(), "sync.cancelled");
+    assert_eq!(mini.sync.mode(), ServiceMode::TeamsOnly);
+    assert_eq!(mini.connections.get(&id(1)), None);
+}

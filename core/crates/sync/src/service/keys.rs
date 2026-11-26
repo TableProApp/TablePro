@@ -335,6 +335,7 @@ impl ServiceSync {
         for base in bases {
             txn.put(Row::Base(base)).await?;
         }
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
@@ -363,6 +364,7 @@ impl ServiceSync {
                 txn.put(Row::Scope(row)).await?;
             }
         }
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }

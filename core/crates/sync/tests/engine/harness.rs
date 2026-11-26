@@ -307,8 +307,14 @@ pub struct Wire {
     keys: Mutex<Vec<IdempotencyKey>>,
     pushed: Mutex<Vec<Vec<String>>>,
     pub pulls: AtomicUsize,
-    // The next pull of a scope waits here once the server answered it: told when it is reached, then let go.
-    held_pull: Mutex<Option<(ScopeName, Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>>,
+    held_pull: Mutex<Option<HeldPull>>,
+}
+
+// The next pull of a scope waits here once the server answered it: told when it is reached, then let go.
+struct HeldPull {
+    scope: ScopeName,
+    reached: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
 }
 
 impl Wire {
@@ -331,7 +337,11 @@ impl Wire {
     pub fn hold_next_pull(&self, scope: ScopeName) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
         let reached = Arc::new(tokio::sync::Notify::new());
         let release = Arc::new(tokio::sync::Notify::new());
-        *lock(&self.held_pull) = Some((scope, Arc::clone(&reached), Arc::clone(&release)));
+        *lock(&self.held_pull) = Some(HeldPull {
+            scope,
+            reached: Arc::clone(&reached),
+            release: Arc::clone(&release),
+        });
         (reached, release)
     }
 
@@ -385,13 +395,13 @@ impl Transport for Wire {
         let held = {
             let mut held = lock(&self.held_pull);
             match held.as_ref() {
-                Some((waits, ..)) if *waits == scope => held.take(),
+                Some(waits) if waits.scope == scope => held.take(),
                 _ => None,
             }
         };
-        if let Some((_, reached, release)) = held {
-            reached.notify_one();
-            release.notified().await;
+        if let Some(held) = held {
+            held.reached.notify_one();
+            held.release.notified().await;
         }
         answer
     }

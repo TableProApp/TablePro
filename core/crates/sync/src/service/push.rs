@@ -219,6 +219,7 @@ impl ServiceSync {
             for key in pruned {
                 txn.delete(&RowKey::Base(key)).await?;
             }
+            self.check_stop()?;
             txn.commit().await?;
         }
         Ok(out)
@@ -402,6 +403,7 @@ impl ServiceSync {
             txn.put(Row::Scope(row)).await?;
         }
         txn.delete(&RowKey::Outbox(scope)).await?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
@@ -521,6 +523,7 @@ impl ServiceSync {
             txn.delete(&RowKey::Base(key)).await?;
         }
         txn.delete(&RowKey::Outbox(scope)).await?;
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }

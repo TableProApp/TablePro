@@ -22,7 +22,7 @@ use crate::api::ids::{KindName, RecordKey, ScopeName};
 use crate::api::state::{
     ApprovalDecision, ApprovalRow, HeldReason, Row, RowKey, RowRange, StateStore, StateTxn, Table,
 };
-use crate::engine::Adapters;
+use crate::engine::{Adapters, Fence};
 
 // What the store takes of a pulled record, and the queue's rows for it.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -230,6 +230,8 @@ pub async fn held_members(
 pub struct Queue<'a> {
     pub state: &'a Arc<dyn StateStore>,
     pub adapters: &'a Adapters,
+    // Checked before each store write and commit, so a provider stop keeps a decision out (P1-M4).
+    pub fence: &'a dyn Fence,
 }
 
 impl Queue<'_> {
@@ -302,6 +304,7 @@ impl Queue<'_> {
             (Some(mut fields), Some(adapter)) if approve => {
                 set(&mut fields, field, as_member(&row.pulled));
                 // The store first: a crash before the state commits leaves a row that a later pull clears.
+                self.fence.check()?;
                 adapter
                     .apply(
                         key.scope,
@@ -322,6 +325,7 @@ impl Queue<'_> {
             // The store no longer holds the record: nothing is left to decide.
             _ => txn.delete(&RowKey::Approval(key.clone(), field.to_owned())).await?,
         }
+        self.fence.check()?;
         txn.commit().await?;
         Ok(())
     }
@@ -338,6 +342,7 @@ impl Queue<'_> {
         let mut txn = self.state.begin().await?;
         txn.put(Row::Approval(row)).await?;
         let rows = rows_of(txn.as_mut(), &key).await?;
+        self.fence.check()?;
         txn.commit().await?;
         if rows.iter().all(|row| row.decision == ApprovalDecision::Approved) {
             self.apply_held(&key, pulled, rows).await?;
@@ -359,9 +364,11 @@ impl Queue<'_> {
         if split.hold {
             let mut txn = self.state.begin().await?;
             write(txn.as_mut(), &key, &split).await?;
+            self.fence.check()?;
             txn.commit().await?;
             return Ok(());
         }
+        self.fence.check()?;
         adapter
             .apply(
                 key.scope,
@@ -376,6 +383,7 @@ impl Queue<'_> {
             txn.delete(&RowKey::Approval(row.key, row.field)).await?;
         }
         txn.delete(&RowKey::Held(key)).await?;
+        self.fence.check()?;
         txn.commit().await?;
         Ok(())
     }

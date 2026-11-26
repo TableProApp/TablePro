@@ -10,6 +10,7 @@ mod scopes;
 use push::AfterPush;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -34,7 +35,9 @@ use crate::api::state::{
     Table,
 };
 use crate::api::transport::{DpopKey, ServiceTransport, TransportError};
-use crate::engine::{Adapters, Clock, EngineEvents, EngineHooks, Journal, JournalEntry, JournalIds, Pass, StopSignal};
+use crate::engine::{
+    Adapters, Clock, EngineEvents, EngineHooks, Fence, Journal, JournalEntry, JournalIds, Pass, StopSignal,
+};
 use crate::keys::KeyService;
 
 // This device's signing key, which every personal and history call and every key-object or envelope write carries
@@ -111,9 +114,10 @@ pub struct ServiceSync {
     proofs: Arc<dyn ProofSource>,
     clock: Arc<dyn Clock>,
     stop: StopSignal,
-    // A switch to teams-only ends the pass in flight at its next store write, commit or send, so nothing personal goes
-    // on once personal sync stops (0055, Leaving a provider).
-    switching: StopSignal,
+    // Switches to teams-only still waiting for the session: while one waits, the pass in flight ends at its next store
+    // write, commit or send, and so does any pass queued before it, so nothing personal goes on once personal sync
+    // stops (0055, Leaving a provider). A count, so no other switch can lift it.
+    leaving: AtomicUsize,
     journal: Journal,
     events: Option<Arc<dyn EngineEvents>>,
     // Changed only under the session lock, so one pass and one decision each see one mode.
@@ -237,7 +241,7 @@ impl ServiceSync {
             proofs: parts.proofs,
             clock: parts.clock,
             stop: parts.stop,
-            switching: StopSignal::new(),
+            leaving: AtomicUsize::new(0),
             journal: parts.journal,
             events: parts.events,
             mode: Mutex::new(parts.mode),
@@ -279,15 +283,18 @@ impl ServiceSync {
     // Between passes: a move between providers, or the person turning personal sync on or off. Turning it on reads the
     // personal scope again on the next pass, since its kinds were off meanwhile.
     pub async fn set_mode(&self, mode: ServiceMode) {
-        if mode == ServiceMode::TeamsOnly && self.mode() == ServiceMode::Personal {
-            self.switching.stop();
+        let leaving = mode == ServiceMode::TeamsOnly;
+        if leaving {
+            self.leaving.fetch_add(1, Ordering::SeqCst);
         }
         let session = self.session.lock().await;
         let changed = {
             let mut held = self.mode.lock().unwrap_or_else(PoisonError::into_inner);
             std::mem::replace(&mut *held, mode) != mode
         };
-        self.switching.resume();
+        if leaving {
+            self.leaving.fetch_sub(1, Ordering::SeqCst);
+        }
         drop(session);
         if changed {
             self.refresh_counts().await;
@@ -302,11 +309,18 @@ impl ServiceSync {
 
     fn check_stop(&self) -> Result<(), SyncError> {
         self.stop.check()?;
-        self.switching.check()
+        if self.switching() {
+            return Err(SyncError::Cancelled);
+        }
+        Ok(())
+    }
+
+    fn switching(&self) -> bool {
+        self.leaving.load(Ordering::SeqCst) > 0
     }
 
     fn stopping(&self) -> bool {
-        self.stop.is_stopped() || self.switching.is_stopped()
+        self.stop.is_stopped() || self.switching()
     }
 
     fn queued_shown(&self) -> u32 {
@@ -336,6 +350,7 @@ impl ServiceSync {
         Queue {
             state: &self.state,
             adapters: self.decided_adapters(),
+            fence: self,
         }
     }
 
@@ -343,6 +358,7 @@ impl ServiceSync {
         Conflicts {
             state: &self.state,
             adapters: self.decided_adapters(),
+            fence: self,
         }
     }
 
@@ -582,6 +598,7 @@ impl ServiceSync {
                     self.check_stop()?;
                     let mut txn = begin(&self.state).await?;
                     txn.delete(&RowKey::Store(store.clone())).await?;
+                    self.check_stop()?;
                     txn.commit().await?;
                 }
                 let seen = StoreSeen {
@@ -615,6 +632,7 @@ impl ServiceSync {
         for row in rows {
             txn.put(row).await?;
         }
+        self.check_stop()?;
         txn.commit().await?;
         Ok(())
     }
@@ -685,6 +703,7 @@ impl ServiceSync {
             for row in txn.scan(&RowRange::Table(Table::Stores)).await? {
                 txn.delete(&row.key()).await?;
             }
+            self.check_stop()?;
             txn.commit().await?;
         }
         session.stale_handled = true;
@@ -716,7 +735,7 @@ impl ServiceSync {
                 };
             }
             // A switch to teams-only ended the pass; the next one runs at once.
-            Err(SyncError::Cancelled) if self.switching.is_stopped() && !self.stop.is_stopped() => {
+            Err(SyncError::Cancelled) if self.switching() && !self.stop.is_stopped() => {
                 status.phase = SyncPhase::Idle;
             }
             Err(error) => {
@@ -765,6 +784,12 @@ impl ServiceSync {
             status.conflicts = conflicts;
             status.waiting_approvals = approvals;
         }
+    }
+}
+
+impl Fence for ServiceSync {
+    fn check(&self) -> Result<(), SyncError> {
+        self.check_stop()
     }
 }
 
