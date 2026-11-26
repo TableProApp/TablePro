@@ -931,7 +931,9 @@ impl SessionWindow {
                     return;
                 }
                 Ok(Err(tablepro_storage::StorageError::ProjectNotFound { .. })) => {
-                    input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext("The project was deleted.")));
+                    input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext(
+                        "The project was deleted.",
+                    )));
                     return;
                 }
                 Ok(Err(error)) => error.to_string(),
@@ -1386,7 +1388,10 @@ mod tests {
         );
         assert_eq!(
             applied_import(Ok(ImportReport::default())),
-            ("Imported the projects and groups in that file.".to_owned(), SetupEnding::Stay)
+            (
+                "Imported the projects and groups in that file.".to_owned(),
+                SetupEnding::Stay
+            )
         );
         let (outdated, none) = applied_import(Err(StorageError::ImportOutdated));
         assert_eq!(
