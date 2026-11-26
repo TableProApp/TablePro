@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use tablepro_cloud_api::{ApiError, http_text};
+use tablepro_cloud_api::{ApiError, StepUpChallenge, http_text};
 
 use crate::entitlement::EntitlementError;
 use crate::license::LicenseError;
@@ -29,6 +29,12 @@ pub enum AccountError {
     DeviceLimitReached { devices: Vec<Device> },
     #[error("the offline file is for another account than the one signed in")]
     OtherAccount,
+    // RFC 9470: the call needs a fresher or stronger sign-in, which `Account::step_up` makes.
+    #[error("the call needs a fresh step-up")]
+    StepUpRequired(StepUpChallenge),
+    // The browser stepped up a sign-in of another account than this one, so its tokens were revoked.
+    #[error("the step-up was made for another account than the one signed in")]
+    StepUpOtherAccount,
     #[error("the server refused the request ({status} {code}): {detail}")]
     Refused { status: u16, code: String, detail: String },
     #[error("the account service asked for fewer requests (retry after {retry_after:?})")]
@@ -77,6 +83,8 @@ impl AccountError {
             Self::DeviceRevoked => "account.device_revoked",
             Self::DeviceLimitReached { .. } => "account.device_limit_reached",
             Self::OtherAccount => "account.other_account",
+            Self::StepUpRequired(_) => "account.step_up_required",
+            Self::StepUpOtherAccount => "account.step_up_other_account",
             Self::Refused { code, .. } => WORDED_REFUSALS
                 .iter()
                 .find(|(problem, _)| problem == code)
@@ -104,6 +112,7 @@ impl From<ApiError> for AccountError {
                 devices: devices.into_iter().map(Into::into).collect(),
             },
             ApiError::Refused { status, code, detail } => Self::Refused { status, code, detail },
+            ApiError::StepUpRequired(challenge) => Self::StepUpRequired(challenge),
             // Only a share's snapshot gets that large.
             ApiError::TooLarge => Self::Refused {
                 status: 413,

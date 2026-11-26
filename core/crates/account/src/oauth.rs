@@ -9,7 +9,7 @@ use oauth2::{
     TokenResponse, TokenUrl,
 };
 use secrecy::{ExposeSecret, SecretString};
-use tablepro_cloud_api::{rate_limited, read_capped, schema_mismatch};
+use tablepro_cloud_api::{StepUpChallenge, rate_limited, read_capped, schema_mismatch};
 use url::Url;
 
 use crate::account_error::AccountError;
@@ -63,15 +63,17 @@ impl OAuth {
         })
     }
 
-    // The machine's fields name it on the confirmation screen.
+    // The machine's fields name it on the confirmation screen. A step-up asks for what its challenge named (RFC 9470
+    // section 4).
     pub(crate) fn authorization(
         &self,
         redirect_uri: String,
         device: &DeviceDescription,
+        step_up: Option<&StepUpChallenge>,
     ) -> Result<Authorization, AccountError> {
         let redirect_uri = RedirectUrl::new(redirect_uri).map_err(protocol)?;
         let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
-        let (url, state) = self
+        let mut request = self
             .client
             .authorize_url(CsrfToken::new_random)
             .set_redirect_uri(Cow::Borrowed(&redirect_uri))
@@ -79,8 +81,16 @@ impl OAuth {
             .set_pkce_challenge(challenge)
             .add_extra_param("machine_name", device.name.clone())
             .add_extra_param("app_version", device.app_version.clone())
-            .add_extra_param("os_version", device.os_version.clone())
-            .url();
+            .add_extra_param("os_version", device.os_version.clone());
+        if let Some(step_up) = step_up {
+            if !step_up.acr_values.is_empty() {
+                request = request.add_extra_param("acr_values", step_up.acr_values.join(" "));
+            }
+            if let Some(max_age) = step_up.max_age_secs {
+                request = request.add_extra_param("max_age", max_age.to_string());
+            }
+        }
+        let (url, state) = request.url();
         Ok(Authorization {
             url,
             state,

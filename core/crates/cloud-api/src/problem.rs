@@ -5,10 +5,14 @@ use reqwest::StatusCode;
 use reqwest::header::{HeaderMap, RETRY_AFTER};
 
 use crate::api_error::{ApiError, http_text};
+use crate::challenge::StepUpChallenge;
 use crate::http::read_capped;
 use crate::v2;
 
 pub async fn answer_error(error: Error<v2::types::Problem>) -> ApiError {
+    if let Some(challenge) = step_up_challenge(&error) {
+        return ApiError::StepUpRequired(challenge);
+    }
     match error {
         Error::ErrorResponse(answer) if answer.status() == StatusCode::TOO_MANY_REQUESTS => {
             rate_limited(answer.headers())
@@ -36,6 +40,19 @@ pub async fn answer_error(error: Error<v2::types::Problem>) -> ApiError {
         // Its text carries the whole answer, an entitlement or the account's details among them.
         Error::InvalidResponsePayload(_, error) => ApiError::Protocol(schema_mismatch(&error)),
         other => ApiError::Protocol(other.to_string()),
+    }
+}
+
+// RFC 9470 section 3: the challenge comes on a 401, whatever problem code the body names.
+fn step_up_challenge(error: &Error<v2::types::Problem>) -> Option<StepUpChallenge> {
+    let (status, headers) = match error {
+        Error::ErrorResponse(answer) => (answer.status(), answer.headers()),
+        Error::UnexpectedResponse(response) => (response.status(), response.headers()),
+        _ => return None,
+    };
+    match status {
+        StatusCode::UNAUTHORIZED => StepUpChallenge::from_headers(headers),
+        _ => None,
     }
 }
 
@@ -159,6 +176,63 @@ mod tests {
         assert!(
             !text.contains("secret-entitlement-token") && !text.contains("ada@example.com"),
             "{text}"
+        );
+    }
+
+    async fn answered_401(challenge: Option<&'static str>, code: &str) -> ApiError {
+        let mut page = http::Response::builder().status(401);
+        if let Some(challenge) = challenge {
+            page = page.header(reqwest::header::WWW_AUTHENTICATE, challenge);
+        }
+        let body = format!(r#"{{"type":"about:blank","title":"Unauthorized","status":401,"code":"{code}"}}"#);
+        let response = reqwest::Response::from(page.body(body).expect("an answer"));
+        let answer = v2::ResponseValue::<v2::types::Problem>::from_response::<()>(response)
+            .await
+            .expect("a problem");
+        answer_error(Error::ErrorResponse(answer)).await
+    }
+
+    #[tokio::test]
+    async fn a_401_with_rfc_9470_s_challenge_is_a_step_up_and_any_other_401_a_refusal() {
+        let step_up = answered_401(
+            Some(r#"Bearer error="insufficient_user_authentication", acr_values="urn:tablepro:acr:passkey", max_age=300"#),
+            "step_up_required",
+        )
+        .await;
+        let expired = answered_401(Some(r#"Bearer error="invalid_token""#), "unauthorized").await;
+        let bare = answered_401(None, "step_up_required").await;
+
+        assert!(
+            matches!(&step_up, ApiError::StepUpRequired(challenge)
+                if challenge.acr_values == ["urn:tablepro:acr:passkey"] && challenge.max_age_secs == Some(300)),
+            "{step_up:?}"
+        );
+        assert!(
+            matches!(&expired, ApiError::Refused { status: 401, code, .. } if code == "unauthorized"),
+            "{expired:?}"
+        );
+        assert!(
+            matches!(&bare, ApiError::Refused { status: 401, code, .. } if code == "step_up_required"),
+            "{bare:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_challenge_on_another_status_is_not_a_step_up() {
+        let page = http::Response::builder()
+            .status(403)
+            .header(
+                reqwest::header::WWW_AUTHENTICATE,
+                r#"Bearer error="insufficient_user_authentication", max_age=5"#,
+            )
+            .body(r#"{"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden"}"#)
+            .expect("an answer");
+
+        let answered = answer_error(Error::UnexpectedResponse(reqwest::Response::from(page))).await;
+
+        assert!(
+            matches!(&answered, ApiError::Refused { status: 403, code, .. } if code == "forbidden"),
+            "{answered:?}"
         );
     }
 
