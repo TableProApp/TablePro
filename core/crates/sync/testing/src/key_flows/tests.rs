@@ -454,19 +454,7 @@ async fn a_team_envelope_waits_while_the_team_is_due_a_rotation() {
     flows.add_team(team, Role::Owner, &[]);
     flows.create_team_keys(team).await.unwrap();
     let id = EnvelopeId::parse("library_connection/6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44/password").unwrap();
-    flows
-        .roster_read(
-            team,
-            tablepro_sync::api::key_flows::Roster {
-                members: Vec::new(),
-                role: Some(Role::Owner),
-                rotation_due: true,
-                stopped: Vec::new(),
-                caught_up: true,
-            },
-        )
-        .await
-        .unwrap();
+    flows.roster_read(team, roster(team, true)).await.unwrap();
 
     let held = flows
         .seal_team_envelope(team, id.clone(), SecretString::from("x".to_owned()), json!({}))
@@ -649,4 +637,194 @@ async fn an_offline_sign_out_leaves_the_server_s_pending_reset_alone() {
     flows.sign_out().await.unwrap();
 
     assert_eq!(flows.pending_reset().await.unwrap().unwrap().state, ResetState::Pending);
+}
+
+// A team's roster from a scopes body, decided on after a caught-up pull.
+fn roster(team: TeamId, rotation_due: bool) -> tablepro_sync::api::key_flows::Roster {
+    use tablepro_sync::api::key_flows::{CaughtUp, Roster};
+    use tablepro_sync::api::scopes::{ScopeInfo, ScopePolicies};
+    use tablepro_sync::api::transport::PulledPage;
+
+    let scope = tablepro_sync::api::ids::ScopeName::Team(team);
+    let info = ScopeInfo {
+        scope,
+        role: Some(Role::Owner),
+        horizon: 0,
+        epochs: Vec::new(),
+        writable: true,
+        policies: ScopePolicies::default(),
+        quota: None,
+        rotation_due,
+        members: Vec::new(),
+        stopped: Vec::new(),
+        approved: None,
+    };
+    let page = PulledPage {
+        records: Vec::new(),
+        cursor: None,
+        changes_cursor: None,
+        caught_up: true,
+        unread: Vec::new(),
+    };
+    Roster::of(&info, CaughtUp::from_page(scope, &page))
+}
+
+#[tokio::test]
+async fn a_device_that_signed_out_offline_cannot_activate_its_reset() {
+    let flows = with_keys().await;
+    let draft = flows.begin_reset(ResetKind::KeepScopeKeys).await.unwrap();
+    let pending = flows.finish_reset_proposal(draft.draft, typed(&draft)).await.unwrap();
+    flows.set_offline(true);
+    flows.sign_out().await.unwrap();
+    flows.advance_clock(RESET_HOLD_US);
+
+    let activated = flows.activate_reset(pending.reset).await;
+
+    assert!(!flows.pending_reset().await.unwrap().unwrap().mine);
+    assert!(activated.is_err());
+}
+
+#[tokio::test]
+async fn only_a_catch_up_stop_is_reported_and_a_stopped_team_seals_nothing() {
+    use tablepro_sync::api::state::{KeyVersionState, StopClear, StoppedCause};
+
+    let flows = with_keys().await;
+    let team = TeamId(Uuid::new_v4());
+    let waiting = TeamId(Uuid::new_v4());
+    for id in [team, waiting] {
+        flows.add_team(id, Role::Owner, &[]);
+        flows.create_team_keys(id).await.unwrap();
+    }
+    let id = EnvelopeId::parse("library_connection/6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44/password").unwrap();
+
+    flows.stop_team(team, StoppedCause::CatchUp);
+    flows.stop_team(waiting, StoppedCause::RestoreWait);
+    let sealed = flows
+        .seal_team_envelope(team, id, SecretString::from("x".to_owned()), json!({}))
+        .await;
+    let keys = flows.team_keys(team).await.unwrap();
+    let actions = flows.stop_actions().await.unwrap();
+    let wrong_clear = flows.clear_team_stop(team, StopClear::AwaitedVersionsBack);
+
+    assert!(sealed.is_err());
+    assert_eq!(
+        (keys.state, keys.stopped_cause),
+        (KeyVersionState::Stopped, Some(StoppedCause::CatchUp))
+    );
+    assert_eq!(
+        actions,
+        [StopAction::Report {
+            team,
+            version: Version::new(1).unwrap()
+        }]
+    );
+    assert!(wrong_clear.is_err());
+    flows.clear_team_stop(team, StopClear::Reconfirmed).unwrap();
+    assert_eq!(flows.stop_actions().await.unwrap(), [StopAction::Withdraw { team }]);
+}
+
+#[tokio::test]
+async fn a_push_back_that_lacks_a_dependency_waits_instead_of_ending() {
+    use tablepro_sync::api::ids::{KindName, ScopeName};
+    use tablepro_sync::api::key_flows::{KeyChangeSet, PushBackVerdict, RestoreFlows};
+    use tablepro_sync::api::state::StoppedCause;
+    use tablepro_sync::api::transport::{Change, ChangeOp, ChangeOutcome, DpopKey};
+
+    let flows = with_keys().await;
+    let team = TeamId(Uuid::new_v4());
+    flows.add_team(team, Role::Owner, &[]);
+    flows.create_team_keys(team).await.unwrap();
+    let set = KeyChangeSet {
+        scope: ScopeName::Team(team),
+        changes: vec![Change {
+            kind: KindName::parse("key.version").unwrap(),
+            record_id: "x".to_owned(),
+            base: None,
+            op: ChangeOp::Delete,
+        }],
+        proof: DpopKey(std::sync::Arc::new(
+            tablepro_keys::keys::Ed25519Seed::generate().unwrap(),
+        )),
+    };
+
+    let verdict = flows
+        .push_back_answered(
+            set,
+            vec![ChangeOutcome::Rejected {
+                code: RejectedCode::KeyDependency,
+            }],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        verdict,
+        PushBackVerdict::Wait {
+            scope: ScopeName::Team(team)
+        }
+    );
+    assert_eq!(
+        flows.team_keys(team).await.unwrap().stopped_cause,
+        Some(StoppedCause::RestoreWait)
+    );
+    assert!(flows.stop_actions().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_stop_report_can_be_confirmed_again_only_by_one_who_held_its_version() {
+    use tablepro_sync::api::scopes::StopReport;
+
+    let flows = with_keys().await;
+    let team = TeamId(Uuid::new_v4());
+    flows.add_team(team, Role::Owner, &[]);
+    flows.create_team_keys(team).await.unwrap();
+    let report = |version: u32| StopReport {
+        account: AccountId(Uuid::from_u128(5)),
+        device: tablepro_sync::api::ids::DeviceRowId("dev_x".to_owned()),
+        version: Version::new(version).unwrap(),
+    };
+    let mut held = roster(team, false);
+    held.stopped = vec![report(1), report(4)];
+
+    flows.roster_read(team, held).await.unwrap();
+    let keys = flows.team_keys(team).await.unwrap();
+
+    assert!(keys.stopped[0].can_reconfirm);
+    assert!(!keys.stopped[1].can_reconfirm);
+}
+
+#[tokio::test]
+async fn a_held_restart_applies_only_for_the_identity_the_person_compared() {
+    use tablepro_sync::api::state::{KeyVersionState, StoppedCause};
+
+    let flows = with_keys().await;
+    let team = TeamId(Uuid::new_v4());
+    let ana = AccountId(Uuid::from_u128(2));
+    flows.add_team(team, Role::Editor, &[]);
+    flows.hold_restart(team, Version::new(3).unwrap(), ana);
+
+    let held = flows.held_restart(team).await.unwrap().unwrap();
+    let sealed = flows
+        .seal_team_envelope(
+            team,
+            EnvelopeId::parse("library_connection/6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44/password").unwrap(),
+            SecretString::from("x".to_owned()),
+            json!({}),
+        )
+        .await;
+    let wrong = flows.accept_restart(team, Ed25519Public([7; 32])).await;
+    let stopped = flows.team_keys(team).await.unwrap();
+    flows.accept_restart(team, held.signer_ik).await.unwrap();
+    let applied = flows.team_keys(team).await.unwrap();
+
+    assert_eq!(held.words.words.len(), 6);
+    assert!(sealed.is_err());
+    assert!(wrong.is_err());
+    assert_eq!(stopped.stopped_cause, Some(StoppedCause::RestartHeld));
+    assert!(flows.stop_actions().await.unwrap().is_empty());
+    assert_eq!(
+        (applied.state, applied.version),
+        (KeyVersionState::Ok, Some(Version::new(3).unwrap()))
+    );
+    assert!(flows.held_restart(team).await.unwrap().is_none());
 }

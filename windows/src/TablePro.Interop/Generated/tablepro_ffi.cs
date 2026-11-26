@@ -1798,6 +1798,14 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -5006,6 +5014,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_syncservice_accept_team_restart(ulong @ptr,RustBuffer @team,RustBuffer @signerIk
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_method_syncservice_account_devices(ulong @ptr
     );
 
@@ -5270,6 +5289,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_syncservice_held_team_restart(ulong @ptr,RustBuffer @team
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_method_syncservice_key_notices(ulong @ptr
     );
 
@@ -5523,7 +5553,29 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_syncservice_record_host_changes(ulong @ptr,RustBuffer @kind,RustBuffer @written,RustBuffer @deleted
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_method_syncservice_resolve_conflict(ulong @ptr,RustBuffer @record,RustBuffer @keep
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_syncservice_set_categories(ulong @ptr,RustBuffer @categories
     );
 
     #if NET8_0_OR_GREATER
@@ -9362,6 +9414,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_accept_team_restart(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_account_devices(
     );
 
@@ -9626,6 +9689,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_held_team_restart(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_key_notices(
     );
 
@@ -9879,7 +9953,29 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_record_host_changes(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_resolve_conflict(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_set_categories(
     );
 
     #if NET8_0_OR_GREATER
@@ -11909,6 +12005,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_accept_team_restart();
+            if (checksum != 61209) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_accept_team_restart` checksum `61209`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_account_devices();
             if (checksum != 54513) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_account_devices` checksum `54513`, library returned `{checksum}`");
@@ -12053,6 +12155,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_held_team_restart();
+            if (checksum != 20677) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_held_team_restart` checksum `20677`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_key_notices();
             if (checksum != 42612) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_key_notices` checksum `42612`, library returned `{checksum}`");
@@ -12191,9 +12299,21 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_record_host_changes();
+            if (checksum != 20554) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_record_host_changes` checksum `20554`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_resolve_conflict();
             if (checksum != 5445) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_resolve_conflict` checksum `5445`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_set_categories();
+            if (checksum != 60820) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_set_categories` checksum `60820`, library returned `{checksum}`");
             }
         }
         {
@@ -19879,6 +19999,8 @@ internal interface ISyncService {
     /// <exception cref="CoreException"></exception>
     Task AcceptKeyChange(string @account, string @offeredIk, bool @compared);
     /// <exception cref="CoreException"></exception>
+    Task AcceptTeamRestart(string @team, string @signerIk);
+    /// <exception cref="CoreException"></exception>
     Task<AccountDeviceInfo[]> AccountDevices();
     /// <exception cref="CoreException"></exception>
     Task<FingerprintInfo> AccountFingerprint(string @account);
@@ -19927,6 +20049,8 @@ internal interface ISyncService {
     /// <exception cref="CoreException"></exception>
     Task<PendingResetInfo> FinishResetProposal(string @draft, SecretString[] @typed);
     /// <exception cref="CoreException"></exception>
+    Task<HeldRestartInfo?> HeldTeamRestart(string @team);
+    /// <exception cref="CoreException"></exception>
     Task<KeyNoticeInfo[]> KeyNotices();
     /// <exception cref="CoreException"></exception>
     Task<KeyStateInfo> KeyState();
@@ -19973,7 +20097,11 @@ internal interface ISyncService {
     /// <exception cref="CoreException"></exception>
     Task<MovePlanInfo> PlanMoveToService();
     /// <exception cref="CoreException"></exception>
+    Task RecordHostChanges(string @kind, string[] @written, string[] @deleted);
+    /// <exception cref="CoreException"></exception>
     Task ResolveConflict(SyncRecordRef @record, ConflictChoiceTag @keep);
+    /// <exception cref="CoreException"></exception>
+    Task SetCategories(SyncCategoriesArg @categories);
     SyncStatusInfo Status();
     /// <exception cref="CoreException"></exception>
     Task SyncNow(PassReasonTag @why);
@@ -20074,6 +20202,24 @@ internal class SyncService : ISyncService, IDisposable {
         // Get rust future
         CallWithPointer(thisPtr => {
             return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_accept_key_change(thisPtr, FfiConverterString.INSTANCE.Lower(@account), FfiConverterString.INSTANCE.Lower(@offeredIk), FfiConverterBoolean.INSTANCE.Lower(@compared));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task AcceptTeamRestart(string @team, string @signerIk) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_accept_team_restart(thisPtr, FfiConverterString.INSTANCE.Lower(@team), FfiConverterString.INSTANCE.Lower(@signerIk));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
@@ -20580,6 +20726,28 @@ internal class SyncService : ISyncService, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
+    public async Task<HeldRestartInfo?> HeldTeamRestart(string @team) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_held_team_restart(thisPtr, FfiConverterString.INSTANCE.Lower(@team));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterOptionalTypeHeldRestartInfo.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
     public async Task<KeyNoticeInfo[]> KeyNotices() {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
@@ -21046,10 +21214,46 @@ internal class SyncService : ISyncService, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
+    public async Task RecordHostChanges(string @kind, string[] @written, string[] @deleted) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_record_host_changes(thisPtr, FfiConverterString.INSTANCE.Lower(@kind), FfiConverterSequenceString.INSTANCE.Lower(@written), FfiConverterSequenceString.INSTANCE.Lower(@deleted));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
     public async Task ResolveConflict(SyncRecordRef @record, ConflictChoiceTag @keep) {await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
             return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_resolve_conflict(thisPtr, FfiConverterTypeSyncRecordRef.INSTANCE.Lower(@record), FfiConverterTypeConflictChoiceTag.INSTANCE.Lower(@keep));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task SetCategories(SyncCategoriesArg @categories) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_set_categories(thisPtr, FfiConverterTypeSyncCategoriesArg.INSTANCE.Lower(@categories));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
@@ -22974,6 +23178,7 @@ internal record CloudKitRecord (
     string RecordType, 
     string Name, 
     byte[]? SystemFields, 
+    long? CreatedMs, 
     CloudKitField[] Fields
 ) {
 }
@@ -22986,6 +23191,7 @@ class FfiConverterTypeCloudKitRecord: FfiConverterRustBuffer<CloudKitRecord> {
             RecordType: FfiConverterString.INSTANCE.Read(stream),
             Name: FfiConverterString.INSTANCE.Read(stream),
             SystemFields: FfiConverterOptionalByteArray.INSTANCE.Read(stream),
+            CreatedMs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             Fields: FfiConverterSequenceTypeCloudKitField.INSTANCE.Read(stream)
         );
     }
@@ -22995,6 +23201,7 @@ class FfiConverterTypeCloudKitRecord: FfiConverterRustBuffer<CloudKitRecord> {
             + FfiConverterString.INSTANCE.AllocationSize(value.RecordType)
             + FfiConverterString.INSTANCE.AllocationSize(value.Name)
             + FfiConverterOptionalByteArray.INSTANCE.AllocationSize(value.SystemFields)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.CreatedMs)
             + FfiConverterSequenceTypeCloudKitField.INSTANCE.AllocationSize(value.Fields);
     }
 
@@ -23002,6 +23209,7 @@ class FfiConverterTypeCloudKitRecord: FfiConverterRustBuffer<CloudKitRecord> {
             FfiConverterString.INSTANCE.Write(value.RecordType, stream);
             FfiConverterString.INSTANCE.Write(value.Name, stream);
             FfiConverterOptionalByteArray.INSTANCE.Write(value.SystemFields, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.CreatedMs, stream);
             FfiConverterSequenceTypeCloudKitField.INSTANCE.Write(value.Fields, stream);
     }
 }
@@ -25031,6 +25239,48 @@ class FfiConverterTypeHeldRecordInfo: FfiConverterRustBuffer<HeldRecordInfo> {
     public override void Write(HeldRecordInfo value, BigEndianStream stream) {
             FfiConverterTypeSyncRecordRef.INSTANCE.Write(value.Record, stream);
             FfiConverterTypeHeldReasonTag.INSTANCE.Write(value.Reason, stream);
+    }
+}
+
+
+
+internal record HeldRestartInfo (
+    string Team, 
+    uint Version, 
+    string Signer, 
+    string SignerIk, 
+    FingerprintInfo Words
+) {
+}
+
+class FfiConverterTypeHeldRestartInfo: FfiConverterRustBuffer<HeldRestartInfo> {
+    public static FfiConverterTypeHeldRestartInfo INSTANCE = new FfiConverterTypeHeldRestartInfo();
+
+    public override HeldRestartInfo Read(BigEndianStream stream) {
+        return new HeldRestartInfo(
+            Team: FfiConverterString.INSTANCE.Read(stream),
+            Version: FfiConverterUInt32.INSTANCE.Read(stream),
+            Signer: FfiConverterString.INSTANCE.Read(stream),
+            SignerIk: FfiConverterString.INSTANCE.Read(stream),
+            Words: FfiConverterTypeFingerprintInfo.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(HeldRestartInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Team)
+            + FfiConverterUInt32.INSTANCE.AllocationSize(value.Version)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Signer)
+            + FfiConverterString.INSTANCE.AllocationSize(value.SignerIk)
+            + FfiConverterTypeFingerprintInfo.INSTANCE.AllocationSize(value.Words);
+    }
+
+    public override void Write(HeldRestartInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Team, stream);
+            FfiConverterUInt32.INSTANCE.Write(value.Version, stream);
+            FfiConverterString.INSTANCE.Write(value.Signer, stream);
+            FfiConverterString.INSTANCE.Write(value.SignerIk, stream);
+            FfiConverterTypeFingerprintInfo.INSTANCE.Write(value.Words, stream);
     }
 }
 
@@ -28262,8 +28512,39 @@ class FfiConverterTypeStructureIndex: FfiConverterRustBuffer<StructureIndex> {
 
 
 
+internal record SyncCategoriesArg (
+    string[] OffKinds, 
+    bool Passwords
+) {
+}
+
+class FfiConverterTypeSyncCategoriesArg: FfiConverterRustBuffer<SyncCategoriesArg> {
+    public static FfiConverterTypeSyncCategoriesArg INSTANCE = new FfiConverterTypeSyncCategoriesArg();
+
+    public override SyncCategoriesArg Read(BigEndianStream stream) {
+        return new SyncCategoriesArg(
+            OffKinds: FfiConverterSequenceString.INSTANCE.Read(stream),
+            Passwords: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(SyncCategoriesArg value) {
+        return 0
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.OffKinds)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Passwords);
+    }
+
+    public override void Write(SyncCategoriesArg value, BigEndianStream stream) {
+            FfiConverterSequenceString.INSTANCE.Write(value.OffKinds, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Passwords, stream);
+    }
+}
+
+
+
 internal record SyncConfig (
-    SyncPlatformTag Platform
+    SyncPlatformTag Platform, 
+    SyncCategoriesArg Categories
 ) {
 }
 
@@ -28272,17 +28553,20 @@ class FfiConverterTypeSyncConfig: FfiConverterRustBuffer<SyncConfig> {
 
     public override SyncConfig Read(BigEndianStream stream) {
         return new SyncConfig(
-            Platform: FfiConverterTypeSyncPlatformTag.INSTANCE.Read(stream)
+            Platform: FfiConverterTypeSyncPlatformTag.INSTANCE.Read(stream),
+            Categories: FfiConverterTypeSyncCategoriesArg.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(SyncConfig value) {
         return 0
-            + FfiConverterTypeSyncPlatformTag.INSTANCE.AllocationSize(value.Platform);
+            + FfiConverterTypeSyncPlatformTag.INSTANCE.AllocationSize(value.Platform)
+            + FfiConverterTypeSyncCategoriesArg.INSTANCE.AllocationSize(value.Categories);
     }
 
     public override void Write(SyncConfig value, BigEndianStream stream) {
             FfiConverterTypeSyncPlatformTag.INSTANCE.Write(value.Platform, stream);
+            FfiConverterTypeSyncCategoriesArg.INSTANCE.Write(value.Categories, stream);
     }
 }
 
@@ -32749,6 +33033,11 @@ internal record KeyNoticeKindTag {
         string Team
     ) : KeyNoticeKindTag {}
     
+    public record RestartHeld (
+        string Team,
+        string Signer
+    ) : KeyNoticeKindTag {}
+    
     public record ResetPending (
         string Reset
     ) : KeyNoticeKindTag {}
@@ -32806,36 +33095,41 @@ class FfiConverterTypeKeyNoticeKindTag : FfiConverterRustBuffer<KeyNoticeKindTag
                     FfiConverterString.INSTANCE.Read(stream)
                 );
             case 4:
-                return new KeyNoticeKindTag.ResetPending(
+                return new KeyNoticeKindTag.RestartHeld(
+                    FfiConverterString.INSTANCE.Read(stream),
                     FfiConverterString.INSTANCE.Read(stream)
                 );
             case 5:
+                return new KeyNoticeKindTag.ResetPending(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 6:
                 return new KeyNoticeKindTag.ResetEnded(
                     FfiConverterString.INSTANCE.Read(stream),
                     FfiConverterTypeResetStateTag.INSTANCE.Read(stream)
                 );
-            case 6:
+            case 7:
                 return new KeyNoticeKindTag.DeviceRemoved(
                     FfiConverterString.INSTANCE.Read(stream)
                 );
-            case 7:
+            case 8:
                 return new KeyNoticeKindTag.SupersededWrap(
                     FfiConverterString.INSTANCE.Read(stream)
                 );
-            case 8:
+            case 9:
                 return new KeyNoticeKindTag.Conflict(
                     FfiConverterString.INSTANCE.Read(stream)
                 );
-            case 9:
+            case 10:
                 return new KeyNoticeKindTag.ScopeStopped(
                     FfiConverterString.INSTANCE.Read(stream),
                     FfiConverterTypeStopCauseTag.INSTANCE.Read(stream)
                 );
-            case 10:
+            case 11:
                 return new KeyNoticeKindTag.ScopeEnded(
                     FfiConverterString.INSTANCE.Read(stream)
                 );
-            case 11:
+            case 12:
                 return new KeyNoticeKindTag.Locked(
                     FfiConverterTypeLockCauseTag.INSTANCE.Read(stream)
                 );
@@ -32855,6 +33149,10 @@ class FfiConverterTypeKeyNoticeKindTag : FfiConverterRustBuffer<KeyNoticeKindTag
             case KeyNoticeKindTag.TeamKeyRestarted variant_value:
                 return 4
                     + FfiConverterString.INSTANCE.AllocationSize(variant_value.Team);
+            case KeyNoticeKindTag.RestartHeld variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Team)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Signer);
             case KeyNoticeKindTag.ResetPending variant_value:
                 return 4
                     + FfiConverterString.INSTANCE.AllocationSize(variant_value.Reset);
@@ -32900,38 +33198,43 @@ class FfiConverterTypeKeyNoticeKindTag : FfiConverterRustBuffer<KeyNoticeKindTag
                 stream.WriteInt(3);
                 FfiConverterString.INSTANCE.Write(variant_value.Team, stream);
                 break;
-            case KeyNoticeKindTag.ResetPending variant_value:
+            case KeyNoticeKindTag.RestartHeld variant_value:
                 stream.WriteInt(4);
+                FfiConverterString.INSTANCE.Write(variant_value.Team, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Signer, stream);
+                break;
+            case KeyNoticeKindTag.ResetPending variant_value:
+                stream.WriteInt(5);
                 FfiConverterString.INSTANCE.Write(variant_value.Reset, stream);
                 break;
             case KeyNoticeKindTag.ResetEnded variant_value:
-                stream.WriteInt(5);
+                stream.WriteInt(6);
                 FfiConverterString.INSTANCE.Write(variant_value.Reset, stream);
                 FfiConverterTypeResetStateTag.INSTANCE.Write(variant_value.State, stream);
                 break;
             case KeyNoticeKindTag.DeviceRemoved variant_value:
-                stream.WriteInt(6);
+                stream.WriteInt(7);
                 FfiConverterString.INSTANCE.Write(variant_value.Device, stream);
                 break;
             case KeyNoticeKindTag.SupersededWrap variant_value:
-                stream.WriteInt(7);
+                stream.WriteInt(8);
                 FfiConverterString.INSTANCE.Write(variant_value.Team, stream);
                 break;
             case KeyNoticeKindTag.Conflict variant_value:
-                stream.WriteInt(8);
+                stream.WriteInt(9);
                 FfiConverterString.INSTANCE.Write(variant_value.Scope, stream);
                 break;
             case KeyNoticeKindTag.ScopeStopped variant_value:
-                stream.WriteInt(9);
+                stream.WriteInt(10);
                 FfiConverterString.INSTANCE.Write(variant_value.Scope, stream);
                 FfiConverterTypeStopCauseTag.INSTANCE.Write(variant_value.Cause, stream);
                 break;
             case KeyNoticeKindTag.ScopeEnded variant_value:
-                stream.WriteInt(10);
+                stream.WriteInt(11);
                 FfiConverterString.INSTANCE.Write(variant_value.Scope, stream);
                 break;
             case KeyNoticeKindTag.Locked variant_value:
-                stream.WriteInt(11);
+                stream.WriteInt(12);
                 FfiConverterTypeLockCauseTag.INSTANCE.Write(variant_value.Cause, stream);
                 break;
             default:
@@ -33918,6 +34221,8 @@ class FfiConverterTypeObjectScopeArg : FfiConverterRustBuffer<ObjectScopeArg>{
 
 
 internal enum PassReasonTag: int {
+    Journal,
+    AccountChanged,
     Launch,
     Foreground,
     NetworkBack,
@@ -33931,11 +34236,13 @@ class FfiConverterTypePassReasonTag: FfiConverterRustBuffer<PassReasonTag> {
     public override PassReasonTag Read(BigEndianStream stream) {
         var value = stream.ReadInt();
         switch (value) {
-            case 1: return PassReasonTag.Launch;
-            case 2: return PassReasonTag.Foreground;
-            case 3: return PassReasonTag.NetworkBack;
-            case 4: return PassReasonTag.CloudKitPush;
-            case 5: return PassReasonTag.Person;
+            case 1: return PassReasonTag.Journal;
+            case 2: return PassReasonTag.AccountChanged;
+            case 3: return PassReasonTag.Launch;
+            case 4: return PassReasonTag.Foreground;
+            case 5: return PassReasonTag.NetworkBack;
+            case 6: return PassReasonTag.CloudKitPush;
+            case 7: return PassReasonTag.Person;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePassReasonTag.Read()", value));
         }
     }
@@ -33946,11 +34253,13 @@ class FfiConverterTypePassReasonTag: FfiConverterRustBuffer<PassReasonTag> {
 
     public override void Write(PassReasonTag value, BigEndianStream stream) {
         switch (value) {
-            case PassReasonTag.Launch: stream.WriteInt(1); break;
-            case PassReasonTag.Foreground: stream.WriteInt(2); break;
-            case PassReasonTag.NetworkBack: stream.WriteInt(3); break;
-            case PassReasonTag.CloudKitPush: stream.WriteInt(4); break;
-            case PassReasonTag.Person: stream.WriteInt(5); break;
+            case PassReasonTag.Journal: stream.WriteInt(1); break;
+            case PassReasonTag.AccountChanged: stream.WriteInt(2); break;
+            case PassReasonTag.Launch: stream.WriteInt(3); break;
+            case PassReasonTag.Foreground: stream.WriteInt(4); break;
+            case PassReasonTag.NetworkBack: stream.WriteInt(5); break;
+            case PassReasonTag.CloudKitPush: stream.WriteInt(6); break;
+            case PassReasonTag.Person: stream.WriteInt(7); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePassReasonTag.Write()", value));
         }
     }
@@ -36975,7 +37284,8 @@ class FfiConverterTypeSshAuthTag : FfiConverterRustBuffer<SshAuthTag>{
 
 internal enum StopCauseTag: int {
     CatchUp,
-    RestoreWait
+    RestoreWait,
+    RestartHeld
 }
 
 class FfiConverterTypeStopCauseTag: FfiConverterRustBuffer<StopCauseTag> {
@@ -36986,6 +37296,7 @@ class FfiConverterTypeStopCauseTag: FfiConverterRustBuffer<StopCauseTag> {
         switch (value) {
             case 1: return StopCauseTag.CatchUp;
             case 2: return StopCauseTag.RestoreWait;
+            case 3: return StopCauseTag.RestartHeld;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeStopCauseTag.Read()", value));
         }
     }
@@ -36998,6 +37309,7 @@ class FfiConverterTypeStopCauseTag: FfiConverterRustBuffer<StopCauseTag> {
         switch (value) {
             case StopCauseTag.CatchUp: stream.WriteInt(1); break;
             case StopCauseTag.RestoreWait: stream.WriteInt(2); break;
+            case StopCauseTag.RestartHeld: stream.WriteInt(3); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeStopCauseTag.Write()", value));
         }
     }
@@ -40470,6 +40782,37 @@ class FfiConverterOptionalTypeExistingConnectionInfo: FfiConverterRustBuffer<Exi
         } else {
             stream.WriteByte(1);
             FfiConverterTypeExistingConnectionInfo.INSTANCE.Write((ExistingConnectionInfo)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeHeldRestartInfo: FfiConverterRustBuffer<HeldRestartInfo?> {
+    public static FfiConverterOptionalTypeHeldRestartInfo INSTANCE = new FfiConverterOptionalTypeHeldRestartInfo();
+
+    public override HeldRestartInfo? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeHeldRestartInfo.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(HeldRestartInfo? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeHeldRestartInfo.INSTANCE.AllocationSize((HeldRestartInfo)value);
+        }
+    }
+
+    public override void Write(HeldRestartInfo? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeHeldRestartInfo.INSTANCE.Write((HeldRestartInfo)value, stream);
         }
     }
 }

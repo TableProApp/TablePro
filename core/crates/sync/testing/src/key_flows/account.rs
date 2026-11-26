@@ -85,7 +85,11 @@ pub(crate) fn take_kv(
 }
 
 impl FakeKeyFlows {
-    fn identity(&self, model: &mut Model, account: AccountId) -> Result<tablepro_keys::keys::Ed25519Public, SyncError> {
+    pub(crate) fn identity(
+        &self,
+        model: &mut Model,
+        account: AccountId,
+    ) -> Result<tablepro_keys::keys::Ed25519Public, SyncError> {
         if let Some(ik) = model.identities.get(&account) {
             return Ok(*ik);
         }
@@ -170,15 +174,18 @@ impl AccountFlows for FakeKeyFlows {
         model.key_device = KeyDeviceId(Uuid::new_v4());
         model.held_kv.clear();
         model.reviews.clear();
-        model
-            .drafts
-            .retain(|_, draft| matches!(draft.purpose, DraftPurpose::Reset(_)));
         for team in model.teams.values_mut() {
             team.holder = false;
         }
-        // The revoke ends a reset this row proposed; offline, nothing reaches the server.
+        // The revoke ends a reset this row proposed; offline, nothing reaches the server, but this device erases R' and
+        // the reset's keys with the rest, so it can no longer activate it.
         if !model.offline {
             supersede_reset(&mut model);
+        }
+        model.drafts.clear();
+        model.reset_drafts.clear();
+        if let Some(reset) = &mut model.reset {
+            reset.mine = false;
         }
         Ok(if model.offline {
             SignOutOutcome::ErasedOffline

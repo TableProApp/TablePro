@@ -63,7 +63,13 @@ pub(crate) struct FakeTeam {
     pub(crate) rotation_due: bool,
     pub(crate) members: BTreeMap<AccountId, (Role, MemberKeyStatus)>,
     pub(crate) ended: bool,
+    // Why the team stopped on this device, as its `key_versions` row records it (0062).
+    pub(crate) stopped_cause: Option<tablepro_sync::api::state::StoppedCause>,
+    // Every version this account held, which a stop report's re-confirmation needs.
+    pub(crate) held_versions: std::collections::BTreeSet<u32>,
     pub(crate) stopped: Vec<tablepro_sync::api::scopes::StopReport>,
+    // A restart this device holds: its version and the account that signed it (0064).
+    pub(crate) held_restart: Option<(Version, AccountId)>,
 }
 
 #[derive(Debug)]
@@ -223,7 +229,10 @@ impl FakeKeyFlows {
                 holder: false,
                 rotation_due: false,
                 ended: false,
+                stopped_cause: None,
+                held_versions: std::collections::BTreeSet::new(),
                 stopped: Vec::new(),
+                held_restart: None,
                 members: members
                     .iter()
                     .map(|(account, role, status)| (*account, (*role, *status)))
@@ -249,6 +258,74 @@ impl FakeKeyFlows {
         account::notice(
             &mut model,
             tablepro_sync::api::key_flows::KeyNoticeKind::KeysChanged { account },
+        );
+    }
+
+    // A catch-up this device could not verify, or a wait on a version a restore lost. Meeting both keeps `CatchUp`, and
+    // only a catch-up stop is reported (0062).
+    pub fn stop_team(&self, team: TeamId, cause: tablepro_sync::api::state::StoppedCause) {
+        use tablepro_sync::api::state::StoppedCause;
+        let mut model = self.lock();
+        let Some(held) = model.teams.get_mut(&team) else {
+            return;
+        };
+        if held.ended {
+            return;
+        }
+        let kept = held.stopped_cause.map_or(cause, |stopped| stopped.max(cause));
+        held.stopped_cause = Some(kept);
+        let version = held.version;
+        if kept.is_reported()
+            && cause == StoppedCause::CatchUp
+            && let Some(version) = version
+        {
+            model.stop_actions.push(StopAction::Report { team, version });
+        }
+        account::notice(
+            &mut model,
+            tablepro_sync::api::key_flows::KeyNoticeKind::ScopeStopped {
+                scope: ScopeName::Team(team),
+                cause: kept,
+            },
+        );
+    }
+
+    // The event that clears a stop of its cause: a re-confirmation, or every awaited version back.
+    pub fn clear_team_stop(&self, team: TeamId, by: tablepro_sync::api::state::StopClear) -> Result<(), SyncError> {
+        use tablepro_sync::api::state::{StopClear, StoppedCause};
+        let mut model = self.lock();
+        let held = model.teams.get_mut(&team).ok_or(SyncError::Unknown { what: "team" })?;
+        let allowed = matches!(
+            (held.stopped_cause, by),
+            (Some(StoppedCause::CatchUp), StopClear::Reconfirmed)
+                | (Some(StoppedCause::RestoreWait), StopClear::AwaitedVersionsBack)
+                | (Some(StoppedCause::RestartHeld), StopClear::AcceptedRestart)
+        );
+        if !allowed {
+            return Err(SyncError::NotAllowed {
+                what: "clear this stop",
+            });
+        }
+        held.stopped_cause = None;
+        if by == StopClear::Reconfirmed {
+            model
+                .stop_actions
+                .retain(|action| !matches!(action, StopAction::Report { team: reported, .. } if *reported == team));
+            model.stop_actions.push(StopAction::Withdraw { team });
+        }
+        Ok(())
+    }
+
+    // A restart of the team key signed by `signer`, an account other than this one, met while this device held an
+    // earlier version: held until the person compares words (0064).
+    pub fn hold_restart(&self, team: TeamId, version: Version, signer: AccountId) {
+        if let Some(held) = self.lock().teams.get_mut(&team) {
+            held.held_restart = Some((version, signer));
+        }
+        self.stop_team(team, tablepro_sync::api::state::StoppedCause::RestartHeld);
+        account::notice(
+            &mut self.lock(),
+            tablepro_sync::api::key_flows::KeyNoticeKind::RestartHeld { team, signer },
         );
     }
 

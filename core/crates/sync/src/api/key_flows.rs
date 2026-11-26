@@ -17,7 +17,7 @@ use super::error::SyncError;
 use super::ids::{DeviceRowId, EpochId, ScopeName};
 use super::scopes::{Role, ScopeInfo, StopReport, TeamMember};
 use super::state::{KeyVersionState, PendingFlow, StoppedCause};
-use super::transport::{Change, ChangeOutcome, DpopKey, PulledRecord};
+use super::transport::{Change, ChangeOutcome, DpopKey, PulledPage, PulledRecord};
 
 pub trait KeyFlows:
     AccountFlows + ApprovalFlows + DeviceFlows + ResetFlows + TeamFlows + RestoreFlows + StopFlows
@@ -337,6 +337,20 @@ pub trait TeamFlows: Send + Sync {
         unimplemented("keys.restart_team")
     }
 
+    // A restart of a team key this device held a version of, which it holds until the person compares the restarting
+    // owner's words (0064).
+    async fn held_restart(&self, team: TeamId) -> Result<Option<HeldRestart>, SyncError> {
+        let _ = team;
+        unimplemented("keys.held_restart")
+    }
+
+    // The person compared the restarting owner's six words and accepts: the restart applies, its signer is the holder
+    // and its pin `compared`. Bound to the IK the person compared; accepting without comparing is not offered.
+    async fn accept_restart(&self, team: TeamId, signer_ik: Ed25519Public) -> Result<(), SyncError> {
+        let _ = (team, signer_ik);
+        unimplemented("keys.accept_restart")
+    }
+
     // "Credentials to rotate": the envelopes a removed party could read (0056, Old data).
     async fn credentials_to_rotate(&self, scope: ScopeName) -> Result<Vec<EnvelopeId>, SyncError> {
         let _ = scope;
@@ -504,6 +518,16 @@ pub enum SignOutOutcome {
     ErasedOffline,
 }
 
+// A held restart: the version, the account that signed it, and the words the person compares before accepting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldRestart {
+    pub team: TeamId,
+    pub version: Version,
+    pub signer: AccountId,
+    pub signer_ik: Ed25519Public,
+    pub words: Fingerprint,
+}
+
 // R' as a draft, with the devices a rotation can keep, ticked by default when compared.
 #[derive(Debug, Clone)]
 pub struct RotationDraft {
@@ -546,6 +570,8 @@ pub enum KeyNoticeKind {
     // An alert in every team the account is in.
     KeysChanged { account: AccountId },
     TeamKeyRestarted { team: TeamId },
+    // "The team key was started over by Ana. Compare her words before using it." (0064)
+    RestartHeld { team: TeamId, signer: AccountId },
     ResetPending { reset: ResetId },
     ResetEnded { reset: ResetId, state: ResetState },
     DeviceRemoved { device: DeviceRowId },
@@ -754,7 +780,8 @@ pub enum MemberKeyStatus {
     Alert,
 }
 
-// A team scope as the scopes body gives it, with whether the team's pull is caught up.
+// A team scope as one scopes body gives it. A device decides on the roster only after its pull of that team is caught
+// up, and a roster it could not read is no evidence that a member left (0051, `members`; What cannot go back).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Roster {
     pub members: Vec<TeamMember>,
@@ -762,18 +789,36 @@ pub struct Roster {
     pub rotation_due: bool,
     // The stop reports, which the server serves to owners and admins only (0051, A stopped device).
     pub stopped: Vec<StopReport>,
-    pub caught_up: bool,
+    caught_up: bool,
 }
 
 impl Roster {
-    pub fn of(scope: &ScopeInfo, caught_up: bool) -> Self {
+    // `pull` is the catch-up of this team's pull that followed this body. None, or one of another scope, leaves the
+    // roster undecided, whatever a stored flag says.
+    pub fn of(scope: &ScopeInfo, pull: Option<CaughtUp>) -> Self {
         Self {
             members: scope.members.clone(),
             role: scope.role,
             rotation_due: scope.rotation_due,
             stopped: scope.stopped.clone(),
-            caught_up,
+            caught_up: pull.is_some_and(|pull| pull.scope == scope.scope),
         }
+    }
+
+    pub fn caught_up(&self) -> bool {
+        self.caught_up
+    }
+}
+
+// A pull page with no records for one scope: the only thing that lets a roster be decided on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CaughtUp {
+    scope: ScopeName,
+}
+
+impl CaughtUp {
+    pub fn from_page(scope: ScopeName, page: &PulledPage) -> Option<Self> {
+        (page.caught_up && page.records.is_empty()).then_some(Self { scope })
     }
 }
 

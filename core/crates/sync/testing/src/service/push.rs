@@ -1,5 +1,7 @@
 // `POST /v2/sync/scopes/{scope}/changes` (0051, Push).
 
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tablepro_keys::record_id::{KeyKind, KeyRecordId};
@@ -7,8 +9,8 @@ use tablepro_records::{kind as kinds, limits, merge_patch, record_id};
 use tablepro_sync::api::ids::{ChangeTag, KindName, ScopeName};
 use tablepro_sync::api::scopes::Role;
 use tablepro_sync::api::transport::{
-    AppliedStamp, Change, ChangeOp, ChangeOutcome, DeletedReason, PushAnswer, PushBatch, RejectedCode, StoredCopy,
-    StoredStamp, TransportError,
+    AppliedStamp, Change, ChangeOp, ChangeOutcome, DeletedReason, Proof, PushAnswer, PushBatch, RejectedCode,
+    StoredCopy, StoredStamp, TransportError,
 };
 use uuid::Uuid;
 
@@ -94,7 +96,13 @@ impl FakeClient {
             return Err(TransportError::IdempotencyMismatch);
         }
         let before = state.clone();
-        let (outcomes, applied) = self.judge_all(&mut state, owner, batch, stored.as_ref());
+        let (outcomes, applied) = self.judge_all(
+            &mut state,
+            owner,
+            batch,
+            stored.as_ref(),
+            proof_key(&batch.proof).as_ref(),
+        );
         if change_set
             && outcomes
                 .iter()
@@ -132,17 +140,18 @@ impl FakeClient {
         owner: ScopeOwner,
         batch: &PushBatch,
         stored: Option<&StoredAnswer>,
+        proof: Option<&[u8; 32]>,
     ) -> (Vec<ChangeOutcome>, Vec<Option<ChangeOutcome>>) {
         let mut outcomes = Vec::with_capacity(batch.changes.len());
         let mut applied = Vec::with_capacity(batch.changes.len());
         for (index, change) in batch.changes.iter().enumerate() {
             let replayed = stored.and_then(|stored| stored.applied.get(index).cloned().flatten());
             let (outcome, wrote) = match replayed {
-                Some(outcome) => match self.authorize(state, owner, change) {
+                Some(outcome) => match self.authorize(state, owner, change, &binding(batch, proof)) {
                     Ok(()) => (outcome, false),
                     Err(code) => (ChangeOutcome::Rejected { code }, false),
                 },
-                None => self.judge(state, owner, change),
+                None => self.judge(state, owner, change, &binding(batch, proof)),
             };
             applied.push(wrote.then(|| outcome.clone()));
             outcomes.push(outcome);
@@ -178,8 +187,14 @@ impl FakeClient {
     }
 
     // One change, in the order sent; the flag says whether it wrote.
-    fn judge(&self, state: &mut State, owner: ScopeOwner, change: &Change) -> (ChangeOutcome, bool) {
-        if let Err(code) = self.check(state, owner, change) {
+    fn judge(
+        &self,
+        state: &mut State,
+        owner: ScopeOwner,
+        change: &Change,
+        bind: &Binding<'_>,
+    ) -> (ChangeOutcome, bool) {
+        if let Err(code) = self.check(state, owner, change, bind) {
             return (ChangeOutcome::Rejected { code }, false);
         }
         let stored = state
@@ -224,7 +239,7 @@ impl FakeClient {
         }
     }
 
-    fn check(&self, state: &State, owner: ScopeOwner, change: &Change) -> Result<(), RejectedCode> {
+    fn check(&self, state: &State, owner: ScopeOwner, change: &Change, bind: &Binding<'_>) -> Result<(), RejectedCode> {
         let kind = change.kind.as_str();
         let reserved = kinds::is_reserved(kind);
         let id_fits = match change.kind.known() {
@@ -237,7 +252,7 @@ impl FakeClient {
         if !kinds::admits(owner.scope().records_scope(), kind) {
             return Err(RejectedCode::KindNotInScope);
         }
-        self.authorize(state, owner, change)?;
+        self.authorize(state, owner, change, bind)?;
         if let ChangeOp::Write { patch, .. } = &change.op
             && let Err(refusal) = limits::check(patch)
         {
@@ -247,12 +262,19 @@ impl FakeClient {
     }
 
     // What a replay checks again before it answers from the store: the policies, the caller's role and the writer.
-    fn authorize(&self, state: &State, owner: ScopeOwner, change: &Change) -> Result<(), RejectedCode> {
+    fn authorize(
+        &self,
+        state: &State,
+        owner: ScopeOwner,
+        change: &Change,
+        bind: &Binding<'_>,
+    ) -> Result<(), RejectedCode> {
         if policy_refuses(state, owner, &change.kind) {
             return Err(RejectedCode::Policy);
         }
         self.check_role(state, owner, &change.kind)?;
-        self.check_writer(change)
+        self.check_writer(change)?;
+        self.check_bound(state, owner, change, bind)
     }
 
     // 0051, Roles in a team scope, without the holder checks a key object's statement carries.
@@ -282,6 +304,56 @@ impl FakeClient {
         match bound {
             Some(account) if account != self.account.0 => Err(RejectedCode::WriterBound),
             _ => Ok(()),
+        }
+    }
+
+    // The binding 0051's table gives the rest (Writer binding): a request and its steps to their DPoP keys, a team
+    // version, wrap or ring to its signer.
+    fn check_bound(
+        &self,
+        state: &State,
+        owner: ScopeOwner,
+        change: &Change,
+        bind: &Binding<'_>,
+    ) -> Result<(), RejectedCode> {
+        let ChangeOp::Write { patch, .. } = &change.op else {
+            return Ok(());
+        };
+        let me = self.account.to_wire();
+        let bound = match (change.kind.as_str(), owner) {
+            ("key.request", _) => bind.proof.is_some() && key_field(patch, "dsk") == bind.proof.copied(),
+            ("key.sas", _) => self.sas_bound(state, owner, change, patch, bind),
+            ("key.version", ScopeOwner::Team(_)) => patch.get("signer").and_then(Value::as_str) == Some(me.as_str()),
+            ("key.wrap", ScopeOwner::Team(_)) => patch.get("wrapper").and_then(Value::as_str) == Some(me.as_str()),
+            ("key.ring", ScopeOwner::Team(_)) => ring_signer(state, owner, change, bind) == Some(me),
+            _ => true,
+        };
+        if bound { Ok(()) } else { Err(RejectedCode::WriterBound) }
+    }
+
+    // A `nonce` step's DSK is the caller's DPoP key; a `reveal` comes from the request's; a `cancel` from either.
+    fn sas_bound(&self, state: &State, owner: ScopeOwner, change: &Change, patch: &Value, bind: &Binding<'_>) -> bool {
+        let Some(proof) = bind.proof.copied() else {
+            return false;
+        };
+        let Some((request, step)) = change.record_id.rsplit_once('/') else {
+            return false;
+        };
+        let stored_key = |kind: &str, id: &str| {
+            state
+                .scopes
+                .get(&owner)
+                .and_then(|data| data.records.get(&(kind.to_owned(), id.to_owned())))
+                .and_then(|record| record.fields.as_ref())
+                .and_then(|fields| key_field(fields, "dsk"))
+        };
+        let requester = stored_key("key.request", request);
+        let approver = stored_key("key.sas", &format!("{request}/nonce"));
+        match step {
+            "nonce" => key_field(patch, "dsk") == Some(proof),
+            "reveal" => requester == Some(proof),
+            "cancel" => requester == Some(proof) || approver == Some(proof),
+            _ => false,
         }
     }
 
@@ -397,9 +469,76 @@ fn before_approval(changes: &[Change]) -> bool {
         "key.sas" => change.record_id.ends_with("/reveal") || change.record_id.ends_with("/cancel"),
         _ => false,
     });
-    let account_set = changes.iter().all(|change| change.kind.is_key())
-        && changes.iter().any(|change| change.kind.as_str() == "key.account");
-    own_steps || all(&["key.reset"]) || all(&["key.cancel"]) || account_set
+    // A genesis, rotation or reset activation: one `key.account` and only the objects its change set holds.
+    let account_set = all(&[
+        "key.account",
+        "key.device",
+        "key.recovery",
+        "key.version",
+        "key.wrap",
+        "key.ring",
+    ]) && changes
+        .iter()
+        .filter(|change| change.kind.as_str() == "key.account")
+        .count()
+        == 1;
+    // A cancel before approval carries the recovery key's IK signature.
+    let signed_cancels = all(&["key.cancel"])
+        && changes
+            .iter()
+            .all(|change| matches!(&change.op, ChangeOp::Write { patch, .. } if patch.get("sig").is_some()));
+    own_steps || all(&["key.reset"]) || signed_cancels || account_set
+}
+
+// What binds a change: the push's DPoP key and the push's other changes, where a ring's version record comes with it.
+pub(crate) struct Binding<'a> {
+    pub(crate) proof: Option<&'a [u8; 32]>,
+    pub(crate) changes: &'a [Change],
+}
+
+fn binding<'a>(batch: &'a PushBatch, proof: Option<&'a [u8; 32]>) -> Binding<'a> {
+    Binding {
+        proof,
+        changes: &batch.changes,
+    }
+}
+
+pub(crate) fn proof_key(proof: &Proof) -> Option<[u8; 32]> {
+    match proof {
+        Proof::None => None,
+        Proof::Dpop(key) => key.0.public().ok().map(|public| public.0),
+    }
+}
+
+// A 32-byte key a body carries as canonical base64url.
+pub(crate) fn key_field(fields: &Value, member: &str) -> Option<[u8; 32]> {
+    let text = fields.get(member)?.as_str()?;
+    let bytes = URL_SAFE_NO_PAD.decode(text).ok()?;
+    bytes.try_into().ok()
+}
+
+// A ring's signer is its version record's, from the same change set or the scope.
+fn ring_signer(state: &State, owner: ScopeOwner, change: &Change, bind: &Binding<'_>) -> Option<String> {
+    let in_push = bind.changes.iter().find_map(|other| match &other.op {
+        ChangeOp::Write { patch, .. }
+            if other.kind.as_str() == "key.version" && other.record_id == change.record_id =>
+        {
+            patch.get("signer").and_then(Value::as_str).map(str::to_owned)
+        }
+        _ => None,
+    });
+    in_push.or_else(|| {
+        state
+            .scopes
+            .get(&owner)?
+            .records
+            .get(&("key.version".to_owned(), change.record_id.clone()))?
+            .fields
+            .as_ref()?
+            .get("signer")?
+            .as_str()
+            .map(str::to_owned)
+    })
 }
 
 // The newest version of a scope key, from the version records the scope holds: `<owner>/<purpose>/<version>`.
