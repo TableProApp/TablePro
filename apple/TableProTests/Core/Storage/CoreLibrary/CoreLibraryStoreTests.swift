@@ -391,6 +391,42 @@ struct CoreLibraryStoreTests {
         #expect(reopened.storeIsTrusted)
     }
 
+    @Test("What the core wrote into the library itself is read in after a sync pass and tagged again")
+    func aCoreWriteIsReadInAfterAPass() async throws {
+        let storage = fixture.launch()
+        #expect(storage.addConnection(connection("alpha")))
+        try await writeAsTheCore { $0.connections[0].connection.name = "renamed by a pull" }
+
+        storage.readCoreWrites()
+
+        #expect(storage.loadConnections().map(\.name) == ["renamed by a pull"])
+        #expect(storage.storeIsTrusted)
+        #expect(try fixture.legacyConnections().map(\.name) == ["renamed by a pull"])
+        let reopened = fixture.launch()
+        #expect(reopened.loadConnections().map(\.name) == ["renamed by a pull"])
+        #expect(reopened.storeIsTrusted)
+    }
+
+    // A write the core makes on its own, as its engine does for a pull, which this Mac's store is not told of.
+    private func writeAsTheCore(_ edit: (inout LibraryContents) -> Void) async throws {
+        let library = try Core(
+            config: HostConfig(clientVersion: "test", storageDir: fixture.coreURL.deletingLastPathComponent().path),
+            secrets: ConnectionKeychainSecrets(keychain: fixture.keychain) { _ in false }
+        ).library()
+        var contents = try await library.libraryContents()
+        edit(&contents)
+        _ = try await library.replaceLibrary(
+            library: LibraryWriteRecord(
+                connections: contents.connections,
+                groups: contents.groups,
+                tags: contents.tags,
+                favorites: contents.favorites,
+                removing: []
+            ),
+            over: contents.digest
+        )
+    }
+
     @Test("A connections.json changed outside TablePro hands its doubt to the core")
     func anEditedLegacyFileStaysUntrusted() throws {
         let storage = fixture.launch()

@@ -165,6 +165,12 @@ final class ConnectionStorage {
         library.invalidate()
     }
 
+    // After a sync pass, what the core's engine wrote into the library.
+    func readCoreWrites() {
+        guard library.readCoreWrites() else { return }
+        appEventsProvider().connectionUpdated.send(nil)
+    }
+
     @discardableResult
     func addConnection(_ connection: DatabaseConnection, password: String? = nil) -> Bool {
         var connections = loadConnections()

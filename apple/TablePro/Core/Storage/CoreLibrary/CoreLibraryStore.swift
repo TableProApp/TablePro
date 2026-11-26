@@ -91,6 +91,35 @@ final class CoreLibraryStore {
         lastLoadFailed = false
     }
 
+    // The core's engine writes the library itself and tells this store nothing. After its pass the file is read again
+    // when its digest moved, and a store this Mac vouched for is tagged again over what the core wrote.
+    @discardableResult
+    func readCoreWrites() -> Bool {
+        guard image != nil, !lastLoadFailed, let library else { return false }
+        let contents: LibraryContents
+        do {
+            contents = try Self.blocking { try await library.libraryContents() }
+        } catch {
+            Self.logger.error("The core could not read the library after a sync pass: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            return false
+        }
+        guard let digest = contents.digest, digest != seenDigest else { return false }
+        let vouched = isTrusted
+        let verdict: ConnectionStoreIntegrity.Verdict
+        if vouched {
+            verdict = .trusted
+        } else {
+            verdict = integrityKeyAnswered ? .modified : .unavailable
+        }
+        readCount += 1
+        let loaded = adopt(contents, verdict: verdict)
+        if vouched {
+            settleTag(digest, stamping: true)
+        }
+        mirrorWrite(loaded, coreDigest: digest, byUser: false, removingSecrets: false, removingUnreadable: [])
+        return true
+    }
+
     // False when the core did not take the write; nothing else is written then. `byUser` true is a person's save of
     // their connections, the one write that may vouch for the store again, as it did for connections.json.
     @discardableResult
