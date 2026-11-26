@@ -19,9 +19,9 @@ use tablepro_keys::encoding::{RequestId, random_uuid};
 use tablepro_keys::keys::DeviceKeys;
 use tablepro_keys::sas::{Role, SessionState};
 
-use self::session::{SessionRecord, transcript};
+use self::session::{Ended, SessionRecord, transcript};
 pub(crate) use self::steps::{Pushed, pushed};
-use self::steps::{SESSION_US, random32, sas_of};
+use self::steps::{SESSION_US, sas_of};
 use super::{HeldDeviceKeys, KeyService};
 use crate::api::error::SyncError;
 use crate::api::key_flows::{ApprovalFlows, ApprovalRequest, ApprovalSession, KeyApplied, KeyArrival, SessionEnd};
@@ -51,15 +51,26 @@ impl ApprovalFlows for KeyService {
             });
         }
         let now = self.now_us();
+        let mut cancels_owed = Vec::new();
         for mut record in self.session_records(txn.as_mut()).await? {
-            if record.role == Role::NewDevice && record.live() && !record.expire_if_due(now) {
+            if record.role != Role::NewDevice {
+                continue;
+            }
+            if record.live() && !record.expire_if_due(now) {
                 return Err(SyncError::Rejected {
                     code: RejectedCode::RequestPending,
                 });
             }
+            if matches!(record.end, Some(Ended::Cancelled(_))) && !record.sent.cancel {
+                cancels_owed.push(record);
+            }
         }
         let certificate = self.newest_own_certificate(txn.as_mut()).await?;
         drop(txn);
+        // The server holds one open request per device row, so an earlier one this side ended is closed first.
+        for mut record in cancels_owed {
+            self.drive(&mut record).await?;
+        }
         // Every approval takes new device keys and a new key device id; the old ones stay until it applies.
         let device = DeviceKeys::generate()?;
         let held = self.device_keys().await?;
@@ -69,13 +80,13 @@ impl ApprovalFlows for KeyService {
         })
         .await?;
         let request = RequestId(random_uuid()?);
-        let mut record = SessionRecord::new_device(
+        let (mut record, comparison) = SessionRecord::new_device(
             transcript(self.origin(), self.account(), request, certificate.ik),
             sas_of(&device)?,
-            random32()?,
             now,
             now + SESSION_US,
         )?;
+        self.keep_comparison(request, comparison);
         self.save_session(&record).await?;
         match self.send_opening(&mut record).await {
             // The request is held and goes up again on the next pass, with the same body.
@@ -123,9 +134,8 @@ impl ApprovalFlows for KeyService {
         if record.role != Role::Approver {
             return Err(KeysError::Session.into());
         }
-        // A fixes its view with its own account's IK as it stands when the person picks the request.
-        record.ik = own.ik;
-        record.choose(sas_of(&own.device)?, random32()?)?;
+        let comparison = record.choose(self.origin(), self.account(), own.ik, sas_of(&own.device)?)?;
+        self.keep_comparison(request, comparison);
         self.save_session(&record).await?;
         self.send_opening(&mut record).await?;
         self.session_view(&mut record).await
@@ -144,7 +154,7 @@ impl ApprovalFlows for KeyService {
     async fn confirm_session(&self, request: RequestId) -> Result<ApprovalSession, SyncError> {
         let _serial = self.serialized().await;
         let mut record = self.require_session(request).await?;
-        record.confirm(self.origin(), self.account())?;
+        record.confirm()?;
         self.save_session(&record).await?;
         self.drive(&mut record).await?;
         self.session_view(&mut record).await
@@ -153,7 +163,7 @@ impl ApprovalFlows for KeyService {
     async fn words_differ(&self, request: RequestId) -> Result<(), SyncError> {
         let _serial = self.serialized().await;
         let mut record = self.require_session(request).await?;
-        let error = record.words_differ(self.origin(), self.account());
+        let error = record.words_differ();
         if error != KeysError::SasMismatch {
             return Err(error.into());
         }
@@ -211,13 +221,13 @@ impl KeyService {
         if record.sent.revoke_owed {
             return self.revoke_refused(record).await;
         }
-        if let Some(self::session::Ended::Cancelled(end)) = record.end {
+        if let Some(Ended::Cancelled(end)) = record.end {
             if !record.sent.cancel {
                 self.send_cancel(record, end).await?;
             }
             return Ok(());
         }
-        if record.role == Role::NewDevice && record.end == Some(self::session::Ended::Approved) && !record.sent.approval
+        if record.role == Role::NewDevice && record.end == Some(Ended::Approved) && !record.sent.approval
         {
             return self.finish_switch(record).await;
         }

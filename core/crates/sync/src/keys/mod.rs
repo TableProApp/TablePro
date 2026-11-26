@@ -28,8 +28,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use serde_json::Value;
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{KeyObject, check_same_object};
-use tablepro_keys::encoding::{AccountId, Origin, ResetId, TeamId, random_uuid};
+use tablepro_keys::encoding::{AccountId, Origin, RequestId, ResetId, TeamId, random_uuid};
 use tablepro_keys::record_id::KeyKind;
+use tablepro_keys::sas::Comparison;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::api::device_store::HostDeviceStore;
@@ -102,6 +103,9 @@ pub struct KeyService {
     served_resets: Mutex<HashMap<ResetId, PendingReset>>,
     // Teams whose rotation on a roster read the server refused, which this session backs off from.
     refused_rotations: Mutex<HashMap<TeamId, team::RefusedRotation>>,
+    // Each approval session's comparison until its reveal. Only memory holds r_N before it is revealed, so a restart
+    // ends a session that has not reached it (0056, Approving a device).
+    comparisons: Mutex<HashMap<RequestId, Comparison>>,
 }
 
 impl KeyService {
@@ -125,6 +129,7 @@ impl KeyService {
             rebuilding: AtomicBool::new(rebuilding),
             served_resets: Mutex::new(HashMap::new()),
             refused_rotations: Mutex::new(HashMap::new()),
+            comparisons: Mutex::new(HashMap::new()),
         }
     }
 
@@ -138,6 +143,10 @@ impl KeyService {
 
     pub(crate) fn refused_rotations(&self) -> MutexGuard<'_, HashMap<TeamId, team::RefusedRotation>> {
         lock(&self.refused_rotations)
+    }
+
+    pub(crate) fn comparisons(&self) -> MutexGuard<'_, HashMap<RequestId, Comparison>> {
+        lock(&self.comparisons)
     }
 
     pub fn account(&self) -> AccountId {

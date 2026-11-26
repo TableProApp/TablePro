@@ -136,7 +136,6 @@ impl KeyService {
         own: Option<&OwnAccount>,
         step: &SasBody,
     ) -> Result<bool, KeysError> {
-        let (origin, account) = (self.origin(), self.account());
         match (held.role, step) {
             (
                 Role::NewDevice,
@@ -155,7 +154,7 @@ impl KeyService {
                 if held.a == Some((a, *r)) {
                     return Ok(false);
                 }
-                held.receive_nonce(origin, account, a, *r)?;
+                self.with_comparison(held, |held, comparison| held.receive_nonce(comparison, a, *r))?;
                 Ok(true)
             }
             (Role::Approver, SasBody::Nonce { key_device, r, .. }) => {
@@ -172,7 +171,8 @@ impl KeyService {
                 }
                 // A reveal that does not open the commitment ends the session; this side sends its `cancel` with that
                 // reason.
-                held.receive_reveal(origin, account, *r).map(|()| false)
+                self.with_comparison(held, |held, comparison| held.receive_reveal(comparison, *r))
+                    .map(|()| false)
             }
             (Role::NewDevice, SasBody::Reveal { .. }) => Ok(false),
             (_, SasBody::Cancel { reason }) => {

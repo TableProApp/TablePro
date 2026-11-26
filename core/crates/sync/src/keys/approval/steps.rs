@@ -1,6 +1,6 @@
 // The pushes each side of a session makes and the rows it keeps (0056, Approving a device). Each step is written to
-// `key_comparisons` before it goes up, so a retry after a crash or a timeout sends the same body and never draws new
-// randomness for a step already taken.
+// `key_comparisons` once it is taken and before it goes up, so a retry after a timeout sends the same body and never
+// draws new randomness for a step already taken.
 
 use std::sync::Arc;
 
@@ -9,7 +9,7 @@ use tablepro_keys::body::{CancelReason, KeyBody, KeyObject, RequestBody, SasBody
 use tablepro_keys::encoding::{RequestId, Version};
 use tablepro_keys::keys::DeviceKeys;
 use tablepro_keys::record_id::{KeyRecordId, SasStep};
-use tablepro_keys::sas::{Role, SasDevice};
+use tablepro_keys::sas::{Comparison, Role, SasDevice};
 
 use super::session::SessionRecord;
 use crate::api::error::SyncError;
@@ -21,12 +21,6 @@ use crate::keys::{KeyService, OwnAccount, create_change};
 
 // 600 seconds after the server took the request (0056, Approving a device, step 1).
 pub(super) const SESSION_US: i64 = 600 * 1_000_000;
-
-pub(super) fn random32() -> Result<[u8; 32], SyncError> {
-    let mut bytes = [0_u8; 32];
-    aws_lc_rs::rand::fill(&mut bytes).map_err(|_| SyncError::Keys(KeysError::Random))?;
-    Ok(bytes)
-}
 
 pub(super) fn sas_of(keys: &DeviceKeys) -> Result<SasDevice, SyncError> {
     Ok(SasDevice {
@@ -183,7 +177,7 @@ impl KeyService {
         request: RequestId,
     ) -> Result<Option<SessionRecord>, SyncError> {
         match txn.get(&RowKey::KeyComparison(request)).await? {
-            Some(Row::KeyComparison(row)) => SessionRecord::from_row(&row).map(Some),
+            Some(Row::KeyComparison(row)) => Ok(Some(self.loaded(SessionRecord::from_row(&row)?))),
             _ => Ok(None),
         }
     }
@@ -193,10 +187,35 @@ impl KeyService {
             .await?
             .iter()
             .filter_map(|row| match row {
-                Row::KeyComparison(row) => Some(SessionRecord::from_row(row)),
+                Row::KeyComparison(row) => Some(SessionRecord::from_row(row).map(|record| self.loaded(record))),
                 _ => None,
             })
             .collect()
+    }
+
+    // A session read back without the comparison it needs lost r_N, or the comparison that checks it, to a restart.
+    // It ends as this side cancelling, so the `cancel` step goes up and N can ask again with a new request, which the
+    // server refuses while this one is open (0056, One comparison per session).
+    fn loaded(&self, mut record: SessionRecord) -> SessionRecord {
+        if record.needs_comparison() && !self.comparisons().contains_key(&record.request) {
+            record.cancel(SessionEnd::User).ok();
+        }
+        record
+    }
+
+    pub(super) fn keep_comparison(&self, request: RequestId, comparison: Comparison) {
+        self.comparisons().insert(request, comparison);
+    }
+
+    // One step through the session's comparison; a session without one takes no step.
+    pub(super) fn with_comparison<T>(
+        &self,
+        record: &mut SessionRecord,
+        step: impl FnOnce(&mut SessionRecord, &mut Comparison) -> Result<T, KeysError>,
+    ) -> Result<T, KeysError> {
+        let mut comparisons = self.comparisons();
+        let comparison = comparisons.get_mut(&record.request).ok_or(KeysError::Session)?;
+        step(record, comparison)
     }
 
     // The row, and the pending flow while the session has a step to send or N has a change set to merge.
@@ -222,6 +241,9 @@ impl KeyService {
             }
         } else {
             txn.delete(&RowKey::KeyPending(flow)).await?;
+        }
+        if !record.needs_comparison() {
+            self.comparisons().remove(&record.request);
         }
         Ok(())
     }
@@ -326,7 +348,7 @@ impl KeyService {
 
     pub(super) async fn send_reveal(&self, record: &mut SessionRecord) -> Result<(), SyncError> {
         if record.state == tablepro_keys::sas::SessionState::Chosen {
-            record.reveal(self.origin(), self.account())?;
+            self.with_comparison(record, SessionRecord::reveal)?;
             self.save_session(record).await?;
         }
         match self.push_step(record, &reveal_object(record)?).await? {

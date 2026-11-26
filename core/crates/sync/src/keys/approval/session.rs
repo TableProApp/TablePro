@@ -1,6 +1,8 @@
-// One comparison session as this side holds it in `key_comparisons` (0054): the view it fixed, how far it got and
-// why it ended. Every step goes through `tablepro_keys::sas::Comparison`, rebuilt from the row each time, so the step
-// order and the one comparison per session are that type's (0056, Approving a device, The session).
+// One comparison session as this side holds it in `key_comparisons` (0054): the view it fixed, the steps it took and
+// why it ended. Until the reveal each step goes through `tablepro_keys::sas::Comparison`, which the service keeps in
+// memory because it holds r_N. The row takes a step's values only once the step is taken, so r_N reaches it with the
+// reveal, and a session whose comparison a restart dropped before the reveal ends (0056, Approving a device, The
+// session). From the reveal on every input is in the row, and the words come from the view it fixed.
 
 use std::fmt;
 
@@ -52,6 +54,7 @@ pub(crate) struct SessionRecord {
     pub ik: Ed25519Public,
     pub n: SasDevice,
     pub commit: [u8; 32],
+    // Once N took its reveal step, or A read it.
     pub r_n: Option<[u8; 32]>,
     pub a: Option<(SasDevice, [u8; 32])>,
     pub end: Option<Ended>,
@@ -61,7 +64,7 @@ pub(crate) struct SessionRecord {
     pub device: Option<DeviceRowId>,
 }
 
-// r_N stays out of logs until it is revealed, and r_A with it.
+// Neither nonce is printed.
 impl fmt::Debug for SessionRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SessionRecord")
@@ -74,31 +77,31 @@ impl fmt::Debug for SessionRecord {
 }
 
 impl SessionRecord {
-    // N, once it fixed its view and drew r_N.
+    // N, once it fixed its view. The comparison draws r_N and holds it until the reveal.
     pub fn new_device(
         transcript: Transcript,
         n: SasDevice,
-        r_n: [u8; 32],
         now_us: i64,
         expires_at_us: i64,
-    ) -> Result<Self, KeysError> {
+    ) -> Result<(Self, Comparison), KeysError> {
         let (request, ik) = (transcript.request, transcript.ik);
-        let comparison = Comparison::new_device(transcript, n, r_n)?;
-        Ok(Self {
+        let comparison = Comparison::new_device(transcript, n)?;
+        let record = Self {
             request,
             role: Role::NewDevice,
-            state: SessionState::Open,
+            state: comparison.state(),
             expires_at_us,
             ik,
             n,
             commit: comparison.commit(),
-            r_n: Some(r_n),
+            r_n: None,
             a: None,
             end: None,
             sent: Sent::default(),
             requested_at_us: now_us,
             device: None,
-        })
+        };
+        Ok((record, comparison))
     }
 
     // A, for a request it read and has not chosen.
@@ -132,68 +135,39 @@ impl SessionRecord {
         self.end.is_none()
     }
 
-    // Rebuilt from the row, replaying each step it took, so a row that does not replay is refused.
-    fn comparison(&self, origin: &Origin, account: AccountId) -> Result<Comparison, KeysError> {
-        let transcript = transcript(origin, account, self.request, self.ik);
-        let reached = |state: SessionState| rank(self.state) >= rank(state);
-        let mut comparison = match self.role {
-            Role::NewDevice => {
-                let r_n = self.r_n.ok_or(KeysError::Session)?;
-                let mut comparison = Comparison::new_device(transcript, self.n, r_n)?;
-                if comparison.commit() != self.commit {
-                    return Err(KeysError::Commitment);
-                }
-                if let Some((a, r_a)) = self.a {
-                    comparison.receive_nonce(a, r_a)?;
-                }
-                if reached(SessionState::Revealed) {
-                    comparison.reveal()?;
-                }
-                comparison
-            }
-            Role::Approver => {
-                let (a, r_a) = self.a.ok_or(KeysError::Session)?;
-                let mut comparison = Comparison::approver(transcript, self.n, self.commit, a, r_a);
-                if let Some(r_n) = self.r_n {
-                    comparison.receive_reveal(r_n)?;
-                }
-                comparison
-            }
-        };
-        if reached(SessionState::Compared) {
-            comparison.words()?;
-        }
-        if reached(SessionState::Confirmed) {
-            comparison.confirm()?;
-        }
-        Ok(comparison)
+    // A live session before the reveal takes its next step through the comparison this side holds in memory: N's from
+    // its request on, A's from its `nonce` step on.
+    pub fn needs_comparison(&self) -> bool {
+        self.live() && self.r_n.is_none() && (self.role == Role::NewDevice || self.state != SessionState::Open)
     }
 
     fn require_live(&self) -> Result<(), KeysError> {
         if self.live() { Ok(()) } else { Err(KeysError::Session) }
     }
 
-    // A, when the person picks the request: its `nonce` step's keys and r_A.
-    pub fn choose(&mut self, a: SasDevice, r_a: [u8; 32]) -> Result<(), KeysError> {
+    // A, when the person picks the request: it fixes its view with `ik`, its own account's as it stands then, and the
+    // comparison draws the r_A its `nonce` step carries.
+    pub fn choose(
+        &mut self,
+        origin: &Origin,
+        account: AccountId,
+        ik: Ed25519Public,
+        a: SasDevice,
+    ) -> Result<Comparison, KeysError> {
         self.require_live()?;
         if self.role != Role::Approver || self.state != SessionState::Open {
             return Err(KeysError::Session);
         }
-        self.a = Some((a, r_a));
-        self.state = SessionState::Chosen;
-        Ok(())
+        let comparison = Comparison::approver(transcript(origin, account, self.request, ik), self.n, self.commit, a)?;
+        self.ik = ik;
+        self.a = Some((a, comparison.nonce()?));
+        self.state = comparison.state();
+        Ok(comparison)
     }
 
     // N reads the `nonce` step.
-    pub fn receive_nonce(
-        &mut self,
-        origin: &Origin,
-        account: AccountId,
-        a: SasDevice,
-        r_a: [u8; 32],
-    ) -> Result<(), KeysError> {
+    pub fn receive_nonce(&mut self, comparison: &mut Comparison, a: SasDevice, r_a: [u8; 32]) -> Result<(), KeysError> {
         self.require_live()?;
-        let mut comparison = self.comparison(origin, account)?;
         comparison.receive_nonce(a, r_a)?;
         self.a = Some((a, r_a));
         self.state = comparison.state();
@@ -201,18 +175,17 @@ impl SessionRecord {
     }
 
     // N's `reveal` step, only once r_A is fixed.
-    pub fn reveal(&mut self, origin: &Origin, account: AccountId) -> Result<[u8; 32], KeysError> {
+    pub fn reveal(&mut self, comparison: &mut Comparison) -> Result<[u8; 32], KeysError> {
         self.require_live()?;
-        let mut comparison = self.comparison(origin, account)?;
         let r_n = comparison.reveal()?;
+        self.r_n = Some(r_n);
         self.state = comparison.state();
         Ok(r_n)
     }
 
     // A reads the first `reveal`. One that does not open the commitment ends the session.
-    pub fn receive_reveal(&mut self, origin: &Origin, account: AccountId, r_n: [u8; 32]) -> Result<(), KeysError> {
+    pub fn receive_reveal(&mut self, comparison: &mut Comparison, r_n: [u8; 32]) -> Result<(), KeysError> {
         self.require_live()?;
-        let mut comparison = self.comparison(origin, account)?;
         match comparison.receive_reveal(r_n) {
             Ok(()) => {
                 self.r_n = Some(r_n);
@@ -232,47 +205,40 @@ impl SessionRecord {
     // from the same fixed view, never from a step read later.
     pub fn words(&mut self, origin: &Origin, account: AccountId) -> Result<Vec<&'static str>, KeysError> {
         self.require_live()?;
-        match self.state {
-            SessionState::Revealed => {
-                let mut comparison = self.comparison(origin, account)?;
-                let words = comparison.words()?;
-                self.state = comparison.state();
-                Ok(words)
-            }
-            SessionState::Compared => {
-                self.comparison(origin, account)?;
-                let (Some(r_n), Some((a, r_a))) = (self.r_n, self.a) else {
-                    return Err(KeysError::Session);
-                };
-                transcript(origin, account, self.request, self.ik).words(&self.n, &r_n, &a, &r_a)
-            }
-            _ => Err(KeysError::Session),
+        if !matches!(self.state, SessionState::Revealed | SessionState::Compared) {
+            return Err(KeysError::Session);
         }
+        let (Some(r_n), Some((a, r_a))) = (self.r_n, self.a) else {
+            return Err(KeysError::Session);
+        };
+        let transcript = transcript(origin, account, self.request, self.ik);
+        // r_N opened this commitment when the reveal was taken or read, so a row where it does not was not written here.
+        transcript.check_commitment(&self.n, &r_n, &self.commit)?;
+        let words = transcript.words(&self.n, &r_n, &a, &r_a)?;
+        self.state = SessionState::Compared;
+        Ok(words)
     }
 
-    pub fn confirm(&mut self, origin: &Origin, account: AccountId) -> Result<(), KeysError> {
+    pub fn confirm(&mut self) -> Result<(), KeysError> {
         self.require_live()?;
-        let mut comparison = self.comparison(origin, account)?;
-        comparison.confirm()?;
-        self.state = comparison.state();
+        if self.state != SessionState::Compared {
+            return Err(KeysError::Session);
+        }
+        self.state = SessionState::Confirmed;
         Ok(())
     }
 
     // The person says the words differ: `keys.sas_mismatch`, and the session ends with a `mismatch` cancel.
-    pub fn words_differ(&mut self, origin: &Origin, account: AccountId) -> KeysError {
+    pub fn words_differ(&mut self) -> KeysError {
         if let Err(error) = self.require_live() {
             return error;
         }
-        let mut comparison = match self.comparison(origin, account) {
-            Ok(comparison) => comparison,
-            Err(error) => return error,
-        };
-        let error = comparison.words_differ();
-        if error == KeysError::SasMismatch {
-            self.state = SessionState::Cancelled;
-            self.end = Some(Ended::Cancelled(SessionEnd::Mismatch));
+        if self.state != SessionState::Compared {
+            return KeysError::Session;
         }
-        error
+        self.state = SessionState::Cancelled;
+        self.end = Some(Ended::Cancelled(SessionEnd::Mismatch));
+        KeysError::SasMismatch
     }
 
     // A `cancel` step, this side's or the other's.
@@ -456,7 +422,12 @@ impl SessionRecord {
         if let Some(device) = record.peer() {
             push_device(&mut peer, &device);
         }
-        if peer != row.peer {
+        // A reveal follows the `nonce` step on both sides, and a session past the reveal holds both.
+        let past_reveal = matches!(
+            record.state,
+            SessionState::Revealed | SessionState::Compared | SessionState::Confirmed
+        );
+        if peer != row.peer || (record.r_n.is_some() && record.a.is_none()) || (past_reveal && record.r_n.is_none()) {
             return Err(malformed);
         }
         Ok(record)
@@ -469,18 +440,6 @@ pub(crate) fn transcript(origin: &Origin, account: AccountId, request: RequestId
         account,
         request,
         ik,
-    }
-}
-
-// Where a state sits in the order the session moves through; an ended one past them all.
-const fn rank(state: SessionState) -> u8 {
-    match state {
-        SessionState::Open => 0,
-        SessionState::Chosen => 1,
-        SessionState::Revealed => 2,
-        SessionState::Compared => 3,
-        SessionState::Confirmed => 4,
-        SessionState::Cancelled | SessionState::Expired => 0,
     }
 }
 
@@ -591,7 +550,9 @@ mod tests {
 
     struct Pair {
         n: SessionRecord,
+        n_comparison: Comparison,
         a: SessionRecord,
+        a_comparison: Option<Comparison>,
         a_device: SasDevice,
     }
 
@@ -601,29 +562,38 @@ mod tests {
         let n_keys = DeviceKeys::generate().unwrap();
         let a_keys = DeviceKeys::generate().unwrap();
         let request = RequestId(Uuid::from_u128(7));
-        let n = SessionRecord::new_device(
-            transcript(&origin(), account(), request, ik),
-            device(&n_keys),
-            [3; 32],
-            0,
-            600,
-        )
-        .unwrap();
+        let (n, n_comparison) =
+            SessionRecord::new_device(transcript(&origin(), account(), request, ik), device(&n_keys), 0, 600).unwrap();
         let a = SessionRecord::seen_request(request, ik, device(&n_keys), n.commit, 0, 600, None);
         Pair {
             n,
+            n_comparison,
             a,
+            a_comparison: None,
             a_device: device(&a_keys),
         }
     }
 
+    impl Pair {
+        fn choose(&mut self) -> [u8; 32] {
+            let ik = self.a.ik;
+            let comparison = self.a.choose(&origin(), account(), ik, self.a_device).unwrap();
+            self.a_comparison = Some(comparison);
+            self.a.a.unwrap().1
+        }
+
+        fn receive_reveal(&mut self, r_n: [u8; 32]) -> Result<(), KeysError> {
+            self.a.receive_reveal(self.a_comparison.as_mut().unwrap(), r_n)
+        }
+    }
+
     fn through_reveal(pair: &mut Pair) {
-        pair.a.choose(pair.a_device, [4; 32]).unwrap();
+        let r_a = pair.choose();
         pair.n
-            .receive_nonce(&origin(), account(), pair.a_device, [4; 32])
+            .receive_nonce(&mut pair.n_comparison, pair.a_device, r_a)
             .unwrap();
-        let r_n = pair.n.reveal(&origin(), account()).unwrap();
-        pair.a.receive_reveal(&origin(), account(), r_n).unwrap();
+        let r_n = pair.n.reveal(&mut pair.n_comparison).unwrap();
+        pair.receive_reveal(r_n).unwrap();
     }
 
     #[test]
@@ -642,27 +612,45 @@ mod tests {
     }
 
     #[test]
+    fn r_n_reaches_the_row_only_with_the_reveal() {
+        let mut pair = pair();
+        assert!(pair.n.needs_comparison());
+        assert!(!pair.a.needs_comparison(), "A holds no comparison before it chooses");
+        let r_a = pair.choose();
+        assert!(pair.a.needs_comparison());
+        pair.n
+            .receive_nonce(&mut pair.n_comparison, pair.a_device, r_a)
+            .unwrap();
+        assert_eq!(pair.n.r_n, None);
+
+        let r_n = pair.n.reveal(&mut pair.n_comparison).unwrap();
+        pair.receive_reveal(r_n).unwrap();
+
+        assert_eq!(pair.n.r_n, Some(r_n));
+        assert!(!pair.n.needs_comparison());
+        assert!(!pair.a.needs_comparison());
+    }
+
+    #[test]
     fn a_reveal_before_the_nonce_is_keys_session() {
         let mut pair = pair();
 
-        let error = pair.n.reveal(&origin(), account()).unwrap_err();
+        let error = pair.n.reveal(&mut pair.n_comparison).unwrap_err();
 
         assert_eq!(error.code(), "keys.session");
+        assert_eq!(pair.n.r_n, None);
     }
 
     #[test]
     fn a_reveal_that_does_not_open_the_commitment_ends_the_session() {
         let mut pair = pair();
-        pair.a.choose(pair.a_device, [4; 32]).unwrap();
+        pair.choose();
 
-        let error = pair.a.receive_reveal(&origin(), account(), [5; 32]).unwrap_err();
+        let error = pair.receive_reveal([5; 32]).unwrap_err();
 
         assert_eq!(error.code(), "keys.commitment");
         assert_eq!(pair.a.end, Some(Ended::Cancelled(SessionEnd::Commitment)));
-        assert_eq!(
-            pair.a.receive_reveal(&origin(), account(), [3; 32]).unwrap_err().code(),
-            "keys.session"
-        );
+        assert_eq!(pair.receive_reveal([3; 32]).unwrap_err().code(), "keys.session");
     }
 
     #[test]
@@ -670,9 +658,13 @@ mod tests {
         let mut pair = pair();
         let other = DeviceKeys::generate().unwrap();
         pair.a.n.dek = other.dek.public().unwrap();
-        pair.a.choose(pair.a_device, [4; 32]).unwrap();
+        let r_a = pair.choose();
+        pair.n
+            .receive_nonce(&mut pair.n_comparison, pair.a_device, r_a)
+            .unwrap();
+        let r_n = pair.n.reveal(&mut pair.n_comparison).unwrap();
 
-        let error = pair.a.receive_reveal(&origin(), account(), [3; 32]).unwrap_err();
+        let error = pair.receive_reveal(r_n).unwrap_err();
 
         assert_eq!(error.code(), "keys.commitment");
     }
@@ -681,8 +673,9 @@ mod tests {
     fn a_second_reveal_is_keys_session() {
         let mut pair = pair();
         through_reveal(&mut pair);
+        let r_n = pair.n.r_n.unwrap();
 
-        let error = pair.a.receive_reveal(&origin(), account(), [3; 32]).unwrap_err();
+        let error = pair.receive_reveal(r_n).unwrap_err();
 
         assert_eq!(error.code(), "keys.session");
     }
@@ -693,21 +686,21 @@ mod tests {
         through_reveal(&mut pair);
         pair.n.words(&origin(), account()).unwrap();
 
-        let error = pair.n.words_differ(&origin(), account());
+        let error = pair.n.words_differ();
 
         assert_eq!(error.code(), "keys.sas_mismatch");
         assert_eq!(pair.n.end, Some(Ended::Cancelled(SessionEnd::Mismatch)));
         assert_eq!(pair.n.words(&origin(), account()).unwrap_err().code(), "keys.session");
-        assert_eq!(pair.n.confirm(&origin(), account()).unwrap_err().code(), "keys.session");
+        assert_eq!(pair.n.confirm().unwrap_err().code(), "keys.session");
     }
 
     #[test]
-    fn words_differ_before_any_words_is_keys_session() {
+    fn words_differ_or_a_confirm_before_any_words_is_keys_session() {
         let mut pair = pair();
+        through_reveal(&mut pair);
 
-        let error = pair.n.words_differ(&origin(), account());
-
-        assert_eq!(error.code(), "keys.session");
+        assert_eq!(pair.n.words_differ().code(), "keys.session");
+        assert_eq!(pair.n.confirm().unwrap_err().code(), "keys.session");
         assert!(pair.n.live());
     }
 
@@ -716,12 +709,12 @@ mod tests {
         let mut pair = pair();
         let mut substituted = pair.a_device;
         substituted.key_device = KeyDeviceId(Uuid::from_u128(99));
-        pair.a.choose(pair.a_device, [4; 32]).unwrap();
+        let r_a = pair.choose();
         pair.n
-            .receive_nonce(&origin(), account(), substituted, [4; 32])
+            .receive_nonce(&mut pair.n_comparison, substituted, r_a)
             .unwrap();
-        let r_n = pair.n.reveal(&origin(), account()).unwrap();
-        pair.a.receive_reveal(&origin(), account(), r_n).unwrap();
+        let r_n = pair.n.reveal(&mut pair.n_comparison).unwrap();
+        pair.receive_reveal(r_n).unwrap();
 
         assert_ne!(
             pair.n.words(&origin(), account()).unwrap(),
@@ -733,21 +726,22 @@ mod tests {
     fn a_request_the_server_swapped_whole_gives_a_other_words() {
         let mut pair = pair();
         let fake_keys = DeviceKeys::generate().unwrap();
-        let fake = SessionRecord::new_device(
+        let (fake, mut fake_comparison) = SessionRecord::new_device(
             transcript(&origin(), account(), pair.n.request, pair.n.ik),
             device(&fake_keys),
-            [8; 32],
             0,
             600,
         )
         .unwrap();
         pair.a = SessionRecord::seen_request(pair.n.request, pair.n.ik, fake.n, fake.commit, 0, 600, None);
-        pair.a.choose(pair.a_device, [4; 32]).unwrap();
+        let r_a = pair.choose();
+        fake_comparison.receive_nonce(pair.a_device, r_a).unwrap();
+        let fake_r_n = fake_comparison.reveal().unwrap();
         pair.n
-            .receive_nonce(&origin(), account(), pair.a_device, [4; 32])
+            .receive_nonce(&mut pair.n_comparison, pair.a_device, r_a)
             .unwrap();
-        pair.n.reveal(&origin(), account()).unwrap();
-        pair.a.receive_reveal(&origin(), account(), [8; 32]).unwrap();
+        pair.n.reveal(&mut pair.n_comparison).unwrap();
+        pair.receive_reveal(fake_r_n).unwrap();
 
         assert_ne!(
             pair.n.words(&origin(), account()).unwrap(),
@@ -761,20 +755,26 @@ mod tests {
         cancelled.n.cancel(SessionEnd::User).unwrap();
         let mut expired = pair();
         assert!(expired.a.expire_if_due(600));
+        let ik = expired.a.ik;
 
         assert_eq!(
             cancelled
                 .n
-                .receive_nonce(&origin(), account(), cancelled.a_device, [4; 32])
+                .receive_nonce(&mut cancelled.n_comparison, cancelled.a_device, [4; 32])
                 .unwrap_err()
                 .code(),
             "keys.session"
         );
         assert_eq!(
-            expired.a.choose(expired.a_device, [4; 32]).unwrap_err().code(),
+            expired
+                .a
+                .choose(&origin(), account(), ik, expired.a_device)
+                .unwrap_err()
+                .code(),
             "keys.session"
         );
         assert_eq!(cancelled.n.cancel(SessionEnd::User).unwrap_err().code(), "keys.session");
+        assert!(!cancelled.n.needs_comparison());
         assert_eq!(expired.a.phase(&origin(), account()).unwrap(), SessionPhase::Expired);
     }
 
@@ -794,7 +794,7 @@ mod tests {
         let mut pair = pair();
         through_reveal(&mut pair);
         pair.n.words(&origin(), account()).unwrap();
-        pair.n.confirm(&origin(), account()).unwrap();
+        pair.n.confirm().unwrap();
 
         assert!(!pair.n.expire_if_due(i64::MAX));
         pair.n.purged_unapproved();
@@ -817,6 +817,8 @@ mod tests {
         bad_peer.peer[0] ^= 1;
         let mut bad_view = row.clone();
         bad_view.view.push(0);
+        let mut no_reveal = pair.a.clone();
+        no_reveal.r_n = None;
 
         assert_eq!(back.to_row(), row);
         assert_eq!(
@@ -825,10 +827,14 @@ mod tests {
         );
         assert!(SessionRecord::from_row(&bad_peer).is_err());
         assert!(SessionRecord::from_row(&bad_view).is_err());
+        assert!(
+            SessionRecord::from_row(&no_reveal.to_row()).is_err(),
+            "a compared session holds the r_N it compared"
+        );
     }
 
     #[test]
-    fn a_row_whose_view_does_not_replay_is_refused() {
+    fn a_row_whose_r_n_does_not_open_its_commitment_is_refused() {
         let mut pair = pair();
         through_reveal(&mut pair);
         pair.n.r_n = Some([9; 32]);

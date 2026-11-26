@@ -21,9 +21,7 @@ use crate::api::ids::ScopeName;
 use crate::api::state::{Holder, KeyPinRow, KeyVersionRow, KeyVersionState, StoppedCause};
 use crate::keys::HeldObject;
 
-// `tablepro-keys`' flows.json at 8a90c920c0 (#4568, blob 5a977fb3ea), which adds the flow device keys these rows open
-// wraps with. It goes once that PR's vectors are on this branch.
-const FLOWS: &str = include_str!("vectors/flows.json");
+const FLOWS: &str = include_str!("../../../../keys/vectors/flows.json");
 
 fn flows() -> Value {
     serde_json::from_str(FLOWS).unwrap()

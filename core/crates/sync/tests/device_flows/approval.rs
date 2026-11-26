@@ -251,6 +251,65 @@ async fn a_cancel_from_either_side_ends_the_session_for_both() {
     assert_eq!(a.service.approval_session(request).await.unwrap().phase, user);
 }
 
+// Only memory holds r_N before the reveal. N restarts after A picked its request: the session ends with N's cancel, A
+// sees it end, and N asks again with a new request, which the server takes once the first is closed (0056, An ended
+// session never reopens).
+#[tokio::test]
+async fn a_restart_before_the_reveal_ends_the_session_and_the_device_asks_again() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    let n = n.reopen(tablepro_sync::api::state::Opened::FRESH).await;
+
+    n.pull().await;
+    let ended = n.service.approval_session(request).await.unwrap().phase;
+    a.pull().await;
+    let seen = a.service.approval_session(request).await.unwrap().phase;
+    let again = n.service.request_approval().await.unwrap();
+
+    let user = SessionPhase::Cancelled {
+        reason: SessionEnd::User,
+    };
+    assert_eq!(ended, user);
+    assert_eq!(seen, user);
+    assert_ne!(again, request);
+    assert!(matches!(n.key_state().await, KeyState::NeedsApproval { request: Some(asked) } if asked == again));
+}
+
+// A restarts after its `nonce` step and before N's reveal: it holds no comparison to check the reveal with, so it ends
+// the session with its cancel instead of showing words.
+#[tokio::test]
+async fn an_approver_restarted_before_the_reveal_ends_the_session() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    let a = a.reopen(tablepro_sync::api::state::Opened::FRESH).await;
+
+    n.pull().await;
+    n.service.approval_session(request).await.unwrap();
+    a.pull().await;
+    let ended = a.service.approval_session(request).await.unwrap().phase;
+    n.pull().await;
+
+    let user = SessionPhase::Cancelled {
+        reason: SessionEnd::User,
+    };
+    assert_eq!(ended, user);
+    assert_eq!(n.service.approval_session(request).await.unwrap().phase, user);
+}
+
 // A server-made approval: a device certificate the server replays at the new key device's id, with wraps signed by a
 // key the new device never compared. N refuses it and keeps the keys it had.
 #[tokio::test]
