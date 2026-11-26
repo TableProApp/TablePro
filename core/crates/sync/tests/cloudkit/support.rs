@@ -1,6 +1,8 @@
-// A store per kind in memory, a state file and a CloudKit zone, wired as the engine runs the fetch.
+// A store per kind in memory, a state file and a CloudKit zone, wired as the engine runs the fetch, the push and the
+// pass.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use async_trait::async_trait;
@@ -10,7 +12,7 @@ use tablepro_records::cloudkit::{CloudFields, CloudValue, from_wire, record_name
 use tablepro_sync::api::cloudkit::{CloudKitField, CloudKitTransport, CloudKitValue};
 use tablepro_sync::api::ids::{ChangeTag, KindName};
 use tablepro_sync::api::state::{
-    BaseRow, DeferredRow, HeldRow, Row, RowKey, StateFiles, StateIdentity, StateStore, StoreRow,
+    BaseRow, DeferredRow, HeldRow, Row, RowKey, RowRange, StateFiles, StateIdentity, StateStore, StoreRow, Table,
 };
 use tablepro_sync::api::state::{HeldReason, Standing};
 use tablepro_sync::api::transport::PulledRecord;
@@ -19,6 +21,8 @@ use tablepro_sync::api::{
     SyncError,
 };
 use tablepro_sync::cloudkit::fetch::{Categories, FetchReport, Fetcher, Rebased, ServerChanged};
+use tablepro_sync::cloudkit::modify::{CloudKitParts, CloudKitSync, PushReport, Pusher, Waits};
+use tablepro_sync::engine::{Clock, Journal, StopSignal};
 use tablepro_sync_testing::{FakeCloudKit, MemoryStateFiles};
 use uuid::Uuid;
 
@@ -337,19 +341,38 @@ pub fn projected(kind: Kind, id: &str, wire: &Value) -> Value {
         .fields
 }
 
+// Milliseconds since the Unix epoch, moved by the test.
+#[derive(Debug)]
+pub struct TestClock(AtomicI64);
+
+impl TestClock {
+    pub fn advance(&self, ms: i64) {
+        self.0.fetch_add(ms, Ordering::SeqCst);
+    }
+}
+
+impl Clock for TestClock {
+    fn now_ms(&self) -> i64 {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
 pub struct Rig {
-    pub cloud: FakeCloudKit,
-    pub files: MemoryStateFiles,
+    pub cloud: Arc<FakeCloudKit>,
+    pub files: Arc<MemoryStateFiles>,
     pub state: Arc<dyn StateStore>,
     pub stores: BTreeMap<Kind, Arc<MemoryStore>>,
     pub on: Mutex<BTreeSet<Kind>>,
+    pub clock: Arc<TestClock>,
+    // What a push run by the test keeps between its passes, as the engine's session does.
+    waits: Mutex<Waits>,
 }
 
 impl Rig {
     pub async fn new() -> Self {
-        let cloud = FakeCloudKit::signed_in(USER);
+        let cloud = Arc::new(FakeCloudKit::signed_in(USER));
         cloud.ensure_zone(USER.to_owned()).await.unwrap();
-        let files = MemoryStateFiles::new();
+        let files = Arc::new(MemoryStateFiles::new());
         let state = files.open(Self::identity()).await.unwrap();
         Self {
             cloud,
@@ -357,6 +380,8 @@ impl Rig {
             state,
             stores: Self::stores(),
             on: Mutex::new(KINDS.into_iter().collect()),
+            clock: Arc::new(TestClock(AtomicI64::new(1_767_225_600_000))),
+            waits: Mutex::new(Waits::default()),
         }
     }
 
@@ -395,7 +420,7 @@ impl Rig {
         lock(&self.on).insert(kind);
     }
 
-    fn adapters(&self) -> Vec<Arc<dyn RecordAdapter>> {
+    pub fn adapters(&self) -> Vec<Arc<dyn RecordAdapter>> {
         self.stores
             .values()
             .map(|store| Arc::clone(store) as Arc<dyn RecordAdapter>)
@@ -417,7 +442,73 @@ impl Rig {
     }
 
     pub async fn fetch(&self) -> Result<FetchReport, SyncError> {
-        self.fetcher(&self.cloud).fetch().await
+        self.fetcher(self.cloud.as_ref()).fetch().await
+    }
+
+    pub async fn push(&self) -> Result<PushReport, SyncError> {
+        self.push_through(self.cloud.as_ref()).await
+    }
+
+    pub async fn push_through(&self, transport: &dyn CloudKitTransport) -> Result<PushReport, SyncError> {
+        self.push_on(transport, self.state.as_ref()).await
+    }
+
+    pub async fn push_on(
+        &self,
+        transport: &dyn CloudKitTransport,
+        state: &dyn StateStore,
+    ) -> Result<PushReport, SyncError> {
+        let fetcher = self.fetcher_on(transport, state);
+        let stop = StopSignal::new();
+        let mut waits = std::mem::take(&mut *lock(&self.waits));
+        let pushed = Pusher::new(&fetcher, &stop, self.clock.now_ms())
+            .push(&mut waits, None)
+            .await;
+        *lock(&self.waits) = waits;
+        pushed
+    }
+
+    // The iCloud pass over this rig's stores and state files, as the app last left it with `last_account`.
+    pub fn sync(&self, last_account: Option<&str>) -> CloudKitSync {
+        self.sync_through(Arc::clone(&self.cloud) as Arc<dyn CloudKitTransport>, last_account)
+    }
+
+    pub fn sync_through(&self, transport: Arc<dyn CloudKitTransport>, last_account: Option<&str>) -> CloudKitSync {
+        self.sync_over(transport, Arc::clone(&self.files) as Arc<dyn StateFiles>, last_account)
+    }
+
+    pub fn sync_over(
+        &self,
+        transport: Arc<dyn CloudKitTransport>,
+        files: Arc<dyn StateFiles>,
+        last_account: Option<&str>,
+    ) -> CloudKitSync {
+        CloudKitSync::new(CloudKitParts {
+            transport,
+            files,
+            adapters: self.adapters(),
+            categories: Categories::new(lock(&self.on).iter().copied()),
+            clock: Arc::clone(&self.clock) as Arc<dyn Clock>,
+            stop: StopSignal::new(),
+            journal: Journal::default(),
+            events: None,
+            last_account: last_account.map(str::to_owned),
+        })
+    }
+
+    // The fields of a record the zone holds, as wire fields.
+    pub fn zone_fields(&self, kind: Kind, id: &str) -> Option<Value> {
+        self.zone_fields_of(USER, kind, id)
+    }
+
+    pub fn zone_fields_of(&self, account: &str, kind: Kind, id: &str) -> Option<Value> {
+        let record = self.cloud.record(account, &name(kind, id))?;
+        let fields: CloudFields = record
+            .fields
+            .iter()
+            .filter_map(|field| Some((field.name.clone(), cloud_value(field.value.as_ref()?))))
+            .collect();
+        Some(to_wire(&record.record_type, &record.name, &fields).unwrap().fields)
     }
 
     pub async fn fetch_through(&self, transport: &dyn CloudKitTransport) -> Result<FetchReport, SyncError> {
@@ -425,7 +516,7 @@ impl Rig {
     }
 
     pub async fn rebase(&self, conflicts: Vec<ServerChanged>) -> Result<Rebased, SyncError> {
-        self.fetcher(&self.cloud).rebase(conflicts).await
+        self.fetcher(self.cloud.as_ref()).rebase(conflicts).await
     }
 
     pub fn save_elsewhere(&self, kind: Kind, id: &str, wire: &Value) {
@@ -440,6 +531,20 @@ impl Rig {
 
     async fn row(&self, key: RowKey) -> Option<Row> {
         self.state.begin().await.unwrap().get(&key).await.unwrap()
+    }
+
+    // The bases a pull staged before its store write and has not committed.
+    pub async fn pending_bases(&self) -> Vec<BaseRow> {
+        let mut txn = self.state.begin().await.unwrap();
+        txn.scan(&RowRange::Table(Table::PendingBases))
+            .await
+            .unwrap()
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::PendingBase(base) => Some(base),
+                _ => None,
+            })
+            .collect()
     }
 
     pub async fn base(&self, kind: Kind, id: &str) -> Option<BaseRow> {

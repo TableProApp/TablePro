@@ -22,11 +22,13 @@ use crate::api::state::{Row, RowKey, StateIdentity, StateStore};
 mod copy;
 mod full;
 mod held;
+mod pending;
 mod rebase;
 mod settle;
 mod stores;
 
 pub use rebase::{RebaseFailure, Rebased, ServerChanged};
+pub(in crate::cloudkit) use stores::carried;
 
 use copy::Incoming;
 use settle::{Batch, Finish};
@@ -36,7 +38,7 @@ pub const SCOPE: ScopeName = ScopeName::Personal;
 
 // A profile's deletion unlinks connections and removes Keychain secrets no pull can bring back: it waits for a build
 // that reads the profile, and a deletion found late, deferred or by a full fetch, never removes one.
-const PROFILES: [Kind; 2] = [Kind::SshProfile, Kind::CredentialProfile];
+pub(in crate::cloudkit) const PROFILES: [Kind; 2] = [Kind::SshProfile, Kind::CredentialProfile];
 
 // The `stores` row of one kind. Kinds that share a store can be in different categories, so each refills on its own.
 fn identity_row(kind: Kind, store: &str) -> String {
@@ -95,14 +97,32 @@ pub struct FetchReport {
     pub refilled: Vec<Kind>,
     pub pages: u32,
     pub counts: Counts,
+    // The longest wait CloudKit named for a record it could not return; the next pass waits it out.
+    pub retry_after_ms: Option<u64>,
 }
 
 pub struct Fetcher<'a> {
-    transport: &'a dyn CloudKitTransport,
-    state: &'a dyn StateStore,
-    account: String,
-    adapters: BTreeMap<Kind, Arc<dyn RecordAdapter>>,
-    categories: Categories,
+    pub(in crate::cloudkit) transport: &'a dyn CloudKitTransport,
+    pub(in crate::cloudkit) state: &'a dyn StateStore,
+    pub(in crate::cloudkit) account: String,
+    pub(in crate::cloudkit) adapters: BTreeMap<Kind, Arc<dyn RecordAdapter>>,
+    pub(in crate::cloudkit) categories: Categories,
+}
+
+// Records CloudKit could not return and asked to wait for, which the fetch does not ask for again.
+#[derive(Debug, Default)]
+struct Waited {
+    names: BTreeSet<String>,
+    longest: Option<u64>,
+}
+
+impl Waited {
+    fn note(&mut self, name: &str, retry_after_ms: Option<u64>) {
+        if retry_after_ms.is_some() {
+            self.names.insert(name.to_owned());
+            self.longest = self.longest.max(retry_after_ms);
+        }
+    }
 }
 
 // Where the fetch starts: the stored token, the kinds whose store went back or was replaced, and each kind's store
@@ -217,12 +237,14 @@ impl<'a> Fetcher<'a> {
     }
 
     pub async fn fetch(&self) -> Result<FetchReport, SyncError> {
+        self.settle_pending().await?;
         let start = self.start().await?;
         let mut report = FetchReport {
             refilled: start.refill.iter().copied().collect(),
             ..FetchReport::default()
         };
         let mut pass = Pass::new(start);
+        let mut waited = Waited::default();
         loop {
             let changes = match self
                 .transport
@@ -244,7 +266,7 @@ impl<'a> Fetcher<'a> {
             }
             let last = !changes.more;
             let token = changes.token.clone();
-            let items = self.read(changes).await?;
+            let items = self.read(changes, &mut waited).await?;
             let batch = pass.batch(items, token.clone(), last);
             report.counts.add(self.settle(batch).await?);
             if last {
@@ -253,7 +275,8 @@ impl<'a> Fetcher<'a> {
             pass.next = Some(token);
         }
         report.full = pass.full;
-        report.counts.add(self.recover(pass.refill()).await?);
+        report.counts.add(self.recover(pass.refill(), &mut waited).await?);
+        report.retry_after_ms = waited.longest;
         Ok(report)
     }
 
@@ -303,7 +326,7 @@ impl<'a> Fetcher<'a> {
 
     // A record the zone reported changed whose fetch failed is fetched by name, and held when it still fails, so the
     // token can pass it without losing the change.
-    async fn read(&self, changes: CloudKitChanges) -> Result<Vec<Incoming>, SyncError> {
+    async fn read(&self, changes: CloudKitChanges, waited: &mut Waited) -> Result<Vec<Incoming>, SyncError> {
         let mut items: Vec<Incoming> = changes.changed.iter().filter_map(copy::changed).collect();
         let unfetched: Vec<String> = changes
             .unfetched
@@ -315,7 +338,10 @@ impl<'a> Fetcher<'a> {
             match answer {
                 CloudKitFetched::Found { record } => items.extend(copy::changed(&record)),
                 CloudKitFetched::Missing { .. } => {}
-                CloudKitFetched::Failed { name, .. } => {
+                CloudKitFetched::Failed {
+                    name, retry_after_ms, ..
+                } => {
+                    waited.note(&name, retry_after_ms);
                     items.extend(copy::key_of_name(&name).map(|key| Incoming::Unread { key, tag: None }));
                 }
             }

@@ -31,7 +31,7 @@ pub(super) enum Planned {
 // What iCloud holds of a local copy: its fields through the projection and back, so a field the zone never carries,
 // device-only or TablePro Sync's alone, reads as neither an edit nor a removal. None when the projection does not
 // take the copy, as for a type Production does not hold.
-pub(super) fn carried(kind: Kind, id: &str, local: &Value) -> Option<Value> {
+pub(in crate::cloudkit) fn carried(kind: Kind, id: &str, local: &Value) -> Option<Value> {
     let record_type = record_type_of(kind)?;
     let saved = from_wire(kind, id, local, 0).ok()??;
     let fields: CloudFields = saved

@@ -1,7 +1,8 @@
 // A save CloudKit refused with `serverRecordChanged` (0054, A push): the engine takes the server's copy the error
 // carries, or fetches the record by name when it carries none, and merges it field by field against the base and the
 // store as a pull does. The store then holds the merge and the base the server's copy with its system fields, so the
-// next push sends the difference on the server's change tag.
+// next push sends the difference on the server's change tag. A save answered `unknownItem` meets the deletion rules
+// the same way (D12).
 
 use super::copy::{self, Incoming};
 use super::settle::Batch;
@@ -71,6 +72,7 @@ fn gone(name: String, items: &mut Vec<Incoming>, rebased: &mut Rebased) {
 
 impl Fetcher<'_> {
     pub async fn rebase(&self, conflicts: Vec<ServerChanged>) -> Result<Rebased, SyncError> {
+        self.settle_pending().await?;
         let mut rebased = Rebased::default();
         let mut items = Vec::new();
         let mut by_name = Vec::new();
@@ -98,6 +100,24 @@ impl Fetcher<'_> {
             }
         }
         rebased.failed.extend(unanswered.into_iter().map(RebaseFailure::unread));
+        self.settle(Batch {
+            items,
+            ..Batch::default()
+        })
+        .await?;
+        Ok(rebased)
+    }
+
+    // Saves CloudKit answered `unknownItem`: the zone holds no record by those names, whatever deleted them. Each goes
+    // as a deletion the zone reported, so a content edit here stays and goes up as a create, and a placement-only edit
+    // goes with the record instead of bringing it back (D12).
+    pub async fn lost(&self, names: Vec<String>) -> Result<Rebased, SyncError> {
+        self.settle_pending().await?;
+        let mut rebased = Rebased::default();
+        let mut items = Vec::new();
+        for name in names {
+            gone(name, &mut items, &mut rebased);
+        }
         self.settle(Batch {
             items,
             ..Batch::default()
