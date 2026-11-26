@@ -12,7 +12,7 @@ use tablepro_records::Kind;
 
 use super::approval::{self, Split, split};
 use crate::api::adapter::{LocalChange, LocalRecord, RecordAdapter};
-use crate::api::control::{ConflictChoice, TeamConflict};
+use crate::api::control::{ConflictChoice, TeamConflict, conflict_digest};
 use crate::api::error::SyncError;
 use crate::api::ids::RecordKey;
 use crate::api::state::{
@@ -120,6 +120,7 @@ impl Conflicts<'_> {
             .filter_map(|row| match row {
                 Row::Conflict(row) => Some(TeamConflict {
                     fields: contested(&row),
+                    digest: conflict_digest(row.base.as_ref(), row.mine.as_ref(), row.theirs.as_ref()),
                     key: row.key,
                     mine: row.mine,
                     theirs: row.theirs,
@@ -139,7 +140,8 @@ impl Conflicts<'_> {
 
     // The store takes the side the person kept; the diff then sends Keep Mine on the stored tag, and Keep Theirs
     // leaves nothing to send. What the server holds still goes through the approval queue.
-    pub async fn resolve(&self, key: &RecordKey, keep: ConflictChoice) -> Result<(), SyncError> {
+    pub async fn resolve(&self, key: &RecordKey, seen: [u8; 32], keep: ConflictChoice) -> Result<(), SyncError> {
+        let _ = seen;
         let mut txn = self.state.begin().await?;
         let Some(Row::Conflict(row)) = txn.get(&RowKey::Conflict(key.clone())).await? else {
             return Err(SyncError::Unknown { what: "conflict" });

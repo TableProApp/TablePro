@@ -6,7 +6,7 @@ use tablepro_keys::KeysError;
 use tablepro_keys::encoding::{AccountId, KeyDeviceId, KeyPurpose, TeamId, Version};
 use tablepro_keys::keys::{Ed25519Public, X25519Public};
 use tablepro_keys::sas::SasDevice;
-use tablepro_keys::trust::{PinHow, TrustPin, TrustPlaintext, TrustVersion};
+use tablepro_keys::trust::{PinHow, Replaced, TrustPin, TrustPlaintext, TrustVersion};
 use uuid::Uuid;
 
 use super::merge::{Approver, HeldTables, Merge, MergeFacts, Merged, merge};
@@ -19,6 +19,10 @@ const TEAM: TeamId = TeamId(Uuid::from_u128(0x33));
 
 fn v(value: u32) -> Version {
     Version::new(value).unwrap()
+}
+
+fn retired(byte: u8, av: u32) -> Replaced {
+    Replaced { ik: ik(byte), av: v(av) }
 }
 
 fn ik(byte: u8) -> Ed25519Public {
@@ -246,7 +250,7 @@ fn a_trust_plaintext_whose_own_pin_is_not_the_compared_ik_is_keys_mismatch() {
 #[test]
 fn an_own_ik_the_device_saw_replaced_never_comes_back() {
     let mut own = pin(P, ik(0xb2), 2);
-    own.replaced = vec![ik(0xb1)];
+    own.replaced = vec![retired(0xb1, 2)];
     let held = HeldTables {
         pins: vec![own],
         versions: Vec::new(),
@@ -315,7 +319,7 @@ fn a_pinned_ik_the_trust_lists_as_replaced_is_followed_only_with_an_endorsement(
     };
     let mut trust = trust_at_av2();
     let mut offered = trust_pin(A, ik(0xa2), 2);
-    offered.replaced = vec![ik(0xa1)];
+    offered.replaced = vec![retired(0xa1, 2)];
     trust.pins.push(offered);
     let endorsed = facts_av2().endorse(A, ik(0xa1), ik(0xa2), 2);
 
@@ -324,17 +328,17 @@ fn a_pinned_ik_the_trust_lists_as_replaced_is_followed_only_with_an_endorsement(
 
     let a = pin_of(&followed, A);
     assert_eq!((a.ik, a.how, a.alert), (ik(0xa2), PinHow::Replaced, false));
-    assert_eq!(a.replaced, vec![ik(0xa1)]);
+    assert_eq!(a.replaced, vec![retired(0xa1, 2)]);
     assert_eq!(followed.replaced, vec![A]);
     let a = pin_of(&alerted, A);
     assert_eq!((a.ik, a.alert), (ik(0xa1), true));
-    assert_eq!(a.replaced, vec![ik(0xa1)]);
+    assert_eq!(a.replaced, vec![retired(0xa1, 2)]);
 }
 
 #[test]
 fn an_approver_behind_on_a_replace_the_device_followed_changes_nothing() {
     let mut a = pin(A, ik(0xa2), 2);
-    a.replaced = vec![ik(0xa1)];
+    a.replaced = vec![retired(0xa1, 2)];
     let held = HeldTables {
         pins: vec![pin(P, ik(0xb1), 2), a.clone()],
         versions: Vec::new(),
@@ -581,7 +585,7 @@ fn an_endorsement_chain_that_does_not_reach_the_approver_s_ik_still_opens_an_ale
     };
     let mut trust = trust_at_av2();
     let mut offered = trust_pin(A, ik(0xa2), 2);
-    offered.replaced = vec![ik(0xa1)];
+    offered.replaced = vec![retired(0xa1, 2)];
     trust.pins.push(offered);
     let facts = facts_av2().endorse(A, ik(0xa1), ik(0xa3), 2);
 

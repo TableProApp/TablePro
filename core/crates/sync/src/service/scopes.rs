@@ -11,7 +11,7 @@ impl ServiceSync {
     // `GET /v2/sync/scopes` with the last body's ETag; 304 keeps the body this session holds. The proof makes the
     // server say whether this device is approved.
     pub(super) async fn poll_scopes(&self, session: &mut Session) -> Result<ScopesBody, SyncError> {
-        let proof = self.proofs.dpop_key().await?.map_or(Proof::None, Proof::Dpop);
+        let proof = self.keys.dpop_key().await?.map_or(Proof::None, Proof::Dpop);
         let held = session.body.is_some().then(|| session.etag.clone()).flatten();
         match self.transport.scopes(held, proof).await? {
             ScopesAnswer::Body { body, etag } => {

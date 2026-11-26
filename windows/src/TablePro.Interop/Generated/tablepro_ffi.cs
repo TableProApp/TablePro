@@ -846,14 +846,6 @@ static class _UniFFILib {
         ulong @uniffiHandle,RustBuffer @item,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void UniffiCallbackInterfaceHostSettingsMethod0(
-        ulong @uniffiHandle,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
-    );
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void UniffiCallbackInterfaceHostSettingsMethod1(
-        ulong @uniffiHandle,RustBuffer @category,RustBuffer @document,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
-    );
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void UniffiCallbackInterfaceHostLegacyMirrorMethod0(
         ulong @uniffiHandle,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
@@ -896,6 +888,14 @@ static class _UniFFILib {
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void UniffiCallbackInterfaceCloudKitTransportMethod5(
         ulong @uniffiHandle,RustBuffer @account,RustBuffer @saves,RustBuffer @deletes,IntPtr @uniffiFutureCallback,ulong @uniffiCallbackData,IntPtr /*_UniFFILib.UniffiForeignFutureDroppedCallbackStruct*/ @uniffiOutDroppedCallback
+    );
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void UniffiCallbackInterfaceHostSettingsMethod0(
+        ulong @uniffiHandle,IntPtr @uniffiFutureCallback,ulong @uniffiCallbackData,IntPtr /*_UniFFILib.UniffiForeignFutureDroppedCallbackStruct*/ @uniffiOutDroppedCallback
+    );
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void UniffiCallbackInterfaceHostSettingsMethod1(
+        ulong @uniffiHandle,RustBuffer @category,RustBuffer @document,IntPtr @uniffiFutureCallback,ulong @uniffiCallbackData,IntPtr /*_UniFFILib.UniffiForeignFutureDroppedCallbackStruct*/ @uniffiOutDroppedCallback
     );
     [StructLayout(LayoutKind.Sequential)]
     public struct UniffiVTableCallbackInterfaceAccountListener
@@ -982,14 +982,6 @@ static class _UniFFILib {
         public IntPtr @delete;
     }
     [StructLayout(LayoutKind.Sequential)]
-    public struct UniffiVTableCallbackInterfaceHostSettings
-    {
-        public IntPtr @uniffiFree;
-        public IntPtr @uniffiClone;
-        public IntPtr @categories;
-        public IntPtr @apply;
-    }
-    [StructLayout(LayoutKind.Sequential)]
     public struct UniffiVTableCallbackInterfaceHostLegacyMirror
     {
         public IntPtr @uniffiFree;
@@ -1018,6 +1010,24 @@ static class _UniFFILib {
         public IntPtr @fetchRecords;
         public IntPtr @modify;
     }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct UniffiVTableCallbackInterfaceHostSettings
+    {
+        public IntPtr @uniffiFree;
+        public IntPtr @uniffiClone;
+        public IntPtr @categories;
+        public IntPtr @apply;
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
     
     
@@ -1854,6 +1864,7 @@ static class _UniFFILib {
         _UniFFILib.uniffiCheckApiChecksums();
         
         UniffiCallbackInterfaceCloudKitTransport.Register();
+        UniffiCallbackInterfaceHostSettings.Register();
         UniffiCallbackInterfaceAccountListener.Register();
         UniffiCallbackInterfaceAiReplyListener.Register();
         UniffiCallbackInterfaceHostBrowser.Register();
@@ -1861,7 +1872,6 @@ static class _UniFFILib {
         UniffiCallbackInterfaceHostLegacyMirror.Register();
         UniffiCallbackInterfaceHostPrompter.Register();
         UniffiCallbackInterfaceHostSecrets.Register();
-        UniffiCallbackInterfaceHostSettings.Register();
         UniffiCallbackInterfaceHostWebAuthenticator.Register();
         UniffiCallbackInterfaceMcpAppHost.Register();
         UniffiCallbackInterfaceMcpListener.Register();
@@ -2076,6 +2086,17 @@ static class _UniFFILib {
     public static extern
 #endif
      RustBuffer uniffi_tablepro_ffi_fn_method_accountservice_status(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_accountservice_step_up(ulong @ptr,RustBuffer @challenge,RustBuffer @cancel
     );
 
     #if NET8_0_OR_GREATER
@@ -2658,7 +2679,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_core_open_sync(ulong @ptr,RustBuffer @config,ulong @account,RustBuffer @cloudkit,RustBuffer @settings,RustBuffer @deviceStore,RustBuffer @legacyMirror,ulong @listener,ref UniffiRustCallStatus _uniffi_out_err
+     ulong uniffi_tablepro_ffi_fn_method_core_open_sync(ulong @ptr,RustBuffer @config,RustBuffer @account,RustBuffer @cloudkit,RustBuffer @settings,RustBuffer @deviceStore,RustBuffer @legacyMirror,ulong @listener
     );
 
     #if NET8_0_OR_GREATER
@@ -5166,6 +5187,61 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_clone_hostsettings(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_free_hostsettings(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_init_callback_vtable_hostsettings(IntPtr /*_UniFFILib.UniffiVTableCallbackInterfaceHostSettings*/ @vtable
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_hostsettings_categories(ulong @ptr
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_hostsettings_apply(ulong @ptr,RustBuffer @category,RustBuffer @document
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_clone_syncservice(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -5683,6 +5759,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_syncservice_icloud_account(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_method_syncservice_load_older_history(ulong @ptr
     );
 
@@ -5761,6 +5848,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_syncservice_set_categories(ulong @ptr,RustBuffer @categories
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_method_syncservice_set_history_window(ulong @ptr,RustBuffer @entries,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -6047,17 +6145,6 @@ static class _UniFFILib {
     public static extern
 #endif
      void uniffi_tablepro_ffi_fn_init_callback_vtable_hostdevicestore(IntPtr /*_UniFFILib.UniffiVTableCallbackInterfaceHostDeviceStore*/ @vtable
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     void uniffi_tablepro_ffi_fn_init_callback_vtable_hostsettings(IntPtr /*_UniFFILib.UniffiVTableCallbackInterfaceHostSettings*/ @vtable
     );
 
     #if NET8_0_OR_GREATER
@@ -7389,6 +7476,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_accountservice_status(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_accountservice_step_up(
     );
 
     #if NET8_0_OR_GREATER
@@ -9874,6 +9972,28 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_hostsettings_categories(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_hostsettings_apply(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_accept_key_change(
     );
 
@@ -10369,6 +10489,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_icloud_account(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_load_older_history(
     );
 
@@ -10447,6 +10578,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_set_categories(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_set_history_window(
     );
 
     #if NET8_0_OR_GREATER
@@ -10919,28 +11061,6 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ushort uniffi_tablepro_ffi_checksum_method_hostsettings_categories(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
-     ushort uniffi_tablepro_ffi_checksum_method_hostsettings_apply(
-    );
-
-    #if NET8_0_OR_GREATER
-    [LibraryImport("tablepro_ffi")]
-    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
-    public static partial
-#else
-    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
-    public static extern
-#endif
      ushort uniffi_tablepro_ffi_checksum_method_hostlegacymirror_read(
     );
 
@@ -11261,6 +11381,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_accountservice_step_up();
+            if (checksum != 63240) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_accountservice_step_up` checksum `63240`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_accountservice_use_license_key();
             if (checksum != 62173) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_accountservice_use_license_key` checksum `62173`, library returned `{checksum}`");
@@ -11484,8 +11610,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_open_sync();
-            if (checksum != 17966) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_open_sync` checksum `17966`, library returned `{checksum}`");
+            if (checksum != 39117) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_open_sync` checksum `39117`, library returned `{checksum}`");
             }
         }
         {
@@ -12611,6 +12737,18 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsettings_categories();
+            if (checksum != 45335) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsettings_categories` checksum `45335`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsettings_apply();
+            if (checksum != 38872) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsettings_apply` checksum `38872`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_accept_key_change();
             if (checksum != 18769) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_accept_key_change` checksum `18769`, library returned `{checksum}`");
@@ -12881,6 +13019,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_icloud_account();
+            if (checksum != 32583) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_icloud_account` checksum `32583`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_load_older_history();
             if (checksum != 50390) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_load_older_history` checksum `50390`, library returned `{checksum}`");
@@ -12926,6 +13070,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_set_categories();
             if (checksum != 60820) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_set_categories` checksum `60820`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_set_history_window();
+            if (checksum != 43921) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_set_history_window` checksum `43921`, library returned `{checksum}`");
             }
         }
         {
@@ -13178,18 +13328,6 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostdevicestore_delete();
             if (checksum != 56689) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostdevicestore_delete` checksum `56689`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsettings_categories();
-            if (checksum != 37099) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsettings_categories` checksum `37099`, library returned `{checksum}`");
-            }
-        }
-        {
-            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsettings_apply();
-            if (checksum != 48609) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsettings_apply` checksum `48609`, library returned `{checksum}`");
             }
         }
         {
@@ -13492,6 +13630,8 @@ internal interface IAccountService {
     /// <exception cref="CoreException"></exception>
     Task SignOut();
     AccountStatusInfo Status();
+    /// <exception cref="CoreException"></exception>
+    Task StepUp(StepUpChallengeInfo @challenge, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
     Task UseLicenseKey(SecretString @key);
     /// <exception cref="CoreException"></exception>
@@ -13858,6 +13998,24 @@ internal class AccountService : IAccountService, IDisposable {
 )));
     }
     
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task StepUp(StepUpChallengeInfo @challenge, CancelToken? @cancel) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_accountservice_step_up(thisPtr, FfiConverterTypeStepUpChallengeInfo.INSTANCE.Lower(@challenge), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
     
     /// <exception cref="CoreException"></exception>
     public async Task UseLicenseKey(SecretString @key) {await _UniFFIAsync.UniffiRustCallAsync(
@@ -16579,7 +16737,7 @@ internal interface ICore {
     /// <exception cref="CoreException"></exception>
     McpService McpServer(McpAppHost @host, McpListener @listener);
     /// <exception cref="CoreException"></exception>
-    SyncService OpenSync(SyncConfig @config, AccountService @account, CloudKitTransport? @cloudkit, HostSettings? @settings, HostDeviceStore? @deviceStore, HostLegacyMirror? @legacyMirror, SyncListener @listener);
+    Task<SyncService> OpenSync(SyncConfig @config, AccountService? @account, CloudKitTransport? @cloudkit, HostSettings? @settings, HostDeviceStore? @deviceStore, HostLegacyMirror? @legacyMirror, SyncListener @listener);
 }
 internal class Core : ICore, IDisposable {
     protected ulong pointer;
@@ -16878,13 +17036,26 @@ internal class Core : ICore, IDisposable {
     
     
     /// <exception cref="CoreException"></exception>
-    public SyncService OpenSync(SyncConfig @config, AccountService @account, CloudKitTransport? @cloudkit, HostSettings? @settings, HostDeviceStore? @deviceStore, HostLegacyMirror? @legacyMirror, SyncListener @listener) {
-        return CallWithPointer(thisPtr => FfiConverterTypeSyncService.INSTANCE.Lift(
-    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
-    _UniFFILib.uniffi_tablepro_ffi_fn_method_core_open_sync(thisPtr, FfiConverterTypeSyncConfig.INSTANCE.Lower(@config), FfiConverterTypeAccountService.INSTANCE.Lower(@account), FfiConverterOptionalTypeCloudKitTransport.INSTANCE.Lower(@cloudkit), FfiConverterOptionalTypeHostSettings.INSTANCE.Lower(@settings), FfiConverterOptionalTypeHostDeviceStore.INSTANCE.Lower(@deviceStore), FfiConverterOptionalTypeHostLegacyMirror.INSTANCE.Lower(@legacyMirror), FfiConverterTypeSyncListener.INSTANCE.Lower(@listener), ref _status)
-)));
+    public async Task<SyncService> OpenSync(SyncConfig @config, AccountService? @account, CloudKitTransport? @cloudkit, HostSettings? @settings, HostDeviceStore? @deviceStore, HostLegacyMirror? @legacyMirror, SyncListener @listener) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_open_sync(thisPtr, FfiConverterTypeSyncConfig.INSTANCE.Lower(@config), FfiConverterOptionalTypeAccountService.INSTANCE.Lower(@account), FfiConverterOptionalTypeCloudKitTransport.INSTANCE.Lower(@cloudkit), FfiConverterOptionalTypeHostSettings.INSTANCE.Lower(@settings), FfiConverterOptionalTypeHostDeviceStore.INSTANCE.Lower(@deviceStore), FfiConverterOptionalTypeHostLegacyMirror.INSTANCE.Lower(@legacyMirror), FfiConverterTypeSyncListener.INSTANCE.Lower(@listener));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u64(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_u64(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_u64(future),
+        // Lift
+        (result) => FfiConverterTypeSyncService.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
     }
-    
     
 
     
@@ -18682,6 +18853,374 @@ class FfiConverterTypeForeignImportReview: FfiConverter<ForeignImportReview, ulo
     }
 
     public override void Write(ForeignImportReview value, BigEndianStream stream) {
+        stream.WriteULong(Lower(value));
+    }
+}
+
+
+
+internal interface HostSettings {
+    /// <exception cref="HostSecretException"></exception>
+    Task<SettingsCategoryArg[]> Categories();
+    /// <exception cref="HostSecretException"></exception>
+    Task Apply(string @category, string? @document);
+}
+internal class HostSettingsImpl : HostSettings, IDisposable {
+    protected ulong pointer;
+    private int _wasDestroyed = 0;
+    private long _callCounter = 1;
+
+    public HostSettingsImpl(ulong pointer) {
+        this.pointer = pointer;
+    }
+
+    ~HostSettingsImpl() {
+        Destroy();
+    }
+
+    protected void FreeRustArcPtr() {
+        _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            _UniFFILib.uniffi_tablepro_ffi_fn_free_hostsettings(this.pointer, ref status);
+        });
+    }
+
+    protected ulong CloneRustArcPtr() {
+        return _UniffiHelpers.RustCall((ref UniffiRustCallStatus status) => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_clone_hostsettings(this.pointer, ref status);
+        });
+    }
+
+    public void Destroy()
+    {
+        // Only allow a single call to this method.
+        if (Interlocked.CompareExchange(ref _wasDestroyed, 1, 0) == 0)
+        {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (Interlocked.Decrement(ref _callCounter) == 0)
+            {
+                FreeRustArcPtr();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        Destroy();
+        GC.SuppressFinalize(this); // Suppress finalization to avoid unnecessary GC overhead.
+    }
+
+    private void IncrementCallCounter() 
+    {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        long count;
+        do
+        {
+            count = Interlocked.Read(ref _callCounter);
+            if (count == 0L) throw new System.ObjectDisposedException(String.Format("'{0}' object has already been destroyed", this.GetType().Name));
+            if (count == long.MaxValue) throw new System.OverflowException(String.Format("'{0}' call counter would overflow", this.GetType().Name));
+
+        } while (Interlocked.CompareExchange(ref _callCounter, count + 1, count) != count);
+    }
+
+    private void DecrementCallCounter() 
+    {
+        // This decrement always matches the increment we performed above.
+        if (Interlocked.Decrement(ref _callCounter) == 0) {
+            FreeRustArcPtr();
+        }
+    }
+
+    internal void CallWithPointer(Action<ulong> action)
+    {
+        IncrementCallCounter();
+        try {
+            action(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    internal T CallWithPointer<T>(Func<ulong, T> func)
+    {   
+        IncrementCallCounter();
+        try {
+            return func(CloneRustArcPtr());
+        }
+        finally {
+            DecrementCallCounter();
+        }
+    }
+
+    
+    /// <exception cref="HostSecretException"></exception>
+    public async Task<SettingsCategoryArg[]> Categories() {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_hostsettings_categories(thisPtr);
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterSequenceTypeSettingsCategoryArg.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeHostSecretError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="HostSecretException"></exception>
+    public async Task Apply(string @category, string? @document) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_hostsettings_apply(thisPtr, FfiConverterString.INSTANCE.Lower(@category), FfiConverterOptionalString.INSTANCE.Lower(@document));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeHostSecretError.INSTANCE
+    );
+    }
+    
+
+    
+}
+class UniffiCallbackInterfaceHostSettings {
+    static void Categories(ulong @uniffiHandle,IntPtr @uniffiFutureCallback,ulong @uniffiCallbackData,IntPtr /*_UniFFILib.UniffiForeignFutureDroppedCallbackStruct*/ @uniffiOutDroppedCallback) {
+        var handle = @uniffiHandle;
+        var futureHandle = new UniffiForeignFutureHandle();
+        var foreignHandle = _UniFFIAsync._foreign_futures_map.Insert(futureHandle);
+        unsafe {
+            (*(_UniFFILib.UniffiForeignFutureDroppedCallbackStruct*)@uniffiOutDroppedCallback).handle = foreignHandle;
+            (*(_UniFFILib.UniffiForeignFutureDroppedCallbackStruct*)@uniffiOutDroppedCallback).free = Marshal.GetFunctionPointerForDelegate(_UniFFIAsync.UniffiForeignFutureDroppedCallbackImpl.callback);
+        }
+        if (!FfiConverterTypeHostSettings.INSTANCE.handleMap.TryGet(handle, out var uniffiObject)) {
+            var ret = new _UniFFILib.UniffiForeignFutureResultRustBuffer();
+            ret.@callStatus = new UniffiRustCallStatus();
+            ret.@callStatus.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+            try {
+                ret.@callStatus.error_buf = FfiConverterString.INSTANCE.Lower($"No callback in handlemap '{handle}'");
+            } catch { }
+            var earlyCb = Marshal.GetDelegateForFunctionPointer<_UniFFILib.UniffiForeignFutureCompleteRustBuffer>(@uniffiFutureCallback);
+            futureHandle.InvokeCallbackOnce(() => { earlyCb(@uniffiCallbackData, ret); });
+            futureHandle.Dispose();
+            return;
+        }
+
+        // Optimization: skip queuing if already cancelled before Task.Run schedules.
+        // TryInvokeCallback is the definitive cancellation guard inside the task body.
+        Task.Run(async () => {
+            var ret = new _UniFFILib.UniffiForeignFutureResultRustBuffer();
+            ret.@callStatus = new UniffiRustCallStatus();
+
+            try {
+            try {
+            var result =
+
+            await uniffiObject.Categories()
+            #if NET6_0_OR_GREATER
+                .WaitAsync(futureHandle.Cts.Token)
+            #endif
+                ;
+            ret.@returnValue = FfiConverterSequenceTypeSettingsCategoryArg.INSTANCE.Lower(result);
+
+            ret.@callStatus.code = UniffiCallbackResponseStatus.SUCCESS;
+            } catch (HostSecretException e) {
+                try {
+                    ret.@callStatus.code = UniffiCallbackResponseStatus.ERROR;
+                    ret.@callStatus.error_buf = FfiConverterTypeHostSecretError.INSTANCE.Lower(e);
+                } catch {
+                    ret.@callStatus.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+                }
+            } catch (OperationCanceledException) when (futureHandle.Cts.IsCancellationRequested) {
+                ret.@callStatus.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+                try {
+                    ret.@callStatus.error_buf = FfiConverterString.INSTANCE.Lower("Future cancelled");
+                } catch { }
+            } catch (System.Exception e) {
+                ret.@callStatus.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+                try {
+                    ret.@callStatus.error_buf = FfiConverterString.INSTANCE.Lower(e.Message);
+                }
+                catch {
+                }
+            }
+
+            
+            var cb = Marshal.GetDelegateForFunctionPointer<_UniFFILib.UniffiForeignFutureCompleteRustBuffer>(@uniffiFutureCallback);
+            futureHandle.InvokeCallbackOnce(() => {
+                cb(@uniffiCallbackData, ret);
+            });
+            } finally {
+                futureHandle.Dispose();
+            }
+        }, futureHandle.Cts.Token);
+    }
+    static void Apply(ulong @uniffiHandle,RustBuffer @category,RustBuffer @document,IntPtr @uniffiFutureCallback,ulong @uniffiCallbackData,IntPtr /*_UniFFILib.UniffiForeignFutureDroppedCallbackStruct*/ @uniffiOutDroppedCallback) {
+        var handle = @uniffiHandle;
+        var futureHandle = new UniffiForeignFutureHandle();
+        var foreignHandle = _UniFFIAsync._foreign_futures_map.Insert(futureHandle);
+        unsafe {
+            (*(_UniFFILib.UniffiForeignFutureDroppedCallbackStruct*)@uniffiOutDroppedCallback).handle = foreignHandle;
+            (*(_UniFFILib.UniffiForeignFutureDroppedCallbackStruct*)@uniffiOutDroppedCallback).free = Marshal.GetFunctionPointerForDelegate(_UniFFIAsync.UniffiForeignFutureDroppedCallbackImpl.callback);
+        }
+        if (!FfiConverterTypeHostSettings.INSTANCE.handleMap.TryGet(handle, out var uniffiObject)) {
+            var ret = new _UniFFILib.UniffiForeignFutureResultVoid();
+            ret.@callStatus = new UniffiRustCallStatus();
+            ret.@callStatus.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+            try {
+                ret.@callStatus.error_buf = FfiConverterString.INSTANCE.Lower($"No callback in handlemap '{handle}'");
+            } catch { }
+            var earlyCb = Marshal.GetDelegateForFunctionPointer<_UniFFILib.UniffiForeignFutureCompleteVoid>(@uniffiFutureCallback);
+            futureHandle.InvokeCallbackOnce(() => { earlyCb(@uniffiCallbackData, ret); });
+            futureHandle.Dispose();
+            return;
+        }
+
+        // Optimization: skip queuing if already cancelled before Task.Run schedules.
+        // TryInvokeCallback is the definitive cancellation guard inside the task body.
+        Task.Run(async () => {
+            var ret = new _UniFFILib.UniffiForeignFutureResultVoid();
+            ret.@callStatus = new UniffiRustCallStatus();
+
+            try {
+            try {
+
+            await uniffiObject.Apply(
+                FfiConverterString.INSTANCE.Lift(@category), 
+                FfiConverterOptionalString.INSTANCE.Lift(@document))
+            #if NET6_0_OR_GREATER
+                .WaitAsync(futureHandle.Cts.Token)
+            #endif
+                ;
+
+            ret.@callStatus.code = UniffiCallbackResponseStatus.SUCCESS;
+            } catch (HostSecretException e) {
+                try {
+                    ret.@callStatus.code = UniffiCallbackResponseStatus.ERROR;
+                    ret.@callStatus.error_buf = FfiConverterTypeHostSecretError.INSTANCE.Lower(e);
+                } catch {
+                    ret.@callStatus.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+                }
+            } catch (OperationCanceledException) when (futureHandle.Cts.IsCancellationRequested) {
+                ret.@callStatus.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+                try {
+                    ret.@callStatus.error_buf = FfiConverterString.INSTANCE.Lower("Future cancelled");
+                } catch { }
+            } catch (System.Exception e) {
+                ret.@callStatus.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+                try {
+                    ret.@callStatus.error_buf = FfiConverterString.INSTANCE.Lower(e.Message);
+                }
+                catch {
+                }
+            }
+
+            
+            var cb = Marshal.GetDelegateForFunctionPointer<_UniFFILib.UniffiForeignFutureCompleteVoid>(@uniffiFutureCallback);
+            futureHandle.InvokeCallbackOnce(() => {
+                cb(@uniffiCallbackData, ret);
+            });
+            } finally {
+                futureHandle.Dispose();
+            }
+        }, futureHandle.Cts.Token);
+    }
+
+    static void UniffiFree(ulong @handle) {
+        FfiConverterTypeHostSettings.INSTANCE.handleMap.Remove(@handle);
+    }
+
+    static ulong UniffiClone(ulong @handle) {
+        try {
+            if (!FfiConverterTypeHostSettings.INSTANCE.handleMap.TryGet(@handle, out var obj)) {
+                throw new InternalException($"No callback in handlemap '{@handle}'");
+            }
+            return FfiConverterTypeHostSettings.INSTANCE.handleMap.Insert(obj);
+        } catch (System.Exception) {
+            return 0; // 0 is never a valid handle; ConcurrentHandleMap starts at 1
+        }
+    }
+    static _UniFFILib.UniffiCallbackInterfaceHostSettingsMethod0 _m0 = new _UniFFILib.UniffiCallbackInterfaceHostSettingsMethod0(Categories);
+    static _UniFFILib.UniffiCallbackInterfaceHostSettingsMethod1 _m1 = new _UniFFILib.UniffiCallbackInterfaceHostSettingsMethod1(Apply);
+    static _UniFFILib.UniffiCallbackInterfaceFree _callback_interface_free = new _UniFFILib.UniffiCallbackInterfaceFree(UniffiFree);
+    static _UniFFILib.UniffiCallbackInterfaceClone _callback_interface_clone = new _UniFFILib.UniffiCallbackInterfaceClone(UniffiClone);
+
+    private static GCHandle? _vtablePin;
+
+    public static void Register() {
+        if (_vtablePin.HasValue) return;
+        _UniFFILib.UniffiVTableCallbackInterfaceHostSettings _vtable = new _UniFFILib.UniffiVTableCallbackInterfaceHostSettings {
+            @categories = Marshal.GetFunctionPointerForDelegate(_m0),
+            @apply = Marshal.GetFunctionPointerForDelegate(_m1),
+            @uniffiFree = Marshal.GetFunctionPointerForDelegate(_callback_interface_free),
+            @uniffiClone = Marshal.GetFunctionPointerForDelegate(_callback_interface_clone),
+        };
+
+        // Pin the vtable so the GC never moves it. The GCHandle is intentionally never freed —
+        // this pin must remain valid for the process lifetime.
+        _vtablePin = GCHandle.Alloc(_vtable, GCHandleType.Pinned);
+        _UniFFILib.uniffi_tablepro_ffi_fn_init_callback_vtable_hostsettings(_vtablePin.Value.AddrOfPinnedObject());
+    }
+}
+
+
+
+
+class FfiConverterTypeHostSettings: FfiConverter<HostSettings, ulong> {
+    public ConcurrentHandleMap<HostSettings> handleMap = new ConcurrentHandleMap<HostSettings>();
+    
+    public static FfiConverterTypeHostSettings INSTANCE = new FfiConverterTypeHostSettings();
+
+    static FfiConverterTypeHostSettings() {
+        UniffiCallbackInterfaceHostSettings.Register();
+    }
+
+    public override ulong Lower(HostSettings value) {
+        if (value is HostSettingsImpl rustObj) {
+            // Rust-implemented object. Clone the handle and return it.
+            return rustObj.CallWithPointer(thisPtr => thisPtr);
+        } else {
+            // C# object, generate a new handle map entry and return it.
+            return handleMap.Insert(value);
+        }
+    }
+
+    public override HostSettings Lift(ulong value) {
+        if ((value & 1UL) == 0UL) {
+            // Rust-generated handle, construct a new wrapper.
+            return new HostSettingsImpl(value);
+        } else {
+            // C#-generated handle, retrieve and remove from the handle map.
+            if (handleMap.Remove(value, out var obj)) {
+                return obj;
+            } else {
+                throw new InternalException($"No callback in handlemap '{value}'");
+            }
+        }
+    }
+
+    public override HostSettings Read(BigEndianStream stream) {
+        return Lift(stream.ReadULong());
+    }
+
+    public override int AllocationSize(HostSettings value) {
+        return 8;
+    }
+
+    public override void Write(HostSettings value, BigEndianStream stream) {
         stream.WriteULong(Lower(value));
     }
 }
@@ -21024,6 +21563,7 @@ internal interface ISyncService {
     Task DeleteIcloudZone();
     /// <exception cref="CoreException"></exception>
     Task<HeldRecordInfo[]> HeldRecords();
+    string? IcloudAccount();
     /// <exception cref="CoreException"></exception>
     Task<bool> LoadOlderHistory();
     /// <exception cref="CoreException"></exception>
@@ -21040,6 +21580,7 @@ internal interface ISyncService {
     Task ResolveConflict(SyncRecordRef @record, ConflictChoiceTag @keep);
     /// <exception cref="CoreException"></exception>
     Task SetCategories(SyncCategoriesArg @categories);
+    void SetHistoryWindow(uint? @entries);
     SyncStatusInfo Status();
     /// <exception cref="CoreException"></exception>
     Task SyncNow(PassReasonTag @why);
@@ -22049,6 +22590,14 @@ internal class SyncService : ISyncService, IDisposable {
     );
     }
     
+    public string? IcloudAccount() {
+        return CallWithPointer(thisPtr => FfiConverterOptionalString.INSTANCE.Lift(
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_icloud_account(thisPtr,  ref _status)
+)));
+    }
+    
+    
     /// <exception cref="CoreException"></exception>
     public async Task<bool> LoadOlderHistory() {
     return await _UniFFIAsync.UniffiRustCallAsync(
@@ -22204,6 +22753,15 @@ internal class SyncService : ISyncService, IDisposable {
         FfiConverterTypeCoreError.INSTANCE
     );
     }
+    
+    public void SetHistoryWindow(uint? @entries) {
+        CallWithPointer(thisPtr =>
+    _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_set_history_window(thisPtr, FfiConverterOptionalUInt32.INSTANCE.Lower(@entries), ref _status)
+));
+    }
+    
+    
     
     public SyncStatusInfo Status() {
         return CallWithPointer(thisPtr => FfiConverterTypeSyncStatusInfo.INSTANCE.Lift(
@@ -25458,7 +26016,8 @@ internal record ErrorInfo (
     HostKeyFailure? HostKey, 
     TlsFailureTag? TlsFailure, 
     AiFailureInfo? Ai = null, 
-    SyncFailureInfo? Sync = null
+    SyncFailureInfo? Sync = null, 
+    StepUpChallengeInfo? StepUp = null
 ) {
 }
 
@@ -25476,7 +26035,8 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             HostKey: FfiConverterOptionalTypeHostKeyFailure.INSTANCE.Read(stream),
             TlsFailure: FfiConverterOptionalTypeTlsFailureTag.INSTANCE.Read(stream),
             Ai: FfiConverterOptionalTypeAiFailureInfo.INSTANCE.Read(stream),
-            Sync: FfiConverterOptionalTypeSyncFailureInfo.INSTANCE.Read(stream)
+            Sync: FfiConverterOptionalTypeSyncFailureInfo.INSTANCE.Read(stream),
+            StepUp: FfiConverterOptionalTypeStepUpChallengeInfo.INSTANCE.Read(stream)
         );
     }
 
@@ -25491,7 +26051,8 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             + FfiConverterOptionalTypeHostKeyFailure.INSTANCE.AllocationSize(value.HostKey)
             + FfiConverterOptionalTypeTlsFailureTag.INSTANCE.AllocationSize(value.TlsFailure)
             + FfiConverterOptionalTypeAiFailureInfo.INSTANCE.AllocationSize(value.Ai)
-            + FfiConverterOptionalTypeSyncFailureInfo.INSTANCE.AllocationSize(value.Sync);
+            + FfiConverterOptionalTypeSyncFailureInfo.INSTANCE.AllocationSize(value.Sync)
+            + FfiConverterOptionalTypeStepUpChallengeInfo.INSTANCE.AllocationSize(value.StepUp);
     }
 
     public override void Write(ErrorInfo value, BigEndianStream stream) {
@@ -25505,6 +26066,7 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             FfiConverterOptionalTypeTlsFailureTag.INSTANCE.Write(value.TlsFailure, stream);
             FfiConverterOptionalTypeAiFailureInfo.INSTANCE.Write(value.Ai, stream);
             FfiConverterOptionalTypeSyncFailureInfo.INSTANCE.Write(value.Sync, stream);
+            FfiConverterOptionalTypeStepUpChallengeInfo.INSTANCE.Write(value.StepUp, stream);
     }
 }
 
@@ -27675,6 +28237,8 @@ class FfiConverterTypeMcpWriteRequest: FfiConverterRustBuffer<McpWriteRequest> {
 
 internal record MemberKeysInfo (
     string Account, 
+    string? Name, 
+    string? Email, 
     TeamRoleTag Role, 
     MemberKeyStatusTag Status
 ) {
@@ -27686,6 +28250,8 @@ class FfiConverterTypeMemberKeysInfo: FfiConverterRustBuffer<MemberKeysInfo> {
     public override MemberKeysInfo Read(BigEndianStream stream) {
         return new MemberKeysInfo(
             Account: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Email: FfiConverterOptionalString.INSTANCE.Read(stream),
             Role: FfiConverterTypeTeamRoleTag.INSTANCE.Read(stream),
             Status: FfiConverterTypeMemberKeyStatusTag.INSTANCE.Read(stream)
         );
@@ -27694,12 +28260,16 @@ class FfiConverterTypeMemberKeysInfo: FfiConverterRustBuffer<MemberKeysInfo> {
     public override int AllocationSize(MemberKeysInfo value) {
         return 0
             + FfiConverterString.INSTANCE.AllocationSize(value.Account)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Email)
             + FfiConverterTypeTeamRoleTag.INSTANCE.AllocationSize(value.Role)
             + FfiConverterTypeMemberKeyStatusTag.INSTANCE.AllocationSize(value.Status);
     }
 
     public override void Write(MemberKeysInfo value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.Account, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Name, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Email, stream);
             FfiConverterTypeTeamRoleTag.INSTANCE.Write(value.Role, stream);
             FfiConverterTypeMemberKeyStatusTag.INSTANCE.Write(value.Status, stream);
     }
@@ -28371,7 +28941,10 @@ class FfiConverterTypeReviewedDeviceInfo: FfiConverterRustBuffer<ReviewedDeviceI
 
 internal record ReviewedMemberInfo (
     string Team, 
+    string? TeamName, 
     string Account, 
+    string? Name, 
+    string? Email, 
     uint ConfirmedUnderAv
 ) {
 }
@@ -28382,7 +28955,10 @@ class FfiConverterTypeReviewedMemberInfo: FfiConverterRustBuffer<ReviewedMemberI
     public override ReviewedMemberInfo Read(BigEndianStream stream) {
         return new ReviewedMemberInfo(
             Team: FfiConverterString.INSTANCE.Read(stream),
+            TeamName: FfiConverterOptionalString.INSTANCE.Read(stream),
             Account: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Email: FfiConverterOptionalString.INSTANCE.Read(stream),
             ConfirmedUnderAv: FfiConverterUInt32.INSTANCE.Read(stream)
         );
     }
@@ -28390,13 +28966,19 @@ class FfiConverterTypeReviewedMemberInfo: FfiConverterRustBuffer<ReviewedMemberI
     public override int AllocationSize(ReviewedMemberInfo value) {
         return 0
             + FfiConverterString.INSTANCE.AllocationSize(value.Team)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.TeamName)
             + FfiConverterString.INSTANCE.AllocationSize(value.Account)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Email)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.ConfirmedUnderAv);
     }
 
     public override void Write(ReviewedMemberInfo value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.Team, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.TeamName, stream);
             FfiConverterString.INSTANCE.Write(value.Account, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Name, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Email, stream);
             FfiConverterUInt32.INSTANCE.Write(value.ConfirmedUnderAv, stream);
     }
 }
@@ -30090,8 +30672,40 @@ class FfiConverterTypeStatementSpan: FfiConverterRustBuffer<StatementSpan> {
 
 
 
+internal record StepUpChallengeInfo (
+    string[] AcrValues, 
+    ulong? MaxAgeSecs
+) {
+}
+
+class FfiConverterTypeStepUpChallengeInfo: FfiConverterRustBuffer<StepUpChallengeInfo> {
+    public static FfiConverterTypeStepUpChallengeInfo INSTANCE = new FfiConverterTypeStepUpChallengeInfo();
+
+    public override StepUpChallengeInfo Read(BigEndianStream stream) {
+        return new StepUpChallengeInfo(
+            AcrValues: FfiConverterSequenceString.INSTANCE.Read(stream),
+            MaxAgeSecs: FfiConverterOptionalUInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(StepUpChallengeInfo value) {
+        return 0
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.AcrValues)
+            + FfiConverterOptionalUInt64.INSTANCE.AllocationSize(value.MaxAgeSecs);
+    }
+
+    public override void Write(StepUpChallengeInfo value, BigEndianStream stream) {
+            FfiConverterSequenceString.INSTANCE.Write(value.AcrValues, stream);
+            FfiConverterOptionalUInt64.INSTANCE.Write(value.MaxAgeSecs, stream);
+    }
+}
+
+
+
 internal record StoppedDeviceInfo (
     string Account, 
+    string? Name, 
+    string? Email, 
     string Device, 
     uint Version, 
     bool CanReconfirm
@@ -30104,6 +30718,8 @@ class FfiConverterTypeStoppedDeviceInfo: FfiConverterRustBuffer<StoppedDeviceInf
     public override StoppedDeviceInfo Read(BigEndianStream stream) {
         return new StoppedDeviceInfo(
             Account: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Email: FfiConverterOptionalString.INSTANCE.Read(stream),
             Device: FfiConverterString.INSTANCE.Read(stream),
             Version: FfiConverterUInt32.INSTANCE.Read(stream),
             CanReconfirm: FfiConverterBoolean.INSTANCE.Read(stream)
@@ -30113,6 +30729,8 @@ class FfiConverterTypeStoppedDeviceInfo: FfiConverterRustBuffer<StoppedDeviceInf
     public override int AllocationSize(StoppedDeviceInfo value) {
         return 0
             + FfiConverterString.INSTANCE.AllocationSize(value.Account)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Email)
             + FfiConverterString.INSTANCE.AllocationSize(value.Device)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.Version)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.CanReconfirm);
@@ -30120,6 +30738,8 @@ class FfiConverterTypeStoppedDeviceInfo: FfiConverterRustBuffer<StoppedDeviceInf
 
     public override void Write(StoppedDeviceInfo value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.Account, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Name, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Email, stream);
             FfiConverterString.INSTANCE.Write(value.Device, stream);
             FfiConverterUInt32.INSTANCE.Write(value.Version, stream);
             FfiConverterBoolean.INSTANCE.Write(value.CanReconfirm, stream);
@@ -30306,7 +30926,9 @@ class FfiConverterTypeSyncCategoriesArg: FfiConverterRustBuffer<SyncCategoriesAr
 
 internal record SyncConfig (
     SyncPlatformTag Platform, 
-    SyncCategoriesArg Categories
+    SyncProviderTag Provider, 
+    SyncCategoriesArg Categories, 
+    string? IcloudAccount = null
 ) {
 }
 
@@ -30316,19 +30938,25 @@ class FfiConverterTypeSyncConfig: FfiConverterRustBuffer<SyncConfig> {
     public override SyncConfig Read(BigEndianStream stream) {
         return new SyncConfig(
             Platform: FfiConverterTypeSyncPlatformTag.INSTANCE.Read(stream),
-            Categories: FfiConverterTypeSyncCategoriesArg.INSTANCE.Read(stream)
+            Provider: FfiConverterTypeSyncProviderTag.INSTANCE.Read(stream),
+            Categories: FfiConverterTypeSyncCategoriesArg.INSTANCE.Read(stream),
+            IcloudAccount: FfiConverterOptionalString.INSTANCE.Read(stream)
         );
     }
 
     public override int AllocationSize(SyncConfig value) {
         return 0
             + FfiConverterTypeSyncPlatformTag.INSTANCE.AllocationSize(value.Platform)
-            + FfiConverterTypeSyncCategoriesArg.INSTANCE.AllocationSize(value.Categories);
+            + FfiConverterTypeSyncProviderTag.INSTANCE.AllocationSize(value.Provider)
+            + FfiConverterTypeSyncCategoriesArg.INSTANCE.AllocationSize(value.Categories)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.IcloudAccount);
     }
 
     public override void Write(SyncConfig value, BigEndianStream stream) {
             FfiConverterTypeSyncPlatformTag.INSTANCE.Write(value.Platform, stream);
+            FfiConverterTypeSyncProviderTag.INSTANCE.Write(value.Provider, stream);
             FfiConverterTypeSyncCategoriesArg.INSTANCE.Write(value.Categories, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.IcloudAccount, stream);
     }
 }
 
@@ -30928,6 +31556,7 @@ class FfiConverterTypeTeamInfo: FfiConverterRustBuffer<TeamInfo> {
 
 internal record TeamKeysInfo (
     string Team, 
+    string? TeamName, 
     uint? Version, 
     KeyVersionStateTag State, 
     StopCauseTag? StoppedCause, 
@@ -30944,6 +31573,7 @@ class FfiConverterTypeTeamKeysInfo: FfiConverterRustBuffer<TeamKeysInfo> {
     public override TeamKeysInfo Read(BigEndianStream stream) {
         return new TeamKeysInfo(
             Team: FfiConverterString.INSTANCE.Read(stream),
+            TeamName: FfiConverterOptionalString.INSTANCE.Read(stream),
             Version: FfiConverterOptionalUInt32.INSTANCE.Read(stream),
             State: FfiConverterTypeKeyVersionStateTag.INSTANCE.Read(stream),
             StoppedCause: FfiConverterOptionalTypeStopCauseTag.INSTANCE.Read(stream),
@@ -30957,6 +31587,7 @@ class FfiConverterTypeTeamKeysInfo: FfiConverterRustBuffer<TeamKeysInfo> {
     public override int AllocationSize(TeamKeysInfo value) {
         return 0
             + FfiConverterString.INSTANCE.AllocationSize(value.Team)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.TeamName)
             + FfiConverterOptionalUInt32.INSTANCE.AllocationSize(value.Version)
             + FfiConverterTypeKeyVersionStateTag.INSTANCE.AllocationSize(value.State)
             + FfiConverterOptionalTypeStopCauseTag.INSTANCE.AllocationSize(value.StoppedCause)
@@ -30968,6 +31599,7 @@ class FfiConverterTypeTeamKeysInfo: FfiConverterRustBuffer<TeamKeysInfo> {
 
     public override void Write(TeamKeysInfo value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.Team, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.TeamName, stream);
             FfiConverterOptionalUInt32.INSTANCE.Write(value.Version, stream);
             FfiConverterTypeKeyVersionStateTag.INSTANCE.Write(value.State, stream);
             FfiConverterOptionalTypeStopCauseTag.INSTANCE.Write(value.StoppedCause, stream);
@@ -34493,6 +35125,9 @@ internal record HeldReasonTag {
     public record AwaitingApproval: HeldReasonTag {}
     
     
+    public record AwaitingDeviceApproval: HeldReasonTag {}
+    
+    
     public record Refused (
         string Code
     ) : HeldReasonTag {}
@@ -34517,6 +35152,9 @@ class FfiConverterTypeHeldReasonTag : FfiConverterRustBuffer<HeldReasonTag>{
                 return new HeldReasonTag.AwaitingApproval(
                 );
             case 4:
+                return new HeldReasonTag.AwaitingDeviceApproval(
+                );
+            case 5:
                 return new HeldReasonTag.Refused(
                     FfiConverterString.INSTANCE.Read(stream)
                 );
@@ -34532,6 +35170,8 @@ class FfiConverterTypeHeldReasonTag : FfiConverterRustBuffer<HeldReasonTag>{
             case HeldReasonTag.UnknownKind variant_value:
                 return 4;
             case HeldReasonTag.AwaitingApproval variant_value:
+                return 4;
+            case HeldReasonTag.AwaitingDeviceApproval variant_value:
                 return 4;
             case HeldReasonTag.Refused variant_value:
                 return 4
@@ -34552,8 +35192,11 @@ class FfiConverterTypeHeldReasonTag : FfiConverterRustBuffer<HeldReasonTag>{
             case HeldReasonTag.AwaitingApproval variant_value:
                 stream.WriteInt(3);
                 break;
-            case HeldReasonTag.Refused variant_value:
+            case HeldReasonTag.AwaitingDeviceApproval variant_value:
                 stream.WriteInt(4);
+                break;
+            case HeldReasonTag.Refused variant_value:
+                stream.WriteInt(5);
                 FfiConverterString.INSTANCE.Write(variant_value.Code, stream);
                 break;
             default:
@@ -41485,148 +42128,6 @@ class FfiConverterTypeHostSecrets: FfiConverter<HostSecrets, ulong> {
 
 
 
-internal interface HostSettings {
-    /// <exception cref="HostSecretException"></exception>
-    SettingsCategoryArg[] Categories();
-    /// <exception cref="HostSecretException"></exception>
-    void Apply(string @category, string? @document);
-}
-
-class UniffiCallbackInterfaceHostSettings {
-    static void Categories(ulong @uniffiHandle,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
-        var handle = @uniffiHandle;
-        try {
-            if (!FfiConverterTypeHostSettings.INSTANCE.handleMap.TryGet(handle, out var uniffiObject)) {
-                throw new InternalException($"No callback in handlemap '{handle}'");
-            }
-            var result =
-            uniffiObject.Categories();
-            unsafe {
-                *(RustBuffer*)uniffiOutReturn = FfiConverterSequenceTypeSettingsCategoryArg.INSTANCE.Lower(result);
-            }
-
-            _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
-        }
-        catch (HostSecretException e) {
-            try {
-                _uniffi_out_err.code = UniffiCallbackResponseStatus.ERROR;
-                _uniffi_out_err.error_buf = FfiConverterTypeHostSecretError.INSTANCE.Lower(e);
-            } catch {
-                _uniffi_out_err.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
-            }
-        }
-        catch (System.Exception e){
-            _uniffi_out_err.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
-            try {
-                _uniffi_out_err.error_buf = FfiConverterString.INSTANCE.Lower(e.Message);
-            }
-            catch {
-            }
-        }
-    }
-    static void Apply(ulong @uniffiHandle,RustBuffer @category,RustBuffer @document,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
-        var handle = @uniffiHandle;
-        try {
-            if (!FfiConverterTypeHostSettings.INSTANCE.handleMap.TryGet(handle, out var uniffiObject)) {
-                throw new InternalException($"No callback in handlemap '{handle}'");
-            }
-            uniffiObject.Apply(
-                FfiConverterString.INSTANCE.Lift(@category), 
-                FfiConverterOptionalString.INSTANCE.Lift(@document));
-
-            _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
-        }
-        catch (HostSecretException e) {
-            try {
-                _uniffi_out_err.code = UniffiCallbackResponseStatus.ERROR;
-                _uniffi_out_err.error_buf = FfiConverterTypeHostSecretError.INSTANCE.Lower(e);
-            } catch {
-                _uniffi_out_err.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
-            }
-        }
-        catch (System.Exception e){
-            _uniffi_out_err.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
-            try {
-                _uniffi_out_err.error_buf = FfiConverterString.INSTANCE.Lower(e.Message);
-            }
-            catch {
-            }
-        }
-    }
-
-    static void UniffiFree(ulong @handle) {
-        FfiConverterTypeHostSettings.INSTANCE.handleMap.Remove(@handle);
-    }
-
-    static ulong UniffiClone(ulong @handle) {
-        try {
-            if (!FfiConverterTypeHostSettings.INSTANCE.handleMap.TryGet(@handle, out var obj)) {
-                throw new InternalException($"No callback in handlemap '{@handle}'");
-            }
-            return FfiConverterTypeHostSettings.INSTANCE.handleMap.Insert(obj);
-        } catch (System.Exception) {
-            return 0; // 0 is never a valid handle; ConcurrentHandleMap starts at 1
-        }
-    }
-    static _UniFFILib.UniffiCallbackInterfaceHostSettingsMethod0 _m0 = new _UniFFILib.UniffiCallbackInterfaceHostSettingsMethod0(Categories);
-    static _UniFFILib.UniffiCallbackInterfaceHostSettingsMethod1 _m1 = new _UniFFILib.UniffiCallbackInterfaceHostSettingsMethod1(Apply);
-    static _UniFFILib.UniffiCallbackInterfaceFree _callback_interface_free = new _UniFFILib.UniffiCallbackInterfaceFree(UniffiFree);
-    static _UniFFILib.UniffiCallbackInterfaceClone _callback_interface_clone = new _UniFFILib.UniffiCallbackInterfaceClone(UniffiClone);
-
-    private static GCHandle? _vtablePin;
-
-    public static void Register() {
-        if (_vtablePin.HasValue) return;
-        _UniFFILib.UniffiVTableCallbackInterfaceHostSettings _vtable = new _UniFFILib.UniffiVTableCallbackInterfaceHostSettings {
-            @categories = Marshal.GetFunctionPointerForDelegate(_m0),
-            @apply = Marshal.GetFunctionPointerForDelegate(_m1),
-            @uniffiFree = Marshal.GetFunctionPointerForDelegate(_callback_interface_free),
-            @uniffiClone = Marshal.GetFunctionPointerForDelegate(_callback_interface_clone),
-        };
-
-        // Pin the vtable so the GC never moves it. The GCHandle is intentionally never freed —
-        // this pin must remain valid for the process lifetime.
-        _vtablePin = GCHandle.Alloc(_vtable, GCHandleType.Pinned);
-        _UniFFILib.uniffi_tablepro_ffi_fn_init_callback_vtable_hostsettings(_vtablePin.Value.AddrOfPinnedObject());
-    }
-}
-
-
-
-
-// The ffiConverter which transforms the Callbacks in to Handles to pass to Rust.
-class FfiConverterTypeHostSettings: FfiConverter<HostSettings, ulong> {
-    public static FfiConverterTypeHostSettings INSTANCE = new FfiConverterTypeHostSettings();
-
-    public ConcurrentHandleMap<HostSettings> handleMap = new ConcurrentHandleMap<HostSettings>();
-
-    public override ulong Lower(HostSettings value) {
-        return handleMap.Insert(value);
-    }
-
-    public override HostSettings Lift(ulong value) {
-        if (handleMap.TryGet(value, out var uniffiCallback)) {
-            return uniffiCallback;
-        } else {
-            throw new InternalException($"No callback in handlemap '{value}'");
-        }
-    }
-
-    public override HostSettings Read(BigEndianStream stream) {
-        return Lift(stream.ReadULong());
-    }
-
-    public override int AllocationSize(HostSettings value) {
-        return 8;
-    }
-
-    public override void Write(HostSettings value, BigEndianStream stream) {
-        stream.WriteULong(Lower(value));
-    }
-}
-
-
-
 internal interface HostWebAuthenticator {
     /// <exception cref="HostBrowserException"></exception>
     string Authenticate(string @url, string @callbackScheme);
@@ -42470,6 +42971,37 @@ class FfiConverterOptionalByteArray: FfiConverterRustBuffer<byte[]?> {
 
 
 
+class FfiConverterOptionalTypeAccountService: FfiConverterRustBuffer<AccountService?> {
+    public static FfiConverterOptionalTypeAccountService INSTANCE = new FfiConverterOptionalTypeAccountService();
+
+    public override AccountService? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeAccountService.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(AccountService? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeAccountService.INSTANCE.AllocationSize((AccountService)value);
+        }
+    }
+
+    public override void Write(AccountService? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeAccountService.INSTANCE.Write((AccountService)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalTypeCancelToken: FfiConverterRustBuffer<CancelToken?> {
     public static FfiConverterOptionalTypeCancelToken INSTANCE = new FfiConverterOptionalTypeCancelToken();
 
@@ -42587,6 +43119,37 @@ class FfiConverterOptionalTypeExportProgress: FfiConverterRustBuffer<ExportProgr
         } else {
             stream.WriteByte(1);
             FfiConverterTypeExportProgress.INSTANCE.Write((ExportProgress)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeHostSettings: FfiConverterRustBuffer<HostSettings?> {
+    public static FfiConverterOptionalTypeHostSettings INSTANCE = new FfiConverterOptionalTypeHostSettings();
+
+    public override HostSettings? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeHostSettings.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(HostSettings? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeHostSettings.INSTANCE.AllocationSize((HostSettings)value);
+        }
+    }
+
+    public override void Write(HostSettings? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeHostSettings.INSTANCE.Write((HostSettings)value, stream);
         }
     }
 }
@@ -43424,6 +43987,37 @@ class FfiConverterOptionalTypeStatementSpan: FfiConverterRustBuffer<StatementSpa
         } else {
             stream.WriteByte(1);
             FfiConverterTypeStatementSpan.INSTANCE.Write((StatementSpan)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeStepUpChallengeInfo: FfiConverterRustBuffer<StepUpChallengeInfo?> {
+    public static FfiConverterOptionalTypeStepUpChallengeInfo INSTANCE = new FfiConverterOptionalTypeStepUpChallengeInfo();
+
+    public override StepUpChallengeInfo? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeStepUpChallengeInfo.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(StepUpChallengeInfo? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeStepUpChallengeInfo.INSTANCE.AllocationSize((StepUpChallengeInfo)value);
+        }
+    }
+
+    public override void Write(StepUpChallengeInfo? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeStepUpChallengeInfo.INSTANCE.Write((StepUpChallengeInfo)value, stream);
         }
     }
 }
@@ -44292,37 +44886,6 @@ class FfiConverterOptionalTypeHostPrompter: FfiConverterRustBuffer<HostPrompter?
         } else {
             stream.WriteByte(1);
             FfiConverterTypeHostPrompter.INSTANCE.Write((HostPrompter)value, stream);
-        }
-    }
-}
-
-
-
-
-class FfiConverterOptionalTypeHostSettings: FfiConverterRustBuffer<HostSettings?> {
-    public static FfiConverterOptionalTypeHostSettings INSTANCE = new FfiConverterOptionalTypeHostSettings();
-
-    public override HostSettings? Read(BigEndianStream stream) {
-        if (stream.ReadByte() == 0) {
-            return null;
-        }
-        return FfiConverterTypeHostSettings.INSTANCE.Read(stream);
-    }
-
-    public override int AllocationSize(HostSettings? value) {
-        if (value == null) {
-            return 1;
-        } else {
-            return 1 + FfiConverterTypeHostSettings.INSTANCE.AllocationSize((HostSettings)value);
-        }
-    }
-
-    public override void Write(HostSettings? value, BigEndianStream stream) {
-        if (value == null) {
-            stream.WriteByte(0);
-        } else {
-            stream.WriteByte(1);
-            FfiConverterTypeHostSettings.INSTANCE.Write((HostSettings)value, stream);
         }
     }
 }

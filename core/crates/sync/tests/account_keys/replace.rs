@@ -5,7 +5,7 @@ use tablepro_keys::cert::CertKind;
 use tablepro_keys::encoding::{KeyDeviceId, KeyPurpose, Version, random_uuid};
 use tablepro_keys::envelope::{EnvelopeId, ParentKind, SecretKind};
 use tablepro_keys::recovery::RecoveryKey;
-use tablepro_keys::trust::PinHow;
+use tablepro_keys::trust::{PinHow, Replaced};
 use tablepro_sync::api::device_store::DeviceItem;
 use tablepro_sync::api::ids::ScopeName;
 use tablepro_sync::api::key_flows::{AccountFlows, ArrivalOrder, KeyNoticeKind, KeyState, LockCause, TypedBack};
@@ -95,7 +95,7 @@ async fn replace_moves_to_a_new_identity_the_old_one_endorses_and_kept_devices_f
     let pin = b.pin(account).await.unwrap();
     assert_eq!(
         (pin.ik, pin.av, pin.replaced.clone()),
-        (certificate.ik, av(2), vec![old_ik])
+        (certificate.ik, av(2), vec![Replaced { ik: old_ik, av: av(2) }])
     );
     assert!(
         b.get(RowKey::KeyPending(PendingFlow::AccountRotation { av: av(2) }))
@@ -108,7 +108,13 @@ async fn replace_moves_to_a_new_identity_the_old_one_endorses_and_kept_devices_f
     let pin = c.pin(account).await.unwrap();
     assert_eq!(
         (pin.ik, pin.av, pin.how, pin.replaced.clone(), pin.alert),
-        (certificate.ik, av(2), PinHow::Replaced, vec![old_ik], false)
+        (
+            certificate.ik,
+            av(2),
+            PinHow::Replaced,
+            vec![Replaced { ik: old_ik, av: av(2) }],
+            false
+        )
     );
     assert_eq!(
         c.key_state().await,
@@ -725,7 +731,7 @@ async fn a_recovered_device_never_takes_an_older_certificate_the_server_made_up_
     recover_on(&x, &server, account, &next, av(2)).await;
 
     let pin = x.pin(account).await.unwrap();
-    assert!(!pin.replaced.contains(&forged.ik));
+    assert!(pin.replaced.iter().all(|entry| entry.ik != forged.ik));
     let mut txn = x.txn().await;
     let verified = x
         .service

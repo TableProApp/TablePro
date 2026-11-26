@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, TimeDelta, Utc};
 use secrecy::{ExposeSecret as _, SecretString};
-use tablepro_cloud_api::{Bearer, answer_error, http_client, v2};
+use tablepro_cloud_api::{Bearer, StepUpChallenge, answer_error, http_client, v2};
 use tokio::sync::{Mutex, broadcast, watch};
 use tokio::time::Instant;
 
@@ -32,6 +32,10 @@ mod mac_tests;
 mod server_calls;
 mod server_state;
 mod share_calls;
+mod step_up;
+#[cfg(test)]
+mod step_up_tests;
+mod team_calls;
 
 pub(crate) use server_state::{Licensed, Server, Trust};
 
@@ -89,6 +93,8 @@ pub struct AccessToken {
     // None until the device is registered.
     pub device_id: Option<String>,
     pub session_id: Option<String>,
+    // The sign-in key (`SignInKey`), which names the server and the account file, as a sync state file is named.
+    pub sign_in: String,
 }
 
 struct Inner {
@@ -150,6 +156,7 @@ enum Call {
     Share,
     // Rate limited apart from the other share calls on the server, so its 429 holds only further creates.
     ShareCreate,
+    TeamMembers,
 }
 
 impl Session {
@@ -477,8 +484,8 @@ impl Account {
         let oauth = &server.connection()?.oauth;
         let issuer = server.expected_issuer()?;
         let tokens = match self.inner.settings.client.redirect {
-            Redirect::Loopback => self.browser_sign_in(oauth, &issuer, &mut cancelled).await?,
-            Redirect::Scheme(scheme) => self.web_sign_in(oauth, &issuer, scheme, &mut cancelled).await?,
+            Redirect::Loopback => self.browser_sign_in(oauth, &issuer, None, &mut cancelled).await?,
+            Redirect::Scheme(scheme) => self.web_sign_in(oauth, &issuer, scheme, None, &mut cancelled).await?,
         };
         self.commit_sign_in(attempt, &server, tokens).await
     }
@@ -487,12 +494,13 @@ impl Account {
         &self,
         oauth: &OAuth,
         issuer: &ExpectedIssuer,
+        step_up: Option<&StepUpChallenge>,
         cancelled: impl Future<Output = ()> + Send,
     ) -> Result<Tokens, AccountError> {
         let loopback = Loopback::bind()
             .await
             .map_err(|error| AccountError::Protocol(format!("no loopback port: {error}")))?;
-        let authorization = oauth.authorization(loopback.redirect_uri(), &self.inner.settings.device)?;
+        let authorization = oauth.authorization(loopback.redirect_uri(), &self.inner.settings.device, step_up)?;
         self.inner
             .browser
             .open(&authorization.url)
@@ -515,6 +523,7 @@ impl Account {
         oauth: &OAuth,
         issuer: &ExpectedIssuer,
         scheme: &str,
+        step_up: Option<&StepUpChallenge>,
         cancelled: impl Future<Output = ()> + Send,
     ) -> Result<Tokens, AccountError> {
         let authenticator = self
@@ -523,7 +532,7 @@ impl Account {
             .clone()
             .ok_or_else(|| AccountError::Browser("the app gave no web authenticator".to_owned()))?;
         let redirect_uri = format!("{scheme}:{}", Redirect::CALLBACK_PATH);
-        let authorization = oauth.authorization(redirect_uri, &self.inner.settings.device)?;
+        let authorization = oauth.authorization(redirect_uri, &self.inner.settings.device, step_up)?;
         let waiting = authenticator.authenticate(&authorization.url, scheme);
         let answered = tokio::select! {
             waited = tokio::time::timeout(SIGN_IN_TIMEOUT, waiting) => waited,
@@ -781,7 +790,9 @@ impl Account {
     async fn delete_device(&self, session: &mut Session, device_id: &str) -> Result<(), AccountError> {
         session.waited(Call::RemoveDevice)?;
         let bearer = self.bearer(session, false).await?;
-        let answer = match self.api(bearer).delete_device(device_id).await {
+        // No DPoP proof: the account holds no device key. An account with end-to-end keys removes a row through the sync
+        // key flows, which sign one (core ADR 0051, Lifecycle and audit).
+        let answer = match self.api(bearer).delete_device(device_id, None).await {
             Ok(_) => Ok(()),
             Err(error) => Err(answer_error(error).await.into()),
         };
@@ -815,7 +826,8 @@ impl Account {
         };
         let device = session.answered(Call::Register, device)?;
         session.device_id = Some(device.id.clone());
-        self.write_file(session, None).await;
+        let held = self.held_entitlement();
+        self.write_file(session, held).await;
         // Only a token refreshed after the registration names the device; a retry must not reuse the one before.
         session.access = None;
         self.bearer(session, true).await?;
@@ -869,9 +881,14 @@ impl Account {
         session.refresh = Some(refresh);
         // The kept issuer's and license's tag is keyed with the refresh token, so it follows each rotation.
         if self.current().is_company() {
-            let held = self.inner.status.borrow().entitlement().map(|it| it.token().to_owned());
+            let held = self.held_entitlement();
             self.write_file(session, held).await;
         }
+    }
+
+    // The entitlement the status shows, which a write of the account file keeps.
+    fn held_entitlement(&self) -> Option<String> {
+        self.inner.status.borrow().entitlement().map(|it| it.token().to_owned())
     }
 
     async fn settle(&self, session: &mut Session, result: Result<(), AccountError>) -> Result<(), AccountError> {

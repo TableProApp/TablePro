@@ -828,10 +828,13 @@ fn trust_sample(a: &Account, m: &Account) -> TrustPlaintext {
             TrustPin {
                 account: m.id,
                 ik: m.ik_public(),
-                av: v(1),
+                av: v(2),
                 how: PinHow::Replaced,
                 alert: true,
-                replaced: vec![Ed25519Seed::from_bytes(draw("wraps/M old IK")).public().unwrap()],
+                replaced: vec![crate::trust::Replaced {
+                    ik: Ed25519Seed::from_bytes(draw("wraps/M old IK")).public().unwrap(),
+                    av: v(2),
+                }],
             },
         ],
         versions: vec![
