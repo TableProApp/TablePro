@@ -35,6 +35,13 @@ internal struct AccountSettingsView: View {
                     )
                 }
 
+                if content.showsEncryption {
+                    SettingsDrillRow(
+                        route: SettingsRoute.page(.accountEncryption),
+                        title: SettingsPage.accountEncryption.title
+                    )
+                }
+
                 if content.sellsPlans {
                     SettingsDrillRow(route: SettingsRoute.page(.accountOffline), title: SettingsPage.accountOffline.title)
                 }

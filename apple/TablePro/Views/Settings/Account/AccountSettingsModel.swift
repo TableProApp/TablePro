@@ -20,9 +20,11 @@ internal struct AccountSignOutConfirmation: Equatable {
     let teamChanges: [String]
     var uploadFailure: TeamLibraryFailure?
     let removesOfflineFile: Bool
+    // Sign Out erases this Mac's end-to-end keys, so it needs approval again after the next sign-in.
+    var erasesKeys = false
 
     var discardsSomething: Bool {
-        !teamChanges.isEmpty || removesOfflineFile
+        !teamChanges.isEmpty || removesOfflineFile || erasesKeys
     }
 
     var message: String {
@@ -32,6 +34,9 @@ internal struct AccountSignOutConfirmation: Equatable {
         }
         if removesOfflineFile {
             sentences.append(String(localized: "The imported offline file is removed."))
+        }
+        if erasesKeys {
+            sentences.append(String(localized: "This Mac's encryption keys are erased, so after you sign in again another device or your recovery key approves it."))
         }
         return sentences.joined(separator: " ")
     }
@@ -79,6 +84,7 @@ internal final class AccountSettingsModel: ObservableObject {
     private let now: () -> Date
     private let openURL: @MainActor (URL) -> Void
     private let teamLibrary: @MainActor () -> TeamLibrarySync
+    private let keys: AccountKeysSignOut
     private let askSignOut: @MainActor (AccountSignOutConfirmation) async -> AccountSignOutAnswer
     private let closeSignOutQuestion: @MainActor () -> Void
     private var asksSignOut = false
@@ -95,6 +101,7 @@ internal final class AccountSettingsModel: ObservableObject {
         now: @escaping () -> Date = { Date() },
         openURL: @escaping @MainActor (URL) -> Void = { _ = WebPageOpener.open($0, scope: .httpsOrLoopbackHTTP) },
         teamLibrary: @escaping @MainActor () -> TeamLibrarySync = { .shared },
+        keys: AccountKeysSignOut = .live,
         askSignOut: @escaping @MainActor (AccountSignOutConfirmation) async -> AccountSignOutAnswer = AccountSignOutPrompt.ask,
         closeSignOutQuestion: @escaping @MainActor () -> Void = AccountSignOutPrompt.close
     ) {
@@ -103,6 +110,7 @@ internal final class AccountSettingsModel: ObservableObject {
         self.now = now
         self.openURL = openURL
         self.teamLibrary = teamLibrary
+        self.keys = keys
         self.askSignOut = askSignOut
         self.closeSignOutQuestion = closeSignOutQuestion
         stateObserver = services.access.$state
@@ -240,12 +248,14 @@ internal final class AccountSettingsModel: ObservableObject {
         let hold = await teamLibrary.hold()
         defer { hold.release() }
         var failure: TeamLibraryFailure?
+        let erasesKeys = await keys.holdsKeys()
         while services.isSignedIn {
             asksSignOut = true
             let answer = await askSignOut(AccountSignOutConfirmation(
                 teamChanges: teamLibrary.unsentChanges,
                 uploadFailure: failure,
-                removesOfflineFile: services.access.state.entitlement?.isOffline == true
+                removesOfflineFile: services.access.state.entitlement?.isOffline == true,
+                erasesKeys: erasesKeys
             ))
             asksSignOut = false
             guard services.isSignedIn else { return }
@@ -254,16 +264,22 @@ internal final class AccountSettingsModel: ObservableObject {
                 return
             case .discard:
                 teamLibrary.discardHeld()
-                await services.signOut()
+                await signOutWithKeys()
                 return
             case .upload:
                 failure = await teamLibrary.pushHeld().failure
                 if teamLibrary.unsentChanges.isEmpty, services.isSignedIn {
-                    await services.signOut()
+                    await signOutWithKeys()
                     return
                 }
             }
         }
+    }
+
+    // The key device goes first, while the sign-in it revokes with still works (core ADR 0051, Sign Out).
+    private func signOutWithKeys() async {
+        await keys.signOut()
+        await services.signOut()
     }
 
     func checkNow() async {
