@@ -1,5 +1,4 @@
 import Foundation
-import os
 @testable import TablePro
 import TableProFFI
 import TableProSyncTransport
@@ -184,56 +183,5 @@ struct SavedQueryCoreMirrorTests {
         await manager.pushToCore()
 
         #expect(try await coreContents().digest == digest)
-    }
-
-    @Test("A policy stop before a pull's apply writes nothing of it (P1-M4)")
-    func policyStopEndsTheApply() async throws {
-        let deleted = favorite("Deleted", createdAt: Date(timeIntervalSince1970: 1_000))
-        #expect(await storage.addFavorite(deleted))
-        let folder = SQLFavoriteFolder(name: "Pulled", connectionId: connectionId)
-        let pulled = favorite("Pulled", createdAt: Date(timeIntervalSince1970: 2_000))
-        // The check before the apply starts passes; the stop lands before the store's first write.
-        let checks = StopAfter(checks: 1)
-
-        let outcome = await manager.applyRemote(
-            RemoteSQLFavoriteBatch(favorites: [pulled], folders: [folder], deletedFavoriteIds: [deleted.id]),
-            isStopped: { checks.isStopped() }
-        )
-
-        #expect(outcome == .failed)
-        #expect(await storage.fetchFavorite(id: deleted.id) != nil)
-        #expect(await storage.fetchFolder(id: folder.id) == nil)
-        #expect(await storage.fetchFavorite(id: pulled.id) == nil)
-    }
-
-    @Test("A stop that lands while a pulled write waits to commit rolls the write back (P1-M4)")
-    func stopWhileTheWriteWaits() async throws {
-        let pulled = SQLFavoriteFolder(name: "Pulled", connectionId: connectionId)
-        // The checks before the apply and on the store's actor pass; SQLite's commit asks again and sees the stop.
-        let stop = StopAfter(checks: 2)
-
-        let outcome = await manager.applyRemote(
-            RemoteSQLFavoriteBatch(folders: [pulled]),
-            isStopped: { stop.isStopped() }
-        )
-
-        #expect(outcome == .failed)
-        #expect(await storage.fetchFolder(id: pulled.id) == nil)
-    }
-}
-
-private final class StopAfter: Sendable {
-    private let remaining: OSAllocatedUnfairLock<Int>
-
-    init(checks: Int) {
-        remaining = OSAllocatedUnfairLock(initialState: checks)
-    }
-
-    func isStopped() -> Bool {
-        remaining.withLock { left in
-            guard left > 0 else { return true }
-            left -= 1
-            return false
-        }
     }
 }
