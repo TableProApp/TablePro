@@ -13,6 +13,9 @@ public sealed class ScopeWatchTests
     private static LibrarySnapshot Snapshot(Guid? scope, params SavedConnection[] connections) =>
         new(connections, [], [], []) { Scope = scope };
 
+    private static LibrarySnapshot WithGroups(Guid? scope, params ConnectionGroup[] groups) =>
+        new([], groups, [], []) { Scope = scope };
+
     private static bool Read(ScopeWatch watch, LibrarySnapshot snapshot) => watch.Show(watch.Start(), snapshot);
 
     [Fact]
@@ -63,6 +66,20 @@ public sealed class ScopeWatchTests
 
         Assert.False(Read(watch, Snapshot(Acme, two, one with { Name = "renamed", GroupId = Guid.NewGuid() })));
         Assert.True(watch.Current.Connections.SetEquals([one.Id!.Value, two.Id!.Value]));
+    }
+
+    [Fact]
+    public void AnEmptyGroupMovedIntoOrOutOfTheProjectChangesTheScope()
+    {
+        var work = new ConnectionGroup(Guid.NewGuid(), "Work", null, 0, null);
+        var watch = new ScopeWatch();
+        Assert.True(Read(watch, WithGroups(Acme)));
+
+        Assert.True(Read(watch, WithGroups(Acme, work)));
+        Assert.False(Read(watch, WithGroups(Acme, work with { Name = "Office" })));
+        Assert.True(Read(watch, WithGroups(Acme)));
+
+        Assert.Empty(watch.Current.Groups);
     }
 
     [Fact]

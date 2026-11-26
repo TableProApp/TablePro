@@ -2,24 +2,29 @@ using TablePro.Interop;
 
 namespace TablePro.App.Model;
 
-// The project the lists are narrowed to and the connections it holds then.
+// The project the lists are narrowed to and the connections and groups it holds then.
 public sealed class ScopedSet
 {
     private readonly HashSet<Guid> _connections;
+    private readonly HashSet<Guid> _groups;
 
-    private ScopedSet(Guid? project, HashSet<Guid> connections)
+    private ScopedSet(Guid? project, HashSet<Guid> connections, HashSet<Guid> groups)
     {
         Project = project;
         _connections = connections;
+        _groups = groups;
     }
 
     // Before the first read: all connections, none of them known yet.
-    public static ScopedSet None { get; } = new(null, []);
+    public static ScopedSet None { get; } = new(null, [], []);
 
     // Null for all connections, also when the setting names a project the library no longer holds.
     public Guid? Project { get; }
 
     public IReadOnlySet<Guid> Connections => _connections;
+
+    // A form's group choices follow these, so an empty group moved in or out changes the scope too.
+    public IReadOnlySet<Guid> Groups => _groups;
 
     // From a snapshot the core narrowed, so the core alone says what a project holds.
     public static ScopedSet Of(LibrarySnapshot snapshot)
@@ -27,14 +32,17 @@ public sealed class ScopedSet
         ArgumentNullException.ThrowIfNull(snapshot);
         return new ScopedSet(
             snapshot.Scope,
-            [.. snapshot.Connections.Where(connection => connection.Id is not null).Select(connection => connection.Id!.Value)]);
+            [.. snapshot.Connections.Where(connection => connection.Id is not null).Select(connection => connection.Id!.Value)],
+            [.. snapshot.Groups.Select(group => group.Id)]);
     }
 
     // The project counts too: two empty projects hold the same nothing under different names.
     public bool Matches(ScopedSet other)
     {
         ArgumentNullException.ThrowIfNull(other);
-        return Project == other.Project && _connections.SetEquals(other._connections);
+        return Project == other.Project
+            && _connections.SetEquals(other._connections)
+            && _groups.SetEquals(other._groups);
     }
 }
 
