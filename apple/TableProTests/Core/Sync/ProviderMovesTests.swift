@@ -247,6 +247,24 @@ struct ProviderMovesTests {
         #expect(try await first.value == .moved)
     }
 
+    @Test("Off chosen while the engine moves wins: the engine goes off after the move, with no first pass")
+    func offDuringAMoveWins() async throws {
+        let fixture = Fixture(provider: .off, engineProvider: .off)
+        let gate = AsyncGate()
+        fixture.engine.update { $0.moveGate = gate }
+        fixture.moves.start()
+
+        let move = Task { try await fixture.moves.moveToService() }
+        await gate.arrived(1)
+        fixture.slice.update { $0.provider = .off }
+        await gate.open()
+
+        #expect(try await move.value == .moved)
+        try await waitUntil { fixture.engine.status().provider == .off }
+        #expect(!fixture.log.all.contains("syncNow"))
+        #expect(fixture.provider == .off)
+    }
+
     // MARK: - Back to iCloud
 
     @Test("The move back opens CloudKit, passes the confirmed count, and hands CloudKit to iCloud open")

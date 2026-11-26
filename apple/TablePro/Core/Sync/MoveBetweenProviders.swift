@@ -110,8 +110,9 @@ internal final class ProviderMoves: ObservableObject {
     }
 
     // The last iCloud push and pull run through the coordinator, then iCloud stops on this Mac before the engine moves,
-    // so nothing more reaches CloudKit and no iCloud pass runs beside the move. A move that fails leaves the Mac on
-    // TablePro Sync waiting for it, so Try Again picks up where it stopped.
+    // so nothing more reaches CloudKit and no iCloud pass runs beside the move. The coordinator stops iCloud without
+    // telling the engine a provider while the stored one is TablePro Sync, since the move sets it. A move that fails
+    // leaves the Mac on TablePro Sync waiting for it, so Try Again picks up where it stopped.
     func moveToService() async throws -> MoveToServiceOutcome {
         guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
         return try await exclusively {
@@ -127,6 +128,8 @@ internal final class ProviderMoves: ObservableObject {
             await host.passesFinished()
             try await engine.moveToService()
             engineChanged()
+            // Off chosen while the engine moved, by a reset or a profile, wins over the first pass.
+            guard settings.value.provider == .tableproSync else { return .moved }
             do {
                 try await engine.syncNow(why: .person)
             } catch {
@@ -235,10 +238,14 @@ internal final class ProviderMoves: ObservableObject {
         }
     }
 
+    // An Off that arrived during the operation is applied once it ends.
     private func exclusively<T>(_ body: () async throws -> T) async throws -> T {
         guard !isMoving else { throw ProviderMoveError.inProgress }
         isMoving = true
-        defer { isMoving = false }
+        defer {
+            isMoving = false
+            reconcile()
+        }
         await reconciling?.value
         return try await body()
     }
