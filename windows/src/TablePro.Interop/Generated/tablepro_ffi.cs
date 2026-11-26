@@ -1822,6 +1822,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2050,6 +2052,17 @@ static class _UniFFILib {
     public static extern
 #endif
      RustBuffer uniffi_tablepro_ffi_fn_method_accountservice_status(ulong @ptr,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_accountservice_step_up(ulong @ptr,RustBuffer @challenge,RustBuffer @cancel
     );
 
     #if NET8_0_OR_GREATER
@@ -7230,6 +7243,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_accountservice_step_up(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_accountservice_use_license_key(
     );
 
@@ -10949,6 +10973,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_accountservice_step_up();
+            if (checksum != 63240) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_accountservice_step_up` checksum `63240`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_accountservice_use_license_key();
             if (checksum != 62173) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_accountservice_use_license_key` checksum `62173`, library returned `{checksum}`");
@@ -13103,6 +13133,8 @@ internal interface IAccountService {
     Task SignOut();
     AccountStatusInfo Status();
     /// <exception cref="CoreException"></exception>
+    Task StepUp(StepUpChallengeInfo @challenge, CancelToken? @cancel);
+    /// <exception cref="CoreException"></exception>
     Task UseLicenseKey(SecretString @key);
     /// <exception cref="CoreException"></exception>
     Task<CreatedShareInfo> CreateShare(ShareRequestArg @request, ResultSet? @result, uint @visibleColumns, uint @maxRows, ulong? @totalRows, ShareColumnChoice[] @columns);
@@ -13468,6 +13500,24 @@ internal class AccountService : IAccountService, IDisposable {
 )));
     }
     
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task StepUp(StepUpChallengeInfo @challenge, CancelToken? @cancel) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_accountservice_step_up(thisPtr, FfiConverterTypeStepUpChallengeInfo.INSTANCE.Lower(@challenge), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
     
     /// <exception cref="CoreException"></exception>
     public async Task UseLicenseKey(SecretString @key) {await _UniFFIAsync.UniffiRustCallAsync(
@@ -24760,7 +24810,8 @@ internal record ErrorInfo (
     HostKeyFailure? HostKey, 
     TlsFailureTag? TlsFailure, 
     AiFailureInfo? Ai = null, 
-    SyncFailureInfo? Sync = null
+    SyncFailureInfo? Sync = null, 
+    StepUpChallengeInfo? StepUp = null
 ) {
 }
 
@@ -24778,7 +24829,8 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             HostKey: FfiConverterOptionalTypeHostKeyFailure.INSTANCE.Read(stream),
             TlsFailure: FfiConverterOptionalTypeTlsFailureTag.INSTANCE.Read(stream),
             Ai: FfiConverterOptionalTypeAiFailureInfo.INSTANCE.Read(stream),
-            Sync: FfiConverterOptionalTypeSyncFailureInfo.INSTANCE.Read(stream)
+            Sync: FfiConverterOptionalTypeSyncFailureInfo.INSTANCE.Read(stream),
+            StepUp: FfiConverterOptionalTypeStepUpChallengeInfo.INSTANCE.Read(stream)
         );
     }
 
@@ -24793,7 +24845,8 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             + FfiConverterOptionalTypeHostKeyFailure.INSTANCE.AllocationSize(value.HostKey)
             + FfiConverterOptionalTypeTlsFailureTag.INSTANCE.AllocationSize(value.TlsFailure)
             + FfiConverterOptionalTypeAiFailureInfo.INSTANCE.AllocationSize(value.Ai)
-            + FfiConverterOptionalTypeSyncFailureInfo.INSTANCE.AllocationSize(value.Sync);
+            + FfiConverterOptionalTypeSyncFailureInfo.INSTANCE.AllocationSize(value.Sync)
+            + FfiConverterOptionalTypeStepUpChallengeInfo.INSTANCE.AllocationSize(value.StepUp);
     }
 
     public override void Write(ErrorInfo value, BigEndianStream stream) {
@@ -24807,6 +24860,7 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             FfiConverterOptionalTypeTlsFailureTag.INSTANCE.Write(value.TlsFailure, stream);
             FfiConverterOptionalTypeAiFailureInfo.INSTANCE.Write(value.Ai, stream);
             FfiConverterOptionalTypeSyncFailureInfo.INSTANCE.Write(value.Sync, stream);
+            FfiConverterOptionalTypeStepUpChallengeInfo.INSTANCE.Write(value.StepUp, stream);
     }
 }
 
@@ -28937,6 +28991,36 @@ class FfiConverterTypeStatementSpan: FfiConverterRustBuffer<StatementSpan> {
     public override void Write(StatementSpan value, BigEndianStream stream) {
             FfiConverterUInt32.INSTANCE.Write(value.Start, stream);
             FfiConverterUInt32.INSTANCE.Write(value.End, stream);
+    }
+}
+
+
+
+internal record StepUpChallengeInfo (
+    string[] AcrValues, 
+    ulong? MaxAgeSecs
+) {
+}
+
+class FfiConverterTypeStepUpChallengeInfo: FfiConverterRustBuffer<StepUpChallengeInfo> {
+    public static FfiConverterTypeStepUpChallengeInfo INSTANCE = new FfiConverterTypeStepUpChallengeInfo();
+
+    public override StepUpChallengeInfo Read(BigEndianStream stream) {
+        return new StepUpChallengeInfo(
+            AcrValues: FfiConverterSequenceString.INSTANCE.Read(stream),
+            MaxAgeSecs: FfiConverterOptionalUInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(StepUpChallengeInfo value) {
+        return 0
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.AcrValues)
+            + FfiConverterOptionalUInt64.INSTANCE.AllocationSize(value.MaxAgeSecs);
+    }
+
+    public override void Write(StepUpChallengeInfo value, BigEndianStream stream) {
+            FfiConverterSequenceString.INSTANCE.Write(value.AcrValues, stream);
+            FfiConverterOptionalUInt64.INSTANCE.Write(value.MaxAgeSecs, stream);
     }
 }
 
@@ -42140,6 +42224,37 @@ class FfiConverterOptionalTypeStatementSpan: FfiConverterRustBuffer<StatementSpa
         } else {
             stream.WriteByte(1);
             FfiConverterTypeStatementSpan.INSTANCE.Write((StatementSpan)value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeStepUpChallengeInfo: FfiConverterRustBuffer<StepUpChallengeInfo?> {
+    public static FfiConverterOptionalTypeStepUpChallengeInfo INSTANCE = new FfiConverterOptionalTypeStepUpChallengeInfo();
+
+    public override StepUpChallengeInfo? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeStepUpChallengeInfo.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(StepUpChallengeInfo? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeStepUpChallengeInfo.INSTANCE.AllocationSize((StepUpChallengeInfo)value);
+        }
+    }
+
+    public override void Write(StepUpChallengeInfo? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeStepUpChallengeInfo.INSTANCE.Write((StepUpChallengeInfo)value, stream);
         }
     }
 }
