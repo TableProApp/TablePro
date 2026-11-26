@@ -269,16 +269,20 @@ internal final class ProviderMoves: ObservableObject {
 extension ProviderMoves {
     // The engine's own words never reach the screen; its code goes to the log.
     nonisolated static func message(for error: any Error) -> String {
-        switch error {
-        case ProviderMoveError.notAllowed:
-            return String(localized: "Your organization does not allow this on this Mac.")
-        case ProviderMoveError.inProgress:
-            return String(localized: "Another change to how this Mac syncs is still running.")
-        case CoreError.Failed(let info):
-            return message(forCode: info.code)
-        default:
-            return message(forCode: "")
+        if let error = error as? ProviderMoveError {
+            switch error {
+            case .notAllowed:
+                return String(localized: "Your organization does not allow this on this Mac.")
+            case .inProgress:
+                return String(localized: "Another change to how this Mac syncs is still running.")
+            case .engineUnavailable:
+                return message(forCode: "")
+            }
         }
+        if let error = error as? CoreError, case .Failed(let info) = error {
+            return message(forCode: info.code)
+        }
+        return message(forCode: "")
     }
 
     nonisolated static func message(forCode code: String) -> String {
@@ -298,6 +302,7 @@ extension ProviderMoves {
 }
 
 extension ProviderMoveHost {
+    @MainActor
     static var live: ProviderMoveHost {
         let engines = SyncEngineHost.shared
         let coordinator = SyncProviderCoordinator.shared

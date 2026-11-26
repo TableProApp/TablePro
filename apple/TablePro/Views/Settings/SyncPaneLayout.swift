@@ -57,11 +57,12 @@ struct SyncPaneLayout: Equatable {
     let offersICloudDataDeletion: Bool
 
     init(_ inputs: SyncPaneInputs) {
-        let allowed = inputs.choices.providers.map(SyncProviderSetting.init)
+        let allowed = inputs.choices.providers.map { SyncProviderSetting($0) }
         options = SyncProviderSetting.allCases.filter { allowed.contains($0) || $0 == inputs.provider }
         isPickerLocked = inputs.choices.locked
         managedNote = Self.managedNote(inputs.choices)
-        asksNewIdentity = inputs.engine?.phase == .newIdentity
+        let newIdentity = inputs.engine?.phase == .newIdentity
+        asksNewIdentity = newIdentity
 
         let iCloudAllowed = allowed.contains(.iCloud)
         let serviceAllowed = allowed.contains(.tableproSync)
@@ -72,7 +73,7 @@ struct SyncPaneLayout: Equatable {
         switch inputs.provider {
         case .iCloud:
             let presentation = SyncStatusPresentation(status: inputs.iCloudStatus)
-            let live = iCloudLicensed && iCloudAllowed && !asksNewIdentity
+            let live = iCloudLicensed && iCloudAllowed && !newIdentity
             licenseGate = iCloudLicensed || !iCloudAllowed ? nil : .iCloudSync
             iCloudNotice = live ? presentation.notice : nil
             serviceNotice = nil
@@ -86,10 +87,11 @@ struct SyncPaneLayout: Equatable {
             iCloudNotice = nil
             serviceNotice = Self.serviceNotice(inputs, movedHere: movedHere, licensed: serviceLicensed)
             showsICloudStatus = false
-            let live = movedHere && serviceLicensed && !asksNewIdentity
-            serviceStatus = live ? Self.serviceStatus(inputs.engine?.phase) : nil
+            let live = movedHere && serviceLicensed && !newIdentity
+            let status = live ? Self.serviceStatus(inputs.engine?.phase) : nil
+            serviceStatus = status
             showsLastSynced = live
-            offersSyncNow = live && serviceStatus != .syncing
+            offersSyncNow = live && status != .syncing
         case .off:
             licenseGate = nil
             iCloudNotice = nil

@@ -95,7 +95,13 @@ struct SyncMoveBackSheet: View {
     private var primaryButton: some View {
         if case .failed = step {
             Button(String(localized: "Try Again")) {
-                Task { plan == nil ? await loadPlan() : await move() }
+                Task {
+                    if plan == nil {
+                        await loadPlan()
+                    } else {
+                        await move()
+                    }
+                }
             }
             .keyboardShortcut(.defaultAction)
         } else if let plan, plan.icloudDeletions > 0 {

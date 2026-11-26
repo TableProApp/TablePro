@@ -123,7 +123,13 @@ struct SyncMoveSheet: View {
             .keyboardShortcut(.defaultAction)
         case .failed:
             Button(String(localized: "Try Again")) {
-                Task { plan == nil ? await loadPlan() : await move() }
+                Task {
+                    if plan == nil {
+                        await loadPlan()
+                    } else {
+                        await move()
+                    }
+                }
             }
             .keyboardShortcut(.defaultAction)
         case .loading, .review, .moving:
