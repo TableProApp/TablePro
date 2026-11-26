@@ -767,6 +767,76 @@ struct SyncEngineHostTests {
         #expect(try await host.engine(for: .off) === service)
     }
 
+    // A new engine for each open, so a test can tell the service before a sign-in change from the one after.
+    private static func reopeningHost(
+        signInChanges: PassthroughSubject<Void, Never>,
+        opening: AsyncGate? = nil,
+        opened: OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>
+    ) -> SyncEngineHost {
+        SyncEngineHost(
+            transport: CloudKitCoreTransport(database: FakeCloudKitDatabase()),
+            signInChanges: signInChanges.eraseToAnyPublisher(),
+            open: { provider, _ in
+                let engine = FakeSyncEngine()
+                let count = opened.withLock { opens in
+                    opens.append((provider, engine))
+                    return opens.count
+                }
+                if count == 1 {
+                    await opening?.wait()
+                }
+                return engine
+            }
+        )
+    }
+
+    @Test("A sign-in change closes the open service and opens one for the same provider")
+    func signInChangeReopens() async throws {
+        let changes = PassthroughSubject<Void, Never>()
+        let opened = OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>(initialState: [])
+        let host = Self.reopeningHost(signInChanges: changes, opened: opened)
+        let first = try await host.engine(for: .icloud)
+
+        changes.send()
+        try await waitUntil { opened.withLock { $0.count } == 2 }
+        let second = try await host.engine(for: .icloud)
+
+        #expect(second !== first)
+        #expect(second === opened.withLock { $0[1].1 })
+        #expect(opened.withLock { $0.map { $0.0 } } == [.icloud, .icloud])
+        #expect(host.openedEngine(for: .icloud) === second)
+    }
+
+    @Test("An open in flight when the sign-in changes is never kept, and its callers get the one opened after")
+    func openDuringASignInChangeIsDropped() async throws {
+        let changes = PassthroughSubject<Void, Never>()
+        let gate = AsyncGate()
+        let opened = OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>(initialState: [])
+        let host = Self.reopeningHost(signInChanges: changes, opening: gate, opened: opened)
+        let asked = Task { try await host.engine(for: .off) }
+        await gate.arrived(1)
+
+        changes.send()
+        await gate.open()
+        let engine = try await asked.value
+
+        #expect(opened.withLock { $0.map { $0.0 } } == [.off, .off])
+        #expect(engine === opened.withLock { $0[1].1 })
+        #expect(host.openedEngine(for: .off) === engine)
+    }
+
+    @Test("With no service open, a sign-in change opens none")
+    func signInChangeWithNothingOpen() async throws {
+        let changes = PassthroughSubject<Void, Never>()
+        let opened = OSAllocatedUnfairLock<[(SyncProviderTag, FakeSyncEngine)]>(initialState: [])
+        let host = Self.reopeningHost(signInChanges: changes, opened: opened)
+
+        changes.send()
+        #expect(await host.existingEngine(for: nil) == nil)
+
+        #expect(opened.withLock { $0.isEmpty })
+    }
+
     @Test("Asking for iCloud's service waits for its open in flight and never opens one itself")
     func existingWaitsAndNeverOpens() async throws {
         let opened = OSAllocatedUnfairLock<[SyncProviderTag]>(initialState: [])

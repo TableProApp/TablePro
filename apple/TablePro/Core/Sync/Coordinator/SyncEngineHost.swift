@@ -36,9 +36,12 @@ final class SyncEngineHost {
     let keyChanges = PassthroughSubject<Void, Never>()
     private let open: @MainActor (SyncProviderTag, any SyncListener) async throws -> any SyncEngine
     private let keepICloudAccount: @MainActor (String?) -> Void
-    private typealias Opening = (provider: SyncProviderTag, task: Task<any SyncEngine, any Error>)
+    private typealias Opening = (provider: SyncProviderTag, signIn: Int, task: Task<any SyncEngine, any Error>)
     private var opening: Opening?
     private var opened: (provider: SyncProviderTag, engine: any SyncEngine)?
+    // Each sign-in, sign-out or switch, so an open that began under the one before is never kept.
+    private var signIn = 0
+    private var signInObserver: AnyCancellable?
 
     func openedEngine(for provider: SyncProviderTag) -> (any SyncEngine)? {
         guard let opened, Self.serves(opened.provider, provider) else { return nil }
@@ -48,11 +51,25 @@ final class SyncEngineHost {
     init(
         transport: CloudKitCoreTransport,
         keepICloudAccount: @escaping @MainActor (String?) -> Void = { _ in },
+        signInChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher(),
         open: @escaping @MainActor (SyncProviderTag, any SyncListener) async throws -> any SyncEngine
     ) {
         self.transport = transport
         self.keepICloudAccount = keepICloudAccount
         self.open = open
+        signInObserver = signInChanges.sink { [weak self] in self?.signInChanged() }
+    }
+
+    // TablePro Sync and the key flows stay bound to the sign-in the service opened with, and refuse once it ends, so
+    // the service closes and opens again for the same provider. The old one goes once its calls in flight end; the
+    // iCloud engine of the new one waits for its state file meanwhile.
+    private func signInChanged() {
+        signIn += 1
+        guard let provider = opened?.provider ?? opening?.provider else { return }
+        opened = nil
+        Task { [weak self] in
+            _ = try? await self?.engine(for: provider)
+        }
     }
 
     func rememberICloudAccount() {
@@ -73,7 +90,7 @@ final class SyncEngineHost {
             if opening?.task == current.task {
                 opening = nil
             }
-            if case .failure(let error) = result, Self.serves(current.provider, provider) {
+            if case .failure(let error) = result, current.signIn == signIn, Self.serves(current.provider, provider) {
                 throw error
             }
         }
@@ -81,21 +98,27 @@ final class SyncEngineHost {
 
     // The service opened for this provider, or for any with nil, once an open of one in flight ends. It never opens one.
     func existingEngine(for provider: SyncProviderTag?) async -> (any SyncEngine)? {
-        if let opening, provider == nil || opening.provider == provider {
+        while let opening, provider == nil || opening.provider == provider {
             _ = await opening.task.result
+            if self.opening?.task == opening.task {
+                self.opening = nil
+            }
         }
         guard let opened, provider == nil || opened.provider == provider else { return nil }
         return opened.engine
     }
 
     private func startOpening(_ provider: SyncProviderTag) -> Opening {
+        let started = signIn
         let task = Task { [weak self, open, listener = SyncEngineListener(host: self)] in
             let engine = try await open(provider, listener)
-            self?.opened = (provider, engine)
+            if let self, signIn == started {
+                opened = (provider, engine)
+            }
             return engine
         }
-        opening = (provider, task)
-        return (provider, task)
+        opening = (provider, started, task)
+        return (provider, started, task)
     }
 
     private static func serves(_ opened: SyncProviderTag, _ wanted: SyncProviderTag) -> Bool {
@@ -128,6 +151,7 @@ final class SyncEngineHost {
                 guard defaults.string(forKey: icloudAccountKey) != account else { return }
                 defaults.set(account, forKey: icloudAccountKey)
             },
+            signInChanges: AccountServices.shared.events.map { _ in }.eraseToAnyPublisher(),
             open: { provider, listener in
                 let settings = AppSettingsStorage.shared.loadSync()
                 let account = await AccountServices.shared.syncAccount?.accountService()
