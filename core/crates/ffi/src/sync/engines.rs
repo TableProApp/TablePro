@@ -221,26 +221,23 @@ pub(crate) fn identity_text(identity: &StateIdentity) -> Option<String> {
     else {
         return None;
     };
-    Some(
-        serde_json::json!({
-            "origin": origin.as_str(),
-            "sign_in": sign_in,
-            "account": account.to_wire(),
-            "device_row": device_row.0,
-        })
-        .to_string(),
-    )
+    serde_json::to_string(&[
+        origin.as_str(),
+        sign_in.as_str(),
+        account.to_wire().as_str(),
+        device_row.0.as_str(),
+    ])
+    .ok()
 }
 
 // Text the app kept that names no sign-in reads as no previous one.
 pub(crate) fn identity_of(text: &str) -> Option<StateIdentity> {
-    let value: serde_json::Value = serde_json::from_str(text).ok()?;
-    let field = |name: &str| value.get(name).and_then(serde_json::Value::as_str);
+    let [origin, sign_in, account, device_row]: [String; 4] = serde_json::from_str(text).ok()?;
     Some(StateIdentity::Service {
-        origin: Origin::parse(field("origin")?).ok()?,
-        sign_in: field("sign_in")?.to_owned(),
-        account: AccountId::from_wire(field("account")?).ok()?,
-        device_row: DeviceRowId(field("device_row")?.to_owned()),
+        origin: Origin::parse(&origin).ok()?,
+        sign_in,
+        account: AccountId::from_wire(&account).ok()?,
+        device_row: DeviceRowId(device_row),
     })
 }
 

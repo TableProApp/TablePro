@@ -8,7 +8,7 @@ use tablepro_storage::{ChangeJournal, ConnectionStore, QueryHistory};
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::library::{DriverNames, StoreStanding};
 use tablepro_sync::adapters::settings::ConnectionStanding;
-use tablepro_sync::adapters::store_journal::StoreJournal;
+use tablepro_sync::adapters::store_journal::{Listening, StoreJournal};
 use tablepro_sync::api::{self as sync, StateFiles, TransportError};
 use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::engine::{JournalObserver, SystemClock};
@@ -207,6 +207,44 @@ impl OpenParts {
     }
 }
 
+// The previous stable marks every write whatever its provider, so with no iCloud engine to carry the marks they go on
+// their own (0054, Downgrade mirror). The core stores' writes mark it too, as the app's own stores' do, each deletion
+// of an owned record with the connection the last iCloud file's base names.
+fn marks_alone(
+    tasks: &Tasks,
+    mirror: Option<Arc<dyn sync::LegacyMirror>>,
+    hosts: &Result<Hosts, SyncError>,
+    files: Option<Arc<dyn StateFiles>>,
+    icloud_account: Option<String>,
+) -> (Option<Arc<LegacyMarks>>, Option<Listening>) {
+    let Some(mirror) = mirror else {
+        return (None, None);
+    };
+    let marks = Arc::new(LegacyMarks::new(mirror, Arc::new(SystemClock)));
+    let hear = hosts
+        .as_ref()
+        .ok()
+        .and_then(|hosts| hosts.listen(Arc::clone(&marks) as Arc<dyn JournalObserver>));
+    match (files, icloud_account) {
+        (Some(files), Some(account)) => {
+            let marks = Arc::clone(&marks);
+            drop(tasks.spawn_task(async move {
+                let state = files
+                    .open(tablepro_sync::api::state::StateIdentity::ICloud {
+                        user_record_name: account,
+                    })
+                    .await
+                    .ok();
+                if let Err(error) = marks.owners_from(state.as_deref()).await {
+                    tracing::warn!(code = error.code(), "the downgrade marks read no owners");
+                }
+            }));
+        }
+        _ => marks.no_owners(),
+    }
+    (Some(marks), hear)
+}
+
 impl SyncService {
     // On the runtime. An engine that cannot start keeps why, which its calls answer; the others run.
     pub(crate) async fn open(tasks: Tasks, mut parts: OpenParts) -> Arc<Self> {
@@ -245,37 +283,16 @@ impl SyncService {
                 what: "sync with iCloud while it is not the chosen provider",
             }),
         };
-        // The previous stable marks every write whatever its provider, so with no iCloud engine to carry the marks
-        // they go on their own (0054, Downgrade mirror).
-        let legacy_marks = match (&icloud, mirror) {
-            (Err(_), Some(mirror)) => Some(Arc::new(LegacyMarks::new(mirror, Arc::new(SystemClock)))),
-            _ => None,
+        let (legacy_marks, marks_hear_stores) = match &icloud {
+            Err(_) => marks_alone(
+                &tasks,
+                mirror,
+                &hosts,
+                files.clone(),
+                parts.config.icloud_account.clone(),
+            ),
+            Ok(_) => (None, None),
         };
-        // The core stores' writes mark it too, as the app's own stores' do, each deletion of an owned record with the
-        // connection the last iCloud file's base names.
-        let marks_hear_stores = match (&legacy_marks, &hosts) {
-            (Some(marks), Ok(hosts)) => hosts.listen(Arc::clone(marks) as Arc<dyn JournalObserver>),
-            _ => None,
-        };
-        if let Some(marks) = &legacy_marks {
-            match (files.clone(), parts.config.icloud_account.clone()) {
-                (Some(files), Some(account)) => {
-                    let marks = Arc::clone(marks);
-                    drop(tasks.spawn_task(async move {
-                        let state = files
-                            .open(tablepro_sync::api::state::StateIdentity::ICloud {
-                                user_record_name: account,
-                            })
-                            .await
-                            .ok();
-                        if let Err(error) = marks.owners_from(state.as_deref()).await {
-                            tracing::warn!(code = error.code(), "the downgrade marks read no owners");
-                        }
-                    }));
-                }
-                _ => marks.no_owners(),
-            }
-        }
         let kept = categories.clone().unwrap_or_default();
         // A provider the values no longer allow carries no personal data from the start (0055, Leaving a provider).
         let personal = parts.config.provider == SyncProviderTag::TableproSync
