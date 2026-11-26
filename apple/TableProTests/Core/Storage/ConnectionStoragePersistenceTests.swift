@@ -13,7 +13,7 @@ import Testing
 struct ConnectionStoragePersistenceTests {
     private let pool = EphemeralDefaultsPool()
     private let storage: ConnectionStorage
-    private let syncJournal: SyncJournalRecorder.journal
+    private let syncTracker: SyncJournalRecorder
     private let fileURL: URL
     private let defaults: UserDefaults
 
@@ -27,7 +27,6 @@ struct ConnectionStoragePersistenceTests {
             withIntermediateDirectories: true
         )
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
         self.defaults = defaults
         self.syncTracker = SyncJournalRecorder()
         self.storage = ConnectionStorage(

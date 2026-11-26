@@ -113,14 +113,13 @@ private extension AppServices {
             sshProfileStorage: sshProfileStorage,
             credentialProfileStorage: credentialProfileStorage,
             featureAccess: featureAccess,
-            syncMetadataStorage: syncMetadataStorage,
             favoritesExpansionState: favoritesExpansionState,
             linkedFolderWatcher: linkedFolderWatcher,
             queryHistoryManager: manager,
             dateFormattingService: dateFormattingService,
             copilotService: copilotService,
             mcpServerManager: mcpServerManager,
-            syncJournal: syncTracker.journal,
+            syncJournal: syncJournal,
             welcomeRouter: welcomeRouter,
             telemetry: telemetry
         )

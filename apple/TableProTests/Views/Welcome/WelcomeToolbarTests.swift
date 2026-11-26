@@ -70,7 +70,6 @@ private final class WelcomeLibraryFixture {
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
             featureAccess: live.featureAccess,
-            syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
             queryHistoryManager: live.queryHistoryManager,

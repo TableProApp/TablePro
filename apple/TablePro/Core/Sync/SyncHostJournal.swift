@@ -38,6 +38,42 @@ nonisolated final class SyncHostJournal: Sendable {
     }
 }
 
+// Changes the engine has not taken yet, one entry per kind, each id under the last thing a write did to it.
+struct SyncHostChangeQueue: Equatable, Sendable {
+    private(set) var changes: [SyncHostChange] = []
+
+    var isEmpty: Bool { changes.isEmpty }
+
+    mutating func append(_ change: SyncHostChange) {
+        guard let index = changes.firstIndex(where: { $0.kind == change.kind }) else {
+            changes.append(change)
+            return
+        }
+        let pending = changes[index]
+        let nowWritten = Set(change.written)
+        let nowDeleted = Set(change.deleted)
+        changes[index] = SyncHostChange(
+            kind: change.kind,
+            written: pending.written.filter { !nowWritten.contains($0) && !nowDeleted.contains($0) } + change.written,
+            deleted: pending.deleted.filter { !nowWritten.contains($0) && !nowDeleted.contains($0) } + change.deleted
+        )
+    }
+
+    // Changes that came before the ones queued now, such as a batch the engine refused, go back ahead of them.
+    mutating func putBack(_ older: [SyncHostChange]) {
+        var queue = SyncHostChangeQueue()
+        for change in older + changes {
+            queue.append(change)
+        }
+        self = queue
+    }
+
+    mutating func takeAll() -> [SyncHostChange] {
+        defer { changes = [] }
+        return changes
+    }
+}
+
 extension SyncRecordType {
     // The core's kind for the record type iCloud carries it as (`tablepro-records`, the CloudKit registry).
     var coreKind: String {

@@ -53,4 +53,29 @@ struct SyncHostJournalTests {
             .tableFolderItem: "table_folder_item"
         ])
     }
+
+    @Test("Queued changes keep one entry per kind, each id under the last thing done to it")
+    func theQueueKeepsTheLastWordPerId() {
+        var queue = SyncHostChangeQueue()
+
+        queue.append(SyncHostChange(kind: "connection", written: ["A", "B"], deleted: ["C"]))
+        queue.append(SyncHostChange(kind: "group", written: ["G"], deleted: []))
+        queue.append(SyncHostChange(kind: "connection", written: ["C"], deleted: ["A"]))
+
+        #expect(queue.changes == [
+            SyncHostChange(kind: "connection", written: ["B", "C"], deleted: ["A"]),
+            SyncHostChange(kind: "group", written: ["G"], deleted: [])
+        ])
+    }
+
+    @Test("Changes put back go ahead of those queued since, so a later write still wins")
+    func putBackChangesGoFirst() {
+        var queue = SyncHostChangeQueue()
+        queue.append(SyncHostChange(kind: "connection", written: ["A"], deleted: []))
+
+        queue.putBack([SyncHostChange(kind: "connection", written: [], deleted: ["A", "B"])])
+
+        #expect(queue.takeAll() == [SyncHostChange(kind: "connection", written: ["A"], deleted: ["B"])])
+        #expect(queue.isEmpty)
+    }
 }

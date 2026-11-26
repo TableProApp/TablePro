@@ -25,6 +25,8 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
         var providers: [SyncProviderTag] = []
         var categories: [SyncCategoriesArg] = []
         var hostChanges: [SyncHostChange] = []
+        var hostChangeAttempts = 0
+        var refuseHostChanges = false
         var uploadsAgain = 0
         var pass: (@Sendable (PassReasonTag) async -> Void)?
     }
@@ -63,7 +65,15 @@ final class FakeSyncEngine: SyncEngine, @unchecked Sendable {
     }
 
     func recordHostChanges(kind: String, written: [String], deleted: [String]) async throws {
-        update { $0.hostChanges.append(SyncHostChange(kind: kind, written: written, deleted: deleted)) }
+        let refused = state.withLockUnchecked { state in
+            state.hostChangeAttempts += 1
+            guard !state.refuseHostChanges else { return true }
+            state.hostChanges.append(SyncHostChange(kind: kind, written: written, deleted: deleted))
+            return false
+        }
+        if refused {
+            throw AccountError.network("the engine is not ready")
+        }
     }
 
     func uploadAgain() async throws {
@@ -427,18 +437,39 @@ struct SyncProviderCoordinatorTests {
         #expect(fixture.passes == [.launch, .journal])
     }
 
-    @Test("With iCloud off, a store's write reaches no engine and asks for no pass")
-    func journalWhileOffIsDropped() async throws {
+    @Test("With iCloud off, a store's write still reaches the engine for the previous stable, and asks for no pass")
+    func journalWhileOffReachesTheEngine() async throws {
         let fixture = try Fixture()
         fixture.enabled = false
         fixture.coordinator.start()
 
-        fixture.journal.recorded(.connection, written: ["A"])
-        await fixture.coordinator.passesFinished()
+        fixture.journal.recorded(.connection, deleted: ["A"])
 
-        #expect(fixture.engine.read { $0.hostChanges }.isEmpty)
+        try await waitUntil { fixture.engine.read { $0.hostChanges.count } == 1 }
+        await fixture.coordinator.passesFinished()
+        #expect(fixture.engine.read { $0.hostChanges } == [SyncHostChange(kind: "connection", written: [], deleted: ["A"])])
         #expect(fixture.passes.isEmpty)
-        #expect(fixture.listener == nil)
+        #expect(fixture.transport.isClosed)
+    }
+
+    @Test("A change the engine did not take goes again with the next, ahead of it and merged by kind")
+    func refusedHostChangesGoAgain() async throws {
+        let fixture = try Fixture()
+        fixture.enabled = false
+        fixture.engine.update { $0.refuseHostChanges = true }
+        fixture.coordinator.start()
+        fixture.journal.recorded(.connection, written: ["A"])
+        fixture.journal.recorded(.group, deleted: ["G"])
+        try await waitUntil { fixture.engine.read { $0.hostChangeAttempts } >= 2 }
+
+        fixture.engine.update { $0.refuseHostChanges = false }
+        fixture.journal.recorded(.connection, deleted: ["A"])
+
+        try await waitUntil { fixture.engine.read { $0.hostChanges.count } == 2 }
+        #expect(fixture.engine.read { $0.hostChanges } == [
+            SyncHostChange(kind: "connection", written: [], deleted: ["A"]),
+            SyncHostChange(kind: "group", written: [], deleted: ["G"])
+        ])
     }
 
     @Test("A pass tells the engine this Mac's categories once, and a change tells it again with a pass")

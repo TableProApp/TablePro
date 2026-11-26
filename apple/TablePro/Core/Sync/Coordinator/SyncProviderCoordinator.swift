@@ -50,8 +50,10 @@ final class SyncProviderCoordinator: ObservableObject {
     private var activationCooldown: Task<Void, Never>?
     private var activationHeld = false
     private var journalPass: Task<Void, Never>?
-    // Every host change the engine is told, in order; a pass waits for the ones before it.
+    // Host changes are told to the engine in order, and a pass waits for those before it. One the engine did not take
+    // goes again with the next.
     private var journalDelivery: Task<Void, Never>?
+    private var undelivered = SyncHostChangeQueue()
     private var toldCategories: SyncCategoriesArg?
     // Each turn of iCloud on or off, so a pass that began before one changes nothing after it.
     private var generation = 0
@@ -213,6 +215,9 @@ final class SyncProviderCoordinator: ObservableObject {
         }
         do {
             try await choose(.icloud) { [weak self] in self?.generation == started }.value.get()
+            if !undelivered.isEmpty {
+                deliverJournal()
+            }
             await journalDelivery?.value
             await tellCategories()
             if started == generation {
@@ -288,20 +293,12 @@ final class SyncProviderCoordinator: ObservableObject {
 
     // MARK: - Journal
 
-    // Told while iCloud runs, offline too, so the engine can mark them for the previous stable. With iCloud off the
-    // diff finds them once it turns on, and the previous stable marks everything when turned on.
+    // Told always, offline and with iCloud off too, so the engine marks them for the previous stable: turned on there,
+    // that build marks what still exists but cannot know what was deleted. Only a running iCloud asks for a pass.
     private func journalRecorded(_ change: SyncHostChange) {
+        undelivered.append(change)
+        deliverJournal()
         guard syncStatus.isEnabled else { return }
-        let previous = journalDelivery
-        let host = host
-        journalDelivery = Task {
-            await previous?.value
-            do {
-                try await host.engine().recordHostChanges(kind: change.kind, written: change.written, deleted: change.deleted)
-            } catch {
-                Self.logger.error("The engine did not take a host change: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
-            }
-        }
         journalPass?.cancel()
         let clock = activationClock
         journalPass = Task { [weak self] in
@@ -313,6 +310,30 @@ final class SyncProviderCoordinator: ObservableObject {
             guard !Task.isCancelled, let self else { return }
             journalPass = nil
             requestPass(.journal)
+        }
+    }
+
+    private func deliverJournal() {
+        let previous = journalDelivery
+        journalDelivery = Task { [weak self] in
+            await previous?.value
+            await self?.deliverUndelivered()
+        }
+    }
+
+    private func deliverUndelivered() async {
+        let changes = undelivered.takeAll()
+        guard !changes.isEmpty else { return }
+        var delivered = 0
+        do {
+            let engine = try await host.engine()
+            for change in changes {
+                try await engine.recordHostChanges(kind: change.kind, written: change.written, deleted: change.deleted)
+                delivered += 1
+            }
+        } catch {
+            undelivered.putBack(Array(changes[delivered...]))
+            Self.logger.error("The engine did not take a host change: \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 

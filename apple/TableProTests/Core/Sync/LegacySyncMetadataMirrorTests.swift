@@ -147,6 +147,38 @@ struct LegacySyncMetadataMirrorTests {
         #expect(try Self.comparable(mirror.read()) == Self.comparable(next))
     }
 
+    @Test("Another account's position, tombstones and cached records go before its name is replaced")
+    func anotherAccountsStateGoesFirst() throws {
+        try mirror.write(metadata: Self.pass(token: nil, syncing: UUID(), localOnly: UUID(), owner: UUID()))
+        var bob = Self.pass(token: nil, syncing: UUID(), localOnly: UUID(), owner: UUID())
+        bob.account = "_bob"
+        bob.tombstones = []
+        bob.changesHeldForUnreadable = []
+        bob.cache = [Self.base("Tag_B", fields: [])]
+
+        try mirror.write(metadata: bob)
+
+        #expect(metadata.lastAccountId == "_bob")
+        #expect(SyncRecordType.allCases.allSatisfy { metadata.tombstones(for: $0).isEmpty })
+        #expect(metadata.changesHeldForUnreadableCopies.isEmpty)
+        #expect(cache.record(named: "Tag_A") == nil)
+        #expect(cache.record(named: "Tag_B") != nil)
+    }
+
+    @Test("When the last account's records cannot be removed, its name stays, so the previous stable starts over")
+    func aFailedSwitchKeepsTheLastAccountsName() throws {
+        try mirror.write(metadata: Self.pass(token: nil, syncing: UUID(), localOnly: UUID(), owner: UUID()))
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path) }
+        var bob = Self.pass(token: nil, syncing: UUID(), localOnly: UUID(), owner: UUID())
+        bob.account = "_bob"
+
+        #expect(throws: HostSecretError.self) { try mirror.write(metadata: bob) }
+
+        #expect(metadata.lastAccountId == "_alice")
+        #expect(metadata.adoptAccount("_bob") == .switched)
+    }
+
     @Test("A record type the previous stable does not know is left out of its marks")
     func unknownRecordTypesAreLeftOut() throws {
         var written = Self.pass(token: nil, syncing: UUID(), localOnly: UUID(), owner: UUID())

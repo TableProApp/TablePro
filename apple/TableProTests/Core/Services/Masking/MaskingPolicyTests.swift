@@ -3,7 +3,6 @@
 //  TableProTests
 //
 
-import CloudKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -146,17 +145,6 @@ struct MaskingPolicyTests {
 
         connection.maskingRules = []
         #expect(connection.additionalFields[DatabaseConnection.maskingRulesKey] == nil)
-    }
-
-    @Test("Rules travel with the connection through iCloud sync")
-    func rulesSync() throws {
-        var connection = TestFixtures.makeConnection()
-        connection.maskingRules = [MaskingRule(pattern: "users.ssn", style: .lastFour)]
-        let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
-
-        let synced = try SyncRecordMapper.toConnection(SyncRecordMapper.toCKRecord(connection, in: zoneID))
-
-        #expect(synced.maskingRules == connection.maskingRules)
     }
 
     @Test("An unknown style masks fully, and an unknown target or a missing pattern masks every column")

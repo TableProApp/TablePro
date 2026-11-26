@@ -19,26 +19,29 @@ nonisolated struct LegacySyncMetadataWriter: @unchecked Sendable {
     let recordCache: SyncRecordCache
     var now: @Sendable () -> Date = { Date() }
 
-    // After a committed pass: everything the previous stable reads, each part replaced whole. The token goes last, so
-    // a write cut short leaves that build an older position to pull from again, never a newer one without its marks.
+    // After a committed pass: everything the previous stable reads, replaced in an order that leaves that build a state
+    // it can sync from wherever a crash cuts the write short:
+    // - another account's position, tombstones and record cache go before this account's name replaces its own;
+    // - the marks first hold the old and the new together, so a cut never drops one;
+    // - the change token goes last, so a cut leaves an older position to pull from again, never a newer one.
     func write(_ written: LegacyMetadataArg) throws {
+        if metadata.lastAccountId != written.account {
+            try forgetAccount()
+            metadata.lastAccountId = written.account
+        }
         let dirty = Self.idsByType(written.dirty)
         let tombstones = Self.tombstonesByType(written.tombstones)
         for type in SyncRecordType.allCases {
-            metadata.clearDirty(type: type)
-            metadata.markDirty(dirty[type] ?? [], type: type)
-            metadata.clearTombstones(type: type)
-            metadata.addTombstones(tombstones[type] ?? [], type: type)
+            metadata.replaceTombstones(Self.merged(metadata.tombstones(for: type), tombstones[type] ?? []), for: type)
+            metadata.replaceDirtyIds(metadata.dirtyIds(for: type).union(dirty[type] ?? []), for: type)
         }
         metadata.deferredDeletions = Set(written.deferredDeletions)
         metadata.changesHeldForUnreadableCopies = Set(written.changesHeldForUnreadable)
         metadata.removalsPendingForUnreadableCopies = Set(written.removalsPendingForUnreadable)
         metadata.deletionsHeldForUnreadableCopies = Set(written.deletionsHeldForUnreadable)
-        metadata.releaseOwnersKeptOffSync(metadata.ownersKeptOffSync())
-        metadata.keepOffSync(owners: Set(written.ownersKeptOffSync.compactMap(UUID.init(uuidString:))))
+        metadata.replaceOwnersKeptOffSync(Set(written.ownersKeptOffSync.compactMap(UUID.init(uuidString:))))
         writeStanding(written.standing)
         _ = metadata.adoptReadableRecordTypes(Set(written.readableRecordTypes))
-        metadata.lastAccountId = written.account
         if let zone = written.zoneState.flatMap(SyncZoneState.init(rawValue:)) {
             metadata.zoneState = zone
         } else {
@@ -47,22 +50,41 @@ nonisolated struct LegacySyncMetadataWriter: @unchecked Sendable {
         guard recordCache.replaceAll(with: written.cache.compactMap(Self.cachedRecord)) else {
             throw HostSecretError.Failed(detail: "the sync record cache could not be written whole")
         }
+        for type in SyncRecordType.allCases {
+            metadata.replaceTombstones(tombstones[type] ?? [], for: type)
+            metadata.replaceDirtyIds(Set(dirty[type] ?? []), for: type)
+        }
         metadata.saveToken(written.token.flatMap(CloudKitChangeToken.unarchive))
         metadata.lastSyncDate = now()
     }
 
     // On a journal signal, as `SyncChangeTracker` marked them: a written record is dirty, and a deleted one leaves its
-    // dirty mark for a tombstone.
+    // dirty mark for a tombstone, written first so a cut leaves both rather than neither.
     func mark(dirty: [LegacyRecordArg], tombstones: [LegacyTombstoneArg]) {
         for (type, ids) in Self.idsByType(dirty) {
             metadata.markDirty(ids, type: type)
         }
         for (type, added) in Self.tombstonesByType(tombstones) {
-            let ids = added.map(\.id)
-            metadata.removeDirty(ids, type: type)
-            metadata.removeTombstones(ids, type: type)
-            metadata.addTombstones(added, type: type)
+            metadata.replaceTombstones(Self.merged(metadata.tombstones(for: type), added), for: type)
+            metadata.removeDirty(added.map(\.id), type: type)
         }
+    }
+
+    // What the previous stable drops when it meets another account (`SyncMetadataStorage.adoptAccount`), dropped here
+    // before the name changes, so no other account's base or deletion is ever read as this one's.
+    private func forgetAccount() throws {
+        guard recordCache.replaceAll(with: []) else {
+            throw HostSecretError.Failed(detail: "the last iCloud account's record cache could not be removed")
+        }
+        metadata.saveToken(nil)
+        for type in SyncRecordType.allCases {
+            metadata.clearTombstones(type: type)
+        }
+        metadata.deferredDeletions = []
+        metadata.changesHeldForUnreadableCopies = []
+        metadata.removalsPendingForUnreadableCopies = []
+        metadata.deletionsHeldForUnreadableCopies = []
+        metadata.zoneState = .unknown
     }
 
     // A connection without a standing is in neither set, which the previous stable reads as unknown.
@@ -88,6 +110,12 @@ nonisolated struct LegacySyncMetadataWriter: @unchecked Sendable {
             ids[type, default: []].append(record.id)
         }
         return ids
+    }
+
+    // One tombstone per id, the newer one kept.
+    private static func merged(_ kept: [Tombstone], _ added: [Tombstone]) -> [Tombstone] {
+        let addedIds = Set(added.map(\.id))
+        return kept.filter { !addedIds.contains($0.id) } + added
     }
 
     private static func tombstonesByType(_ tombstones: [LegacyTombstoneArg]) -> [SyncRecordType: [Tombstone]] {

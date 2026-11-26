@@ -134,14 +134,13 @@ struct AIChatAlwaysAllowTests {
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
             featureAccess: live.featureAccess,
-            syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
             queryHistoryManager: live.queryHistoryManager,
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncJournal: live.syncTracker.journal,
+            syncJournal: live.syncJournal,
             welcomeRouter: live.welcomeRouter,
             telemetry: live.telemetry
         )
