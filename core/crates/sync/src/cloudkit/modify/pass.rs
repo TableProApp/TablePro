@@ -2,7 +2,8 @@
 // fetch and then the push. Another iCloud account deletes the last account's state file and starts its own from a full
 // fetch. A call that finds the account changed ends the pass with nothing of its results kept and drops the state
 // file, so the next pass reads the account again. A removed zone clears the state and nothing goes up until the person
-// asks to upload again.
+// asks to upload again. On the Mac, the Swift engine's metadata is imported at the first pass over a state file and
+// written back after every pass while the previous stable runs that engine (0054, Downgrade mirror).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -17,8 +18,10 @@ use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use crate::api::control::{PassReason, PendingApproval, SyncControl, SyncPhase, SyncStatus};
 use crate::api::error::SyncError;
 use crate::api::ids::RecordKey;
+use crate::api::legacy::LegacyMirror;
 use crate::api::state::{Provider, RowRange, StateFiles, StateIdentity, StateStore, SyncTrust, Table};
 use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, read_everything_again};
+use crate::cloudkit::legacy::{Context, LegacyLink};
 use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalIds, Pass, StopSignal};
 
 // The Swift engine's fallback timer, for changes no CloudKit push announced.
@@ -76,6 +79,8 @@ struct Session {
     waits: Waits,
     // What the open found of the state file's sync tables was acted on, once per open, as the service's pass does.
     stale_handled: bool,
+    // The Swift engine's metadata was read for this state file.
+    legacy_checked: bool,
 }
 
 pub struct CloudKitSync {
@@ -95,6 +100,7 @@ pub struct CloudKitSync {
     // The session's account, readable while a pass runs.
     account: Mutex<Option<String>>,
     status: Mutex<SyncStatus>,
+    legacy: Option<LegacyLink>,
 }
 
 fn identity(account: &str) -> StateIdentity {
@@ -134,6 +140,26 @@ impl CloudKitSync {
                 held: 0,
                 queued_changes: 0,
             }),
+            legacy: None,
+        }
+    }
+
+    // The Mac's Swift sync metadata, while the previous stable runs the Swift engine. Called on the runtime: the
+    // journal's marks reach the host from a task of their own.
+    #[must_use]
+    pub fn with_legacy_mirror(mut self, mirror: Arc<dyn LegacyMirror>) -> Self {
+        let (link, marks) = LegacyLink::new(mirror, Arc::clone(&self.clock));
+        self.journal.observe(marks);
+        self.legacy = Some(link);
+        self
+    }
+
+    // Returns once the journal signals so far have marked the Swift metadata, for the app to await as it quits; fails
+    // while the host refuses a mark.
+    pub async fn flush_legacy_marks(&self) -> Result<(), SyncError> {
+        match &self.legacy {
+            Some(legacy) => legacy.flush().await,
+            None => Ok(()),
         }
     }
 
@@ -220,16 +246,30 @@ impl CloudKitSync {
             Err(failure) => return Err(self.ended(session, failure)),
         };
         let (state, switched_from) = self.open(session, &account).await?;
+        self.check_legacy(session, state.as_ref(), &account).await?;
         // A record new to the device that the person approved whole, which a crash kept out of its store, goes in first.
         self.stop.check()?;
         let adapters = Adapters::new(self.adapters.clone());
         self.queue(&state, &adapters).finish_decided().await?;
         let mut report = CloudKitReport {
-            account,
+            account: account.clone(),
             switched_from,
             ..CloudKitReport::default()
         };
-        match self.sync(session, state.as_ref(), named, &mut report).await {
+        let synced = self.sync(session, state.as_ref(), named, &mut report).await;
+        let outcome = self.settle(session, state.as_ref(), synced, report).await;
+        self.mirror(session, state.as_ref(), &account, named, &outcome).await;
+        outcome
+    }
+
+    async fn settle(
+        &self,
+        session: &mut Session,
+        state: &dyn StateStore,
+        synced: Result<(), SyncError>,
+        report: CloudKitReport,
+    ) -> Result<CloudKitReport, SyncError> {
+        match synced {
             Ok(()) => {
                 session.zone_removed = false;
                 Ok(report)
@@ -239,9 +279,9 @@ impl CloudKitSync {
                     failure,
                     CloudKitFailure::ZoneNotFound | CloudKitFailure::ZoneDeletedByUser
                 );
-                if gone && zone::seen(state.as_ref()).await? {
+                if gone && zone::seen(state).await? {
                     self.stop.check()?;
-                    zone::removed(state.as_ref()).await?;
+                    zone::removed(state).await?;
                     session.zone_removed = true;
                     session.waits = Waits::default();
                     return Err(failure.into());
@@ -249,6 +289,62 @@ impl CloudKitSync {
                 Err(self.ended(session, failure))
             }
             Err(error) => Err(error),
+        }
+    }
+
+    // Once per state file, before anything is fetched.
+    async fn check_legacy(
+        &self,
+        session: &mut Session,
+        state: &dyn StateStore,
+        account: &str,
+    ) -> Result<(), SyncError> {
+        let Some(legacy) = &self.legacy else {
+            return Ok(());
+        };
+        if session.legacy_checked {
+            return Ok(());
+        }
+        self.stop.check()?;
+        let categories = lock(&self.categories).clone();
+        legacy
+            .check(state, self.transport.as_ref(), account, &self.adapters, &categories)
+            .await?;
+        session.legacy_checked = true;
+        Ok(())
+    }
+
+    // After a pass that kept its state file, whatever the pass committed. A mirror that fails leaves the pass's own
+    // outcome as it was: the next pass writes again.
+    async fn mirror(
+        &self,
+        session: &Session,
+        state: &dyn StateStore,
+        account: &str,
+        named: Option<&JournalIds>,
+        outcome: &Result<CloudKitReport, SyncError>,
+    ) {
+        let Some(legacy) = &self.legacy else {
+            return;
+        };
+        let cancelled = matches!(outcome, Err(SyncError::Cancelled)) || self.stop.is_stopped();
+        if !session.legacy_checked || session.state.is_none() || cancelled {
+            return;
+        }
+        let categories = lock(&self.categories).clone();
+        let written = legacy
+            .write(Context {
+                state,
+                adapters: &self.adapters,
+                categories: &categories,
+                account,
+                zone_removed: session.zone_removed,
+                named,
+                now_ms: self.clock.now_ms(),
+            })
+            .await;
+        if let Err(error) = written {
+            tracing::warn!(code = error.code(), "the downgrade mirror was not written");
         }
     }
 
@@ -284,6 +380,10 @@ impl CloudKitSync {
         }
         let state = self.files.open(identity(account)).await?;
         session.stale_handled = false;
+        session.legacy_checked = false;
+        if let Some(legacy) = &self.legacy {
+            legacy.forget();
+        }
         session.account = Some(account.to_owned());
         *lock(&self.account) = Some(account.to_owned());
         session.state = Some(Arc::clone(&state));
