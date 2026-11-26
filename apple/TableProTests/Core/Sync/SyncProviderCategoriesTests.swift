@@ -29,7 +29,7 @@ struct SyncProviderCategoriesTests {
         var settings = SyncSettings.default
         settings.syncSettings = false
 
-        #expect(SyncProviderCoordinator.categories(settings).offKinds == ["macos_settings"])
+        #expect(SyncProviderCoordinator.categories(settings).offKinds == ["macos_settings", "ssh_profile", "credential_profile"])
     }
 
     @Test("Sync opened for TablePro Sync, iCloud off and passwords on, tells the engine envelopes sync, as a later change does")
@@ -44,6 +44,19 @@ struct SyncProviderCategoriesTests {
         #expect(config.provider == .tableproSync)
         #expect(config.categories.passwords)
         #expect(config.categories == SyncProviderCoordinator.categories(settings))
-        #expect(config.categories.offKinds == ["favourite_table"])
+        #expect(config.categories.offKinds == ["favourite_table", "ssh_profile", "credential_profile"])
+    }
+
+    @Test("SSH and credential profiles stay off while their Mac stores are Swift's, so the engine never reads them as deleted")
+    func profilesKeptInSwiftStayOff() {
+        var settings = SyncSettings.default
+        settings.syncSSHProfiles = true
+        settings.syncCredentialProfiles = true
+
+        let opened = SyncEngineHost.openConfig(provider: .icloud, settings: settings, icloudAccount: nil).categories
+        let changed = SyncProviderCoordinator.categories(settings)
+
+        #expect(opened.offKinds == ["ssh_profile", "credential_profile"])
+        #expect(changed == opened)
     }
 }
